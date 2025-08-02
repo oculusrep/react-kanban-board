@@ -74,7 +74,7 @@ function App() {
                   <div
                     ref={provided.innerRef}
                     {...provided.droppableProps}
-                    className={`relative min-w-[240px] bg-white border shadow-sm rounded-md flex flex-col ${
+                    className={`relative -w-[240px] bg-white border shadow-sm rounded-md flex flex-col ${
                       snapshot.isDraggingOver ? "bg-blue-50" : ""
                     }`}
                   >
