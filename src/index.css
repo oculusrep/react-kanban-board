@@ -1,3 +1,22 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Chevron shape for column header */
+.clip-chevron {
+  clip-path: polygon(0 0, 95% 0, 100% 50%, 95% 100%, 0 100%);
+  z-index: 10;
+  position: relative;
+}
+
+/* Overlap to tuck under previous column */
+.chevron-overlap {
+  margin-left: -8px;
+}
+
+/* Remove chevron on last column */
+.clip-chevron.last {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+  border-top-right-radius: 0.375rem;
+  border-bottom-right-radius: 0.375rem;
+}

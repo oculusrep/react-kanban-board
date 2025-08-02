@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  DropResult,
+} from "@hello-pangea/dnd";
 import useKanbanData from "./lib/useKanbanData";
 import { supabase } from "./lib/supabaseClient";
 
@@ -15,14 +20,12 @@ function App() {
     const { destination, source, draggableId } = result;
     if (!destination || destination.droppableId === source.droppableId) return;
 
-    // Update local state
     setLocalCards((prev) =>
       prev.map((card) =>
         card.id === draggableId ? { ...card, stage_id: destination.droppableId } : card
       )
     );
 
-    // Update Supabase
     const { error } = await supabase
       .from("deal")
       .update({ stage_id: destination.droppableId })
@@ -46,14 +49,13 @@ function App() {
   const currentYear = new Date().getFullYear();
 
   return (
-    <div className="p-4 overflow-x-auto">
+    <div className="p-4 overflow-x-auto bg-gray-100 min-h-screen">
       <h1 className="text-2xl font-bold mb-4">Kanban Board (Supabase)</h1>
-      <div className="flex gap-[2px] min-w-max">
+      <div className="flex min-w-max gap-[2px]">
         <DragDropContext onDragEnd={handleDragEnd}>
-          {columns.map((column) => {
+          {columns.map((column, index) => {
             let cardsInColumn = localCards.filter((card) => card.stage_id === column.id);
 
-            // Apply filter for "Closed Paid" column to only show deals with close_date in current year
             if (column.name === "Closed Paid") {
               cardsInColumn = cardsInColumn.filter((card: any) => {
                 if (!card.close_date) return false;
@@ -63,6 +65,8 @@ function App() {
             }
 
             const totalFee = cardsInColumn.reduce((sum, card) => sum + card.fee, 0);
+            const isLastColumn = index === columns.length - 1;
+            const isFirstColumn = index === 0;
 
             return (
               <Droppable key={column.id} droppableId={column.id}>
@@ -70,40 +74,46 @@ function App() {
                   <div
                     ref={provided.innerRef}
                     {...provided.droppableProps}
-                    className={`bg-gray-100 rounded p-1 min-w-[220px] min-h-[200px] transition-all duration-200 ${
-                      snapshot.isDraggingOver ? "bg-blue-100" : ""
+                    className={`relative min-w-[240px] bg-white border shadow-sm rounded-md flex flex-col ${
+                      snapshot.isDraggingOver ? "bg-blue-50" : ""
                     }`}
                   >
-                    <h2 className="text-lg font-semibold mb-1">
-                      {column.name} ({cardsInColumn.length})
-                    </h2>
-                    <div className="text-sm text-green-700 font-semibold mb-2">
-                      {formatCurrency(totalFee)}
-                    </div>
-                    {cardsInColumn.map((card, index) => (
-                      <Draggable key={card.id} draggableId={card.id} index={index}>
-                        {(provided, snapshot) => (
-                          <div
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
-                            className={`bg-white p-2 rounded shadow mb-2 transition-all duration-200 ${
-                              snapshot.isDragging ? "bg-yellow-100" : ""
-                            }`}
-                          >
-                            <div className="text-sm font-semibold">{card.deal_name}</div>
-                            <div className="text-sm text-gray-700">
-                              {formatCurrency(card.fee)}
-                            </div>
-                            <div className="text-xs text-gray-500">{card.client_name}</div>
-                            <div className="text-sm text-gray-800">
-                              {formatCurrency(card.deal_value)}
-                            </div>
+                    <div className="relative">
+                      <div
+                        className={`text-white py-2 px-3 font-semibold text-sm flex items-center justify-center clip-chevron bg-blue-600 ${
+                          isFirstColumn ? "" : "chevron-overlap"
+                        } ${isLastColumn ? "last" : ""}`}
+                      >
+                        <div className="text-center">
+                          {column.name} ({cardsInColumn.length})
+                          <div className="text-green-200 text-xs font-bold">
+                            {formatCurrency(totalFee)}
                           </div>
-                        )}
-                      </Draggable>
-                    ))}
-                    {provided.placeholder}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-2 flex-1">
+                      {cardsInColumn.map((card, index) => (
+                        <Draggable key={card.id} draggableId={card.id} index={index}>
+                          {(provided, snapshot) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              {...provided.dragHandleProps}
+                              className={`bg-white p-2 rounded shadow mb-2 border text-sm ${
+                                snapshot.isDragging ? "bg-yellow-100" : ""
+                              }`}
+                            >
+                              <div className="font-semibold">{card.deal_name}</div>
+                              <div className="text-gray-700">{formatCurrency(card.fee)}</div>
+                              <div className="text-gray-500 text-xs">{card.client_name}</div>
+                              <div className="text-gray-800">{formatCurrency(card.deal_value)}</div>
+                            </div>
+                          )}
+                        </Draggable>
+                      ))}
+                      {provided.placeholder}
+                    </div>
                   </div>
                 )}
               </Droppable>
