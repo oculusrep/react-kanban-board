@@ -8,6 +8,7 @@ type Deal = {
   deal_value: number;
   stage_id: string;
   client_name: string;
+  close_date?: string; // <- Add this
 };
 
 type StageColumn = {
@@ -28,16 +29,15 @@ function useKanbanData() {
   const fetchDeals = async () => {
     const { data, error } = await supabase
       .from("deal")
-      .select(
-        `
+      .select(`
         id,
         deal_name,
         fee,
         deal_value,
         stage_id,
+        close_date,
         client:client_id (client_name)
-      `
-      );
+      `);
 
     if (error) {
       console.error("Failed to fetch deals:", error);
@@ -51,6 +51,7 @@ function useKanbanData() {
       deal_value: d.deal_value,
       stage_id: d.stage_id,
       client_name: d.client?.client_name || "",
+      close_date: d.close_date || null, // <- Include this
     }));
 
     setCards(mapped);
@@ -64,7 +65,7 @@ function useKanbanData() {
     }
 
     const mapped = data
-      .filter((s: any) => s.label !== "Lost") // ← Removes the Lost column
+      .filter((s: any) => s.label !== "Lost")
       .map((s: any) => ({
         id: s.id,
         name: s.label,
