@@ -15,14 +15,12 @@ function App() {
     const { destination, source, draggableId } = result;
     if (!destination || destination.droppableId === source.droppableId) return;
 
-    // Update local state
     setLocalCards((prev) =>
       prev.map((card) =>
         card.id === draggableId ? { ...card, stage_id: destination.droppableId } : card
       )
     );
 
-    // Update Supabase
     const { error } = await supabase
       .from("deal")
       .update({ stage_id: destination.droppableId })
@@ -46,7 +44,7 @@ function App() {
   return (
     <div className="p-4 overflow-x-auto">
       <h1 className="text-2xl font-bold mb-4">Kanban Board (Supabase)</h1>
-      <div className="flex gap-4 min-w-max">
+      <div className="flex gap-[2px] min-w-max">
         <DragDropContext onDragEnd={handleDragEnd}>
           {columns.map((column) => (
             <Droppable key={column.id} droppableId={column.id}>
@@ -54,7 +52,7 @@ function App() {
                 <div
                   ref={provided.innerRef}
                   {...provided.droppableProps}
-                  className={`bg-gray-100 rounded p-3 min-w-[250px] min-h-[200px] transition-all duration-200 ${
+                  className={`bg-gray-100 rounded p-1 min-w-[220px] min-h-[200px] transition-all duration-200 ${
                     snapshot.isDraggingOver ? "bg-blue-100" : ""
                   }`}
                 >
@@ -72,7 +70,7 @@ function App() {
                               snapshot.isDragging ? "bg-yellow-100" : ""
                             }`}
                           >
-                            <div className="font-semibold">{card.deal_name}</div>
+                            <div className="text-sm font-semibold">{card.deal_name}</div>
                             <div className="text-sm text-gray-700">
                               {formatCurrency(card.fee)}
                             </div>
