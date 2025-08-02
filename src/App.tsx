@@ -1,99 +1,98 @@
-import React, { useState } from "react";
-import {
-  DragDropContext,
-  Droppable,
-  Draggable,
-  DropResult
-} from "@hello-pangea/dnd";
+import { useEffect, useState } from "react";
+import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
+import useKanbanData from "./lib/useKanbanData";
+import { supabase } from "./lib/supabaseClient";
 
-type Item = {
-  id: string;
-  content: string;
-};
+function App() {
+  const { columns, cards, loading } = useKanbanData();
+  const [localCards, setLocalCards] = useState<typeof cards>([]);
 
-type Columns = {
-  [key: string]: Item[];
-};
+  useEffect(() => {
+    setLocalCards(cards);
+  }, [cards]);
 
-const initialData: Columns = {
-  LOI: [
-    { id: "item-1", content: "Site A - Atlanta" },
-    { id: "item-2", content: "Site B - Tampa" }
-  ],
-  PSA: [
-    { id: "item-3", content: "Site C - Miami" }
-  ],
-  "Under Contract": [],
-  Booked: [],
-  Executed: [],
-  Closed: []
-};
+  const handleDragEnd = async (result: DropResult) => {
+    const { destination, source, draggableId } = result;
+    if (!destination || destination.droppableId === source.droppableId) return;
 
-export default function App() {
-  const [columns, setColumns] = useState<Columns>(initialData);
+    // Update local state
+    setLocalCards((prev) =>
+      prev.map((card) =>
+        card.id === draggableId ? { ...card, stage_id: destination.droppableId } : card
+      )
+    );
 
-  const onDragEnd = (result: DropResult) => {
-    const { source, destination } = result;
-    if (!destination) return;
+    // Update Supabase
+    const { error } = await supabase
+      .from("deal")
+      .update({ stage_id: destination.droppableId })
+      .eq("id", draggableId);
 
-    const sourceColumn = columns[source.droppableId];
-    const destColumn = columns[destination.droppableId];
-    const [movedItem] = sourceColumn.splice(source.index, 1);
-
-    destColumn.splice(destination.index, 0, movedItem);
-
-    setColumns({
-      ...columns,
-      [source.droppableId]: [...sourceColumn],
-      [destination.droppableId]: [...destColumn]
-    });
+    if (error) {
+      console.error("Error updating stage:", error);
+    }
   };
 
+  const formatCurrency = (value: number, decimals = 0) =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }).format(value);
+
+  if (loading) return <div className="p-4">Loading...</div>;
+
   return (
-    <div className="p-6 bg-gray-100 min-h-screen">
-      <h1 className="text-2xl font-bold mb-6">Kanban Board</h1>
-      <DragDropContext onDragEnd={onDragEnd}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {Object.entries(columns).map(([columnId, items]) => (
-            <div key={columnId} className="bg-white rounded shadow p-2">
-              <h2 className="font-semibold mb-2">{columnId}</h2>
-              <Droppable droppableId={columnId}>
-                {(provided, snapshot) => (
-                  <div
-                    {...provided.droppableProps}
-                    ref={provided.innerRef}
-                    className={`min-h-[100px] p-2 rounded transition-all duration-300 ${
-                      snapshot.isDraggingOver ? "bg-blue-100" : "bg-gray-50"
-                    }`}
-                  >
-                    {items.map((item, index) => (
-                      <Draggable
-                        key={item.id}
-                        draggableId={item.id}
-                        index={index}
-                      >
+    <div className="p-4 overflow-x-auto">
+      <h1 className="text-2xl font-bold mb-4">Kanban Board (Supabase)</h1>
+      <div className="flex gap-4 min-w-max">
+        <DragDropContext onDragEnd={handleDragEnd}>
+          {columns.map((column) => (
+            <Droppable key={column.id} droppableId={column.id}>
+              {(provided, snapshot) => (
+                <div
+                  ref={provided.innerRef}
+                  {...provided.droppableProps}
+                  className={`bg-gray-100 rounded p-3 min-w-[250px] min-h-[200px] transition-all duration-200 ${
+                    snapshot.isDraggingOver ? "bg-blue-100" : ""
+                  }`}
+                >
+                  <h2 className="text-lg font-semibold mb-2">{column.name}</h2>
+                  {localCards
+                    .filter((card) => card.stage_id === column.id)
+                    .map((card, index) => (
+                      <Draggable key={card.id} draggableId={card.id} index={index}>
                         {(provided, snapshot) => (
                           <div
                             ref={provided.innerRef}
                             {...provided.draggableProps}
                             {...provided.dragHandleProps}
-                            className={`mb-2 p-2 rounded bg-blue-200 shadow cursor-move transition-transform duration-200 ${
-                              snapshot.isDragging ? "scale-105" : ""
+                            className={`bg-white p-2 rounded shadow mb-2 transition-all duration-200 ${
+                              snapshot.isDragging ? "bg-yellow-100" : ""
                             }`}
                           >
-                            {item.content}
+                            <div className="font-semibold">{card.deal_name}</div>
+                            <div className="text-sm text-gray-700">
+                              {formatCurrency(card.fee)}
+                            </div>
+                            <div className="text-sm text-gray-500">{card.client_name}</div>
+                            <div className="text-sm text-gray-800">
+                              {formatCurrency(card.deal_value)}
+                            </div>
                           </div>
                         )}
                       </Draggable>
                     ))}
-                    {provided.placeholder}
-                  </div>
-                )}
-              </Droppable>
-            </div>
+                  {provided.placeholder}
+                </div>
+              )}
+            </Droppable>
           ))}
-        </div>
-      </DragDropContext>
+        </DragDropContext>
+      </div>
     </div>
   );
 }
+
+export default App;
