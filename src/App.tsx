@@ -1,12 +1,12 @@
+// src/App.tsx
 import { useEffect, useState } from "react";
 import {
   DragDropContext,
-  Droppable,
-  Draggable,
   DropResult,
 } from "@hello-pangea/dnd";
 import useKanbanData from "./lib/useKanbanData";
 import { supabase } from "./lib/supabaseClient";
+import { Droppable, Draggable } from "@hello-pangea/dnd";
 
 function App() {
   const { columns, cards, loading } = useKanbanData();
@@ -16,33 +16,60 @@ function App() {
     setLocalCards(cards);
   }, [cards]);
 
-  const handleDragEnd = async (result: DropResult) => {
-    const { destination, source, draggableId } = result;
-    if (!destination || destination.droppableId === source.droppableId) return;
+ const handleDragEnd = async (result: DropResult) => {
+  const { source, destination, draggableId } = result;
+  if (!destination) return;
 
-    setLocalCards((prev) =>
-      prev.map((card) =>
-        card.id === draggableId ? { ...card, stage_id: destination.droppableId } : card
-      )
-    );
+  const sourceColId = source.droppableId;
+  const destColId = destination.droppableId;
 
-    const { error } = await supabase
+  const updatedCards = [...localCards];
+  const draggedCard = updatedCards.find((card) => card.id === draggableId);
+
+  if (!draggedCard) return;
+
+  // Update stage if moving across columns
+  draggedCard.stage_id = destColId;
+
+  // Reorder cards in the destination column
+  const cardsInDest = updatedCards
+    .filter((card) => card.stage_id === destColId && card.id !== draggableId)
+    .sort((a, b) => (a.kanban_position ?? 0) - (b.kanban_position ?? 0));
+
+  cardsInDest.splice(destination.index, 0, draggedCard);
+
+  // Reassign kanban_position for all cards in the destination column
+  cardsInDest.forEach((card, index) => {
+    card.kanban_position = index;
+  });
+
+  // Update state immediately
+  setLocalCards(updatedCards);
+
+  // Persist only affected cards
+  const updates = cardsInDest.map((card) =>
+    supabase
       .from("deal")
-      .update({ stage_id: destination.droppableId })
-      .eq("id", draggableId);
+      .update({
+        stage_id: card.stage_id,
+        kanban_position: card.kanban_position,
+      })
+      .eq("id", card.id)
+  );
 
-    if (error) {
-      console.error("Error updating stage:", error);
-    }
-  };
+  await Promise.all(updates);
+};
 
-  const formatCurrency = (value: number, decimals = 0) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    }).format(value);
+
+  const formatCurrency = (value: number | null | undefined, decimals = 0) =>
+    typeof value === "number"
+      ? new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals,
+        }).format(value)
+      : "--";
 
   if (loading) return <div className="p-4">Loading...</div>;
 
@@ -54,7 +81,9 @@ function App() {
       <div className="flex min-w-max gap-[2px]">
         <DragDropContext onDragEnd={handleDragEnd}>
           {columns.map((column, index) => {
-            let cardsInColumn = localCards.filter((card) => card.stage_id === column.id);
+            let cardsInColumn = localCards
+              .filter((card) => card.stage_id === column.id)
+              .sort((a, b) => (a.kanban_position ?? 0) - (b.kanban_position ?? 0));
 
             if (column.name === "Closed Paid") {
               cardsInColumn = cardsInColumn.filter((card: any) => {
@@ -64,7 +93,7 @@ function App() {
               });
             }
 
-            const totalFee = cardsInColumn.reduce((sum, card) => sum + card.fee, 0);
+            const totalFee = cardsInColumn.reduce((sum, card) => sum + (card.fee ?? 0), 0);
             const isLastColumn = index === columns.length - 1;
             const isFirstColumn = index === 0;
 
@@ -107,7 +136,9 @@ function App() {
                               <div className="font-semibold">{card.deal_name}</div>
                               <div className="text-gray-700">{formatCurrency(card.fee)}</div>
                               <div className="text-gray-500 text-xs">{card.client_name}</div>
-                              <div className="text-gray-800">{formatCurrency(card.deal_value)}</div>
+                              <div className="text-gray-800">
+                                {formatCurrency(card.deal_value)}
+                              </div>
                             </div>
                           )}
                         </Draggable>
