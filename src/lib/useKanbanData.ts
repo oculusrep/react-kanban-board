@@ -8,7 +8,7 @@ type Deal = {
   deal_value: number;
   stage_id: string;
   client_name: string;
-  close_date?: string; // <- Add this
+  closed_date?: string;
 };
 
 type StageColumn = {
@@ -35,8 +35,9 @@ function useKanbanData() {
         fee,
         deal_value,
         stage_id,
-        close_date,
-        client:client_id (client_name)
+        closed_date,
+        client:client_id (client_name),
+        stage:stage_id (label)
       `);
 
     if (error) {
@@ -44,14 +45,28 @@ function useKanbanData() {
       return;
     }
 
-    const mapped = data.map((d: any) => ({
+    const filtered = data.filter((d: any) => {
+      const stageLabel = d.stage?.label;
+      const closed = d.closed_date;
+
+      // Only show "Closed Paid" if closed_date is in 2025
+      if (stageLabel === "Closed Paid") {
+        if (!closed) return false;
+        const year = new Date(closed).getFullYear();
+        return year === 2025;
+      }
+
+      return true; // Include all other stages
+    });
+
+    const mapped = filtered.map((d: any) => ({
       id: d.id,
       deal_name: d.deal_name,
       fee: d.fee,
       deal_value: d.deal_value,
       stage_id: d.stage_id,
       client_name: d.client?.client_name || "",
-      close_date: d.close_date || null, // <- Include this
+      closed_date: d.closed_date || null,
     }));
 
     setCards(mapped);

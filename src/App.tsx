@@ -1,18 +1,20 @@
 // src/App.tsx
-import { Routes, Route } from "react-router-dom";
-import DealTestPage from "./deal-test";
+import { Routes, Route, Navigate } from "react-router-dom";
 import KanbanBoard from "./KanbanBoard";
-import Navbar from "./components/Navbar";
+import DealDetailsPage from "./pages/DealDetailsPage";
 
 function App() {
   return (
-    <>
-      <Navbar />
-      <Routes>
-        <Route path="/master-pipeline" element={<KanbanBoard />} />
-        <Route path="/deal-test" element={<DealTestPage />} />
-      </Routes>
-    </>
+    <Routes>
+      {/* Redirect root to Master Pipeline */}
+      <Route path="/" element={<Navigate to="/master-pipeline" replace />} />
+
+      {/* Master Pipeline Kanban Board */}
+      <Route path="/master-pipeline" element={<KanbanBoard />} />
+
+      {/* Deal Details Page */}
+      <Route path="/deal/:dealId" element={<DealDetailsPage />} />
+    </Routes>
   );
 }
 
