@@ -2,6 +2,10 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { formatCurrency, formatPercent, formatIntegerPercent } from "../utils/format";
+import FormattedInput from "./FormattedInput";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
+import { parseISO, format as formatDateFn } from "date-fns";
 
 interface Deal {
   id: string;
@@ -39,20 +43,28 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
   const [form, setForm] = useState<Deal>(deal);
   const [saving, setSaving] = useState(false);
   const [editingField, setEditingField] = useState<string | null>(null);
+  const [stageOptions, setStageOptions] = useState<{ id: string; label: string }[]>([]);
+  const [teamOptions, setTeamOptions] = useState<{ id: string; label: string }[]>([]);
 
   useEffect(() => {
     setForm(deal);
   }, [deal]);
+
+  useEffect(() => {
+    supabase.from("deal_stage").select("id, label").then(({ data }) => {
+      if (data) setStageOptions(data);
+    });
+    supabase.from("deal_team").select("id, label").then(({ data }) => {
+      if (data) setTeamOptions(data);
+    });
+  }, []);
 
   const updateField = (field: keyof Deal, value: any) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const calculatedFee =
-  form.flat_fee_override !== null && !isNaN(form.flat_fee_override)
-    ? form.flat_fee_override
-    : (form.deal_value ?? 0) * ((form.commission_percent ?? 0) / 100);
-
+    form.flat_fee_override ?? (form.deal_value ?? 0) * ((form.commission_percent ?? 0) / 100);
 
   const handleSave = async () => {
     setSaving(true);
@@ -116,37 +128,36 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
         label="Flat Fee Override"
         value={form.flat_fee_override}
         onChange={(v) => updateField("flat_fee_override", v === "" ? null : parseFloat(v))}
-        format={(val) => formatCurrency(val, 2)}
+        format={(val) => val === null ? "" : formatCurrency(val, 2)}
         editingField={editingField}
         setEditingField={setEditingField}
         fieldKey="flat_fee_override"
       />
 
+      <Select
+        label="Stage"
+        value={form.stage_id}
+        onChange={(v) => updateField("stage_id", v)}
+        options={stageOptions}
+      />
+
+      <Select
+        label="Deal Team"
+        value={form.deal_team_id}
+        onChange={(v) => updateField("deal_team_id", v)}
+        options={teamOptions}
+      />
+
       <div className="col-span-2">
         <label className="block text-sm font-medium">Calculated Fee</label>
         <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
-          {isNaN(calculatedFee) ? "--" : formatCurrency(calculatedFee, 2)}
+          {isNaN(calculatedFee) ? "" : formatCurrency(calculatedFee, 2)}
         </div>
       </div>
 
-      <Input
-        label="Target Close Date"
-        type="date"
-        value={form.target_close_date || ""}
-        onChange={(v) => updateField("target_close_date", v)}
-      />
-      <Input
-        label="LOI Signed Date"
-        type="date"
-        value={form.loi_signed_date || ""}
-        onChange={(v) => updateField("loi_signed_date", v)}
-      />
-      <Input
-        label="Closed Date"
-        type="date"
-        value={form.closed_date || ""}
-        onChange={(v) => updateField("closed_date", v)}
-      />
+      <DateInput label="Target Close Date" value={form.target_close_date} onChange={(v) => updateField("target_close_date", v)} />
+      <DateInput label="LOI Signed Date" value={form.loi_signed_date} onChange={(v) => updateField("loi_signed_date", v)} />
+      <DateInput label="Closed Date" value={form.closed_date} onChange={(v) => updateField("closed_date", v)} />
 
       <FormattedInput
         label="Probability %"
@@ -172,67 +183,73 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
 }
 
 function Input({ label, value, onChange, type = "text" }: { label: string; value: any; onChange: (v: any) => void; type?: string }) {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    onChange(v);
+  };
+
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700">{label}</label>
       <input
         type={type}
         value={value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={handleChange}
+        placeholder=""
         className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
       />
     </div>
   );
 }
 
-function FormattedInput({
-  label,
-  value,
-  onChange,
-  format,
-  editingField,
-  setEditingField,
-  fieldKey,
-}: {
-  label: string;
-  value: number | null;
-  onChange: (v: any) => void;
-  format: (val: number | null) => string;
-  editingField: string | null;
-  setEditingField: (f: string | null) => void;
-  fieldKey: string;
-}) {
-  const isEditing = editingField === fieldKey;
+function DateInput({ label, value, onChange }: { label: string; value: string | null; onChange: (v: string | null) => void }) {
+  const parsedDate = value ? parseISO(value) : null;
 
-  const handleBlur = () => {
-    setEditingField(null);
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const input = e.target.value;
-    onChange(input === "" ? null : parseFloat(input));
+  const handleChange = (date: Date | null) => {
+    onChange(date ? formatDateFn(date, "yyyy-MM-dd") : null);
   };
 
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700">{label}</label>
-      {isEditing ? (
-        <input
-          type="number"
-          value={value ?? ""}
-          onBlur={handleBlur}
-          onChange={handleChange}
-          className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-        />
-      ) : (
-        <input
-          type="text"
-          value={format(value)}
-          onFocus={() => setEditingField(fieldKey)}
-          readOnly
-          className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm bg-gray-50 cursor-text"
-        />
-      )}
+      <DatePicker
+        selected={parsedDate}
+        onChange={handleChange}
+        placeholderText=""
+        className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+        dateFormat="MM/dd/yyyy"
+        isClearable
+      />
+    </div>
+  );
+}
+
+function Select({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string | null;
+  onChange: (v: string) => void;
+  options: { id: string; label: string }[];
+}) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      <select
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+      >
+        <option value="">-- Select --</option>
+        {options.map((opt) => (
+          <option key={opt.id} value={opt.id}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
