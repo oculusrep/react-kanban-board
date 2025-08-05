@@ -2,7 +2,7 @@
 import DealDetailsForm from "./components/DealDetailsForm";
 
 const mockDeal = {
-  id: "test-id-123",
+  id: "0173410f-3ffb-4e10-ab2d-927ba785ca03",
   deal_name: "Test Deal",
   client_id: null,
   assignment_id: null,
@@ -22,7 +22,7 @@ const mockDeal = {
   commission_rate: 0.03,
   flat_fee_override: null,
   fee: 15000,
-  stage_id: "stage-123",
+  stage_id: "89b7ce02-d325-434a-8340-fab04fa57b8c",
   probability: 80,
   target_close_date: "2025-10-31",
   loi_signed_date: "2025-08-10",

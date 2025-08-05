@@ -2,15 +2,17 @@
 import { Routes, Route } from "react-router-dom";
 import DealTestPage from "./deal-test";
 import KanbanBoard from "./KanbanBoard";
+import Navbar from "./components/Navbar";
 
 function App() {
   return (
-    <Routes>
-      <Route path="/" element={<div className="p-4 text-xl">Root is working</div>} />
-      <Route path="/master-pipeline" element={<KanbanBoard />} />
-      <Route path="/deal-test" element={<DealTestPage />} />
-    </Routes>
-
+    <>
+      <Navbar />
+      <Routes>
+        <Route path="/master-pipeline" element={<KanbanBoard />} />
+        <Route path="/deal-test" element={<DealTestPage />} />
+      </Routes>
+    </>
   );
 }
 

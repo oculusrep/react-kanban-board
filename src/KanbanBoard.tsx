@@ -17,6 +17,10 @@ export default function KanbanBoard() {
     setLocalCards(cards);
   }, [cards]);
 
+    useEffect(() => {
+    document.title = "Master Pipeline";
+    }, []);
+
   const handleDragEnd = async (result: DropResult) => {
     const { source, destination, draggableId } = result;
     if (!destination) return;
@@ -72,7 +76,7 @@ export default function KanbanBoard() {
 
   return (
     <div className="p-4 overflow-x-auto bg-gray-100 min-h-screen">
-      <h1 className="text-2xl font-bold mb-4">Kanban Board (Supabase)</h1>
+      <h1 className="text-2xl font-bold mb-4">Master Pipeline</h1>
       <div className="flex min-w-max gap-[2px]">
         <DragDropContext onDragEnd={handleDragEnd}>
           {columns.map((column, index) => {
