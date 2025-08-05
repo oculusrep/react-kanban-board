@@ -1,4 +1,3 @@
-// src/KanbanBoard.tsx
 import { useEffect, useState } from "react";
 import {
   DragDropContext,
@@ -6,9 +5,9 @@ import {
   Droppable,
   Draggable,
 } from "@hello-pangea/dnd";
+import { Link } from "react-router-dom";
 import useKanbanData from "./lib/useKanbanData";
 import { supabase } from "./lib/supabaseClient";
-import { Link } from "react-router-dom";
 
 export default function KanbanBoard() {
   const { columns, cards, loading } = useKanbanData();
@@ -33,26 +32,20 @@ export default function KanbanBoard() {
 
     if (!draggedCard) return;
 
-    // Update stage when moving across columns
     draggedCard.stage_id = destColId;
 
-    // Get all cards in destination column except dragged card
     const cardsInDest = updatedCards
       .filter((card) => card.stage_id === destColId && card.id !== draggableId)
       .sort((a, b) => (a.kanban_position ?? 0) - (b.kanban_position ?? 0));
 
-    // Insert dragged card into the correct position
     cardsInDest.splice(destination.index, 0, draggedCard);
 
-    // Reassign kanban_position
     cardsInDest.forEach((card, index) => {
       card.kanban_position = index;
     });
 
-    // Update state immediately
     setLocalCards(updatedCards);
 
-    // Persist only affected cards
     const updates = cardsInDest.map((card) =>
       supabase
         .from("deal")
@@ -111,11 +104,10 @@ export default function KanbanBoard() {
                   <div
                     ref={provided.innerRef}
                     {...provided.droppableProps}
-                    className={`relative min-w-[240px] bg-white border shadow-sm rounded-md flex flex-col ${
+                    className={`relative -w-[240px] bg-white border shadow-sm rounded-md flex flex-col ${
                       snapshot.isDraggingOver ? "bg-blue-50" : ""
                     }`}
                   >
-                    {/* Column Header */}
                     <div className="relative">
                       <div
                         className={`text-white py-2 px-3 font-semibold text-sm flex items-center justify-center clip-chevron bg-blue-600 ${
@@ -130,8 +122,6 @@ export default function KanbanBoard() {
                         </div>
                       </div>
                     </div>
-
-                    {/* Cards */}
                     <div className="p-2 flex-1">
                       {cardsInColumn.map((card, index) => (
                         <Draggable key={card.id} draggableId={card.id} index={index}>
@@ -144,27 +134,20 @@ export default function KanbanBoard() {
                                 snapshot.isDragging ? "bg-yellow-100" : ""
                               }`}
                             >
-                              {/* Deal Name as Link */}
-                              <div>
+                              <div className="font-semibold">
                                 <Link
                                   to={`/deal/${card.id}`}
-                                  className="font-semibold text-blue-600 hover:underline block"
+                                  className="text-blue-600 hover:underline"
                                 >
                                   {card.deal_name}
                                 </Link>
                               </div>
-
-                              {/* Fee */}
                               <div className="text-gray-700">
                                 {formatCurrency(card.fee)}
                               </div>
-
-                              {/* Client */}
                               <div className="text-gray-500 text-xs">
                                 {card.client_name}
                               </div>
-
-                              {/* Deal Value */}
                               <div className="text-gray-800">
                                 {formatCurrency(card.deal_value)}
                               </div>
