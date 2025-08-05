@@ -85,8 +85,8 @@ export default function KanbanBoard() {
 
             if (column.name === "Closed Paid") {
               cardsInColumn = cardsInColumn.filter((card: any) => {
-                if (!card.close_date) return false;
-                const year = new Date(card.close_date).getFullYear();
+                if (!card.closed_date) return false;
+                const year = new Date(card.closed_date).getFullYear();
                 return year === currentYear;
               });
             }
