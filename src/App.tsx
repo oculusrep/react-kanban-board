@@ -3,12 +3,16 @@ import { useEffect, useState } from "react";
 import {
   DragDropContext,
   DropResult,
+  Droppable,
+  Draggable
 } from "@hello-pangea/dnd";
+import { Routes, Route, Navigate, Link } from "react-router-dom";
 import useKanbanData from "./lib/useKanbanData";
 import { supabase } from "./lib/supabaseClient";
-import { Droppable, Draggable } from "@hello-pangea/dnd";
+import KanbanBoard from "./KanbanBoard";
+import DealDetailsPage from "./pages/DealDetailsPage";
 
-function App() {
+function MasterPipeline() {
   const { columns, cards, loading } = useKanbanData();
   const [localCards, setLocalCards] = useState<typeof cards>([]);
 
@@ -16,50 +20,48 @@ function App() {
     setLocalCards(cards);
   }, [cards]);
 
- const handleDragEnd = async (result: DropResult) => {
-  const { source, destination, draggableId } = result;
-  if (!destination) return;
+  const handleDragEnd = async (result: DropResult) => {
+    const { source, destination, draggableId } = result;
+    if (!destination) return;
 
-  const sourceColId = source.droppableId;
-  const destColId = destination.droppableId;
+    const destColId = destination.droppableId;
 
-  const updatedCards = [...localCards];
-  const draggedCard = updatedCards.find((card) => card.id === draggableId);
+    const updatedCards = [...localCards];
+    const draggedCard = updatedCards.find((card) => card.id === draggableId);
 
-  if (!draggedCard) return;
+    if (!draggedCard) return;
 
-  // Update stage if moving across columns
-  draggedCard.stage_id = destColId;
+    // Update stage if moving across columns
+    draggedCard.stage_id = destColId;
 
-  // Reorder cards in the destination column
-  const cardsInDest = updatedCards
-    .filter((card) => card.stage_id === destColId && card.id !== draggableId)
-    .sort((a, b) => (a.kanban_position ?? 0) - (b.kanban_position ?? 0));
+    // Reorder cards in the destination column
+    const cardsInDest = updatedCards
+      .filter((card) => card.stage_id === destColId && card.id !== draggableId)
+      .sort((a, b) => (a.kanban_position ?? 0) - (b.kanban_position ?? 0));
 
-  cardsInDest.splice(destination.index, 0, draggedCard);
+    cardsInDest.splice(destination.index, 0, draggedCard);
 
-  // Reassign kanban_position for all cards in the destination column
-  cardsInDest.forEach((card, index) => {
-    card.kanban_position = index;
-  });
+    // Reassign kanban_position for all cards in the destination column
+    cardsInDest.forEach((card, index) => {
+      card.kanban_position = index;
+    });
 
-  // Update state immediately
-  setLocalCards(updatedCards);
+    // Update state immediately
+    setLocalCards(updatedCards);
 
-  // Persist only affected cards
-  const updates = cardsInDest.map((card) =>
-    supabase
-      .from("deal")
-      .update({
-        stage_id: card.stage_id,
-        kanban_position: card.kanban_position,
-      })
-      .eq("id", card.id)
-  );
+    // Persist only affected cards
+    const updates = cardsInDest.map((card) =>
+      supabase
+        .from("deal")
+        .update({
+          stage_id: card.stage_id,
+          kanban_position: card.kanban_position,
+        })
+        .eq("id", card.id)
+    );
 
-  await Promise.all(updates);
-};
-
+    await Promise.all(updates);
+  };
 
   const formatCurrency = (value: number | null | undefined, decimals = 0) =>
     typeof value === "number"
@@ -93,7 +95,10 @@ function App() {
               });
             }
 
-            const totalFee = cardsInColumn.reduce((sum, card) => sum + (card.fee ?? 0), 0);
+            const totalFee = cardsInColumn.reduce(
+              (sum, card) => sum + (card.fee ?? 0),
+              0
+            );
             const isLastColumn = index === columns.length - 1;
             const isFirstColumn = index === 0;
 
@@ -123,7 +128,11 @@ function App() {
                     </div>
                     <div className="p-2 flex-1">
                       {cardsInColumn.map((card, index) => (
-                        <Draggable key={card.id} draggableId={card.id} index={index}>
+                        <Draggable
+                          key={card.id}
+                          draggableId={card.id}
+                          index={index}
+                        >
                           {(provided, snapshot) => (
                             <div
                               ref={provided.innerRef}
@@ -133,9 +142,21 @@ function App() {
                                 snapshot.isDragging ? "bg-yellow-100" : ""
                               }`}
                             >
-                              <div className="font-semibold">{card.deal_name}</div>
-                              <div className="text-gray-700">{formatCurrency(card.fee)}</div>
-                              <div className="text-gray-500 text-xs">{card.client_name}</div>
+                              {/* ✅ Deal name as clickable link */}
+                              <div className="font-semibold">
+                                <Link
+                                  to={`/deal/${card.id}`}
+                                  className="text-blue-600 hover:underline"
+                                >
+                                  {card.deal_name}
+                                </Link>
+                              </div>
+                              <div className="text-gray-700">
+                                {formatCurrency(card.fee)}
+                              </div>
+                              <div className="text-gray-500 text-xs">
+                                {card.client_name}
+                              </div>
                               <div className="text-gray-800">
                                 {formatCurrency(card.deal_value)}
                               </div>
@@ -153,6 +174,16 @@ function App() {
         </DragDropContext>
       </div>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<Navigate to="/master-pipeline" replace />} />
+      <Route path="/master-pipeline" element={<MasterPipeline />} />
+      <Route path="/deal/:dealId" element={<DealDetailsPage />} />
+    </Routes>
   );
 }
 
