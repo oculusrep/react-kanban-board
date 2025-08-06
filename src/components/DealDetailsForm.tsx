@@ -55,16 +55,21 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
   const [editingField, setEditingField] = useState<string | null>(null);
   const [stageOptions, setStageOptions] = useState<{ id: string; label: string }[]>([]);
   const [teamOptions, setTeamOptions] = useState<{ id: string; label: string }[]>([]);
-
   const [clientSearch, setClientSearch] = useState("");
   const [clientSuggestions, setClientSuggestions] = useState<{ id: string; label: string }[]>([]);
   const [propertySearch, setPropertySearch] = useState("");
   const [propertySuggestions, setPropertySuggestions] = useState<{ id: string; label: string }[]>([]);
 
+  // 🔹 UX: validation + change-highlighting states
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [probabilityFlash, setProbabilityFlash] = useState(false);
+
   useEffect(() => {
     setForm(deal);
+    setErrors({});
   }, [deal]);
 
+  // Load lookups + prefill client/property search boxes
   useEffect(() => {
     supabase.from("deal_stage").select("id, label").then(({ data }) => data && setStageOptions(data));
     supabase.from("deal_team").select("id, label").then(({ data }) => data && setTeamOptions(data));
@@ -92,6 +97,7 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
     }
   }, [deal.client_id, deal.property_id]);
 
+  // Autocomplete: client
   useEffect(() => {
     const run = async () => {
       const term = clientSearch.trim();
@@ -108,6 +114,7 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
     return () => clearTimeout(handle);
   }, [clientSearch]);
 
+  // Autocomplete: property
   useEffect(() => {
     const run = async () => {
       const term = propertySearch.trim();
@@ -124,25 +131,68 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
     return () => clearTimeout(handle);
   }, [propertySearch]);
 
-  const updateField = (field: keyof Deal, value: any) => setForm(prev => ({ ...prev, [field]: value }));
+  const updateField = (field: keyof Deal, value: any) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+    // Live validation on key fields
+    if (["deal_name", "deal_value", "commission_percent"].includes(field as string)) {
+      setErrors(prev => ({ ...prev, ...validateField(field as keyof Deal, value) }));
+    }
+  };
 
   const calculatedFee =
     form.flat_fee_override ?? (form.deal_value ?? 0) * ((form.commission_percent ?? 0) / 100);
 
-  // 🔹 Auto-fill Probability when Stage changes (keeps field editable)
+  // Helper: get current stage label
+  const getStageLabel = () => stageOptions.find(s => s.id === form.stage_id)?.label;
+
+  // 🔹 Auto-fill Probability when Stage changes + flash highlight
   useEffect(() => {
     if (!form.stage_id || stageOptions.length === 0) return;
-    const selected = stageOptions.find(s => s.id === form.stage_id);
-    const label = selected?.label;
+    const label = getStageLabel();
     if (!label) return;
-
     const defaultProb = STAGE_PROBABILITY[label];
     if (typeof defaultProb === "number") {
       setForm(prev => ({ ...prev, probability: defaultProb }));
+      setProbabilityFlash(true);
+      const t = setTimeout(() => setProbabilityFlash(false), 800);
+      return () => clearTimeout(t);
     }
   }, [form.stage_id, stageOptions]);
 
+  // 🔹 Validation
+  const validateField = (field: keyof Deal, value: any): Record<string, string> => {
+    const out: Record<string, string> = {};
+    if (field === "deal_name") {
+      if (!value || String(value).trim().length === 0) out.deal_name = "Opportunity Name is required.";
+      else delete out.deal_name;
+    }
+    if (field === "deal_value") {
+      if (value === null || value === "" || isNaN(Number(value))) out.deal_value = "Enter a number.";
+      else if (Number(value) < 0) out.deal_value = "Must be ≥ 0.";
+      else delete out.deal_value;
+    }
+    if (field === "commission_percent") {
+      const num = Number(value);
+      if (value === null || value === "" || isNaN(num)) out.commission_percent = "Enter a percent.";
+      else if (num < 0 || num > 100) out.commission_percent = "0–100 only.";
+      else delete out.commission_percent;
+    }
+    return out;
+  };
+
+  const validateAll = (f: Deal): Record<string, string> => {
+    const out: Record<string, string> = {};
+    Object.assign(out, validateField("deal_name", f.deal_name));
+    Object.assign(out, validateField("deal_value", f.deal_value));
+    Object.assign(out, validateField("commission_percent", f.commission_percent));
+    return out;
+  };
+
   const handleSave = async () => {
+    const v = validateAll(form);
+    setErrors(v);
+    if (Object.keys(v).length > 0) return; // stop save on validation errors
+
     setSaving(true);
     const updatePayload = {
       deal_name: form.deal_name,
@@ -170,56 +220,162 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
     else if (data) onSave(data);
   };
 
+  // 🔹 Conditional enablement
+  const stageLabel = getStageLabel();
+  const closedEnabled = stageLabel === "Closed Paid"; // Only allow Closed Date when stage is Closed Paid
+
   return (
-    <div className="grid grid-cols-2 gap-4 p-4 bg-white rounded shadow">
-      <h2 className="col-span-2 text-lg font-bold">Deal Details</h2>
+    <div className="relative">
+      {/* SECTION: Deal Context */}
+      <Section title="Deal Context" help="Name the opportunity and link it to a client and property.">
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            label="Opportunity Name"
+            value={form.deal_name}
+            onChange={(v) => updateField("deal_name", v)}
+            className="col-span-2"
+          />
+          {errors.deal_name && <FieldError msg={errors.deal_name} className="col-span-2" />}
 
-      <Input label="Opportunity Name" value={form.deal_name} onChange={(v) => updateField("deal_name", v)} />
+          <AlwaysEditableAutocomplete
+            label="Client"
+            search={clientSearch}
+            setSearch={setClientSearch}
+            suggestions={clientSuggestions}
+            onSelect={(id, label) => {
+              updateField("client_id", id);
+              setClientSearch(label);
+              setClientSuggestions([]);
+            }}
+          />
 
-      <AlwaysEditableAutocomplete
-        label="Client"
-        search={clientSearch}
-        setSearch={setClientSearch}
-        suggestions={clientSuggestions}
-        onSelect={(id, label) => {
-          updateField("client_id", id);
-          setClientSearch(label);
-          setClientSuggestions([]);
-        }}
-      />
+          <AlwaysEditableAutocomplete
+            label="Property"
+            search={propertySearch}
+            setSearch={setPropertySearch}
+            suggestions={propertySuggestions}
+            onSelect={(id, label) => {
+              updateField("property_id", id);
+              setPropertySearch(label);
+              setPropertySuggestions([]);
+            }}
+          />
+        </div>
+      </Section>
 
-      <AlwaysEditableAutocomplete
-        label="Property"
-        search={propertySearch}
-        setSearch={setPropertySearch}
-        suggestions={propertySuggestions}
-        onSelect={(id, label) => {
-          updateField("property_id", id);
-          setPropertySearch(label);
-          setPropertySuggestions([]);
-        }}
-      />
+      {/* SECTION: Financials */}
+      <Section title="Financials" help="Set value and commission. Fee auto-calculates unless a flat fee is set.">
+        <div className="grid grid-cols-2 gap-4">
+          <FormattedInput
+            label="Deal Value"
+            value={form.deal_value}
+            onChange={(v) => updateField("deal_value", v === "" ? null : parseFloat(v))}
+            format={(val) => formatCurrency(val, 2)}
+            editingField={editingField}
+            setEditingField={setEditingField}
+            fieldKey="deal_value"
+          />
+          {errors.deal_value && <FieldError msg={errors.deal_value} />}
 
-      <FormattedInput label="Deal Value" value={form.deal_value} onChange={(v) => updateField("deal_value", v === "" ? null : parseFloat(v))} format={(val) => formatCurrency(val, 2)} editingField={editingField} setEditingField={setEditingField} fieldKey="deal_value" />
-      <FormattedInput label="Commission %" value={form.commission_percent} onChange={(v) => updateField("commission_percent", v === "" ? null : parseFloat(v))} format={(val) => formatPercent(val, 2)} editingField={editingField} setEditingField={setEditingField} fieldKey="commission_percent" />
-      <FormattedInput label="Flat Fee Override" value={form.flat_fee_override} onChange={(v) => updateField("flat_fee_override", v === "" ? null : parseFloat(v))} format={(val) => (val === null ? "" : formatCurrency(val, 2))} editingField={editingField} setEditingField={setEditingField} fieldKey="flat_fee_override" />
+          <FormattedInput
+            label="Commission %"
+            value={form.commission_percent}
+            onChange={(v) => updateField("commission_percent", v === "" ? null : parseFloat(v))}
+            format={(val) => formatPercent(val, 2)}
+            editingField={editingField}
+            setEditingField={setEditingField}
+            fieldKey="commission_percent"
+          />
+          {errors.commission_percent && <FieldError msg={errors.commission_percent} />}
 
-      <Select label="Stage" value={form.stage_id} onChange={(v) => updateField("stage_id", v)} options={stageOptions} />
-      <Select label="Deal Team" value={form.deal_team_id} onChange={(v) => updateField("deal_team_id", v)} options={teamOptions} />
+          <FormattedInput
+            label="Flat Fee Override"
+            value={form.flat_fee_override}
+            onChange={(v) => updateField("flat_fee_override", v === "" ? null : parseFloat(v))}
+            format={(val) => (val === null ? "" : formatCurrency(val, 2))}
+            editingField={editingField}
+            setEditingField={setEditingField}
+            fieldKey="flat_fee_override"
+          />
 
-      <div className="col-span-2">
-        <label className="block text-sm font-medium">Calculated Fee</label>
-        <div className="mt-1 p-2 bg-gray-100 rounded text-sm">{isNaN(calculatedFee) ? "" : formatCurrency(calculatedFee, 2)}</div>
-      </div>
+          <div>
+            <label className="block text-sm font-medium">Calculated Fee</label>
+            <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
+              {isNaN(calculatedFee) ? "" : formatCurrency(calculatedFee, 2)}
+            </div>
+          </div>
+        </div>
+      </Section>
 
-      <DateInput label="Target Close Date" value={form.target_close_date} onChange={(v) => updateField("target_close_date", v)} />
-      <DateInput label="LOI Signed Date" value={form.loi_signed_date} onChange={(v) => updateField("loi_signed_date", v)} />
-      <DateInput label="Closed Date" value={form.closed_date} onChange={(v) => updateField("closed_date", v)} />
+      {/* SECTION: Stage & Probability */}
+      <Section title="Stage & Probability" help="Choosing a stage will set a default probability. You can override it.">
+        <div className="grid grid-cols-2 gap-4">
+          <Select
+            label="Stage"
+            value={form.stage_id}
+            onChange={(v) => updateField("stage_id", v)}
+            options={stageOptions}
+          />
 
-      <FormattedInput label="Probability %" value={form.probability} onChange={(v) => updateField("probability", v === "" ? null : parseFloat(v))} format={(val) => formatIntegerPercent(val)} editingField={editingField} setEditingField={setEditingField} fieldKey="probability" />
+          <div
+            className={
+              "rounded transition-colors duration-700 " +
+              (probabilityFlash ? "bg-yellow-50" : "bg-transparent")
+            }
+          >
+            <FormattedInput
+              label="Probability %"
+              value={form.probability}
+              onChange={(v) => updateField("probability", v === "" ? null : parseFloat(v))}
+              format={(val) => formatIntegerPercent(val)}
+              editingField={editingField}
+              setEditingField={setEditingField}
+              fieldKey="probability"
+            />
+          </div>
+        </div>
+      </Section>
 
-      <div className="col-span-2">
-        <button onClick={handleSave} disabled={saving} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+      {/* SECTION: Dates / Timeline */}
+      <Section title="Timeline" help="Target and actual dates. Closed Date enabled only at Closed Paid.">
+        <div className="grid grid-cols-2 gap-4">
+          <DateInput
+            label="Target Close Date"
+            value={form.target_close_date}
+            onChange={(v) => updateField("target_close_date", v)}
+          />
+          <DateInput
+            label="LOI Signed Date"
+            value={form.loi_signed_date}
+            onChange={(v) => updateField("loi_signed_date", v)}
+          />
+          <DateInput
+            label="Closed Date"
+            value={form.closed_date}
+            onChange={(v) => updateField("closed_date", v)}
+            disabled={!closedEnabled}
+            tooltip={!closedEnabled ? "Set Stage to 'Closed Paid' to enable" : undefined}
+          />
+
+          <Select
+            label="Deal Team"
+            value={form.deal_team_id}
+            onChange={(v) => updateField("deal_team_id", v)}
+            options={teamOptions}
+          />
+        </div>
+      </Section>
+
+      {/* Sticky Save Bar */}
+      <div className="sticky bottom-0 left-0 right-0 bg-white border-t mt-6 p-3 flex items-center justify-end gap-3 shadow-sm">
+        <span className="text-xs text-gray-500">
+          {stageLabel ? `Stage: ${stageLabel}` : "No stage selected"}
+        </span>
+        <button
+          onClick={handleSave}
+          disabled={saving || Object.keys(errors).length > 0}
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60"
+        >
           {saving ? "Saving..." : "Save Deal"}
         </button>
       </div>
@@ -227,21 +383,58 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
   );
 }
 
-function Input({ label, value, onChange, type = "text" }: { label: string; value: any; onChange: (v: any) => void; type?: string }) {
+/* ========= Reusable helpers / primitives ========= */
+function Section({ title, help, children }: { title: string; help?: string; children: React.ReactNode }) {
   return (
-    <div>
+    <section className="bg-white rounded-md border p-4 mb-4">
+      <div className="flex items-center gap-2 mb-3">
+        <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
+        {help && (
+          <span
+            className="text-gray-500 text-xs border rounded-full w-4 h-4 inline-flex items-center justify-center"
+            title={help}
+            aria-label={help}
+          >
+            i
+          </span>
+        )}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function FieldError({ msg, className = "" }: { msg: string; className?: string }) {
+  return <p className={"text-xs text-red-600 mt-1 " + className}>{msg}</p>;
+}
+
+function Input({ label, value, onChange, type = "text", className = "" }: { label: string; value: any; onChange: (v: any) => void; type?: string; className?: string }) {
+  return (
+    <div className={className}>
       <label className="block text-sm font-medium text-gray-700">{label}</label>
-      <input type={type} value={value ?? ""} onChange={(e) => onChange(e.target.value)} className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm" />
+      <input
+        type={type}
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+      />
     </div>
   );
 }
 
-function DateInput({ label, value, onChange }: { label: string; value: string | null; onChange: (v: string | null) => void }) {
+function DateInput({ label, value, onChange, disabled, tooltip }: { label: string; value: string | null; onChange: (v: string | null) => void; disabled?: boolean; tooltip?: string }) {
   const parsedDate = value ? parseISO(value) : null;
   return (
-    <div>
+    <div title={tooltip}>
       <label className="block text-sm font-medium text-gray-700">{label}</label>
-      <DatePicker selected={parsedDate} onChange={(date) => onChange(date ? formatDateFn(date, "yyyy-MM-dd") : null)} className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm" dateFormat="MM/dd/yyyy" isClearable />
+      <DatePicker
+        selected={parsedDate}
+        onChange={(date) => onChange(date ? formatDateFn(date, "yyyy-MM-dd") : null)}
+        className={`mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm ${disabled ? "bg-gray-100 cursor-not-allowed" : ""}`}
+        dateFormat="MM/dd/yyyy"
+        isClearable
+        disabled={disabled}
+      />
     </div>
   );
 }
@@ -250,7 +443,11 @@ function Select({ label, value, onChange, options }: { label: string; value: str
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700">{label}</label>
-      <select value={value ?? ""} onChange={(e) => onChange(e.target.value)} className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm">
+      <select
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+      >
         <option value="">-- Select --</option>
         {options.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
       </select>
@@ -291,7 +488,6 @@ function AlwaysEditableAutocomplete({
         placeholder={`Search ${label.toLowerCase()}...`}
         className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
       />
-      {/* Render a single <ul> with items (and filter out the currently selected value) */}
       {suggestions.filter((s) => s.label !== search).length > 0 && (
         <ul className="bg-white border border-gray-300 rounded mt-1 max-h-48 overflow-auto">
           {suggestions
