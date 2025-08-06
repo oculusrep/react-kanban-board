@@ -55,6 +55,7 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
   const [editingField, setEditingField] = useState<string | null>(null);
   const [stageOptions, setStageOptions] = useState<{ id: string; label: string }[]>([]);
   const [teamOptions, setTeamOptions] = useState<{ id: string; label: string }[]>([]);
+
   const [clientSearch, setClientSearch] = useState("");
   const [clientSuggestions, setClientSuggestions] = useState<{ id: string; label: string }[]>([]);
   const [propertySearch, setPropertySearch] = useState("");
@@ -64,12 +65,20 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [probabilityFlash, setProbabilityFlash] = useState(false);
 
+  // 🔹 Manual override tracking + first-load/stage-change guards
+  const [probabilityManuallySet, setProbabilityManuallySet] = useState(false);
+  const prevStageIdRef = useRef<string | null>(null);
+  const isFirstLoadRef = useRef(true);
+
   useEffect(() => {
     setForm(deal);
     setErrors({});
+    setProbabilityManuallySet(false);
+    prevStageIdRef.current = deal.stage_id ?? null;
+    isFirstLoadRef.current = true;
   }, [deal]);
 
-  // Load lookups + prefill client/property search boxes
+  // Lookups + prefill client/property search boxes
   useEffect(() => {
     supabase.from("deal_stage").select("id, label").then(({ data }) => data && setStageOptions(data));
     supabase.from("deal_team").select("id, label").then(({ data }) => data && setTeamOptions(data));
@@ -132,6 +141,9 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
   }, [propertySearch]);
 
   const updateField = (field: keyof Deal, value: any) => {
+    if (field === "probability") {
+      setProbabilityManuallySet(true);
+    }
     setForm(prev => ({ ...prev, [field]: value }));
     // Live validation on key fields
     if (["deal_name", "deal_value", "commission_percent"].includes(field as string)) {
@@ -145,21 +157,46 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
   // Helper: get current stage label
   const getStageLabel = () => stageOptions.find(s => s.id === form.stage_id)?.label;
 
-  // 🔹 Auto-fill Probability when Stage changes + flash highlight
+  // 🔹 Auto-fill Probability
+  // Rules:
+  // - On first load: if a saved probability exists, DO NOT overwrite it. If it's null, fill from stage.
+  // - On stage change (in-session): always set to the new stage default, regardless of prior manual override.
   useEffect(() => {
     if (!form.stage_id || stageOptions.length === 0) return;
     const label = getStageLabel();
     if (!label) return;
     const defaultProb = STAGE_PROBABILITY[label];
-    if (typeof defaultProb === "number") {
-      setForm(prev => ({ ...prev, probability: defaultProb }));
-      setProbabilityFlash(true);
-      const t = setTimeout(() => setProbabilityFlash(false), 800);
-      return () => clearTimeout(t);
+
+    // First load behavior
+    if (isFirstLoadRef.current) {
+      isFirstLoadRef.current = false;
+      if (form.probability == null && typeof defaultProb === "number") {
+        setForm(prev => ({ ...prev, probability: defaultProb }));
+        setProbabilityFlash(true);
+        const t = setTimeout(() => setProbabilityFlash(false), 800);
+        return () => clearTimeout(t);
+      }
+      return; // keep saved value
     }
+
+    // Subsequent changes: detect stage change
+    const prevStageId = prevStageIdRef.current;
+    if (prevStageId !== form.stage_id) {
+      if (typeof defaultProb === "number") {
+        setForm(prev => ({ ...prev, probability: defaultProb }));
+        setProbabilityManuallySet(false); // reset manual flag on stage change
+        setProbabilityFlash(true);
+        const t = setTimeout(() => setProbabilityFlash(false), 800);
+        prevStageIdRef.current = form.stage_id;
+        return () => clearTimeout(t);
+      }
+    }
+
+    // Keep ref in sync
+    prevStageIdRef.current = form.stage_id;
   }, [form.stage_id, stageOptions]);
 
-  // 🔹 Validation
+  // 🔹 Validation helpers
   const validateField = (field: keyof Deal, value: any): Record<string, string> => {
     const out: Record<string, string> = {};
     if (field === "deal_name") {
@@ -227,16 +264,14 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
   return (
     <div className="relative">
       {/* SECTION: Deal Context */}
-      <Section title="Deal Context" help="Name the opportunity and link it to a client and property.">
+      <Section title="Deal Context" help="Name the opportunity, choose the client, property, and deal team.">
         <div className="grid grid-cols-2 gap-4">
+          {/* Row 1: Opportunity (left) + Client (right) */}
           <Input
             label="Opportunity Name"
             value={form.deal_name}
             onChange={(v) => updateField("deal_name", v)}
-            className="col-span-2"
           />
-          {errors.deal_name && <FieldError msg={errors.deal_name} className="col-span-2" />}
-
           <AlwaysEditableAutocomplete
             label="Client"
             search={clientSearch}
@@ -249,6 +284,7 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
             }}
           />
 
+          {/* Row 2: Property (left) + Deal Team (right) */}
           <AlwaysEditableAutocomplete
             label="Property"
             search={propertySearch}
@@ -260,6 +296,14 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
               setPropertySuggestions([]);
             }}
           />
+          <Select
+            label="Deal Team"
+            value={form.deal_team_id}
+            onChange={(v) => updateField("deal_team_id", v)}
+            options={teamOptions}
+          />
+
+          {errors.deal_name && <FieldError msg={errors.deal_name} className="col-span-2" />}
         </div>
       </Section>
 
@@ -357,12 +401,7 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
             tooltip={!closedEnabled ? "Set Stage to 'Closed Paid' to enable" : undefined}
           />
 
-          <Select
-            label="Deal Team"
-            value={form.deal_team_id}
-            onChange={(v) => updateField("deal_team_id", v)}
-            options={teamOptions}
-          />
+          {/* Note: Deal Team moved to Deal Context section */}
         </div>
       </Section>
 
