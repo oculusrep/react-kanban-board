@@ -7,6 +7,17 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { parseISO, format as formatDateFn } from "date-fns";
 
+// 🔹 Stage → Default Probability map (integer percent 0..100)
+const STAGE_PROBABILITY: Record<string, number> = {
+  "Negotiating LOI": 50,
+  "At Lease/PSA": 75,
+  "Under Contract / Contingent": 85,
+  "Booked": 90,
+  "Executed Payable": 95,
+  "Closed Paid": 100,
+  "Lost": 0,
+};
+
 interface Deal {
   id: string;
   deal_name: string;
@@ -117,6 +128,19 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
 
   const calculatedFee =
     form.flat_fee_override ?? (form.deal_value ?? 0) * ((form.commission_percent ?? 0) / 100);
+
+  // 🔹 Auto-fill Probability when Stage changes (keeps field editable)
+  useEffect(() => {
+    if (!form.stage_id || stageOptions.length === 0) return;
+    const selected = stageOptions.find(s => s.id === form.stage_id);
+    const label = selected?.label;
+    if (!label) return;
+
+    const defaultProb = STAGE_PROBABILITY[label];
+    if (typeof defaultProb === "number") {
+      setForm(prev => ({ ...prev, probability: defaultProb }));
+    }
+  }, [form.stage_id, stageOptions]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -267,18 +291,22 @@ function AlwaysEditableAutocomplete({
         placeholder={`Search ${label.toLowerCase()}...`}
         className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
       />
-      {suggestions
-        .filter((s) => s.label !== search) // 🔹 Filter out the current selected value
-        .map((s) => (
-          <ul key={s.id} className="bg-white border border-gray-300 rounded mt-1 max-h-48 overflow-auto">
-            <li
-              onClick={() => onSelect(s.id, s.label)}
-              className="p-2 hover:bg-gray-100 cursor-pointer text-sm"
-            >
-              {s.label}
-            </li>
-          </ul>
-        ))}
+      {/* Render a single <ul> with items (and filter out the currently selected value) */}
+      {suggestions.filter((s) => s.label !== search).length > 0 && (
+        <ul className="bg-white border border-gray-300 rounded mt-1 max-h-48 overflow-auto">
+          {suggestions
+            .filter((s) => s.label !== search)
+            .map((s) => (
+              <li
+                key={s.id}
+                onClick={() => onSelect(s.id, s.label)}
+                className="p-2 hover:bg-gray-100 cursor-pointer text-sm"
+              >
+                {s.label}
+              </li>
+            ))}
+        </ul>
+      )}
     </div>
   );
 }
