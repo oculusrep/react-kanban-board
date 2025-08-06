@@ -6,7 +6,6 @@ import FormattedInput from "./FormattedInput";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { parseISO, format as formatDateFn } from "date-fns";
-import { PencilIcon } from "@heroicons/react/24/solid"; // npm install @heroicons/react
 
 interface Deal {
   id: string;
@@ -51,9 +50,6 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
   const [propertySearch, setPropertySearch] = useState("");
   const [propertySuggestions, setPropertySuggestions] = useState<{ id: string; label: string }[]>([]);
 
-  const [isEditingClient, setIsEditingClient] = useState(false);
-  const [isEditingProperty, setIsEditingProperty] = useState(false);
-
   useEffect(() => {
     setForm(deal);
   }, [deal]);
@@ -68,9 +64,7 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
         .select("client_name")
         .eq("id", deal.client_id)
         .maybeSingle()
-        .then(({ data }) => {
-          if (data?.client_name) setClientSearch(data.client_name);
-        });
+        .then(({ data }) => data?.client_name && setClientSearch(data.client_name));
     } else {
       setClientSearch("");
     }
@@ -81,9 +75,7 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
         .select("property_name")
         .eq("id", deal.property_id)
         .maybeSingle()
-        .then(({ data }) => {
-          if (data?.property_name) setPropertySearch(data.property_name);
-        });
+        .then(({ data }) => data?.property_name && setPropertySearch(data.property_name));
     } else {
       setPropertySearch("");
     }
@@ -123,7 +115,8 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
 
   const updateField = (field: keyof Deal, value: any) => setForm(prev => ({ ...prev, [field]: value }));
 
-  const calculatedFee = form.flat_fee_override ?? (form.deal_value ?? 0) * ((form.commission_percent ?? 0) / 100);
+  const calculatedFee =
+    form.flat_fee_override ?? (form.deal_value ?? 0) * ((form.commission_percent ?? 0) / 100);
 
   const handleSave = async () => {
     setSaving(true);
@@ -142,7 +135,12 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
       deal_team_id: form.deal_team_id,
       stage_id: form.stage_id,
     };
-    const { data, error } = await supabase.from("deal").update(updatePayload).eq("id", form.id).select().single();
+    const { data, error } = await supabase
+      .from("deal")
+      .update(updatePayload)
+      .eq("id", form.id)
+      .select()
+      .single();
     setSaving(false);
     if (error) alert("Error saving: " + error.message);
     else if (data) onSave(data);
@@ -154,12 +152,8 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
 
       <Input label="Opportunity Name" value={form.deal_name} onChange={(v) => updateField("deal_name", v)} />
 
-      {/* Client editable autocomplete */}
-      <EditableAutocomplete
+      <AlwaysEditableAutocomplete
         label="Client"
-        isEditing={isEditingClient}
-        setIsEditing={setIsEditingClient}
-        valueLabel={clientSearch}
         search={clientSearch}
         setSearch={setClientSearch}
         suggestions={clientSuggestions}
@@ -167,16 +161,11 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
           updateField("client_id", id);
           setClientSearch(label);
           setClientSuggestions([]);
-          setIsEditingClient(false);
         }}
       />
 
-      {/* Property editable autocomplete */}
-      <EditableAutocomplete
+      <AlwaysEditableAutocomplete
         label="Property"
-        isEditing={isEditingProperty}
-        setIsEditing={setIsEditingProperty}
-        valueLabel={propertySearch}
         search={propertySearch}
         setSearch={setPropertySearch}
         suggestions={propertySuggestions}
@@ -184,13 +173,12 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
           updateField("property_id", id);
           setPropertySearch(label);
           setPropertySuggestions([]);
-          setIsEditingProperty(false);
         }}
       />
 
       <FormattedInput label="Deal Value" value={form.deal_value} onChange={(v) => updateField("deal_value", v === "" ? null : parseFloat(v))} format={(val) => formatCurrency(val, 2)} editingField={editingField} setEditingField={setEditingField} fieldKey="deal_value" />
       <FormattedInput label="Commission %" value={form.commission_percent} onChange={(v) => updateField("commission_percent", v === "" ? null : parseFloat(v))} format={(val) => formatPercent(val, 2)} editingField={editingField} setEditingField={setEditingField} fieldKey="commission_percent" />
-      <FormattedInput label="Flat Fee Override" value={form.flat_fee_override} onChange={(v) => updateField("flat_fee_override", v === "" ? null : parseFloat(v))} format={(val) => val === null ? "" : formatCurrency(val, 2)} editingField={editingField} setEditingField={setEditingField} fieldKey="flat_fee_override" />
+      <FormattedInput label="Flat Fee Override" value={form.flat_fee_override} onChange={(v) => updateField("flat_fee_override", v === "" ? null : parseFloat(v))} format={(val) => (val === null ? "" : formatCurrency(val, 2))} editingField={editingField} setEditingField={setEditingField} fieldKey="flat_fee_override" />
 
       <Select label="Stage" value={form.stage_id} onChange={(v) => updateField("stage_id", v)} options={stageOptions} />
       <Select label="Deal Team" value={form.deal_team_id} onChange={(v) => updateField("deal_team_id", v)} options={teamOptions} />
@@ -246,61 +234,51 @@ function Select({ label, value, onChange, options }: { label: string; value: str
   );
 }
 
-function EditableAutocomplete({
+function AlwaysEditableAutocomplete({
   label,
-  isEditing,
-  setIsEditing,
-  valueLabel,
   search,
   setSearch,
   suggestions,
   onSelect,
 }: {
   label: string;
-  isEditing: boolean;
-  setIsEditing: (v: boolean) => void;
-  valueLabel: string;
   search: string;
   setSearch: (v: string) => void;
   suggestions: { id: string; label: string }[];
   onSelect: (id: string, label: string) => void;
 }) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus();
+  const handleFocus = () => {
+    if (inputRef.current) {
       inputRef.current.select();
     }
-  }, [isEditing]);
+  };
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <label className="block text-sm font-medium text-gray-700">{label}</label>
-        {!isEditing && (
-          <button type="button" onClick={() => setIsEditing(true)} className="p-1 text-blue-600 hover:text-blue-800" aria-label={`Edit ${label}`}>
-            <PencilIcon className="h-3 w-3" />
-          </button>
-        )}
-      </div>
-
-      {!isEditing ? (
-        <input type="text" value={valueLabel || ""} readOnly className="mt-1 block w-full rounded border-gray-200 bg-gray-50 text-gray-700 shadow-sm text-sm" />
-      ) : (
-        <div>
-          <input ref={inputRef} type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={`Search ${label.toLowerCase()}...`} className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm" />
-          {suggestions.length > 0 && (
-            <ul className="bg-white border border-gray-300 rounded mt-1 max-h-48 overflow-auto">
-              {suggestions.map(s => (
-                <li key={s.id} onClick={() => { onSelect(s.id, s.label); setIsEditing(false); }} className="p-2 hover:bg-gray-100 cursor-pointer text-sm">
-                  {s.label}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      <input
+        ref={inputRef}
+        type="text"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        onFocus={handleFocus}
+        placeholder={`Search ${label.toLowerCase()}...`}
+        className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+      />
+      {suggestions
+        .filter((s) => s.label !== search) // 🔹 Filter out the current selected value
+        .map((s) => (
+          <ul key={s.id} className="bg-white border border-gray-300 rounded mt-1 max-h-48 overflow-auto">
+            <li
+              onClick={() => onSelect(s.id, s.label)}
+              className="p-2 hover:bg-gray-100 cursor-pointer text-sm"
+            >
+              {s.label}
+            </li>
+          </ul>
+        ))}
     </div>
   );
 }
