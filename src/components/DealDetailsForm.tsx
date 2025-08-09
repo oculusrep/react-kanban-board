@@ -6,6 +6,8 @@ import FormattedInput from "./FormattedInput";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { parseISO, format as formatDateFn } from "date-fns";
+import SiteSubmitSelector from "./SiteSubmitSelector";
+
 
 // 🔹 Stage → Default Probability map (integer percent 0..100)
 const STAGE_PROBABILITY: Record<string, number> = {
@@ -235,6 +237,7 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
       deal_name: form.deal_name,
       client_id: form.client_id,
       property_id: form.property_id,
+      site_submit_id: form.site_submit_id,
       deal_value: form.deal_value,
       commission_percent: form.commission_percent,
       flat_fee_override: form.flat_fee_override,
@@ -296,6 +299,14 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
               setPropertySuggestions([]);
             }}
           />
+
+              {/* Row 3: Site Submit (full width) */}
+    <div className="col-span-2">
+      <SiteSubmitSelector
+        valueId={form.site_submit_id ?? null}
+        onChange={(id) => updateField("site_submit_id", id)}
+      />
+    </div>
           <Select
             label="Deal Team"
             value={form.deal_team_id}
