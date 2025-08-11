@@ -1,167 +1,174 @@
 // components/SiteSubmitSelector.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
 
-type AnyRow = Record<string, any>;
-
-function pickLabel(r: AnyRow) {
-  const main =
-    r.reference_code ??
-    r.Reference_Code__c ??
-    r.title ??
-    r.Name ??             // common SF text field
-    r.site_submit_name ??
-    r.property_name ??
-    r.sf_id ??
-    r.id;
-
-  const addr =
-    r.address_line1 ??
-    r.Address__c ??
-    r.address1 ??
-    r.street ??
-    null;
-
-  const city = r.city ?? r.City__c ?? null;
-  const state = r.state ?? r.State__c ?? null;
-
-  const parts = [addr, city, state].filter(Boolean);
-  return {
-    id: r.id as string,
-    label: String(main ?? "Site Submit"),
-    sub: parts.length ? parts.join(", ") : undefined,
-  };
+interface SiteSubmit {
+  id: string;
+  code: string;
+  site_submit_name?: string;
+  client_id?: string;
+  property_id?: string;
+  [key: string]: any;
 }
 
-export default function SiteSubmitSelector({
-  valueId,
-  onChange,
-  disabled,
-  label = "Site Submit (optional)",
-}: {
-  valueId: string | null;
-  onChange: (id: string | null) => void;
-  disabled?: boolean;
+interface Props {
+  value: string | null;
+  onChange: (value: string | null) => void;
   label?: string;
-}) {
-  const [current, setCurrent] = useState<{ id: string; label: string; sub?: string } | null>(null);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [allRows, setAllRows] = useState<AnyRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
+}
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    const onDocClick = (e: MouseEvent) => {
-      if (!ref.current) return;
-      if (!ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
+export default function SiteSubmitSelector({ 
+  value, 
+  onChange, 
+  label = "Site Submit" 
+}: Props) {
+  const [search, setSearch] = useState("");
+  const [suggestions, setSuggestions] = useState<SiteSubmit[]>([]);
+  const [selectedSiteSubmit, setSelectedSiteSubmit] = useState<SiteSubmit | null>(null);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Load current selected row (for label)
+  // Load the selected site submit details
   useEffect(() => {
-    let active = true;
-    (async () => {
-      if (!valueId) {
-        setCurrent(null);
+    if (value) {
+      supabase
+        .from("site_submit")
+        .select("*")
+        .eq("id", value)
+        .single()
+        .then(({ data }) => {
+          if (data) {
+            setSelectedSiteSubmit(data);
+            setSearch(data.code || "");
+          }
+        });
+    } else {
+      setSelectedSiteSubmit(null);
+      setSearch("");
+    }
+  }, [value]);
+
+  // Search for site submits
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      if (search.length === 0) {
+        setSuggestions([]);
         return;
       }
-      const { data, error } = await supabase.from("site_submit").select("*").eq("id", valueId).maybeSingle();
-      if (!active) return;
-      if (error || !data) setCurrent(null);
-      else setCurrent(pickLabel(data));
-    })();
-    return () => {
-      active = false;
-    };
-  }, [valueId]);
 
-  // Load a reasonable slice of site_submit for client-side search
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      // We avoid server-side filters because column names vary; fetch a slice and filter client-side.
-      const { data, error } = await supabase.from("site_submit").select("*").limit(200);
-      if (!cancelled) {
-        if (!error && Array.isArray(data)) setAllRows(data);
-        setLoading(false);
+      // Search by code, site_submit_name, or any other relevant field
+      const { data } = await supabase
+        .from("site_submit")
+        .select("*")
+        .or(`code.ilike.%${search}%,site_submit_name.ilike.%${search}%`)
+        .limit(10)
+        .order("code");
+
+      if (data) {
+        setSuggestions(data);
       }
-    })();
-    return () => {
-      cancelled = true;
     };
+
+    const debounceTimer = setTimeout(fetchSuggestions, 300);
+    return () => clearTimeout(debounceTimer);
+  }, [search]);
+
+  // Handle clicking outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current && 
+        !dropdownRef.current.contains(event.target as Node) &&
+        inputRef.current &&
+        !inputRef.current.contains(event.target as Node)
+      ) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Client-side filter
-  const options = useMemo(() => {
-    const term = query.trim().toLowerCase();
-    const rows = allRows.filter((r) => !current || r.id !== current.id);
-    if (!term) return rows.slice(0, 50).map(pickLabel);
-    return rows
-      .filter((r) => {
-        const { label, sub } = pickLabel(r);
-        const hay = (label + " " + (sub ?? "") + " " + (r.sf_id ?? "")).toLowerCase();
-        return hay.includes(term);
-      })
-      .slice(0, 50)
-      .map(pickLabel);
-  }, [allRows, query, current]);
+  const handleSelect = (siteSubmit: SiteSubmit) => {
+    setSelectedSiteSubmit(siteSubmit);
+    setSearch(siteSubmit.code || "");
+    onChange(siteSubmit.id);
+    setShowDropdown(false);
+    setSuggestions([]);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearch(e.target.value);
+    setShowDropdown(true);
+    
+    // If the user clears the input, clear the selection
+    if (e.target.value === "") {
+      onChange(null);
+      setSelectedSiteSubmit(null);
+    }
+  };
+
+  const handleFocus = () => {
+    if (inputRef.current) {
+      inputRef.current.select();
+    }
+    // Only show dropdown if there's a search term
+    if (search.length > 0) {
+      setShowDropdown(true);
+    }
+  };
 
   return (
-    <div className="relative" ref={ref}>
-      <label className="block text-sm font-medium mb-1">{label}</label>
-      <div className="flex gap-2">
+    <div className="relative">
+      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      <div className="relative mt-1">
         <input
+          ref={inputRef}
           type="text"
-          className="w-full rounded-xl border border-gray-300 p-2 outline-none focus:ring focus:ring-blue-200"
-          placeholder={current ? current.label : "Search by ref, title, address, or SF ID"}
-          value={query}
-          disabled={disabled}
-          onFocus={() => setOpen(true)}
-          onChange={(e) => setQuery(e.target.value)}
+          value={search}
+          onChange={handleInputChange}
+          onFocus={handleFocus}
+          placeholder="Search by code or name..."
+          className="block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
         />
-        {current ? (
+        
+        {/* Dropdown with suggestions */}
+        {showDropdown && suggestions.length > 0 && (
+          <div 
+            ref={dropdownRef}
+            className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto"
+          >
+            {suggestions.map((siteSubmit) => (
+              <div
+                key={siteSubmit.id}
+                onClick={() => handleSelect(siteSubmit)}
+                className="p-2 hover:bg-gray-100 cursor-pointer text-sm"
+              >
+                <div className="font-medium">{siteSubmit.code}</div>
+                {siteSubmit.site_submit_name && (
+                  <div className="text-xs text-gray-500">{siteSubmit.site_submit_name}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      
+      {/* Optional: Show a link to view details when selected */}
+      {selectedSiteSubmit && (
+        <div className="mt-1">
           <button
             type="button"
-            className="rounded-xl border px-3 py-2 hover:bg-gray-50"
-            onClick={() => onChange(null)}
-            disabled={disabled}
-            title="Clear"
+            className="text-xs text-blue-600 hover:text-blue-800"
+            onClick={() => {
+              // TODO: Implement navigation to site submit details
+              console.log("View site submit:", selectedSiteSubmit.id);
+            }}
           >
-            Clear
+            View Site Submit Details →
           </button>
-        ) : null}
-      </div>
-
-      {current?.sub ? <div className="mt-1 text-xs text-gray-500">{current.sub}</div> : null}
-
-      {open && (
-        <div className="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 bg-white shadow-md max-h-72 overflow-auto">
-          {loading ? (
-            <div className="p-3 text-sm text-gray-500">Loading…</div>
-          ) : options.length === 0 ? (
-            <div className="p-3 text-sm text-gray-500">No matches.</div>
-          ) : (
-            options.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                className="w-full text-left p-3 hover:bg-gray-50"
-                onClick={() => {
-                  onChange(opt.id);
-                  setOpen(false);
-                  setQuery("");
-                }}
-              >
-                <div className="text-sm font-medium">{opt.label}</div>
-                {opt.sub ? <div className="text-xs text-gray-500">{opt.sub}</div> : null}
-              </button>
-            ))
-          )}
         </div>
       )}
     </div>

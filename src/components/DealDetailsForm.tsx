@@ -287,32 +287,31 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
             }}
           />
 
-          {/* Row 2: Property (left) + Deal Team (right) */}
-          <AlwaysEditableAutocomplete
-            label="Property"
-            search={propertySearch}
-            setSearch={setPropertySearch}
-            suggestions={propertySuggestions}
-            onSelect={(id, label) => {
-              updateField("property_id", id);
-              setPropertySearch(label);
-              setPropertySuggestions([]);
-            }}
-          />
+          {/* Row 2: Property (left) + Site Submit (right) */}
+<AlwaysEditableAutocomplete
+  label="Property"
+  search={propertySearch}
+  setSearch={setPropertySearch}
+  suggestions={propertySuggestions}
+  onSelect={(id, label) => {
+    updateField("property_id", id);
+    setPropertySearch(label);
+    setPropertySuggestions([]);
+  }}
+/>
+<SiteSubmitSelector
+  value={form.site_submit_id}
+  onChange={(id) => updateField("site_submit_id", id)}
+  label="Site Submit"
+/>
 
-              {/* Row 3: Site Submit (full width) */}
-    <div className="col-span-2">
-      <SiteSubmitSelector
-        valueId={form.site_submit_id ?? null}
-        onChange={(id) => updateField("site_submit_id", id)}
-      />
-    </div>
-          <Select
-            label="Deal Team"
-            value={form.deal_team_id}
-            onChange={(v) => updateField("deal_team_id", v)}
-            options={teamOptions}
-          />
+{/* Row 3: Deal Team (left column only) */}
+<Select
+  label="Deal Team"
+  value={form.deal_team_id}
+  onChange={(v) => updateField("deal_team_id", v)}
+  options={teamOptions}
+/>
 
           {errors.deal_name && <FieldError msg={errors.deal_name} className="col-span-2" />}
         </div>
