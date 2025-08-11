@@ -50,20 +50,20 @@ export default function SiteSubmitSelector({
   }, [value]);
 
   // Search for site submits
-  useEffect(() => {
-    const fetchSuggestions = async () => {
-      if (search.length === 0) {
-        setSuggestions([]);
-        return;
-      }
+useEffect(() => {
+  const fetchSuggestions = async () => {
+    if (search.length === 0) {
+      setSuggestions([]);
+      return;
+    }
 
-      // Search by code, site_submit_name, or any other relevant field
-      const { data } = await supabase
-        .from("site_submit")
-        .select("*")
-        .or(`code.ilike.%${search}%,site_submit_name.ilike.%${search}%`)
-        .limit(10)
-        .order("code");
+    // Search primarily by site_submit_name
+    const { data } = await supabase
+      .from("site_submit")
+      .select("*")
+      .or(`site_submit_name.ilike.%${search}%,code.ilike.%${search}%`)
+      .limit(10)
+      .order("site_submit_name");
 
       if (data) {
         setSuggestions(data);
@@ -93,7 +93,7 @@ export default function SiteSubmitSelector({
 
   const handleSelect = (siteSubmit: SiteSubmit) => {
     setSelectedSiteSubmit(siteSubmit);
-    setSearch(siteSubmit.code || "");
+    setSearch(siteSubmit.code || "");  // Fill with CODE when selected
     onChange(siteSubmit.id);
     setShowDropdown(false);
     setSuggestions([]);
@@ -130,7 +130,7 @@ export default function SiteSubmitSelector({
           value={search}
           onChange={handleInputChange}
           onFocus={handleFocus}
-          placeholder="Search by code or name..."
+          placeholder="Search by site submit name..."
           className="block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
         />
         

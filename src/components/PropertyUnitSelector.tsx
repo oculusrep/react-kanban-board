@@ -57,24 +57,25 @@ export default function PropertyUnitSelector({
   // Search for property units
   useEffect(() => {
     const fetchSuggestions = async () => {
-      if (search.length === 0) {
+      // Only show units if a property is selected
+      if (!propertyId) {
         setSuggestions([]);
         return;
       }
 
-      // Build query
+      // Build query - ALWAYS filter by property
       let query = supabase
         .from("property_unit")
         .select("*")
-        .ilike("property_unit_name", `%${search}%`);
+        .eq("property_id", propertyId);
 
-      // Filter by property if provided
-      if (propertyId) {
-        query = query.eq("property_id", propertyId);
+      // If there's a search term, also filter by name
+      if (search.length > 0) {
+        query = query.ilike("property_unit_name", `%${search}%`);
       }
 
       const { data } = await query
-        .limit(10)
+        .limit(20)
         .order("property_unit_name");
 
       if (data) {
@@ -84,7 +85,7 @@ export default function PropertyUnitSelector({
 
     const debounceTimer = setTimeout(fetchSuggestions, 300);
     return () => clearTimeout(debounceTimer);
-  }, [search, propertyId]);
+  }, [search, propertyId, showDropdown]);
 
   // Handle clicking outside to close dropdown
   useEffect(() => {
@@ -108,7 +109,6 @@ export default function PropertyUnitSelector({
     setSearch(unit.property_unit_name || "");
     onChange(unit.id);
     setShowDropdown(false);
-    setSuggestions([]);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -123,13 +123,12 @@ export default function PropertyUnitSelector({
   };
 
   const handleFocus = () => {
+    if (!propertyId) return; // Don't do anything if no property selected
+    
     if (inputRef.current) {
       inputRef.current.select();
     }
-    // Only show dropdown if there's a search term
-    if (search.length > 0) {
-      setShowDropdown(true);
-    }
+    setShowDropdown(true);
   };
 
   // Format unit details for display
@@ -160,12 +159,13 @@ export default function PropertyUnitSelector({
           value={search}
           onChange={handleInputChange}
           onFocus={handleFocus}
-          placeholder="Search property units..."
-          className="block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+          placeholder={propertyId ? "Search or select unit..." : "Select a property first"}
+          disabled={!propertyId}
+          className="block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
         />
         
         {/* Dropdown with suggestions */}
-        {showDropdown && suggestions.length > 0 && (
+        {showDropdown && suggestions.length > 0 && propertyId && (
           <div 
             ref={dropdownRef}
             className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto"
@@ -182,6 +182,13 @@ export default function PropertyUnitSelector({
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Show message if no units found */}
+        {showDropdown && suggestions.length === 0 && propertyId && search.length > 0 && (
+          <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg p-2 text-sm text-gray-500">
+            No units found for this property
           </div>
         )}
       </div>

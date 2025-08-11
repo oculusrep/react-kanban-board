@@ -8,6 +8,7 @@ import "react-datepicker/dist/react-datepicker.css";
 import { parseISO, format as formatDateFn } from "date-fns";
 import SiteSubmitSelector from "./SiteSubmitSelector";
 import PropertyUnitSelector from "./PropertyUnitSelector";
+import PropertySelector from "./PropertySelector";
 
 
 // 🔹 Stage → Default Probability map (integer percent 0..100)
@@ -46,6 +47,8 @@ interface Deal {
   target_close_date: string | null;
   loi_signed_date: string | null;
   closed_date: string | null;
+  updated_by_id?: string | null;
+  updated_at?: string | null;
 }
 
 interface Props {
@@ -59,11 +62,10 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
   const [editingField, setEditingField] = useState<string | null>(null);
   const [stageOptions, setStageOptions] = useState<{ id: string; label: string }[]>([]);
   const [teamOptions, setTeamOptions] = useState<{ id: string; label: string }[]>([]);
+  const [updatedByName, setUpdatedByName] = useState<string>("");
 
   const [clientSearch, setClientSearch] = useState("");
   const [clientSuggestions, setClientSuggestions] = useState<{ id: string; label: string }[]>([]);
-  const [propertySearch, setPropertySearch] = useState("");
-  const [propertySuggestions, setPropertySuggestions] = useState<{ id: string; label: string }[]>([]);
 
   // 🔹 UX: validation + change-highlighting states
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -86,6 +88,15 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
   useEffect(() => {
     supabase.from("deal_stage").select("id, label").then(({ data }) => data && setStageOptions(data));
     supabase.from("deal_team").select("id, label").then(({ data }) => data && setTeamOptions(data));
+    // Fetch updated_by user name if exists
+  if (deal.updated_by_id) {
+    supabase
+      .from("user")
+      .select("name")
+      .eq("id", deal.updated_by_id)
+      .maybeSingle()
+      .then(({ data }) => data?.name && setUpdatedByName(data.name));
+  }
 
     if (deal.client_id) {
       supabase
@@ -98,17 +109,7 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
       setClientSearch("");
     }
 
-    if (deal.property_id) {
-      supabase
-        .from("property")
-        .select("property_name")
-        .eq("id", deal.property_id)
-        .maybeSingle()
-        .then(({ data }) => data?.property_name && setPropertySearch(data.property_name));
-    } else {
-      setPropertySearch("");
-    }
-  }, [deal.client_id, deal.property_id]);
+      }, [deal.client_id, deal.property_id]);
 
   // Autocomplete: client
   useEffect(() => {
@@ -127,22 +128,6 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
     return () => clearTimeout(handle);
   }, [clientSearch]);
 
-  // Autocomplete: property
-  useEffect(() => {
-    const run = async () => {
-      const term = propertySearch.trim();
-      if (!term) return setPropertySuggestions([]);
-      const { data } = await supabase
-        .from("property")
-        .select("id, property_name")
-        .ilike("property_name", `%${term}%`)
-        .order("property_name", { ascending: true })
-        .limit(5);
-      if (data) setPropertySuggestions(data.map(p => ({ id: p.id, label: p.property_name })));
-    };
-    const handle = setTimeout(run, 150);
-    return () => clearTimeout(handle);
-  }, [propertySearch]);
 
   const updateField = (field: keyof Deal, value: any) => {
     if (field === "probability") {
@@ -291,16 +276,10 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
           />
 
 {/* Row 2: Property (left) + Property Unit (right) */}
-<AlwaysEditableAutocomplete
+<PropertySelector
+  value={form.property_id}
+  onChange={(id) => updateField("property_id", id)}
   label="Property"
-  search={propertySearch}
-  setSearch={setPropertySearch}
-  suggestions={propertySuggestions}
-  onSelect={(id, label) => {
-    updateField("property_id", id);
-    setPropertySearch(label);
-    setPropertySuggestions([]);
-  }}
 />
 <PropertyUnitSelector
   value={form.property_unit_id}
@@ -424,20 +403,33 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
         </div>
       </Section>
 
-      {/* Sticky Save Bar */}
-      <div className="sticky bottom-0 left-0 right-0 bg-white border-t mt-6 p-3 flex items-center justify-end gap-3 shadow-sm">
-        <span className="text-xs text-gray-500">
-          {stageLabel ? `Stage: ${stageLabel}` : "No stage selected"}
-        </span>
-        <button
-          onClick={handleSave}
-          disabled={saving || Object.keys(errors).length > 0}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60"
-        >
-          {saving ? "Saving..." : "Save Deal"}
-        </button>
-      </div>
-    </div>
+{/* Sticky Save Bar */}
+<div className="sticky bottom-0 left-0 right-0 bg-white border-t mt-6 p-3 flex items-center justify-between shadow-sm">
+  <div className="flex items-center gap-2 text-xs text-gray-500">
+    {form.updated_at ? (
+      <>
+        <span>Last Updated by</span>
+        <span className="font-medium">{updatedByName || "Unknown"}</span>
+        <span>{new Date(form.updated_at).toLocaleDateString()} {new Date(form.updated_at).toLocaleTimeString()}</span>
+      </>
+    ) : (
+      <span>Not yet saved</span>
+    )}
+  </div>
+  <div className="flex items-center gap-3">
+    <span className="text-xs text-gray-500">
+      {stageLabel ? `Stage: ${stageLabel}` : "No stage selected"}
+    </span>
+    <button
+      onClick={handleSave}
+      disabled={saving || Object.keys(errors).length > 0}
+      className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60"
+    >
+      {saving ? "Saving..." : "Save Deal"}
+    </button>
+  </div>
+</div>
+</div>
   );
 }
 
