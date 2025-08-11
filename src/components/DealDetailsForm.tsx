@@ -7,6 +7,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { parseISO, format as formatDateFn } from "date-fns";
 import SiteSubmitSelector from "./SiteSubmitSelector";
+import PropertyUnitSelector from "./PropertyUnitSelector";
 
 
 // 🔹 Stage → Default Probability map (integer percent 0..100)
@@ -29,6 +30,7 @@ interface Deal {
   transaction_type_id: string | null;
   property_id: string | null;
   site_submit_id: string | null;
+  property_unit_id: string | null;
   property_type_id: string | null;
   size_sqft: number | null;
   size_acres: number | null;
@@ -237,6 +239,7 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
       deal_name: form.deal_name,
       client_id: form.client_id,
       property_id: form.property_id,
+      property_unit_id: form.property_unit_id,
       site_submit_id: form.site_submit_id,
       deal_value: form.deal_value,
       commission_percent: form.commission_percent,
@@ -287,7 +290,7 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
             }}
           />
 
-          {/* Row 2: Property (left) + Site Submit (right) */}
+{/* Row 2: Property (left) + Property Unit (right) */}
 <AlwaysEditableAutocomplete
   label="Property"
   search={propertySearch}
@@ -299,13 +302,19 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
     setPropertySuggestions([]);
   }}
 />
+<PropertyUnitSelector
+  value={form.property_unit_id}
+  onChange={(id) => updateField("property_unit_id", id)}
+  propertyId={form.property_id} // Filter units by selected property
+  label="Property Unit"
+/>
+
+{/* Row 3: Site Submit (left) + Deal Team (right) */}
 <SiteSubmitSelector
   value={form.site_submit_id}
   onChange={(id) => updateField("site_submit_id", id)}
   label="Site Submit"
 />
-
-{/* Row 3: Deal Team (left column only) */}
 <Select
   label="Deal Team"
   value={form.deal_team_id}
