@@ -104,23 +104,23 @@ export default function KanbanBoard() {
                   <div
                     ref={provided.innerRef}
                     {...provided.droppableProps}
-                    className={`relative -w-[240px] bg-white border shadow-sm rounded-md flex flex-col ${
+                   className={`relative min-w-[240px] max-w-[280px] bg-white shadow-sm flex flex-col ${
                       snapshot.isDraggingOver ? "bg-blue-50" : ""
                     }`}
                   >
                     <div className="relative">
-                      <div
-                        className={`text-white py-2 px-3 font-semibold text-sm flex items-center justify-center clip-chevron bg-blue-600 ${
-                          isFirstColumn ? "" : "chevron-overlap"
-                        } ${isLastColumn ? "last" : ""}`}
-                      >
-                        <div className="text-center">
-                          {column.name} ({cardsInColumn.length})
-                          <div className="text-green-200 text-xs font-bold">
-                            {formatCurrency(totalFee)}
-                          </div>
-                        </div>
+                     <div
+                      className={`chevron-header ${isFirstColumn ? "first" : ""} ${isLastColumn ? "last" : ""} flex items-center justify-center`}
+                    >
+                      <div className="text-center font-semibold text-sm">
+                        {column.name} ({cardsInColumn.length})
                       </div>
+                    </div>
+                    <div className="bg-white text-center py-2 border-b">
+                      <div className="text-green-600 text-lg font-bold">
+                        {formatCurrency(totalFee)}
+                      </div>
+                    </div>
                     </div>
                     <div className="p-2 flex-1">
                       {cardsInColumn.map((card, index) => (
