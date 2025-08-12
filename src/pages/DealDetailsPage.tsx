@@ -3,6 +3,9 @@ import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import DealDetailsForm from "../components/DealDetailsForm";
+import { FloatingPanelManager } from "../components/FloatingPanelManager";
+import { FloatingPanelContainer } from "../components/FloatingPanelContainer";
+import { FloatingContactPanel } from "../components/FloatingContactPanel";
 
 export default function DealDetailsPage() {
   const { dealId } = useParams();
@@ -27,8 +30,15 @@ export default function DealDetailsPage() {
   if (!deal) return <div className="p-4">Loading...</div>;
 
   return (
-    <div className="p-4 max-w-4xl mx-auto">
-      <DealDetailsForm deal={deal} onSave={(updated) => setDeal(updated)} />
-    </div>
+    <FloatingPanelManager>
+      <FloatingPanelContainer>
+        <div className="p-4 max-w-4xl mx-auto">
+          <DealDetailsForm deal={deal} onSave={(updated) => setDeal(updated)} />
+        </div>
+      </FloatingPanelContainer>
+      
+      {/* Floating Contact Panel */}
+      {dealId && <FloatingContactPanel dealId={dealId} />}
+    </FloatingPanelManager>
   );
 }
