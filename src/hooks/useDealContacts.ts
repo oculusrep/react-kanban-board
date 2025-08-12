@@ -7,6 +7,7 @@ interface DealContact {
   contact_name: string;
   contact_email: string | null;
   contact_phone: string | null;
+  contact_mobile: string | null;
   role_label: string;
   primary_contact: boolean;
   contact_id: string | null;
@@ -50,7 +51,7 @@ export const useDealContacts = (dealId: string | null) => {
         // Fetch contacts
         const { data: contactData, error: contactError } = await supabase
           .from('contact')
-          .select('id, first_name, last_name, email, phone')
+          .select('id, first_name, last_name, email, phone, mobile_phone')
           .in('id', contactIds);
 
         if (contactError) throw contactError;
@@ -97,6 +98,7 @@ export const useDealContacts = (dealId: string | null) => {
             contact_name: contactName,
             contact_email: contact?.email || null,
             contact_phone: contact?.phone || null,
+            contact_mobile: contact?.mobile_phone || null,
             role_label: role?.label || 'No Role',
             primary_contact: dealContact.primary_contact || false,
             contact_id: dealContact.contact_id,
