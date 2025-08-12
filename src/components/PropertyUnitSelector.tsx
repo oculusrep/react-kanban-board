@@ -133,14 +133,14 @@ export default function PropertyUnitSelector({
 
   // Format unit details for display
   const formatUnitDetails = (unit: PropertyUnit) => {
-    const details = [];
-    if (unit.sqft) details.push(`${unit.sqft.toLocaleString()} sqft`);
-    if (unit.rent) details.push(`$${unit.rent.toLocaleString()}/mo`);
+    const details: string[] = [];
+    if (unit.sqft) details.push(`${Number(unit.sqft).toLocaleString()} sqft`);
+    if (unit.rent) details.push(`$${Number(unit.rent).toLocaleString()}/mo`);
     
-    const features = [];
-    if (unit.inline) features.push("Inline");
-    if (unit.end_cap) features.push("End Cap");
-    if (unit.patio) features.push("Patio");
+    const features: string[] = [];
+    if (unit.inline === true) features.push("Inline");
+    if (unit.end_cap === true) features.push("End Cap");
+    if (unit.patio === true) features.push("Patio");
     
     if (features.length > 0) {
       details.push(features.join(", "));

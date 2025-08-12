@@ -6,12 +6,25 @@ import {
   Draggable,
 } from "@hello-pangea/dnd";
 import { Link } from "react-router-dom";
-import useKanbanData from "./lib/useKanbanData";
-import { supabase } from "./lib/supabaseClient";
+import useKanbanData from "../hooks/useDeals";
+import { supabase } from "../lib/supabaseClient";
+
+// Define the card type to match what useKanbanData returns
+interface DealCard {
+  id: string;
+  deal_name: string | null;
+  fee: number | null;
+  deal_value: number | null;
+  closed_date: string | null;
+  stage_id: string | null;
+  kanban_position: number | null;
+  client_name: string | null;
+  created_at: string | null;
+}
 
 export default function KanbanBoard() {
   const { columns, cards, loading } = useKanbanData();
-  const [localCards, setLocalCards] = useState<typeof cards>([]);
+  const [localCards, setLocalCards] = useState<DealCard[]>([]);
 
   useEffect(() => {
     setLocalCards(cards);
@@ -83,8 +96,8 @@ export default function KanbanBoard() {
               .filter((card) => card.stage_id === column.id)
               .sort((a, b) => (a.kanban_position ?? 0) - (b.kanban_position ?? 0));
 
-            if (column.name === "Closed Paid") {
-              cardsInColumn = cardsInColumn.filter((card: any) => {
+            if (column.label === "Closed Paid") {
+              cardsInColumn = cardsInColumn.filter((card) => {
                 if (!card.closed_date) return false;
                 const year = new Date(card.closed_date).getFullYear();
                 return year === currentYear;
@@ -113,7 +126,7 @@ export default function KanbanBoard() {
                       className={`chevron-header ${isFirstColumn ? "first" : ""} ${isLastColumn ? "last" : ""} flex items-center justify-center`}
                     >
                       <div className="text-center font-semibold text-sm">
-                        {column.name} ({cardsInColumn.length})
+                        {column.label} ({cardsInColumn.length})
                       </div>
                     </div>
                     <div className="bg-white text-center py-2 border-b">
@@ -139,14 +152,14 @@ export default function KanbanBoard() {
                                   to={`/deal/${card.id}`}
                                   className="text-blue-600 hover:underline"
                                 >
-                                  {card.deal_name}
+                                  {card.deal_name || 'Untitled Deal'}
                                 </Link>
                               </div>
                               <div className="text-gray-700">
                                 {formatCurrency(card.fee)}
                               </div>
                               <div className="text-gray-500 text-xs">
-                                {card.client_name}
+                                {card.client_name || 'No Client'}
                               </div>
                               <div className="text-gray-800">
                                 {formatCurrency(card.deal_value)}
