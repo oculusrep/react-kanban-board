@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import FormattedInput from './FormattedInput';
+import { formatCurrency, formatPercent } from '../utils/format';
 
 // Types for our commission data
 interface Broker {
@@ -56,8 +58,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedDeal, setEditedDeal] = useState<Deal | null>(null);
+  const [editingField, setEditingField] = useState<string | null>(null);
 
   useEffect(() => {
     fetchCommissionData();
@@ -76,7 +77,6 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
 
       if (dealError) throw dealError;
       setDeal(dealData);
-      setEditedDeal(dealData);
 
       // Fetch commission splits
       const { data: splitsData, error: splitsError } = await supabase
@@ -120,41 +120,72 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
     }
   };
 
-  const saveDealChanges = async () => {
-    if (!editedDeal) return;
+  // Commission calculation logic
+  const calculateCommissionAmounts = (dealData: Deal): Deal => {
+    const fee = dealData.fee || 0;
+    const commissionPercent = dealData.commission_percent || 0;
+    const referralFeePercent = dealData.referral_fee_percent || 0;
     
+    // Calculate GCI (Gross Commission Income)
+    const gci = fee * (commissionPercent / 100);
+    
+    // Calculate Referral Fee USD
+    const referralFeeUsd = fee * (referralFeePercent / 100);
+    
+    // Calculate AGCI (Adjusted GCI) = GCI - Referral Fee
+    const agci = gci - referralFeeUsd;
+    
+    // Calculate individual broker amounts from AGCI
+    const houseUsd = agci * ((dealData.house_percent || 0) / 100);
+    const originationUsd = agci * ((dealData.origination_percent || 0) / 100);
+    const siteUsd = agci * ((dealData.site_percent || 0) / 100);
+    const dealUsd = agci * ((dealData.deal_percent || 0) / 100);
+    
+    return {
+      ...dealData,
+      gci: Math.round(gci * 100) / 100,
+      referral_fee_usd: Math.round(referralFeeUsd * 100) / 100,
+      agci: Math.round(agci * 100) / 100,
+      house_usd: Math.round(houseUsd * 100) / 100,
+      origination_usd: Math.round(originationUsd * 100) / 100,
+      site_usd: Math.round(siteUsd * 100) / 100,
+      deal_usd: Math.round(dealUsd * 100) / 100,
+    };
+  };
+
+  // Update field function like DealDetailsForm
+  const updateField = async (field: keyof Deal, value: any) => {
+    if (!deal) return;
+    
+    const updatedDeal = {
+      ...deal,
+      [field]: value
+    } as Deal;
+    
+    // If any percentage field changed, recalculate all amounts
+    const fieldsToRecalculate = [
+      'commission_percent', 'referral_fee_percent', 
+      'house_percent', 'origination_percent', 'site_percent', 'deal_percent'
+    ];
+    
+    let finalDeal = updatedDeal;
+    if (fieldsToRecalculate.includes(field as string)) {
+      finalDeal = calculateCommissionAmounts(updatedDeal);
+    }
+    
+    // Auto-save to database
     try {
-      setIsGenerating(true);
-      
       const { error } = await supabase
         .from('deal')
-        .update(editedDeal)
+        .update(finalDeal)
         .eq('id', dealId);
 
       if (error) throw error;
       
-      setDeal(editedDeal);
-      setIsEditing(false);
-      alert('Commission details saved successfully!');
+      setDeal(finalDeal);
     } catch (err) {
       alert(`Error saving: ${err instanceof Error ? err.message : 'Failed to save'}`);
-    } finally {
-      setIsGenerating(false);
     }
-  };
-
-  const cancelEditing = () => {
-    setEditedDeal(deal);
-    setIsEditing(false);
-  };
-
-  const handleFieldChange = (field: keyof Deal, value: number | string) => {
-    if (!editedDeal) return;
-    
-    setEditedDeal({
-      ...editedDeal,
-      [field]: value
-    });
   };
 
   const generatePayments = async () => {
@@ -178,17 +209,58 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
     }
   };
 
-  const formatCurrency = (amount: number | null) => {
+  const formatCurrencyHelper = (amount: number | null) => {
     if (amount === null || amount === undefined) return '$0.00';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
+    return formatCurrency(amount, 2);
   };
 
-  const formatPercent = (percent: number | null) => {
+  const formatPercentHelper = (percent: number | null) => {
     if (percent === null || percent === undefined) return '0%';
-    return `${percent.toFixed(1)}%`;
+    return formatPercent(percent, 1);
+  };
+
+  // Simple input component for number of payments (integer)
+  const IntegerInput = ({ label, value, onChange }: { 
+    label: string; 
+    value: number | null; 
+    onChange: (v: number) => void; 
+  }) => {
+    return (
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+        <input
+          type="number"
+          step="1"
+          min="1"
+          value={value || 1}
+          onChange={(e) => onChange(parseInt(e.target.value) || 1)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg font-semibold"
+        />
+      </div>
+    );
+  };
+
+  // Validation helper
+  const getValidationWarnings = (dealData: Deal) => {
+    const warnings = [];
+    // Only Origination + Site + Deal should equal 100% (House is separate)
+    const brokerSplitTotal = (dealData.origination_percent || 0) + 
+                            (dealData.site_percent || 0) + 
+                            (dealData.deal_percent || 0);
+    
+    if (brokerSplitTotal > 100) {
+      warnings.push(`Broker split percentages total ${brokerSplitTotal.toFixed(1)}% (over 100%)`);
+    }
+    
+    if (dealData.commission_percent && dealData.commission_percent > 50) {
+      warnings.push(`Commission rate ${dealData.commission_percent}% seems high`);
+    }
+    
+    if (dealData.referral_fee_percent && dealData.referral_fee_percent > 100) {
+      warnings.push(`Referral fee ${dealData.referral_fee_percent}% cannot exceed 100%`);
+    }
+    
+    return warnings;
   };
 
   if (loading) {
@@ -214,8 +286,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
     );
   }
 
-  const currentDeal = isEditing ? editedDeal : deal;
-  if (!currentDeal) {
+  if (!deal) {
     return (
       <div className="text-center text-gray-600 py-8">
         <p>Deal not found</p>
@@ -225,6 +296,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
 
   const hasPayments = payments.length > 0;
   const canGeneratePayments = commissionSplits.length > 0 && !hasPayments;
+  const validationWarnings = getValidationWarnings(deal);
 
   return (
     <div className="space-y-6">
@@ -232,21 +304,42 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <h3 className="text-sm font-medium text-blue-800 mb-1">Deal Fee</h3>
-          <p className="text-2xl font-bold text-blue-900">{formatCurrency(currentDeal.fee)}</p>
+          <p className="text-2xl font-bold text-blue-900">{formatCurrencyHelper(deal.fee)}</p>
         </div>
         
         <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
           <h3 className="text-sm font-medium text-purple-800 mb-1">Number of Payments</h3>
-          <p className="text-2xl font-bold text-purple-900">{currentDeal.number_of_payments}</p>
+          <p className="text-2xl font-bold text-purple-900">{deal.number_of_payments}</p>
         </div>
         
         <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
           <h3 className="text-sm font-medium text-orange-800 mb-1">Commission Rate</h3>
           <p className="text-2xl font-bold text-orange-900">
-            {currentDeal.commission_percent ? `${currentDeal.commission_percent.toFixed(1)}%` : '0%'}
+            {deal.commission_percent ? `${deal.commission_percent.toFixed(1)}%` : '0%'}
           </p>
         </div>
       </div>
+
+      {/* Validation Warnings */}
+      {validationWarnings.length > 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-yellow-800">Validation Warnings</h3>
+              <ul className="mt-1 text-sm text-yellow-700 list-disc list-inside">
+                {validationWarnings.map((warning, index) => (
+                  <li key={index}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Deal-Level Commission Fields */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -258,193 +351,194 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
                 {payments.length} payments generated
               </span>
             )}
-            {!isEditing ? (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded font-medium hover:bg-blue-700"
-              >
-                Edit
-              </button>
-            ) : (
-              <div className="flex space-x-2">
-                <button
-                  onClick={saveDealChanges}
-                  disabled={isGenerating}
-                  className="px-4 py-2 bg-green-600 text-white rounded font-medium hover:bg-green-700 disabled:bg-gray-400"
-                >
-                  {isGenerating ? 'Saving...' : 'Save'}
-                </button>
-                <button
-                  onClick={cancelEditing}
-                  className="px-4 py-2 bg-gray-500 text-white rounded font-medium hover:bg-gray-600"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
+            <span className="text-sm text-gray-500">Click any percentage to edit</span>
           </div>
         </div>
 
         <div className="p-6 space-y-6">
-          {/* Top Row: Referral and GCI */}
+          {/* Top Row */}
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Referral Fee %</label>
-              {isEditing ? (
-                <input
-                  type="number"
-                  step="0.01"
-                  value={editedDeal?.referral_fee_percent || 0}
-                  onChange={(e) => handleFieldChange('referral_fee_percent', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              ) : (
-                <div className="text-lg font-semibold">{formatPercent(currentDeal.referral_fee_percent)}</div>
-              )}
+              <label className="block text-sm font-medium text-gray-700 mb-1">Deal Fee</label>
+              <div className="text-lg font-semibold text-gray-900 px-3 py-2 rounded-md">
+                {formatCurrencyHelper(deal.fee)}
+              </div>
             </div>
+            
+            <FormattedInput
+              label="Commission Rate %"
+              value={deal.commission_percent}
+              onChange={(v) => updateField('commission_percent', v === '' ? null : parseFloat(v))}
+              format={(val) => formatPercent(val, 1)}
+              editingField={editingField}
+              setEditingField={setEditingField}
+              fieldKey="commission_percent"
+            />
+            
+            <FormattedInput
+              label="Referral Fee %"
+              value={deal.referral_fee_percent}
+              onChange={(v) => updateField('referral_fee_percent', v === '' ? null : parseFloat(v))}
+              format={(val) => formatPercent(val, 1)}
+              editingField={editingField}
+              setEditingField={setEditingField}
+              fieldKey="referral_fee_percent"
+            />
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Referral Fee $</label>
-              <div className="text-lg font-semibold text-gray-600">{formatCurrency(currentDeal.referral_fee_usd)}</div>
+              <div className="text-lg font-semibold text-gray-600 bg-gray-50 px-3 py-2 rounded-md">
+                {formatCurrencyHelper(deal.referral_fee_usd)}
+              </div>
             </div>
             
+            <IntegerInput
+              label="Number of Payments"
+              value={deal.number_of_payments}
+              onChange={(v) => updateField('number_of_payments', v)}
+            />
+          </div>
+
+          {/* Second Row: Referral Payee and GCI/AGCI */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Referral Payee</label>
-              {isEditing ? (
-                <input
-                  type="text"
-                  value={editedDeal?.referral_payee || ''}
-                  onChange={(e) => handleFieldChange('referral_payee', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              ) : (
-                <div className="text-lg font-semibold">{currentDeal.referral_payee || 'None'}</div>
-              )}
+              <div className="text-lg font-semibold text-gray-900 px-3 py-2 rounded-md">
+                {deal.referral_payee || 'None'}
+              </div>
             </div>
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">GCI</label>
-              <div className="text-lg font-semibold text-gray-600">{formatCurrency(currentDeal.gci)}</div>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Number of Payments</label>
-              {isEditing ? (
-                <input
-                  type="number"
-                  min="1"
-                  value={editedDeal?.number_of_payments || 1}
-                  onChange={(e) => handleFieldChange('number_of_payments', parseInt(e.target.value) || 1)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              ) : (
-                <div className="text-lg font-semibold">{currentDeal.number_of_payments}</div>
-              )}
-            </div>
-          </div>
-
-          {/* Second Row: House */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">House %</label>
-              {isEditing ? (
-                <input
-                  type="number"
-                  step="0.01"
-                  value={editedDeal?.house_percent || 0}
-                  onChange={(e) => handleFieldChange('house_percent', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              ) : (
-                <div className="text-lg font-semibold">{formatPercent(currentDeal.house_percent)}</div>
-              )}
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">House $</label>
-              <div className="text-lg font-semibold text-gray-600">{formatCurrency(currentDeal.house_usd)}</div>
+              <div className="text-lg font-semibold text-gray-600 bg-gray-50 px-3 py-2 rounded-md">
+                {formatCurrencyHelper(deal.gci)}
+              </div>
             </div>
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">AGCI</label>
-              <div className="text-lg font-semibold text-gray-600">{formatCurrency(currentDeal.agci)}</div>
+              <div className="text-lg font-semibold text-gray-600 bg-gray-50 px-3 py-2 rounded-md">
+                {formatCurrencyHelper(deal.agci)}
+              </div>
             </div>
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Oculus Net</label>
-              <div className="text-lg font-semibold text-gray-600">{formatCurrency(currentDeal.agci)}</div>
+              <div className="text-lg font-semibold text-gray-600 bg-gray-50 px-3 py-2 rounded-md">
+                {formatCurrencyHelper(deal.agci)}
+              </div>
             </div>
           </div>
 
-          {/* Third Row: Origination */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Third Row: House */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormattedInput
+              label="House %"
+              value={deal.house_percent}
+              onChange={(v) => updateField('house_percent', v === '' ? null : parseFloat(v))}
+              format={(val) => formatPercent(val, 1)}
+              editingField={editingField}
+              setEditingField={setEditingField}
+              fieldKey="house_percent"
+            />
+            
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Origination %</label>
-              {isEditing ? (
-                <input
-                  type="number"
-                  step="0.01"
-                  value={editedDeal?.origination_percent || 0}
-                  onChange={(e) => handleFieldChange('origination_percent', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              ) : (
-                <div className="text-lg font-semibold">{formatPercent(currentDeal.origination_percent)}</div>
-              )}
+              <label className="block text-sm font-medium text-gray-700 mb-1">House $</label>
+              <div className="text-lg font-semibold text-gray-600 bg-gray-50 px-3 py-2 rounded-md">
+                {formatCurrencyHelper(deal.house_usd)}
+              </div>
             </div>
+          </div>
+
+          {/* Fourth Row: Origination */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormattedInput
+              label="Origination %"
+              value={deal.origination_percent}
+              onChange={(v) => updateField('origination_percent', v === '' ? null : parseFloat(v))}
+              format={(val) => formatPercent(val, 1)}
+              editingField={editingField}
+              setEditingField={setEditingField}
+              fieldKey="origination_percent"
+            />
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Origination $</label>
-              <div className="text-lg font-semibold text-gray-600">{formatCurrency(currentDeal.origination_usd)}</div>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Site %</label>
-              {isEditing ? (
-                <input
-                  type="number"
-                  step="0.01"
-                  value={editedDeal?.site_percent || 0}
-                  onChange={(e) => handleFieldChange('site_percent', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              ) : (
-                <div className="text-lg font-semibold">{formatPercent(currentDeal.site_percent)}</div>
-              )}
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Site $</label>
-              <div className="text-lg font-semibold text-gray-600">{formatCurrency(currentDeal.site_usd)}</div>
+              <div className="text-lg font-semibold text-gray-600 bg-gray-50 px-3 py-2 rounded-md">
+                {formatCurrencyHelper(deal.origination_usd)}
+              </div>
             </div>
           </div>
 
-          {/* Fourth Row: Deal */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Fifth Row: Site */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormattedInput
+              label="Site %"
+              value={deal.site_percent}
+              onChange={(v) => updateField('site_percent', v === '' ? null : parseFloat(v))}
+              format={(val) => formatPercent(val, 1)}
+              editingField={editingField}
+              setEditingField={setEditingField}
+              fieldKey="site_percent"
+            />
+            
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Deal %</label>
-              {isEditing ? (
-                <input
-                  type="number"
-                  step="0.01"
-                  value={editedDeal?.deal_percent || 0}
-                  onChange={(e) => handleFieldChange('deal_percent', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              ) : (
-                <div className="text-lg font-semibold">{formatPercent(currentDeal.deal_percent)}</div>
-              )}
+              <label className="block text-sm font-medium text-gray-700 mb-1">Site $</label>
+              <div className="text-lg font-semibold text-gray-600 bg-gray-50 px-3 py-2 rounded-md">
+                {formatCurrencyHelper(deal.site_usd)}
+              </div>
             </div>
+          </div>
+
+          {/* Sixth Row: Deal */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormattedInput
+              label="Deal %"
+              value={deal.deal_percent}
+              onChange={(v) => updateField('deal_percent', v === '' ? null : parseFloat(v))}
+              format={(val) => formatPercent(val, 1)}
+              editingField={editingField}
+              setEditingField={setEditingField}
+              fieldKey="deal_percent"
+            />
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Deal $</label>
-              <div className="text-lg font-semibold text-gray-600">{formatCurrency(currentDeal.deal_usd)}</div>
+              <div className="text-lg font-semibold text-gray-600 bg-gray-50 px-3 py-2 rounded-md">
+                {formatCurrencyHelper(deal.deal_usd)}
+              </div>
+            </div>
+          </div>
+
+          {/* Broker Percentage Summary */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h4 className="text-sm font-medium text-blue-800 mb-2">Broker Split Summary (Origination + Site + Deal)</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div>
+                <span className="text-blue-700">Origination:</span> {formatPercentHelper(deal.origination_percent)}
+              </div>
+              <div>
+                <span className="text-blue-700">Site:</span> {formatPercentHelper(deal.site_percent)}
+              </div>
+              <div>
+                <span className="text-blue-700">Deal:</span> {formatPercentHelper(deal.deal_percent)}
+              </div>
+              <div className="font-semibold">
+                <span className="text-blue-700">Total:</span> {formatPercentHelper(
+                  (deal.origination_percent || 0) + 
+                  (deal.site_percent || 0) + 
+                  (deal.deal_percent || 0)
+                )}
+              </div>
+            </div>
+            <div className="mt-2 text-xs text-blue-600">
+              House % is separate and not included in the 100% split validation.
             </div>
           </div>
         </div>
       </div>
 
-      {/* Commission Splits Table - Still showing broker-level splits */}
+      {/* Commission Splits Table */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
           <h3 className="text-lg font-semibold text-gray-900">Broker Commission Splits</h3>
@@ -498,19 +592,19 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
                       <div className="text-sm text-gray-500">{split.split_name}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{formatPercent(split.split_origination_percent)}</div>
-                      <div className="text-sm text-gray-500">{formatCurrency(split.split_origination_usd)}</div>
+                      <div className="text-sm text-gray-900">{formatPercentHelper(split.split_origination_percent)}</div>
+                      <div className="text-sm text-gray-500">{formatCurrencyHelper(split.split_origination_usd)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{formatPercent(split.split_site_percent)}</div>
-                      <div className="text-sm text-gray-500">{formatCurrency(split.split_site_usd)}</div>
+                      <div className="text-sm text-gray-900">{formatPercentHelper(split.split_site_percent)}</div>
+                      <div className="text-sm text-gray-500">{formatCurrencyHelper(split.split_site_usd)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{formatPercent(split.split_deal_percent)}</div>
-                      <div className="text-sm text-gray-500">{formatCurrency(split.split_deal_usd)}</div>
+                      <div className="text-sm text-gray-900">{formatPercentHelper(split.split_deal_percent)}</div>
+                      <div className="text-sm text-gray-500">{formatCurrencyHelper(split.split_deal_usd)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-semibold text-gray-900">{formatCurrency(split.split_broker_total)}</div>
+                      <div className="text-sm font-semibold text-gray-900">{formatCurrencyHelper(split.split_broker_total)}</div>
                     </td>
                   </tr>
                 ))}
