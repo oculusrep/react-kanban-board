@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import FormattedInput from './FormattedInput';
-import { formatCurrency, formatPercent } from '../utils/format';
 
 // Types for our commission data
 interface Broker {
@@ -153,14 +151,14 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
     };
   };
 
-  // Update field function like DealDetailsForm
-  const updateField = async (field: keyof Deal, value: any) => {
+  // Update field function with explicit typing
+  const updateField = async (field: string, value: any) => {
     if (!deal) return;
     
     const updatedDeal = {
       ...deal,
       [field]: value
-    } as Deal;
+    };
     
     // If any percentage field changed, recalculate all amounts
     const fieldsToRecalculate = [
@@ -169,7 +167,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
     ];
     
     let finalDeal = updatedDeal;
-    if (fieldsToRecalculate.includes(field as string)) {
+    if (fieldsToRecalculate.includes(field)) {
       finalDeal = calculateCommissionAmounts(updatedDeal);
     }
     
@@ -209,33 +207,86 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
     }
   };
 
-  const formatCurrencyHelper = (amount: number | null) => {
+  const formatCurrencyHelper = (amount: number | null): string => {
     if (amount === null || amount === undefined) return '$0.00';
-    return formatCurrency(amount, 2);
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(amount);
   };
 
-  const formatPercentHelper = (percent: number | null) => {
-    if (percent === null || percent === undefined) return '0%';
-    return formatPercent(percent, 1);
+  const formatPercentHelper = (percent: number | null): string => {
+    if (percent === null || percent === undefined) return '0.0%';
+    return `${percent.toFixed(1)}%`;
   };
 
-  // Simple input component for number of payments (integer)
-  const IntegerInput = ({ label, value, onChange }: { 
+  // Simple percentage input component to avoid FormattedInput type issues
+  const PercentageInput = ({ 
+    label, 
+    value, 
+    onChange 
+  }: { 
     label: string; 
     value: number | null; 
-    onChange: (v: number) => void; 
+    onChange: (v: number | null) => void; 
   }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editValue, setEditValue] = useState('');
+
+    const displayValue = value ? `${value.toFixed(1)}%` : '0.0%';
+
+    const handleStartEdit = () => {
+      setIsEditing(true);
+      setEditValue(value?.toString() || '');
+    };
+
+    const handleSave = () => {
+      const numValue = parseFloat(editValue);
+      onChange(isNaN(numValue) ? null : numValue);
+      setIsEditing(false);
+    };
+
+    const handleCancel = () => {
+      setIsEditing(false);
+      setEditValue('');
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        handleSave();
+      } else if (e.key === 'Escape') {
+        handleCancel();
+      }
+    };
+
+    if (isEditing) {
+      return (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+          <input
+            type="number"
+            step="0.1"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={handleSave}
+            onKeyDown={handleKeyDown}
+            className="w-full px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg font-semibold"
+            autoFocus
+          />
+        </div>
+      );
+    }
+
     return (
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-        <input
-          type="number"
-          step="1"
-          min="1"
-          value={value || 1}
-          onChange={(e) => onChange(parseInt(e.target.value) || 1)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg font-semibold"
-        />
+        <div
+          onClick={handleStartEdit}
+          className="text-lg font-semibold cursor-pointer hover:bg-blue-50 px-3 py-2 rounded-md transition-colors border border-transparent hover:border-blue-200"
+          title="Click to edit"
+        >
+          {displayValue}
+        </div>
       </div>
     );
   };
@@ -365,24 +416,16 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
               </div>
             </div>
             
-            <FormattedInput
+            <PercentageInput
               label="Commission Rate %"
               value={deal.commission_percent}
-              onChange={(v) => updateField('commission_percent', v === '' ? null : parseFloat(v))}
-              format={(val) => formatPercent(val, 1)}
-              editingField={editingField}
-              setEditingField={setEditingField}
-              fieldKey="commission_percent"
+              onChange={(v: number | null) => updateField('commission_percent', v)}
             />
             
-            <FormattedInput
+            <PercentageInput
               label="Referral Fee %"
               value={deal.referral_fee_percent}
-              onChange={(v) => updateField('referral_fee_percent', v === '' ? null : parseFloat(v))}
-              format={(val) => formatPercent(val, 1)}
-              editingField={editingField}
-              setEditingField={setEditingField}
-              fieldKey="referral_fee_percent"
+              onChange={(v: number | null) => updateField('referral_fee_percent', v)}
             />
             
             <div>
@@ -392,15 +435,21 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
               </div>
             </div>
             
-            <IntegerInput
-              label="Number of Payments"
-              value={deal.number_of_payments}
-              onChange={(v) => updateField('number_of_payments', v)}
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Number of Payments</label>
+              <input
+                type="number"
+                step="1"
+                min="1"
+                value={deal.number_of_payments || 1}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateField('number_of_payments', parseInt(e.target.value) || 1)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg font-semibold"
+              />
+            </div>
           </div>
 
           {/* Second Row: Referral Payee and GCI/AGCI */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Referral Payee</label>
               <div className="text-lg font-semibold text-gray-900 px-3 py-2 rounded-md">
@@ -421,25 +470,14 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
                 {formatCurrencyHelper(deal.agci)}
               </div>
             </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Oculus Net</label>
-              <div className="text-lg font-semibold text-gray-600 bg-gray-50 px-3 py-2 rounded-md">
-                {formatCurrencyHelper(deal.agci)}
-              </div>
-            </div>
           </div>
 
           {/* Third Row: House */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormattedInput
+            <PercentageInput
               label="House %"
               value={deal.house_percent}
-              onChange={(v) => updateField('house_percent', v === '' ? null : parseFloat(v))}
-              format={(val) => formatPercent(val, 1)}
-              editingField={editingField}
-              setEditingField={setEditingField}
-              fieldKey="house_percent"
+              onChange={(v: number | null) => updateField('house_percent', v)}
             />
             
             <div>
@@ -452,14 +490,10 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
 
           {/* Fourth Row: Origination */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormattedInput
+            <PercentageInput
               label="Origination %"
               value={deal.origination_percent}
-              onChange={(v) => updateField('origination_percent', v === '' ? null : parseFloat(v))}
-              format={(val) => formatPercent(val, 1)}
-              editingField={editingField}
-              setEditingField={setEditingField}
-              fieldKey="origination_percent"
+              onChange={(v: number | null) => updateField('origination_percent', v)}
             />
             
             <div>
@@ -472,14 +506,10 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
 
           {/* Fifth Row: Site */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormattedInput
+            <PercentageInput
               label="Site %"
               value={deal.site_percent}
-              onChange={(v) => updateField('site_percent', v === '' ? null : parseFloat(v))}
-              format={(val) => formatPercent(val, 1)}
-              editingField={editingField}
-              setEditingField={setEditingField}
-              fieldKey="site_percent"
+              onChange={(v: number | null) => updateField('site_percent', v)}
             />
             
             <div>
@@ -492,14 +522,10 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
 
           {/* Sixth Row: Deal */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormattedInput
+            <PercentageInput
               label="Deal %"
               value={deal.deal_percent}
-              onChange={(v) => updateField('deal_percent', v === '' ? null : parseFloat(v))}
-              format={(val) => formatPercent(val, 1)}
-              editingField={editingField}
-              setEditingField={setEditingField}
-              fieldKey="deal_percent"
+              onChange={(v: number | null) => updateField('deal_percent', v)}
             />
             
             <div>
