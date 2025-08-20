@@ -8,6 +8,7 @@ import { FloatingPanelContainer } from "../components/FloatingPanelContainer";
 import { FloatingContactPanel } from "../components/FloatingContactPanel";
 import { useDealContacts } from "../hooks/useDealContacts";
 import CommissionTab from '../components/CommissionTab';
+import DealHeaderBar from '../components/DealHeaderBar';
 
 export default function DealDetailsPage() {
   const { dealId } = useParams();
@@ -33,6 +34,11 @@ export default function DealDetailsPage() {
     if (dealId) fetchDeal();
   }, [dealId]);
 
+  // Shared function to update deal state - used by both Overview and Commission tabs
+  const handleDealUpdate = (updatedDeal: any) => {
+    setDeal(updatedDeal);
+  };
+
   if (!deal) return <div className="p-4">Loading...</div>;
 
   return (
@@ -44,42 +50,45 @@ export default function DealDetailsPage() {
         activityCount={0}     // TODO: Add activity count when activity is implemented
         paymentsCount={0}     // TODO: Add payments count when payments are implemented
       >
+        {/* Deal Header Bar - Always visible at top */}
+        <DealHeaderBar deal={deal} />
+        
         <div className="p-4 max-w-4xl mx-auto">
-  {/* Tab Navigation */}
-  <div className="border-b border-gray-200 mb-6">
-    <nav className="-mb-px flex space-x-8">
-      <button
-        onClick={() => setActiveTab('overview')}
-        className={`py-2 px-1 border-b-2 font-medium text-sm ${
-          activeTab === 'overview'
-            ? 'border-blue-500 text-blue-600'
-            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-        }`}
-      >
-        Overview
-      </button>
-      <button
-        onClick={() => setActiveTab('commission')}
-        className={`py-2 px-1 border-b-2 font-medium text-sm ${
-          activeTab === 'commission'
-            ? 'border-blue-500 text-blue-600'
-            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-        }`}
-      >
-        Commission
-      </button>
-    </nav>
-  </div>
+          {/* Tab Navigation */}
+          <div className="border-b border-gray-200 mb-6">
+            <nav className="-mb-px flex space-x-8">
+              <button
+                onClick={() => setActiveTab('overview')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'overview'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Overview
+              </button>
+              <button
+                onClick={() => setActiveTab('commission')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'commission'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Commission
+              </button>
+            </nav>
+          </div>
 
-  {/* Tab Content */}
-  {activeTab === 'overview' && (
-    <DealDetailsForm deal={deal} onSave={(updated) => setDeal(updated)} />
-  )}
+          {/* Tab Content */}
+          {activeTab === 'overview' && (
+            <DealDetailsForm deal={deal} onSave={handleDealUpdate} />
+          )}
 
-  {activeTab === 'commission' && (
-    <CommissionTab dealId={dealId!} />
-  )}
-</div>
+          {activeTab === 'commission' && (
+            <CommissionTab dealId={dealId!} deal={deal} onDealUpdate={handleDealUpdate} />
+          )}
+        </div>
       </FloatingPanelContainer>
       
       {/* Floating Contact Panel */}

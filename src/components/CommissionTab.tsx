@@ -1,61 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-
-// Types for our commission data
-interface Broker {
-  id: string;
-  name: string;
-  active: boolean;
-}
-
-interface CommissionSplit {
-  id: string;
-  split_name: string;
-  broker_id: string;
-  broker_name: string;
-  split_origination_percent: number;
-  split_origination_usd: number;
-  split_site_percent: number;
-  split_site_usd: number;
-  split_deal_percent: number;
-  split_deal_usd: number;
-  split_broker_total: number;
-}
-
-interface Deal {
-  id: string;
-  deal_name: string;
-  fee: number;
-  commission_percent: number;
-  referral_fee_percent: number;
-  referral_fee_usd: number;
-  referral_payee: string;
-  gci: number;
-  agci: number;
-  house_percent: number;
-  house_usd: number;
-  origination_percent: number;
-  origination_usd: number;
-  site_percent: number;
-  site_usd: number;
-  deal_percent: number;
-  deal_usd: number;
-  number_of_payments: number;
-  sf_multiple_payments: boolean;
-}
+import { Deal, Broker, CommissionSplit, DealUpdateHandler } from '../lib/types';
 
 interface CommissionTabProps {
   dealId: string;
+  deal: Deal;
+  onDealUpdate: DealUpdateHandler;
 }
 
-const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
-  const [deal, setDeal] = useState<Deal | null>(null);
+const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, onDealUpdate }) => {
+  const [deal, setDeal] = useState<Deal | null>(propDeal);
   const [commissionSplits, setCommissionSplits] = useState<CommissionSplit[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // Update local deal state when prop changes
+  useEffect(() => {
+    setDeal(propDeal);
+  }, [propDeal]);
   const [editingField, setEditingField] = useState<string | null>(null);
 
   useEffect(() => {
@@ -66,15 +31,8 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
     try {
       setLoading(true);
       
-      // Fetch deal data
-      const { data: dealData, error: dealError } = await supabase
-        .from('deal')
-        .select('*')
-        .eq('id', dealId)
-        .single();
-
-      if (dealError) throw dealError;
-      setDeal(dealData);
+      // Don't fetch deal data - we get it from props
+      // Just fetch commission splits, brokers, and payments
 
       // Fetch commission splits
       const { data: splitsData, error: splitsError } = await supabase
@@ -120,15 +78,19 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
 
   // Commission calculation logic
   const calculateCommissionAmounts = (dealData: Deal): Deal => {
-    const fee = dealData.fee || 0;
+    const dealValue = dealData.deal_value || 0;
     const commissionPercent = dealData.commission_percent || 0;
     const referralFeePercent = dealData.referral_fee_percent || 0;
     
-    // Calculate GCI (Gross Commission Income)
-    const gci = fee * (commissionPercent / 100);
+    // Calculate Fee (same logic as DealDetailsForm)
+    const calculatedFee = dealData.flat_fee_override ?? (dealValue * (commissionPercent / 100));
     
-    // Calculate Referral Fee USD
-    const referralFeeUsd = fee * (referralFeePercent / 100);
+    // Calculate GCI (Gross Commission Income) - should this be from the fee or deal value?
+    // Based on typical commission structures, GCI is usually the total commission earned
+    const gci = calculatedFee;
+    
+    // Calculate Referral Fee USD - this should be from the total fee
+    const referralFeeUsd = calculatedFee * (referralFeePercent / 100);
     
     // Calculate AGCI (Adjusted GCI) = GCI - Referral Fee
     const agci = gci - referralFeeUsd;
@@ -141,6 +103,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
     
     return {
       ...dealData,
+      fee: Math.round(calculatedFee * 100) / 100,
       gci: Math.round(gci * 100) / 100,
       referral_fee_usd: Math.round(referralFeeUsd * 100) / 100,
       agci: Math.round(agci * 100) / 100,
@@ -151,7 +114,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
     };
   };
 
-  // Update field function with explicit typing
+  // Update field function with shared state management
   const updateField = async (field: string, value: any) => {
     if (!deal) return;
     
@@ -160,7 +123,8 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
       [field]: value
     };
     
-    // If any percentage field changed, recalculate all amounts
+    // If commission_percent changes, we need to recalculate the fee AND all commission amounts
+    // If other percentage fields change, we only need to recalculate commission amounts
     const fieldsToRecalculate = [
       'commission_percent', 'referral_fee_percent', 
       'house_percent', 'origination_percent', 'site_percent', 'deal_percent'
@@ -180,7 +144,9 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
 
       if (error) throw error;
       
+      // Update both local state AND parent state
       setDeal(finalDeal);
+      onDealUpdate(finalDeal);
     } catch (err) {
       alert(`Error saving: ${err instanceof Error ? err.message : 'Failed to save'}`);
     }
@@ -291,24 +257,30 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
     );
   };
 
-  // Validation helper
+  // Validation helper - SIMPLIFIED to avoid type issues
   const getValidationWarnings = (dealData: Deal) => {
-    const warnings = [];
-    // Only Origination + Site + Deal should equal 100% (House is separate)
-    const brokerSplitTotal = (dealData.origination_percent || 0) + 
-                            (dealData.site_percent || 0) + 
-                            (dealData.deal_percent || 0);
+    const warnings: string[] = [];
     
-    if (brokerSplitTotal > 100) {
-      warnings.push(`Broker split percentages total ${brokerSplitTotal.toFixed(1)}% (over 100%)`);
+    // Safely get values with defaults
+    const origination = Number(dealData.origination_percent) || 0;
+    const site = Number(dealData.site_percent) || 0;
+    const deal = Number(dealData.deal_percent) || 0;
+    const commission = Number(dealData.commission_percent) || 0;
+    const referral = Number(dealData.referral_fee_percent) || 0;
+    
+    // Calculate total
+    const total = origination + site + deal;
+    
+    if (total > 100) {
+      warnings.push('Broker split percentages total ' + total.toFixed(1) + '% (over 100%)');
     }
     
-    if (dealData.commission_percent && dealData.commission_percent > 50) {
-      warnings.push(`Commission rate ${dealData.commission_percent}% seems high`);
+    if (commission > 50) {
+      warnings.push('Commission rate ' + commission.toFixed(1) + '% seems high');
     }
     
-    if (dealData.referral_fee_percent && dealData.referral_fee_percent > 100) {
-      warnings.push(`Referral fee ${dealData.referral_fee_percent}% cannot exceed 100%`);
+    if (referral > 100) {
+      warnings.push('Referral fee ' + referral.toFixed(1) + '% cannot exceed 100%');
     }
     
     return warnings;
@@ -419,13 +391,13 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
             <PercentageInput
               label="Commission Rate %"
               value={deal.commission_percent}
-              onChange={(v: number | null) => updateField('commission_percent', v)}
+              onChange={(v) => updateField('commission_percent', v)}
             />
             
             <PercentageInput
               label="Referral Fee %"
               value={deal.referral_fee_percent}
-              onChange={(v: number | null) => updateField('referral_fee_percent', v)}
+              onChange={(v) => updateField('referral_fee_percent', v)}
             />
             
             <div>
@@ -452,9 +424,13 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Referral Payee</label>
-              <div className="text-lg font-semibold text-gray-900 px-3 py-2 rounded-md">
-                {deal.referral_payee || 'None'}
-              </div>
+              <input
+                type="text"
+                value={deal.referral_payee || ''}
+                onChange={(e) => updateField('referral_payee', e.target.value)}
+                placeholder="Enter referral payee name"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg font-semibold"
+              />
             </div>
             
             <div>
@@ -477,7 +453,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
             <PercentageInput
               label="House %"
               value={deal.house_percent}
-              onChange={(v: number | null) => updateField('house_percent', v)}
+              onChange={(v) => updateField('house_percent', v)}
             />
             
             <div>
@@ -493,7 +469,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
             <PercentageInput
               label="Origination %"
               value={deal.origination_percent}
-              onChange={(v: number | null) => updateField('origination_percent', v)}
+              onChange={(v) => updateField('origination_percent', v)}
             />
             
             <div>
@@ -509,7 +485,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
             <PercentageInput
               label="Site %"
               value={deal.site_percent}
-              onChange={(v: number | null) => updateField('site_percent', v)}
+              onChange={(v) => updateField('site_percent', v)}
             />
             
             <div>
@@ -525,7 +501,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId }) => {
             <PercentageInput
               label="Deal %"
               value={deal.deal_percent}
-              onChange={(v: number | null) => updateField('deal_percent', v)}
+              onChange={(v) => updateField('deal_percent', v)}
             />
             
             <div>

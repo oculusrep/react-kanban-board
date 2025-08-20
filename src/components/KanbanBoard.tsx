@@ -6,21 +6,9 @@ import {
   Draggable,
 } from "@hello-pangea/dnd";
 import { Link } from "react-router-dom";
-import useKanbanData from "../hooks/useDeals";
+import useKanbanData from "../hooks/useKanbanData";
 import { supabase } from "../lib/supabaseClient";
-
-// Define the card type to match what useKanbanData returns
-interface DealCard {
-  id: string;
-  deal_name: string | null;
-  fee: number | null;
-  deal_value: number | null;
-  closed_date: string | null;
-  stage_id: string | null;
-  kanban_position: number | null;
-  client_name: string | null;
-  created_at: string | null;
-}
+import { DealCard } from "../lib/types"; // Import from central types
 
 export default function KanbanBoard() {
   const { columns, cards, loading } = useKanbanData();

@@ -1,25 +1,7 @@
-// Fixed version with correct column names
+// Updated to use central types
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-
-interface DealCard {
-  id: string;
-  deal_name: string | null;
-  fee: number | null;
-  deal_value: number | null;
-  closed_date: string | null;
-  stage_id: string | null;
-  kanban_position: number | null;
-  client_name: string | null;
-}
-
-interface KanbanColumn {
-  id: string;
-  label: string;
-  description: string | null;
-  sort_order: number | null;
-  active: boolean | null;
-}
+import { DealCard, KanbanColumn } from '../lib/types';
 
 export default function useKanbanData() {
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
@@ -29,70 +11,91 @@ export default function useKanbanData() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        console.log('🔍 Fetching kanban data with correct columns...');
+        console.log('🔍 Fetching kanban data (safe version)...');
         
-        // Fetch stages using the correct column names (label, not name)
+        // Fetch stages (now including all active stages, including Lost)
         const { data: stageData, error: stageError } = await supabase
           .from('deal_stage')
           .select('id, label, description, sort_order, active')
-          .eq('active', true)  // Only get active stages
+          .eq('active', true)
           .order('sort_order', { ascending: true });
 
         console.log('📊 Stages:', stageData);
-        console.log('❌ Stage error:', stageError);
+        if (stageError) {
+          console.error('❌ Stage error:', stageError);
+          throw stageError;
+        }
 
-        if (stageError) throw stageError;
-
-        // Fetch deals with all the fields we need
+        // Fetch deals WITHOUT client join first
         const { data: dealData, error: dealError } = await supabase
           .from('deal')
-          .select(`
-            id,
-            deal_name,
-            fee,
-            deal_value,
-            closed_date,
-            stage_id,
-            kanban_position,
-            client (
-              client_name
-            )
-          `)
+          .select('id, deal_name, fee, deal_value, closed_date, stage_id, kanban_position, client_id, created_at')
           .order('kanban_position', { ascending: true });
 
         console.log('💼 Deals:', dealData?.length || 0, 'deals fetched');
-        console.log('❌ Deal error:', dealError);
+        if (dealError) {
+          console.error('❌ Deal error:', dealError);
+          throw dealError;
+        }
 
-        if (dealError) throw dealError;
+        // Fetch clients separately
+        const { data: clientData, error: clientError } = await supabase
+          .from('client')
+          .select('id, client_name');
 
-        // Transform deals with proper type handling
-        const transformedCards: DealCard[] = (dealData as any[]).map((deal: any) => {
-          let clientName: string | null = null;
-          if (deal.client) {
-            if (Array.isArray(deal.client)) {
-              clientName = deal.client[0]?.client_name || null;
-            } else {
-              clientName = deal.client.client_name || null;
-            }
-          }
+        console.log('👥 Clients:', clientData?.length || 0, 'clients fetched');
+        if (clientError) {
+          console.warn('⚠️ Client error (non-fatal):', clientError);
+        }
 
-          return {
-            id: deal.id,
-            deal_name: deal.deal_name,
-            fee: deal.fee,
-            deal_value: deal.deal_value,
-            closed_date: deal.closed_date,
-            stage_id: deal.stage_id,
-            kanban_position: deal.kanban_position,
-            client_name: clientName,
-          };
+        // Create client lookup map
+        const clientMap = new Map<string, string>();
+        clientData?.forEach(client => {
+          clientMap.set(client.id, client.client_name);
         });
 
-        // Filter cards to only include those in valid stages and with non-null stage_id
+        // Transform deals using central DealCard type
+        const transformedCards: DealCard[] = dealData.map(deal => ({
+          id: deal.id,
+          deal_name: deal.deal_name,
+          fee: deal.fee,
+          deal_value: deal.deal_value,
+          closed_date: deal.closed_date,
+          stage_id: deal.stage_id,
+          kanban_position: deal.kanban_position,
+          client_name: deal.client_id ? clientMap.get(deal.client_id) || null : null,
+          created_at: deal.created_at,
+        }));
+
+        // Create a map of stage labels for filtering
+        const stageMap = new Map<string, string>();
+        stageData.forEach(stage => {
+          stageMap.set(stage.id, stage.label);
+        });
+
+        // Filter cards based on stage rules
         const validStageIds = new Set(stageData.map(stage => stage.id));
-        const filteredCards = transformedCards.filter(card => 
-          card.stage_id && validStageIds.has(card.stage_id)
-        );
+        const twoYearsAgo = new Date();
+        twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+
+        const filteredCards = transformedCards.filter(card => {
+          // Must have valid stage_id
+          if (!card.stage_id || !validStageIds.has(card.stage_id)) {
+            return false;
+          }
+
+          // Special filtering for "Lost" deals
+          const stageLabel = stageMap.get(card.stage_id);
+          if (stageLabel === 'Lost') {
+            // Only include Lost deals created within the last 2 years
+            if (!card.created_at) return false;
+            const createdDate = new Date(card.created_at);
+            return createdDate >= twoYearsAgo;
+          }
+
+          // All other stages: include all deals
+          return true;
+        });
 
         console.log('🃏 Final cards:', filteredCards.length);
         console.log('📊 Final columns:', stageData.length);
