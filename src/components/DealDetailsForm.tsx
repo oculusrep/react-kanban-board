@@ -10,7 +10,6 @@ import SiteSubmitSelector from "./SiteSubmitSelector";
 import PropertyUnitSelector from "./PropertyUnitSelector";
 import PropertySelector from "./PropertySelector";
 
-
 // 🔹 Stage → Default Probability map (integer percent 0..100)
 const STAGE_PROBABILITY: Record<string, number> = {
   "Negotiating LOI": 50,
@@ -89,14 +88,14 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
     supabase.from("deal_stage").select("id, label").then(({ data }) => data && setStageOptions(data));
     supabase.from("deal_team").select("id, label").then(({ data }) => data && setTeamOptions(data));
     // Fetch updated_by user name if exists
-  if (deal.updated_by_id) {
-    supabase
-      .from("user")
-      .select("name")
-      .eq("id", deal.updated_by_id)
-      .maybeSingle()
-      .then(({ data }) => data?.name && setUpdatedByName(data.name));
-  }
+    if (deal.updated_by_id) {
+      supabase
+        .from("user")
+        .select("name")
+        .eq("id", deal.updated_by_id)
+        .maybeSingle()
+        .then(({ data }) => data?.name && setUpdatedByName(data.name));
+    }
 
     if (deal.client_id) {
       supabase
@@ -108,8 +107,7 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
     } else {
       setClientSearch("");
     }
-
-      }, [deal.client_id, deal.property_id]);
+  }, [deal.client_id, deal.property_id]);
 
   // Autocomplete: client
   useEffect(() => {
@@ -128,15 +126,57 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
     return () => clearTimeout(handle);
   }, [clientSearch]);
 
-
   const updateField = (field: keyof Deal, value: any) => {
     if (field === "probability") {
       setProbabilityManuallySet(true);
     }
-    setForm(prev => ({ ...prev, [field]: value }));
-    // Live validation on key fields
+    
+    // Update form state
+    const updatedForm = { ...form, [field]: value };
+    setForm(updatedForm);
+    
+    // FIXED: Only validate the specific field that changed
     if (["deal_name", "deal_value", "commission_percent"].includes(field as string)) {
-      setErrors(prev => ({ ...prev, ...validateField(field as keyof Deal, value) }));
+      const fieldErrors = validateField(field as keyof Deal, value);
+      setErrors(prev => {
+  const newErrors = { ...prev };
+  const fieldError = fieldErrors[field as string];
+  if (fieldError) {
+    newErrors[field as string] = fieldError;  // ✅ Set error string
+  } else {
+    delete newErrors[field as string];        // ✅ Remove error completely
+  }
+  return newErrors;
+});
+    }
+    
+    // FIXED: Auto-save commission_percent changes immediately to sync with Commission tab
+    if (field === "commission_percent") {
+      // Calculate the fee with the new commission percentage
+      const calculatedFee = updatedForm.flat_fee_override ?? 
+        (updatedForm.deal_value ?? 0) * ((value ?? 0) / 100);
+      
+      // Save to database immediately
+      const saveCommissionChange = async () => {
+        const { data, error } = await supabase
+          .from("deal")
+          .update({ 
+            commission_percent: value,
+            fee: calculatedFee
+          })
+          .eq("id", form.id)
+          .select()
+          .single();
+        
+        if (error) {
+          console.error("Error auto-saving commission:", error);
+        } else if (data) {
+          // Update parent state to sync with Commission tab
+          onSave(data);
+        }
+      };
+      
+      saveCommissionChange();
     }
   };
 
@@ -190,18 +230,15 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
     const out: Record<string, string> = {};
     if (field === "deal_name") {
       if (!value || String(value).trim().length === 0) out.deal_name = "Opportunity Name is required.";
-      else delete out.deal_name;
     }
     if (field === "deal_value") {
       if (value === null || value === "" || isNaN(Number(value))) out.deal_value = "Enter a number.";
       else if (Number(value) < 0) out.deal_value = "Must be ≥ 0.";
-      else delete out.deal_value;
     }
     if (field === "commission_percent") {
       const num = Number(value);
       if (value === null || value === "" || isNaN(num)) out.commission_percent = "Enter a percent.";
       else if (num < 0 || num > 100) out.commission_percent = "0–100 only.";
-      else delete out.commission_percent;
     }
     return out;
   };
@@ -221,22 +258,23 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
 
     setSaving(true);
     const updatePayload = {
-      deal_name: form.deal_name,
-      client_id: form.client_id,
-      property_id: form.property_id,
-      property_unit_id: form.property_unit_id,
-      site_submit_id: form.site_submit_id,
-      deal_value: form.deal_value,
-      commission_percent: form.commission_percent,
-      flat_fee_override: form.flat_fee_override,
-      fee: calculatedFee,
-      target_close_date: form.target_close_date,
-      loi_signed_date: form.loi_signed_date,
-      closed_date: form.closed_date,
-      probability: form.probability,
-      deal_team_id: form.deal_team_id,
-      stage_id: form.stage_id,
-    };
+  deal_name: form.deal_name,
+  client_id: form.client_id,
+  property_id: form.property_id,
+  property_unit_id: form.property_unit_id,
+  site_submit_id: form.site_submit_id,
+  deal_value: form.deal_value,
+  commission_percent: form.commission_percent,
+  flat_fee_override: form.flat_fee_override,
+  fee: calculatedFee,
+  target_close_date: form.target_close_date,
+  loi_signed_date: form.loi_signed_date,
+  closed_date: form.closed_date,
+  probability: form.probability,
+  deal_team_id: form.deal_team_id,
+  stage_id: form.stage_id,
+  updated_at: new Date().toISOString(), // ADD THIS LINE
+};
     const { data, error } = await supabase
       .from("deal")
       .update(updatePayload)
@@ -275,31 +313,31 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
             }}
           />
 
-{/* Row 2: Property (left) + Property Unit (right) */}
-<PropertySelector
-  value={form.property_id}
-  onChange={(id) => updateField("property_id", id)}
-  label="Property"
-/>
-<PropertyUnitSelector
-  value={form.property_unit_id}
-  onChange={(id) => updateField("property_unit_id", id)}
-  propertyId={form.property_id} // Filter units by selected property
-  label="Property Unit"
-/>
+          {/* Row 2: Property (left) + Property Unit (right) */}
+          <PropertySelector
+            value={form.property_id}
+            onChange={(id) => updateField("property_id", id)}
+            label="Property"
+          />
+          <PropertyUnitSelector
+            value={form.property_unit_id}
+            onChange={(id) => updateField("property_unit_id", id)}
+            propertyId={form.property_id} // Filter units by selected property
+            label="Property Unit"
+          />
 
-{/* Row 3: Site Submit (left) + Deal Team (right) */}
-<SiteSubmitSelector
-  value={form.site_submit_id}
-  onChange={(id) => updateField("site_submit_id", id)}
-  label="Site Submit"
-/>
-<Select
-  label="Deal Team"
-  value={form.deal_team_id}
-  onChange={(v) => updateField("deal_team_id", v)}
-  options={teamOptions}
-/>
+          {/* Row 3: Site Submit (left) + Deal Team (right) */}
+          <SiteSubmitSelector
+            value={form.site_submit_id}
+            onChange={(id) => updateField("site_submit_id", id)}
+            label="Site Submit"
+          />
+          <Select
+            label="Deal Team"
+            value={form.deal_team_id}
+            onChange={(v) => updateField("deal_team_id", v)}
+            options={teamOptions}
+          />
 
           {errors.deal_name && <FieldError msg={errors.deal_name} className="col-span-2" />}
         </div>
@@ -398,38 +436,36 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
             disabled={!closedEnabled}
             tooltip={!closedEnabled ? "Set Stage to 'Closed Paid' to enable" : undefined}
           />
-
-          {/* Note: Deal Team moved to Deal Context section */}
         </div>
       </Section>
 
-{/* Sticky Save Bar */}
-<div className="sticky bottom-0 left-0 right-0 bg-white border-t mt-6 p-3 flex items-center justify-between shadow-sm">
-  <div className="flex items-center gap-2 text-xs text-gray-500">
-    {form.updated_at ? (
-      <>
-        <span>Last Updated by</span>
-        <span className="font-medium">{updatedByName || "Unknown"}</span>
-        <span>{new Date(form.updated_at).toLocaleDateString()} {new Date(form.updated_at).toLocaleTimeString()}</span>
-      </>
-    ) : (
-      <span>Not yet saved</span>
-    )}
-  </div>
-  <div className="flex items-center gap-3">
-    <span className="text-xs text-gray-500">
-      {stageLabel ? `Stage: ${stageLabel}` : "No stage selected"}
-    </span>
-    <button
-      onClick={handleSave}
-      disabled={saving || Object.keys(errors).length > 0}
-      className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60"
-    >
-      {saving ? "Saving..." : "Save Deal"}
-    </button>
-  </div>
-</div>
-</div>
+      {/* Sticky Save Bar */}
+      <div className="sticky bottom-0 left-0 right-0 bg-white border-t mt-6 p-3 flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          {form.updated_at ? (
+            <>
+              <span>Last Updated by</span>
+              <span className="font-medium">{updatedByName || "Unknown"}</span>
+              <span>{new Date(form.updated_at).toLocaleDateString()} {new Date(form.updated_at).toLocaleTimeString()}</span>
+            </>
+          ) : (
+            <span>Not yet saved</span>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-500">
+            {stageLabel ? `Stage: ${stageLabel}` : "No stage selected"}
+          </span>
+          <button
+            onClick={handleSave}
+            disabled={saving || Object.keys(errors).length > 0}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60"
+          >
+            {saving ? "Saving..." : "Save Deal"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

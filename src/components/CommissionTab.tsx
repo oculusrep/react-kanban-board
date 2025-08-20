@@ -16,12 +16,12 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [editingField, setEditingField] = useState<string | null>(null);
 
   // Update local deal state when prop changes
   useEffect(() => {
     setDeal(propDeal);
   }, [propDeal]);
-  const [editingField, setEditingField] = useState<string | null>(null);
 
   useEffect(() => {
     fetchCommissionData();
@@ -31,9 +31,6 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
     try {
       setLoading(true);
       
-      // Don't fetch deal data - we get it from props
-      // Just fetch commission splits, brokers, and payments
-
       // Fetch commission splits
       const { data: splitsData, error: splitsError } = await supabase
         .from('commission_split')
@@ -85,18 +82,19 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
     // Calculate Fee (same logic as DealDetailsForm)
     const calculatedFee = dealData.flat_fee_override ?? (dealValue * (commissionPercent / 100));
     
-    // Calculate GCI (Gross Commission Income) - should this be from the fee or deal value?
-    // Based on typical commission structures, GCI is usually the total commission earned
-    const gci = calculatedFee;
-    
     // Calculate Referral Fee USD - this should be from the total fee
     const referralFeeUsd = calculatedFee * (referralFeePercent / 100);
+
+    // Calculate GCI (Gross Commission Income)
+    const gci = calculatedFee - referralFeeUsd;
     
-    // Calculate AGCI (Adjusted GCI) = GCI - Referral Fee
-    const agci = gci - referralFeeUsd;
+    // Calculate House USD = gci * house_percent
+    const houseUsd = gci * ((dealData.house_percent || 0) / 100);
+    
+    // Calculate AGCI (Adjusted GCI) = GCI - House USD
+    const agci = gci - houseUsd;
     
     // Calculate individual broker amounts from AGCI
-    const houseUsd = agci * ((dealData.house_percent || 0) / 100);
     const originationUsd = agci * ((dealData.origination_percent || 0) / 100);
     const siteUsd = agci * ((dealData.site_percent || 0) / 100);
     const dealUsd = agci * ((dealData.deal_percent || 0) / 100);
@@ -186,7 +184,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
     return `${percent.toFixed(1)}%`;
   };
 
-  // Simple percentage input component to avoid FormattedInput type issues
+  // Simple percentage input component to match Overview tab styling
   const PercentageInput = ({ 
     label, 
     value, 
@@ -236,7 +234,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
             onChange={(e) => setEditValue(e.target.value)}
             onBlur={handleSave}
             onKeyDown={handleKeyDown}
-            className="w-full px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg font-semibold"
+            className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
             autoFocus
           />
         </div>
@@ -245,10 +243,10 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
 
     return (
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+        <label className="block text-sm font-medium text-gray-700">{label}</label>
         <div
           onClick={handleStartEdit}
-          className="text-lg font-semibold cursor-pointer hover:bg-blue-50 px-3 py-2 rounded-md transition-colors border border-transparent hover:border-blue-200"
+          className="mt-1 block w-full rounded border-gray-300 shadow-sm cursor-pointer hover:bg-blue-50 px-3 py-2 transition-colors border border-transparent hover:border-blue-200 text-sm"
           title="Click to edit"
         >
           {displayValue}
@@ -286,10 +284,31 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
     return warnings;
   };
 
+  // Section component to match Overview tab styling
+  function Section({ title, help, children }: { title: string; help?: string; children: React.ReactNode }) {
+    return (
+      <section className="bg-white rounded-md border p-4 mb-4">
+        <div className="flex items-center gap-2 mb-3">
+          <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
+          {help && (
+            <span
+              className="text-gray-500 text-xs border rounded-full w-4 h-4 inline-flex items-center justify-center"
+              title={help}
+              aria-label={help}
+            >
+              i
+            </span>
+          )}
+        </div>
+        {children}
+      </section>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-lg text-gray-600">Loading commission data...</div>
+        <div className="text-sm text-gray-600">Loading commission data...</div>
       </div>
     );
   }
@@ -297,11 +316,11 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-red-800 mb-2">Error Loading Commission Data</h3>
-        <p className="text-red-600">{error}</p>
+        <h3 className="text-sm font-semibold text-red-800 mb-2">Error Loading Commission Data</h3>
+        <p className="text-sm text-red-600">{error}</p>
         <button 
           onClick={fetchCommissionData}
-          className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+          className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
         >
           Try Again
         </button>
@@ -312,7 +331,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
   if (!deal) {
     return (
       <div className="text-center text-gray-600 py-8">
-        <p>Deal not found</p>
+        <p className="text-sm">Deal not found</p>
       </div>
     );
   }
@@ -322,22 +341,22 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
   const validationWarnings = getValidationWarnings(deal);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Deal-Level Commission Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-blue-800 mb-1">Deal Fee</h3>
-          <p className="text-2xl font-bold text-blue-900">{formatCurrencyHelper(deal.fee)}</p>
+          <h3 className="text-xs font-medium text-blue-800 mb-1">Deal Fee</h3>
+          <p className="text-lg font-bold text-blue-900">{formatCurrencyHelper(deal.fee)}</p>
         </div>
         
         <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-purple-800 mb-1">Number of Payments</h3>
-          <p className="text-2xl font-bold text-purple-900">{deal.number_of_payments}</p>
+          <h3 className="text-xs font-medium text-purple-800 mb-1">Number of Payments</h3>
+          <p className="text-lg font-bold text-purple-900">{deal.number_of_payments}</p>
         </div>
         
         <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-orange-800 mb-1">Commission Rate</h3>
-          <p className="text-2xl font-bold text-orange-900">
+          <h3 className="text-xs font-medium text-orange-800 mb-1">Commission Rate</h3>
+          <p className="text-lg font-bold text-orange-900">
             {deal.commission_percent ? `${deal.commission_percent.toFixed(1)}%` : '0%'}
           </p>
         </div>
@@ -354,7 +373,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
             </div>
             <div className="ml-3">
               <h3 className="text-sm font-medium text-yellow-800">Validation Warnings</h3>
-              <ul className="mt-1 text-sm text-yellow-700 list-disc list-inside">
+              <ul className="mt-1 text-xs text-yellow-700 list-disc list-inside">
                 {validationWarnings.map((warning, index) => (
                   <li key={index}>{warning}</li>
                 ))}
@@ -365,25 +384,13 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
       )}
 
       {/* Deal-Level Commission Fields */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-          <h3 className="text-lg font-semibold text-gray-900">Commission Details</h3>
-          <div className="flex space-x-3">
-            {hasPayments && (
-              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                {payments.length} payments generated
-              </span>
-            )}
-            <span className="text-sm text-gray-500">Click any percentage to edit</span>
-          </div>
-        </div>
-
-        <div className="p-6 space-y-6">
+      <Section title="Commission Details" help="Set commission percentages and amounts. Click any percentage to edit.">
+        <div className="space-y-4">
           {/* Top Row */}
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Deal Fee</label>
-              <div className="text-lg font-semibold text-gray-900 px-3 py-2 rounded-md">
+              <label className="block text-sm font-medium text-gray-700">Deal Fee</label>
+              <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
                 {formatCurrencyHelper(deal.fee)}
               </div>
             </div>
@@ -401,48 +408,48 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
             />
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Referral Fee $</label>
-              <div className="text-lg font-semibold text-gray-600 bg-gray-50 px-3 py-2 rounded-md">
+              <label className="block text-sm font-medium text-gray-700">Referral Fee $</label>
+              <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
                 {formatCurrencyHelper(deal.referral_fee_usd)}
               </div>
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Number of Payments</label>
-              <input
-                type="number"
-                step="1"
-                min="1"
-                value={deal.number_of_payments || 1}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateField('number_of_payments', parseInt(e.target.value) || 1)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg font-semibold"
-              />
-            </div>
+  <label className="block text-sm font-medium text-gray-700">Number of Payments</label>
+  <input
+    type="number"
+    step="1"
+    min="1"
+    value={deal.number_of_payments || 1}
+    onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateField('number_of_payments', parseInt(e.target.value) || 1)}
+    className="mt-1 block w-full rounded border-gray-300 shadow-sm cursor-pointer hover:bg-blue-50 px-3 py-2 transition-colors border border-transparent hover:border-blue-200 text-sm"
+  />
+</div>
           </div>
 
           {/* Second Row: Referral Payee and GCI/AGCI */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Referral Payee</label>
+              <label className="block text-sm font-medium text-gray-700">Referral Payee</label>
               <input
                 type="text"
                 value={deal.referral_payee || ''}
                 onChange={(e) => updateField('referral_payee', e.target.value)}
                 placeholder="Enter referral payee name"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg font-semibold"
+                className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
               />
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">GCI</label>
-              <div className="text-lg font-semibold text-gray-600 bg-gray-50 px-3 py-2 rounded-md">
+              <label className="block text-sm font-medium text-gray-700">GCI</label>
+              <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
                 {formatCurrencyHelper(deal.gci)}
               </div>
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">AGCI</label>
-              <div className="text-lg font-semibold text-gray-600 bg-gray-50 px-3 py-2 rounded-md">
+              <label className="block text-sm font-medium text-gray-700">AGCI</label>
+              <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
                 {formatCurrencyHelper(deal.agci)}
               </div>
             </div>
@@ -457,8 +464,8 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
             />
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">House $</label>
-              <div className="text-lg font-semibold text-gray-600 bg-gray-50 px-3 py-2 rounded-md">
+              <label className="block text-sm font-medium text-gray-700">House $</label>
+              <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
                 {formatCurrencyHelper(deal.house_usd)}
               </div>
             </div>
@@ -473,8 +480,8 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
             />
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Origination $</label>
-              <div className="text-lg font-semibold text-gray-600 bg-gray-50 px-3 py-2 rounded-md">
+              <label className="block text-sm font-medium text-gray-700">Origination $</label>
+              <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
                 {formatCurrencyHelper(deal.origination_usd)}
               </div>
             </div>
@@ -489,8 +496,8 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
             />
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Site $</label>
-              <div className="text-lg font-semibold text-gray-600 bg-gray-50 px-3 py-2 rounded-md">
+              <label className="block text-sm font-medium text-gray-700">Site $</label>
+              <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
                 {formatCurrencyHelper(deal.site_usd)}
               </div>
             </div>
@@ -505,8 +512,8 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
             />
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Deal $</label>
-              <div className="text-lg font-semibold text-gray-600 bg-gray-50 px-3 py-2 rounded-md">
+              <label className="block text-sm font-medium text-gray-700">Deal $</label>
+              <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
                 {formatCurrencyHelper(deal.deal_usd)}
               </div>
             </div>
@@ -514,8 +521,8 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
 
           {/* Broker Percentage Summary */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h4 className="text-sm font-medium text-blue-800 mb-2">Broker Split Summary (Origination + Site + Deal)</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <h4 className="text-xs font-medium text-blue-800 mb-2">Broker Split Summary (Origination + Site + Deal)</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
               <div>
                 <span className="text-blue-700">Origination:</span> {formatPercentHelper(deal.origination_percent)}
               </div>
@@ -538,31 +545,28 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
             </div>
           </div>
         </div>
-      </div>
+      </Section>
 
       {/* Commission Splits Table */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-          <h3 className="text-lg font-semibold text-gray-900">Broker Commission Splits</h3>
-          <div className="flex space-x-3">
-            <button
-              onClick={generatePayments}
-              disabled={!canGeneratePayments || isGenerating}
-              className={`px-4 py-2 rounded font-medium ${
-                canGeneratePayments && !isGenerating
-                  ? 'bg-green-600 text-white hover:bg-green-700' 
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              }`}
-            >
-              {isGenerating ? 'Generating...' : 'Generate Payments'}
-            </button>
-          </div>
+      <Section title="Broker Commission Splits" help="Individual broker splits imported from Salesforce.">
+        <div className="flex justify-end mb-3">
+          <button
+            onClick={generatePayments}
+            disabled={!canGeneratePayments || isGenerating}
+            className={`px-4 py-2 rounded font-medium text-sm ${
+              canGeneratePayments && !isGenerating
+                ? 'bg-green-600 text-white hover:bg-green-700' 
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            }`}
+          >
+            {isGenerating ? 'Generating...' : 'Generate Payments'}
+          </button>
         </div>
 
         {commissionSplits.length === 0 ? (
-          <div className="px-6 py-8 text-center text-gray-500">
-            <p>No commission splits found for this deal.</p>
-            <p className="text-sm mt-1">Commission splits are imported from Salesforce.</p>
+          <div className="text-center text-gray-500 py-8">
+            <p className="text-sm">No commission splits found for this deal.</p>
+            <p className="text-xs mt-1">Commission splits are imported from Salesforce.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -591,19 +595,19 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
                   <tr key={split.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{split.broker_name}</div>
-                      <div className="text-sm text-gray-500">{split.split_name}</div>
+                      <div className="text-xs text-gray-500">{split.split_name}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">{formatPercentHelper(split.split_origination_percent)}</div>
-                      <div className="text-sm text-gray-500">{formatCurrencyHelper(split.split_origination_usd)}</div>
+                      <div className="text-xs text-gray-500">{formatCurrencyHelper(split.split_origination_usd)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">{formatPercentHelper(split.split_site_percent)}</div>
-                      <div className="text-sm text-gray-500">{formatCurrencyHelper(split.split_site_usd)}</div>
+                      <div className="text-xs text-gray-500">{formatCurrencyHelper(split.split_site_usd)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">{formatPercentHelper(split.split_deal_percent)}</div>
-                      <div className="text-sm text-gray-500">{formatCurrencyHelper(split.split_deal_usd)}</div>
+                      <div className="text-xs text-gray-500">{formatCurrencyHelper(split.split_deal_usd)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-semibold text-gray-900">{formatCurrencyHelper(split.split_broker_total)}</div>
@@ -614,7 +618,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
             </table>
           </div>
         )}
-      </div>
+      </Section>
 
       {/* Payment Generation Status */}
       {!canGeneratePayments && commissionSplits.length > 0 && (
@@ -629,7 +633,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
               <h3 className="text-sm font-medium text-yellow-800">
                 Payments Already Generated
               </h3>
-              <p className="mt-1 text-sm text-yellow-700">
+              <p className="mt-1 text-xs text-yellow-700">
                 This deal already has {payments.length} payment{payments.length !== 1 ? 's' : ''} generated. 
                 To regenerate payments, you would need to delete the existing ones first.
               </p>
@@ -650,7 +654,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
               <h3 className="text-sm font-medium text-blue-800">
                 No Commission Splits Found
               </h3>
-              <p className="mt-1 text-sm text-blue-700">
+              <p className="mt-1 text-xs text-blue-700">
                 Commission splits are imported from Salesforce. If this deal should have commission data, 
                 check that it exists in Salesforce and run the migration again.
               </p>
