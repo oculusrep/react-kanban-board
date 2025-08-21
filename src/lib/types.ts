@@ -1,27 +1,27 @@
-// Central type definitions for the entire CRM project
-// This file serves as the single source of truth for all data types
+// Central type definitions for the CRM system
+// src/lib/types.ts
 
-// ===== DEAL TYPES =====
-
+// Core Business Entities
 export interface Deal {
-  // Core identifiers
   id: string;
+  dealId?: string; // For compatibility with existing code
   deal_name: string | null;
-  
-  // Financial fields
   deal_value: number | null;
-  fee: number | null;
-  flat_fee_override?: number | null;
+  stage: string | null;
+  close_date: string | null;
+  probability: number | null;
   
-  // Commission breakdown fields
+  // Commission fields
   commission_percent: number | null;
+  flat_fee_override: number | null;
+  fee: number | null;
+  
+  // Deal-level commission breakdown
   referral_fee_percent: number | null;
   referral_fee_usd: number | null;
   referral_payee_client_id: string | null;
   gci: number | null;
   agci: number | null;
-  
-  // Broker commission percentages
   house_percent: number | null;
   house_usd: number | null;
   origination_percent: number | null;
@@ -35,106 +35,53 @@ export interface Deal {
   number_of_payments: number | null;
   sf_multiple_payments: boolean | null;
   
-  // Workflow fields
-  stage_id: string | null;
-  closed_date: string | null;
-  created_at?: string | null;
-  
-  // Relationships
+  // Related entities
   client_id: string | null;
   property_id: string | null;
+  property_unit_id: string | null;
+  site_submit_id: string | null;
   
-  // Kanban fields
-  kanban_position: number | null;
+  // Additional missing properties from error messages
+  assignment_id?: string | null;
+  source?: string | null;
+  transaction_type_id?: string | null;
+  property_type_id?: string | null;
+  size_sqft?: number | null;
+  size_acres?: number | null;
+  representation_id?: string | null;
+  owner_id?: string | null;
+  
+  // Latest missing properties from error
+  deal_team_id?: string | null;
+  stage_id?: string | null;
+  target_close_date?: string | null;
+  loi_signed_date?: string | null;
+  closed_date?: string | null;
+  
+  // Metadata
+  created_at?: string;
+  updated_at?: string;
 }
 
-// Simplified version for Kanban cards (subset of Deal)
 export interface DealCard {
   id: string;
   deal_name: string | null;
-  fee: number | null;
   deal_value: number | null;
-  closed_date: string | null;
-  stage_id: string | null;
-  kanban_position: number | null;
-  client_name: string | null;
-  created_at?: string | null;
+  stage: string | null;
+  close_date: string | null;
+  probability: number | null;
+  client_name?: string | null;
+  property_name?: string | null;
 }
-
-// ===== COMMISSION SYSTEM TYPES =====
-
-export interface Broker {
-  id: string;
-  name: string;
-  active: boolean;
-}
-
-export interface CommissionSplit {
-  id: string;
-  deal_id: string;
-  broker_id: string;
-  split_name: string;
-  broker_name?: string; // Joined from broker table
-  
-  // Commission breakdown by type
-  split_origination_percent: number;
-  split_origination_usd: number;
-  split_site_percent: number;
-  split_site_usd: number;
-  split_deal_percent: number;
-  split_deal_usd: number;
-  split_broker_total: number;
-}
-
-export interface Payment {
-  id: string;
-  deal_id: string;
-  payment_number: number;
-  payment_amount: number;
-  payment_date: string | null;
-  payment_received: boolean;
-  payment_received_date: string | null;
-  
-  // QuickBooks integration fields
-  qb_invoice_id: string | null;
-  qb_payment_id: string | null;
-  qb_sync_status: string | null;
-  qb_sync_date: string | null;
-  
-  // Audit fields
-  created_at: string;
-  updated_at: string;
-}
-
-export interface PaymentSplit {
-  id: string;
-  payment_id: string;
-  broker_id: string;
-  commission_split_id: string;
-  
-  // Split amounts (can override commission template)
-  split_origination_percent: number;
-  split_origination_usd: number;
-  split_site_percent: number;
-  split_site_usd: number;
-  split_deal_percent: number;
-  split_deal_usd: number;
-  split_total_usd: number;
-  
-  // Payment status
-  paid: boolean;
-  paid_date: string | null;
-}
-
-// ===== CLIENT & CONTACT TYPES =====
 
 export interface Client {
   id: string;
-  client_name: string;
-  client_type: string | null;
-  active: boolean;
-  created_at: string;
-  updated_at: string;
+  name: string | null;
+  type: string | null;
+  phone: string | null;
+  email: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Contact {
@@ -145,25 +92,9 @@ export interface Contact {
   phone: string | null;
   title: string | null;
   client_id: string | null;
-  active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
-
-export interface DealContact {
-  id: string;
-  deal_id: string;
-  contact_id: string;
-  contact_role_id: string;
-  primary_contact: boolean;
-}
-
-export interface ContactRole {
-  id: string;
-  role_name: string;
-  description: string | null;
-  active: boolean;
-}
-
-// ===== PROPERTY TYPES =====
 
 export interface Property {
   id: string;
@@ -174,97 +105,197 @@ export interface Property {
   zip_code: string | null;
   property_type: string | null;
   total_square_feet: number | null;
-  active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface PropertyUnit {
   id: string;
-  property_id: string;
+  property_id: string | null;
   unit_number: string | null;
   square_feet: number | null;
-  floor: number | null;
   unit_type: string | null;
-  active: boolean;
+  lease_rate: number | null;
+  availability_date: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
-
-// ===== WORKFLOW TYPES =====
-
-export interface DealStage {
-  id: string;
-  label: string;
-  description: string | null;
-  sort_order: number | null;
-  active: boolean | null;
-}
-
-// Alias for Kanban usage
-export interface KanbanColumn extends DealStage {}
 
 export interface SiteSubmit {
   id: string;
-  deal_id: string;
-  property_id: string;
-  submitted_date: string | null;
+  property_id: string | null;
+  client_id: string | null;
+  submission_date: string | null;
   status: string | null;
   notes: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
-export interface Assignment {
+// Commission System Types
+export interface Broker {
+  id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CommissionSplit {
   id: string;
   deal_id: string;
-  property_id: string;
-  assignment_date: string | null;
-  status: string | null;
-  notes: string | null;
+  broker_id: string;
+  split_origination_percent: number | null;
+  split_origination_usd: number | null;
+  split_site_percent: number | null;
+  split_site_usd: number | null;
+  split_deal_percent: number | null;
+  split_deal_usd: number | null;
+  split_broker_total: number | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
-// ===== UTILITY TYPES =====
+// Payment System Types
+export interface Payment {
+  payment_id: string;
+  deal_id: string;
+  payment_number: number;
+  payment_amount: number | null;
+  payment_date: string | null;
+  status: string | null; // 'pending', 'sent', 'received'
+  qb_invoice_id: string | null;
+  qb_payment_id: string | null;
+  notes: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
 
-// For form handling and API responses
-export type ApiResponse<T> = {
-  data: T | null;
-  error: string | null;
-  loading: boolean;
-};
+export interface PaymentSplit {
+  payment_split_id: string;
+  payment_id: string;
+  commission_split_id: string | null;
+  broker_id: string;
+  split_amount: number | null;
+  split_percentage: number | null;
+  split_type: string | null; // 'origination', 'site', 'deal'
+  created_at?: string;
+  updated_at?: string;
+}
 
-// For component props that handle deal updates
-export type DealUpdateHandler = (updatedDeal: Deal) => void;
+// Contact Roles and Relationships
+export interface ContactRole {
+  id: string;
+  role_name: string;
+}
 
-// For validation and error handling
-export type ValidationWarning = {
+export interface DealContact {
+  id: string;
+  deal_id: string;
+  contact_id: string;
+  contact_role_id: string;
+  is_primary: boolean | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Utility Types
+export type DealUpdateHandler = (updates: Partial<Deal>) => Promise<void>;
+
+export interface ValidationWarning {
   field: string;
   message: string;
   severity: 'warning' | 'error';
+}
+
+export interface ApiResponse<T> {
+  data: T | null;
+  error: string | null;
+  success: boolean;
+}
+
+// Kanban Board Types
+export interface KanbanColumn {
+  id: string;
+  title: string;
+  deals: DealCard[];
+  color: string;
+}
+
+// Form Input Types
+export interface SelectOption {
+  value: string;
+  label: string;
+}
+
+// Constants
+export const DEAL_STAGES = [
+  'Prospecting',
+  'Qualification',
+  'Proposal',
+  'Negotiation',
+  'Closed Won',
+  'Closed Lost'
+] as const;
+
+export const PROPERTY_TYPES = [
+  'Office',
+  'Retail',
+  'Industrial',
+  'Warehouse',
+  'Mixed Use',
+  'Land'
+] as const;
+
+export const CLIENT_TYPES = [
+  'Tenant',
+  'Landlord',
+  'Investor',
+  'Developer'
+] as const;
+
+export const PAYMENT_STATUSES = [
+  'pending',
+  'sent', 
+  'received'
+] as const;
+
+export const COMMISSION_SPLIT_TYPES = [
+  'origination',
+  'site',
+  'deal'
+] as const;
+
+// Type Guards
+export const isDeal = (obj: any): obj is Deal => {
+  return obj && typeof obj.id === 'string';
 };
 
-// ===== TYPE GUARDS =====
+export const isClient = (obj: any): obj is Client => {
+  return obj && typeof obj.id === 'string' && obj.name !== undefined;
+};
 
-export function isDeal(obj: any): obj is Deal {
-  return obj && typeof obj.id === 'string';
-}
+export const isPayment = (obj: any): obj is Payment => {
+  return obj && typeof obj.payment_id === 'string';
+};
 
-export function isDealCard(obj: any): obj is DealCard {
-  return obj && typeof obj.id === 'string' && obj.hasOwnProperty('client_name');
-}
+export const isPaymentSplit = (obj: any): obj is PaymentSplit => {
+  return obj && typeof obj.payment_split_id === 'string';
+};
 
-// ===== CONSTANTS =====
-
-export const COMMISSION_VALIDATION = {
-  MAX_COMMISSION_RATE: 50,
-  MAX_REFERRAL_FEE: 100,
-  BROKER_SPLIT_TARGET: 100,
-} as const;
-
-export const PAYMENT_STATUS = {
-  PENDING: 'pending',
-  SENT: 'sent',
-  RECEIVED: 'received',
-  OVERDUE: 'overdue',
-} as const;
-
-export const QB_SYNC_STATUS = {
-  PENDING: 'pending',
-  SYNCED: 'synced',
-  ERROR: 'error',
-  MANUAL: 'manual',
+// Validation Rules
+export const VALIDATION_RULES = {
+  commission: {
+    maxPercent: 15, // 15% commission rate warning threshold
+    minPercent: 0.1, // 0.1% minimum commission rate
+  },
+  splits: {
+    totalPercentage: 100, // Total splits should equal 100%
+    tolerance: 0.01, // Allow 0.01% tolerance for rounding
+  },
+  payments: {
+    minAmount: 0.01, // Minimum payment amount
+    maxPayments: 12, // Maximum number of payments
+  }
 } as const;

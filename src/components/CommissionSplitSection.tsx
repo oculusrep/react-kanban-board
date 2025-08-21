@@ -71,7 +71,7 @@ const InlinePercentageEdit: React.FC<InlinePercentageEditProps> = ({ value, onCh
   );
 };
 
-export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
+const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
   deal,
   onDealUpdate
 }) => {
@@ -88,6 +88,12 @@ export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
     splitId: '',
     brokerName: ''
   });
+
+  // Get broker name by ID - helper function
+  const getBrokerName = (brokerId: string) => {
+    const broker = brokers.find(b => b.id === brokerId);
+    return broker ? broker.name : 'Unknown Broker';
+  };
 
   // Fetch commission splits and brokers for this deal
   useEffect(() => {
@@ -158,9 +164,9 @@ export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
 
       // Recalculate total
       updatedSplit.split_broker_total = 
-        updatedSplit.split_origination_usd + 
-        updatedSplit.split_site_usd + 
-        updatedSplit.split_deal_usd;
+        (updatedSplit.split_origination_usd || 0) + 
+        (updatedSplit.split_site_usd || 0) + 
+        (updatedSplit.split_deal_usd || 0);
 
       // Update in database
       const { error } = await supabase
@@ -202,7 +208,6 @@ export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
       const newSplit = {
         deal_id: deal.id,
         broker_id: brokerId,
-        split_name: broker.name,
         split_origination_percent: 0,
         split_origination_usd: 0,
         split_site_percent: 0,
@@ -244,7 +249,7 @@ export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
         throw error;
       }
 
-      setCommissionSplits(prev => prev.filter(split => split.id === splitId ? false : true));
+      setCommissionSplits(prev => prev.filter(split => split.id !== splitId));
       setError(null); // Clear any previous errors
       setDeleteModal({ isOpen: false, splitId: '', brokerName: '' }); // Close modal
     } catch (err) {
@@ -344,74 +349,71 @@ export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
               </tr>
             </thead>
             <tbody>
-              {commissionSplits.map((split) => {
-                const broker = brokers.find(b => b.id === split.broker_id);
-                return (
-                  <tr key={split.id} className="border-b border-gray-100">
-                    <td className="py-3 px-3 font-medium text-gray-900">
-                      {broker?.name || split.broker_name || 'Unknown Broker'}
-                    </td>
-                    
-                    {/* Origination Percentage - EDITABLE */}
-                    <td className="py-3 px-3 text-center">
-                      <InlinePercentageEdit
-                        value={split.split_origination_percent}
-                        onChange={(value) => updateCommissionSplit(split.id, 'split_origination_percent', value)}
-                        label="Origination %"
-                      />
-                    </td>
-                    
-                    {/* Origination USD - Calculated */}
-                    <td className="py-3 px-3 text-right text-gray-600">
-                      ${Number(split.split_origination_usd || 0).toFixed(2)}
-                    </td>
-                    
-                    {/* Site Percentage - EDITABLE */}
-                    <td className="py-3 px-3 text-center">
-                      <InlinePercentageEdit
-                        value={split.split_site_percent}
-                        onChange={(value) => updateCommissionSplit(split.id, 'split_site_percent', value)}
-                        label="Site %"
-                      />
-                    </td>
-                    
-                    {/* Site USD - Calculated */}
-                    <td className="py-3 px-3 text-right text-gray-600">
-                      ${Number(split.split_site_usd || 0).toFixed(2)}
-                    </td>
-                    
-                    {/* Deal Percentage - EDITABLE */}
-                    <td className="py-3 px-3 text-center">
-                      <InlinePercentageEdit
-                        value={split.split_deal_percent}
-                        onChange={(value) => updateCommissionSplit(split.id, 'split_deal_percent', value)}
-                        label="Deal %"
-                      />
-                    </td>
-                    
-                    {/* Deal USD - Calculated */}
-                    <td className="py-3 px-3 text-right text-gray-600">
-                      ${Number(split.split_deal_usd || 0).toFixed(2)}
-                    </td>
-                    
-                    {/* Total USD - Calculated */}
-                    <td className="py-3 px-3 text-right font-semibold text-gray-900">
-                      ${Number(split.split_broker_total || 0).toFixed(2)}
-                    </td>
-                    
-                    {/* Delete Button */}
-                    <td className="py-3 px-3 text-center">
-                      <button
-                        onClick={() => showDeleteConfirmation(split.id, broker?.name || split.broker_name || 'Unknown Broker')}
-                        className="text-red-500 hover:text-red-700 font-bold text-lg"
-                        title="Delete broker split"
-                      >
-                        ×
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+              {commissionSplits.map((split) => (
+                <tr key={split.id} className="border-b border-gray-100">
+                  <td className="py-3 px-3 font-medium text-gray-900">
+                    {getBrokerName(split.broker_id)}
+                  </td>
+                  
+                  {/* Origination Percentage - EDITABLE */}
+                  <td className="py-3 px-3 text-center">
+                    <InlinePercentageEdit
+                      value={split.split_origination_percent}
+                      onChange={(value) => updateCommissionSplit(split.id, 'split_origination_percent', value)}
+                      label="Origination %"
+                    />
+                  </td>
+                  
+                  {/* Origination USD - Calculated */}
+                  <td className="py-3 px-3 text-right text-gray-600">
+                    ${Number(split.split_origination_usd || 0).toFixed(2)}
+                  </td>
+                  
+                  {/* Site Percentage - EDITABLE */}
+                  <td className="py-3 px-3 text-center">
+                    <InlinePercentageEdit
+                      value={split.split_site_percent}
+                      onChange={(value) => updateCommissionSplit(split.id, 'split_site_percent', value)}
+                      label="Site %"
+                    />
+                  </td>
+                  
+                  {/* Site USD - Calculated */}
+                  <td className="py-3 px-3 text-right text-gray-600">
+                    ${Number(split.split_site_usd || 0).toFixed(2)}
+                  </td>
+                  
+                  {/* Deal Percentage - EDITABLE */}
+                  <td className="py-3 px-3 text-center">
+                    <InlinePercentageEdit
+                      value={split.split_deal_percent}
+                      onChange={(value) => updateCommissionSplit(split.id, 'split_deal_percent', value)}
+                      label="Deal %"
+                    />
+                  </td>
+                  
+                  {/* Deal USD - Calculated */}
+                  <td className="py-3 px-3 text-right text-gray-600">
+                    ${Number(split.split_deal_usd || 0).toFixed(2)}
+                  </td>
+                  
+                  {/* Total USD - Calculated */}
+                  <td className="py-3 px-3 text-right font-semibold text-gray-900">
+                    ${Number(split.split_broker_total || 0).toFixed(2)}
+                  </td>
+                  
+                  {/* Delete Button */}
+                  <td className="py-3 px-3 text-center">
+                    <button
+                      onClick={() => showDeleteConfirmation(split.id, getBrokerName(split.broker_id))}
+                      className="text-red-500 hover:text-red-700 font-bold text-lg"
+                      title="Delete broker split"
+                    >
+                      ×
+                    </button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
             
             {/* Totals Row */}
@@ -502,12 +504,11 @@ export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
       {/* Delete Confirmation Modal */}
       <DeleteConfirmationModal
         isOpen={deleteModal.isOpen}
+        onClose={handleDeleteCancel}
+        onConfirm={handleDeleteConfirm}
         title="Delete Broker Split"
         itemName={deleteModal.brokerName}
-        itemType="commission split for"
         message="This action cannot be undone. If this broker has related payments, the deletion will be blocked."
-        onConfirm={handleDeleteConfirm}
-        onCancel={handleDeleteCancel}
       />
     </div>
   );

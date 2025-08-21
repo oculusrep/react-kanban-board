@@ -8,6 +8,7 @@ import { FloatingPanelContainer } from "../components/FloatingPanelContainer";
 import { FloatingContactPanel } from "../components/FloatingContactPanel";
 import { useDealContacts } from "../hooks/useDealContacts";
 import CommissionTab from '../components/CommissionTab';
+import PaymentTab from '../components/PaymentTab';
 import DealHeaderBar from '../components/DealHeaderBar';
 
 export default function DealDetailsPage() {
@@ -34,9 +35,16 @@ export default function DealDetailsPage() {
     if (dealId) fetchDeal();
   }, [dealId]);
 
-  // Shared function to update deal state - used by both Overview and Commission tabs
+  // Shared function to update deal state - used by Overview, Commission, and Payment tabs
   const handleDealUpdate = (updatedDeal: any) => {
     setDeal(updatedDeal);
+  };
+
+  // Handle Payment Tab's async update pattern
+  const handleAsyncDealUpdate = async (updates: Partial<any>): Promise<void> => {
+    const updatedDeal = { ...deal, ...updates };
+    setDeal(updatedDeal);
+    return Promise.resolve();
   };
 
   if (!deal) return <div className="p-4">Loading...</div>;
@@ -77,6 +85,16 @@ export default function DealDetailsPage() {
               >
                 Commission
               </button>
+              <button
+                onClick={() => setActiveTab('payments')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'payments'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Payments
+              </button>
             </nav>
           </div>
 
@@ -86,7 +104,11 @@ export default function DealDetailsPage() {
           )}
 
           {activeTab === 'commission' && (
-            <CommissionTab dealId={dealId!} deal={deal} onDealUpdate={handleDealUpdate} />
+            <CommissionTab dealId={dealId!} deal={deal} onDealUpdate={handleAsyncDealUpdate} />
+          )}
+
+          {activeTab === 'payments' && (
+            <PaymentTab deal={deal} onDealUpdate={handleAsyncDealUpdate} />
           )}
         </div>
       </FloatingPanelContainer>
