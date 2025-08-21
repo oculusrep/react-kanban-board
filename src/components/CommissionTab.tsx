@@ -17,6 +17,8 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingField, setEditingField] = useState<string | null>(null);
+  const [referralPayeeSearch, setReferralPayeeSearch] = useState("");
+  const [referralPayeeSuggestions, setReferralPayeeSuggestions] = useState<{ id: string; label: string }[]>([]);
 
   // Update local deal state when prop changes
   useEffect(() => {
@@ -26,6 +28,32 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
   useEffect(() => {
     fetchCommissionData();
   }, [dealId]);
+
+  // Autocomplete search for referral payee
+  useEffect(() => {
+    const run = async () => {
+      const term = referralPayeeSearch.trim();
+      if (!term) return setReferralPayeeSuggestions([]);
+      const { data } = await supabase
+        .from("client")
+        .select("id, client_name")
+        .ilike("client_name", `%${term}%`)
+        .order("client_name", { ascending: true })
+        .limit(5);
+      if (data) setReferralPayeeSuggestions(data.map(c => ({ id: c.id, label: c.client_name })));
+    };
+    const handle = setTimeout(run, 150);
+    return () => clearTimeout(handle);
+  }, [referralPayeeSearch]);
+
+  // Initialize referral payee search when deal loads
+  useEffect(() => {
+    if (deal?.referral_payee) {
+      setReferralPayeeSearch(deal.referral_payee);
+    } else {
+      setReferralPayeeSearch("");
+    }
+  }, [deal?.referral_payee]);
 
   const fetchCommissionData = async () => {
     try {
@@ -383,6 +411,49 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
         </div>
       )}
 
+      {/* Payment Status Warnings */}
+      {hasPayments && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-yellow-800">
+                Payments Already Generated
+              </h3>
+              <p className="mt-1 text-xs text-yellow-700">
+                This deal already has {payments.length} payment{payments.length !== 1 ? 's' : ''} generated. 
+                To regenerate payments, you would need to delete the existing ones first.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {commissionSplits.length === 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-blue-800">
+                No Commission Splits Found
+              </h3>
+              <p className="mt-1 text-xs text-blue-700">
+                Commission splits are imported from Salesforce. If this deal should have commission data, 
+                check that it exists in Salesforce and run the migration again.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Deal-Level Commission Fields */}
       <Section title="Commission Details" help="Set commission percentages and amounts. Click any percentage to edit.">
         <div className="space-y-4">
@@ -415,16 +486,16 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
             </div>
             
             <div>
-  <label className="block text-sm font-medium text-gray-700">Number of Payments</label>
-  <input
-    type="number"
-    step="1"
-    min="1"
-    value={deal.number_of_payments || 1}
-    onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateField('number_of_payments', parseInt(e.target.value) || 1)}
-    className="mt-1 block w-full rounded border-gray-300 shadow-sm cursor-pointer hover:bg-blue-50 px-3 py-2 transition-colors border border-transparent hover:border-blue-200 text-sm"
-  />
-</div>
+              <label className="block text-sm font-medium text-gray-700">Number of Payments</label>
+              <input
+                type="number"
+                step="1"
+                min="1"
+                value={deal.number_of_payments || 1}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateField('number_of_payments', parseInt(e.target.value) || 1)}
+                className="mt-1 block w-full rounded border-gray-300 shadow-sm cursor-pointer hover:bg-blue-50 px-3 py-2 transition-colors border border-transparent hover:border-blue-200 text-sm"
+              />
+            </div>
           </div>
 
           {/* Second Row: Referral Payee and GCI/AGCI */}
@@ -433,11 +504,30 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
               <label className="block text-sm font-medium text-gray-700">Referral Payee</label>
               <input
                 type="text"
-                value={deal.referral_payee || ''}
-                onChange={(e) => updateField('referral_payee', e.target.value)}
-                placeholder="Enter referral payee name"
+                value={referralPayeeSearch}
+                onChange={(e) => setReferralPayeeSearch(e.target.value)}
+                placeholder="Search clients..."
                 className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
               />
+              {referralPayeeSuggestions.filter((s) => s.label !== referralPayeeSearch).length > 0 && (
+                <ul className="bg-white border border-gray-300 rounded mt-1 max-h-48 overflow-auto">
+                  {referralPayeeSuggestions
+                    .filter((s) => s.label !== referralPayeeSearch)
+                    .map((s) => (
+                      <li
+                        key={s.id}
+                        onClick={() => {
+                          updateField('referral_payee', s.label);
+                          setReferralPayeeSearch(s.label);
+                          setReferralPayeeSuggestions([]);
+                        }}
+                        className="p-2 hover:bg-gray-100 cursor-pointer text-sm"
+                      >
+                        {s.label}
+                      </li>
+                    ))}
+                </ul>
+              )}
             </div>
             
             <div>
@@ -574,15 +664,6 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Broker
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Origination
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Site
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Deal
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -620,47 +701,42 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
         )}
       </Section>
 
-      {/* Payment Generation Status */}
-      {!canGeneratePayments && commissionSplits.length > 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
+      {/* Commission Split Summary for Quick Reference */}
+      {commissionSplits.length > 0 && (
+        <Section title="Quick Summary" help="Overview of commission allocation">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <h4 className="text-xs font-medium text-green-800 mb-1">Total Commission Splits</h4>
+              <p className="text-lg font-bold text-green-900">{commissionSplits.length}</p>
             </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-yellow-800">
-                Payments Already Generated
-              </h3>
-              <p className="mt-1 text-xs text-yellow-700">
-                This deal already has {payments.length} payment{payments.length !== 1 ? 's' : ''} generated. 
-                To regenerate payments, you would need to delete the existing ones first.
+            
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <h4 className="text-xs font-medium text-blue-800 mb-1">Total Broker Amount</h4>
+              <p className="text-lg font-bold text-blue-900">
+                {formatCurrencyHelper(
+                  commissionSplits.reduce((sum, split) => sum + (split.split_broker_total || 0), 0)
+                )}
+              </p>
+            </div>
+            
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+              <h4 className="text-xs font-medium text-purple-800 mb-1">Payments Status</h4>
+              <p className="text-lg font-bold text-purple-900">
+                {hasPayments ? `${payments.length} Generated` : 'Not Generated'}
+              </p>
+            </div>
+            
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+              <h4 className="text-xs font-medium text-orange-800 mb-1">Per Payment Amount</h4>
+              <p className="text-lg font-bold text-orange-900">
+                {deal.number_of_payments && deal.fee ? 
+                  formatCurrencyHelper(deal.fee / deal.number_of_payments) : 
+                  '$0.00'
+                }
               </p>
             </div>
           </div>
-        </div>
-      )}
-
-      {commissionSplits.length === 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-blue-800">
-                No Commission Splits Found
-              </h3>
-              <p className="mt-1 text-xs text-blue-700">
-                Commission splits are imported from Salesforce. If this deal should have commission data, 
-                check that it exists in Salesforce and run the migration again.
-              </p>
-            </div>
-          </div>
-        </div>
+        </Section>
       )}
     </div>
   );
