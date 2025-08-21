@@ -1,12 +1,75 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Deal, CommissionSplit, Broker } from '../lib/types';
-import PercentageInput from './PercentageInput';
+import DeleteConfirmationModal from './DeleteConfirmationModal';
 
 interface CommissionSplitSectionProps {
   deal: Deal;
   onDealUpdate: (updatedDeal: Deal) => void;
 }
+
+// Table-friendly inline edit component
+interface InlinePercentageEditProps {
+  value: number | null;
+  onChange: (value: number | null) => void;
+  label?: string;
+}
+
+const InlinePercentageEdit: React.FC<InlinePercentageEditProps> = ({ value, onChange, label }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
+
+  const displayValue = value ? `${value.toFixed(1)}%` : '0.0%';
+
+  const handleStartEdit = () => {
+    setIsEditing(true);
+    setEditValue(value?.toString() || '0');
+  };
+
+  const handleSave = () => {
+    const numValue = parseFloat(editValue);
+    onChange(isNaN(numValue) ? null : numValue);
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    setEditValue('');
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSave();
+    } else if (e.key === 'Escape') {
+      handleCancel();
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <input
+        type="number"
+        step="0.1"
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onBlur={handleSave}
+        onKeyDown={handleKeyDown}
+        className="w-16 px-1 py-0.5 text-sm border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+        autoFocus
+      />
+    );
+  }
+
+  return (
+    <span
+      onClick={handleStartEdit}
+      className="cursor-pointer hover:bg-blue-50 px-1 py-0.5 rounded text-sm"
+      title={`Click to edit ${label || 'percentage'}`}
+    >
+      {displayValue}
+    </span>
+  );
+};
 
 export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
   deal,
@@ -16,6 +79,15 @@ export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{
+    isOpen: boolean;
+    splitId: string;
+    brokerName: string;
+  }>({
+    isOpen: false,
+    splitId: '',
+    brokerName: ''
+  });
 
   // Fetch commission splits and brokers for this deal
   useEffect(() => {
@@ -38,7 +110,6 @@ export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
         const { data: brokersData, error: brokersError } = await supabase
           .from('broker')
           .select('*')
-          .eq('active', true)
           .order('name');
 
         if (brokersError) throw brokersError;
@@ -57,16 +128,16 @@ export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
   }, [deal.id]);
 
   // Calculate USD amounts from percentages and AGCI
-  const calculateUsdAmounts = (percentage: number, type: string) => {
+  const calculateUsdAmounts = (percentage: number) => {
     const agci = Number(deal.agci) || 0;
     return agci * (percentage / 100);
   };
 
   // Update a commission split field
   const updateCommissionSplit = async (splitId: string, field: string, value: number | null) => {
+    console.log('🔧 updateCommissionSplit called:', { splitId, field, value });
+    
     try {
-      const agci = Number(deal.agci) || 0;
-      
       // Find the current split
       const currentSplit = commissionSplits.find(s => s.id === splitId);
       if (!currentSplit) return;
@@ -76,13 +147,13 @@ export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
       
       if (field === 'split_origination_percent') {
         updatedSplit.split_origination_percent = value || 0;
-        updatedSplit.split_origination_usd = calculateUsdAmounts(value || 0, 'origination');
+        updatedSplit.split_origination_usd = calculateUsdAmounts(value || 0);
       } else if (field === 'split_site_percent') {
         updatedSplit.split_site_percent = value || 0;
-        updatedSplit.split_site_usd = calculateUsdAmounts(value || 0, 'site');
+        updatedSplit.split_site_usd = calculateUsdAmounts(value || 0);
       } else if (field === 'split_deal_percent') {
         updatedSplit.split_deal_percent = value || 0;
-        updatedSplit.split_deal_usd = calculateUsdAmounts(value || 0, 'deal');
+        updatedSplit.split_deal_usd = calculateUsdAmounts(value || 0);
       }
 
       // Recalculate total
@@ -112,6 +183,8 @@ export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
         prev.map(split => split.id === splitId ? updatedSplit : split)
       );
 
+      console.log('✅ Commission split updated successfully');
+
     } catch (err) {
       console.error('Error updating commission split:', err);
       setError('Failed to update commission split');
@@ -130,7 +203,6 @@ export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
         deal_id: deal.id,
         broker_id: brokerId,
         split_name: broker.name,
-        broker_name: broker.name,
         split_origination_percent: 0,
         split_origination_usd: 0,
         split_site_percent: 0,
@@ -157,21 +229,48 @@ export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
 
   // Delete broker split
   const deleteBrokerSplit = async (splitId: string) => {
-    if (!confirm('Are you sure you want to delete this broker split?')) return;
-
     try {
       const { error } = await supabase
         .from('commission_split')
         .delete()
         .eq('id', splitId);
 
-      if (error) throw error;
+      if (error) {
+        // Handle foreign key constraint error specifically
+        if (error.code === '23503' && error.message.includes('payment_split')) {
+          setError('Cannot delete this broker split because it has related payments. You must delete the payments first, or contact support to safely remove this split.');
+          return;
+        }
+        throw error;
+      }
 
-      setCommissionSplits(prev => prev.filter(split => split.id !== splitId));
+      setCommissionSplits(prev => prev.filter(split => split.id === splitId ? false : true));
+      setError(null); // Clear any previous errors
+      setDeleteModal({ isOpen: false, splitId: '', brokerName: '' }); // Close modal
     } catch (err) {
       console.error('Error deleting broker split:', err);
-      setError('Failed to delete broker split');
+      setError('Failed to delete broker split: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      setDeleteModal({ isOpen: false, splitId: '', brokerName: '' }); // Close modal
     }
+  };
+
+  // Show delete confirmation modal
+  const showDeleteConfirmation = (splitId: string, brokerName: string) => {
+    setDeleteModal({
+      isOpen: true,
+      splitId,
+      brokerName
+    });
+  };
+
+  // Handle delete confirmation
+  const handleDeleteConfirm = () => {
+    deleteBrokerSplit(deleteModal.splitId);
+  };
+
+  // Handle delete cancellation
+  const handleDeleteCancel = () => {
+    setDeleteModal({ isOpen: false, splitId: '', brokerName: '' });
   };
 
   // Get available brokers (not already assigned)
@@ -255,55 +354,55 @@ export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
                     
                     {/* Origination Percentage - EDITABLE */}
                     <td className="py-3 px-3 text-center">
-                      <PercentageInput
-                        label="Origination %"
-                        value={Number(split.split_origination_percent) || 0}
+                      <InlinePercentageEdit
+                        value={split.split_origination_percent}
                         onChange={(value) => updateCommissionSplit(split.id, 'split_origination_percent', value)}
+                        label="Origination %"
                       />
                     </td>
                     
                     {/* Origination USD - Calculated */}
                     <td className="py-3 px-3 text-right text-gray-600">
-                      ${Number(split.split_origination_usd || 0).toLocaleString()}
+                      ${Number(split.split_origination_usd || 0).toFixed(2)}
                     </td>
                     
                     {/* Site Percentage - EDITABLE */}
                     <td className="py-3 px-3 text-center">
-                      <PercentageInput
-                        label="Site %"
-                        value={Number(split.split_site_percent) || 0}
+                      <InlinePercentageEdit
+                        value={split.split_site_percent}
                         onChange={(value) => updateCommissionSplit(split.id, 'split_site_percent', value)}
+                        label="Site %"
                       />
                     </td>
                     
                     {/* Site USD - Calculated */}
                     <td className="py-3 px-3 text-right text-gray-600">
-                      ${Number(split.split_site_usd || 0).toLocaleString()}
+                      ${Number(split.split_site_usd || 0).toFixed(2)}
                     </td>
                     
                     {/* Deal Percentage - EDITABLE */}
                     <td className="py-3 px-3 text-center">
-                      <PercentageInput
-                        label="Deal %"
-                        value={Number(split.split_deal_percent) || 0}
+                      <InlinePercentageEdit
+                        value={split.split_deal_percent}
                         onChange={(value) => updateCommissionSplit(split.id, 'split_deal_percent', value)}
+                        label="Deal %"
                       />
                     </td>
                     
                     {/* Deal USD - Calculated */}
                     <td className="py-3 px-3 text-right text-gray-600">
-                      ${Number(split.split_deal_usd || 0).toLocaleString()}
+                      ${Number(split.split_deal_usd || 0).toFixed(2)}
                     </td>
                     
                     {/* Total USD - Calculated */}
                     <td className="py-3 px-3 text-right font-semibold text-gray-900">
-                      ${Number(split.split_broker_total || 0).toLocaleString()}
+                      ${Number(split.split_broker_total || 0).toFixed(2)}
                     </td>
                     
                     {/* Delete Button */}
                     <td className="py-3 px-3 text-center">
                       <button
-                        onClick={() => deleteBrokerSplit(split.id)}
+                        onClick={() => showDeleteConfirmation(split.id, broker?.name || split.broker_name || 'Unknown Broker')}
                         className="text-red-500 hover:text-red-700 font-bold text-lg"
                         title="Delete broker split"
                       >
@@ -319,40 +418,73 @@ export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
             <tfoot>
               <tr className="border-t-2 border-gray-300 font-semibold bg-gray-50">
                 <td className="py-3 px-3 text-gray-900">TOTALS</td>
-                <td className="py-3 px-3 text-center text-blue-600">
-                  {commissionSplits.reduce((sum, split) => 
-                    sum + (Number(split.split_origination_percent) || 0), 0
-                  ).toFixed(1)}%
+                
+                {/* Origination % Total with validation */}
+                <td className="py-3 px-3 text-center">
+                  {(() => {
+                    const total = commissionSplits.reduce((sum, split) => 
+                      sum + (Number(split.split_origination_percent) || 0), 0
+                    );
+                    const isValid = Math.abs(total - 100) < 0.1; // Allow small rounding differences
+                    return (
+                      <span className={isValid ? 'text-blue-600' : 'text-red-600'}>
+                        {total.toFixed(1)}%
+                      </span>
+                    );
+                  })()}
                 </td>
+                
                 <td className="py-3 px-3 text-right text-blue-600">
                   ${commissionSplits.reduce((sum, split) => 
                     sum + (Number(split.split_origination_usd) || 0), 0
-                  ).toLocaleString()}
+                  ).toFixed(2)}
                 </td>
-                <td className="py-3 px-3 text-center text-blue-600">
-                  {commissionSplits.reduce((sum, split) => 
-                    sum + (Number(split.split_site_percent) || 0), 0
-                  ).toFixed(1)}%
+                
+                {/* Site % Total with validation */}
+                <td className="py-3 px-3 text-center">
+                  {(() => {
+                    const total = commissionSplits.reduce((sum, split) => 
+                      sum + (Number(split.split_site_percent) || 0), 0
+                    );
+                    const isValid = Math.abs(total - 100) < 0.1; // Allow small rounding differences
+                    return (
+                      <span className={isValid ? 'text-blue-600' : 'text-red-600'}>
+                        {total.toFixed(1)}%
+                      </span>
+                    );
+                  })()}
                 </td>
+                
                 <td className="py-3 px-3 text-right text-blue-600">
                   ${commissionSplits.reduce((sum, split) => 
                     sum + (Number(split.split_site_usd) || 0), 0
-                  ).toLocaleString()}
+                  ).toFixed(2)}
                 </td>
-                <td className="py-3 px-3 text-center text-blue-600">
-                  {commissionSplits.reduce((sum, split) => 
-                    sum + (Number(split.split_deal_percent) || 0), 0
-                  ).toFixed(1)}%
+                
+                {/* Deal % Total with validation */}
+                <td className="py-3 px-3 text-center">
+                  {(() => {
+                    const total = commissionSplits.reduce((sum, split) => 
+                      sum + (Number(split.split_deal_percent) || 0), 0
+                    );
+                    const isValid = Math.abs(total - 100) < 0.1; // Allow small rounding differences
+                    return (
+                      <span className={isValid ? 'text-blue-600' : 'text-red-600'}>
+                        {total.toFixed(1)}%
+                      </span>
+                    );
+                  })()}
                 </td>
+                
                 <td className="py-3 px-3 text-right text-blue-600">
                   ${commissionSplits.reduce((sum, split) => 
                     sum + (Number(split.split_deal_usd) || 0), 0
-                  ).toLocaleString()}
+                  ).toFixed(2)}
                 </td>
                 <td className="py-3 px-3 text-right font-bold text-blue-600">
                   ${commissionSplits.reduce((sum, split) => 
                     sum + (Number(split.split_broker_total) || 0), 0
-                  ).toLocaleString()}
+                  ).toFixed(2)}
                 </td>
                 <td className="py-3 px-3"></td>
               </tr>
@@ -366,6 +498,17 @@ export const CommissionSplitSection: React.FC<CommissionSplitSectionProps> = ({
         <p>• These splits serve as templates for payment generation</p>
         <p>• Click on percentage values to edit them directly</p>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={deleteModal.isOpen}
+        title="Delete Broker Split"
+        itemName={deleteModal.brokerName}
+        itemType="commission split for"
+        message="This action cannot be undone. If this broker has related payments, the deletion will be blocked."
+        onConfirm={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
+      />
     </div>
   );
 };

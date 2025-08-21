@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Deal, Broker, CommissionSplit, DealUpdateHandler } from '../lib/types';
 import CommissionDetailsSection from './CommissionDetailsSection';
-import ReferralPayeeAutocomplete from './ReferralPayeeAutocomplete';
-import PercentageInput from './PercentageInput';
 import CommissionSplitSection from './CommissionSplitSection';
 
 interface CommissionTabProps {
@@ -247,11 +245,6 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
     }).format(amount);
   };
 
-  const formatPercent = (percent: number | null): string => {
-    if (percent === null || percent === undefined) return '0.0%';
-    return `${percent.toFixed(1)}%`;
-  };
-
   // Validation helper - SIMPLIFIED to avoid type issues
   const getValidationWarnings = (dealData: Deal) => {
     const warnings: string[] = [];
@@ -313,7 +306,6 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
   }
 
   const hasPayments = payments.length > 0;
-  const canGeneratePayments = commissionSplits.length > 0 && !hasPayments;
   const validationWarnings = getValidationWarnings(deal);
 
   return (
@@ -408,14 +400,20 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
         onFieldUpdate={updateField} 
       />
 
-      {/* Commission Splits Table */}
-      <Section title="Broker Commission Splits" help="Individual broker splits imported from Salesforce.">
+      {/* Commission Splits Section - NOW USING THE SEPARATE COMPONENT */}
+      <CommissionSplitSection 
+        deal={deal} 
+        onDealUpdate={onDealUpdate} 
+      />
+
+      {/* Payment Generation Section */}
+      <Section title="Payment Generation" help="Generate payments based on commission splits">
         <div className="flex justify-end mb-3">
           <button
             onClick={generatePayments}
-            disabled={!canGeneratePayments || isGenerating}
+            disabled={commissionSplits.length === 0 || hasPayments || isGenerating}
             className={`px-4 py-2 rounded font-medium text-sm ${
-              canGeneratePayments && !isGenerating
+              commissionSplits.length > 0 && !hasPayments && !isGenerating
                 ? 'bg-green-600 text-white hover:bg-green-700' 
                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'
             }`}
@@ -423,60 +421,10 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
             {isGenerating ? 'Generating...' : 'Generate Payments'}
           </button>
         </div>
-
-        {commissionSplits.length === 0 ? (
-          <div className="text-center text-gray-500 py-8">
-            <p className="text-sm">No commission splits found for this deal.</p>
-            <p className="text-xs mt-1">Commission splits are imported from Salesforce.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Broker
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Origination
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Site
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Deal
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Total
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {commissionSplits.map((split) => (
-                  <tr key={split.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{split.broker_name}</div>
-                      <div className="text-xs text-gray-500">{split.split_name}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{formatPercent(split.split_origination_percent)}</div>
-                      <div className="text-xs text-gray-500">{formatCurrency(split.split_origination_usd)}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{formatPercent(split.split_site_percent)}</div>
-                      <div className="text-xs text-gray-500">{formatCurrency(split.split_site_usd)}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{formatPercent(split.split_deal_percent)}</div>
-                      <div className="text-xs text-gray-500">{formatCurrency(split.split_deal_usd)}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-semibold text-gray-900">{formatCurrency(split.split_broker_total)}</div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        
+        {commissionSplits.length === 0 && (
+          <div className="text-center text-gray-500 py-4">
+            <p className="text-sm">No commission splits available for payment generation.</p>
           </div>
         )}
       </Section>
