@@ -17,7 +17,7 @@ export interface Deal {
   commission_percent: number | null;
   referral_fee_percent: number | null;
   referral_fee_usd: number | null;
-  referral_payee: string | null;
+  referral_payee_client_id: string | null;
   gci: number | null;
   agci: number | null;
   

@@ -1,12 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Deal, Broker, CommissionSplit, DealUpdateHandler } from '../lib/types';
+import CommissionDetailsSection from './CommissionDetailsSection';
 
 interface CommissionTabProps {
   dealId: string;
   deal: Deal;
   onDealUpdate: DealUpdateHandler;
 }
+
+interface SectionProps {
+  title: string;
+  help?: string;
+  children: React.ReactNode;
+}
+
+const Section: React.FC<SectionProps> = ({ title, help, children }) => {
+  return (
+    <section className="bg-white rounded-md border p-4 mb-4">
+      <div className="flex items-center gap-2 mb-3">
+        <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
+        {help && (
+          <span
+            className="text-gray-500 text-xs border rounded-full w-4 h-4 inline-flex items-center justify-center"
+            title={help}
+            aria-label={help}
+          >
+            i
+          </span>
+        )}
+      </div>
+      {children}
+    </section>
+  );
+};
 
 const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, onDealUpdate }) => {
   const [deal, setDeal] = useState<Deal | null>(propDeal);
@@ -16,9 +43,6 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const [referralPayeeSearch, setReferralPayeeSearch] = useState("");
-  const [referralPayeeSuggestions, setReferralPayeeSuggestions] = useState<{ id: string; label: string }[]>([]);
 
   // Update local deal state when prop changes
   useEffect(() => {
@@ -28,32 +52,6 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
   useEffect(() => {
     fetchCommissionData();
   }, [dealId]);
-
-  // Autocomplete search for referral payee
-  useEffect(() => {
-    const run = async () => {
-      const term = referralPayeeSearch.trim();
-      if (!term) return setReferralPayeeSuggestions([]);
-      const { data } = await supabase
-        .from("client")
-        .select("id, client_name")
-        .ilike("client_name", `%${term}%`)
-        .order("client_name", { ascending: true })
-        .limit(5);
-      if (data) setReferralPayeeSuggestions(data.map(c => ({ id: c.id, label: c.client_name })));
-    };
-    const handle = setTimeout(run, 150);
-    return () => clearTimeout(handle);
-  }, [referralPayeeSearch]);
-
-  // Initialize referral payee search when deal loads
-  useEffect(() => {
-    if (deal?.referral_payee) {
-      setReferralPayeeSearch(deal.referral_payee);
-    } else {
-      setReferralPayeeSearch("");
-    }
-  }, [deal?.referral_payee]);
 
   const fetchCommissionData = async () => {
     try {
@@ -161,19 +159,58 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
       finalDeal = calculateCommissionAmounts(updatedDeal);
     }
     
+    // Prepare update payload - only send the fields that can be updated
+    // Start with core commission fields that we know exist
+    const updatePayload: any = {
+      commission_percent: finalDeal.commission_percent,
+      referral_fee_percent: finalDeal.referral_fee_percent,
+      house_percent: finalDeal.house_percent,
+      origination_percent: finalDeal.origination_percent,
+      site_percent: finalDeal.site_percent,
+      deal_percent: finalDeal.deal_percent,
+      number_of_payments: finalDeal.number_of_payments,
+      fee: finalDeal.fee,
+      updated_at: new Date().toISOString()
+    };
+
+    // Add calculated fields if they exist in the database
+    if (finalDeal.gci !== undefined) updatePayload.gci = finalDeal.gci;
+    if (finalDeal.referral_fee_usd !== undefined) updatePayload.referral_fee_usd = finalDeal.referral_fee_usd;
+    if (finalDeal.agci !== undefined) updatePayload.agci = finalDeal.agci;
+    if (finalDeal.house_usd !== undefined) updatePayload.house_usd = finalDeal.house_usd;
+    if (finalDeal.origination_usd !== undefined) updatePayload.origination_usd = finalDeal.origination_usd;
+    if (finalDeal.site_usd !== undefined) updatePayload.site_usd = finalDeal.site_usd;
+    if (finalDeal.deal_usd !== undefined) updatePayload.deal_usd = finalDeal.deal_usd;
+    
+    // Handle referral payee - save as referral_payee_client_id in database
+    if (field === 'referral_payee_client_id' && finalDeal.referral_payee_client_id !== undefined) {
+      updatePayload.referral_payee_client_id = finalDeal.referral_payee_client_id;
+    }
+    
     // Auto-save to database
     try {
-      const { error } = await supabase
+      console.log('Updating field:', field, 'with value:', value);
+      console.log('Update payload:', updatePayload);
+      
+      const { data, error } = await supabase
         .from('deal')
-        .update(finalDeal)
-        .eq('id', dealId);
+        .update(updatePayload)
+        .eq('id', dealId)
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
+      
+      console.log('Update successful:', data);
       
       // Update both local state AND parent state
-      setDeal(finalDeal);
-      onDealUpdate(finalDeal);
+      setDeal(data);
+      onDealUpdate(data);
     } catch (err) {
+      console.error('Error saving:', err);
       alert(`Error saving: ${err instanceof Error ? err.message : 'Failed to save'}`);
     }
   };
@@ -199,7 +236,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
     }
   };
 
-  const formatCurrencyHelper = (amount: number | null): string => {
+  const formatCurrency = (amount: number | null): string => {
     if (amount === null || amount === undefined) return '$0.00';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -207,80 +244,9 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
     }).format(amount);
   };
 
-  const formatPercentHelper = (percent: number | null): string => {
+  const formatPercent = (percent: number | null): string => {
     if (percent === null || percent === undefined) return '0.0%';
     return `${percent.toFixed(1)}%`;
-  };
-
-  // Simple percentage input component to match Overview tab styling
-  const PercentageInput = ({ 
-    label, 
-    value, 
-    onChange 
-  }: { 
-    label: string; 
-    value: number | null; 
-    onChange: (v: number | null) => void; 
-  }) => {
-    const [isEditing, setIsEditing] = useState(false);
-    const [editValue, setEditValue] = useState('');
-
-    const displayValue = value ? `${value.toFixed(1)}%` : '0.0%';
-
-    const handleStartEdit = () => {
-      setIsEditing(true);
-      setEditValue(value?.toString() || '');
-    };
-
-    const handleSave = () => {
-      const numValue = parseFloat(editValue);
-      onChange(isNaN(numValue) ? null : numValue);
-      setIsEditing(false);
-    };
-
-    const handleCancel = () => {
-      setIsEditing(false);
-      setEditValue('');
-    };
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        handleSave();
-      } else if (e.key === 'Escape') {
-        handleCancel();
-      }
-    };
-
-    if (isEditing) {
-      return (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-          <input
-            type="number"
-            step="0.1"
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={handleSave}
-            onKeyDown={handleKeyDown}
-            className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-            autoFocus
-          />
-        </div>
-      );
-    }
-
-    return (
-      <div>
-        <label className="block text-sm font-medium text-gray-700">{label}</label>
-        <div
-          onClick={handleStartEdit}
-          className="mt-1 block w-full rounded border-gray-300 shadow-sm cursor-pointer hover:bg-blue-50 px-3 py-2 transition-colors border border-transparent hover:border-blue-200 text-sm"
-          title="Click to edit"
-        >
-          {displayValue}
-        </div>
-      </div>
-    );
   };
 
   // Validation helper - SIMPLIFIED to avoid type issues
@@ -311,27 +277,6 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
     
     return warnings;
   };
-
-  // Section component to match Overview tab styling
-  function Section({ title, help, children }: { title: string; help?: string; children: React.ReactNode }) {
-    return (
-      <section className="bg-white rounded-md border p-4 mb-4">
-        <div className="flex items-center gap-2 mb-3">
-          <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
-          {help && (
-            <span
-              className="text-gray-500 text-xs border rounded-full w-4 h-4 inline-flex items-center justify-center"
-              title={help}
-              aria-label={help}
-            >
-              i
-            </span>
-          )}
-        </div>
-        {children}
-      </section>
-    );
-  }
 
   if (loading) {
     return (
@@ -374,7 +319,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <h3 className="text-xs font-medium text-blue-800 mb-1">Deal Fee</h3>
-          <p className="text-lg font-bold text-blue-900">{formatCurrencyHelper(deal.fee)}</p>
+          <p className="text-lg font-bold text-blue-900">{formatCurrency(deal.fee)}</p>
         </div>
         
         <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
@@ -454,188 +399,11 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
         </div>
       )}
 
-      {/* Deal-Level Commission Fields */}
-      <Section title="Commission Details" help="Set commission percentages and amounts. Click any percentage to edit.">
-        <div className="space-y-4">
-          {/* Top Row */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Deal Fee</label>
-              <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
-                {formatCurrencyHelper(deal.fee)}
-              </div>
-            </div>
-            
-            <PercentageInput
-              label="Commission Rate %"
-              value={deal.commission_percent}
-              onChange={(v) => updateField('commission_percent', v)}
-            />
-            
-            <PercentageInput
-              label="Referral Fee %"
-              value={deal.referral_fee_percent}
-              onChange={(v) => updateField('referral_fee_percent', v)}
-            />
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Referral Fee $</label>
-              <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
-                {formatCurrencyHelper(deal.referral_fee_usd)}
-              </div>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Number of Payments</label>
-              <input
-                type="number"
-                step="1"
-                min="1"
-                value={deal.number_of_payments || 1}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateField('number_of_payments', parseInt(e.target.value) || 1)}
-                className="mt-1 block w-full rounded border-gray-300 shadow-sm cursor-pointer hover:bg-blue-50 px-3 py-2 transition-colors border border-transparent hover:border-blue-200 text-sm"
-              />
-            </div>
-          </div>
-
-          {/* Second Row: Referral Payee and GCI/AGCI */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Referral Payee</label>
-              <input
-                type="text"
-                value={referralPayeeSearch}
-                onChange={(e) => setReferralPayeeSearch(e.target.value)}
-                placeholder="Search clients..."
-                className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-              />
-              {referralPayeeSuggestions.filter((s) => s.label !== referralPayeeSearch).length > 0 && (
-                <ul className="bg-white border border-gray-300 rounded mt-1 max-h-48 overflow-auto">
-                  {referralPayeeSuggestions
-                    .filter((s) => s.label !== referralPayeeSearch)
-                    .map((s) => (
-                      <li
-                        key={s.id}
-                        onClick={() => {
-                          updateField('referral_payee', s.label);
-                          setReferralPayeeSearch(s.label);
-                          setReferralPayeeSuggestions([]);
-                        }}
-                        className="p-2 hover:bg-gray-100 cursor-pointer text-sm"
-                      >
-                        {s.label}
-                      </li>
-                    ))}
-                </ul>
-              )}
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700">GCI</label>
-              <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
-                {formatCurrencyHelper(deal.gci)}
-              </div>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700">AGCI</label>
-              <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
-                {formatCurrencyHelper(deal.agci)}
-              </div>
-            </div>
-          </div>
-
-          {/* Third Row: House */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <PercentageInput
-              label="House %"
-              value={deal.house_percent}
-              onChange={(v) => updateField('house_percent', v)}
-            />
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700">House $</label>
-              <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
-                {formatCurrencyHelper(deal.house_usd)}
-              </div>
-            </div>
-          </div>
-
-          {/* Fourth Row: Origination */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <PercentageInput
-              label="Origination %"
-              value={deal.origination_percent}
-              onChange={(v) => updateField('origination_percent', v)}
-            />
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Origination $</label>
-              <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
-                {formatCurrencyHelper(deal.origination_usd)}
-              </div>
-            </div>
-          </div>
-
-          {/* Fifth Row: Site */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <PercentageInput
-              label="Site %"
-              value={deal.site_percent}
-              onChange={(v) => updateField('site_percent', v)}
-            />
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Site $</label>
-              <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
-                {formatCurrencyHelper(deal.site_usd)}
-              </div>
-            </div>
-          </div>
-
-          {/* Sixth Row: Deal */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <PercentageInput
-              label="Deal %"
-              value={deal.deal_percent}
-              onChange={(v) => updateField('deal_percent', v)}
-            />
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Deal $</label>
-              <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
-                {formatCurrencyHelper(deal.deal_usd)}
-              </div>
-            </div>
-          </div>
-
-          {/* Broker Percentage Summary */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h4 className="text-xs font-medium text-blue-800 mb-2">Broker Split Summary (Origination + Site + Deal)</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-              <div>
-                <span className="text-blue-700">Origination:</span> {formatPercentHelper(deal.origination_percent)}
-              </div>
-              <div>
-                <span className="text-blue-700">Site:</span> {formatPercentHelper(deal.site_percent)}
-              </div>
-              <div>
-                <span className="text-blue-700">Deal:</span> {formatPercentHelper(deal.deal_percent)}
-              </div>
-              <div className="font-semibold">
-                <span className="text-blue-700">Total:</span> {formatPercentHelper(
-                  (deal.origination_percent || 0) + 
-                  (deal.site_percent || 0) + 
-                  (deal.deal_percent || 0)
-                )}
-              </div>
-            </div>
-            <div className="mt-2 text-xs text-blue-600">
-              House % is separate and not included in the 100% split validation.
-            </div>
-          </div>
-        </div>
-      </Section>
+      {/* Commission Details Section - Now using the separate component */}
+      <CommissionDetailsSection 
+        deal={deal} 
+        onFieldUpdate={updateField} 
+      />
 
       {/* Commission Splits Table */}
       <Section title="Broker Commission Splits" help="Individual broker splits imported from Salesforce.">
@@ -664,6 +432,15 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Broker
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Origination
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Site
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Deal
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -679,19 +456,19 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
                       <div className="text-xs text-gray-500">{split.split_name}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{formatPercentHelper(split.split_origination_percent)}</div>
-                      <div className="text-xs text-gray-500">{formatCurrencyHelper(split.split_origination_usd)}</div>
+                      <div className="text-sm text-gray-900">{formatPercent(split.split_origination_percent)}</div>
+                      <div className="text-xs text-gray-500">{formatCurrency(split.split_origination_usd)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{formatPercentHelper(split.split_site_percent)}</div>
-                      <div className="text-xs text-gray-500">{formatCurrencyHelper(split.split_site_usd)}</div>
+                      <div className="text-sm text-gray-900">{formatPercent(split.split_site_percent)}</div>
+                      <div className="text-xs text-gray-500">{formatCurrency(split.split_site_usd)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{formatPercentHelper(split.split_deal_percent)}</div>
-                      <div className="text-xs text-gray-500">{formatCurrencyHelper(split.split_deal_usd)}</div>
+                      <div className="text-sm text-gray-900">{formatPercent(split.split_deal_percent)}</div>
+                      <div className="text-xs text-gray-500">{formatCurrency(split.split_deal_usd)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-semibold text-gray-900">{formatCurrencyHelper(split.split_broker_total)}</div>
+                      <div className="text-sm font-semibold text-gray-900">{formatCurrency(split.split_broker_total)}</div>
                     </td>
                   </tr>
                 ))}
@@ -713,7 +490,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <h4 className="text-xs font-medium text-blue-800 mb-1">Total Broker Amount</h4>
               <p className="text-lg font-bold text-blue-900">
-                {formatCurrencyHelper(
+                {formatCurrency(
                   commissionSplits.reduce((sum, split) => sum + (split.split_broker_total || 0), 0)
                 )}
               </p>
@@ -730,7 +507,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
               <h4 className="text-xs font-medium text-orange-800 mb-1">Per Payment Amount</h4>
               <p className="text-lg font-bold text-orange-900">
                 {deal.number_of_payments && deal.fee ? 
-                  formatCurrencyHelper(deal.fee / deal.number_of_payments) : 
+                  formatCurrency(deal.fee / deal.number_of_payments) : 
                   '$0.00'
                 }
               </p>
