@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Deal, Broker, CommissionSplit, DealUpdateHandler } from '../lib/types';
 import CommissionDetailsSection from './CommissionDetailsSection';
+import ReferralPayeeAutocomplete from './ReferralPayeeAutocomplete';
+import PercentageInput from './PercentageInput';
+import CommissionSplitSection from './CommissionSplitSection';
 
 interface CommissionTabProps {
   dealId: string;
