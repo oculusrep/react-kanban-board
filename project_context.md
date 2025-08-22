@@ -1,4 +1,4 @@
-# CRM Project Context - Updated August 21, 2025 (Payment Tab Implementation Complete)
+# CRM Project Context - Updated August 22, 2025 (Commission Calculations Centralization - RESTART WITH PROPER ARCHITECTURE)
 
 ## Project Overview
 Building a custom CRM system to replace Salesforce for a commercial real estate brokerage. The system provides better customization, improved dashboards, UX, customer portals, and AI tool integration with the database.
@@ -39,335 +39,220 @@ Building a custom CRM system to replace Salesforce for a commercial real estate 
 - Create specialized display components
 - Split large forms into focused sections
 - **Extract reusable modals and confirmation dialogs**
+- **Extract calculation logic into centralized hooks/utilities** ⭐ CURRENT PRIORITY ⭐
 
-## Database Migration Status
+## 🔗 Database Schema Reference (Generated August 22, 2025)
 
-### Tables Successfully Migrated ✅
-All tables use UPSERT pattern (preserves non-Salesforce records, updates existing, adds new):
-
-1. **user** - From salesforce_User ✅
-2. **contact_role** - Lookup table ✅
-3. **deal_contact** - From salesforce_OpportunityContactRole ✅
-4. **client** - From Account ✅
-5. **contact** - From Contact ✅
-6. **deal** - From Opportunity ✅
-7. **property** - From Property__c ✅
-8. **assignment** - From Assignment__c ✅
-9. **property_unit** - From Property_Unit__c ✅
-10. **site_submit** - From Site_Submits__c ✅
-11. **broker** - Lookup table ✅
-12. **commission_split** - From salesforce_Commission_Split__c ✅
-13. **payment** - From salesforce_Payment__c ✅
-14. **payment_split** - From salesforce_Payment_Split__c ✅
-
-### Payment System Architecture ✅ (COMPLETE)
-
-**Migration Results:**
-- ✅ **4 Brokers** - Auto-created from Salesforce data
-- ✅ **134 Commission Splits** - Deal-level commission templates  
-- ✅ **174 Payments** - Individual payment records
-- ✅ **328 Payment Splits** - Commission splits per payment
-
-**System Components:**
-- **Broker Table**: Simple name-based broker management (no `active` column)
-- **Commission Split (Deal Level)**: Master template for each broker per deal
-- **Payment (Deal Level)**: Individual payment records with QB integration fields
-- **Payment Split (Payment Level)**: Inherits from commission templates, allows overrides
-
-**Database Schema Notes:**
-- **broker table**: Does not have `active` column - fetch all brokers without filtering
-- **commission_split table**: Uses `broker_id` (foreign key), no `broker_name` column - display name via lookup
-- **Foreign key constraints**: commission_split → payment_split relationship prevents deletion of splits with existing payments
-
-**Trigger Functions Working:**
-- `calculate_commission_split()` - Calculates USD amounts from percentages
-- `calculate_payment_split()` - Inherits from commission templates, calculates per-payment amounts
-- `generate_payments_for_deal()` - Creates payments with commission splits
-
-## React Components Created/Updated
-
-### Deal Management System ✅ (PRODUCTION READY - THREE-TAB INTERFACE)
-
-#### 🔥 Complete Three-Tab System (August 21, 2025)
-**Achievement**: Successfully implemented complete deal lifecycle management
-
-**DealDetailsPage.tsx** - Main Deal Management Interface ✅
-- **Overview Tab** - Deal details form (existing functionality)
-- **Commission Tab** - Commission configuration and broker splits
-- **Payments Tab** - Payment generation and management (NEW)
-- **Layout Preserved** - Original DealHeaderBar and FloatingPanelManager intact
-- **Type Safety** - All TypeScript compilation errors resolved
-
-### Commission System UI ✅ (PRODUCTION READY & FULLY FUNCTIONAL)
-
-#### Core Commission Components ✅
-
-##### 1. CommissionTab.tsx ✅ (MAIN ORCHESTRATOR)
-**Status**: Production ready, working with async update handlers
-
-##### 2. CommissionDetailsSection.tsx ✅ (FORM LAYOUT)
-**Status**: Production ready, working perfectly with PercentageInput
-
-##### 3. CommissionSplitSection.tsx ✅ (BROKER SPLITS - REVERTED CALCULATIONS)
-**Status**: Production ready, calculations reverted to original AGCI-based method
-**Note**: Numbers need correction - to be addressed in future session
-
-**Current Calculation Method**:
-```typescript
-const calculateUsdAmounts = (percentage: number) => {
-  const agci = Number(deal.agci) || 0;
-  return agci * (percentage / 100);
-};
+### commission_split Table
+```sql
+CREATE TABLE commission_split (
+  id: UUID PRIMARY KEY,
+  deal_id: UUID REFERENCES deal(id),
+  broker_id: UUID REFERENCES broker(id) NULLABLE,
+  -- Commission split percentages (editable by users)
+  split_origination_percent: number | null,
+  split_site_percent: number | null, 
+  split_deal_percent: number | null,
+  -- Calculated USD amounts (auto-calculated from percentages)
+  split_origination_usd: number | null,
+  split_site_usd: number | null,
+  split_deal_usd: number | null,
+  split_broker_total: number | null,
+  -- Metadata
+  created_at: string,
+  updated_at: string,
+  created_by_id: UUID REFERENCES user(id),
+  updated_by_id: UUID REFERENCES user(id)
+);
 ```
 
-##### 4. ReferralPayeeAutocomplete.tsx ✅
-**Status**: Production ready
+### deal Table (Commission Fields)
+```sql
+CREATE TABLE deal (
+  id: UUID PRIMARY KEY,
+  -- Base commission amounts
+  gci: number | null,                    -- Gross Commission Income
+  agci: number | null,                   -- After GCI (calculated: gci - house_usd)
+  house_usd: number | null,              -- House amount in USD
+  house_percent: number | null,          -- House percentage
+  -- Commission breakdown percentages
+  origination_percent: number | null,     -- Origination percentage of AGCI
+  site_percent: number | null,           -- Site percentage of AGCI  
+  deal_percent: number | null,           -- Deal percentage of AGCI
+  -- Calculated USD amounts (should be auto-calculated)
+  origination_usd: number | null,        -- origination_percent × AGCI
+  site_usd: number | null,              -- site_percent × AGCI
+  deal_usd: number | null,              -- deal_percent × AGCI
+  -- Other commission fields
+  commission_percent: number | null,
+  referral_fee_percent: number | null,
+  referral_fee_usd: number | null,
+  referral_payee_client_id: UUID REFERENCES client(id),
+  number_of_payments: number | null,
+  -- [other deal fields...]
+);
+```
 
-##### 5. PercentageInput.tsx ✅
-**Status**: Production ready
+### broker Table
+```sql
+CREATE TABLE broker (
+  id: UUID PRIMARY KEY,
+  name: string NOT NULL,
+  -- Note: No 'active' column - fetch all brokers without filtering
+  created_at: string,
+  updated_at: string
+);
+```
 
-##### 6. DeleteConfirmationModal.tsx ✅
-**Status**: Reusable component working across contexts
+## 📊 Current State Analysis (August 22, 2025)
 
-### Payment System UI ✅ (PRODUCTION READY - NEWLY IMPLEMENTED)
+### Working Components ✅
 
-#### 🔥 Payment Tab Implementation Complete (August 21, 2025)
+**CommissionDetailsSection.tsx** (375 lines)
+- ✅ **Proper layout** - Section-based structure with help tooltips
+- ✅ **Field organization** - Logical grouping of commission fields
+- ✅ **User interaction** - PercentageInput components for editing
+- ✅ **Display logic** - Shows calculated USD amounts from deal object
+- ⚠️ **Issue**: Displays `deal.origination_usd` etc. from database (may be stale)
 
-##### Core Payment Components ✅
+**CommissionSplitSection.tsx** (600+ lines)  
+- ✅ **Full broker management** - Add/delete brokers, inline percentage editing
+- ✅ **Validation system** - Total percentage validation with color coding
+- ✅ **Error handling** - Foreign key constraint errors, loading states
+- ✅ **Real-time calculations** - Local `calculateUsdAmounts()` function
+- ⚠️ **Issue**: Local calculations may be inconsistent with deal-level calculations
 
-##### 1. PaymentTab.tsx ✅ (MAIN ORCHESTRATOR)
-**Location**: `src/components/PaymentTab.tsx`
-**Status**: **PRODUCTION READY** - Fully functional interface
-**Features**:
-- Payment data fetching and state management
-- Payment generation functionality
-- Summary cards (Total Commission, Total Payments, Payment Count, Status Summary)
-- Integration with modular sub-components
-- Error handling and loading states
-- Real-time payment updates
+### Database Architecture Issues Identified 🚨
 
-##### 2. PaymentGenerationSection.tsx ✅ (GENERATION CONTROLS)
-**Location**: `src/components/PaymentGenerationSection.tsx` 
-**Status**: **PRODUCTION READY**
-**Features**:
-- Configuration summary display
-- Validation warnings for incomplete setup
-- Payment generation button with loading states
-- Regeneration warnings
-- Payment schedule preview for multiple payments
+**1. Calculation Logic Duplication**
+- Deal-level USD amounts calculated somewhere (database triggers?)
+- Broker split USD amounts calculated locally in components
+- **Problem**: Two different calculation systems may use different formulas
 
-##### 3. PaymentListSection.tsx ✅ (PAYMENT MANAGEMENT)
-**Location**: `src/components/PaymentListSection.tsx`
-**Status**: **PRODUCTION READY**
-**Features**:
-- Editable payment table with inline editing
-- Payment status management (pending/sent/received)
-- Payment date tracking
-- Broker commission splits display per payment
-- Payment notes management
-- Professional delete confirmation
-- Real-time auto-save functionality
+**2. Potential Database Trigger Issues**
+- If triggers calculate `deal.origination_usd` using old formulas (e.g., percentage × GCI instead of percentage × AGCI)
+- **Impact**: Database overwrites correct frontend calculations with wrong values
 
-##### 4. DeleteConfirmationModal.tsx ✅ (REUSABLE)
-**Status**: Shared component working across Payment and Commission systems
+**3. Field Name Clarity**
+- Database uses `split_origination_percent` (confirmed from schema)
+- Interface names in types.ts need to match exactly
+- **Problem**: Previous attempts used `broker_origination_percent` (wrong field names)
 
-## Type System Architecture ✅ (COMPLETE & PRODUCTION READY)
+## 🎯 Commission Calculation Architecture Plan
 
-### Central Types Implementation ✅
-**Location**: `src/lib/types.ts`
-**Status**: Complete with all database field mappings
+### Current Business Logic (Confirmed from Working Code)
+```typescript
+// Deal-level calculations (AGCI-based):
+const agci = gci - house_usd;                           // After GCI
+const origination_usd = (origination_percent / 100) * agci;  // Not × gci
+const site_usd = (site_percent / 100) * agci;          
+const deal_usd = (deal_percent / 100) * agci;          
 
-**Key Interfaces**:
-- **Deal**: Complete deal data with all commission and payment fields
-  - **All missing properties added**: `deal_team_id`, `stage_id`, `target_close_date`, `loi_signed_date`, `closed_date`, etc.
-- **DealCard**: Simplified version for Kanban display
-- **CommissionSplit**: Broker-level commission breakdown
-- **Broker**: Simple broker management
-- **Payment**: Individual payment records with status tracking
-- **PaymentSplit**: Commission breakdown per payment
-- **Client/Contact/Property**: Core business entities
+// Broker split calculations (based on deal-level amounts):
+const originationSplitUSD = (split_origination_percent / 100) * origination_usd;
+const siteSplitUSD = (split_site_percent / 100) * site_usd;
+const dealSplitUSD = (split_deal_percent / 100) * deal_usd;
+const totalUSD = originationSplitUSD + siteSplitUSD + dealSplitUSD;
+```
 
-## Payment Tab Integration Status ✅ (COMPLETE)
+### Problem: Manual Workarounds Needed ⚠️
+**Current Issue**: User has to manually edit broker percentages to force number refresh
+**Root Cause**: Database and frontend calculations are inconsistent
 
-### DealDetailsPage Integration ✅
-**Approach**: Minimal changes to preserve working functionality
-**Changes Made**:
-1. **Added PaymentTab import** - Single line addition
-2. **Added Payments tab button** - Matching existing tab styling
-3. **Added payment tab content** - Single conditional render block
-4. **Added async update handler** - For Payment Tab compatibility
+### Solution: Centralized Calculation Hook 🎯
 
-**What Was Preserved**:
-- ✅ Original DealHeaderBar layout and functionality
-- ✅ Original FloatingPanelManager and floating panels
-- ✅ Original tab navigation styling and behavior
-- ✅ Overview tab functionality (unchanged)
-- ✅ Commission tab functionality (updated to use async handler)
-- ✅ All existing layout and styling
+**Phase 1: Create Centralized Hook** (15 minutes)
+- Create `useCommissionCalculations(deal)` hook
+- **Correct field names**: Use `split_origination_percent` etc. from schema
+- **Correct formulas**: AGCI-based calculations
+- Test hook independently before touching components
 
-### TypeScript Compilation ✅
-**Status**: All compilation errors resolved
-- ✅ Deal interface complete with all database properties
-- ✅ Proper async function typing for update handlers
-- ✅ Namespace imports to avoid type conflicts
-- ✅ Null-safe component prop passing
+**Phase 2: Update CommissionDetailsSection** (10 minutes)  
+- Replace `deal.origination_usd` with `baseAmounts.originationUSD` from hook
+- Keep all existing UI, layout, and functionality
+- **No other changes** - just swap data source
 
-## Payment Tab Testing Status ✅
+**Phase 3: Update CommissionSplitSection** (15 minutes)
+- Replace local `calculateUsdAmounts()` with hook calculations  
+- Keep all existing broker management, validation, error handling
+- **No other changes** - just swap calculation logic
 
-### Interface Testing ✅
-**Status**: Payment Tab loads and displays correctly
-**Verified Working**:
-- ✅ **Tab navigation** - Three tabs working (Overview, Commission, Payments)
-- ✅ **Summary cards** - Displaying Total Commission ($55,000), Total Payments, etc.
-- ✅ **Payment generation section** - Shows commission fee and configuration
-- ✅ **Generate Payments button** - Renders and is clickable
-- ✅ **No payments state** - Proper empty state messaging
+**Phase 4: Database Trigger Investigation** (10 minutes)
+- Check if database triggers overwrite correct calculations
+- Update triggers if they use wrong formulas
+- **Critical**: Fix triggers before testing end-to-end
 
-### Payment Generation Issue ❌ (NEXT PRIORITY)
-**Current Status**: "Failed to generate payments" error
-**Investigation Needed**:
-- Browser console error messages
-- `generate_payments_for_deal()` database function status
-- Commission splits configuration requirements
-- Database constraint or permission issues
+**Phase 5: Data Cleanup** (5 minutes)
+- SQL script to recalculate existing records with correct formulas
+- Run only after new calculation system is verified working
 
-## Commission Split Calculations ❌ (KNOWN ISSUE)
+## 🚨 CRITICAL DEVELOPMENT PRINCIPLES
 
-### Current Status
-**Problem**: Commission split calculations showing incorrect numbers
-**Current Method**: Percentages applied to full AGCI (reverted from deal-portion splits)
-**Status**: Needs correction in future session
+### Never Repeat These Mistakes ⚠️
+1. **Never rewrite working components** - only replace specific calculation logic
+2. **Never assume field names** - always reference database schema
+3. **Never change multiple things at once** - micro-iterations only
+4. **Never ignore TypeScript errors** - fix immediately or revert
+5. **Never guess component interfaces** - check existing working code
 
-**Note**: Calculations were reverted to original AGCI-based method per user request, but numbers are still incorrect and need debugging.
+### Mandatory Process for Database Changes 📋
+**Anytime we change database schema:**
+1. 🔄 **Download schema**: `supabase gen types typescript --project-id rqbvcvwbziilnycqtmnc > database-schema.ts`
+2. 📤 **Upload to GitHub**: Commit to version control
+3. 📋 **Upload to Claude**: Add to conversation for reference
 
-## Current File Structure
+### Development Rules 🎯
+- **One change per phase** - test immediately after each change
+- **Revert if broken** - never debug broken states, go back to working version
+- **Keep working patterns** - preserve existing imports, exports, component structure
+- **Schema first** - check database schema before writing any database code
+- **User is non-technical** - provide step-by-step instructions, minimize TypeScript battles
+
+## 📁 File Structure Status
 
 ```
 src/
 ├── components/
-│   ├── PaymentTab.tsx                    ✅ NEW - Main payment orchestrator
-│   ├── PaymentGenerationSection.tsx     ✅ NEW - Payment generation controls  
-│   ├── PaymentListSection.tsx           ✅ NEW - Payment management table
-│   ├── DeleteConfirmationModal.tsx      ✅ Reusable across contexts
-│   ├── CommissionTab.tsx                ✅ Updated for async handlers
-│   ├── CommissionDetailsSection.tsx     ✅ Production ready
-│   ├── CommissionSplitSection.tsx       ✅ Production ready (calculations need fix)
-│   ├── ReferralPayeeAutocomplete.tsx    ✅ Production ready
-│   ├── PercentageInput.tsx              ✅ Production ready
-│   ├── DealDetailsForm.tsx              ✅ Unchanged
-│   ├── DealHeaderBar.tsx                ✅ Unchanged
-│   └── (other existing components)
+│   ├── CommissionDetailsSection.tsx     ✅ Working (375 lines) - displays commission details with sections
+│   ├── CommissionSplitSection.tsx       ✅ Working (600+ lines) - full broker split management  
+│   ├── PercentageInput.tsx              ✅ Working - inline percentage editing
+│   ├── ReferralPayeeAutocomplete.tsx    ✅ Working - client/broker selection
+│   ├── DeleteConfirmationModal.tsx      ✅ Working - reusable confirmation
+│   ├── CommissionTab.tsx                ✅ Working - orchestrates both sections
+│   ├── PaymentTab.tsx                   ✅ Working - payment management
+│   └── DealDetailsPage.tsx              ✅ Working - three-tab interface
 ├── hooks/
-│   ├── useKanbanData.ts                 ✅ Updated with central types
-│   ├── useDealContacts.ts               ✅ Unchanged
-│   └── useEditDealPanel.ts              ✅ Unchanged
+│   └── useCommissionCalculations.ts     🚧 TO CREATE - centralized calculation logic
 ├── lib/
-│   └── types.ts                         ✅ Complete with Payment types
-├── pages/
-│   ├── DealDetailsPage.tsx              ✅ Updated with Payment Tab (minimal changes)
-│   └── (other pages)
-└── utils/
-    ├── format.ts                        ✅ Unchanged
-    └── stageProbability.ts              ✅ Unchanged
+│   ├── types.ts                         ⚠️ NEEDS UPDATE - fix field names to match schema
+│   └── supabaseClient.ts                ✅ Working
+├── database-schema.ts                   ✅ NEW - complete schema reference (299KB)
+└── project_context.md                   ✅ UPDATED - this document
 ```
 
-## Key Business Rules Implemented
+## Success Criteria ✅
 
-1. **Three-tab deal management** - Overview → Commission → Payments workflow
-2. **Deal-level commission structure** - Editable percentages with auto-calculated USD amounts
-3. **Broker-level commission splits** - Fully editable with add/delete functionality
-4. **Payment generation** - Creates payments based on commission splits and number_of_payments setting
-5. **Payment status tracking** - Pending → Sent → Received workflow
-6. **Real-time auto-save** - All changes save immediately to database
-7. **Professional UI consistency** - Payment Tab matches Commission Tab design patterns
-8. **Type safety** - Complete TypeScript coverage with proper error handling
+**Phase 1 Success**: Hook calculates correct amounts independently
+**Phase 2 Success**: CommissionDetailsSection shows real-time calculated amounts  
+**Phase 3 Success**: CommissionSplitSection uses centralized calculations
+**Phase 4 Success**: Database triggers use correct formulas
+**Phase 5 Success**: No manual workarounds needed - all calculations automatic
 
-## Session Accomplishments
+## Next Session Plan 🚀
 
-### August 21, 2025 Session ✅ (PAYMENT TAB IMPLEMENTATION COMPLETE)
-- ✅ **Payment Tab System Built** - Complete three-component modular architecture
-- ✅ **DealDetailsPage Integration** - Minimal changes preserving all existing functionality
-- ✅ **TypeScript Issues Resolved** - All compilation errors fixed
-- ✅ **Type System Extended** - Payment/PaymentSplit interfaces added to central types
-- ✅ **Commission System Maintained** - Existing functionality preserved
-- ✅ **User Interface Working** - Payment Tab loads and displays correctly
-- ✅ **Architecture Consistency** - Payment components follow established patterns
+1. **Fix TypeScript interfaces** - Update types.ts to match database schema exactly
+2. **Create calculation hook** - Centralized logic with correct field names  
+3. **Update components incrementally** - One at a time, test each change
+4. **Verify database triggers** - Ensure consistent calculation formulas
+5. **Test end-to-end** - Verify no manual refresh workarounds needed
 
-## Current Status - Three-Tab System Complete ✅
+**Goal**: Automatic commission calculations without manual intervention in under 1 hour using micro-iterations.
 
-### Deal Management Workflow ✅
-**Overview Tab** → **Commission Tab** → **Payments Tab**
+## Current Working State Backup 💾
 
-This provides complete deal lifecycle management:
-1. **Overview Tab** - Deal setup and relationship management
-2. **Commission Tab** - Commission configuration and broker splits
-3. **Payments Tab** - Payment generation, tracking, and management
+**Before ANY changes, the working components are:**
+- CommissionDetailsSection.tsx - 375 lines with proper section layout
+- CommissionSplitSection.tsx - 600+ lines with full broker management  
+- Both components work but need centralized calculations for consistency
 
-### Production Ready Components ✅
-- **Payment Tab Interface** - Complete UI with summary cards, generation controls, payment management
-- **Commission System** - Fully functional (calculations need correction)
-- **Overview System** - Unchanged and working
-- **Type System** - Complete and error-free
-- **Component Architecture** - Modular, reusable, maintainable
-
-### Next Session Priorities
-
-1. **Payment Generation Debugging** - Fix "Failed to generate payments" error
-   - Investigate browser console errors
-   - Verify `generate_payments_for_deal()` function
-   - Check commission splits prerequisites
-   - Test end-to-end payment workflow
-
-2. **Commission Split Calculations** - Correct mathematical logic
-   - Debug incorrect numbers in commission splits
-   - Verify AGCI-based calculation method
-   - Test with real deal data
-
-3. **Payment Management Testing** - Verify full payment workflow
-   - Payment status updates
-   - Payment amount editing
-   - Payment deletion
-   - Broker split inheritance
-
-## Technical Debt Status ✅
-
-### Resolved ✅
-- **Type system** - Centralized and complete with database schema accuracy
-- **Code architecture** - Modular components following established patterns
-- **Import consistency** - All components use proper TypeScript imports
-- **Component integration** - Payment Tab seamlessly integrated with existing system
-- **Error handling** - Comprehensive error states and user feedback
-
-### Outstanding Issues ❌
-- **Payment generation function** - Database function or permission issue
-- **Commission split calculations** - Mathematical logic needs correction
-- **End-to-end testing** - Full payment workflow needs verification
-
-## Development Environment Notes
-
-### Routing Configuration ✅
-**URL Parameter**: Route uses `dealId` parameter (not `id`)
-**Format**: `/deals/:dealId` 
-**Example**: `/deals/cefc801e-df11-47f1-beb4-45152c44f340`
-
-### Component Import Patterns ✅
-- **Namespace imports** used to avoid type conflicts
-- **Async function handlers** for database operations
-- **Proper null checking** for component prop safety
-
-## Achievement Summary
-
-**Started Session With**: Commission system 100% complete, need Payment Tab
-**Achieved**: Complete three-tab deal management system with Payment Tab fully implemented
-
-**Major Accomplishments**:
-1. ✅ **Complete Payment Tab System** - Built from scratch with modular architecture
-2. ✅ **Seamless Integration** - Added to existing DealDetailsPage with minimal changes
-3. ✅ **Type Safety Achievement** - All TypeScript compilation errors resolved
-4. ✅ **UI/UX Consistency** - Payment Tab matches established design patterns
-5. ✅ **Architecture Integrity** - Followed all established component breakdown principles
-6. ✅ **Preservation of Work** - All existing functionality maintained
-
-**Result**: Production-ready three-tab deal management system providing complete deal lifecycle workflow from initial setup through commission configuration to payment tracking and management.
-
-**Status**: Payment Tab system is ready for payment generation debugging and full workflow testing! 🚀
+**If anything breaks during centralization, revert to these working versions immediately.**
