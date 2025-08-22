@@ -3,6 +3,7 @@ import React from 'react';
 import { Deal } from '../lib/types';
 import PercentageInput from './PercentageInput';
 import ReferralPayeeAutocomplete from './ReferralPayeeAutocomplete';
+import { useCommissionCalculations } from '../hooks/useCommissionCalculations';
 
 interface CommissionDetailsSectionProps {
   deal: Deal;
@@ -39,6 +40,7 @@ const CommissionDetailsSection: React.FC<CommissionDetailsSectionProps> = ({
   deal,
   onFieldUpdate
 }) => {
+  const { baseAmounts } = useCommissionCalculations(deal);
   const formatCurrency = (amount: number | null): string => {
     if (amount === null || amount === undefined) return '$0.00';
     return new Intl.NumberFormat('en-US', {
@@ -148,7 +150,7 @@ const CommissionDetailsSection: React.FC<CommissionDetailsSectionProps> = ({
           <div>
             <label className="block text-sm font-medium text-gray-700">Origination $</label>
             <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
-              {formatCurrency(deal.origination_usd)}
+              {formatCurrency(baseAmounts.originationUSD)}
             </div>
           </div>
         </div>
@@ -164,7 +166,7 @@ const CommissionDetailsSection: React.FC<CommissionDetailsSectionProps> = ({
           <div>
             <label className="block text-sm font-medium text-gray-700">Site $</label>
             <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
-              {formatCurrency(deal.site_usd)}
+              {formatCurrency(baseAmounts.siteUSD)}
             </div>
           </div>
         </div>
@@ -180,7 +182,7 @@ const CommissionDetailsSection: React.FC<CommissionDetailsSectionProps> = ({
           <div>
             <label className="block text-sm font-medium text-gray-700">Deal $</label>
             <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
-              {formatCurrency(deal.deal_usd)}
+              {formatCurrency(baseAmounts.dealUSD)}
             </div>
           </div>
         </div>
