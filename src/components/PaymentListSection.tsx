@@ -38,7 +38,7 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
       const updates: Partial<Payment> = { status: newStatus };
       
       // If marking as sent or received, set payment_date to today if not already set
-      const payment = payments.find(p => p.payment_id === paymentId);
+      const payment = payments.find(p => p.id === paymentId);
       if ((newStatus === 'sent' || newStatus === 'received') && !payment?.payment_date) {
         updates.payment_date = new Date().toISOString().split('T')[0];
       }
@@ -86,7 +86,7 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
   const executeDeletePayment = async () => {
     if (paymentToDelete) {
       try {
-        await onDeletePayment(paymentToDelete.payment_id);
+        await onDeletePayment(paymentToDelete.id);
         setDeleteModalOpen(false);
         setPaymentToDelete(null);
       } catch (error) {
@@ -147,14 +147,14 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {payments.map((payment) => {
-              const splits = getPaymentSplits(payment.payment_id);
-              const isEditing = editingPayment === payment.payment_id;
+              const splits = getPaymentSplits(payment.id);
+              const isEditing = editingPayment === payment.id;
 
               return (
-                <tr key={payment.payment_id} className="hover:bg-gray-50">
+                <tr key={payment.id} className="hover:bg-gray-50">
                   {/* Payment Number */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    #{payment.payment_number}
+                    #{payment.payment_sequence}
                   </td>
 
                   {/* Amount */}
@@ -164,7 +164,7 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
                         type="number"
                         step="0.01"
                         value={payment.payment_amount || 0}
-                        onChange={(e) => handleAmountChange(payment.payment_id, parseFloat(e.target.value) || 0)}
+                        onChange={(e) => handleAmountChange(payment.id, parseFloat(e.target.value) || 0)}
                         className="w-24 px-2 py-1 border border-gray-300 rounded-md text-sm"
                         onBlur={() => setEditingPayment(null)}
                         onKeyDown={(e) => {
@@ -175,7 +175,7 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
                       />
                     ) : (
                       <button
-                        onClick={() => setEditingPayment(payment.payment_id)}
+                        onClick={() => setEditingPayment(payment.id)}
                         className="hover:bg-gray-100 px-2 py-1 rounded transition-colors"
                       >
                         ${(payment.payment_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -186,9 +186,9 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
                   {/* Status */}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <select
-                      value={payment.status || 'pending'}
-                      onChange={(e) => handleStatusChange(payment.payment_id, e.target.value)}
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border-0 ${getStatusBadgeColor(payment.status || 'pending')}`}
+                      value={payment.payment_received || 'pending'}
+                      onChange={(e) => handleStatusChange(payment.id, e.target.value)}
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border-0 ${getStatusBadgeColor(payment.payment_received || 'pending')}`}
                     >
                       <option value="pending">Pending</option>
                       <option value="sent">Sent</option>
@@ -200,8 +200,8 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <input
                       type="date"
-                      value={payment.payment_date || ''}
-                      onChange={(e) => handleDateChange(payment.payment_id, e.target.value)}
+                      value={payment.payment_date_actual || ''}
+                      onChange={(e) => handleDateChange(payment.id, e.target.value)}
                       className="border border-gray-300 rounded-md px-2 py-1 text-sm"
                     />
                   </td>
@@ -211,10 +211,10 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
                     {splits.length > 0 ? (
                       <div className="space-y-1">
                         {splits.map((split) => (
-                          <div key={split.payment_split_id} className="flex justify-between text-xs">
+                          <div key={split.id} className="flex justify-between text-xs">
                             <span className="text-gray-600">{getBrokerName(split.broker_id)}:</span>
                             <span className="font-medium">
-                              ${(split.split_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              ${(split.split_broker_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                           </div>
                         ))}
@@ -229,7 +229,7 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
                     <input
                       type="text"
                       value={payment.notes || ''}
-                      onChange={(e) => handleNotesChange(payment.payment_id, e.target.value)}
+                      onChange={(e) => handleNotesChange(payment.id, e.target.value)}
                       placeholder="Add notes..."
                       className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm"
                     />

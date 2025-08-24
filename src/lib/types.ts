@@ -157,29 +157,52 @@ export interface CommissionSplit {
   updated_at?: string;
 }
 
-// Payment System Types
+// Payment System Types - Updated to match database schema
 export interface Payment {
-  payment_id: string;
+  id: string;
   deal_id: string;
-  payment_number: number;
+  
+  // Payment details
+  payment_sequence: number | null;        // Was: payment_number
   payment_amount: number | null;
-  payment_date: string | null;
-  status: string | null; // 'pending', 'sent', 'received'
+  
+  // Payment dates (multiple date fields in DB)
+  payment_date_estimated: string | null;  // Was: payment_date
+  payment_date_actual: string | null;     // New: actual payment date
+  payment_received_date: string | null;   // New: when payment was received
+  
+  // Payment status and tracking
+  payment_received: boolean | null;       // Was: status (boolean instead of string)
+  status?: string;                    // Temporary for component compatibility
+  payment_date?: string;              // Temporary for component compatibility
+  
   qb_invoice_id: string | null;
   qb_payment_id: string | null;
+  
+  // Additional fields from schema
+  payment_invoice_date: string | null;
+  invoice_sent: boolean | null;
+  agci: number | null;
+  
+  // Notes and metadata
   notes: string | null;
   created_at?: string;
   updated_at?: string;
 }
 
 export interface PaymentSplit {
-  payment_split_id: string;
+  id: string;
   payment_id: string;
   commission_split_id: string | null;
   broker_id: string;
-  split_amount: number | null;
-  split_percentage: number | null;
-  split_type: string | null; // 'origination', 'site', 'deal'
+   split_broker_total: number | null;  // This exists in DB
+  
+  split_origination_percent: number | null;
+  split_site_percent: number | null;
+  split_deal_percent: number | null;
+  split_origination_usd: number | null;
+  split_site_usd: number | null;
+  split_deal_usd: number | null;
   created_at?: string;
   updated_at?: string;
 }

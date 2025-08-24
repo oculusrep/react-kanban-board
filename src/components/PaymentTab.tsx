@@ -1,6 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Deal, Payment, PaymentSplit, Broker } from '../lib/types';
+import { Deal, Payment, PaymentSplit, Broker, CommissionSplit } from '../lib/types';
+import { usePaymentCalculations } from '../hooks/usePaymentCalculations';
+import PaymentGenerationSection from './PaymentGenerationSection';
+import PaymentListSection from './PaymentListSection';
+
+// Enhanced Payment type with joined property data
+interface PaymentWithProperty extends Payment {
+  deal?: {
+    id: string;
+    property_id: string;
+    property?: {
+      id: string;
+      property_name: string;
+      address: string;
+      city: string;
+      state: string;
+      zip: string;
+    };
+  };
+}
 
 interface PaymentTabProps {
   deal: Deal;
@@ -8,14 +27,24 @@ interface PaymentTabProps {
 }
 
 const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const [payments, setPayments] = useState<PaymentWithProperty[]>([]);
   const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>([]);
+  const [commissionSplits, setCommissionSplits] = useState<CommissionSplit[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [generatingPayments, setGeneratingPayments] = useState(false);
 
-  // Fetch all payment-related data
+  // Use centralized payment calculations
+  const {
+    calculatedPaymentAmount,
+    totalCalculatedPayments,
+    paymentCommissionBreakdown,
+    canGeneratePayments,
+    validationMessages
+  } = usePaymentCalculations(deal, payments, commissionSplits);
+
+  // Fetch all payment and commission-related data
   const fetchPaymentData = async () => {
     if (!deal.id) return;
 
@@ -23,17 +52,31 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
       setLoading(true);
       setError(null);
 
-      // Fetch payments for this deal
+      // Fetch payments for this deal with property information via JOIN
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('payment')
-        .select('*')
+        .select(`
+          *,
+          deal!inner(
+            id,
+            property_id,
+            property!inner(
+              id,
+              property_name,
+              address,
+              city,
+              state,
+              zip
+            )
+          )
+        `)
         .eq('deal_id', deal.id)
-        .order('payment_number', { ascending: true });
+        .order('payment_sequence', { ascending: true });
 
       if (paymentsError) throw paymentsError;
 
-      // Fetch payment splits for all payments
-      const paymentIds = paymentsData?.map(p => p.payment_id) || [];
+      // Fetch payment splits for all payments  
+      const paymentIds = paymentsData?.map(p => p.id) || [];
       let paymentSplitsData: PaymentSplit[] = [];
       
       if (paymentIds.length > 0) {
@@ -46,6 +89,14 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
         paymentSplitsData = splitsData || [];
       }
 
+      // Fetch commission splits for this deal (templates for payment generation)
+      const { data: commissionSplitsData, error: commissionSplitsError } = await supabase
+        .from('commission_split')
+        .select('*')
+        .eq('deal_id', deal.id);
+
+      if (commissionSplitsError) throw commissionSplitsError;
+
       // Fetch all brokers
       const { data: brokersData, error: brokersError } = await supabase
         .from('broker')
@@ -56,6 +107,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
 
       setPayments(paymentsData || []);
       setPaymentSplits(paymentSplitsData);
+      setCommissionSplits(commissionSplitsData || []);
       setBrokers(brokersData || []);
 
     } catch (err) {
@@ -76,7 +128,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
 
       // Call the database function to generate payments
       const { data, error } = await supabase.rpc('generate_payments_for_deal', {
-        deal_id: deal.id
+        deal_uuid: deal.id
       });
 
       if (error) throw error;
@@ -104,7 +156,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
 
       // Update local state
       setPayments(prev => prev.map(p => 
-        p.payment_id === paymentId ? { ...p, ...updates } : p
+        p.id === paymentId ? { ...p, ...updates } : p
       ));
 
     } catch (err) {
@@ -128,12 +180,12 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
       const { error: paymentError } = await supabase
         .from('payment')
         .delete()
-        .eq('payment_id', paymentId);
+        .eq('id', paymentId);
 
       if (paymentError) throw paymentError;
 
       // Update local state
-      setPayments(prev => prev.filter(p => p.payment_id !== paymentId));
+      setPayments(prev => prev.filter(p => p.id !== paymentId));
       setPaymentSplits(prev => prev.filter(ps => ps.payment_id !== paymentId));
 
     } catch (err) {
@@ -157,9 +209,16 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
   const hasPayments = payments.length > 0;
   const totalPaymentAmount = payments.reduce((sum, p) => sum + (p.payment_amount || 0), 0);
   const commissionFee = deal.fee || 0;
-  const pendingPayments = payments.filter(p => p.status === 'pending').length;
-  const sentPayments = payments.filter(p => p.status === 'sent').length;
-  const receivedPayments = payments.filter(p => p.status === 'received').length;
+  const pendingPayments = payments.filter(p => p => p.payment_received !== true).length;
+  const receivedPayments = payments.filter(p => p => p.payment_received !== true).length;
+
+  // Helper function for currency formatting
+  const formatUSD = (amount: number): string => {
+    return amount.toLocaleString('en-US', { 
+      minimumFractionDigits: 2, 
+      maximumFractionDigits: 2 
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -174,120 +233,127 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <div className="text-sm font-medium text-blue-600">Total Commission</div>
           <div className="text-2xl font-bold text-blue-900">
-            ${commissionFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            ${formatUSD(commissionFee)}
           </div>
         </div>
 
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-          <div className="text-sm font-medium text-green-600">Total Payments</div>
+          <div className="text-sm font-medium text-green-600">Calculated Payments</div>
           <div className="text-2xl font-bold text-green-900">
-            ${totalPaymentAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            ${formatUSD(totalCalculatedPayments)}
+          </div>
+          <div className="text-xs text-green-600 mt-1">
+            {deal.number_of_payments || 1} × ${formatUSD(calculatedPaymentAmount)}
           </div>
         </div>
 
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-          <div className="text-sm font-medium text-gray-600">Payment Count</div>
-          <div className="text-2xl font-bold text-gray-900">{payments.length}</div>
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+          <div className="text-sm font-medium text-purple-600">Current Total</div>
+          <div className="text-2xl font-bold text-purple-900">
+            ${formatUSD(totalPaymentAmount)}
+          </div>
+          <div className="text-xs text-purple-600 mt-1">
+            {payments.length} payments generated
+          </div>
         </div>
 
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <div className="text-sm font-medium text-yellow-600">Status Summary</div>
-          <div className="text-sm text-yellow-900">
-            {pendingPayments}P / {sentPayments}S / {receivedPayments}R
+          <div className="text-sm text-yellow-900 mt-1">
+            <div>{pendingPayments} Pending</div>
+            <div>{receivedPayments} Received</div>
           </div>
         </div>
       </div>
 
-      {/* Payment Generation Section - Simplified */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Generation</h3>
-        
-        <div className="space-y-4">
-          <div className="text-sm text-gray-600">
-            <p>Commission Fee: ${(deal.fee || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-            <p>Number of Payments: {deal.number_of_payments || 1}</p>
-          </div>
-          
-          <button
-            onClick={generatePayments}
-            disabled={!deal.fee || deal.fee <= 0 || generatingPayments}
-            className={`px-4 py-2 rounded-md font-medium transition-colors ${
-              deal.fee && deal.fee > 0 && !generatingPayments
-                ? 'bg-blue-600 text-white hover:bg-blue-700'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            }`}
-          >
-            {generatingPayments ? 'Generating...' : hasPayments ? 'Regenerate Payments' : 'Generate Payments'}
-          </button>
-        </div>
-      </div>
+      {/* Payment Generation Section */}
+      <PaymentGenerationSection
+        deal={deal}
+        hasPayments={hasPayments}
+        existingPayments={payments}
+        commissionSplits={commissionSplits}
+        onGeneratePayments={generatePayments}
+        generatingPayments={generatingPayments}
+      />
 
-      {/* Payment List - Simplified */}
-      {hasPayments && (
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Management</h3>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Payment #</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {payments.map((payment) => (
-                  <tr key={payment.payment_id}>
-                    <td className="px-4 py-2 text-sm font-medium text-gray-900">
-                      #{payment.payment_number}
-                    </td>
-                    <td className="px-4 py-2 text-sm text-gray-900">
-                      ${(payment.payment_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="px-4 py-2 text-sm">
-                      <select
-                        value={payment.status || 'pending'}
-                        onChange={(e) => updatePayment(payment.payment_id, { status: e.target.value })}
-                        className="text-xs px-2 py-1 border border-gray-300 rounded"
-                      >
-                        <option value="pending">Pending</option>
-                        <option value="sent">Sent</option>
-                        <option value="received">Received</option>
-                      </select>
-                    </td>
-                    <td className="px-4 py-2 text-sm text-gray-900">
-                      <input
-                        type="date"
-                        value={payment.payment_date || ''}
-                        onChange={(e) => updatePayment(payment.payment_id, { payment_date: e.target.value })}
-                        className="text-xs px-2 py-1 border border-gray-300 rounded"
-                      />
-                    </td>
-                    <td className="px-4 py-2 text-sm">
-                      <button
-                        onClick={() => deletePayment(payment.payment_id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* Payment List Section */}
+      {hasPayments ? (
+        <div className="space-y-6">
+          {/* Property Information (from joined data) */}
+          {payments[0]?.deal?.property && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <h4 className="text-sm font-medium text-gray-900 mb-2">Property Information</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div className="text-gray-600">Property Name</div>
+                  <div className="font-medium">{payments[0]?.deal?.property?.property_name || 'N/A'}</div>
+                </div>
+                <div>
+                  <div className="text-gray-600">Address</div>
+                  <div className="font-medium">{
+                    [payments[0]?.deal?.property?.address, payments[0]?.deal?.property?.city, payments[0]?.deal?.property?.state, payments[0]?.deal?.property?.zip]
+                    .filter(Boolean).join(', ') || 'N/A'
+                  }</div>
+                </div>
+              </div>
+            </div>
+          )}
 
-      {/* No Payments State */}
-      {!hasPayments && !generatingPayments && (
+          <PaymentListSection
+            payments={payments}
+            paymentSplits={paymentSplits}
+            brokers={brokers}
+            onUpdatePayment={updatePayment}
+            onDeletePayment={deletePayment}
+          />
+        </div>
+      ) : (
+        /* No Payments State */
         <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
           <div className="text-gray-500 text-lg mb-2">No payments generated yet</div>
           <div className="text-gray-400 text-sm">
-            Configure commission details and generate payments to get started
+            {canGeneratePayments ? 
+              'Click "Generate Payments" above to create payment records' :
+              'Complete commission configuration to enable payment generation'
+            }
+          </div>
+          {validationMessages.length > 0 && (
+            <div className="mt-4 text-left max-w-md mx-auto">
+              <div className="text-sm text-gray-600 mb-2">Required configuration:</div>
+              <ul className="text-sm text-gray-500 space-y-1">
+                {validationMessages.map((message, index) => (
+                  <li key={index} className="flex items-start">
+                    <span className="text-gray-400 mr-1">•</span>
+                    {message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Commission Breakdown Summary (for reference) */}
+      {hasPayments && paymentCommissionBreakdown.agci > 0 && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+          <h4 className="text-sm font-medium text-gray-900 mb-3">Commission Reference (per payment)</h4>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <div className="text-gray-600">AGCI</div>
+              <div className="font-medium">${formatUSD(paymentCommissionBreakdown.agci)}</div>
+            </div>
+            <div>
+              <div className="text-gray-600">Origination ({paymentCommissionBreakdown.origination_percent}%)</div>
+              <div className="font-medium">${formatUSD(paymentCommissionBreakdown.origination_usd)}</div>
+            </div>
+            <div>
+              <div className="text-gray-600">Site ({paymentCommissionBreakdown.site_percent}%)</div>
+              <div className="font-medium">${formatUSD(paymentCommissionBreakdown.site_usd)}</div>
+            </div>
+            <div>
+              <div className="text-gray-600">Deal ({paymentCommissionBreakdown.deal_percent}%)</div>
+              <div className="font-medium">${formatUSD(paymentCommissionBreakdown.deal_usd)}</div>
+            </div>
           </div>
         </div>
       )}
