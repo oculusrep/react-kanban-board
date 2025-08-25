@@ -5,6 +5,7 @@ import { usePaymentCalculations } from '../hooks/usePaymentCalculations';
 import PaymentGenerationSection from './PaymentGenerationSection';
 import PaymentListSection from './PaymentListSection';
 import PaymentStatusCard from './PaymentStatusCard';
+import CommissionBreakdownBar from './CommissionBreakdownBar';
 import { usePaymentStatus } from '../hooks/usePaymentStatus';
 
 // Enhanced Payment type with joined property data
@@ -250,6 +251,13 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
         completionRate={completionRate}
       />
       </div>
+
+      {/* Commission Breakdown Bar */}
+      <CommissionBreakdownBar
+        deal={deal}
+        commissionSplits={commissionSplits}
+        className="mb-6"
+      />
 
       {/* Payment Generation Section */}
       <PaymentGenerationSection
