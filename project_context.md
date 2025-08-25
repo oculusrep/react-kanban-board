@@ -1,4 +1,23 @@
-# CRM Project Context - Updated August 25, 2025 (PaymentTab Enhancement Session 🎨)
+# CRM Project Context - Updated August 25, 2025
+
+## 🚀 **SESSION SETUP INSTRUCTIONS**
+**At start of each Claude Code session:**
+"Review project_context.md, DEVELOPMENT_GUIDE.md, and database-schema.ts to understand current project state before we start coding"
+
+## Quick Reference for New Sessions
+- **System**: Commercial real estate CRM replacing Salesforce
+- **Stack**: React 18 + TypeScript + Supabase + TailwindCSS  
+- **Architecture**: Database-first development with modular hooks
+- **Status**: Working commission & payment systems, stable Kanban board
+
+## Key Files to Review Before Coding
+- `DEVELOPMENT_GUIDE.md` - Architecture patterns and development workflows
+- `CLAUDE_CODE_CONTEXT.md` - Detailed system overview and patterns
+- `database-schema.ts` - Generated database types (299KB)
+- `src/lib/types.ts` - Central TypeScript interfaces
+- Working system references:
+  - `src/hooks/useCommissionCalculations.ts` 
+  - `src/hooks/usePaymentCalculations.ts`
 
 ## Project Overview
 Building a custom CRM system to replace Salesforce for a commercial real estate brokerage. The system provides better customization, improved dashboards, UX, customer portals, and AI tool integration with the database.
