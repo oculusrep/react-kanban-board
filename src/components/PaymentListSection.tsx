@@ -32,22 +32,10 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
     return broker ? broker.name : 'Unknown Broker';
   };
 
-  // Handle payment status change
-  const handleStatusChange = async (paymentId: string, newStatus: string) => {
-    try {
-      const updates: Partial<Payment> = { status: newStatus };
-      
-      // If marking as sent or received, set payment_date to today if not already set
-      const payment = payments.find(p => p.id === paymentId);
-      if ((newStatus === 'sent' || newStatus === 'received') && !payment?.payment_date) {
-        updates.payment_date = new Date().toISOString().split('T')[0];
-      }
-      
-      await onUpdatePayment(paymentId, updates);
-    } catch (error) {
-      console.error('Error updating payment status:', error);
-    }
-  };
+// Delete this function or replace with:
+const getStatusBadgeColor = (received: boolean) => {
+  return received ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800';
+};
 
   // Handle payment amount change
   const handleAmountChange = async (paymentId: string, newAmount: number) => {
@@ -92,20 +80,6 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
       } catch (error) {
         console.error('Error deleting payment:', error);
       }
-    }
-  };
-
-  // Get status badge color
-  const getStatusBadgeColor = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'sent':
-        return 'bg-blue-100 text-blue-800';
-      case 'received':
-        return 'bg-green-100 text-green-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -185,15 +159,19 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
 
                   {/* Status */}
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <select
-                      value={payment.payment_received || 'pending'}
-                      onChange={(e) => handleStatusChange(payment.id, e.target.value)}
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border-0 ${getStatusBadgeColor(payment.payment_received || 'pending')}`}
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="sent">Sent</option>
-                      <option value="received">Received</option>
-                    </select>
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={payment.payment_received || false}
+                        onChange={(e) => onUpdatePayment(payment.id, { payment_received: e.target.checked })}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <span className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        payment.payment_received ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {payment.payment_received ? 'Received' : 'Pending'}
+                      </span>
+                    </div>
                   </td>
 
                   {/* Payment Date */}
@@ -258,7 +236,7 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
         onClose={() => setDeleteModalOpen(false)}
         onConfirm={executeDeletePayment}
         title="Delete Payment"
-        itemName={paymentToDelete ? `Payment #${paymentToDelete.payment_number}` : ''}
+        itemName={paymentToDelete ? `Payment #${paymentToDelete.payment_sequence}` : ''}
         message="This will permanently delete the payment and all associated commission splits. This action cannot be undone."
       />
     </div>
