@@ -4,6 +4,8 @@ import { Deal, Payment, PaymentSplit, Broker, CommissionSplit } from '../lib/typ
 import { usePaymentCalculations } from '../hooks/usePaymentCalculations';
 import PaymentGenerationSection from './PaymentGenerationSection';
 import PaymentListSection from './PaymentListSection';
+import PaymentStatusCard from './PaymentStatusCard';
+import { usePaymentStatus } from '../hooks/usePaymentStatus';
 
 // Enhanced Payment type with joined property data
 interface PaymentWithProperty extends Payment {
@@ -55,21 +57,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
       // Fetch payments for this deal with property information via JOIN
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('payment')
-        .select(`
-          *,
-          deal!inner(
-            id,
-            property_id,
-            property!inner(
-              id,
-              property_name,
-              address,
-              city,
-              state,
-              zip
-            )
-          )
-        `)
+        .select('*')
         .eq('deal_id', deal.id)
         .order('payment_sequence', { ascending: true });
 
@@ -209,8 +197,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
   const hasPayments = payments.length > 0;
   const totalPaymentAmount = payments.reduce((sum, p) => sum + (p.payment_amount || 0), 0);
   const commissionFee = deal.fee || 0;
-  const pendingPayments = payments.filter(p => !p.payment_received).length;
-  const receivedPayments = payments.filter(p => p.payment_received).length;
+  const { statusSummary, hasOverdue, hasActionItems, completionRate } = usePaymentStatus(payments);
 
   // Helper function for currency formatting
   const formatUSD = (amount: number): string => {
@@ -257,13 +244,11 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
           </div>
         </div>
 
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <div className="text-sm font-medium text-yellow-600">Status Summary</div>
-          <div className="text-sm text-yellow-900 mt-1">
-            <div>{pendingPayments} Pending</div>
-            <div>{receivedPayments} Received</div>
-          </div>
-        </div>
+       <PaymentStatusCard 
+        statusSummary={statusSummary}
+        hasOverdue={hasOverdue}
+        completionRate={completionRate}
+      />
       </div>
 
       {/* Payment Generation Section */}
@@ -279,26 +264,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
       {/* Payment List Section */}
       {hasPayments ? (
         <div className="space-y-6">
-          {/* Property Information (from joined data) */}
-          {payments[0]?.deal?.property && (
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-gray-900 mb-2">Property Information</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div>
-                  <div className="text-gray-600">Property Name</div>
-                  <div className="font-medium">{payments[0]?.deal?.property?.property_name || 'N/A'}</div>
-                </div>
-                <div>
-                  <div className="text-gray-600">Address</div>
-                  <div className="font-medium">{
-                    [payments[0]?.deal?.property?.address, payments[0]?.deal?.property?.city, payments[0]?.deal?.property?.state, payments[0]?.deal?.property?.zip]
-                    .filter(Boolean).join(', ') || 'N/A'
-                  }</div>
-                </div>
-              </div>
-            </div>
-          )}
-
+          
           <PaymentListSection
             payments={payments}
             paymentSplits={paymentSplits}
@@ -333,31 +299,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
         </div>
       )}
 
-      {/* Commission Breakdown Summary (for reference) */}
-      {hasPayments && paymentCommissionBreakdown.agci > 0 && (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-          <h4 className="text-sm font-medium text-gray-900 mb-3">Commission Reference (per payment)</h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <div className="text-gray-600">AGCI</div>
-              <div className="font-medium">${formatUSD(paymentCommissionBreakdown.agci)}</div>
-            </div>
-            <div>
-              <div className="text-gray-600">Origination ({paymentCommissionBreakdown.origination_percent}%)</div>
-              <div className="font-medium">${formatUSD(paymentCommissionBreakdown.origination_usd)}</div>
-            </div>
-            <div>
-              <div className="text-gray-600">Site ({paymentCommissionBreakdown.site_percent}%)</div>
-              <div className="font-medium">${formatUSD(paymentCommissionBreakdown.site_usd)}</div>
-            </div>
-            <div>
-              <div className="text-gray-600">Deal ({paymentCommissionBreakdown.deal_percent}%)</div>
-              <div className="font-medium">${formatUSD(paymentCommissionBreakdown.deal_usd)}</div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      </div>
   );
 };
 
