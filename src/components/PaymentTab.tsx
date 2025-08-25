@@ -150,7 +150,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
       const { error } = await supabase
         .from('payment')
         .update(updates)
-        .eq('payment_id', paymentId);
+        .eq('id', paymentId);
 
       if (error) throw error;
 
@@ -209,8 +209,8 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
   const hasPayments = payments.length > 0;
   const totalPaymentAmount = payments.reduce((sum, p) => sum + (p.payment_amount || 0), 0);
   const commissionFee = deal.fee || 0;
-  const pendingPayments = payments.filter(p => p => p.payment_received !== true).length;
-  const receivedPayments = payments.filter(p => p => p.payment_received !== true).length;
+  const pendingPayments = payments.filter(p => !p.payment_received).length;
+  const receivedPayments = payments.filter(p => p.payment_received).length;
 
   // Helper function for currency formatting
   const formatUSD = (amount: number): string => {
