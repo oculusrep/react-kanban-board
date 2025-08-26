@@ -60,99 +60,8 @@ const PaymentGenerationSection: React.FC<PaymentGenerationSectionProps> = ({
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Configuration Summary */}
-        <div className="space-y-4">
-          <h4 className="font-medium text-gray-900">Configuration Summary</h4>
-          
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Commission Fee:</span>
-              <span className="font-medium">
-                {deal.fee ? `$${formatUSD(deal.fee)}` : 'Not set'}
-              </span>
-            </div>
-            
-            <div className="flex justify-between">
-              <span className="text-gray-600">House Amount:</span>
-              <span className="font-medium">
-                {paymentCommissionBreakdown.house_usd ? 
-                  `$${formatUSD(paymentCommissionBreakdown.house_usd)} (${paymentCommissionBreakdown.house_percent}%)` : 
-                  'Not configured'
-                }
-              </span>
-            </div>
-            
-            <div className="flex justify-between">
-              <span className="text-gray-600">AGCI per Payment:</span>
-              <span className="font-medium">
-                {paymentCommissionBreakdown.agci ? `$${formatUSD(paymentCommissionBreakdown.agci)}` : 'Not calculated'}
-              </span>
-            </div>
-            
-            <div className="flex justify-between">
-              <span className="text-gray-600">Number of Payments:</span>
-              <span className="font-medium">{numberOfPayments}</span>
-            </div>
-            
-            <div className="flex justify-between border-t pt-2">
-              <span className="text-gray-600 font-medium">Payment Amount:</span>
-              <span className="font-semibold text-blue-600">
-                ${formatUSD(calculatedPaymentAmount)}
-              </span>
-            </div>
-          </div>
-
-          {/* Commission Breakdown per Payment */}
-          {calculatedPaymentAmount > 0 && (
-            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-              <div className="text-sm font-medium text-blue-800 mb-2">Commission Breakdown (per payment)</div>
-              <div className="text-sm text-blue-700 space-y-1">
-                <div className="flex justify-between">
-                  <span>Origination ({paymentCommissionBreakdown.origination_percent}%):</span>
-                  <span>${formatUSD(paymentCommissionBreakdown.origination_usd)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Site ({paymentCommissionBreakdown.site_percent}%):</span>
-                  <span>${formatUSD(paymentCommissionBreakdown.site_usd)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Deal ({paymentCommissionBreakdown.deal_percent}%):</span>
-                  <span>${formatUSD(paymentCommissionBreakdown.deal_usd)}</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Validation Messages */}
-          {validationMessages.length > 0 && (
-            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-              <div className="text-sm font-medium text-yellow-800 mb-1">Configuration Issues:</div>
-              <ul className="text-sm text-yellow-700 space-y-1">
-                {validationMessages.map((message, index) => (
-                  <li key={index} className="flex items-start">
-                    <span className="text-yellow-600 mr-1">•</span>
-                    {message}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Calculation Differences Warning */}
-          {hasPayments && hasCalculationDifferences && (
-            <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
-              <div className="text-sm font-medium text-amber-800 mb-1">⚠️ Calculation Update Available</div>
-              <div className="text-sm text-amber-700">
-                Existing payment amounts differ from current commission configuration. 
-                You can update amounts to match current setup without affecting invoice data.
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Generation Controls */}
-        <div className="space-y-4">
+      {/* Generation Controls */}
+      <div className="space-y-4">
           <h4 className="font-medium text-gray-900">Payment Actions</h4>
           
           <div className="space-y-3">
@@ -263,7 +172,6 @@ const PaymentGenerationSection: React.FC<PaymentGenerationSectionProps> = ({
               </div>
             </div>
           )}
-        </div>
       </div>
     </div>
   );
