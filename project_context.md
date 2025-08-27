@@ -453,42 +453,17 @@ src/
 
 **Status**: Payment system enhancement session COMPLETE - successfully applied modular architecture principles to deliver enhanced user experience with cleaner, more intuitive payment status management. This builds on the previous debugging success and demonstrates the power of iterative, focused improvements following established architectural patterns.
 
-### 🔧 **LATEST: Payment Split Editing Debugging Session (January 27, 2025)**
+### 🔧 **LATEST: Payment Split Editing Deep Debugging Session (August 27, 2025)**
 
-**Challenge**: Payment split percentage editing was reverting changes after save, causing poor user experience.
+**Challenge**: Payment split percentage editing was reverting changes after save despite appearing to work initially.
 
-**Root Cause Analysis**:
-1. **Database persistence working** ✅ - Values saved correctly to `payment_split` table
-2. **State synchronization broken** ❌ - Local UI state not updating after database save
-3. **Heavy refresh pattern** ❌ - Full page refresh caused jarring UX
+**Complex Investigation Journey**:
 
-**Technical Solution - State Management Fix**:
+#### **Phase 1: Initial State Management Fix** ✅
+**Problem**: Changes appeared to save but reverted on page refresh
+**Solution**: Fixed parent-child component callback pattern for real-time state sync
 ```typescript
-// BEFORE (broken): No local state update after database save
-const handleSplitPercentageChange = async (splitId, field, newValue) => {
-  await supabase.from('payment_split').update({[field]: newValue}).eq('id', splitId);
-  // Missing: local state update - caused reversion
-}
-
-// AFTER (working): Immediate local state sync + parent callback
-const handleSplitPercentageChange = async (splitId, field, newValue) => {
-  await supabase.from('payment_split').update({[field]: newValue}).eq('id', splitId);
-  
-  // Update parent component's local state immediately
-  if (onUpdatePaymentSplit) {
-    await onUpdatePaymentSplit(splitId, field, newValue);
-  }
-}
-```
-
-**Parent Component Fix (PaymentTab.tsx)**:
-```typescript
-// BEFORE: Heavy full refresh
-onUpdatePaymentSplit={async () => {
-  await fetchPaymentData(); // Reloaded everything from database
-}}
-
-// AFTER: Targeted local state update  
+// Fixed state synchronization between PaymentTab and PaymentListSection
 onUpdatePaymentSplit={async (splitId, field, value) => {
   setPaymentSplits(prev => 
     prev.map(split => 
@@ -498,72 +473,98 @@ onUpdatePaymentSplit={async (splitId, field, value) => {
 }}
 ```
 
-**Key Lessons Learned**:
-1. **Props vs State Management**: When child components need to update parent data, use callback props with proper state synchronization
-2. **Optimistic UI Updates**: Update local state immediately after successful database save to prevent reversion
-3. **Avoid Heavy Refreshes**: Target specific state updates instead of full data refetching
-4. **Debug Database vs UI**: Always separate database persistence issues from state management issues
+#### **Phase 2: Inline Auto-Save UX Enhancement** ✅  
+**Goal**: Match Commission Tab interaction pattern
+**Result**: Successfully removed edit mode buttons, implemented direct inline editing
 
-**Architecture Pattern Applied**:
-- ✅ **Component Communication**: Proper parent-child callback pattern
-- ✅ **State Management**: Immediate local updates + database persistence  
-- ✅ **Performance**: Targeted updates instead of full refresh
-- ✅ **User Experience**: Smooth editing without jarring refreshes
+#### **Phase 3: Cross-Broker Validation System** ✅
+**Added**: Real-time validation ensuring Deal/Site/Origination categories each total 100% across all brokers
+**Created**: `usePaymentSplitValidation` hook with visual feedback system
 
-**Files Modified**:
-- `PaymentListSection.tsx` - Added `onUpdatePaymentSplit` callback prop
-- `PaymentTab.tsx` - Implemented targeted state update instead of full refresh
-- `PercentageInput.tsx` - Verified component working correctly (no issues found)
+#### **Phase 4: Real-Time Calculation Issues** ❌ **UNSOLVED**
+**Discovery**: USD amounts not updating correctly when percentages changed
+**Root Cause Found**: Database trigger was overriding percentage changes within 3 seconds
 
-**Result**: Payment split editing now works smoothly - values persist after editing, no screen refreshes, immediate UI feedback.
+#### **Phase 5: Database Trigger Investigation** ❓ **PARTIALLY SOLVED**
+**Critical Discovery**: 
+- Changes were being **automatically reverted within 3 seconds** of saving
+- `updated_at` timestamps showed **old dates** (January 2025), indicating automatic data restoration
+- Payment splits have both `payment_split.id` (correct) and `sf_id` (Salesforce legacy)
 
-### 🎯 **LATEST: Inline Auto-Save UX Enhancement (January 27, 2025)**
-
-**Challenge**: Payment split editing required toggle button and had inconsistent UX compared to Commission Tab.
-
-**Goal**: Implement inline auto-save pattern to match Commission Tab interaction design.
-
-**UX Improvement - Consistent Interface Pattern**:
-```typescript
-// BEFORE: Toggle-based editing with mode switching
-<button onClick={onToggleEditing}>
-  {isEditing ? 'Save Changes' : 'Edit Splits'}
-</button>
-{isEditing ? (
-  <PercentageInput value={split.percent} onChange={...} />
-) : (
-  <div>{split.percent}%</div>
-)}
-
-// AFTER: Direct inline editing (matches Commission Tab)
-<PercentageInput 
-  value={split.percent} 
-  onChange={...} // Auto-saves on blur/enter
-/>
+**Evidence from Debug Logs**:
+```
+🕒 Current time: 2025-08-27T17:34:51.317Z
+📊 After 3 seconds: updated_at: '2025-01-14T21:17:51+00:00'  // MONTHS OLD!
 ```
 
-**Files Modified**:
-- `PaymentDetailPanel.tsx` - Removed edit button and toggle functionality
-- `BrokerSplitEditor.tsx` - Replaced conditional rendering with direct PercentageInput
-- `PaymentListSection.tsx` - Removed edit mode state management
+#### **Phase 6: Systematic Root Cause Analysis** 🔍
+**Investigated**:
+1. ✅ **Database trigger removed** - `calculate_payment_split()` trigger disabled
+2. ✅ **Salesforce UPSERT disabled** - Renamed source table to prevent automatic overwrites  
+3. ❌ **Still reverting** - Something else causing automatic data restoration
 
-**Architecture Benefits**:
-- ✅ **Consistent UX**: Payment splits now match Commission Tab interaction pattern
-- ✅ **Reduced Complexity**: Removed edit mode state and toggle logic (56 lines deleted, 20 added)
-- ✅ **Cleaner Interfaces**: Simplified component props by removing isEditing
-- ✅ **Better Performance**: Less conditional rendering and state updates
+**Key Finding**: Even with trigger and Salesforce UPSERT disabled, changes still reverted within 3 seconds, suggesting an **unknown automated process** is running.
 
-**User Experience Improvements**:
-- **Direct Interaction**: Click any percentage to edit immediately
-- **Auto-Save**: Changes save on blur/enter without manual save action
-- **No Mode Switching**: Eliminates cognitive overhead of edit/view modes
-- **Consistent Patterns**: Same interaction as Commission percentages throughout app
+#### **Phase 7: Safe Restoration** ✅ **COMPLETED**
+**Problem**: Multiple debugging changes needed cleanup without breaking production
+**Solution**: Complete rollback system implemented
 
-**Design Pattern Applied**:
-- **Inline Editing**: Click-to-edit with immediate feedback
-- **Auto-Persistence**: Save on blur/enter keypress
-- **Progressive Enhancement**: Maintains functionality while improving UX
-- **Interface Consistency**: Unified interaction patterns across payment system
+**Files Restored**:
+- All database changes rolled back via `SAFE_ROLLBACK.sql`
+- All debugging code removed from frontend
+- All temporary SQL files cleaned up  
+- Original working state fully restored
+
+#### **Current Status: UNSOLVED MYSTERY** ❓
+
+**What We Know**:
+- ✅ Frontend code works correctly (uses `payment_split.id` properly)  
+- ✅ Database updates succeed initially
+- ❌ **Automatic process** reverts changes within 3 seconds with old timestamps
+- ❌ **Unknown mechanism** - Not the triggers or UPSERT we found
+- ❌ **Data restoration** happening from unknown source
+
+**Evidence of Automatic Process**:
+- Changes revert precisely within 3 seconds
+- `updated_at` timestamps go backwards to old dates
+- Records replaced with historical Salesforce data
+- No manual intervention - happens automatically
+
+**Theories Not Yet Tested**:
+- Background Supabase job or webhook
+- Database replication or backup restore process  
+- Hidden database function or constraint
+- Application-level background process
+- Scheduled task or cron job
+
+#### **Critical Lessons for Future Sessions**:
+
+**✅ Debugging Methodology Learned**:
+1. **Separate concerns**: Database persistence vs UI state vs automatic processes
+2. **Use targeted logging**: Track exact timing and data changes
+3. **Test each theory systematically**: One change at a time
+4. **Safe cleanup required**: Always provide rollback path for complex investigations
+
+**✅ State Management Patterns Confirmed**:  
+- Parent-child callback props for data sync
+- Optimistic UI updates for smooth UX
+- Targeted state updates vs full refresh
+
+**✅ Database Investigation Techniques**:
+- Database trigger analysis and removal
+- UPSERT conflict detection and resolution
+- Timestamp analysis for automatic processes
+- Safe rollback procedures for complex changes
+
+**❌ Unresolved Technical Debt**:
+- **Automatic data reversion mechanism unknown**
+- **Payment split editing still broken in production**
+- **Root cause remains hidden** - requires specialized database investigation
+
+**For Next Session**: 
+- Focus on identifying the automatic process (webhook, job, replication)
+- Consider temporary workaround (disable automatic processes during editing)
+- May require database administrator investigation for hidden scheduled jobs
 
 ## 🏆 ARCHITECTURAL SUCCESS PATTERN REINFORCED
 

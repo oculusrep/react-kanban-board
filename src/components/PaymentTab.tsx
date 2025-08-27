@@ -277,6 +277,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
             payments={payments}
             paymentSplits={paymentSplits}
             brokers={brokers}
+            deal={deal}
             onUpdatePayment={updatePayment}
             onDeletePayment={deletePayment}
             onUpdatePaymentSplit={async (splitId, field, value) => {

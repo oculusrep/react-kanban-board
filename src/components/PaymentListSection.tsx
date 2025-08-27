@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Payment, PaymentSplit, Broker } from '../lib/types';
+import { Payment, PaymentSplit, Broker, Deal } from '../lib/types';
 import { supabase } from '../lib/supabaseClient';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
 import PaymentSummaryRow from './PaymentSummaryRow';
@@ -9,6 +9,7 @@ interface PaymentListSectionProps {
   payments: Payment[];
   paymentSplits: PaymentSplit[];
   brokers: Broker[];
+  deal: Deal;
   onUpdatePayment: (paymentId: string, updates: Partial<Payment>) => Promise<void>;
   onDeletePayment: (paymentId: string) => Promise<void>;
   onUpdatePaymentSplit?: (splitId: string, field: string, value: number | null) => Promise<void>;
@@ -18,6 +19,7 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
   payments,
   paymentSplits,
   brokers,
+  deal,
   onUpdatePayment,
   onDeletePayment,
   onUpdatePaymentSplit
@@ -122,6 +124,11 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
                   payment={payment}
                   splits={splits}
                   brokers={brokers}
+                  dealAmounts={{
+                    origination_usd: deal.origination_usd || 0,
+                    site_usd: deal.site_usd || 0,
+                    deal_usd: deal.deal_usd || 0
+                  }}
                   onSplitPercentageChange={handleSplitPercentageChange}
                 />
               )}
