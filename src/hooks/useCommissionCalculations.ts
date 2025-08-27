@@ -4,9 +4,10 @@ import { useMemo } from 'react';
 export const useCommissionCalculations = (deal: any, commissionSplits: any[] = []) => {
   return useMemo(() => {
     // Base deal calculations (AGCI-based from confirmed working logic)
-    const gci = deal?.gci || 0;
+    const gci = deal?.fee || 0; // Use deal.fee (total commission) consistently with payments
+    const referralFeeUsd = deal?.referral_fee_usd || 0;
     const houseUsd = deal?.house_usd || 0;
-    const agci = gci - houseUsd; // After GCI = GCI - House USD
+    const agci = gci - referralFeeUsd - houseUsd; // After GCI = Fee - Referral - House USD
 
     // Deal-level percentages
     const originationPercent = deal?.origination_percent || 0;
@@ -64,6 +65,7 @@ export const useCommissionCalculations = (deal: any, commissionSplits: any[] = [
       // Base deal amounts
       baseAmounts: {
         gci,
+        referralFeeUsd,
         houseUsd,
         agci,
         originationPercent,

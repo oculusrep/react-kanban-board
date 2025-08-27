@@ -87,7 +87,22 @@ export const usePaymentData = (dealId: string): PaymentDataResult => {
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('payment')
         .select(`
-          *,
+          id,
+          deal_id,
+          payment_sequence,
+          payment_amount,
+          payment_date_estimated,
+          payment_date_actual,
+          payment_received_date,
+          payment_received,
+          payment_invoice_date,
+          invoice_sent,
+          qb_invoice_id,
+          qb_payment_id,
+          agci,
+          notes,
+          created_at,
+          updated_at,
           deal!inner(
             id,
             property_id,
@@ -105,6 +120,16 @@ export const usePaymentData = (dealId: string): PaymentDataResult => {
         .order('payment_sequence', { ascending: true });
 
       if (paymentsError) throw paymentsError;
+
+      // DEBUG: Check what we're getting from the database
+      console.log('🔍 Payment data from database:', paymentsData);
+      if (paymentsData && paymentsData.length > 0) {
+        console.log('🗓️ First payment date fields:', {
+          payment_date_estimated: paymentsData[0].payment_date_estimated,
+          payment_date_actual: paymentsData[0].payment_date_actual,
+          payment_received_date: paymentsData[0].payment_received_date
+        });
+      }
 
       // FIXED: Use correct field name for payment splits
       // The payment table primary key is 'id', payment_split foreign key is 'payment_id'

@@ -130,48 +130,63 @@ const PaymentGenerationSection: React.FC<PaymentGenerationSectionProps> = ({
             )}
           </div>
 
-          {/* Payment Schedule Preview */}
-          {canGeneratePayments && numberOfPayments > 1 && (
-            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
-              <div className="text-sm font-medium text-green-800 mb-2">Payment Schedule Preview</div>
-              <div className="text-sm text-green-700 space-y-1">
-                {Array.from({ length: numberOfPayments }, (_, i) => {
-                  const existingPayment = existingPayments.find(p => p.payment_sequence === i + 1);
-                  return (
-                    <div key={i} className="flex justify-between">  {/* ✅ Added key={i} */}
-                      <span>Payment {i + 1}:</span>
-                      <span className={`font-medium ${existingPayment ? 'text-green-600' : ''}`}>
-                        ${formatUSD(calculatedPaymentAmount)}
-                        {existingPayment && ' ✓'}
-                      </span>
+          {/* Payment Schedule Preview and Current vs Calculated - Side by Side */}
+          {(canGeneratePayments && numberOfPayments > 1) || (hasPayments && paymentComparisons.length > 0) ? (
+            <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Payment Schedule Preview */}
+              {canGeneratePayments && numberOfPayments > 1 && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+                  <div className="text-sm font-medium text-green-800 mb-2">Payment Schedule Preview</div>
+                  <div className="text-sm text-green-700 space-y-1">
+                    {Array.from({ length: numberOfPayments }, (_, i) => {
+                      const existingPayment = existingPayments.find(p => p.payment_sequence === i + 1);
+                      return (
+                        <div key={i} className="flex justify-between items-center">
+                          <span>Payment {i + 1}:</span>
+                          <div className="text-right">
+                            <div className={`font-medium ${existingPayment ? 'text-green-600' : ''}`}>
+                              ${formatUSD(calculatedPaymentAmount)}
+                              {existingPayment && ' ✓'}
+                            </div>
+                            <div className="text-xs text-green-600 opacity-75">
+                              AGCI: ${formatUSD(paymentCommissionBreakdown.agci)}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="flex justify-between border-t pt-1 font-semibold">
+                      <span>Total:</span>
+                      <div className="text-right">
+                        <div>${formatUSD(totalCalculatedPayments)}</div>
+                        <div className="text-xs text-green-600 opacity-75 font-normal">
+                          Total AGCI: ${formatUSD(paymentCommissionBreakdown.agci * numberOfPayments)}
+                        </div>
+                      </div>
                     </div>
-                  );
-                })}
-                <div className="flex justify-between border-t pt-1 font-semibold">
-                  <span>Total:</span>
-                  <span>${formatUSD(totalCalculatedPayments)}</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Existing Payments Comparison */}
-          {hasPayments && paymentComparisons.length > 0 && (
-            <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-md">
-              <div className="text-sm font-medium text-gray-800 mb-2">Current vs Calculated</div>
-              <div className="text-sm text-gray-700 space-y-1">
-                {paymentComparisons.map((comp, index) => (
-                  <div key={index} className="flex justify-between">
-                    <span>Payment {index + 1}:</span>
-                    <span className={comp.needs_update ? 'text-amber-700 font-medium' : 'text-gray-600'}>
-                      ${formatUSD(comp.database_amount)} → ${formatUSD(comp.calculated_amount)}
-                      {comp.needs_update && ' ⚠️'}
-                    </span>
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
+
+              {/* Existing Payments Comparison */}
+              {hasPayments && paymentComparisons.length > 0 && (
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-md">
+                  <div className="text-sm font-medium text-gray-800 mb-2">Current vs Calculated</div>
+                  <div className="text-sm text-gray-700 space-y-1">
+                    {paymentComparisons.map((comp, index) => (
+                      <div key={index} className="flex justify-between">
+                        <span>Payment {index + 1}:</span>
+                        <span className={comp.needs_update ? 'text-amber-700 font-medium' : 'text-gray-600'}>
+                          ${formatUSD(comp.database_amount)} → ${formatUSD(comp.calculated_amount)}
+                          {comp.needs_update && ' ⚠️'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          ) : null}
       </div>
     </div>
   );

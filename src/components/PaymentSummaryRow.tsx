@@ -4,6 +4,7 @@ import { Payment } from '../lib/types';
 
 interface PaymentSummaryRowProps {
   payment: Payment;
+  totalPayments: number;
   isExpanded: boolean;
   onToggleExpansion: () => void;
   onUpdatePayment: (updates: Partial<Payment>) => Promise<void>;
@@ -12,11 +13,21 @@ interface PaymentSummaryRowProps {
 
 const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
   payment,
+  totalPayments,
   isExpanded,
   onToggleExpansion,
   onUpdatePayment,
   onDeletePayment
 }) => {
+  // DEBUG: Check payment date values
+  console.log('📅 PaymentSummaryRow payment dates:', {
+    id: payment.id,
+    payment_sequence: payment.payment_sequence,
+    payment_date_estimated: payment.payment_date_estimated,
+    payment_date_actual: payment.payment_date_actual,
+    payment_received_date: payment.payment_received_date
+  });
+
   return (
     <div className="p-4 grid grid-cols-12 items-center gap-4">
       {/* Expand Button + Payment Info - 4 cols */}
@@ -34,7 +45,7 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
         
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium text-gray-900 truncate">
-            Payment #{payment.payment_sequence}
+            Payment {payment.payment_sequence} of {totalPayments}
           </div>
           <div className="text-xs text-gray-500">
             ${(payment.payment_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}

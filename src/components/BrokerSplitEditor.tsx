@@ -23,14 +23,10 @@ const BrokerSplitEditor: React.FC<BrokerSplitEditorProps> = ({
       <div className="flex justify-between items-start mb-4">
         <div>
           <h5 className="text-sm font-medium text-gray-900">{brokerName}</h5>
-          <p className="text-xs text-gray-600 mt-1">Total Commission</p>
         </div>
         <div className="text-right">
           <div className="text-sm font-semibold text-gray-900">
             ${(split.split_broker_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-          </div>
-          <div className="text-xs text-gray-600">
-            {((split.split_broker_total || 0) / (paymentAmount || 1) * 100).toFixed(1)}% of payment
           </div>
         </div>
       </div>
@@ -44,7 +40,7 @@ const BrokerSplitEditor: React.FC<BrokerSplitEditorProps> = ({
             value={split.split_deal_percent || 0}
             onChange={(newValue) => onPercentageChange('split_deal_percent', newValue)}
           />
-          <div className="text-xs text-gray-500 mt-1">${(split.split_deal_usd || 0).toLocaleString()}</div>
+          <div className="text-xs text-gray-500 mt-1">${(split.split_deal_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
         </div>
         <div className="bg-white rounded-md p-2 border border-gray-200">
           <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Site</div>
@@ -53,7 +49,7 @@ const BrokerSplitEditor: React.FC<BrokerSplitEditorProps> = ({
             value={split.split_site_percent || 0}
             onChange={(newValue) => onPercentageChange('split_site_percent', newValue)}
           />
-          <div className="text-xs text-gray-500 mt-1">${(split.split_site_usd || 0).toLocaleString()}</div>
+          <div className="text-xs text-gray-500 mt-1">${(split.split_site_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
         </div>
         <div className="bg-white rounded-md p-2 border border-gray-200">
           <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Origination</div>
@@ -62,14 +58,14 @@ const BrokerSplitEditor: React.FC<BrokerSplitEditorProps> = ({
             value={split.split_origination_percent || 0}
             onChange={(newValue) => onPercentageChange('split_origination_percent', newValue)}
           />
-          <div className="text-xs text-gray-500 mt-1">${(split.split_origination_usd || 0).toLocaleString()}</div>
+          <div className="text-xs text-gray-500 mt-1">${(split.split_origination_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
         </div>
         <div className="bg-white rounded-md p-2 border border-gray-200">
           <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Total</div>
           <div className={`text-sm font-semibold ${
             validationTotals && !validationTotals.isValid ? 'text-red-600' : 'text-blue-600'
           }`}>
-            ${(split.split_broker_total || 0).toLocaleString()}
+            ${(split.split_broker_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
           {validationTotals && !validationTotals.isValid && (
             <div className="text-xs text-red-500 mt-1">

@@ -112,6 +112,7 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
               {/* Main Payment Row */}
               <PaymentSummaryRow
                 payment={payment}
+                totalPayments={payments.length}
                 isExpanded={isExpanded}
                 onToggleExpansion={() => togglePaymentExpansion(payment.id)}
                 onUpdatePayment={(updates) => onUpdatePayment(payment.id, updates)}
@@ -129,6 +130,7 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
                     site_usd: deal.site_usd || 0,
                     deal_usd: deal.deal_usd || 0
                   }}
+                  deal={deal}
                   onSplitPercentageChange={handleSplitPercentageChange}
                 />
               )}
@@ -143,7 +145,7 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
         onClose={() => setDeleteModalOpen(false)}
         onConfirm={executeDeletePayment}
         title="Delete Payment"
-        itemName={paymentToDelete ? `Payment #${paymentToDelete.payment_sequence}` : ''}
+        itemName={paymentToDelete ? `Payment ${paymentToDelete.payment_sequence} of ${payments.length}` : ''}
         message="This will permanently delete the payment and all associated commission splits. This action cannot be undone."
       />
     </div>

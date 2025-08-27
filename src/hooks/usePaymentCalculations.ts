@@ -9,8 +9,8 @@ interface PaymentCalculationsResult {
   // Per-Payment Commission Breakdown
   paymentCommissionBreakdown: {
     gci: number;
+    referral_fee_usd: number;
     house_usd: number;
-    house_percent: number;
     agci: number;
     origination_percent: number;
     origination_usd: number;
@@ -77,12 +77,17 @@ export const usePaymentCalculations = (
   const paymentCommissionBreakdown = useMemo(() => {
     const paymentAmount = paymentCalculations.calculatedPaymentAmount;
     
-    // House calculation
-    const house_percent = deal.house_percent || 0;
-    const house_usd = (house_percent / 100) * paymentAmount;
+    // Referral fee calculation (proportional to payment amount)
+    const totalReferralFee = deal.referral_fee_usd || 0;
+    const numberOfPayments = deal.number_of_payments || 1;
+    const referral_fee_usd = totalReferralFee / numberOfPayments;
     
-    // AGCI calculation (payment amount minus house)
-    const agci = paymentAmount - house_usd;
+    // House calculation (proportional to payment amount)
+    const totalHouseFee = deal.house_usd || 0;
+    const house_usd = totalHouseFee / numberOfPayments;
+    
+    // AGCI calculation: Fee - Referral - House
+    const agci = paymentAmount - referral_fee_usd - house_usd;
     
     // Commission split percentages
     const origination_percent = deal.origination_percent || 0;
@@ -96,8 +101,8 @@ export const usePaymentCalculations = (
     
     return {
       gci: paymentAmount,
+      referral_fee_usd,
       house_usd,
-      house_percent,
       agci,
       origination_percent,
       origination_usd,
@@ -108,7 +113,10 @@ export const usePaymentCalculations = (
     };
   }, [
     paymentCalculations.calculatedPaymentAmount,
-    deal.house_percent,
+    deal.fee,
+    deal.referral_fee_usd,
+    deal.house_usd,
+    deal.number_of_payments,
     deal.origination_percent,
     deal.site_percent,
     deal.deal_percent

@@ -597,17 +597,116 @@ DROP TRIGGER IF EXISTS trigger_calculate_payment_split_amounts ON payment_split;
 - Targeted state updates vs full data refresh patterns
 - Inline auto-save matching Commission Tab interaction model
 
+### 💡 **LATEST: Payment System Calculation Overhaul (August 27, 2025)** ✅
+
+**Challenge**: Payment calculations inconsistent between components, frontend overriding database calculations, poor real-time UX.
+
+**Major Architectural Improvements Completed**:
+
+#### **1. AGCI Calculation Consistency Fix** ✅
+**Problem**: Different AGCI formulas across components causing inconsistent displays
+**Solution**: Standardized AGCI = Fee - Referral Fee - House Fee across all components
+
+**Key Changes**:
+- Fixed `usePaymentCalculations.ts` to include referral fee in AGCI calculation
+- Updated `useCommissionCalculations.ts` to use consistent fee source (deal.fee)
+- Corrected house fee calculation to proportional split per payment
+- Added AGCI display to payment schedule preview cards
+
+#### **2. Database vs Frontend Calculation Hybrid Architecture** ✅
+**Problem**: Frontend was recalculating splits, overriding database values, no real-time updates
+**Critical Discovery**: Database calculations are source of truth, frontend should enhance not replace
+
+**Solution Implemented**:
+```typescript
+// Hybrid approach: Database values as baseline + real-time frontend calculations
+const enhancedSplits = splits.map(split => {
+  // Use database values as fallback
+  const dbValues = {
+    split_origination_usd: split.split_origination_usd,
+    split_site_usd: split.split_site_usd,
+    split_deal_usd: split.split_deal_usd
+  };
+  
+  // Apply real-time calculations for immediate UX updates
+  if (deal && paymentAmount) {
+    // Recalculate using same logic as database
+    const paymentAGCI = paymentAmount - referralFeeUSD - houseFeeUSD;
+    return { ...split, calculated: realTimeValues, database: dbValues };
+  }
+  
+  return { ...split, ...dbValues };
+});
+```
+
+#### **3. Payment Display and Formatting Standardization** ✅
+**Improvements Applied**:
+- Updated payment naming: "Payment 1 of 2" format (was "Payment #1")
+- Standardized USD formatting: 2 decimal places across all components
+- Replaced payment amounts with AGCI in commission breakdown headers
+- Removed redundant labels ("Total Commission", "% of payment") from broker displays
+- Added AGCI amounts to payment schedule preview cards
+
+#### **4. UI Layout Optimization** ✅
+**Enhancement**: Side-by-side Payment Schedule Preview and Current vs Calculated cards
+- Reduced scrolling on payment generation page
+- Better visual comparison of expected vs actual amounts
+- More efficient use of screen real estate
+
+#### **5. Database Migration Script Enhancement** ✅
+**Problem**: Payment calculations needed to work without database triggers
+**Solution**: Enhanced `_master_migration_script.sql` with:
+- USD amount calculations during UPSERT operations  
+- Automatic trigger removal commands
+- Deal table JOINs for accessing commission amounts
+- Proportional fee allocation logic embedded in SQL
+
+#### **Critical Architecture Lesson: Database Authority vs Frontend Enhancement** 🎯
+
+**Key Discovery**: Frontend should enhance database calculations, never replace them.
+
+**Successful Pattern**:
+- **Database**: Source of truth for all calculations
+- **Frontend**: Real-time updates for immediate user feedback
+- **Hybrid approach**: Database values as fallback + live calculations for UX
+- **Migration scripts**: Handle calculations during data sync (no triggers needed)
+
+#### **Business Logic Corrections Applied** ✅
+- **AGCI Formula**: Fee - Referral Fee - House Fee (was missing referral fee)
+- **House Fee Calculation**: Proportional per payment, not percentage of payment amount
+- **Payment Sequence**: Displays "Payment 1 of 2" matching database schema
+- **Commission Breakdown**: Shows AGCI per payment for accurate broker planning
+
+#### **Pending Issue Identified** ⚠️
+**payment_date_estimated Display**: Field not showing in UI despite being in database
+- Database query includes field explicitly
+- Payment interface has correct field definition  
+- Debug logging shows data flow issue
+- **Status**: Stopped debugging per user request - noted for next session
+
+#### **Session Results** ✅
+- ✅ **AGCI calculations consistent** across all components
+- ✅ **Database authority respected** with frontend enhancements
+- ✅ **Real-time UX** maintained without overriding source data
+- ✅ **UI improvements** delivered (formatting, layout, naming)
+- ✅ **Migration script** enhanced for trigger-free operation
+- ⚠️ **payment_date_estimated issue** documented for future resolution
+
 ## 🏆 ARCHITECTURAL SUCCESS PATTERN REINFORCED
 
-### Proven Methodology Applied Successfully (2 Sessions):
+### Proven Methodology Applied Successfully (4 Sessions):
 1. **Session 1 (Aug 24)**: Tactical debugging - fix TypeScript interface misalignment without rewrites
-2. **Session 2 (Aug 25)**: Modular enhancement - add new functionality following established patterns
+2. **Session 2 (Aug 25)**: Modular enhancement - add new functionality following established patterns  
+3. **Session 3 (Aug 27)**: Deep debugging - systematic root cause analysis with safe rollbacks
+4. **Session 4 (Aug 27)**: Calculation overhaul - hybrid architecture balancing database authority with UX
 
-Both sessions succeeded by:
+All sessions succeeded by:
 - **Following modular architecture** - centralized hooks, focused components
 - **Preserving working code** - enhance rather than replace
 - **One change at a time** - test and validate incrementally
 - **Business logic focus** - solve real user problems with technical solutions
 - **Database schema respect** - align code with database reality
+- **Hybrid approach** - database authority with frontend enhancement
+- **Safe exploration** - maintain ability to rollback complex changes
 
-This methodology has proven successful for both debugging and feature enhancement phases.
+This methodology has proven successful across debugging, feature enhancement, and architectural overhaul phases.

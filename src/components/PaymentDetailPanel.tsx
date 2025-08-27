@@ -1,5 +1,5 @@
 import React from 'react';
-import { Payment, PaymentSplit, Broker } from '../lib/types';
+import { Payment, PaymentSplit, Broker, Deal } from '../lib/types';
 import BrokerSplitEditor from './BrokerSplitEditor';
 import { usePaymentSplitValidation } from '../hooks/usePaymentSplitValidation';
 import { usePaymentSplitCalculations } from '../hooks/usePaymentSplitCalculations';
@@ -9,6 +9,7 @@ interface PaymentDetailPanelProps {
   splits: PaymentSplit[];
   brokers: Broker[];
   dealAmounts: { origination_usd?: number; site_usd?: number; deal_usd?: number };
+  deal: Deal;
   onSplitPercentageChange: (splitId: string, field: string, value: number | null) => void;
 }
 
@@ -17,6 +18,7 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
   splits,
   brokers,
   dealAmounts,
+  deal,
   onSplitPercentageChange
 }) => {
   const getBrokerName = (brokerId: string) => {
@@ -24,8 +26,26 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
     return broker ? broker.name : 'Unknown Broker';
   };
 
+  // Calculate AGCI for this payment
+  const calculatePaymentAGCI = () => {
+    const paymentAmount = payment.payment_amount || 0;
+    const numberOfPayments = deal.number_of_payments || 1;
+    
+    // Proportional referral and house fees for this payment
+    const referralFeeUSD = (deal.referral_fee_usd || 0) / numberOfPayments;
+    const houseFeeUSD = (deal.house_usd || 0) / numberOfPayments;
+    
+    // AGCI = Payment Amount - Referral Fee - House Fee
+    return paymentAmount - referralFeeUSD - houseFeeUSD;
+  };
 
-  const calculatedSplits = usePaymentSplitCalculations(splits, dealAmounts);
+  const paymentAGCI = calculatePaymentAGCI();
+  const calculatedSplits = usePaymentSplitCalculations(
+    splits, 
+    dealAmounts, 
+    deal, 
+    payment.payment_amount || 0
+  );
   const validationTotals = usePaymentSplitValidation(calculatedSplits);
 
   return (
@@ -35,7 +55,7 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
         <div className="mb-6">
           <h4 className="text-base font-medium text-gray-900">Commission Breakdown</h4>
           <p className="text-xs text-gray-600 mt-1">
-            Payment #{payment.payment_sequence} • ${(payment.payment_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            Payment #{payment.payment_sequence} • AGCI: ${paymentAGCI.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
         </div>
         
