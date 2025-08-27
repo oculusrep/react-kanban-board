@@ -344,6 +344,7 @@ payment.payment_date_estimated (date) - Overdue logic
 8. **Always align TypeScript interfaces with database schema** ✅ NEW RULE SUCCESSFULLY APPLIED
 9. **Always separate database vs state management issues** - debug persistence vs UI separately ✅ NEW PATTERN APPLIED
 10. **Always use optimistic UI updates** - update local state immediately after database saves ✅ UX LESSON LEARNED
+11. **Always maintain consistent interaction patterns** - match existing UX paradigms across components ✅ INLINE EDITING PATTERN APPLIED
 
 ### Modular Architecture Principles ✅ SUCCESSFULLY APPLIED IN STATUS ENHANCEMENT
 - **Call out rewrites vs iterations**: When suggesting changes, explicitly mention if it's a rewrite for better UX vs minimal change
@@ -515,6 +516,54 @@ onUpdatePaymentSplit={async (splitId, field, value) => {
 - `PercentageInput.tsx` - Verified component working correctly (no issues found)
 
 **Result**: Payment split editing now works smoothly - values persist after editing, no screen refreshes, immediate UI feedback.
+
+### 🎯 **LATEST: Inline Auto-Save UX Enhancement (January 27, 2025)**
+
+**Challenge**: Payment split editing required toggle button and had inconsistent UX compared to Commission Tab.
+
+**Goal**: Implement inline auto-save pattern to match Commission Tab interaction design.
+
+**UX Improvement - Consistent Interface Pattern**:
+```typescript
+// BEFORE: Toggle-based editing with mode switching
+<button onClick={onToggleEditing}>
+  {isEditing ? 'Save Changes' : 'Edit Splits'}
+</button>
+{isEditing ? (
+  <PercentageInput value={split.percent} onChange={...} />
+) : (
+  <div>{split.percent}%</div>
+)}
+
+// AFTER: Direct inline editing (matches Commission Tab)
+<PercentageInput 
+  value={split.percent} 
+  onChange={...} // Auto-saves on blur/enter
+/>
+```
+
+**Files Modified**:
+- `PaymentDetailPanel.tsx` - Removed edit button and toggle functionality
+- `BrokerSplitEditor.tsx` - Replaced conditional rendering with direct PercentageInput
+- `PaymentListSection.tsx` - Removed edit mode state management
+
+**Architecture Benefits**:
+- ✅ **Consistent UX**: Payment splits now match Commission Tab interaction pattern
+- ✅ **Reduced Complexity**: Removed edit mode state and toggle logic (56 lines deleted, 20 added)
+- ✅ **Cleaner Interfaces**: Simplified component props by removing isEditing
+- ✅ **Better Performance**: Less conditional rendering and state updates
+
+**User Experience Improvements**:
+- **Direct Interaction**: Click any percentage to edit immediately
+- **Auto-Save**: Changes save on blur/enter without manual save action
+- **No Mode Switching**: Eliminates cognitive overhead of edit/view modes
+- **Consistent Patterns**: Same interaction as Commission percentages throughout app
+
+**Design Pattern Applied**:
+- **Inline Editing**: Click-to-edit with immediate feedback
+- **Auto-Persistence**: Save on blur/enter keypress
+- **Progressive Enhancement**: Maintains functionality while improving UX
+- **Interface Consistency**: Unified interaction patterns across payment system
 
 ## 🏆 ARCHITECTURAL SUCCESS PATTERN REINFORCED
 
