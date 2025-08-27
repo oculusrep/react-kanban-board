@@ -20,9 +20,6 @@ export default function Navbar() {
         <Link to="/master-pipeline" className={linkClass("/master-pipeline")}>
           Master Pipeline
         </Link>
-        <Link to="/deal-test" className={linkClass("/deal-test")}>
-          Test Deal
-        </Link>
       </div>
       
       {user && (
