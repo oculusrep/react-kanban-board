@@ -17,16 +17,19 @@ const PercentageInput: React.FC<PercentageInputProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
 
+  // Database already stores percentages, so display as-is
   const displayValue = value ? `${value.toFixed(1)}%` : '0.0%';
 
   const handleStartEdit = () => {
     if (disabled) return;
     setIsEditing(true);
+    // Database stores percentages, so use as-is for editing
     setEditValue(value?.toString() || '');
   };
 
   const handleSave = () => {
     const numValue = parseFloat(editValue);
+    // Database stores percentages, so save as-is
     onChange(isNaN(numValue) ? null : numValue);
     setIsEditing(false);
   };
@@ -38,8 +41,12 @@ const PercentageInput: React.FC<PercentageInputProps> = ({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
       handleSave();
     } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
       handleCancel();
     }
   };

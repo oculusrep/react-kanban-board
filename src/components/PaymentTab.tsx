@@ -58,7 +58,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
       // Fetch payments for this deal with property information via JOIN
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('payment')
-        .select('*')
+        .select('*, payment_date_estimated, payment_date_actual')
         .eq('deal_id', deal.id)
         .order('payment_sequence', { ascending: true });
 
@@ -279,6 +279,16 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
             brokers={brokers}
             onUpdatePayment={updatePayment}
             onDeletePayment={deletePayment}
+            onUpdatePaymentSplit={async (splitId, field, value) => {
+              // Update local state immediately instead of full refresh
+              setPaymentSplits(prev => 
+                prev.map(split => 
+                  split.id === splitId 
+                    ? { ...split, [field]: value || 0 }
+                    : split
+                )
+              );
+            }}
           />
         </div>
       ) : (

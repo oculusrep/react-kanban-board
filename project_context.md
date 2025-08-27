@@ -342,6 +342,8 @@ payment.payment_date_estimated (date) - Overdue logic
 6. **Never create new implementations when minimal edits work** ✅ LEARNED AND APPLIED
 7. **Always verify database field mapping** - primary keys vs foreign keys ✅ CRITICAL LESSON APPLIED
 8. **Always align TypeScript interfaces with database schema** ✅ NEW RULE SUCCESSFULLY APPLIED
+9. **Always separate database vs state management issues** - debug persistence vs UI separately ✅ NEW PATTERN APPLIED
+10. **Always use optimistic UI updates** - update local state immediately after database saves ✅ UX LESSON LEARNED
 
 ### Modular Architecture Principles ✅ SUCCESSFULLY APPLIED IN STATUS ENHANCEMENT
 - **Call out rewrites vs iterations**: When suggesting changes, explicitly mention if it's a rewrite for better UX vs minimal change
@@ -449,6 +451,70 @@ src/
 4. **Payment analytics** - Cashflow forecasting and payment timing analysis
 
 **Status**: Payment system enhancement session COMPLETE - successfully applied modular architecture principles to deliver enhanced user experience with cleaner, more intuitive payment status management. This builds on the previous debugging success and demonstrates the power of iterative, focused improvements following established architectural patterns.
+
+### 🔧 **LATEST: Payment Split Editing Debugging Session (January 27, 2025)**
+
+**Challenge**: Payment split percentage editing was reverting changes after save, causing poor user experience.
+
+**Root Cause Analysis**:
+1. **Database persistence working** ✅ - Values saved correctly to `payment_split` table
+2. **State synchronization broken** ❌ - Local UI state not updating after database save
+3. **Heavy refresh pattern** ❌ - Full page refresh caused jarring UX
+
+**Technical Solution - State Management Fix**:
+```typescript
+// BEFORE (broken): No local state update after database save
+const handleSplitPercentageChange = async (splitId, field, newValue) => {
+  await supabase.from('payment_split').update({[field]: newValue}).eq('id', splitId);
+  // Missing: local state update - caused reversion
+}
+
+// AFTER (working): Immediate local state sync + parent callback
+const handleSplitPercentageChange = async (splitId, field, newValue) => {
+  await supabase.from('payment_split').update({[field]: newValue}).eq('id', splitId);
+  
+  // Update parent component's local state immediately
+  if (onUpdatePaymentSplit) {
+    await onUpdatePaymentSplit(splitId, field, newValue);
+  }
+}
+```
+
+**Parent Component Fix (PaymentTab.tsx)**:
+```typescript
+// BEFORE: Heavy full refresh
+onUpdatePaymentSplit={async () => {
+  await fetchPaymentData(); // Reloaded everything from database
+}}
+
+// AFTER: Targeted local state update  
+onUpdatePaymentSplit={async (splitId, field, value) => {
+  setPaymentSplits(prev => 
+    prev.map(split => 
+      split.id === splitId ? { ...split, [field]: value || 0 } : split
+    )
+  );
+}}
+```
+
+**Key Lessons Learned**:
+1. **Props vs State Management**: When child components need to update parent data, use callback props with proper state synchronization
+2. **Optimistic UI Updates**: Update local state immediately after successful database save to prevent reversion
+3. **Avoid Heavy Refreshes**: Target specific state updates instead of full data refetching
+4. **Debug Database vs UI**: Always separate database persistence issues from state management issues
+
+**Architecture Pattern Applied**:
+- ✅ **Component Communication**: Proper parent-child callback pattern
+- ✅ **State Management**: Immediate local updates + database persistence  
+- ✅ **Performance**: Targeted updates instead of full refresh
+- ✅ **User Experience**: Smooth editing without jarring refreshes
+
+**Files Modified**:
+- `PaymentListSection.tsx` - Added `onUpdatePaymentSplit` callback prop
+- `PaymentTab.tsx` - Implemented targeted state update instead of full refresh
+- `PercentageInput.tsx` - Verified component working correctly (no issues found)
+
+**Result**: Payment split editing now works smoothly - values persist after editing, no screen refreshes, immediate UI feedback.
 
 ## 🏆 ARCHITECTURAL SUCCESS PATTERN REINFORCED
 
