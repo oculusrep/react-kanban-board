@@ -23,7 +23,6 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
   onUpdatePaymentSplit
 }) => {
   const [expandedPayments, setExpandedPayments] = useState<Set<string>>(new Set());
-  const [editingPaymentSplits, setEditingPaymentSplits] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [paymentToDelete, setPaymentToDelete] = useState<Payment | null>(null);
 
@@ -90,10 +89,6 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
     }
   };
 
-  // Toggle split editing mode
-  const toggleSplitEditing = (paymentId: string) => {
-    setEditingPaymentSplits(editingPaymentSplits === paymentId ? null : paymentId);
-  };
 
 
   return (
@@ -127,8 +122,6 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
                   payment={payment}
                   splits={splits}
                   brokers={brokers}
-                  isEditing={editingPaymentSplits === payment.id}
-                  onToggleEditing={() => toggleSplitEditing(payment.id)}
                   onSplitPercentageChange={handleSplitPercentageChange}
                 />
               )}

@@ -6,7 +6,6 @@ interface BrokerSplitEditorProps {
   split: PaymentSplit;
   brokerName: string;
   paymentAmount: number;
-  isEditing: boolean;
   onPercentageChange: (field: string, value: number | null) => void;
 }
 
@@ -14,7 +13,6 @@ const BrokerSplitEditor: React.FC<BrokerSplitEditorProps> = ({
   split,
   brokerName,
   paymentAmount,
-  isEditing,
   onPercentageChange
 }) => {
   return (
@@ -38,41 +36,29 @@ const BrokerSplitEditor: React.FC<BrokerSplitEditorProps> = ({
       <div className="grid grid-cols-4 gap-3">
         <div className="bg-white rounded-md p-2 border border-gray-200">
           <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Deal</div>
-          {isEditing ? (
-            <PercentageInput
-              label=""
-              value={split.split_deal_percent || 0}
-              onChange={(newValue) => onPercentageChange('split_deal_percent', newValue)}
-            />
-          ) : (
-            <div className="text-sm font-semibold text-gray-900">{(split.split_deal_percent || 0).toFixed(1)}%</div>
-          )}
+          <PercentageInput
+            label=""
+            value={split.split_deal_percent || 0}
+            onChange={(newValue) => onPercentageChange('split_deal_percent', newValue)}
+          />
           <div className="text-xs text-gray-500 mt-1">${(split.split_deal_usd || 0).toLocaleString()}</div>
         </div>
         <div className="bg-white rounded-md p-2 border border-gray-200">
           <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Site</div>
-          {isEditing ? (
-            <PercentageInput
-              label=""
-              value={split.split_site_percent || 0}
-              onChange={(newValue) => onPercentageChange('split_site_percent', newValue)}
-            />
-          ) : (
-            <div className="text-sm font-semibold text-gray-900">{(split.split_site_percent || 0).toFixed(1)}%</div>
-          )}
+          <PercentageInput
+            label=""
+            value={split.split_site_percent || 0}
+            onChange={(newValue) => onPercentageChange('split_site_percent', newValue)}
+          />
           <div className="text-xs text-gray-500 mt-1">${(split.split_site_usd || 0).toLocaleString()}</div>
         </div>
         <div className="bg-white rounded-md p-2 border border-gray-200">
           <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Origination</div>
-          {isEditing ? (
-            <PercentageInput
-              label=""
-              value={split.split_origination_percent || 0}
-              onChange={(newValue) => onPercentageChange('split_origination_percent', newValue)}
-            />
-          ) : (
-            <div className="text-sm font-semibold text-gray-900">{(split.split_origination_percent || 0).toFixed(1)}%</div>
-          )}
+          <PercentageInput
+            label=""
+            value={split.split_origination_percent || 0}
+            onChange={(newValue) => onPercentageChange('split_origination_percent', newValue)}
+          />
           <div className="text-xs text-gray-500 mt-1">${(split.split_origination_usd || 0).toLocaleString()}</div>
         </div>
         <div className="bg-white rounded-md p-2 border border-gray-200">
