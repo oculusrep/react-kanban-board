@@ -515,56 +515,87 @@ onUpdatePaymentSplit={async (splitId, field, value) => {
 - All temporary SQL files cleaned up  
 - Original working state fully restored
 
-#### **Current Status: UNSOLVED MYSTERY** ❓
+#### **Phase 8: Complete Solution Discovery** ✅ **SOLVED**
+**Root Cause Found**: Two active database triggers on `payment_split` table were automatically reverting changes:
+- `trg_payment_split_calculations` 
+- `trigger_calculate_payment_split_amounts`
 
-**What We Know**:
-- ✅ Frontend code works correctly (uses `payment_split.id` properly)  
-- ✅ Database updates succeed initially
-- ❌ **Automatic process** reverts changes within 3 seconds with old timestamps
-- ❌ **Unknown mechanism** - Not the triggers or UPSERT we found
-- ❌ **Data restoration** happening from unknown source
+**Solution Applied**: 
+```sql
+DROP TRIGGER IF EXISTS trg_payment_split_calculations ON payment_split;
+DROP TRIGGER IF EXISTS trigger_calculate_payment_split_amounts ON payment_split;
+DROP FUNCTION IF EXISTS payment_split_calculations() CASCADE;
+DROP FUNCTION IF EXISTS calculate_payment_split_amounts() CASCADE;
+```
 
-**Evidence of Automatic Process**:
-- Changes revert precisely within 3 seconds
-- `updated_at` timestamps go backwards to old dates
-- Records replaced with historical Salesforce data
-- No manual intervention - happens automatically
+**Result**: ✅ **Payment split editing now works perfectly** - User confirmed successful percentage changes with persistence
 
-**Theories Not Yet Tested**:
-- Background Supabase job or webhook
-- Database replication or backup restore process  
-- Hidden database function or constraint
-- Application-level background process
-- Scheduled task or cron job
+#### **Phase 9: Migration Script Update for Salesforce Sync** ✅ **COMPLETED**
+**Challenge**: Maintain Salesforce sync capability while keeping trigger-free approach
+**Solution**: Updated `_master_migration_script.sql` with:
 
-#### **Critical Lessons for Future Sessions**:
+1. **Enhanced payment_split UPSERT** - Now calculates USD amounts during sync:
+```sql
+-- Calculate USD amounts during migration (since no triggers)
+COALESCE(d.origination_usd, 0) * (COALESCE(CASE WHEN ps."Origination_Percent__c" > 100 THEN ps."Origination_Percent__c" / 100 ELSE ps."Origination_Percent__c" END, 0) / 100.0) as split_origination_usd,
+```
 
-**✅ Debugging Methodology Learned**:
-1. **Separate concerns**: Database persistence vs UI state vs automatic processes
-2. **Use targeted logging**: Track exact timing and data changes
-3. **Test each theory systematically**: One change at a time
-4. **Safe cleanup required**: Always provide rollback path for complex investigations
+2. **Added deal table JOIN** - Access deal amounts for calculations:
+```sql
+JOIN deal d ON d.id = p.deal_id  -- Get deal amounts for calculations
+```
+
+3. **Automatic trigger removal** - Prevents triggers from being recreated:
+```sql
+-- Remove problematic payment_split triggers (trigger-free approach)
+DROP TRIGGER IF EXISTS trg_payment_split_calculations ON payment_split;
+DROP TRIGGER IF EXISTS trigger_calculate_payment_split_amounts ON payment_split;
+```
+
+**Architecture**: Salesforce remains source of truth during prototype, but manual percentage edits are preserved without automatic reversion.
+
+#### **Current Status: FULLY SOLVED** ✅
+
+**What We Achieved**:
+- ✅ **Root cause identified** - Database triggers were causing automatic reverts
+- ✅ **Payment split editing works** - Manual percentage changes now persist correctly  
+- ✅ **Salesforce sync maintained** - Migration script updated to work without triggers
+- ✅ **USD calculations preserved** - Amounts calculated during sync, not via triggers
+- ✅ **Production ready** - User can now edit splits without automatic reversion
+- ✅ **Migration script tested** - Ready for live Salesforce sync
+
+**Technical Solution Summary**:
+- **Frontend**: Inline auto-save pattern with optimistic UI updates
+- **Backend**: Trigger-free approach with calculations during Salesforce UPSERT
+- **Migration**: Enhanced script calculates USD amounts without relying on triggers
+- **User Experience**: Immediate percentage editing with visual validation system
+
+#### **Critical Lessons for Future Sessions**: ✅ **COMPLETE SUCCESS**
+
+**✅ Advanced Debugging Methodology Perfected**:
+1. **Systematic root cause analysis**: Database triggers, functions, and automated processes
+2. **Evidence-based investigation**: Timestamp analysis, query logs, and data reversion patterns
+3. **Safe exploration with rollbacks**: Always maintain ability to restore working state
+4. **Database-first debugging**: Check database layer before assuming frontend issues
+5. **Supabase investigation techniques**: Using dashboard queries to find hidden triggers
+
+**✅ Database Trigger Management Mastered**:
+- **Complete trigger inventory**: Found all active triggers via `pg_trigger` queries
+- **Function cascade cleanup**: Used `CASCADE` to remove dependent functions
+- **Migration script integration**: Automated trigger removal as part of sync process
+- **Production safety**: Tested trigger removal without breaking existing functionality
+
+**✅ Salesforce Sync Architecture Established**:
+- **Source of truth transitions**: Salesforce → Manual editing capability maintained
+- **Calculation placement**: UPSERT time calculations vs trigger-based calculations  
+- **JOIN optimization**: Added deal table access for USD amount calculations
+- **Migration script evolution**: Enhanced to work with trigger-free approach
 
 **✅ State Management Patterns Confirmed**:  
-- Parent-child callback props for data sync
-- Optimistic UI updates for smooth UX
-- Targeted state updates vs full refresh
-
-**✅ Database Investigation Techniques**:
-- Database trigger analysis and removal
-- UPSERT conflict detection and resolution
-- Timestamp analysis for automatic processes
-- Safe rollback procedures for complex changes
-
-**❌ Unresolved Technical Debt**:
-- **Automatic data reversion mechanism unknown**
-- **Payment split editing still broken in production**
-- **Root cause remains hidden** - requires specialized database investigation
-
-**For Next Session**: 
-- Focus on identifying the automatic process (webhook, job, replication)
-- Consider temporary workaround (disable automatic processes during editing)
-- May require database administrator investigation for hidden scheduled jobs
+- Parent-child callback props for real-time data sync
+- Optimistic UI updates for smooth user experience
+- Targeted state updates vs full data refresh patterns
+- Inline auto-save matching Commission Tab interaction model
 
 ## 🏆 ARCHITECTURAL SUCCESS PATTERN REINFORCED
 

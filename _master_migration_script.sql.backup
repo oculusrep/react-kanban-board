@@ -1101,11 +1101,6 @@ INSERT INTO payment_split (
     split_origination_percent,
     split_site_percent,
     split_deal_percent,
-    -- Add calculated USD fields during insert
-    split_origination_usd,
-    split_site_usd,
-    split_deal_usd,
-    split_broker_total,
     sf_owner_id,
     sf_created_by_id,
     created_by_id,
@@ -1129,7 +1124,7 @@ SELECT
     (SELECT id FROM broker WHERE name = COALESCE(ps."Broker__c", 'Unknown Broker') LIMIT 1) AS broker_id,
     (SELECT id FROM commission_split WHERE sf_id = ps."Commission_Split__c" LIMIT 1) AS commission_split_id,
     
-    -- Percentages (cleaned)
+    -- Inherit percentages from commission split (with cleaning)
     CASE 
         WHEN ps."Origination_Percent__c" > 100 THEN ps."Origination_Percent__c" / 100 
         ELSE ps."Origination_Percent__c" 
@@ -1142,22 +1137,6 @@ SELECT
         WHEN ps."Deal_Percent__c" > 100 THEN ps."Deal_Percent__c" / 100 
         ELSE ps."Deal_Percent__c" 
     END as split_deal_percent,
-    
-    -- Calculate USD amounts during migration (since no triggers)
-    COALESCE(d.origination_usd, 0) * (COALESCE(
-        CASE WHEN ps."Origination_Percent__c" > 100 THEN ps."Origination_Percent__c" / 100 
-             ELSE ps."Origination_Percent__c" END, 0) / 100.0) as split_origination_usd,
-    COALESCE(d.site_usd, 0) * (COALESCE(
-        CASE WHEN ps."Site_Percent__c" > 100 THEN ps."Site_Percent__c" / 100 
-             ELSE ps."Site_Percent__c" END, 0) / 100.0) as split_site_usd,
-    COALESCE(d.deal_usd, 0) * (COALESCE(
-        CASE WHEN ps."Deal_Percent__c" > 100 THEN ps."Deal_Percent__c" / 100 
-             ELSE ps."Deal_Percent__c" END, 0) / 100.0) as split_deal_usd,
-    
-    -- Calculate total
-    COALESCE(d.origination_usd, 0) * (COALESCE(CASE WHEN ps."Origination_Percent__c" > 100 THEN ps."Origination_Percent__c" / 100 ELSE ps."Origination_Percent__c" END, 0) / 100.0) +
-    COALESCE(d.site_usd, 0) * (COALESCE(CASE WHEN ps."Site_Percent__c" > 100 THEN ps."Site_Percent__c" / 100 ELSE ps."Site_Percent__c" END, 0) / 100.0) +
-    COALESCE(d.deal_usd, 0) * (COALESCE(CASE WHEN ps."Deal_Percent__c" > 100 THEN ps."Deal_Percent__c" / 100 ELSE ps."Deal_Percent__c" END, 0) / 100.0) as split_broker_total,
     
     -- Audit fields
     ps."OwnerId" AS sf_owner_id,
@@ -1180,8 +1159,6 @@ SELECT
     ps."Site_Dollars__c" AS sf_site_usd,
     ps."Deal_Dollars__c" AS sf_deal_usd
 FROM "salesforce_Payment_Split__c" ps
-JOIN payment p ON p.sf_id = ps."Payment__c"
-JOIN deal d ON d.id = p.deal_id  -- Add this JOIN to get deal amounts for calculations
 WHERE ps."Id" IS NOT NULL
 ON CONFLICT (sf_id) DO UPDATE SET
     sf_split_name = EXCLUDED.sf_split_name,
@@ -1191,10 +1168,6 @@ ON CONFLICT (sf_id) DO UPDATE SET
     split_origination_percent = EXCLUDED.split_origination_percent,
     split_site_percent = EXCLUDED.split_site_percent,
     split_deal_percent = EXCLUDED.split_deal_percent,
-    split_origination_usd = EXCLUDED.split_origination_usd,
-    split_site_usd = EXCLUDED.split_site_usd,
-    split_deal_usd = EXCLUDED.split_deal_usd,
-    split_broker_total = EXCLUDED.split_broker_total,
     sf_owner_id = EXCLUDED.sf_owner_id,
     sf_created_by_id = EXCLUDED.sf_created_by_id,
     created_by_id = EXCLUDED.created_by_id,
@@ -1378,17 +1351,4 @@ ALTER TABLE commission_split ADD CONSTRAINT commission_percent_valid CHECK (
 
 -- Update the calculated fields for existing commission splits
 UPDATE commission_split SET updated_at = NOW();
-
--- ==============================================================================
--- Remove problematic payment_split triggers (trigger-free approach)
--- ==============================================================================
--- This ensures they don't get recreated during migration and allows manual editing
-DROP TRIGGER IF EXISTS trg_payment_split_calculations ON payment_split;
-DROP TRIGGER IF EXISTS trigger_calculate_payment_split_amounts ON payment_split;
-DROP FUNCTION IF EXISTS payment_split_calculations() CASCADE;
-DROP FUNCTION IF EXISTS calculate_payment_split_amounts() CASCADE;
-
--- Add comment documenting the approach
-COMMENT ON TABLE payment_split IS 'USD amounts calculated during migration - no automatic triggers during prototype phase';
-
 COMMIT;
