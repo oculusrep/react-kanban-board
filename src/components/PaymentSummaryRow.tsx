@@ -24,14 +24,13 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
     id: payment.id,
     payment_sequence: payment.payment_sequence,
     payment_date_estimated: payment.payment_date_estimated,
-    payment_date_actual: payment.payment_date_actual,
     payment_received_date: payment.payment_received_date
   });
 
   return (
     <div className="p-4 grid grid-cols-12 items-center gap-4">
-      {/* Expand Button + Payment Info - 4 cols */}
-      <div className="col-span-4 flex items-center space-x-3">
+      {/* Expand Button + Payment Info - 3 cols */}
+      <div className="col-span-3 flex items-center space-x-3">
         <button
           onClick={onToggleExpansion}
           className="p-1 hover:bg-gray-200 rounded flex-shrink-0"
@@ -53,8 +52,18 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
         </div>
       </div>
 
-      {/* Status - 3 cols */}
-      <div className="col-span-3 flex items-center space-x-2">
+      {/* Invoice Number - 2 cols */}
+      <div className="col-span-2">
+        <div className="text-xs text-gray-500">
+          Invoice #
+        </div>
+        <div className="text-sm text-gray-900">
+          {payment.orep_invoice || '-'}
+        </div>
+      </div>
+
+      {/* Status - 2 cols */}
+      <div className="col-span-2 flex items-center space-x-2">
         <input
           type="checkbox"
           checked={payment.payment_received || false}
@@ -70,16 +79,33 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
 
       {/* Date - 3 cols */}
       <div className="col-span-3">
-        <input
-          type="date"
-          value={payment.payment_date_actual || payment.payment_date_estimated || ''}
-          onChange={(e) => onUpdatePayment({ payment_date_actual: e.target.value })}
-          className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm"
-          placeholder="Payment date"
-        />
-        {payment.payment_date_estimated && !payment.payment_date_actual && (
-          <div className="text-xs text-gray-400 mt-1">
-            Est: {new Date(payment.payment_date_estimated).toLocaleDateString()}
+        {payment.payment_received ? (
+          // Show static paid date when payment is received
+          <div className="w-full px-2 py-1 text-sm">
+            <div className="font-medium text-green-800">
+              Paid Date: {payment.payment_received_date ? new Date(payment.payment_received_date).toLocaleDateString() : 'Unknown'}
+            </div>
+          </div>
+        ) : (
+          // Show editable estimated date when payment is pending
+          <div>
+            {payment.payment_date_estimated && (
+              <div className="text-xs text-gray-400 mb-1">
+                Estimated Pmt Date
+              </div>
+            )}
+            <input
+              type="date"
+              value={payment.payment_date_estimated || ''}
+              onChange={(e) => onUpdatePayment({ payment_date_estimated: e.target.value })}
+              className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm"
+              placeholder="Estimated payment date"
+            />
+            {!payment.payment_date_estimated && (
+              <div className="text-xs text-gray-400 mt-1">
+                Set estimated payment date
+              </div>
+            )}
           </div>
         )}
       </div>

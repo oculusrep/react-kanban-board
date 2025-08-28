@@ -58,11 +58,23 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
       // Fetch payments for this deal with property information via JOIN
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('payment')
-        .select('*, payment_date_estimated, payment_date_actual')
+        .select('*, payment_date_estimated')
         .eq('deal_id', deal.id)
         .order('payment_sequence', { ascending: true });
 
       if (paymentsError) throw paymentsError;
+      
+      // DEBUG: Log what payments were fetched
+      console.log('🔍 PaymentTab fetchPaymentData - payments found:', {
+        dealId: deal.id,
+        paymentsCount: paymentsData?.length || 0,
+        payments: paymentsData?.map(p => ({
+          id: p.id,
+          sequence: p.payment_sequence,
+          amount: p.payment_amount,
+          estimated_date: p.payment_date_estimated
+        }))
+      });
 
       // Fetch payment splits for all payments  
       const paymentIds = paymentsData?.map(p => p.id) || [];
@@ -236,12 +248,12 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
         </div>
 
         <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-          <div className="text-sm font-medium text-purple-600">Current Total</div>
+          <div className="text-sm font-medium text-purple-600">AGCI Available</div>
           <div className="text-2xl font-bold text-purple-900">
-            ${formatUSD(totalPaymentAmount)}
+            ${formatUSD(deal.agci || 0)}
           </div>
           <div className="text-xs text-purple-600 mt-1">
-            {payments.length} payments generated
+            After house & referral fees
           </div>
         </div>
 

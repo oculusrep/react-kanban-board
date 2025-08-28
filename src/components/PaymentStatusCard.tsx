@@ -14,42 +14,40 @@ const PaymentStatusCard: React.FC<PaymentStatusCardProps> = ({
 }) => {
   return (
     <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-      <div className="text-sm font-medium text-gray-600 mb-3">
-        Payment Status
+      <div className="mb-3">
+        <div className="text-sm font-medium text-gray-600">
+          Payment Status
+        </div>
         {statusSummary.total > 0 && (
-          <span className="ml-2 text-xs text-gray-500">
+          <div className="text-xs text-gray-500 mt-1">
             ({Math.round(completionRate)}% complete)
-          </span>
+          </div>
         )}
       </div>
       
       {/* Dynamic grid that only shows non-zero statuses */}
-      <div className="flex flex-wrap gap-2 text-sm">
+      <div className="flex flex-wrap gap-2 text-xs">
         {statusSummary.received > 0 && (
-          <div className="flex items-center justify-between px-3 py-2 bg-green-100 rounded min-w-0 flex-1">
-            <span className="text-green-800">✅ Received</span>
-            <span className="font-bold text-green-900 ml-2">{statusSummary.received}</span>
+          <div className="px-2 py-1 bg-green-100 rounded whitespace-nowrap">
+            <span className="text-green-800 font-bold">✅ Received {statusSummary.received}</span>
           </div>
         )}
         
         {statusSummary.sent > 0 && (
-          <div className="flex items-center justify-between px-3 py-2 bg-blue-100 rounded min-w-0 flex-1">
-            <span className="text-blue-800">📧 Sent</span>
-            <span className="font-bold text-blue-900 ml-2">{statusSummary.sent}</span>
+          <div className="px-2 py-1 bg-blue-100 rounded whitespace-nowrap">
+            <span className="text-blue-800 font-bold">📧 Sent {statusSummary.sent}</span>
           </div>
         )}
         
         {statusSummary.pending > 0 && (
-          <div className="flex items-center justify-between px-3 py-2 bg-yellow-100 rounded min-w-0 flex-1">
-            <span className="text-yellow-800">⏳ Pending</span>
-            <span className="font-bold text-yellow-900 ml-2">{statusSummary.pending}</span>
+          <div className="px-2 py-1 bg-yellow-100 rounded whitespace-nowrap">
+            <span className="text-yellow-800 font-bold">⏳ Pending {statusSummary.pending}</span>
           </div>
         )}
         
         {statusSummary.overdue > 0 && (
-          <div className="flex items-center justify-between px-3 py-2 bg-red-100 rounded min-w-0 flex-1">
-            <span className="text-red-800">⚠️ Overdue</span>
-            <span className="font-bold text-red-900 ml-2">{statusSummary.overdue}</span>
+          <div className="px-2 py-1 bg-red-100 rounded whitespace-nowrap">
+            <span className="text-red-800 font-bold">⚠️ Overdue {statusSummary.overdue}</span>
           </div>
         )}
       </div>

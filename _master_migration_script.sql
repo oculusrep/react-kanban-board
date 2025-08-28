@@ -1001,9 +1001,11 @@ INSERT INTO payment (
     payment_date_estimated,
     sf_payment_date_received,
     payment_received_date,
+    payment_received,
     sf_payment_date_actual,
     sf_payment_invoice_date,
-    payment_invoice_date
+    payment_invoice_date,
+    orep_invoice
 )
 SELECT
     p."Id" AS sf_id,
@@ -1028,9 +1030,11 @@ SELECT
     p."Payment_Date_Est__c" AS payment_date_estimated,
     p."PMT_Received_Date__c" AS sf_payment_date_received,
     p."PMT_Received_Date__c" AS payment_received_date,
+    p."Payment_Received__c" AS payment_received,
     p."Payment_Date_Actual__c" AS sf_payment_date_actual,
     p."Payment_Invoice_Date__c" AS sf_payment_invoice_date,
-    p."Payment_Invoice_Date__c" AS payment_invoice_date
+    p."Payment_Invoice_Date__c" AS payment_invoice_date,
+    p."OREP_Invoice__c" AS orep_invoice
 FROM "salesforce_Payment__c" p
 WHERE p."Id" IS NOT NULL
   AND p."Payment_Amount__c" IS NOT NULL
@@ -1048,7 +1052,16 @@ ON CONFLICT (sf_id) DO UPDATE SET
     updated_at = EXCLUDED.updated_at,
     sf_received_date = EXCLUDED.sf_received_date,
     sf_payment_status = EXCLUDED.sf_payment_status,
-    sf_invoice_sent_date = EXCLUDED.sf_invoice_sent_date;
+    sf_invoice_sent_date = EXCLUDED.sf_invoice_sent_date,
+    sf_payment_date_est = EXCLUDED.sf_payment_date_est,
+    payment_date_estimated = EXCLUDED.payment_date_estimated,
+    sf_payment_date_received = EXCLUDED.sf_payment_date_received,
+    payment_received_date = EXCLUDED.payment_received_date,
+    payment_received = EXCLUDED.payment_received,
+    sf_payment_date_actual = EXCLUDED.sf_payment_date_actual,
+    sf_payment_invoice_date = EXCLUDED.sf_payment_invoice_date,
+    payment_invoice_date = EXCLUDED.payment_invoice_date,
+    orep_invoice = EXCLUDED.orep_invoice;
 
 -- ==============================================================================
 -- Payment Split Table (Commission splits per payment)

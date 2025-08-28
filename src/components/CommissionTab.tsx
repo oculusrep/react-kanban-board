@@ -91,6 +91,20 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
         .eq('deal_id', dealId);
 
       if (paymentsError) throw paymentsError;
+      
+      // DEBUG: Log what payments were fetched
+      console.log('🔍 CommissionTab fetchCommissionData - payments found:', {
+        dealId,
+        paymentsCount: paymentsData?.length || 0,
+        payments: paymentsData?.map(p => ({
+          id: p.id,
+          sequence: p.payment_sequence,
+          amount: p.payment_amount,
+          estimated_date: p.payment_date_estimated,
+          actual_date: p.payment_date_actual
+        }))
+      });
+      
       setPayments(paymentsData);
 
     } catch (err) {

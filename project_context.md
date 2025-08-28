@@ -32,7 +32,15 @@ Building a custom CRM system to replace Salesforce for a commercial real estate 
 - **Auth**: [TBD]
 - **Developer Experience**: Non-coder friendly with step-by-step instructions required
 
-## 🎯 CURRENT STATUS: PAYMENT SYSTEM FULLY FUNCTIONAL + UI ENHANCEMENTS ✅
+## 🎯 CURRENT STATUS: PAYMENT SYSTEM FULLY FUNCTIONAL + SALESFORCE MAPPING COMPLETE ✅
+
+### ✅ **Payment System Complete Status (August 28, 2025)**
+
+**Major Achievements**: 
+- ✅ **Complete Salesforce Payment Data Mapping** - All payment dates and fields properly mapped
+- ✅ **Payment Management UI Perfected** - Conditional date displays and status management
+- ✅ **Invoice Number Integration** - QuickBooks invoice numbers mapped from Salesforce
+- ✅ **Payment Status System** - Dynamic status badges with proper alignment and colors
 
 ### ✅ **Payment System Core Status (Previous Session - August 24, 2025)**
 
@@ -47,6 +55,72 @@ Building a custom CRM system to replace Salesforce for a commercial real estate 
 - ✅ Fixed React key prop warnings in both payment components
 - ✅ Resolved all TypeScript compilation errors
 - ✅ Payment tab now loads and displays correctly
+
+### ✅ **Salesforce Payment Data Mapping (August 28, 2025)**
+
+**Critical Mapping Issues Resolved**:
+- ✅ **Payment Estimated Date**: `Payment_Date_Est__c` → `payment_date_estimated` (active) + `sf_payment_date_est` (legacy)
+- ✅ **Payment Received Date**: `PMT_Received_Date__c` → `payment_received_date` (active) + `sf_payment_date_received` (legacy)  
+- ✅ **Payment Received Status**: `Payment_Received__c` → `payment_received` (boolean) - **CRITICAL**: Was missing from mapping entirely
+- ✅ **Payment Invoice Date**: `Payment_Invoice_Date__c` → `payment_invoice_date` (active) + `sf_payment_invoice_date` (legacy)
+- ✅ **Invoice Number**: `OREP_Invoice__c` → `orep_invoice` (QuickBooks invoice numbers)
+- ❌ **Removed**: `payment_date_actual` field - kept only as `sf_payment_date_actual` legacy field
+
+**Key Lesson**: Always map Salesforce boolean fields - missing `Payment_Received__c` → `payment_received` mapping caused all payments to show as "Pending" regardless of actual status.
+
+### ✅ **Payment Management UI Enhancements (August 28, 2025)**
+
+**Dynamic Date Display System**:
+- ✅ **Paid Payments**: Show static "Paid Date: MM/DD/YYYY" in green text (non-editable)
+- ✅ **Unpaid Payments**: Show editable date picker with "Estimated Pmt Date" label above
+- ✅ **Empty Dates**: Show helpful "Set estimated payment date" prompt
+- ✅ **Fixed Timezone Issues**: Removed redundant date formatting that caused day-off errors
+
+**Invoice Number Column**:
+- ✅ Added Invoice # column between Payment Number and Status  
+- ✅ Displays `orep_invoice` field (QuickBooks invoice numbers from Salesforce)
+- ✅ Shows "Invoice #" label above, number below, or "-" if empty
+
+**Payment Status Cards**:
+- ✅ **Added AGCI Available Card**: Purple card showing `deal.agci` between Calculated Payments and Payment Status
+- ✅ **Removed Current Total Card**: Eliminated redundant card for better spacing
+- ✅ **Fixed Status Badge Alignment**: 
+  - Compact `text-xs` sizing prevents wrapping
+  - `whitespace-nowrap` keeps text and numbers inline
+  - Matching colors for text and numbers (bold green for "Received 1", bold yellow for "Pending 2")
+  - Proper spacing with `px-2 py-1` padding
+
+### 🔧 **Technical Lessons Learned & Debugging Patterns (August 28, 2025)**
+
+**Critical Debugging Pattern - Payment Data Not Showing**:
+1. ✅ **Check browser console first** - Look for database query errors (42703 = column doesn't exist)
+2. ✅ **Compare different tabs** - CommissionTab vs PaymentTab data loading differences revealed the issue
+3. ✅ **Add debug logging** - Console logs in both tabs showed PaymentTab query was failing
+4. ✅ **Check field names** - PaymentTab was selecting non-existent `payment_date_actual` field
+5. ✅ **Fix query mismatch** - Updated SELECT statements to match actual database schema
+
+**Salesforce Mapping Best Practices**:
+- ✅ **Always map boolean fields** - Missing boolean mappings cause entire features to fail silently
+- ✅ **Use legacy + active pattern** - Map to both `sf_[field]` (legacy) and `[field]` (active) for flexibility
+- ✅ **Update INSERT, SELECT, and ON CONFLICT** - All three sections must be updated for proper UPSERT behavior
+- ✅ **Test with actual data** - Mapping works correctly only when Salesforce data populates the fields
+
+**UI Alignment & Spacing Issues Pattern**:
+1. ✅ **Flexbox layout problems** - `justify-between` pushes elements to opposite ends
+2. ✅ **Text wrapping issues** - Need `whitespace-nowrap` to prevent line breaks
+3. ✅ **Size optimization** - `text-xs` and reduced padding (`px-2 py-1`) prevents overflow
+4. ✅ **Color consistency** - Text and numbers should match colors within same UI element
+
+**Database Schema Evolution**:
+- ✅ **Field removal strategy** - Drop columns with `ALTER TABLE payment DROP COLUMN IF EXISTS field_name`
+- ✅ **QuickBooks preparation** - Keep `qb_*` fields as placeholders for API integration
+- ✅ **Migration script organization** - Group related field additions and mappings together
+
+**Error Messages to Watch For**:
+- `42703: column does not exist` - Field name mismatch between query and database
+- `400 Bad Request` on Supabase queries - Usually field selection issues
+- React hydration errors - Often caused by boolean/string type mismatches
+- `payment_received: false` for all records - Missing boolean field mapping
 
 ### 🎨 **NEW: PaymentTab UI Enhancement Session (August 25, 2025)**
 
