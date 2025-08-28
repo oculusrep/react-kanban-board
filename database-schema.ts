@@ -1590,7 +1590,6 @@ export type Database = {
           invoice_sent: boolean | null
           orep_invoice: string | null
           payment_amount: number | null
-          payment_date_actual: string | null
           payment_date_estimated: string | null
           payment_invoice_date: string | null
           payment_name: string | null
@@ -1641,6 +1640,9 @@ export type Database = {
           sf_origination_percent: number | null
           sf_origination_usd: number | null
           sf_payment_amount: number | null
+          sf_payment_date_actual: string | null
+          sf_payment_date_est: string | null
+          sf_payment_date_received: string | null
           sf_payment_invoice_date: string | null
           sf_payment_status: string | null
           sf_received_date: string | null
@@ -1665,7 +1667,6 @@ export type Database = {
           invoice_sent?: boolean | null
           orep_invoice?: string | null
           payment_amount?: number | null
-          payment_date_actual?: string | null
           payment_date_estimated?: string | null
           payment_invoice_date?: string | null
           payment_name?: string | null
@@ -1716,6 +1717,9 @@ export type Database = {
           sf_origination_percent?: number | null
           sf_origination_usd?: number | null
           sf_payment_amount?: number | null
+          sf_payment_date_actual?: string | null
+          sf_payment_date_est?: string | null
+          sf_payment_date_received?: string | null
           sf_payment_invoice_date?: string | null
           sf_payment_status?: string | null
           sf_received_date?: string | null
@@ -1740,7 +1744,6 @@ export type Database = {
           invoice_sent?: boolean | null
           orep_invoice?: string | null
           payment_amount?: number | null
-          payment_date_actual?: string | null
           payment_date_estimated?: string | null
           payment_invoice_date?: string | null
           payment_name?: string | null
@@ -1791,6 +1794,9 @@ export type Database = {
           sf_origination_percent?: number | null
           sf_origination_usd?: number | null
           sf_payment_amount?: number | null
+          sf_payment_date_actual?: string | null
+          sf_payment_date_est?: string | null
+          sf_payment_date_received?: string | null
           sf_payment_invoice_date?: string | null
           sf_payment_status?: string | null
           sf_received_date?: string | null

@@ -976,6 +976,10 @@ ALTER TABLE payment ADD COLUMN IF NOT EXISTS qb_last_sync TIMESTAMPTZ;
 ALTER TABLE payment ADD COLUMN IF NOT EXISTS sf_received_date DATE;
 ALTER TABLE payment ADD COLUMN IF NOT EXISTS sf_payment_status TEXT;
 ALTER TABLE payment ADD COLUMN IF NOT EXISTS sf_invoice_sent_date DATE;
+ALTER TABLE payment ADD COLUMN IF NOT EXISTS sf_payment_date_est DATE;
+ALTER TABLE payment ADD COLUMN IF NOT EXISTS sf_payment_date_received DATE;
+ALTER TABLE payment ADD COLUMN IF NOT EXISTS sf_payment_date_actual DATE;
+ALTER TABLE payment ADD COLUMN IF NOT EXISTS sf_payment_invoice_date DATE;
 
 -- UPSERT payment data from Salesforce
 INSERT INTO payment (
@@ -992,7 +996,14 @@ INSERT INTO payment (
     updated_at,
     sf_received_date,
     sf_payment_status,
-    sf_invoice_sent_date
+    sf_invoice_sent_date,
+    sf_payment_date_est,
+    payment_date_estimated,
+    sf_payment_date_received,
+    payment_received_date,
+    sf_payment_date_actual,
+    sf_payment_invoice_date,
+    payment_invoice_date
 )
 SELECT
     p."Id" AS sf_id,
@@ -1012,7 +1023,14 @@ SELECT
         WHEN p."Invoice_Sent__c" = true THEN 'Invoice Sent'
         ELSE 'Pending'
     END AS sf_payment_status,
-    p."Payment_Invoice_Date__c" AS sf_invoice_sent_date
+    p."Payment_Invoice_Date__c" AS sf_invoice_sent_date,
+    p."Payment_Date_Est__c" AS sf_payment_date_est,
+    p."Payment_Date_Est__c" AS payment_date_estimated,
+    p."PMT_Received_Date__c" AS sf_payment_date_received,
+    p."PMT_Received_Date__c" AS payment_received_date,
+    p."Payment_Date_Actual__c" AS sf_payment_date_actual,
+    p."Payment_Invoice_Date__c" AS sf_payment_invoice_date,
+    p."Payment_Invoice_Date__c" AS payment_invoice_date
 FROM "salesforce_Payment__c" p
 WHERE p."Id" IS NOT NULL
   AND p."Payment_Amount__c" IS NOT NULL
