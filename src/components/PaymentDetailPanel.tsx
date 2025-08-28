@@ -78,9 +78,9 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-4">
             <div className="text-sm font-medium text-red-800">Percentage Validation Errors:</div>
             <div className="text-xs text-red-600 mt-1">
-              {validationTotals.deal !== 100 && `Deal: ${validationTotals.deal}% `}
-              {validationTotals.site !== 100 && `Site: ${validationTotals.site}% `}
               {validationTotals.origination !== 100 && `Origination: ${validationTotals.origination}% `}
+              {validationTotals.site !== 100 && `Site: ${validationTotals.site}% `}
+              {validationTotals.deal !== 100 && `Deal: ${validationTotals.deal}% `}
               (must equal 100% each)
             </div>
           </div>

@@ -34,13 +34,13 @@ const BrokerSplitEditor: React.FC<BrokerSplitEditorProps> = ({
       {/* Split Percentages Grid */}
       <div className="grid grid-cols-4 gap-3">
         <div className="bg-white rounded-md p-2 border border-gray-200">
-          <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Deal</div>
+          <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Origination</div>
           <PercentageInput
             label=""
-            value={split.split_deal_percent || 0}
-            onChange={(newValue) => onPercentageChange('split_deal_percent', newValue)}
+            value={split.split_origination_percent || 0}
+            onChange={(newValue) => onPercentageChange('split_origination_percent', newValue)}
           />
-          <div className="text-xs text-gray-500 mt-1">${(split.split_deal_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          <div className="text-xs text-gray-500 mt-1">${(split.split_origination_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
         </div>
         <div className="bg-white rounded-md p-2 border border-gray-200">
           <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Site</div>
@@ -52,13 +52,13 @@ const BrokerSplitEditor: React.FC<BrokerSplitEditorProps> = ({
           <div className="text-xs text-gray-500 mt-1">${(split.split_site_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
         </div>
         <div className="bg-white rounded-md p-2 border border-gray-200">
-          <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Origination</div>
+          <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Deal</div>
           <PercentageInput
             label=""
-            value={split.split_origination_percent || 0}
-            onChange={(newValue) => onPercentageChange('split_origination_percent', newValue)}
+            value={split.split_deal_percent || 0}
+            onChange={(newValue) => onPercentageChange('split_deal_percent', newValue)}
           />
-          <div className="text-xs text-gray-500 mt-1">${(split.split_origination_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          <div className="text-xs text-gray-500 mt-1">${(split.split_deal_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
         </div>
         <div className="bg-white rounded-md p-2 border border-gray-200">
           <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Total</div>
