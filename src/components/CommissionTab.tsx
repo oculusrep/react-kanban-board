@@ -229,7 +229,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
       // Refresh the data to show new payments
       await fetchCommissionData();
       
-      alert(`Success: ${data}`);
+      // Payment generation completed successfully
     } catch (err) {
       alert(`Error: ${err instanceof Error ? err.message : 'Failed to generate payments'}`);
     } finally {
