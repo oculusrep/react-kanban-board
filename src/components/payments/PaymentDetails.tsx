@@ -1,20 +1,33 @@
-import React from 'react';
-import { Payment, Deal, Client } from '../../lib/types';
+import React, { useState } from 'react';
+import { Payment, Deal, Client, Broker, PaymentSplit, CommissionSplit } from '../../lib/types';
 import { formatDateForInput, formatDateStringWithFallback } from '../../utils/dateUtils';
+import PaymentDisbursementModal from './PaymentDisbursementModal';
 
 interface PaymentDetailsProps {
   payment: Payment;
   deal: Deal;
   clients?: Client[];
+  brokers?: Broker[];
+  paymentSplits?: PaymentSplit[];
+  commissionSplits?: CommissionSplit[];
   onUpdatePayment: (updates: Partial<Payment>) => Promise<void>;
+  onUpdateReferralPaid?: (paymentId: string, paid: boolean) => Promise<void>;
+  onUpdatePaymentSplitPaid?: (splitId: string, paid: boolean) => Promise<void>;
 }
 
 const PaymentDetails: React.FC<PaymentDetailsProps> = ({
   payment,
   deal,
   clients,
-  onUpdatePayment
+  brokers,
+  paymentSplits,
+  commissionSplits,
+  onUpdatePayment,
+  onUpdateReferralPaid,
+  onUpdatePaymentSplitPaid
 }) => {
+  const [disbursementModalOpen, setDisbursementModalOpen] = useState(false);
+  
   // Use the utility functions for consistent date handling
   
   // Get referral payee client name
@@ -23,6 +36,18 @@ const PaymentDetails: React.FC<PaymentDetailsProps> = ({
     if (!clients || clients.length === 0) return 'Client data not available';
     const client = clients.find(c => c.id === deal.referral_payee_client_id);
     return client ? client.client_name || 'Unknown Client' : 'Client not found';
+  };
+
+  // Calculate proportional referral fee for this payment
+  const getProportionalReferralFee = () => {
+    if (!deal.referral_fee_usd || deal.referral_fee_usd === 0) return 0;
+    
+    const dealAmount = deal.fee || deal.deal_usd || 0;
+    const paymentAmount = payment.payment_amount || 0;
+    
+    if (dealAmount === 0) return 0;
+    
+    return deal.referral_fee_usd * (paymentAmount / dealAmount);
   };
 
   const renderDateField = (
@@ -132,12 +157,26 @@ const PaymentDetails: React.FC<PaymentDetailsProps> = ({
                   Referral Fee
                 </label>
                 <div className="w-full px-3 py-2 text-sm bg-gray-100 border border-gray-200 rounded-md text-gray-600">
-                  {deal.referral_fee_usd ? `$${deal.referral_fee_usd.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : 'No referral fee set'}
-                  {deal.referral_fee_percent && (
-                    <span className="ml-2 text-xs text-gray-500">
-                      ({deal.referral_fee_percent}%)
-                    </span>
-                  )}
+                  {(() => {
+                    const proportionalFee = getProportionalReferralFee();
+                    const fullDealFee = deal.referral_fee_usd || 0;
+                    
+                    if (proportionalFee === 0) return 'No referral fee for this payment';
+                    
+                    return (
+                      <>
+                        ${proportionalFee.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        <span className="ml-2 text-xs text-gray-500">
+                          (${fullDealFee.toLocaleString('en-US', { minimumFractionDigits: 2 })} total)
+                        </span>
+                        {deal.referral_fee_percent && (
+                          <span className="ml-2 text-xs text-gray-500">
+                            ({deal.referral_fee_percent}%)
+                          </span>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -206,7 +245,72 @@ const PaymentDetails: React.FC<PaymentDetailsProps> = ({
             )}
           </div>
         </div>
+
+        {/* Payment Received Section with Disbursement Trigger */}
+        <div className="mt-6 p-4 border border-blue-200 rounded-lg bg-blue-50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <input
+                type="checkbox"
+                id={`payment-received-${payment.id}`}
+                checked={payment.payment_received || false}
+                onChange={async (e) => {
+                  const newReceived = e.target.checked;
+                  await onUpdatePayment({ payment_received: newReceived });
+                  
+                  // If marking as received and there are disbursements, open modal
+                  if (newReceived && (
+                    (deal.referral_fee_usd && deal.referral_fee_usd > 0) || 
+                    (paymentSplits && paymentSplits.some(split => (split.split_broker_total || 0) > 0))
+                  )) {
+                    setDisbursementModalOpen(true);
+                  }
+                }}
+                className="h-5 w-5 text-blue-600 rounded border-2 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <div>
+                <label 
+                  htmlFor={`payment-received-${payment.id}`}
+                  className="text-sm font-semibold text-blue-900 cursor-pointer"
+                >
+                  Payment Received
+                </label>
+                <p className="text-xs text-blue-700">
+                  {payment.payment_received 
+                    ? 'Payment has been received - manage disbursements below'
+                    : 'Check when payment is received to manage disbursements'
+                  }
+                </p>
+              </div>
+            </div>
+            
+            {/* Disbursement Quick Actions */}
+            {payment.payment_received && (
+              <button
+                onClick={() => setDisbursementModalOpen(true)}
+                className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                Manage Disbursements
+              </button>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Payment Disbursement Modal */}
+      {disbursementModalOpen && (
+        <PaymentDisbursementModal
+          isOpen={disbursementModalOpen}
+          onClose={() => setDisbursementModalOpen(false)}
+          payment={payment}
+          deal={deal}
+          clients={clients || []}
+          brokers={brokers || []}
+          paymentSplits={paymentSplits || []}
+          onUpdateReferralPaid={onUpdateReferralPaid || (async () => {})}
+          onUpdatePaymentSplitPaid={onUpdatePaymentSplitPaid || (async () => {})}
+        />
+      )}
     </div>
   );
 };

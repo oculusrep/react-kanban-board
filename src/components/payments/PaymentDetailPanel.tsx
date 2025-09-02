@@ -1,20 +1,23 @@
 import React, { useState } from 'react';
-import { Payment, PaymentSplit, Broker, Deal, Client } from '../../lib/types';
+import { Payment, PaymentSplit, Broker, Deal, Client, CommissionSplit } from '../../lib/types';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import BrokerSplitEditor from '../BrokerSplitEditor';
 import PaymentDetails from './PaymentDetails';
 import { usePaymentSplitValidation } from '../../hooks/usePaymentSplitValidation';
 import { usePaymentSplitCalculations } from '../../hooks/usePaymentSplitCalculations';
+import { usePaymentDisbursement } from '../../hooks/usePaymentDisbursement';
 
 interface PaymentDetailPanelProps {
   payment: Payment;
   splits: PaymentSplit[];
   brokers: Broker[];
   clients?: Client[];
+  commissionSplits?: CommissionSplit[];
   dealAmounts: { origination_usd?: number; site_usd?: number; deal_usd?: number };
   deal: Deal;
   onSplitPercentageChange: (splitId: string, field: string, value: number | null) => void;
   onUpdatePayment: (updates: Partial<Payment>) => Promise<void>;
+  onUpdatePaymentSplit?: (splitId: string, updates: Partial<PaymentSplit>) => Promise<void>;
 }
 
 const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
@@ -22,10 +25,12 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
   splits,
   brokers,
   clients,
+  commissionSplits,
   dealAmounts,
   deal,
   onSplitPercentageChange,
-  onUpdatePayment
+  onUpdatePayment,
+  onUpdatePaymentSplit
 }) => {
   const [paymentDetailsExpanded, setPaymentDetailsExpanded] = useState(false);
   const getBrokerName = (brokerId: string) => {
@@ -54,6 +59,34 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
     payment.payment_amount || 0
   );
   const validationTotals = usePaymentSplitValidation(calculatedSplits);
+
+  // Disbursement functionality
+  const { updateReferralPaid, updatePaymentSplitPaid } = usePaymentDisbursement();
+
+  const handleUpdateReferralPaid = async (paymentId: string, paid: boolean) => {
+    try {
+      await updateReferralPaid(paymentId, paid);
+    } catch (error) {
+      console.error('Error updating referral payment status:', error);
+      // TODO: Add user-friendly error handling
+    }
+  };
+
+  const handleUpdatePaymentSplitPaid = async (splitId: string, paid: boolean) => {
+    try {
+      await updatePaymentSplitPaid(splitId, paid);
+      
+      // Update the parent's payment split state to reflect the change
+      if (onUpdatePaymentSplit) {
+        await onUpdatePaymentSplit(splitId, { paid });
+        console.log('✅ Payment split paid status updated, parent state refreshed');
+      }
+      
+    } catch (error) {
+      console.error('Error updating payment split status:', error);
+      // TODO: Add user-friendly error handling
+    }
+  };
 
   return (
     <div className="border-t border-gray-200 bg-white">
@@ -125,7 +158,12 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
             payment={payment}
             deal={deal}
             clients={clients}
+            brokers={brokers}
+            paymentSplits={splits}
+            commissionSplits={commissionSplits}
             onUpdatePayment={onUpdatePayment}
+            onUpdateReferralPaid={handleUpdateReferralPaid}
+            onUpdatePaymentSplitPaid={handleUpdatePaymentSplitPaid}
           />
         )}
       </div>

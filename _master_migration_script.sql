@@ -999,6 +999,12 @@ ALTER TABLE payment ADD COLUMN IF NOT EXISTS sf_payment_date_est DATE;
 ALTER TABLE payment ADD COLUMN IF NOT EXISTS sf_payment_date_received DATE;
 ALTER TABLE payment ADD COLUMN IF NOT EXISTS sf_payment_date_actual DATE;
 ALTER TABLE payment ADD COLUMN IF NOT EXISTS sf_payment_invoice_date DATE;
+ALTER TABLE payment ADD COLUMN IF NOT EXISTS payment_date_estimated DATE;
+ALTER TABLE payment ADD COLUMN IF NOT EXISTS payment_received_date DATE;
+ALTER TABLE payment ADD COLUMN IF NOT EXISTS payment_invoice_date DATE;
+ALTER TABLE payment ADD COLUMN IF NOT EXISTS payment_received BOOLEAN DEFAULT FALSE;
+ALTER TABLE payment ADD COLUMN IF NOT EXISTS orep_invoice TEXT;
+ALTER TABLE payment ADD COLUMN IF NOT EXISTS referral_fee_paid BOOLEAN DEFAULT FALSE;
 
 -- UPSERT payment data from Salesforce
 INSERT INTO payment (
@@ -1024,7 +1030,8 @@ INSERT INTO payment (
     sf_payment_date_actual,
     sf_payment_invoice_date,
     payment_invoice_date,
-    orep_invoice
+    orep_invoice,
+    referral_fee_paid
 )
 SELECT
     p."Id" AS sf_id,
@@ -1053,7 +1060,8 @@ SELECT
     p."Payment_Date_Actual__c" AS sf_payment_date_actual,
     p."Payment_Invoice_Date__c" AS sf_payment_invoice_date,
     p."Payment_Invoice_Date__c" AS payment_invoice_date,
-    p."OREP_Invoice__c" AS orep_invoice
+    p."OREP_Invoice__c" AS orep_invoice,
+    COALESCE(p."Referral_Fee_Paid__c", FALSE) AS referral_fee_paid
 FROM "salesforce_Payment__c" p
 WHERE p."Id" IS NOT NULL
   AND p."Payment_Amount__c" IS NOT NULL
@@ -1080,7 +1088,8 @@ ON CONFLICT (sf_id) DO UPDATE SET
     sf_payment_date_actual = EXCLUDED.sf_payment_date_actual,
     sf_payment_invoice_date = EXCLUDED.sf_payment_invoice_date,
     payment_invoice_date = EXCLUDED.payment_invoice_date,
-    orep_invoice = EXCLUDED.orep_invoice;
+    orep_invoice = EXCLUDED.orep_invoice,
+    referral_fee_paid = EXCLUDED.referral_fee_paid;
 
 -- ==============================================================================
 -- Payment Split Table (Commission splits per payment)

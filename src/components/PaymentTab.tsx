@@ -309,6 +309,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
             paymentSplits={paymentSplits}
             brokers={brokers}
             clients={clients}
+            commissionSplits={commissionSplits}
             deal={deal}
             onUpdatePayment={updatePayment}
             onDeletePayment={deletePayment}
@@ -317,7 +318,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
               setPaymentSplits(prev => 
                 prev.map(split => 
                   split.id === splitId 
-                    ? { ...split, [field]: value || 0 }
+                    ? { ...split, [field]: value !== null ? value : (field === 'paid' ? false : 0) }
                     : split
                 )
               );
