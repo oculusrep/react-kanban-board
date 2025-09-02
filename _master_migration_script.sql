@@ -123,6 +123,11 @@ ALTER TABLE deal ADD COLUMN IF NOT EXISTS site_submit_id uuid;
 -- Ensure kanban_position column exists on deal (CRM-specific field, not from Salesforce)
 ALTER TABLE deal ADD COLUMN IF NOT EXISTS kanban_position INTEGER;
 
+-- Ensure referral fields exist on deal
+ALTER TABLE deal ADD COLUMN IF NOT EXISTS referral_payee_client_id UUID;
+ALTER TABLE deal ADD COLUMN IF NOT EXISTS referral_fee_percent NUMERIC(5,2);
+ALTER TABLE deal ADD COLUMN IF NOT EXISTS referral_fee_usd NUMERIC(12,2);
+
 -- Upsert into client table
 INSERT INTO client (
   id,
@@ -187,6 +192,9 @@ INSERT INTO deal (
   loi_signed_date,
   closed_date,
   deal_team_id,
+  referral_payee_client_id,
+  referral_fee_percent,
+  referral_fee_usd,
   sf_id
 )
 SELECT
@@ -204,12 +212,16 @@ SELECT
   o."LOI_Signed_Date__c",
   o."Closed_Date__c",
   dt.id AS deal_team_id,
+  c_ref.id AS referral_payee_client_id,
+  o."Referral_Fee_p__c" AS referral_fee_percent,
+  o."Referral_Fee__c" AS referral_fee_usd,
   o."Id" AS sf_id
 FROM opp o
-LEFT JOIN client     c  ON c.sf_id   = o."AccountId"
-LEFT JOIN property   p  ON p.sf_id   = o."Property__c"
-LEFT JOIN deal_stage ds ON ds.label  = o."StageName"
-LEFT JOIN deal_team  dt ON dt.id     = o.assign_to_uuid
+LEFT JOIN client     c     ON c.sf_id   = o."AccountId"
+LEFT JOIN client     c_ref ON c_ref.sf_id = o."Referral_Payee_Account__c"
+LEFT JOIN property   p     ON p.sf_id   = o."Property__c"
+LEFT JOIN deal_stage ds    ON ds.label  = o."StageName"
+LEFT JOIN deal_team  dt    ON dt.id     = o.assign_to_uuid
 ON CONFLICT (sf_id) DO UPDATE SET
   deal_name = EXCLUDED.deal_name,
   client_id = EXCLUDED.client_id,
@@ -223,7 +235,10 @@ ON CONFLICT (sf_id) DO UPDATE SET
   target_close_date = EXCLUDED.target_close_date,
   loi_signed_date = EXCLUDED.loi_signed_date,
   closed_date = EXCLUDED.closed_date,
-  deal_team_id = EXCLUDED.deal_team_id;
+  deal_team_id = EXCLUDED.deal_team_id,
+  referral_payee_client_id = EXCLUDED.referral_payee_client_id,
+  referral_fee_percent = EXCLUDED.referral_fee_percent,
+  referral_fee_usd = EXCLUDED.referral_fee_usd;
   -- NOTE: kanban_position is intentionally NOT updated here
   -- This preserves the CRM-specific positioning when deals are re-migrated
 
@@ -257,6 +272,10 @@ ALTER TABLE deal ADD CONSTRAINT deal_updated_by_id_fkey FOREIGN KEY (updated_by_
 
 ALTER TABLE deal DROP CONSTRAINT IF EXISTS deal_created_by_id_fkey;
 ALTER TABLE deal ADD CONSTRAINT deal_created_by_id_fkey FOREIGN KEY (created_by_id) REFERENCES "user"(id);
+
+-- Add referral payee foreign key constraint
+ALTER TABLE deal DROP CONSTRAINT IF EXISTS deal_referral_payee_client_id_fkey;
+ALTER TABLE deal ADD CONSTRAINT deal_referral_payee_client_id_fkey FOREIGN KEY (referral_payee_client_id) REFERENCES client(id);
 
 -- Create index for kanban performance
 CREATE INDEX IF NOT EXISTS idx_deal_kanban_position ON deal(stage_id, kanban_position);

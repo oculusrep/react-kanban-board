@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Payment, PaymentSplit, Broker, Deal } from '../lib/types';
-import { supabase } from '../lib/supabaseClient';
-import DeleteConfirmationModal from './DeleteConfirmationModal';
+import { Payment, PaymentSplit, Broker, Deal, Client } from '../../lib/types';
+import { supabase } from '../../lib/supabaseClient';
+import DeleteConfirmationModal from '../DeleteConfirmationModal';
 import PaymentSummaryRow from './PaymentSummaryRow';
 import PaymentDetailPanel from './PaymentDetailPanel';
 
@@ -9,6 +9,7 @@ interface PaymentListSectionProps {
   payments: Payment[];
   paymentSplits: PaymentSplit[];
   brokers: Broker[];
+  clients?: Client[];
   deal: Deal;
   onUpdatePayment: (paymentId: string, updates: Partial<Payment>) => Promise<void>;
   onDeletePayment: (paymentId: string) => Promise<void>;
@@ -19,6 +20,7 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
   payments,
   paymentSplits,
   brokers,
+  clients,
   deal,
   onUpdatePayment,
   onDeletePayment,
@@ -125,6 +127,7 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
                   payment={payment}
                   splits={splits}
                   brokers={brokers}
+                  clients={clients}
                   dealAmounts={{
                     origination_usd: deal.origination_usd || 0,
                     site_usd: deal.site_usd || 0,
@@ -132,6 +135,7 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
                   }}
                   deal={deal}
                   onSplitPercentageChange={handleSplitPercentageChange}
+                  onUpdatePayment={(updates) => onUpdatePayment(payment.id, updates)}
                 />
               )}
             </div>

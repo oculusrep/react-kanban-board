@@ -1,6 +1,7 @@
 import React from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-import { Payment } from '../lib/types';
+import { Payment } from '../../lib/types';
+import { formatDateString } from '../../utils/dateUtils';
 
 interface PaymentSummaryRowProps {
   payment: Payment;
@@ -83,7 +84,7 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
           // Show static paid date when payment is received
           <div className="w-full px-2 py-1 text-sm">
             <div className="font-medium text-green-800">
-              Paid Date: {payment.payment_received_date ? new Date(payment.payment_received_date).toLocaleDateString() : 'Unknown'}
+              Paid Date: {formatDateString(payment.payment_received_date)}
             </div>
           </div>
         ) : (

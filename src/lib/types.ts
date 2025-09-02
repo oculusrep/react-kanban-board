@@ -76,12 +76,13 @@ export interface DealCard {
 
 export interface Client {
   id: string;
-  name: string | null;
+  client_name: string | null;
   type: string | null;
   phone: string | null;
   email: string | null;
   created_at?: string;
   updated_at?: string;
+  sf_id?: string | null;
 }
 
 export interface Contact {
@@ -157,36 +158,54 @@ export interface CommissionSplit {
   updated_at?: string;
 }
 
-// Payment System Types - Updated to match database schema
+// Payment System Types - Updated to match actual database schema
 export interface Payment {
   id: string;
+  sf_id?: string | null;
   deal_id: string;
+  payment_name?: string | null;
   
   // Payment details
   payment_sequence: number | null;        // Was: payment_number
   payment_amount: number | null;
   
   // Payment dates (multiple date fields in DB)
-  payment_date_estimated: string | null;  // Was: payment_date
-  payment_date_actual: string | null;     // New: actual payment date
-  payment_received_date: string | null;   // New: when payment was received
+  payment_date_estimated: string | null;  // User-editable estimated date
+  payment_received_date: string | null;   // When payment was received
+  payment_invoice_date: string | null;    // Invoice date
+  
+  // Salesforce date fields (read-only)
+  sf_received_date?: string | null;
+  sf_payment_date_est?: string | null;
+  sf_payment_date_received?: string | null;
+  sf_payment_date_actual?: string | null;
+  sf_payment_invoice_date?: string | null;
   
   // Payment status and tracking
-  payment_received: boolean | null;       // Was: status (boolean instead of string)
-  status?: string;                    // Temporary for component compatibility
-  payment_date?: string;              // Temporary for component compatibility
+  payment_received: boolean | null;
+  sf_payment_status?: string | null;     // Salesforce payment status
+  sf_invoice_sent_date?: string | null;
   
+  // QuickBooks integration
   qb_invoice_id: string | null;
   qb_payment_id: string | null;
+  qb_sync_status?: string | null;
+  qb_last_sync?: string | null;
   
-  // Additional fields from schema
-  payment_invoice_date: string | null;
-  invoice_sent: boolean | null;
-  agci: number | null;
+  // OREP invoice tracking
+  orep_invoice?: string | null;
   
-  // Notes and metadata
-  notes: string | null;
+  // Legacy compatibility fields
+  status?: string;                    // Temporary for component compatibility
+  payment_date?: string;              // Temporary for component compatibility
+  invoice_sent?: boolean | null;      // Temporary for component compatibility
+  
+  // Audit fields
+  sf_created_by_id?: string | null;
+  created_by_id?: string | null;
   created_at?: string;
+  sf_updated_by_id?: string | null;
+  updated_by_id?: string | null;
   updated_at?: string;
 }
 

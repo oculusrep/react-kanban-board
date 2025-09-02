@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Deal, Payment, PaymentSplit, Broker, CommissionSplit } from '../lib/types';
+import { Deal, Payment, PaymentSplit, Broker, CommissionSplit, Client } from '../lib/types';
 import { usePaymentCalculations } from '../hooks/usePaymentCalculations';
 import PaymentGenerationSection from './PaymentGenerationSection';
-import PaymentListSection from './PaymentListSection';
+import PaymentListSection from './payments/PaymentListSection';
 import PaymentStatusCard from './PaymentStatusCard';
 import CommissionBreakdownBar from './CommissionBreakdownBar';
 import { usePaymentStatus } from '../hooks/usePaymentStatus';
@@ -34,6 +34,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
   const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>([]);
   const [commissionSplits, setCommissionSplits] = useState<CommissionSplit[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [generatingPayments, setGeneratingPayments] = useState(false);
@@ -106,10 +107,28 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
 
       if (brokersError) throw brokersError;
 
+      // Fetch all clients (optional - may not exist in database yet)
+      let clientsData: Client[] = [];
+      try {
+        const { data, error } = await supabase
+          .from('client')
+          .select('*')
+          .order('client_name');
+        
+        if (!error) {
+          clientsData = data || [];
+        } else {
+          console.warn('Client table not available:', error.message);
+        }
+      } catch (clientError) {
+        console.warn('Error fetching clients (table may not exist):', clientError);
+      }
+
       setPayments(paymentsData || []);
       setPaymentSplits(paymentSplitsData);
       setCommissionSplits(commissionSplitsData || []);
       setBrokers(brokersData || []);
+      setClients(clientsData || []);
 
     } catch (err) {
       console.error('Error fetching payment data:', err);
@@ -289,6 +308,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
             payments={payments}
             paymentSplits={paymentSplits}
             brokers={brokers}
+            clients={clients}
             deal={deal}
             onUpdatePayment={updatePayment}
             onDeletePayment={deletePayment}

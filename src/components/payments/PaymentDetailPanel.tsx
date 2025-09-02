@@ -1,26 +1,33 @@
-import React from 'react';
-import { Payment, PaymentSplit, Broker, Deal } from '../lib/types';
-import BrokerSplitEditor from './BrokerSplitEditor';
-import { usePaymentSplitValidation } from '../hooks/usePaymentSplitValidation';
-import { usePaymentSplitCalculations } from '../hooks/usePaymentSplitCalculations';
+import React, { useState } from 'react';
+import { Payment, PaymentSplit, Broker, Deal, Client } from '../../lib/types';
+import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import BrokerSplitEditor from '../BrokerSplitEditor';
+import PaymentDetails from './PaymentDetails';
+import { usePaymentSplitValidation } from '../../hooks/usePaymentSplitValidation';
+import { usePaymentSplitCalculations } from '../../hooks/usePaymentSplitCalculations';
 
 interface PaymentDetailPanelProps {
   payment: Payment;
   splits: PaymentSplit[];
   brokers: Broker[];
+  clients?: Client[];
   dealAmounts: { origination_usd?: number; site_usd?: number; deal_usd?: number };
   deal: Deal;
   onSplitPercentageChange: (splitId: string, field: string, value: number | null) => void;
+  onUpdatePayment: (updates: Partial<Payment>) => Promise<void>;
 }
 
 const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
   payment,
   splits,
   brokers,
+  clients,
   dealAmounts,
   deal,
-  onSplitPercentageChange
+  onSplitPercentageChange,
+  onUpdatePayment
 }) => {
+  const [paymentDetailsExpanded, setPaymentDetailsExpanded] = useState(false);
   const getBrokerName = (brokerId: string) => {
     const broker = brokers.find(b => b.id === brokerId);
     return broker ? broker.name : 'Unknown Broker';
@@ -50,6 +57,7 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
 
   return (
     <div className="border-t border-gray-200 bg-white">
+      {/* Commission Breakdown Section */}
       <div className="p-6">
         {/* Header */}
         <div className="mb-6">
@@ -84,6 +92,41 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
               (must equal 100% each)
             </div>
           </div>
+        )}
+      </div>
+
+      {/* Expandable Payment Details Section */}
+      <div className="border-t border-gray-200">
+        {/* Payment Details Header - Clickable */}
+        <div 
+          className="p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+          onClick={() => setPaymentDetailsExpanded(!paymentDetailsExpanded)}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-sm font-medium text-gray-900">Payment Details</h4>
+              <p className="text-xs text-gray-600 mt-1">
+                Dates, tracking, and referral information
+              </p>
+            </div>
+            <button className="p-1 hover:bg-gray-200 rounded">
+              {paymentDetailsExpanded ? (
+                <ChevronDownIcon className="h-4 w-4 text-gray-500" />
+              ) : (
+                <ChevronRightIcon className="h-4 w-4 text-gray-500" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Expandable Payment Details Content */}
+        {paymentDetailsExpanded && (
+          <PaymentDetails 
+            payment={payment}
+            deal={deal}
+            clients={clients}
+            onUpdatePayment={onUpdatePayment}
+          />
         )}
       </div>
     </div>

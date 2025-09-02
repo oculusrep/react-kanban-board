@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Deal, Payment, PaymentSplit, Broker, CommissionSplit } from '../lib/types';
+import { Deal, Payment, PaymentSplit, Broker, CommissionSplit, Client } from '../lib/types';
 
 // Enhanced Payment type with joined property data
 interface PaymentWithProperty extends Payment {
@@ -35,6 +35,7 @@ interface PaymentDataResult {
   paymentSplits: PaymentSplit[];
   commissionSplits: CommissionSplit[];
   brokers: Broker[];
+  clients: Client[];
   property: PropertyInfo | null;
   
   // State
@@ -58,6 +59,7 @@ export const usePaymentData = (dealId: string): PaymentDataResult => {
   const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>([]);
   const [commissionSplits, setCommissionSplits] = useState<CommissionSplit[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [generatingPayments, setGeneratingPayments] = useState(false);
@@ -88,19 +90,26 @@ export const usePaymentData = (dealId: string): PaymentDataResult => {
         .from('payment')
         .select(`
           id,
+          sf_id,
+          payment_name,
           deal_id,
           payment_sequence,
           payment_amount,
           payment_date_estimated,
-          payment_date_actual,
           payment_received_date,
-          payment_received,
           payment_invoice_date,
-          invoice_sent,
+          payment_received,
+          sf_payment_status,
+          sf_invoice_sent_date,
+          sf_payment_date_est,
+          sf_payment_date_actual,
+          sf_payment_date_received,
+          sf_payment_invoice_date,
           qb_invoice_id,
           qb_payment_id,
-          agci,
-          notes,
+          qb_sync_status,
+          qb_last_sync,
+          orep_invoice,
           created_at,
           updated_at,
           deal!inner(
@@ -166,11 +175,20 @@ export const usePaymentData = (dealId: string): PaymentDataResult => {
 
       if (brokersError) throw brokersError;
 
+      // Fetch all clients
+      const { data: clientsData, error: clientsError } = await supabase
+        .from('client')
+        .select('*')
+        .order('name');
+
+      if (clientsError) throw clientsError;
+
       // Update state
       setPayments(paymentsData || []);
       setPaymentSplits(paymentSplitsData);
       setCommissionSplits(commissionSplitsData || []);
       setBrokers(brokersData || []);
+      setClients(clientsData || []);
 
     } catch (err) {
       console.error('Error fetching payment data:', err);
@@ -303,6 +321,7 @@ export const usePaymentData = (dealId: string): PaymentDataResult => {
     paymentSplits,
     commissionSplits,
     brokers,
+    clients,
     property,
     
     // State
