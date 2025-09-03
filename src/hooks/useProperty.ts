@@ -5,10 +5,12 @@ import { Database } from '../../database-schema';
 type Property = Database['public']['Tables']['property']['Row'];
 type PropertyType = Database['public']['Tables']['property_type']['Row'];
 type PropertyStage = Database['public']['Tables']['property_stage']['Row'];
+type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
 interface PropertyWithRelations extends Property {
   property_type?: PropertyType;
   property_stage?: PropertyStage;
+  property_record_type?: PropertyRecordType;
 }
 
 interface UsePropertyResult {
@@ -36,28 +38,37 @@ export const useProperty = (propertyId?: string): UsePropertyResult => {
       setLoading(true);
       setError(null);
 
-      const { data, error } = await supabase
+      // First get the basic property data
+      const { data: propertyData, error: propertyError } = await supabase
         .from('property')
-        .select(`
-          *,
-          property_type:property_type_id (
-            id,
-            label,
-            description,
-            active
-          ),
-          property_stage:property_stage_id (
-            id,
-            label,
-            description,
-            active
-          )
-        `)
+        .select('*')
         .eq('id', propertyId)
         .single();
 
-      if (error) throw error;
-      setProperty(data);
+      if (propertyError) throw propertyError;
+
+      // Then fetch related data if IDs exist
+      const [propertyTypeResponse, propertyStageResponse, propertyRecordTypeResponse] = await Promise.all([
+        propertyData.property_type_id 
+          ? supabase.from('property_type').select('*').eq('id', propertyData.property_type_id).single()
+          : Promise.resolve({ data: null, error: null }),
+        propertyData.property_stage_id
+          ? supabase.from('property_stage').select('*').eq('id', propertyData.property_stage_id).single()
+          : Promise.resolve({ data: null, error: null }),
+        propertyData.property_record_type_id
+          ? supabase.from('property_record_type').select('*').eq('id', propertyData.property_record_type_id).single()
+          : Promise.resolve({ data: null, error: null })
+      ]);
+
+      // Combine the data
+      const enrichedProperty: PropertyWithRelations = {
+        ...propertyData,
+        property_type: propertyTypeResponse.data || undefined,
+        property_stage: propertyStageResponse.data || undefined,
+        property_record_type: propertyRecordTypeResponse.data || undefined
+      };
+
+      setProperty(enrichedProperty);
     } catch (err) {
       console.error('Error fetching property:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch property');
@@ -86,21 +97,7 @@ export const useProperty = (propertyId?: string): UsePropertyResult => {
         .from('property')
         .update(updatePayload)
         .eq('id', propertyId)
-        .select(`
-          *,
-          property_type:property_type_id (
-            id,
-            label,
-            description,
-            active
-          ),
-          property_stage:property_stage_id (
-            id,
-            label,
-            description,
-            active
-          )
-        `)
+        .select('*')
         .single();
 
       if (error) throw error;

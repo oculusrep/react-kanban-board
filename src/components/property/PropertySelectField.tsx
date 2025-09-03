@@ -7,6 +7,7 @@ interface PropertySelectFieldProps {
   options: { id: string; label: string }[];
   placeholder?: string;
   disabled?: boolean;
+  tabIndex?: number;
 }
 
 const PropertySelectField: React.FC<PropertySelectFieldProps> = ({
@@ -15,7 +16,8 @@ const PropertySelectField: React.FC<PropertySelectFieldProps> = ({
   onChange,
   options,
   placeholder = "Select...",
-  disabled = false
+  disabled = false,
+  tabIndex
 }) => {
   const [isEditing, setIsEditing] = useState(false);
 
@@ -54,6 +56,7 @@ const PropertySelectField: React.FC<PropertySelectFieldProps> = ({
           onBlur={handleCancel}
           onKeyDown={handleKeyDown}
           className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-base min-h-[44px]"
+          tabIndex={tabIndex}
           autoFocus
         >
           <option value="">{placeholder}</option>
@@ -72,12 +75,22 @@ const PropertySelectField: React.FC<PropertySelectFieldProps> = ({
       <label className="block text-sm font-medium text-gray-700">{label}</label>
       <div
         onClick={handleStartEdit}
-        className={`mt-1 px-3 py-2 rounded-md shadow-sm border text-base min-h-[44px] flex items-center transition-colors ${
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleStartEdit();
+          }
+        }}
+        onFocus={handleStartEdit}
+        tabIndex={tabIndex || 0}
+        className={`mt-1 px-3 py-2 rounded-md shadow-sm border text-base min-h-[44px] flex items-center transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
           disabled 
             ? 'bg-gray-100 cursor-not-allowed border-gray-200' 
             : 'cursor-pointer hover:bg-blue-50 border-transparent hover:border-blue-200 bg-white'
         }`}
         title={disabled ? 'Not editable' : 'Click to edit'}
+        role="button"
+        aria-label={`Click to edit ${label}`}
       >
         <span className={value ? 'text-gray-900' : 'text-gray-500'}>
           {displayValue}

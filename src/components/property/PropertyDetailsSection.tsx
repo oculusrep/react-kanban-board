@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Database } from '../../../database-schema';
 import PropertyInputField from './PropertyInputField';
 import PropertySelectField from './PropertySelectField';
+import PropertyAutocompleteField from './PropertyAutocompleteField';
+import { checkForLegacyRecordType } from '../../utils/propertyRecordTypeUtils';
 
 type Property = Database['public']['Tables']['property']['Row'];
 type PropertyType = Database['public']['Tables']['property_type']['Row'];
@@ -11,15 +13,31 @@ interface PropertyDetailsSectionProps {
   isEditing: boolean;
   onFieldUpdate: (field: keyof Property, value: any) => void;
   propertyTypes?: PropertyType[];
+  propertyRecordTypes?: PropertyType[];
 }
 
 const PropertyDetailsSection: React.FC<PropertyDetailsSectionProps> = ({
   property,
   isEditing,
   onFieldUpdate,
-  propertyTypes = []
+  propertyTypes = [],
+  propertyRecordTypes = []
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [legacyRecordType, setLegacyRecordType] = useState<string | null>(null);
+
+  // Check for legacy record type data
+  useEffect(() => {
+    const loadLegacyData = async () => {
+      if (property.id && !property.property_record_type_id) {
+        const legacy = await checkForLegacyRecordType(property.id);
+        console.log('🔍 Legacy RecordTypeId found:', legacy);
+        setLegacyRecordType(legacy);
+      }
+    };
+    
+    loadLegacyData();
+  }, [property.id, property.property_record_type_id]);
 
   return (
     <section className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 mb-4">
@@ -47,21 +65,41 @@ const PropertyDetailsSection: React.FC<PropertyDetailsSectionProps> = ({
 
       {isExpanded && (
         <div className="mt-4 space-y-6">
-          {/* Property Type and Description */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Property Type, Record Type and Name */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
             <PropertySelectField
               label="Property Type"
               value={property.property_type_id}
               onChange={(value) => onFieldUpdate('property_type_id', value)}
               options={propertyTypes.map(type => ({ id: type.id, label: type.label }))}
               placeholder="Select property type..."
+              tabIndex={20}
             />
+
+            <div>
+              <PropertySelectField
+                label="Property Record Type"
+                value={property.property_record_type_id}
+                onChange={(value) => onFieldUpdate('property_record_type_id', value)}
+                options={propertyRecordTypes.map(type => ({ id: type.id, label: type.label }))}
+                placeholder={propertyRecordTypes.length === 0 ? "No record types available" : "Select record type..."}
+                disabled={propertyRecordTypes.length === 0}
+                tabIndex={21}
+              />
+              {/* Show legacy data if it exists */}
+              {legacyRecordType && !property.property_record_type_id && (
+                <div className="mt-1 text-sm text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                  Salesforce RecordTypeId: {legacyRecordType}
+                </div>
+              )}
+            </div>
 
             <PropertyInputField
               label="Property Name"
               value={property.property_name}
               onChange={(value) => onFieldUpdate('property_name', value)}
               placeholder="Property name or identifier"
+              tabIndex={22}
             />
           </div>
 
@@ -77,10 +115,11 @@ const PropertyDetailsSection: React.FC<PropertyDetailsSectionProps> = ({
           {/* Basic Market Information */}
           <div className="border-t border-gray-200 pt-4">
             <h4 className="text-sm font-medium text-gray-900 mb-3">Location Details</h4>
-            <PropertyInputField
+            <PropertyAutocompleteField
               label="Trade Area"
               value={property.trade_area}
               onChange={(value) => onFieldUpdate('trade_area', value)}
+              field="trade_area"
               placeholder="Downtown, Suburb, etc."
             />
           </div>

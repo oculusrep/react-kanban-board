@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
 import { Database } from '../../../database-schema';
+import PropertyAutocompleteField from './PropertyAutocompleteField';
+import PropertyInputField from './PropertyInputField';
 
 type Property = Database['public']['Tables']['property']['Row'];
 
 interface LocationSectionProps {
   property: Property;
-  isEditing: boolean;
   onFieldUpdate: (field: keyof Property, value: any) => void;
   onGetCurrentLocation?: () => Promise<{ lat: number; lng: number }>;
 }
 
 const LocationSection: React.FC<LocationSectionProps> = ({
   property,
-  isEditing,
   onFieldUpdate,
   onGetCurrentLocation
 }) => {
@@ -33,11 +33,6 @@ const LocationSection: React.FC<LocationSectionProps> = ({
     }
   };
 
-  const formatCoordinate = (coord: number | null, type: 'lat' | 'lng'): string => {
-    if (!coord) return 'Not set';
-    const direction = type === 'lat' ? (coord >= 0 ? 'N' : 'S') : (coord >= 0 ? 'E' : 'W');
-    return `${Math.abs(coord).toFixed(6)}° ${direction}`;
-  };
 
   return (
     <section className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 mb-4">
@@ -47,10 +42,10 @@ const LocationSection: React.FC<LocationSectionProps> = ({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
-          <h3 className="text-lg font-semibold text-gray-900">Location & Contact</h3>
+          <h3 className="text-lg font-semibold text-gray-900">Location</h3>
         </div>
         
-        {isEditing && onGetCurrentLocation && (
+        {onGetCurrentLocation && (
           <button
             onClick={handleGetCurrentLocation}
             disabled={isGettingLocation}
@@ -71,146 +66,94 @@ const LocationSection: React.FC<LocationSectionProps> = ({
       {/* Address Fields */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         <div className="sm:col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Street Address*
-          </label>
-          {isEditing ? (
-            <input
-              type="text"
-              value={property.address || ''}
-              onChange={(e) => onFieldUpdate('address', e.target.value)}
-              placeholder="123 Main Street"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-base min-h-[44px]"
-            />
-          ) : (
-            <div className="px-3 py-2 bg-gray-50 rounded-md min-h-[44px] flex items-center">
-              {property.address || 'Not set'}
-            </div>
-          )}
+          <PropertyInputField
+            label="Street Address*"
+            value={property.address}
+            onChange={(value) => onFieldUpdate('address', value)}
+            placeholder="123 Main Street"
+            tabIndex={1}
+          />
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            City*
-          </label>
-          {isEditing ? (
-            <input
-              type="text"
-              value={property.city || ''}
-              onChange={(e) => onFieldUpdate('city', e.target.value)}
-              placeholder="San Francisco"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-base min-h-[44px]"
-            />
-          ) : (
-            <div className="px-3 py-2 bg-gray-50 rounded-md min-h-[44px] flex items-center">
-              {property.city || 'Not set'}
-            </div>
-          )}
-        </div>
+        <PropertyAutocompleteField
+          label="City*"
+          value={property.city}
+          onChange={(value) => onFieldUpdate('city', value)}
+          field="city"
+          placeholder="San Francisco"
+          tabIndex={2}
+        />
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            State*
-          </label>
-          {isEditing ? (
-            <input
-              type="text"
-              value={property.state || ''}
-              onChange={(e) => onFieldUpdate('state', e.target.value)}
-              placeholder="CA"
-              maxLength={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-base min-h-[44px]"
-            />
-          ) : (
-            <div className="px-3 py-2 bg-gray-50 rounded-md min-h-[44px] flex items-center">
-              {property.state || 'Not set'}
-            </div>
-          )}
-        </div>
+        <PropertyAutocompleteField
+          label="State*"
+          value={property.state}
+          onChange={(value) => onFieldUpdate('state', value)}
+          field="state"
+          placeholder="CA"
+          tabIndex={3}
+        />
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            ZIP Code
-          </label>
-          {isEditing ? (
-            <input
-              type="text"
-              value={property.zip || ''}
-              onChange={(e) => onFieldUpdate('zip', e.target.value)}
-              placeholder="94105"
-              maxLength={10}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-base min-h-[44px]"
-            />
-          ) : (
-            <div className="px-3 py-2 bg-gray-50 rounded-md min-h-[44px] flex items-center">
-              {property.zip || 'Not set'}
-            </div>
-          )}
-        </div>
+        <PropertyInputField
+          label="ZIP Code"
+          value={property.zip}
+          onChange={(value) => onFieldUpdate('zip', value)}
+          placeholder="94105"
+          tabIndex={4}
+        />
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            County
-          </label>
-          {isEditing ? (
-            <input
-              type="text"
-              value={property.county || ''}
-              onChange={(e) => onFieldUpdate('county', e.target.value)}
-              placeholder="San Francisco County"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-base min-h-[44px]"
-            />
-          ) : (
-            <div className="px-3 py-2 bg-gray-50 rounded-md min-h-[44px] flex items-center">
-              {property.county || 'Not set'}
-            </div>
-          )}
-        </div>
+        <PropertyAutocompleteField
+          label="County"
+          value={property.county}
+          onChange={(value) => onFieldUpdate('county', value)}
+          field="county"
+          placeholder="San Francisco County"
+          tabIndex={5}
+        />
       </div>
 
       {/* GPS Coordinates */}
       <div className="border-t border-gray-200 pt-4 mb-4">
         <h4 className="text-sm font-medium text-gray-900 mb-3">GPS Coordinates</h4>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              Latitude
-            </label>
-            {isEditing ? (
-              <input
-                type="number"
-                step="any"
-                value={property.latitude || ''}
-                onChange={(e) => onFieldUpdate('latitude', parseFloat(e.target.value) || null)}
-                placeholder="37.7749"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-              />
-            ) : (
-              <div className="px-3 py-2 bg-gray-50 rounded-md text-sm">
-                {formatCoordinate(property.latitude, 'lat')}
-              </div>
-            )}
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <PropertyInputField
+            label="Latitude"
+            value={property.latitude}
+            onChange={(value) => onFieldUpdate('latitude', value)}
+            type="number"
+            placeholder="37.7749"
+            inputMode="decimal"
+            tabIndex={6}
+          />
           
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              Longitude
-            </label>
-            {isEditing ? (
-              <input
-                type="number"
-                step="any"
-                value={property.longitude || ''}
-                onChange={(e) => onFieldUpdate('longitude', parseFloat(e.target.value) || null)}
-                placeholder="-122.4194"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-              />
-            ) : (
-              <div className="px-3 py-2 bg-gray-50 rounded-md text-sm">
-                {formatCoordinate(property.longitude, 'lng')}
-              </div>
-            )}
-          </div>
+          <PropertyInputField
+            label="Longitude"
+            value={property.longitude}
+            onChange={(value) => onFieldUpdate('longitude', value)}
+            type="number"
+            placeholder="-122.4194"
+            inputMode="decimal"
+            tabIndex={7}
+          />
+
+          <PropertyInputField
+            label="Verified Latitude"
+            value={property.verified_latitude}
+            onChange={(value) => onFieldUpdate('verified_latitude', value)}
+            type="number"
+            placeholder="37.7749"
+            inputMode="decimal"
+            tabIndex={8}
+          />
+          
+          <PropertyInputField
+            label="Verified Longitude"
+            value={property.verified_longitude}
+            onChange={(value) => onFieldUpdate('verified_longitude', value)}
+            type="number"
+            placeholder="-122.4194"
+            inputMode="decimal"
+            tabIndex={9}
+          />
         </div>
       </div>
 
@@ -223,7 +166,7 @@ const LocationSection: React.FC<LocationSectionProps> = ({
             </svg>
             <p className="text-sm text-gray-600">Map Preview</p>
             <p className="text-xs text-gray-500 mt-1">
-              {formatCoordinate(property.latitude, 'lat')}, {formatCoordinate(property.longitude, 'lng')}
+              {property.latitude?.toFixed(6)}, {property.longitude?.toFixed(6)}
             </p>
             <button 
               className="mt-2 text-xs text-blue-600 hover:text-blue-800"

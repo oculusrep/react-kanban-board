@@ -333,7 +333,8 @@ SELECT
 FROM "salesforce_Property__c" p
 LEFT JOIN property_stage        ps  ON ps.label  = p."stage__c"
 LEFT JOIN property_type         pt  ON pt.label  = p."Property_Type__c"
-LEFT JOIN property_record_type  prt ON prt.label = p."RecordTypeId"
+LEFT JOIN "salesforce_RecordType" rt ON rt."Id" = p."RecordTypeId" AND rt."IsActive" = true
+LEFT JOIN property_record_type  prt ON prt.label = rt."Name"
 ON CONFLICT (sf_id) DO UPDATE SET
   property_name = EXCLUDED.property_name,
   property_stage_id = EXCLUDED.property_stage_id,

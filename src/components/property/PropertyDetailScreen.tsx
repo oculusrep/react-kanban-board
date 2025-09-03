@@ -34,6 +34,7 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
   const [isEditing, setIsEditing] = useState(false); // Always false - we use inline editing
   const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
   const [propertyStages, setPropertyStages] = useState<PropertyStage[]>([]);
+  const [propertyRecordTypes, setPropertyRecordTypes] = useState<PropertyType[]>([]);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const { 
@@ -57,15 +58,25 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
   useEffect(() => {
     const loadDropdownData = async () => {
       try {
-        const [typesResponse, stagesResponse] = await Promise.all([
+        const [typesResponse, stagesResponse, recordTypesResponse] = await Promise.all([
           supabase.from('property_type').select('*').eq('active', true).order('sort_order'),
-          supabase.from('property_stage').select('*').eq('active', true).order('sort_order')
+          supabase.from('property_stage').select('*').eq('active', true).order('sort_order'),
+          supabase.from('property_record_type').select('*').eq('active', true).order('sort_order')
         ]);
 
         if (typesResponse.data) setPropertyTypes(typesResponse.data);
         if (stagesResponse.data) setPropertyStages(stagesResponse.data);
+        if (recordTypesResponse.data) {
+          setPropertyRecordTypes(recordTypesResponse.data);
+        } else {
+          // If no record types found, log this for debugging
+          console.log('No property record types found in lookup table');
+          setPropertyRecordTypes([]);
+        }
       } catch (err) {
         console.error('Error loading dropdown data:', err);
+        // Set empty arrays as fallback
+        setPropertyRecordTypes([]);
       }
     };
 
@@ -282,19 +293,19 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
           isEditing={isEditing}
           onFieldUpdate={handleFieldUpdate}
           propertyTypes={propertyTypes}
+          propertyRecordTypes={propertyRecordTypes}
         />
 
         <LocationSection
           property={currentProperty}
-          isEditing={isEditing}
           onFieldUpdate={handleFieldUpdate}
           onGetCurrentLocation={handleGetCurrentLocation}
         />
 
         <FinancialSection
           property={currentProperty}
-          isEditing={isEditing}
           onFieldUpdate={handleFieldUpdate}
+          propertyTypes={propertyTypes}
         />
 
         <MarketAnalysisSection
