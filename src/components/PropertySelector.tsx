@@ -1,5 +1,6 @@
 // components/PropertySelector.tsx
 import React, { useEffect, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 
 interface Property {
@@ -24,6 +25,7 @@ export default function PropertySelector({
   onChange, 
   label = "Property" 
 }: Props) {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [suggestions, setSuggestions] = useState<Property[]>([]);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
@@ -196,10 +198,9 @@ const { data, error } = await supabase
         <div className="mt-1">
           <button
             type="button"
-            className="text-xs text-blue-600 hover:text-blue-800"
+            className="text-xs text-blue-600 hover:text-blue-800 transition-colors"
             onClick={() => {
-              // TODO: Implement navigation to property details
-              console.log("View property:", selectedProperty.id);
+              navigate(`/property/${selectedProperty.id}`);
             }}
           >
             View Property Details →
