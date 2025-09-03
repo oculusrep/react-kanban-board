@@ -17,6 +17,51 @@ const LocationSection: React.FC<LocationSectionProps> = ({
   onGetCurrentLocation
 }) => {
   const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
+
+  // Helper function to get the best available coordinates (prioritize verified coordinates)
+  const getBestCoordinates = () => {
+    const hasVerified = property.verified_latitude && property.verified_longitude;
+    const hasRegular = property.latitude && property.longitude;
+    
+    if (hasVerified) {
+      return {
+        lat: property.verified_latitude,
+        lng: property.verified_longitude,
+        source: 'verified'
+      };
+    } else if (hasRegular) {
+      return {
+        lat: property.latitude,
+        lng: property.longitude,
+        source: 'regular'
+      };
+    }
+    
+    return null;
+  };
+
+  // Helper function to get Google Maps URL
+  const getGoogleMapsUrl = () => {
+    const coords = getBestCoordinates();
+    return coords ? `https://www.google.com/maps?q=${coords.lat},${coords.lng}` : null;
+  };
+
+  // Copy Google Maps link to clipboard
+  const copyMapLink = async () => {
+    const url = getGoogleMapsUrl();
+    if (!url) return;
+
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopyStatus('copied');
+      setTimeout(() => setCopyStatus('idle'), 2000);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      // Fallback: open in new tab if clipboard fails
+      window.open(url, '_blank');
+    }
+  };
 
   const handleGetCurrentLocation = async () => {
     if (!onGetCurrentLocation) return;
@@ -157,8 +202,8 @@ const LocationSection: React.FC<LocationSectionProps> = ({
         </div>
       </div>
 
-      {/* Map Preview Placeholder */}
-      {(property.latitude && property.longitude) && (
+      {/* Map Preview - Uses verified coordinates when available */}
+      {getBestCoordinates() && (
         <div className="border-t border-gray-200 pt-4">
           <div className="bg-gray-100 rounded-md p-6 text-center">
             <svg className="w-12 h-12 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -166,17 +211,47 @@ const LocationSection: React.FC<LocationSectionProps> = ({
             </svg>
             <p className="text-sm text-gray-600">Map Preview</p>
             <p className="text-xs text-gray-500 mt-1">
-              {property.latitude?.toFixed(6)}, {property.longitude?.toFixed(6)}
+              {getBestCoordinates()?.lat?.toFixed(6)}, {getBestCoordinates()?.lng?.toFixed(6)}
+              {getBestCoordinates()?.source === 'verified' && (
+                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                  Verified
+                </span>
+              )}
             </p>
-            <button 
-              className="mt-2 text-xs text-blue-600 hover:text-blue-800"
-              onClick={() => {
-                const url = `https://www.google.com/maps?q=${property.latitude},${property.longitude}`;
-                window.open(url, '_blank');
-              }}
-            >
-              View in Google Maps →
-            </button>
+            <div className="mt-3 flex gap-2 justify-center">
+              <button 
+                className="flex items-center gap-1 px-3 py-1.5 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
+                onClick={() => {
+                  const url = getGoogleMapsUrl();
+                  if (url) window.open(url, '_blank');
+                }}
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                Open in Maps
+              </button>
+              <button 
+                className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-md transition-colors"
+                onClick={copyMapLink}
+              >
+                {copyStatus === 'copied' ? (
+                  <>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Copy Link
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
