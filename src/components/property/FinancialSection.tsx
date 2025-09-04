@@ -5,30 +5,31 @@ import PropertyCurrencyField from './PropertyCurrencyField';
 import PropertyPSFField from './PropertyPSFField';
 
 type Property = Database['public']['Tables']['property']['Row'];
+type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
+
+interface PropertyWithRelations extends Property {
+  property_record_type?: PropertyRecordType;
+}
 
 interface FinancialSectionProps {
-  property: Property;
+  property: PropertyWithRelations;
   onFieldUpdate: (field: keyof Property, value: any) => void;
-  propertyTypes?: Array<{ id: string; label: string; }>;
 }
 
 const FinancialSection: React.FC<FinancialSectionProps> = ({
   property,
-  onFieldUpdate,
-  propertyTypes = []
+  onFieldUpdate
 }) => {
-  // Get current property type info
-  const currentPropertyType = propertyTypes.find(type => type.id === property.property_type_id);
-  const propertyTypeLabel = currentPropertyType?.label?.toLowerCase() || '';
+  // Get current property record type info
+  const propertyRecordTypeLabel = property.property_record_type?.label?.toLowerCase() || '';
   
-  // Determine which fields to show based on property type
-  const isLandType = propertyTypeLabel.includes('land');
-  const isShoppingCenterType = propertyTypeLabel.includes('shopping') || propertyTypeLabel.includes('retail');
+  // Determine which fields to show based on property record type
+  const isLandType = propertyRecordTypeLabel.includes('land');
+  const isShoppingCenterType = propertyRecordTypeLabel.includes('shopping') || propertyRecordTypeLabel.includes('retail');
   
   // For now, show different field sets based on type
-  const showLeaseFields = !isLandType; // Show lease fields for non-land properties
-  const showPurchaseFields = true; // Always show purchase fields
-  const showPSFFields = showLeaseFields && !isLandType; // Show PSF only for leasable properties
+  const showLeaseFields = !isLandType && !isShoppingCenterType; // Show lease fields for non-land, non-shopping center properties
+  const showPSFFields = !isLandType; // Show PSF for all building types (including shopping centers)
   const showSquareFootageFields = !isLandType; // Show SF for buildings
 
   return (
@@ -41,8 +42,8 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
       </div>
 
       {/* Conditional Pricing Fields */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        {showLeaseFields && (
+      {showLeaseFields && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
           <PropertyCurrencyField
             label="Asking Lease Price"
             value={property.asking_lease_price}
@@ -52,20 +53,8 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
             colorScheme="green"
             tabIndex={10}
           />
-        )}
-
-        {showPurchaseFields && (
-          <PropertyCurrencyField
-            label="Asking Purchase Price"
-            value={property.asking_purchase_price}
-            onChange={(value) => onFieldUpdate('asking_purchase_price', value)}
-            helpText="Total purchase price"
-            showLarge={true}
-            colorScheme="blue"
-            tabIndex={11}
-          />
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Per Square Foot Rates - Only for leasable properties */}
       {showPSFFields && (
@@ -108,36 +97,51 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
       {showSquareFootageFields && (
         <div className="border-t border-gray-200 pt-4 mt-4">
           <h4 className="text-sm font-medium text-gray-900 mb-3">Square Footage</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <PropertyInputField
-              label="Building Size"
-              value={property.building_sqft}
-              onChange={(value) => onFieldUpdate('building_sqft', value)}
-              type="number"
-              placeholder="0"
-              helpText="Total building square footage"
-              tabIndex={14}
-            />
-
-            <PropertyInputField
-              label="Available Size"
-              value={property.available_sqft}
-              onChange={(value) => onFieldUpdate('available_sqft', value)}
-              type="number"
-              placeholder="0"
-              helpText="Available square footage for lease"
-              tabIndex={15}
-            />
-          </div>
-
-          {/* Occupancy percentage if both values available */}
-          {property.building_sqft && property.available_sqft && (
-            <div className="mt-3 p-2 bg-gray-50 rounded-md">
-              <div className="text-sm text-gray-600">
-                Occupancy: {(((property.building_sqft - property.available_sqft) / property.building_sqft) * 100).toFixed(1)}% 
-                ({(property.building_sqft - property.available_sqft).toLocaleString()} SF occupied)
-              </div>
+          {isShoppingCenterType ? (
+            // Shopping Centers - Just Available Sqft
+            <div className="grid grid-cols-1 gap-4">
+              <PropertyInputField
+                label="Available Sqft"
+                value={property.available_sqft}
+                onChange={(value) => onFieldUpdate('available_sqft', value)}
+                type="number"
+                placeholder="0"
+                tabIndex={14}
+              />
             </div>
+          ) : (
+            // Other building types - Full square footage details
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <PropertyInputField
+                  label="Building Size"
+                  value={property.building_sqft}
+                  onChange={(value) => onFieldUpdate('building_sqft', value)}
+                  type="number"
+                  placeholder="0"
+                  tabIndex={14}
+                />
+
+                <PropertyInputField
+                  label="Available Size"
+                  value={property.available_sqft}
+                  onChange={(value) => onFieldUpdate('available_sqft', value)}
+                  type="number"
+                  placeholder="0"
+                  tabIndex={15}
+                />
+              </div>
+
+              {/* Occupancy percentage if both values available */}
+              {property.building_sqft && property.available_sqft && (
+                <div className="mt-3 p-2 bg-gray-50 rounded-md">
+                  <div className="text-sm text-gray-600">
+                    Occupancy: {(((property.building_sqft - property.available_sqft) / property.building_sqft) * 100).toFixed(1)}% 
+                    ({(property.building_sqft - property.available_sqft).toLocaleString()} SF occupied)
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -146,15 +150,67 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
       {isLandType && (
         <div className="border-t border-gray-200 pt-4 mt-4">
           <h4 className="text-sm font-medium text-gray-900 mb-3">Land Information</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          
+          {/* Row 1: Asking Purchase Price, Asking Ground Lease Price */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <PropertyCurrencyField
+              label="Asking Purchase Price"
+              value={property.asking_purchase_price}
+              onChange={(value) => onFieldUpdate('asking_purchase_price', value)}
+              showLarge={true}
+              colorScheme="blue"
+              tabIndex={16}
+            />
+            
+            <PropertyCurrencyField
+              label="Asking Ground Lease Price"
+              value={property.asking_lease_price}
+              onChange={(value) => onFieldUpdate('asking_lease_price', value)}
+              showLarge={true}
+              colorScheme="green"
+              tabIndex={17}
+            />
+          </div>
+
+          {/* Row 2: NNN, Acres */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             <PropertyInputField
-              label="Land Size (Acres)"
-              value={property.size_acres}
-              onChange={(value) => onFieldUpdate('size_acres', value)}
+              label="NNN"
+              value={property.nnn_psf}
+              onChange={(value) => onFieldUpdate('nnn_psf', value)}
               type="number"
               placeholder="0"
-              helpText="Total land area in acres"
-              tabIndex={16}
+              tabIndex={18}
+            />
+            
+            <PropertyInputField
+              label="Acres"
+              value={property.acres}
+              onChange={(value) => onFieldUpdate('acres', value)}
+              type="number"
+              placeholder="0"
+              tabIndex={19}
+            />
+          </div>
+
+          {/* Row 3: Building Sqft, Lease Expiration Date */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <PropertyInputField
+              label="Building Sqft"
+              value={property.building_sqft}
+              onChange={(value) => onFieldUpdate('building_sqft', value)}
+              type="number"
+              placeholder="0"
+              tabIndex={20}
+            />
+            
+            <PropertyInputField
+              label="Lease Expiration Date"
+              value={property.lease_expiration_date}
+              onChange={(value) => onFieldUpdate('lease_expiration_date', value)}
+              type="text"
+              placeholder="MM/DD/YYYY"
+              tabIndex={21}
             />
           </div>
         </div>

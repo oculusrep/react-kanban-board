@@ -1992,6 +1992,7 @@ export type Database = {
         Row: {
           "1_mile_pop": number | null
           "3_mile_pop": number | null
+          acres: number | null
           address: string | null
           all_in_rent: number | null
           asking_lease_price: number | null
@@ -2046,6 +2047,7 @@ export type Database = {
         Insert: {
           "1_mile_pop"?: number | null
           "3_mile_pop"?: number | null
+          acres?: number | null
           address?: string | null
           all_in_rent?: number | null
           asking_lease_price?: number | null
@@ -2100,6 +2102,7 @@ export type Database = {
         Update: {
           "1_mile_pop"?: number | null
           "3_mile_pop"?: number | null
+          acres?: number | null
           address?: string | null
           all_in_rent?: number | null
           asking_lease_price?: number | null

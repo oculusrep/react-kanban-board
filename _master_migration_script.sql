@@ -314,6 +314,9 @@ WHERE d.sf_id = o."Id"
   AND o."Property_Unit__c" IS NOT NULL
   AND d.property_unit_id IS NULL;
 
+-- Add acres field to property table if it doesn't exist
+ALTER TABLE property ADD COLUMN IF NOT EXISTS acres NUMERIC;
+
 -- Upsert into property table
 INSERT INTO property (
   id,
@@ -321,7 +324,8 @@ INSERT INTO property (
   property_stage_id,
   property_type_id,
   property_record_type_id,
-  sf_id
+  sf_id,
+  acres
 )
 SELECT
   gen_random_uuid(),
@@ -329,7 +333,8 @@ SELECT
   ps.id AS property_stage_id,
   pt.id AS property_type_id,
   prt.id AS property_record_type_id,
-  p."Id" AS sf_id
+  p."Id" AS sf_id,
+  p."Acres__c" AS acres
 FROM "salesforce_Property__c" p
 LEFT JOIN property_stage        ps  ON ps.label  = p."stage__c"
 LEFT JOIN property_type         pt  ON pt.label  = p."Property_Type__c"
@@ -339,7 +344,8 @@ ON CONFLICT (sf_id) DO UPDATE SET
   property_name = EXCLUDED.property_name,
   property_stage_id = EXCLUDED.property_stage_id,
   property_type_id = EXCLUDED.property_type_id,
-  property_record_type_id = EXCLUDED.property_record_type_id;
+  property_record_type_id = EXCLUDED.property_record_type_id,
+  acres = EXCLUDED.acres;
 
 -- Upsert into assignment table
 INSERT INTO assignment (

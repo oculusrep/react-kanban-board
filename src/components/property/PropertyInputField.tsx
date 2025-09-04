@@ -28,7 +28,7 @@ const PropertyInputField: React.FC<PropertyInputFieldProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
 
-  const displayValue = value || 'Not set';
+  const displayValue = (value !== null && value !== undefined && value !== '' && value !== 0) ? value : '';
 
   const handleStartEdit = () => {
     if (disabled) return;

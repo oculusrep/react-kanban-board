@@ -14,6 +14,7 @@ import NotesSection from './NotesSection';
 
 type Property = Database['public']['Tables']['property']['Row'];
 type PropertyType = Database['public']['Tables']['property_type']['Row'];
+type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 type PropertyStage = Database['public']['Tables']['property_stage']['Row'];
 
 interface PropertyDetailScreenProps {
@@ -34,7 +35,7 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
   const [isEditing, setIsEditing] = useState(false); // Always false - we use inline editing
   const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
   const [propertyStages, setPropertyStages] = useState<PropertyStage[]>([]);
-  const [propertyRecordTypes, setPropertyRecordTypes] = useState<PropertyType[]>([]);
+  const [propertyRecordTypes, setPropertyRecordTypes] = useState<PropertyRecordType[]>([]);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const { 
@@ -292,7 +293,6 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
           property={currentProperty}
           isEditing={isEditing}
           onFieldUpdate={handleFieldUpdate}
-          propertyTypes={propertyTypes}
           propertyRecordTypes={propertyRecordTypes}
         />
 
@@ -303,9 +303,11 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
         />
 
         <FinancialSection
-          property={currentProperty}
+          property={{
+            ...currentProperty,
+            property_record_type: propertyRecordTypes.find(rt => rt.id === currentProperty.property_record_type_id)
+          }}
           onFieldUpdate={handleFieldUpdate}
-          propertyTypes={propertyTypes}
         />
 
         <MarketAnalysisSection

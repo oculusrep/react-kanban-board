@@ -36,7 +36,7 @@ const PropertyCurrencyField: React.FC<PropertyCurrencyFieldProps> = ({
     }).format(amount);
   };
 
-  const displayValue = value !== null && value !== undefined ? formatCurrency(value) : 'Not set';
+  const displayValue = value !== null && value !== undefined ? formatCurrency(value) : '';
 
   const colorClasses = {
     green: 'text-green-700',

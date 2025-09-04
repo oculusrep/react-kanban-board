@@ -6,21 +6,19 @@ import PropertyAutocompleteField from './PropertyAutocompleteField';
 import { checkForLegacyRecordType } from '../../utils/propertyRecordTypeUtils';
 
 type Property = Database['public']['Tables']['property']['Row'];
-type PropertyType = Database['public']['Tables']['property_type']['Row'];
+type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
 interface PropertyDetailsSectionProps {
   property: Property;
   isEditing: boolean;
   onFieldUpdate: (field: keyof Property, value: any) => void;
-  propertyTypes?: PropertyType[];
-  propertyRecordTypes?: PropertyType[];
+  propertyRecordTypes?: PropertyRecordType[];
 }
 
 const PropertyDetailsSection: React.FC<PropertyDetailsSectionProps> = ({
   property,
   isEditing,
   onFieldUpdate,
-  propertyTypes = [],
   propertyRecordTypes = []
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -65,17 +63,8 @@ const PropertyDetailsSection: React.FC<PropertyDetailsSectionProps> = ({
 
       {isExpanded && (
         <div className="mt-4 space-y-6">
-          {/* Property Type, Record Type and Name */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-            <PropertySelectField
-              label="Property Type"
-              value={property.property_type_id}
-              onChange={(value) => onFieldUpdate('property_type_id', value)}
-              options={propertyTypes.map(type => ({ id: type.id, label: type.label }))}
-              placeholder="Select property type..."
-              tabIndex={20}
-            />
-
+          {/* Property Record Type and Name */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             <div>
               <PropertySelectField
                 label="Property Record Type"
@@ -84,7 +73,7 @@ const PropertyDetailsSection: React.FC<PropertyDetailsSectionProps> = ({
                 options={propertyRecordTypes.map(type => ({ id: type.id, label: type.label }))}
                 placeholder={propertyRecordTypes.length === 0 ? "No record types available" : "Select record type..."}
                 disabled={propertyRecordTypes.length === 0}
-                tabIndex={21}
+                tabIndex={20}
               />
               {/* Show legacy data if it exists */}
               {legacyRecordType && !property.property_record_type_id && (
@@ -99,7 +88,7 @@ const PropertyDetailsSection: React.FC<PropertyDetailsSectionProps> = ({
               value={property.property_name}
               onChange={(value) => onFieldUpdate('property_name', value)}
               placeholder="Property name or identifier"
-              tabIndex={22}
+              tabIndex={21}
             />
           </div>
 

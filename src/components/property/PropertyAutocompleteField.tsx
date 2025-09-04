@@ -35,7 +35,7 @@ const PropertyAutocompleteField: React.FC<PropertyAutocompleteFieldProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
-  const displayValue = value || 'Not set';
+  const displayValue = value || '';
 
   // Fetch suggestions based on input
   const fetchSuggestions = async (searchTerm: string) => {
