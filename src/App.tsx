@@ -4,6 +4,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import KanbanBoard from "./components/KanbanBoard";
 import DealDetailsPage from "./pages/DealDetailsPage";
 import PropertyDetailsPage from "./pages/PropertyDetailsPage";
+import NewPropertyPage from "./components/property/NewPropertyPage";
 import Navbar from "./components/Navbar";
 
 function App() {
@@ -16,7 +17,7 @@ function App() {
             <Route path="/" element={<Navigate to="/master-pipeline" replace />} />
             <Route path="/master-pipeline" element={<KanbanBoard />} />
             <Route path="/deal/:dealId" element={<DealDetailsPage />} />
-            <Route path="/property/create" element={<PropertyDetailsPage />} />
+            <Route path="/property/new" element={<NewPropertyPage />} />
             <Route path="/property/:propertyId" element={<PropertyDetailsPage />} />
           </Routes>
         </div>

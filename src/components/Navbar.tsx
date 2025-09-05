@@ -20,7 +20,7 @@ export default function Navbar() {
         <Link to="/master-pipeline" className={linkClass("/master-pipeline")}>
           Master Pipeline
         </Link>
-        <Link to="/property/create" className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors">
+        <Link to="/property/new" className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors">
           + New Property
         </Link>
       </div>

@@ -18,6 +18,9 @@ const LocationSection: React.FC<LocationSectionProps> = ({
 }) => {
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
+  const [showZipTooltip, setShowZipTooltip] = useState(false);
+  const [showCountyTooltip, setShowCountyTooltip] = useState(false);
+  const [showVerifyTooltip, setShowVerifyTooltip] = useState(false);
 
   // Helper function to get the best available coordinates (prioritize verified coordinates)
   const getBestCoordinates = () => {
@@ -78,6 +81,20 @@ const LocationSection: React.FC<LocationSectionProps> = ({
     }
   };
 
+  const handleZipTooltip = () => {
+    setShowZipTooltip(true);
+    setTimeout(() => setShowZipTooltip(false), 3000);
+  };
+
+  const handleCountyTooltip = () => {
+    setShowCountyTooltip(true);
+    setTimeout(() => setShowCountyTooltip(false), 3000);
+  };
+
+  const handleVerifyLocation = () => {
+    setShowVerifyTooltip(true);
+    setTimeout(() => setShowVerifyTooltip(false), 4000);
+  };
 
   return (
     <section className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 mb-4">
@@ -138,27 +155,124 @@ const LocationSection: React.FC<LocationSectionProps> = ({
           tabIndex={3}
         />
 
-        <PropertyInputField
-          label="ZIP Code"
-          value={property.zip}
-          onChange={(value) => onFieldUpdate('zip', value)}
-          placeholder="94105"
-          tabIndex={4}
-        />
+        <div className="relative">
+          <div className="flex items-center gap-1 mb-1">
+            <span className="block text-sm font-medium text-gray-700">ZIP Code</span>
+            <button
+              type="button"
+              onClick={handleZipTooltip}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+              title="Click for more info"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </button>
+          </div>
+          <PropertyInputField
+            label=""
+            value={property.zip}
+            onChange={(value) => onFieldUpdate('zip', value)}
+            placeholder="94105"
+            tabIndex={4}
+          />
+          
+          {/* ZIP Tooltip */}
+          {showZipTooltip && (
+            <div className="absolute top-full left-0 mt-1 w-64 z-10">
+              <div className="bg-gray-900 text-white text-xs rounded-lg p-3 shadow-lg relative">
+                <div className="absolute bottom-full left-4 w-0 h-0 border-l-4 border-r-4 border-b-4 border-l-transparent border-r-transparent border-b-gray-900"></div>
+                <div className="font-medium text-blue-200 mb-1">🤖 Future Auto-Fill</div>
+                <p>Will auto-populate in the future from Google geocoding services.</p>
+                <button
+                  onClick={() => setShowZipTooltip(false)}
+                  className="absolute top-1 right-1 text-gray-400 hover:text-white w-4 h-4 flex items-center justify-center"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
-        <PropertyAutocompleteField
-          label="County"
-          value={property.county}
-          onChange={(value) => onFieldUpdate('county', value)}
-          field="county"
-          placeholder="San Francisco County"
-          tabIndex={5}
-        />
+        <div className="relative">
+          <div className="flex items-center gap-1 mb-1">
+            <span className="block text-sm font-medium text-gray-700">County</span>
+            <button
+              type="button"
+              onClick={handleCountyTooltip}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+              title="Click for more info"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </button>
+          </div>
+          <PropertyAutocompleteField
+            label=""
+            value={property.county}
+            onChange={(value) => onFieldUpdate('county', value)}
+            field="county"
+            placeholder="San Francisco County"
+            tabIndex={5}
+          />
+          
+          {/* County Tooltip */}
+          {showCountyTooltip && (
+            <div className="absolute top-full left-0 mt-1 w-64 z-10">
+              <div className="bg-gray-900 text-white text-xs rounded-lg p-3 shadow-lg relative">
+                <div className="absolute bottom-full left-4 w-0 h-0 border-l-4 border-r-4 border-b-4 border-l-transparent border-r-transparent border-b-gray-900"></div>
+                <div className="font-medium text-blue-200 mb-1">🤖 Future Auto-Fill</div>
+                <p>Will auto-populate in the future from Google geocoding services.</p>
+                <button
+                  onClick={() => setShowCountyTooltip(false)}
+                  className="absolute top-1 right-1 text-gray-400 hover:text-white w-4 h-4 flex items-center justify-center"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* GPS Coordinates */}
       <div className="border-t border-gray-200 pt-4 mb-4">
-        <h4 className="text-sm font-medium text-gray-900 mb-3">GPS Coordinates</h4>
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-medium text-gray-900">GPS Coordinates</h4>
+          
+          {/* Verify Location Button */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={handleVerifyLocation}
+              className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+              </svg>
+              Verify Location
+            </button>
+
+            {/* Verify Tooltip Popup */}
+            {showVerifyTooltip && (
+              <div className="absolute bottom-full right-0 mb-2 w-64 z-10">
+                <div className="bg-gray-900 text-white text-xs rounded-lg p-3 shadow-lg relative">
+                  <div className="absolute top-full right-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
+                  <div className="font-medium text-yellow-200 mb-1">🚧 Future Feature</div>
+                  <p>This will take you to a map where you can move the pin to the correct location and recode the address coordinates.</p>
+                  <button
+                    onClick={() => setShowVerifyTooltip(false)}
+                    className="absolute top-1 right-1 text-gray-400 hover:text-white w-4 h-4 flex items-center justify-center"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <PropertyInputField
             label="Latitude"

@@ -11,6 +11,8 @@ interface PropertyInputFieldProps {
   rows?: number;
   inputMode?: 'text' | 'decimal' | 'numeric' | 'email' | 'url';
   tabIndex?: number;
+  required?: boolean;
+  defaultText?: string;
 }
 
 const PropertyInputField: React.FC<PropertyInputFieldProps> = ({
@@ -23,12 +25,16 @@ const PropertyInputField: React.FC<PropertyInputFieldProps> = ({
   multiline = false,
   rows = 1,
   inputMode,
-  tabIndex
+  tabIndex,
+  required = false,
+  defaultText = 'Click to add'
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
 
   const displayValue = (value !== null && value !== undefined && value !== '' && value !== 0) ? value : '';
+  const isEmpty = !value || (typeof value === 'string' && value.trim() === '');
+  const showRequiredStyling = required && isEmpty;
 
   const handleStartEdit = () => {
     if (disabled) return;
@@ -83,7 +89,11 @@ const PropertyInputField: React.FC<PropertyInputFieldProps> = ({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           rows={multiline ? rows : undefined}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-base min-h-[44px] resize-none"
+          className={`w-full px-3 py-2 rounded-md shadow-sm text-base min-h-[44px] resize-none ${
+            showRequiredStyling
+              ? 'border-red-300 bg-red-50 focus:ring-red-500 focus:border-red-500'
+              : 'border-gray-300 bg-white focus:ring-blue-500 focus:border-blue-500'
+          }`}
           tabIndex={tabIndex}
           autoFocus
         />
@@ -109,20 +119,28 @@ const PropertyInputField: React.FC<PropertyInputFieldProps> = ({
         }}
         onFocus={handleFocus}
         tabIndex={tabIndex || 0}
-        className={`mt-1 px-3 py-2 rounded-md shadow-sm border text-base min-h-[44px] flex items-start transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+        className={`mt-1 px-3 py-2 rounded-md shadow-sm border text-base min-h-[44px] flex items-start transition-colors focus:outline-none focus:ring-2 ${
           disabled 
             ? 'bg-gray-100 cursor-not-allowed border-gray-200' 
-            : 'cursor-pointer hover:bg-blue-50 border-transparent hover:border-blue-200 bg-white'
+            : showRequiredStyling
+            ? 'cursor-pointer bg-red-50 border-red-300 hover:bg-red-100 hover:border-red-400 focus:ring-red-500 focus:border-red-500'
+            : 'cursor-pointer hover:bg-blue-50 border-transparent hover:border-blue-200 bg-white focus:ring-blue-500 focus:border-blue-500'
         }`}
         title={disabled ? 'Not editable' : 'Click to edit'}
         role="button"
         aria-label={`Click to edit ${label}`}
       >
-        <span className={value ? 'text-gray-900' : 'text-gray-500'}>
+        <span className={
+          value 
+            ? 'text-gray-900' 
+            : showRequiredStyling
+            ? 'text-red-600 font-medium'
+            : 'text-gray-500'
+        }>
           {multiline ? (
-            <div className="whitespace-pre-wrap">{displayValue}</div>
+            <div className="whitespace-pre-wrap">{displayValue || (isEmpty ? defaultText : '')}</div>
           ) : (
-            displayValue
+            displayValue || (isEmpty ? defaultText : '')
           )}
         </span>
       </div>
