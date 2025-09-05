@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Database } from '../../database-schema';
+import { supabase } from '../../lib/supabaseClient';
 import PropertyInputField from './PropertyInputField';
 import PropertyAutocompleteField from './PropertyAutocompleteField';
 import PropertySelectField from './PropertySelectField';
@@ -11,6 +12,9 @@ import { usePropertyRecordTypes } from '../../hooks/usePropertyRecordTypes';
 import { useProperty } from '../../hooks/useProperty';
 
 type Property = Database['public']['Tables']['property']['Row'];
+type PropertyUnit = Database['public']['Tables']['property_unit']['Row'] & {
+  id: string; // Ensure id is always string for UI purposes
+};
 
 interface NewPropertyFormData {
   property_record_type_id: string | null;
@@ -25,6 +29,7 @@ interface NewPropertyFormData {
   rent_psf: number | null;
   nnn_psf: number | null;
   property_notes: string;
+  units: PropertyUnit[];
 }
 
 const NewPropertyPage: React.FC = () => {
@@ -45,25 +50,134 @@ const NewPropertyPage: React.FC = () => {
     asking_purchase_price: null,
     rent_psf: null,
     nnn_psf: null,
-    property_notes: ''
+    property_notes: '',
+    units: []
   });
 
   const handleFieldUpdate = (field: keyof NewPropertyFormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  // Unit management functions
+  const addUnit = () => {
+    const newUnit: PropertyUnit = {
+      id: `temp_${Date.now()}`, // Temporary ID for UI purposes
+      property_unit_name: null,
+      sqft: null,
+      rent: null,
+      nnn: null,
+      patio: false, // UI checkboxes work better with false than null
+      inline: false,
+      end_cap: false,
+      end_cap_drive_thru: false,
+      second_gen_restaurant: false,
+      // Database fields with default values
+      created_at: null,
+      created_by_id: null,
+      created_by_sf_id: null,
+      deal_id: null,
+      lease_expiration_date: null,
+      property_id: null,
+      sf_id: crypto.randomUUID(), // Generate temporary SF ID
+      site_submit_id: null,
+      unit_notes: null,
+      updated_at: null,
+      updated_by_id: null,
+      updated_by_sf_id: null
+    };
+    
+    setFormData(prev => ({ 
+      ...prev, 
+      units: [...prev.units, newUnit]
+    }));
+  };
+
+  const updateUnit = (unitId: string, field: keyof PropertyUnit, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      units: prev.units.map(unit => 
+        unit.id === unitId ? { ...unit, [field]: value } : unit
+      )
+    }));
+  };
+
+  const deleteUnit = (unitId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      units: prev.units.filter(unit => unit.id !== unitId)
+    }));
+  };
+
   // Get selected property record type to determine financial fields
-  const selectedRecordType = propertyRecordTypes.find(rt => rt.id === formData.property_record_type_id);
-  const recordTypeLabel = selectedRecordType?.label?.toLowerCase() || '';
-  
-  // Determine which fields to show based on property record type
-  const isLandType = recordTypeLabel.includes('land');
-  const isShoppingCenterType = recordTypeLabel.includes('shopping') || recordTypeLabel.includes('retail');
-  
-  // Show different field sets based on type
-  const showLeaseFields = !isLandType && !isShoppingCenterType; // Show lease fields for non-land, non-shopping center properties
-  const showPSFFields = !isLandType; // Show PSF for all building types (including shopping centers)
-  const showPurchaseFields = isLandType; // Show purchase price for land
+  const fieldVisibility = useMemo(() => {
+    const selectedRecordType = propertyRecordTypes.find(rt => rt.id === formData.property_record_type_id);
+    const recordTypeLabel = selectedRecordType?.label?.toLowerCase() || '';
+    
+    // Determine which fields to show based on property record type
+    const isLandType = recordTypeLabel.includes('land');
+    const isShoppingCenterType = recordTypeLabel.includes('shopping') || recordTypeLabel.includes('retail');
+    
+    // Show different field sets based on type
+    const showLeaseFields = !isLandType && !isShoppingCenterType; // Show lease fields for non-land, non-shopping center properties
+    const showPSFFields = !isLandType; // Show PSF for all building types (including shopping centers)
+    const showPurchaseFields = isLandType; // Show purchase price for land
+
+    return {
+      isLandType,
+      isShoppingCenterType,
+      showLeaseFields,
+      showPSFFields,
+      showPurchaseFields,
+      selectedRecordType,
+      recordTypeLabel
+    };
+  }, [formData.property_record_type_id, propertyRecordTypes]);
+
+  // Destructure for easier use
+  const { 
+    isLandType, 
+    isShoppingCenterType, 
+    showLeaseFields, 
+    showPSFFields, 
+    showPurchaseFields, 
+    selectedRecordType,
+    recordTypeLabel 
+  } = fieldVisibility;
+
+  // Clear incompatible financial fields when property type changes
+  useEffect(() => {
+    if (!formData.property_record_type_id) return;
+    
+    // Clear fields that shouldn't be shown for the selected type
+    const updates: Partial<NewPropertyFormData> = {};
+    
+    // If switching to land type, clear lease and PSF fields
+    if (isLandType) {
+      if (!showPSFFields && (formData.rent_psf || formData.nnn_psf)) {
+        updates.rent_psf = null;
+        updates.nnn_psf = null;
+      }
+    }
+    
+    // If switching to shopping center, clear purchase price (land-specific)
+    if (isShoppingCenterType) {
+      if (formData.asking_purchase_price) {
+        updates.asking_purchase_price = null;
+      }
+    }
+    
+    // If switching to regular building type, clear purchase price and ensure we have lease field
+    if (showLeaseFields) {
+      if (formData.asking_purchase_price) {
+        updates.asking_purchase_price = null;
+      }
+    }
+    
+    // Apply updates if there are any
+    if (Object.keys(updates).length > 0) {
+      setFormData(prev => ({ ...prev, ...updates }));
+    }
+  }, [isLandType, isShoppingCenterType, showLeaseFields, showPSFFields, formData.property_record_type_id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,6 +215,53 @@ const NewPropertyPage: React.FC = () => {
 
       const createdProperty = await createProperty(propertyData);
       console.log('✅ Property created successfully:', createdProperty);
+      
+      // Create units if this is a shopping center and units were added
+      if (isShoppingCenterType && formData.units.length > 0) {
+        console.log('Creating property units:', formData.units);
+        
+        // Prepare unit data for database insertion
+        const unitInserts = formData.units
+          .filter(unit => unit.property_unit_name && unit.property_unit_name.trim()) // Only create units with names
+          .map(unit => ({
+            property_id: createdProperty.id,
+            property_unit_name: unit.property_unit_name?.trim() || null,
+            sqft: unit.sqft,
+            rent: unit.rent,
+            nnn: unit.nnn,
+            patio: unit.patio,
+            inline: unit.inline,
+            end_cap: unit.end_cap,
+            end_cap_drive_thru: unit.end_cap_drive_thru,
+            second_gen_restaurant: unit.second_gen_restaurant,
+            sf_id: crypto.randomUUID(), // Required field - generate a UUID
+            lease_expiration_date: unit.lease_expiration_date,
+            unit_notes: unit.unit_notes,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            // Optional fields that could be added later
+            created_by_id: null,
+            created_by_sf_id: null,
+            deal_id: null,
+            site_submit_id: null,
+            updated_by_id: null,
+            updated_by_sf_id: null
+          }));
+
+        if (unitInserts.length > 0) {
+          const { data: createdUnits, error: unitsError } = await supabase
+            .from('property_unit')
+            .insert(unitInserts)
+            .select();
+
+          if (unitsError) {
+            console.error('Error creating property units:', unitsError);
+            // Don't block the navigation, but log the error
+          } else {
+            console.log('✅ Property units created successfully:', createdUnits);
+          }
+        }
+      }
       
       // Then geocode in the background (don't block navigation)
       geocodeProperty(createdProperty).then((geocodedProperty) => {
@@ -142,6 +303,7 @@ const NewPropertyPage: React.FC = () => {
 
   const [showLocationTooltip, setShowLocationTooltip] = useState(false);
   const [showPinTooltip, setShowPinTooltip] = useState(false);
+  const [showSubmitTooltips, setShowSubmitTooltips] = useState<{[key: string]: boolean}>({});
 
   const handleVerifyLocation = () => {
     setShowLocationTooltip(true);
@@ -153,6 +315,14 @@ const NewPropertyPage: React.FC = () => {
     setShowPinTooltip(true);
     // Auto-hide after 4 seconds
     setTimeout(() => setShowPinTooltip(false), 4000);
+  };
+
+  const handleCreateSubmit = (unitId: string) => {
+    setShowSubmitTooltips(prev => ({ ...prev, [unitId]: true }));
+    // Auto-hide after 4 seconds
+    setTimeout(() => {
+      setShowSubmitTooltips(prev => ({ ...prev, [unitId]: false }));
+    }, 4000);
   };
 
   return (
@@ -491,6 +661,232 @@ const NewPropertyPage: React.FC = () => {
                 <h3 className="text-lg font-medium text-gray-500">Financial Information</h3>
               </div>
               <p className="text-sm text-gray-500">Select a property record type above to see relevant financial fields.</p>
+            </section>
+          )}
+
+          {/* Shopping Center Units Section */}
+          {isShoppingCenterType && (
+            <section className="bg-white rounded-lg border border-gray-200 p-6">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                  <h3 className="text-lg font-semibold text-gray-900">Shopping Center Units</h3>
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={addUnit}
+                  className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition-colors text-sm"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  Add Unit
+                </button>
+              </div>
+
+              {formData.units.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <div className="mb-2">
+                    <svg className="w-12 h-12 text-gray-300 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                  </div>
+                  <p className="text-sm">No units added yet.</p>
+                  <p className="text-xs mt-1 text-gray-400">Use the "Add Unit" button to start adding units to this shopping center.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {formData.units.map((unit, index) => (
+                    <div key={unit.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-gray-700">Unit {index + 1}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => deleteUnit(unit.id)}
+                          className="text-red-500 hover:text-red-700 text-lg font-bold"
+                          title="Delete unit"
+                        >
+                          ×
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Unit Name */}
+                        <div className="md:col-span-2">
+                          <PropertyInputField
+                            label="Unit Name"
+                            value={unit.property_unit_name}
+                            onChange={(value) => updateUnit(unit.id, 'property_unit_name', value)}
+                            placeholder="e.g., Suite A, Space 101, etc."
+                            tabIndex={11}
+                          />
+                        </div>
+
+                        {/* Unit Notes */}
+                        <div>
+                          <PropertyInputField
+                            label="Unit Notes"
+                            value={unit.unit_notes}
+                            onChange={(value) => updateUnit(unit.id, 'unit_notes', value)}
+                            placeholder="Optional notes"
+                            multiline={true}
+                            rows={1}
+                            tabIndex={15}
+                          />
+                        </div>
+
+                        {/* Square Feet */}
+                        <div>
+                          <PropertyInputField
+                            label="Square Feet"
+                            value={unit.sqft}
+                            onChange={(value) => updateUnit(unit.id, 'sqft', value)}
+                            type="number"
+                            placeholder="1,200"
+                            inputMode="numeric"
+                            tabIndex={12}
+                          />
+                        </div>
+
+                        {/* Rent */}
+                        <div>
+                          <PropertyCurrencyField
+                            label="Rent"
+                            value={unit.rent}
+                            onChange={(value) => updateUnit(unit.id, 'rent', value)}
+                            helpText="Unit rent amount"
+                            tabIndex={13}
+                          />
+                        </div>
+
+                        {/* NNN */}
+                        <div>
+                          <PropertyCurrencyField
+                            label="NNN"
+                            value={unit.nnn}
+                            onChange={(value) => updateUnit(unit.id, 'nnn', value)}
+                            helpText="Net Net Net charges"
+                            tabIndex={14}
+                          />
+                        </div>
+
+                        {/* Lease Expiration Date */}
+                        <div className="md:col-span-3">
+                          <PropertyInputField
+                            label="Lease Expiration Date"
+                            value={unit.lease_expiration_date ? new Date(unit.lease_expiration_date).toISOString().split('T')[0] : null}
+                            onChange={(value) => updateUnit(unit.id, 'lease_expiration_date', value ? new Date(value).toISOString() : null)}
+                            type="date"
+                            placeholder="YYYY-MM-DD"
+                            tabIndex={16}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Unit Features Checkboxes */}
+                      <div className="mt-4 pt-3 border-t border-gray-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-sm font-medium text-gray-700">Unit Features</div>
+                          
+                          {/* Create Submit Button */}
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => handleCreateSubmit(unit.id)}
+                              className="flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 rounded-md hover:bg-green-100 transition-colors text-xs font-medium focus:outline-none focus:ring-2 focus:ring-green-500"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                              </svg>
+                              Create Submit
+                            </button>
+
+                            {/* Create Submit Tooltip Popup */}
+                            {showSubmitTooltips[unit.id] && (
+                              <div className="absolute bottom-full right-0 mb-2 w-64 z-10">
+                                <div className="bg-gray-900 text-white text-xs rounded-lg p-3 shadow-lg relative">
+                                  <div className="absolute top-full right-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
+                                  <div className="font-medium text-green-200 mb-1">🚧 Future Feature</div>
+                                  <p>This will create a site submit on the unit for tracking tenant prospects and submissions.</p>
+                                  <button
+                                    onClick={() => setShowSubmitTooltips(prev => ({ ...prev, [unit.id]: false }))}
+                                    className="absolute top-1 right-1 text-gray-400 hover:text-white w-4 h-4 flex items-center justify-center"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                          <label className="flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={unit.patio}
+                              onChange={(e) => updateUnit(unit.id, 'patio', e.target.checked)}
+                              className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                            />
+                            <span className="ml-2 text-sm text-gray-700">Patio</span>
+                          </label>
+
+                          <label className="flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={unit.inline}
+                              onChange={(e) => updateUnit(unit.id, 'inline', e.target.checked)}
+                              className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                            />
+                            <span className="ml-2 text-sm text-gray-700">Inline</span>
+                          </label>
+
+                          <label className="flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={unit.end_cap}
+                              onChange={(e) => updateUnit(unit.id, 'end_cap', e.target.checked)}
+                              className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                            />
+                            <span className="ml-2 text-sm text-gray-700">End Cap</span>
+                          </label>
+
+                          <label className="flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={unit.end_cap_drive_thru}
+                              onChange={(e) => updateUnit(unit.id, 'end_cap_drive_thru', e.target.checked)}
+                              className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                            />
+                            <span className="ml-2 text-sm text-gray-700">End Cap Drive-Thru</span>
+                          </label>
+
+                          <label className="flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={unit.second_gen_restaurant}
+                              onChange={(e) => updateUnit(unit.id, 'second_gen_restaurant', e.target.checked)}
+                              className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                            />
+                            <span className="ml-2 text-sm text-gray-700">2nd Gen Restaurant</span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-4 p-3 bg-blue-50 rounded-md">
+                <p className="text-sm text-blue-700">
+                  ℹ️ Units can be added now or later in the detailed property view. Adding units helps track individual tenant spaces and their lease details.
+                </p>
+              </div>
             </section>
           )}
 

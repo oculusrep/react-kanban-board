@@ -25,11 +25,18 @@ A comprehensive property management system has been implemented with streamlined
 - **NewPropertyPage** (`src/components/property/NewPropertyPage.tsx`)
   - Streamlined property creation form optimized for field use
   - Dynamic financial fields based on property record type selection
+  - **Shopping Center Units Management**: Complete unit tracking system for retail properties
+    - Add/remove individual units with full details
+    - Unit-specific fields: name, sqft, rent (USD), NNN (USD), lease expiration, notes
+    - Feature checkboxes: patio, inline, end cap, end cap drive-thru, 2nd gen restaurant
+    - "Create Submit" button for future site submission functionality
+    - Full database integration with `property_unit` table
   - Background geocoding integration with OpenStreetMap Nominatim
   - Required field validation with soft red styling for empty fields
   - Trade area field for location context
   - Verify Location button with future feature tooltip
   - Automatic navigation to detailed property view after creation
+  - **Reactive Field Updates**: Financial fields automatically update when switching property types
 
 #### Property Management Components
 - **LocationSection** (`src/components/property/LocationSection.tsx`)
@@ -52,6 +59,13 @@ A comprehensive property management system has been implemented with streamlined
   - Required field validation with soft red styling
   - Dynamic option loading and display
   - Consistent styling with other form fields
+
+- **PropertyCurrencyField** (`src/components/property/PropertyCurrencyField.tsx`)
+  - Specialized currency input with USD formatting
+  - Displays values with 2 decimal places and comma separators
+  - Click-to-edit interface with inline editing
+  - Proper number handling and validation
+  - Used for rent, NNN, purchase prices, and lease amounts
 
 #### New Hooks and Services
 - **usePropertyGeocoding** (`src/hooks/usePropertyGeocoding.ts`)
@@ -78,11 +92,25 @@ A comprehensive property management system has been implemented with streamlined
 #### Key Features
 1. **Streamlined Creation Flow**: Simple, field-optimized form for quick property entry
 2. **Dynamic Form Fields**: Financial fields adapt based on property record type (land, building, retail)
-3. **Background Geocoding**: Non-blocking address-to-coordinates conversion
-4. **Required Field Validation**: Visual feedback for incomplete required information
-5. **Future Feature Tooltips**: User education about planned functionality
-6. **Responsive Design**: Mobile-friendly interface for field use
-7. **Trade Area Context**: Location categorization for better property organization
+3. **Shopping Center Unit Management**: Complete tenant space tracking with individual unit details
+4. **Currency Formatting**: Professional USD display with 2 decimal places for all financial fields
+5. **Database Schema Integration**: Full type safety with direct mapping to Supabase database tables
+6. **Background Geocoding**: Non-blocking address-to-coordinates conversion
+7. **Required Field Validation**: Visual feedback for incomplete required information
+8. **Reactive Field Updates**: Automatic field clearing/showing when switching property types
+9. **Future Feature Tooltips**: User education about planned functionality with contextual hints
+10. **Responsive Design**: Mobile-friendly interface optimized for field use
+11. **Trade Area Context**: Location categorization for better property organization
+
+#### Database Schema Enhancements
+- **Property Unit Integration**: Full `property_unit` table support with all fields mapped
+  - Unit identification: `property_unit_name`, `property_id` relationship
+  - Financial data: `rent`, `nnn` (with USD formatting)
+  - Physical details: `sqft`, `lease_expiration_date`, `unit_notes`
+  - Feature flags: `patio`, `inline`, `end_cap`, `end_cap_drive_thru`, `second_gen_restaurant`
+  - Metadata: `created_at`, `updated_at`, `sf_id` (Salesforce integration ready)
+- **Property Table Enhancements**: Added `trade_area` field for location context
+- **Type Safety**: Complete TypeScript integration with database schema types
 
 ### Payment Disbursement System
 A comprehensive disbursement tracking system has been implemented:

@@ -9,7 +9,7 @@ interface PropertyCurrencyFieldProps {
   tabIndex?: number;
   helpText?: string;
   showLarge?: boolean; // For prominent display
-  colorScheme?: 'green' | 'blue' | 'purple' | 'gray';
+  colorScheme?: 'green' | 'blue' | 'purple' | 'gray' | 'orange';
 }
 
 const PropertyCurrencyField: React.FC<PropertyCurrencyFieldProps> = ({
@@ -27,12 +27,12 @@ const PropertyCurrencyField: React.FC<PropertyCurrencyFieldProps> = ({
   const [editValue, setEditValue] = useState('');
 
   const formatCurrency = (amount: number | null): string => {
-    if (amount === null || amount === undefined) return '$0';
+    if (amount === null || amount === undefined) return '$0.00';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(amount);
   };
 
@@ -42,7 +42,8 @@ const PropertyCurrencyField: React.FC<PropertyCurrencyFieldProps> = ({
     green: 'text-green-700',
     blue: 'text-blue-700', 
     purple: 'text-purple-700',
-    gray: 'text-gray-900'
+    gray: 'text-gray-900',
+    orange: 'text-orange-700'
   };
 
   const handleStartEdit = (initialValue?: string) => {
