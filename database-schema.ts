@@ -2156,6 +2156,168 @@ export type Database = {
         }
         Relationships: []
       }
+      property_contact: {
+        Row: {
+          contact_id: string | null
+          created_at: string | null
+          created_by_id: string | null
+          id: string
+          property_id: string | null
+          sf_contact_id: string | null
+          sf_contact_name: string | null
+          sf_created_by_id: string | null
+          sf_email: string | null
+          sf_id: string | null
+          sf_join_name: string | null
+          sf_mobile_phone: string | null
+          sf_owner_id: string | null
+          sf_phone: string | null
+          sf_property_id: string | null
+          updated_at: string | null
+          updated_by_id: string | null
+          updated_by_sf_id: string | null
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string | null
+          created_by_id?: string | null
+          id?: string
+          property_id?: string | null
+          sf_contact_id?: string | null
+          sf_contact_name?: string | null
+          sf_created_by_id?: string | null
+          sf_email?: string | null
+          sf_id?: string | null
+          sf_join_name?: string | null
+          sf_mobile_phone?: string | null
+          sf_owner_id?: string | null
+          sf_phone?: string | null
+          sf_property_id?: string | null
+          updated_at?: string | null
+          updated_by_id?: string | null
+          updated_by_sf_id?: string | null
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string | null
+          created_by_id?: string | null
+          id?: string
+          property_id?: string | null
+          sf_contact_id?: string | null
+          sf_contact_name?: string | null
+          sf_created_by_id?: string | null
+          sf_email?: string | null
+          sf_id?: string | null
+          sf_join_name?: string | null
+          sf_mobile_phone?: string | null
+          sf_owner_id?: string | null
+          sf_phone?: string | null
+          sf_property_id?: string | null
+          updated_at?: string | null
+          updated_by_id?: string | null
+          updated_by_sf_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_property_contact_contact_id"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_property_contact_created_by_id"
+            columns: ["created_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_property_contact_property_id"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_property_contact_property_id"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_deal_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_property_contact_property_id"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_property_contact_property_id"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_property_contact_updated_by_id"
+            columns: ["updated_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_contact_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_contact_created_by_id_fkey"
+            columns: ["created_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_contact_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_contact_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_deal_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_contact_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_contact_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_contact_updated_by_id_fkey"
+            columns: ["updated_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       property_record_type: {
         Row: {
           active: boolean | null
@@ -2260,98 +2422,6 @@ export type Database = {
           sort_order?: number | null
         }
         Relationships: []
-      }
-      property_contact: {
-        Row: {
-          id: string
-          sf_id: string | null
-          sf_join_name: string | null
-          sf_owner_id: string | null
-          sf_email: string | null
-          sf_phone: string | null
-          sf_contact_id: string | null
-          contact_id: string | null
-          sf_created_by_id: string | null
-          created_by_id: string | null
-          created_at: string | null
-          sf_property_id: string | null
-          property_id: string | null
-          sf_mobile_phone: string | null
-          sf_contact_name: string | null
-          updated_by_sf_id: string | null
-          updated_by_id: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: string
-          sf_id?: string | null
-          sf_join_name?: string | null
-          sf_owner_id?: string | null
-          sf_email?: string | null
-          sf_phone?: string | null
-          sf_contact_id?: string | null
-          contact_id?: string | null
-          sf_created_by_id?: string | null
-          created_by_id?: string | null
-          created_at?: string | null
-          sf_property_id?: string | null
-          property_id?: string | null
-          sf_mobile_phone?: string | null
-          sf_contact_name?: string | null
-          updated_by_sf_id?: string | null
-          updated_by_id?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          id?: string
-          sf_id?: string | null
-          sf_join_name?: string | null
-          sf_owner_id?: string | null
-          sf_email?: string | null
-          sf_phone?: string | null
-          sf_contact_id?: string | null
-          contact_id?: string | null
-          sf_created_by_id?: string | null
-          created_by_id?: string | null
-          created_at?: string | null
-          sf_property_id?: string | null
-          property_id?: string | null
-          sf_mobile_phone?: string | null
-          sf_contact_name?: string | null
-          updated_by_sf_id?: string | null
-          updated_by_id?: string | null
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "fk_property_contact_contact_id"
-            columns: ["contact_id"]
-            isOneToOne: false
-            referencedRelation: "contact"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_property_contact_property_id"
-            columns: ["property_id"]
-            isOneToOne: false
-            referencedRelation: "property"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_property_contact_created_by_id"
-            columns: ["created_by_id"]
-            isOneToOne: false
-            referencedRelation: "user"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_property_contact_updated_by_id"
-            columns: ["updated_by_id"]
-            isOneToOne: false
-            referencedRelation: "user"
-            referencedColumns: ["id"]
-          }
-        ]
       }
       property_type: {
         Row: {
