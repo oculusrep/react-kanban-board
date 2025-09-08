@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useProperty } from '../../hooks/useProperty';
 import { usePropertyForm } from '../../hooks/usePropertyForm';
 import { supabase } from '../../lib/supabaseClient';
@@ -12,15 +11,15 @@ import PropertyDetailsSection from './PropertyDetailsSection';
 import MarketAnalysisSection from './MarketAnalysisSection';
 import LinksSection from './LinksSection';
 import NotesSection from './NotesSection';
-import PropertySidebar from './PropertySidebar';
-import PropertyUnitsSection from './PropertyUnitsSection';
+import StaticContactsSidebar from './StaticContactsSidebar';
 
 type Property = Database['public']['Tables']['property']['Row'];
 type PropertyType = Database['public']['Tables']['property_type']['Row'];
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 type PropertyStage = Database['public']['Tables']['property_stage']['Row'];
+type Deal = Database['public']['Tables']['deal']['Row'];
 
-interface PropertyDetailScreenProps {
+interface PropertyDashboardProps {
   propertyId?: string;
   mode?: 'view' | 'create';
   initialLocation?: { lat: number; lng: number };
@@ -28,21 +27,26 @@ interface PropertyDetailScreenProps {
   onBack?: () => void;
 }
 
-const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
+const PropertyDashboard: React.FC<PropertyDashboardProps> = ({
   propertyId,
   mode = 'view',
   initialLocation,
   onSave,
   onBack = () => window.history.back()
 }) => {
-  const navigate = useNavigate();
-  const [isEditing, setIsEditing] = useState(false); // Always false - we use inline editing
+  const [isEditing, setIsEditing] = useState(false);
   const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
   const [propertyStages, setPropertyStages] = useState<PropertyStage[]>([]);
   const [propertyRecordTypes, setPropertyRecordTypes] = useState<PropertyRecordType[]>([]);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [unitsExpanded, setUnitsExpanded] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [activeTab, setActiveTab] = useState('details');
+
+  // Dashboard-specific state
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [units, setUnits] = useState<any[]>([]);
+  const [siteSubmits, setSiteSubmits] = useState<any[]>([]);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
 
   const { 
     property, 
@@ -76,19 +80,61 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
         if (recordTypesResponse.data) {
           setPropertyRecordTypes(recordTypesResponse.data);
         } else {
-          // If no record types found, log this for debugging
           console.log('No property record types found in lookup table');
           setPropertyRecordTypes([]);
         }
       } catch (err) {
         console.error('Error loading dropdown data:', err);
-        // Set empty arrays as fallback
         setPropertyRecordTypes([]);
       }
     };
 
     loadDropdownData();
   }, []);
+
+  // Load dashboard data (deals, units, site submits)
+  useEffect(() => {
+    if (!propertyId) return;
+
+    const loadDashboardData = async () => {
+      setDashboardLoading(true);
+      try {
+        // Load deals
+        const { data: dealsData, error: dealsError } = await supabase
+          .from('deal')
+          .select('*')
+          .eq('property_id', propertyId)
+          .order('created_at', { ascending: false });
+
+        if (dealsError) {
+          console.error('Error loading deals:', dealsError);
+        } else {
+          setDeals(dealsData || []);
+        }
+
+        // TODO: Load units when units table is available
+        // const { data: unitsData } = await supabase
+        //   .from('units')
+        //   .select('*')
+        //   .eq('property_id', propertyId);
+        // setUnits(unitsData || []);
+
+        // TODO: Load site submits when site_submits table is available
+        // const { data: siteSubmitsData } = await supabase
+        //   .from('site_submits')
+        //   .select('*')
+        //   .eq('property_id', propertyId);
+        // setSiteSubmits(siteSubmitsData || []);
+
+      } catch (err) {
+        console.error('Error loading dashboard data:', err);
+      } finally {
+        setDashboardLoading(false);
+      }
+    };
+
+    loadDashboardData();
+  }, [propertyId]);
 
   // Set initial location for new properties
   useEffect(() => {
@@ -106,60 +152,18 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
   }, [property, resetForm]);
 
   const handleToggleEdit = async () => {
-    // No global edit mode - using inline editing like Commission/Payment tabs
     return;
-  };
-
-  const handleSave = async () => {
-    if (!propertyId) return;
-
-    try {
-      setAutoSaveStatus('saving');
-      await updateProperty(formData);
-      setAutoSaveStatus('saved');
-      setIsEditing(false);
-      
-      if (onSave && property) {
-        onSave({ ...property, ...formData });
-      }
-    } catch (err) {
-      console.error('Error saving property:', err);
-      setAutoSaveStatus('error');
-    }
-  };
-
-  const handleCreate = async () => {
-    if (!validation.isValid) {
-      alert('Please fix the validation errors before saving.');
-      return;
-    }
-
-    try {
-      setAutoSaveStatus('saving');
-      const newProperty = await createProperty(formData as Omit<Property, 'id' | 'created_at' | 'updated_at'>);
-      setAutoSaveStatus('saved');
-      setIsEditing(false);
-      
-      if (onSave) {
-        onSave(newProperty);
-      }
-    } catch (err) {
-      console.error('Error creating property:', err);
-      setAutoSaveStatus('error');
-    }
   };
 
   const handleFieldUpdate = async (field: keyof Property, value: any) => {
     updateField(field, value);
     
-    // Auto-save immediately on field change (inline editing pattern)
     if (propertyId && mode !== 'create') {
       try {
         setAutoSaveStatus('saving');
         await updateProperty({ [field]: value });
         setAutoSaveStatus('saved');
         
-        // Clear saved status after 2 seconds
         setTimeout(() => setAutoSaveStatus('idle'), 2000);
       } catch (err) {
         console.error('Auto-save failed:', err);
@@ -188,20 +192,42 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
         {
           enableHighAccuracy: true,
           timeout: 10000,
-          maximumAge: 300000 // 5 minutes
+          maximumAge: 300000
         }
       );
     });
   };
 
   const handleCallContact = () => {
-    // TODO: Implement contact calling functionality
     console.log('Call contact for property:', propertyId);
   };
 
-  const handleDealClick = (dealId: string) => {
-    navigate(`/deal/${dealId}`);
-  };
+  const tabs = [
+    { 
+      id: 'details', 
+      name: 'Details', 
+      icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+      count: null
+    },
+    { 
+      id: 'deals', 
+      name: 'Deals', 
+      icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1',
+      count: deals.length
+    },
+    { 
+      id: 'units', 
+      name: 'Units', 
+      icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
+      count: units.length
+    },
+    { 
+      id: 'site-submits', 
+      name: 'Site Submits', 
+      icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
+      count: siteSubmits.length
+    }
+  ];
 
   if (loading) {
     return (
@@ -257,6 +283,144 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
 
   const currentProperty = mode === 'create' ? (formData as Property) : (property || formData as Property);
 
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'details':
+        return (
+          <div className="space-y-6">
+            <PropertyDetailsSection
+              property={currentProperty}
+              isEditing={isEditing}
+              onFieldUpdate={handleFieldUpdate}
+              propertyRecordTypes={propertyRecordTypes}
+            />
+
+            <LocationSection
+              property={currentProperty}
+              onFieldUpdate={handleFieldUpdate}
+              onGetCurrentLocation={handleGetCurrentLocation}
+            />
+
+            <FinancialSection
+              property={{
+                ...currentProperty,
+                property_record_type: propertyRecordTypes.find(rt => rt.id === currentProperty.property_record_type_id)
+              }}
+              onFieldUpdate={handleFieldUpdate}
+            />
+
+            <MarketAnalysisSection
+              property={currentProperty}
+              onFieldUpdate={handleFieldUpdate}
+            />
+
+            <LinksSection
+              property={currentProperty}
+              isEditing={isEditing}
+              onFieldUpdate={handleFieldUpdate}
+            />
+
+            <NotesSection
+              property={currentProperty}
+              isEditing={isEditing}
+              onFieldUpdate={handleFieldUpdate}
+            />
+          </div>
+        );
+
+      case 'deals':
+        return (
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Property Deals</h3>
+              <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700">
+                + New Deal
+              </button>
+            </div>
+            
+            {dashboardLoading ? (
+              <div className="space-y-3">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="animate-pulse">
+                    <div className="h-16 bg-gray-200 rounded"></div>
+                  </div>
+                ))}
+              </div>
+            ) : deals.length === 0 ? (
+              <div className="text-center py-8">
+                <svg className="w-12 h-12 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                </svg>
+                <p className="text-gray-500">No deals found for this property</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {deals.map((deal) => (
+                  <div key={deal.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium text-gray-900">{deal.deal_name || 'Unnamed Deal'}</h4>
+                        <p className="text-sm text-gray-500">
+                          {deal.deal_stage || 'No stage'} • {deal.deal_type || 'No type'}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-medium text-gray-900">
+                          ${deal.deal_size?.toLocaleString() || '0'}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {deal.close_date ? new Date(deal.close_date).toLocaleDateString() : 'No close date'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+
+      case 'units':
+        return (
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Property Units</h3>
+              <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700">
+                + New Unit
+              </button>
+            </div>
+            <div className="text-center py-8">
+              <svg className="w-12 h-12 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+              <p className="text-gray-500">Units feature coming soon</p>
+            </div>
+          </div>
+        );
+
+      case 'site-submits':
+        return (
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Site Submits</h3>
+              <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700">
+                + New Submit
+              </button>
+            </div>
+            <div className="text-center py-8">
+              <svg className="w-12 h-12 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-gray-500">Site submits feature coming soon</p>
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Property Header - Full Width */}
@@ -276,18 +440,34 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
         onCallContact={handleCallContact}
       />
 
-      {/* Sidebar Toggle Bar */}
-      <div className="bg-white border-b border-gray-200 px-6 py-2 shadow-sm">
-        <div className="flex items-center justify-end">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-          >
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-            {sidebarOpen ? 'Hide' : 'Show'} Sidebar
-          </button>
+      {/* Dashboard Tabs */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="flex space-x-8 px-4">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === tab.id
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={tab.icon} />
+              </svg>
+              <span>{tab.name}</span>
+              {tab.count !== null && (
+                <span className={`inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium ${
+                  activeTab === tab.id 
+                    ? 'bg-blue-100 text-blue-800' 
+                    : 'bg-gray-100 text-gray-800'
+                }`}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -295,7 +475,7 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
       <div className="flex flex-1 overflow-hidden">
         {/* Main Content */}
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-4xl mx-auto p-4 pb-8">
+          <div className="max-w-6xl mx-auto p-4 pb-8">
             {/* Validation Warnings */}
             {isEditing && validation.warnings.length > 0 && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
@@ -330,56 +510,8 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
               </div>
             )}
 
-            <PropertyDetailsSection
-              property={currentProperty}
-              isEditing={isEditing}
-              onFieldUpdate={handleFieldUpdate}
-              propertyRecordTypes={propertyRecordTypes}
-            />
-
-            <LocationSection
-              property={currentProperty}
-              onFieldUpdate={handleFieldUpdate}
-              onGetCurrentLocation={handleGetCurrentLocation}
-            />
-
-            {/* Property Units Section */}
-            {propertyId && (
-              <PropertyUnitsSection
-                propertyId={propertyId}
-                isEditing={isEditing}
-                isExpanded={unitsExpanded}
-                onToggle={() => setUnitsExpanded(!unitsExpanded)}
-                onUnitsChange={(units) => {
-                  console.log('Units updated:', units);
-                }}
-              />
-            )}
-
-            <FinancialSection
-              property={{
-                ...currentProperty,
-                property_record_type: propertyRecordTypes.find(rt => rt.id === currentProperty.property_record_type_id)
-              }}
-              onFieldUpdate={handleFieldUpdate}
-            />
-
-            <MarketAnalysisSection
-              property={currentProperty}
-              onFieldUpdate={handleFieldUpdate}
-            />
-
-            <LinksSection
-              property={currentProperty}
-              isEditing={isEditing}
-              onFieldUpdate={handleFieldUpdate}
-            />
-
-            <NotesSection
-              property={currentProperty}
-              isEditing={isEditing}
-              onFieldUpdate={handleFieldUpdate}
-            />
+            {/* Tab Content */}
+            {renderTabContent()}
 
             {/* Validation Errors */}
             {isEditing && !validation.isValid && (
@@ -404,13 +536,12 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
           </div>
         </div>
 
-        {/* Property Sidebar */}
+        {/* Static Contacts Sidebar */}
         {propertyId && (
-          <PropertySidebar
+          <StaticContactsSidebar
             propertyId={propertyId}
-            isOpen={sidebarOpen}
-            onToggle={() => setSidebarOpen(!sidebarOpen)}
-            onDealClick={handleDealClick}
+            isCollapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
           />
         )}
       </div>
@@ -418,4 +549,4 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
   );
 };
 
-export default PropertyDetailScreen;
+export default PropertyDashboard;

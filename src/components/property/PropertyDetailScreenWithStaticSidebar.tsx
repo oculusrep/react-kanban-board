@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useProperty } from '../../hooks/useProperty';
 import { usePropertyForm } from '../../hooks/usePropertyForm';
 import { supabase } from '../../lib/supabaseClient';
@@ -12,15 +11,14 @@ import PropertyDetailsSection from './PropertyDetailsSection';
 import MarketAnalysisSection from './MarketAnalysisSection';
 import LinksSection from './LinksSection';
 import NotesSection from './NotesSection';
-import PropertySidebar from './PropertySidebar';
-import PropertyUnitsSection from './PropertyUnitsSection';
+import StaticContactsSidebar from './StaticContactsSidebar';
 
 type Property = Database['public']['Tables']['property']['Row'];
 type PropertyType = Database['public']['Tables']['property_type']['Row'];
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 type PropertyStage = Database['public']['Tables']['property_stage']['Row'];
 
-interface PropertyDetailScreenProps {
+interface PropertyDetailScreenWithStaticSidebarProps {
   propertyId?: string;
   mode?: 'view' | 'create';
   initialLocation?: { lat: number; lng: number };
@@ -28,21 +26,19 @@ interface PropertyDetailScreenProps {
   onBack?: () => void;
 }
 
-const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
+const PropertyDetailScreenWithStaticSidebar: React.FC<PropertyDetailScreenWithStaticSidebarProps> = ({
   propertyId,
   mode = 'view',
   initialLocation,
   onSave,
   onBack = () => window.history.back()
 }) => {
-  const navigate = useNavigate();
-  const [isEditing, setIsEditing] = useState(false); // Always false - we use inline editing
+  const [isEditing, setIsEditing] = useState(false);
   const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
   const [propertyStages, setPropertyStages] = useState<PropertyStage[]>([]);
   const [propertyRecordTypes, setPropertyRecordTypes] = useState<PropertyRecordType[]>([]);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [unitsExpanded, setUnitsExpanded] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const { 
     property, 
@@ -76,13 +72,11 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
         if (recordTypesResponse.data) {
           setPropertyRecordTypes(recordTypesResponse.data);
         } else {
-          // If no record types found, log this for debugging
           console.log('No property record types found in lookup table');
           setPropertyRecordTypes([]);
         }
       } catch (err) {
         console.error('Error loading dropdown data:', err);
-        // Set empty arrays as fallback
         setPropertyRecordTypes([]);
       }
     };
@@ -106,7 +100,7 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
   }, [property, resetForm]);
 
   const handleToggleEdit = async () => {
-    // No global edit mode - using inline editing like Commission/Payment tabs
+    // No global edit mode - using inline editing
     return;
   };
 
@@ -188,19 +182,14 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
         {
           enableHighAccuracy: true,
           timeout: 10000,
-          maximumAge: 300000 // 5 minutes
+          maximumAge: 300000
         }
       );
     });
   };
 
   const handleCallContact = () => {
-    // TODO: Implement contact calling functionality
     console.log('Call contact for property:', propertyId);
-  };
-
-  const handleDealClick = (dealId: string) => {
-    navigate(`/deal/${dealId}`);
   };
 
   if (loading) {
@@ -274,22 +263,8 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
           handleFieldUpdate('longitude', coords.lng);
         })}
         onCallContact={handleCallContact}
+        // Remove onShowContacts since we have static sidebar
       />
-
-      {/* Sidebar Toggle Bar */}
-      <div className="bg-white border-b border-gray-200 px-6 py-2 shadow-sm">
-        <div className="flex items-center justify-end">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-          >
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-            {sidebarOpen ? 'Hide' : 'Show'} Sidebar
-          </button>
-        </div>
-      </div>
 
       {/* Main Content Area with Static Sidebar */}
       <div className="flex flex-1 overflow-hidden">
@@ -343,19 +318,6 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
               onGetCurrentLocation={handleGetCurrentLocation}
             />
 
-            {/* Property Units Section */}
-            {propertyId && (
-              <PropertyUnitsSection
-                propertyId={propertyId}
-                isEditing={isEditing}
-                isExpanded={unitsExpanded}
-                onToggle={() => setUnitsExpanded(!unitsExpanded)}
-                onUnitsChange={(units) => {
-                  console.log('Units updated:', units);
-                }}
-              />
-            )}
-
             <FinancialSection
               property={{
                 ...currentProperty,
@@ -404,13 +366,12 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
           </div>
         </div>
 
-        {/* Property Sidebar */}
+        {/* Static Contacts Sidebar */}
         {propertyId && (
-          <PropertySidebar
+          <StaticContactsSidebar
             propertyId={propertyId}
-            isOpen={sidebarOpen}
-            onToggle={() => setSidebarOpen(!sidebarOpen)}
-            onDealClick={handleDealClick}
+            isCollapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
           />
         )}
       </div>
@@ -418,4 +379,4 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
   );
 };
 
-export default PropertyDetailScreen;
+export default PropertyDetailScreenWithStaticSidebar;

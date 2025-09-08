@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useProperty } from '../../hooks/useProperty';
 import { usePropertyForm } from '../../hooks/usePropertyForm';
 import { supabase } from '../../lib/supabaseClient';
@@ -12,8 +11,7 @@ import PropertyDetailsSection from './PropertyDetailsSection';
 import MarketAnalysisSection from './MarketAnalysisSection';
 import LinksSection from './LinksSection';
 import NotesSection from './NotesSection';
-import PropertySidebar from './PropertySidebar';
-import PropertyUnitsSection from './PropertyUnitsSection';
+import ContactsSidebar from './ContactsSidebar';
 
 type Property = Database['public']['Tables']['property']['Row'];
 type PropertyType = Database['public']['Tables']['property_type']['Row'];
@@ -35,14 +33,12 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
   onSave,
   onBack = () => window.history.back()
 }) => {
-  const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false); // Always false - we use inline editing
   const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
   const [propertyStages, setPropertyStages] = useState<PropertyStage[]>([]);
   const [propertyRecordTypes, setPropertyRecordTypes] = useState<PropertyRecordType[]>([]);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [unitsExpanded, setUnitsExpanded] = useState(false);
+  const [showContactsSidebar, setShowContactsSidebar] = useState(false);
 
   const { 
     property, 
@@ -199,32 +195,17 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
     console.log('Call contact for property:', propertyId);
   };
 
-  const handleDealClick = (dealId: string) => {
-    navigate(`/deal/${dealId}`);
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="animate-pulse">
           <div className="bg-slate-800 h-32"></div>
-          <div className="flex h-screen">
-            <div className="flex-1 p-4 space-y-4">
-              <div className="bg-white rounded-lg p-6 space-y-4">
-                <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-                <div className="space-y-2">
-                  <div className="h-4 bg-gray-200 rounded"></div>
-                  <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                </div>
-              </div>
-            </div>
-            <div className="w-80 bg-white border-l border-gray-200 p-4">
-              <div className="animate-pulse space-y-4">
-                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                <div className="space-y-2">
-                  <div className="h-8 bg-gray-200 rounded"></div>
-                  <div className="h-8 bg-gray-200 rounded"></div>
-                </div>
+          <div className="max-w-4xl mx-auto p-4 space-y-4">
+            <div className="bg-white rounded-lg p-6 space-y-4">
+              <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+              <div className="space-y-2">
+                <div className="h-4 bg-gray-200 rounded"></div>
+                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
               </div>
             </div>
           </div>
@@ -258,8 +239,7 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
   const currentProperty = mode === 'create' ? (formData as Property) : (property || formData as Property);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Property Header - Full Width */}
+    <div className="min-h-screen bg-gray-50">
       <PropertyHeader
         property={{
           ...currentProperty,
@@ -274,146 +254,112 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
           handleFieldUpdate('longitude', coords.lng);
         })}
         onCallContact={handleCallContact}
+        onShowContacts={() => setShowContactsSidebar(true)}
       />
 
-      {/* Sidebar Toggle Bar */}
-      <div className="bg-white border-b border-gray-200 px-6 py-2 shadow-sm">
-        <div className="flex items-center justify-end">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-          >
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-            {sidebarOpen ? 'Hide' : 'Show'} Sidebar
-          </button>
-        </div>
-      </div>
-
-      {/* Main Content Area with Static Sidebar */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Main Content */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-4xl mx-auto p-4 pb-8">
-            {/* Validation Warnings */}
-            {isEditing && validation.warnings.length > 0 && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-yellow-800">Recommendations</h3>
-                    <ul className="mt-1 text-xs text-yellow-700 list-disc list-inside">
-                      {validation.warnings.map((warning, index) => (
-                        <li key={index}>{warning}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
+      <div className="max-w-4xl mx-auto p-4 pb-8">
+        {/* Validation Warnings */}
+        {isEditing && validation.warnings.length > 0 && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
               </div>
-            )}
-
-            {/* Auto-save Status */}
-            {isEditing && autoSaveStatus !== 'idle' && (
-              <div className={`p-2 rounded-md text-sm mb-4 ${
-                autoSaveStatus === 'saving' ? 'bg-blue-50 text-blue-700' :
-                autoSaveStatus === 'saved' ? 'bg-green-50 text-green-700' :
-                'bg-red-50 text-red-700'
-              }`}>
-                {autoSaveStatus === 'saving' && 'Saving changes...'}
-                {autoSaveStatus === 'saved' && 'Changes saved successfully'}
-                {autoSaveStatus === 'error' && 'Error saving changes'}
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-yellow-800">Recommendations</h3>
+                <ul className="mt-1 text-xs text-yellow-700 list-disc list-inside">
+                  {validation.warnings.map((warning, index) => (
+                    <li key={index}>{warning}</li>
+                  ))}
+                </ul>
               </div>
-            )}
-
-            <PropertyDetailsSection
-              property={currentProperty}
-              isEditing={isEditing}
-              onFieldUpdate={handleFieldUpdate}
-              propertyRecordTypes={propertyRecordTypes}
-            />
-
-            <LocationSection
-              property={currentProperty}
-              onFieldUpdate={handleFieldUpdate}
-              onGetCurrentLocation={handleGetCurrentLocation}
-            />
-
-            {/* Property Units Section */}
-            {propertyId && (
-              <PropertyUnitsSection
-                propertyId={propertyId}
-                isEditing={isEditing}
-                isExpanded={unitsExpanded}
-                onToggle={() => setUnitsExpanded(!unitsExpanded)}
-                onUnitsChange={(units) => {
-                  console.log('Units updated:', units);
-                }}
-              />
-            )}
-
-            <FinancialSection
-              property={{
-                ...currentProperty,
-                property_record_type: propertyRecordTypes.find(rt => rt.id === currentProperty.property_record_type_id)
-              }}
-              onFieldUpdate={handleFieldUpdate}
-            />
-
-            <MarketAnalysisSection
-              property={currentProperty}
-              onFieldUpdate={handleFieldUpdate}
-            />
-
-            <LinksSection
-              property={currentProperty}
-              isEditing={isEditing}
-              onFieldUpdate={handleFieldUpdate}
-            />
-
-            <NotesSection
-              property={currentProperty}
-              isEditing={isEditing}
-              onFieldUpdate={handleFieldUpdate}
-            />
-
-            {/* Validation Errors */}
-            {isEditing && !validation.isValid && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-red-800">Please fix these errors:</h3>
-                    <ul className="mt-1 text-xs text-red-700 list-disc list-inside">
-                      {Object.entries(validation.errors).map(([field, error]) => (
-                        <li key={field}><strong>{field}:</strong> {error}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            )}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Property Sidebar */}
-        {propertyId && (
-          <PropertySidebar
-            propertyId={propertyId}
-            isOpen={sidebarOpen}
-            onToggle={() => setSidebarOpen(!sidebarOpen)}
-            onDealClick={handleDealClick}
-          />
+        {/* Auto-save Status */}
+        {isEditing && autoSaveStatus !== 'idle' && (
+          <div className={`p-2 rounded-md text-sm mb-4 ${
+            autoSaveStatus === 'saving' ? 'bg-blue-50 text-blue-700' :
+            autoSaveStatus === 'saved' ? 'bg-green-50 text-green-700' :
+            'bg-red-50 text-red-700'
+          }`}>
+            {autoSaveStatus === 'saving' && 'Saving changes...'}
+            {autoSaveStatus === 'saved' && 'Changes saved successfully'}
+            {autoSaveStatus === 'error' && 'Error saving changes'}
+          </div>
+        )}
+
+        <PropertyDetailsSection
+          property={currentProperty}
+          isEditing={isEditing}
+          onFieldUpdate={handleFieldUpdate}
+          propertyRecordTypes={propertyRecordTypes}
+        />
+
+        <LocationSection
+          property={currentProperty}
+          onFieldUpdate={handleFieldUpdate}
+          onGetCurrentLocation={handleGetCurrentLocation}
+        />
+
+        <FinancialSection
+          property={{
+            ...currentProperty,
+            property_record_type: propertyRecordTypes.find(rt => rt.id === currentProperty.property_record_type_id)
+          }}
+          onFieldUpdate={handleFieldUpdate}
+        />
+
+        <MarketAnalysisSection
+          property={currentProperty}
+          onFieldUpdate={handleFieldUpdate}
+        />
+
+        <LinksSection
+          property={currentProperty}
+          isEditing={isEditing}
+          onFieldUpdate={handleFieldUpdate}
+        />
+
+        <NotesSection
+          property={currentProperty}
+          isEditing={isEditing}
+          onFieldUpdate={handleFieldUpdate}
+        />
+
+        {/* Validation Errors */}
+        {isEditing && !validation.isValid && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">Please fix these errors:</h3>
+                <ul className="mt-1 text-xs text-red-700 list-disc list-inside">
+                  {Object.entries(validation.errors).map(([field, error]) => (
+                    <li key={field}><strong>{field}:</strong> {error}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
         )}
       </div>
+
+      {/* Contacts Sidebar */}
+      {propertyId && (
+        <ContactsSidebar
+          propertyId={propertyId}
+          isOpen={showContactsSidebar}
+          onClose={() => setShowContactsSidebar(false)}
+        />
+      )}
     </div>
   );
 };
