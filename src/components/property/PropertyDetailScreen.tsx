@@ -11,6 +11,7 @@ import PropertyDetailsSection from './PropertyDetailsSection';
 import MarketAnalysisSection from './MarketAnalysisSection';
 import LinksSection from './LinksSection';
 import NotesSection from './NotesSection';
+import ContactsSidebar from './ContactsSidebar';
 
 type Property = Database['public']['Tables']['property']['Row'];
 type PropertyType = Database['public']['Tables']['property_type']['Row'];
@@ -37,6 +38,7 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
   const [propertyStages, setPropertyStages] = useState<PropertyStage[]>([]);
   const [propertyRecordTypes, setPropertyRecordTypes] = useState<PropertyRecordType[]>([]);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [showContactsSidebar, setShowContactsSidebar] = useState(false);
 
   const { 
     property, 
@@ -252,6 +254,7 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
           handleFieldUpdate('longitude', coords.lng);
         })}
         onCallContact={handleCallContact}
+        onShowContacts={() => setShowContactsSidebar(true)}
       />
 
       <div className="max-w-4xl mx-auto p-4 pb-8">
@@ -348,6 +351,15 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
           </div>
         )}
       </div>
+
+      {/* Contacts Sidebar */}
+      {propertyId && (
+        <ContactsSidebar
+          propertyId={propertyId}
+          isOpen={showContactsSidebar}
+          onClose={() => setShowContactsSidebar(false)}
+        />
+      )}
     </div>
   );
 };

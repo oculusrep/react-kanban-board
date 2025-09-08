@@ -29,6 +29,7 @@ interface NewPropertyFormData {
   rent_psf: number | null;
   nnn_psf: number | null;
   property_notes: string;
+  acres: number | null;
   units: PropertyUnit[];
 }
 
@@ -51,6 +52,7 @@ const NewPropertyPage: React.FC = () => {
     rent_psf: null,
     nnn_psf: null,
     property_notes: '',
+    acres: null,
     units: []
   });
 
@@ -210,7 +212,8 @@ const NewPropertyPage: React.FC = () => {
         asking_purchase_price: formData.asking_purchase_price,
         rent_psf: formData.rent_psf,
         nnn_psf: formData.nnn_psf,
-        property_notes: formData.property_notes
+        property_notes: formData.property_notes,
+        acres: formData.acres
       } as Omit<Property, 'id' | 'created_at' | 'updated_at'>;
 
       const createdProperty = await createProperty(propertyData);
@@ -304,6 +307,8 @@ const NewPropertyPage: React.FC = () => {
   const [showLocationTooltip, setShowLocationTooltip] = useState(false);
   const [showPinTooltip, setShowPinTooltip] = useState(false);
   const [showSubmitTooltips, setShowSubmitTooltips] = useState<{[key: string]: boolean}>({});
+  const [showPropertySubmitTooltip, setShowPropertySubmitTooltip] = useState(false);
+  const [showLandSubmitTooltip, setShowLandSubmitTooltip] = useState(false);
 
   const handleVerifyLocation = () => {
     setShowLocationTooltip(true);
@@ -322,6 +327,22 @@ const NewPropertyPage: React.FC = () => {
     // Auto-hide after 4 seconds
     setTimeout(() => {
       setShowSubmitTooltips(prev => ({ ...prev, [unitId]: false }));
+    }, 4000);
+  };
+
+  const handlePropertyCreateSubmit = () => {
+    setShowPropertySubmitTooltip(true);
+    // Auto-hide after 4 seconds
+    setTimeout(() => {
+      setShowPropertySubmitTooltip(false);
+    }, 4000);
+  };
+
+  const handleLandCreateSubmit = () => {
+    setShowLandSubmitTooltip(true);
+    // Auto-hide after 4 seconds
+    setTimeout(() => {
+      setShowLandSubmitTooltip(false);
     }, 4000);
   };
 
@@ -597,6 +618,47 @@ const NewPropertyPage: React.FC = () => {
                       showLarge={true}
                       tabIndex={9}
                     />
+
+                    <PropertyInputField
+                      label="Acres"
+                      value={formData.acres}
+                      onChange={(value) => handleFieldUpdate('acres', value)}
+                      type="number"
+                      placeholder="5.25"
+                      inputMode="decimal"
+                      tabIndex={10}
+                    />
+                  </div>
+
+                  {/* Land Create Submit Button - Bottom Right */}
+                  <div className="flex justify-end relative">
+                    <button
+                      type="button"
+                      onClick={handleLandCreateSubmit}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-md hover:bg-green-100 transition-colors text-sm font-medium focus:outline-none focus:ring-2 focus:ring-green-500"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Create Submit
+                    </button>
+
+                    {/* Land Create Submit Tooltip Popup */}
+                    {showLandSubmitTooltip && (
+                      <div className="absolute bottom-full right-0 mb-2 w-64 z-10">
+                        <div className="bg-gray-900 text-white text-xs rounded-lg p-3 shadow-lg relative">
+                          <div className="absolute top-full right-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
+                          <div className="font-medium text-green-200 mb-1">🚧 Future Feature</div>
+                          <p>This will create a site submit for this land property to track development prospects and opportunities.</p>
+                          <button
+                            onClick={() => setShowLandSubmitTooltip(false)}
+                            className="absolute top-1 right-1 text-gray-400 hover:text-white w-4 h-4 flex items-center justify-center"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -696,6 +758,37 @@ const NewPropertyPage: React.FC = () => {
                   </div>
                   <p className="text-sm">No units added yet.</p>
                   <p className="text-xs mt-1 text-gray-400">Use the "Add Unit" button to start adding units to this shopping center.</p>
+                  
+                  {/* Property-level Create Submit Button */}
+                  <div className="mt-4 relative inline-block">
+                    <button
+                      type="button"
+                      onClick={handlePropertyCreateSubmit}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-md hover:bg-green-100 transition-colors text-sm font-medium focus:outline-none focus:ring-2 focus:ring-green-500"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Create Submit
+                    </button>
+
+                    {/* Property-level Create Submit Tooltip Popup */}
+                    {showPropertySubmitTooltip && (
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 z-10">
+                        <div className="bg-gray-900 text-white text-xs rounded-lg p-3 shadow-lg relative">
+                          <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900"></div>
+                          <div className="font-medium text-green-200 mb-1">🚧 Future Feature</div>
+                          <p>This will create a site submit on the property level for tracking prospects when no specific units are defined.</p>
+                          <button
+                            onClick={() => setShowPropertySubmitTooltip(false)}
+                            className="absolute top-1 right-1 text-gray-400 hover:text-white w-4 h-4 flex items-center justify-center"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-4">

@@ -17,6 +17,7 @@ interface PropertyHeaderProps {
   onBack: () => void;
   onGetLocation?: () => void;
   onCallContact?: () => void;
+  onShowContacts?: () => void;
 }
 
 const PropertyHeader: React.FC<PropertyHeaderProps> = ({
@@ -25,7 +26,8 @@ const PropertyHeader: React.FC<PropertyHeaderProps> = ({
   onToggleEdit,
   onBack,
   onGetLocation,
-  onCallContact
+  onCallContact,
+  onShowContacts
 }) => {
   const getStageColor = (stageLabel?: string): string => {
     if (!stageLabel) return 'bg-gray-100 text-gray-800 border-gray-200';
@@ -68,6 +70,18 @@ const PropertyHeader: React.FC<PropertyHeaderProps> = ({
 
           {/* Action Buttons */}
           <div className="flex items-center space-x-2">
+            {onShowContacts && (
+              <button
+                onClick={onShowContacts}
+                className="flex items-center justify-center w-10 h-10 rounded-lg bg-blue-600 hover:bg-blue-500 transition-colors"
+                title="Show contacts"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                </svg>
+              </button>
+            )}
+
             {onGetLocation && (
               <button
                 onClick={onGetLocation}
@@ -107,16 +121,10 @@ const PropertyHeader: React.FC<PropertyHeaderProps> = ({
             )}
           </div>
 
-          {/* Property Stage Badge */}
-          {property.property_stage && (
-            <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${getStageColor(property.property_stage.label)}`}>
-              {property.property_stage.label}
-            </div>
-          )}
         </div>
 
         {/* Property Type and Key Info */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4 text-sm">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-4 text-sm">
           <div>
             <div className="text-slate-300 font-medium mb-1">Type</div>
             <div className="text-white">
@@ -135,17 +143,6 @@ const PropertyHeader: React.FC<PropertyHeaderProps> = ({
             <div className="text-slate-300 font-medium mb-1">Available Size</div>
             <div className="text-white">
               {property.available_sqft ? `${property.available_sqft.toLocaleString()} SF` : 'Not set'}
-            </div>
-          </div>
-
-          <div>
-            <div className="text-slate-300 font-medium mb-1">Contact Made</div>
-            <div className="text-white">
-              {property.contact_made ? (
-                <span className="text-green-400 font-semibold">Yes</span>
-              ) : (
-                <span className="text-yellow-400">No</span>
-              )}
             </div>
           </div>
         </div>

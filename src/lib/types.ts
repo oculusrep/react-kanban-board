@@ -12,34 +12,34 @@ export interface Deal {
   probability: number | null;
   
   // Commission fields
-  commission_percent: number | null;
-  flat_fee_override: number | null;
-  fee: number | null;
+  commission_percent?: number | null;
+  flat_fee_override?: number | null;
+  fee?: number | null;
   
   // Deal-level commission breakdown
-  referral_fee_percent: number | null;
-  referral_fee_usd: number | null;
-  referral_payee_client_id: string | null;
-  gci: number | null;
-  agci: number | null;
-  house_percent: number | null;
-  house_usd: number | null;
-  origination_percent: number | null;
-  origination_usd: number | null;
-  site_percent: number | null;
-  site_usd: number | null;
-  deal_percent: number | null;
-  deal_usd: number | null;
+  referral_fee_percent?: number | null;
+  referral_fee_usd?: number | null;
+  referral_payee_client_id?: string | null;
+  gci?: number | null;
+  agci?: number | null;
+  house_percent?: number | null;
+  house_usd?: number | null;
+  origination_percent?: number | null;
+  origination_usd?: number | null;
+  site_percent?: number | null;
+  site_usd?: number | null;
+  deal_percent?: number | null;
+  deal_usd?: number | null;
   
   // Payment configuration
-  number_of_payments: number | null;
-  sf_multiple_payments: boolean | null;
+  number_of_payments?: number | null;
+  sf_multiple_payments?: boolean | null;
   
   // Related entities
-  client_id: string | null;
-  property_id: string | null;
-  property_unit_id: string | null;
-  site_submit_id: string | null;
+  client_id?: string | null;
+  property_id?: string | null;
+  property_unit_id?: string | null;
+  site_submit_id?: string | null;
   
   // Additional missing properties from error messages
   assignment_id?: string | null;

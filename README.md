@@ -18,7 +18,51 @@ A comprehensive React application for managing real estate deals, payments, comm
 
 ## Recent Updates
 
-### Property Management System (Latest)
+### Property Contact Management System (Latest)
+A many-to-many property-contact relationship system has been implemented with a dedicated sidebar interface for managing property contacts:
+
+#### Property Contact Junction Table
+- **Database Table**: `property_contact` - Junction table linking properties to contacts
+- **Many-to-Many Relationship**: Each property can have multiple contacts; each contact can be associated with multiple properties
+- **Salesforce Integration**: Maps from Salesforce `J_Property_2_Contacts__c` table
+- **Migration Script**: Complete migration with deduplication logic in `_master_migration_script.sql`
+
+#### ContactsSidebar Component
+- **ContactsSidebar** (`src/components/property/ContactsSidebar.tsx`)
+  - Right-sliding modal sidebar for property contacts
+  - Fetches contacts through `property_contact` junction table
+  - Displays contact hierarchy: Name, Company, Title, Contact Info
+  - Visual badges for Primary contacts and Deal-related contacts
+  - Click-to-call and click-to-email functionality
+  - Supports both work phone and mobile phone display
+  - Loading states, error handling, and empty state management
+  - "Add Contact" functionality ready for future implementation
+
+#### Enhanced Property Header
+- **PropertyHeader** (`src/components/property/PropertyHeader.tsx`)
+  - Added contacts button (blue people icon) in property action bar
+  - Removed "Contact Made" field and stage display for cleaner interface
+  - Integrated with ContactsSidebar for seamless contact access
+
+#### Database Schema Updates
+- **property_contact table**: Complete junction table with Salesforce field mapping
+- **Foreign Key Relationships**: Proper constraints to `contact(id)`, `property(id)`, and `user(id)`
+- **Unique Constraints**: Prevents duplicate property-contact relationships
+- **Indexes**: Performance optimization for property and contact lookups
+- **TypeScript Integration**: Full type definitions in `database-schema.ts`
+
+#### Key Features
+1. **Many-to-Many Contact Management**: Properties can have multiple contacts (owners, tenants, property managers, etc.)
+2. **Sidebar Interface**: Non-intrusive contact viewing with slide-out design
+3. **Contact Hierarchy Display**: Name → Company → Title → Contact Information
+4. **Multiple Phone Support**: Shows both work and mobile numbers with appropriate icons
+5. **Interactive Contact Actions**: Click-to-call and click-to-email functionality
+6. **Primary Contact Identification**: Visual indication of the property's main contact
+7. **Deal Contact Integration**: Shows contacts associated through deal relationships
+8. **Salesforce Data Integration**: Direct import from Salesforce junction table with deduplication
+9. **Future-Ready Add Contact**: Interface prepared for contact creation functionality
+
+### Property Management System
 A comprehensive property management system has been implemented with streamlined property creation and detailed management workflows:
 
 #### New Property Creation Flow
