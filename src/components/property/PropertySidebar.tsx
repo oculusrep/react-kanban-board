@@ -4,6 +4,7 @@ import { Database } from '../../../database-schema';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type Deal = Database['public']['Tables']['deal']['Row'];
+type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 
 interface PropertyContactWithDetails extends Contact {
   isPrimaryContact?: boolean;
@@ -185,6 +186,40 @@ interface DealItemProps {
   onClick?: (dealId: string) => void;
 }
 
+// Site Submit Item Component
+interface SiteSubmitItemProps {
+  siteSubmit: SiteSubmit;
+  onClick?: (siteSubmitId: string) => void;
+}
+
+const SiteSubmitItem: React.FC<SiteSubmitItemProps> = ({ siteSubmit, onClick }) => (
+  <div 
+    className="p-2 hover:bg-green-50 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 group"
+    onClick={() => onClick?.(siteSubmit.id)}
+  >
+    <div className="flex items-center justify-between">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center space-x-2">
+          <p className="text-sm font-medium text-gray-900 truncate group-hover:text-green-900">
+            {siteSubmit.site_submit_name || siteSubmit.sf_account || 'Unnamed Submit'}
+          </p>
+          <svg className="w-3 h-3 text-gray-400 group-hover:text-green-600 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+        </div>
+        <div className="flex items-center justify-between mt-1">
+          <p className="text-xs text-green-600 font-medium">
+            {siteSubmit.submit_stage?.name || siteSubmit.sf_submit_stage || 'No stage'}
+          </p>
+          <p className="text-xs text-gray-500 truncate ml-2">
+            {siteSubmit.client?.client_name || 'No client'}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
 const DealItem: React.FC<DealItemProps> = ({ deal, onClick }) => (
   <div 
     className="p-2 hover:bg-blue-50 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 group"
@@ -200,13 +235,12 @@ const DealItem: React.FC<DealItemProps> = ({ deal, onClick }) => (
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
           </svg>
         </div>
-        <p className="text-xs text-gray-500">{deal.deal_stage || 'No stage'}</p>
         <div className="flex items-center justify-between mt-1">
-          <p className="text-sm font-medium text-green-600">
-            ${deal.deal_size?.toLocaleString() || '0'}
+          <p className="text-xs text-blue-600 font-medium">
+            {deal.deal_stage?.label || 'No stage'}
           </p>
-          <p className="text-xs text-gray-400">
-            {deal.close_date ? new Date(deal.close_date).toLocaleDateString() : 'No close date'}
+          <p className="text-xs text-gray-500 truncate ml-2">
+            {deal.client?.client_name || 'No client'}
           </p>
         </div>
       </div>
@@ -223,6 +257,7 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
 }) => {
   const [contacts, setContacts] = useState<PropertyContactWithDetails[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -230,7 +265,7 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
   const getSmartDefaults = () => ({
     contacts: contacts.length > 0,
     deals: deals.length > 0,
-    siteSubmits: false
+    siteSubmits: siteSubmits.length > 0
   });
 
   const [expandedSidebarModules, setExpandedSidebarModules] = useState(() => {
@@ -301,15 +336,42 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
 
         setContacts(contactsData);
 
-        // Load deals
+        // Load deals with account name and stage information
         const { data: dealsData, error: dealsError } = await supabase
           .from('deal')
-          .select('*')
+          .select(`
+            *,
+            deal_stage (
+              label,
+              sort_order
+            ),
+            client!client_id (
+              client_name
+            )
+          `)
           .eq('property_id', propertyId)
           .order('created_at', { ascending: false });
 
         if (dealsError) throw dealsError;
         setDeals(dealsData || []);
+
+        // Load site submits
+        const { data: siteSubmitsData, error: siteSubmitsError } = await supabase
+          .from('site_submit')
+          .select(`
+            *,
+            submit_stage (
+              name
+            ),
+            client!client_id (
+              client_name
+            )
+          `)
+          .eq('property_id', propertyId)
+          .order('created_at', { ascending: false });
+
+        if (siteSubmitsError) throw siteSubmitsError;
+        setSiteSubmits(siteSubmitsData || []);
 
 
       } catch (err) {
@@ -332,7 +394,7 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
         return saved ? JSON.parse(saved) : defaults;
       });
     }
-  }, [contacts.length, deals.length, loading, propertyId]);
+  }, [contacts.length, deals.length, siteSubmits.length, loading, propertyId]);
 
   const toggleSidebarModule = (module: keyof typeof expandedSidebarModules) => {
     const newState = {
@@ -424,14 +486,20 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
             {/* Site Submits */}
             <SidebarModule
               title="Site Submits"
-              count={0}
+              count={siteSubmits.length}
               onAddNew={() => console.log('Add new site submit')}
               isExpanded={expandedSidebarModules.siteSubmits}
               onToggle={() => toggleSidebarModule('siteSubmits')}
               icon="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-              isEmpty={true}
+              isEmpty={siteSubmits.length === 0}
             >
-              {/* Placeholder - no site submits yet */}
+              {siteSubmits.map(siteSubmit => (
+                <SiteSubmitItem 
+                  key={siteSubmit.id} 
+                  siteSubmit={siteSubmit} 
+                  onClick={(id) => console.log('Navigate to site submit:', id)}
+                />
+              ))}
             </SidebarModule>
           </>
         )}
