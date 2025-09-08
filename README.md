@@ -18,7 +18,43 @@ A comprehensive React application for managing real estate deals, payments, comm
 
 ## Recent Updates
 
-### Property Contact Management System (Latest)
+### Enhanced Property Sidebar with Comprehensive Data Integration (Latest)
+The PropertySidebar has been significantly enhanced with improved data display and new functionality:
+
+#### Deal Summary Improvements
+- **Business-Focused Display**: Deal summaries now show stage names and client names instead of dollar amounts
+- **Stage Integration**: Proper join with `deal_stage` table to display actual stage labels (e.g., "Prospecting", "Negotiation")
+- **Client Name Display**: Join with `client` table via `client_id` foreign key to show real client names
+- **Professional Theming**: Blue-themed deal items with hover effects and clickable external link icons
+- **Navigation Ready**: Click handlers prepared for navigation to deal detail screens
+
+#### Site Submits Integration  
+- **Complete Site Submit Management**: New section displaying all site submits for a property
+- **Data Relationships**: Joins with `submit_stage` and `client` tables for comprehensive information
+- **Green Theming**: Distinct visual identity with green hover effects to differentiate from deals
+- **Stage and Client Display**: Shows submit stage names and associated client names
+- **Smart Expansion**: Automatically expands when site submits are present
+
+#### Property Units Management Enhancement
+- **Repositioned Section**: Moved Property Units between Location and Financial sections for better workflow
+- **Enhanced Summary Display**: Single units show actual unit names instead of generic "1 unit" text
+- **Per-Square-Foot Metrics**: Display rent and NNN as per-sqft rates with proper USD formatting
+- **Professional Currency Formatting**: Consistent 2-decimal place formatting across all monetary fields
+- **Improved Field Labels**: Removed "Monthly" from rent labels as values represent per-sqft rates
+
+#### Database Integration Enhancements
+- **Proper Foreign Key Relationships**: Correct joins using `client!client_id` syntax to resolve ambiguous relationships
+- **Schema Compatibility**: Fixed field name mismatches (using `label` instead of `name` for deal_stage)
+- **Optimized Queries**: Efficient data loading with proper field selection and ordering
+- **Error Handling**: Robust error handling for missing relationships and data
+
+#### Technical Improvements
+- **State Management**: Enhanced sidebar state with site submits integration
+- **Smart Defaults**: Intelligent expansion states based on data availability
+- **Performance Optimization**: Efficient database queries with proper field selection
+- **TypeScript Integration**: Full type safety with database schema types
+
+### Property Contact Management System
 A many-to-many property-contact relationship system has been implemented with a dedicated sidebar interface for managing property contacts:
 
 #### Property Contact Junction Table
