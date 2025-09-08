@@ -223,3 +223,6 @@ npm run dev
 
 ## Database
 The application uses Supabase for data persistence. Ensure your database schema includes the latest migration updates for disbursement tracking.
+
+### Critical Files
+**⚠️ IMPORTANT**: The `_master_migration_script.sql` file contains the complete database schema and essential migrations. **NEVER DELETE THIS FILE** - it is critical for database setup and contains all table structures, relationships, and data integrity constraints.
