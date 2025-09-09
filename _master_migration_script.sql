@@ -747,6 +747,11 @@ CREATE INDEX IF NOT EXISTS idx_deal_contact_primary ON deal_contact(deal_id, pri
 -- Final Setup and Constraints
 -- ==============================================================================
 
+-- Make sf_id nullable for legacy tables (not required for new records)
+ALTER TABLE site_submit ALTER COLUMN sf_id DROP NOT NULL;
+ALTER TABLE property_unit ALTER COLUMN sf_id DROP NOT NULL;
+ALTER TABLE deal_contact ALTER COLUMN sf_id DROP NOT NULL;
+
 -- Helpful index for joins
 CREATE INDEX IF NOT EXISTS idx_site_submit_sf_id ON site_submit(sf_id);
 

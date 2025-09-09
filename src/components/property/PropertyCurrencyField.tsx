@@ -25,6 +25,7 @@ const PropertyCurrencyField: React.FC<PropertyCurrencyFieldProps> = ({
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const formatCurrency = (amount: number | null): string => {
     if (amount === null || amount === undefined) return '$0.00';
@@ -36,7 +37,7 @@ const PropertyCurrencyField: React.FC<PropertyCurrencyFieldProps> = ({
     }).format(amount);
   };
 
-  const displayValue = value !== null && value !== undefined ? formatCurrency(value) : '';
+  const displayValue = value !== null && value !== undefined ? formatCurrency(value) : 'Not set';
 
   const colorClasses = {
     green: 'text-green-700',
@@ -47,8 +48,12 @@ const PropertyCurrencyField: React.FC<PropertyCurrencyFieldProps> = ({
   };
 
   const handleStartEdit = (initialValue?: string) => {
-    if (disabled) return;
+    if (disabled || isSaving) return;
+    console.log(`[${label}] Starting edit, current value:`, value, 'initialValue:', initialValue);
     setIsEditing(true);
+    setIsSaving(false); // Reset saving flag
+    // If initialValue is provided (user typed a character), use it
+    // Otherwise use the raw numeric value, not the formatted display
     setEditValue(initialValue !== undefined ? initialValue : (value?.toString() || ''));
   };
 
@@ -58,9 +63,18 @@ const PropertyCurrencyField: React.FC<PropertyCurrencyFieldProps> = ({
   };
 
   const handleSave = () => {
+    if (isSaving) return; // Prevent double saves
+    setIsSaving(true);
+    
     const numericValue = parseFloat(editValue.replace(/[^0-9.-]/g, '')) || null;
+    console.log(`[${label}] Saving value:`, editValue, '→', numericValue);
+    
     onChange(numericValue);
     setIsEditing(false);
+    setEditValue('');
+    
+    // Reset saving flag after a brief delay
+    setTimeout(() => setIsSaving(false), 100);
   };
 
   const handleCancel = () => {
@@ -89,8 +103,19 @@ const PropertyCurrencyField: React.FC<PropertyCurrencyFieldProps> = ({
           inputMode="decimal"
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
-          onBlur={handleSave}
+          onBlur={(e) => {
+            // Use a small delay to prevent conflicts with other events
+            setTimeout(() => {
+              if (isEditing && !isSaving) {
+                handleSave();
+              }
+            }, 50);
+          }}
           onKeyDown={handleKeyDown}
+          onFocus={(e) => {
+            // Select all text when focused for easy replacement
+            setTimeout(() => e.target.select(), 0);
+          }}
           placeholder={placeholder}
           className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-base min-h-[44px]"
           tabIndex={tabIndex}

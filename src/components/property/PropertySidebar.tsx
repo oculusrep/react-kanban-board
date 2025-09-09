@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Database } from '../../../database-schema';
+import SiteSubmitFormModal from '../SiteSubmitFormModal';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type Deal = Database['public']['Tables']['deal']['Row'];
@@ -211,6 +212,11 @@ const SiteSubmitItem: React.FC<SiteSubmitItemProps> = ({ siteSubmit, onClick }) 
           <p className="text-xs text-green-600 font-medium">
             {siteSubmit.submit_stage?.name || siteSubmit.sf_submit_stage || 'No stage'}
           </p>
+          {siteSubmit.property_unit?.property_unit_name && (
+            <p className="text-xs text-gray-600 font-medium">
+              {siteSubmit.property_unit.property_unit_name}
+            </p>
+          )}
           <p className="text-xs text-gray-500 truncate ml-2">
             {siteSubmit.client?.client_name || 'No client'}
           </p>
@@ -260,6 +266,8 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false);
+  const [editingSiteSubmitId, setEditingSiteSubmitId] = useState<string | null>(null);
 
   // Expansion states
   const getSmartDefaults = () => ({
@@ -365,6 +373,9 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
             ),
             client!client_id (
               client_name
+            ),
+            property_unit (
+              property_unit_name
             )
           `)
           .eq('property_id', propertyId)
@@ -415,12 +426,13 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
   };
 
   return (
-    <div 
-      className={`fixed right-0 top-0 h-full w-[500px] bg-white border-l border-gray-200 shadow-xl transform transition-transform duration-300 ${
-        isOpen ? 'translate-x-0' : 'translate-x-full'
-      } z-40 overflow-y-auto`}
-      style={{ top: '180px', height: 'calc(100vh - 180px)' }}
-    >
+    <>
+      <div 
+        className={`fixed right-0 top-0 h-full w-[500px] bg-white border-l border-gray-200 shadow-xl transform transition-transform duration-300 ${
+          isOpen ? 'translate-x-0' : 'translate-x-full'
+        } z-40 overflow-y-auto`}
+        style={{ top: '180px', height: 'calc(100vh - 180px)' }}
+      >
       <div className="p-3">
         {loading ? (
           <div className="p-4 space-y-3">
@@ -487,7 +499,10 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
             <SidebarModule
               title="Site Submits"
               count={siteSubmits.length}
-              onAddNew={() => console.log('Add new site submit')}
+              onAddNew={() => {
+                setEditingSiteSubmitId(null);
+                setShowSiteSubmitModal(true);
+              }}
               isExpanded={expandedSidebarModules.siteSubmits}
               onToggle={() => toggleSidebarModule('siteSubmits')}
               icon="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
@@ -497,14 +512,39 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
                 <SiteSubmitItem 
                   key={siteSubmit.id} 
                   siteSubmit={siteSubmit} 
-                  onClick={(id) => console.log('Navigate to site submit:', id)}
+                  onClick={(id) => {
+                    setEditingSiteSubmitId(id);
+                    setShowSiteSubmitModal(true);
+                  }}
                 />
               ))}
             </SidebarModule>
           </>
         )}
       </div>
-    </div>
+      </div>
+
+      {/* Site Submit Form Modal - Outside sidebar container for proper z-index layering */}
+      <SiteSubmitFormModal
+        isOpen={showSiteSubmitModal}
+        onClose={() => {
+          setShowSiteSubmitModal(false);
+          setEditingSiteSubmitId(null);
+        }}
+        siteSubmitId={editingSiteSubmitId}
+        propertyId={propertyId}
+        onSave={(newSiteSubmit) => {
+          setSiteSubmits(prev => [newSiteSubmit, ...prev]);
+          setShowSiteSubmitModal(false);
+        }}
+        onUpdate={(updatedSiteSubmit) => {
+          setSiteSubmits(prev => 
+            prev.map(ss => ss.id === updatedSiteSubmit.id ? updatedSiteSubmit : ss)
+          );
+          setShowSiteSubmitModal(false);
+        }}
+      />
+    </>
   );
 };
 

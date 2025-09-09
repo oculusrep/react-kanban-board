@@ -1,4 +1,6 @@
-export type Json =
+Need to install the following packages:
+supabase@2.40.7
+Ok to proceed? (y) export type Json =
   | string
   | number
   | boolean
@@ -1264,7 +1266,7 @@ export type Database = {
           role_id: string | null
           sf_contact_id: string | null
           sf_created_by: string | null
-          sf_id: string
+          sf_id: string | null
           sf_modified_by: string | null
           sf_opportunity_id: string | null
           updated_at: string | null
@@ -1280,7 +1282,7 @@ export type Database = {
           role_id?: string | null
           sf_contact_id?: string | null
           sf_created_by?: string | null
-          sf_id: string
+          sf_id?: string | null
           sf_modified_by?: string | null
           sf_opportunity_id?: string | null
           updated_at?: string | null
@@ -1296,7 +1298,7 @@ export type Database = {
           role_id?: string | null
           sf_contact_id?: string | null
           sf_created_by?: string | null
-          sf_id?: string
+          sf_id?: string | null
           sf_modified_by?: string | null
           sf_opportunity_id?: string | null
           updated_at?: string | null
@@ -2464,7 +2466,7 @@ export type Database = {
           property_unit_name: string | null
           rent: number | null
           second_gen_restaurant: boolean | null
-          sf_id: string
+          sf_id: string | null
           site_submit_id: string | null
           sqft: number | null
           unit_notes: string | null
@@ -2488,7 +2490,7 @@ export type Database = {
           property_unit_name?: string | null
           rent?: number | null
           second_gen_restaurant?: boolean | null
-          sf_id: string
+          sf_id?: string | null
           site_submit_id?: string | null
           sqft?: number | null
           unit_notes?: string | null
@@ -2512,7 +2514,7 @@ export type Database = {
           property_unit_name?: string | null
           rent?: number | null
           second_gen_restaurant?: boolean | null
-          sf_id?: string
+          sf_id?: string | null
           site_submit_id?: string | null
           sqft?: number | null
           unit_notes?: string | null
@@ -7282,7 +7284,7 @@ export type Database = {
           sf_account: string | null
           sf_created_by_id: string | null
           sf_deal_type: string | null
-          sf_id: string
+          sf_id: string | null
           sf_opportunity_stage: string | null
           sf_priority: string | null
           sf_property_id: string | null
@@ -7326,7 +7328,7 @@ export type Database = {
           sf_account?: string | null
           sf_created_by_id?: string | null
           sf_deal_type?: string | null
-          sf_id: string
+          sf_id?: string | null
           sf_opportunity_stage?: string | null
           sf_priority?: string | null
           sf_property_id?: string | null
@@ -7370,7 +7372,7 @@ export type Database = {
           sf_account?: string | null
           sf_created_by_id?: string | null
           sf_deal_type?: string | null
-          sf_id?: string
+          sf_id?: string | null
           sf_opportunity_stage?: string | null
           sf_priority?: string | null
           sf_property_id?: string | null

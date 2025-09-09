@@ -79,6 +79,10 @@ const PropertyPSFField: React.FC<PropertyPSFFieldProps> = ({
           onChange={(e) => setEditValue(e.target.value)}
           onBlur={handleSave}
           onKeyDown={handleKeyDown}
+          onFocus={(e) => {
+            // Select all text when focused for easy replacement
+            setTimeout(() => e.target.select(), 0);
+          }}
           placeholder={placeholder}
           className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-base min-h-[44px]"
           tabIndex={tabIndex}

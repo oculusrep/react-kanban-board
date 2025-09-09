@@ -18,7 +18,60 @@ A comprehensive React application for managing real estate deals, payments, comm
 
 ## Recent Updates
 
-### Enhanced Property Sidebar with Comprehensive Data Integration (Latest)
+### Site Submit Management System with Enhanced User Experience (Latest)
+A comprehensive site submit creation and management system has been implemented with intelligent form automation and improved user interaction:
+
+#### Site Submit Form Modal
+- **SiteSubmitFormModal** (`src/components/SiteSubmitFormModal.tsx`)
+  - Full-featured slide-out modal for creating and editing site submits directly from property sidebar
+  - Comprehensive field set: site_submit_name, client selection, property/unit selection, assignment tracking, submit stages, dates (submitted, LOI, delivery), financial data (year_1_rent, TI), location verification (lat/long), notes fields, and metadata
+  - **Automatic Name Generation**: Intelligent site submit naming using "Client Name - Property Name" format
+    - Auto-generates on client selection with property context
+    - Updates automatically when client or property changes
+    - User override capability - stops auto-generation once manually edited
+    - Preserves existing names when editing site submits
+  - **Smart Form Behavior**: Responsive design with drawer on desktop, full-screen on mobile
+  - **Database Integration**: Full CRUD operations with relationship data loading for real-time sidebar updates
+
+#### Enhanced Currency Field Components
+- **PropertyCurrencyField** & **PropertyPSFField** improvements:
+  - **Automatic Text Selection**: Click any currency field to automatically select all text for easy replacement
+  - **Improved Edit State Management**: Added `isSaving` protection to prevent double-saves and race conditions
+  - **Enhanced Timing Controls**: Delayed onBlur handling to prevent conflicts with focus events
+  - **No Automatic Calculations**: Currency fields store exactly what users type - no transformations or monthly conversions
+  - **Professional USD Formatting**: Consistent 2-decimal place display with proper currency symbols
+  - **Reliable Single-Entry**: Fixed NNN field issue that previously required multiple attempts to enter values
+
+#### Property Sidebar Enhancements
+- **Site Submit Summary Display**: Added property unit names to sidebar summary rows
+  - Format: Stage → Property Unit → Client Name (unit only shows if assigned)
+  - Updated database queries to include property_unit relationship data
+  - Conditional display - no label if property unit is null/blank
+  - Enhanced data loading with proper relationship joins
+
+#### Database Schema Updates
+- **Legacy Field Handling**: Updated `_master_migration_script.sql` to make `sf_id` nullable
+  - Resolved "null value in column 'sf_id' violates not-null constraint" errors
+  - Applied to site_submit, property_unit, and deal_contact tables
+  - Maintains Salesforce integration for legacy data while allowing new records without sf_id requirement
+- **Relationship Query Optimization**: Enhanced site submit queries to fetch stage and client data for real-time sidebar updates
+
+#### Key User Experience Improvements
+1. **Streamlined Site Submit Creation**: Create and edit site submits without leaving property context
+2. **Intelligent Form Automation**: Auto-generated naming reduces manual input while maintaining flexibility
+3. **Improved Currency Input**: Professional financial data entry with reliable single-attempt input
+4. **Enhanced Data Visibility**: Property unit context in sidebar summaries for better site submit identification
+5. **Database Constraint Resolution**: Fixed legacy field issues preventing new record creation
+6. **Real-Time Updates**: Sidebar automatically refreshes with relationship data after save operations
+
+#### Technical Enhancements
+- **State Management**: Enhanced modal state handling with edit mode detection
+- **Form Validation**: Comprehensive validation with error handling and user feedback
+- **Type Safety**: Full TypeScript integration with database schema types
+- **Performance**: Optimized database queries with selective field loading and proper joins
+- **Error Handling**: Robust error handling for database constraints and validation issues
+
+### Enhanced Property Sidebar with Comprehensive Data Integration
 The PropertySidebar has been significantly enhanced with improved data display and new functionality:
 
 #### Deal Summary Improvements

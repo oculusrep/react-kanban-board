@@ -42,24 +42,51 @@ const CurrencyField: React.FC<{
   value: number | null;
   onChange: (value: number | null) => void;
   helpText?: string;
-}> = ({ label, value, onChange, helpText }) => (
-  <div>
-    <label className="block text-sm font-medium text-gray-700 mb-1">
-      {label}
-    </label>
-    <div className="relative">
-      <span className="absolute left-3 top-2 text-gray-500 text-sm">$</span>
-      <input
-        type="number"
-        step="0.01"
-        value={value ? value.toFixed(2) : ''}
-        onChange={(e) => onChange(e.target.value ? parseFloat(e.target.value) : null)}
-        className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-      />
+}> = ({ label, value, onChange, helpText }) => {
+  const [displayValue, setDisplayValue] = useState<string>('');
+  
+  // Update display value when prop value changes
+  useEffect(() => {
+    if (value === null || value === undefined) {
+      setDisplayValue('');
+    } else {
+      setDisplayValue(value.toFixed(2));
+    }
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputValue = e.target.value;
+    console.log(`[${label}] User typed:`, inputValue);
+    setDisplayValue(inputValue);
+    
+    // Parse and store the exact value entered (no calculations)
+    const numericValue = inputValue === '' ? null : parseFloat(inputValue);
+    console.log(`[${label}] Parsed value:`, numericValue);
+    console.log(`[${label}] Calling onChange with:`, numericValue);
+    onChange(numericValue);
+  };
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        {label}
+      </label>
+      <div className="relative">
+        <span className="absolute left-3 top-2 text-gray-500 text-sm">$</span>
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          value={displayValue}
+          onChange={handleChange}
+          placeholder="0.00"
+          className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+        />
+      </div>
+      {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
     </div>
-    {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
-  </div>
-);
+  );
+};
 
 const CheckboxField: React.FC<{
   label: string;
@@ -106,6 +133,20 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
           .order('property_unit_name');
 
         if (unitsError) throw unitsError;
+        
+        console.log('[loadUnits] Data from database:', data);
+        if (data) {
+          data.forEach((unit, index) => {
+            console.log(`[loadUnits] Unit ${index + 1}:`, {
+              name: unit.property_unit_name,
+              rent: unit.rent,
+              nnn: unit.nnn,
+              rentType: typeof unit.rent,
+              nnnType: typeof unit.nnn
+            });
+          });
+        }
+        
         setUnits(data || []);
         onUnitsChange?.(data || []);
       } catch (err) {
@@ -154,10 +195,14 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
   };
 
   const updateUnit = async (unitId: string, field: keyof PropertyUnit, value: any) => {
+    console.log(`[updateUnit] Updating unit ${unitId}, field: ${field}, value:`, value, typeof value);
     try {
+      const updateData = { [field]: value };
+      console.log(`[updateUnit] Sending to database:`, updateData);
+      
       const { error } = await supabase
         .from('property_unit')
-        .update({ [field]: value })
+        .update(updateData)
         .eq('id', unitId);
 
       if (error) throw error;
@@ -165,6 +210,7 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
       const updatedUnits = units.map(unit => 
         unit.id === unitId ? { ...unit, [field]: value } : unit
       );
+      console.log(`[updateUnit] Updated unit in array:`, updatedUnits.find(u => u.id === unitId));
       setUnits(updatedUnits);
       onUnitsChange?.(updatedUnits);
     } catch (err) {
@@ -221,10 +267,10 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
         summary += ` • ${unit.sqft.toLocaleString()} sqft`;
       }
       if (unit.rent) {
-        summary += ` • $${unit.rent.toFixed(2)}/sqft rent`;
+        summary += ` • $${unit.rent.toFixed(2)} rent`;
       }
       if (unit.nnn) {
-        summary += ` • $${unit.nnn.toFixed(2)}/sqft NNN`;
+        summary += ` • $${unit.nnn.toFixed(2)} NNN`;
       }
       return summary;
     }
@@ -239,10 +285,10 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
       summary += ` • ${totalSqft.toLocaleString()} total sqft`;
     }
     if (totalRent > 0) {
-      summary += ` • $${totalRent.toFixed(2)}/sqft total rent`;
+      summary += ` • $${totalRent.toLocaleString()} total rent`;
     }
     if (totalNNN > 0) {
-      summary += ` • $${totalNNN.toFixed(2)}/sqft total NNN`;
+      summary += ` • $${totalNNN.toLocaleString()} total NNN`;
     }
     
     return summary;
