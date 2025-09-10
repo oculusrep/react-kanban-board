@@ -158,6 +158,12 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
       
       // Save to database immediately
       const saveCommissionChange = async () => {
+        // Don't auto-save for new deals (id is null)
+        if (!form.id) {
+          console.log("Skipping auto-save for new deal");
+          return;
+        }
+
         const { data, error } = await supabase
           .from("deal")
           .update({ 
@@ -257,30 +263,49 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
     if (Object.keys(v).length > 0) return; // stop save on validation errors
 
     setSaving(true);
-    const updatePayload = {
-  deal_name: form.deal_name,
-  client_id: form.client_id,
-  property_id: form.property_id,
-  property_unit_id: form.property_unit_id,
-  site_submit_id: form.site_submit_id,
-  deal_value: form.deal_value,
-  commission_percent: form.commission_percent,
-  flat_fee_override: form.flat_fee_override,
-  fee: calculatedFee,
-  target_close_date: form.target_close_date,
-  loi_signed_date: form.loi_signed_date,
-  closed_date: form.closed_date,
-  probability: form.probability,
-  deal_team_id: form.deal_team_id,
-  stage_id: form.stage_id,
-  updated_at: new Date().toISOString(), // ADD THIS LINE
-};
-    const { data, error } = await supabase
-      .from("deal")
-      .update(updatePayload)
-      .eq("id", form.id)
-      .select()
-      .single();
+    const dealPayload = {
+      deal_name: form.deal_name,
+      client_id: form.client_id,
+      property_id: form.property_id,
+      property_unit_id: form.property_unit_id,
+      site_submit_id: form.site_submit_id,
+      deal_value: form.deal_value,
+      commission_percent: form.commission_percent,
+      flat_fee_override: form.flat_fee_override,
+      fee: calculatedFee,
+      target_close_date: form.target_close_date,
+      loi_signed_date: form.loi_signed_date,
+      closed_date: form.closed_date,
+      probability: form.probability,
+      deal_team_id: form.deal_team_id,
+      stage_id: form.stage_id,
+      updated_at: new Date().toISOString(),
+    };
+
+    let data, error;
+    
+    if (form.id) {
+      // Update existing deal
+      const result = await supabase
+        .from("deal")
+        .update(dealPayload)
+        .eq("id", form.id)
+        .select()
+        .single();
+      data = result.data;
+      error = result.error;
+    } else {
+      // Insert new deal
+      dealPayload.created_at = new Date().toISOString();
+      const result = await supabase
+        .from("deal")
+        .insert([dealPayload])
+        .select()
+        .single();
+      data = result.data;
+      error = result.error;
+    }
+    
     setSaving(false);
     if (error) alert("Error saving: " + error.message);
     else if (data) onSave(data);
