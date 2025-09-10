@@ -120,6 +120,41 @@ ON CONFLICT (label) DO UPDATE SET
 -- Ensure site_submit_id column exists on deal (safe to run every time)
 ALTER TABLE deal ADD COLUMN IF NOT EXISTS site_submit_id uuid;
 
+-- ==============================================================================
+-- Missing Foreign Key Constraints (CRITICAL FIX)
+-- ==============================================================================
+-- Note: Lookup tables (property_type, property_stage, etc.) already exist manually
+-- We just need to add the missing foreign key relationships
+
+-- Add client_id foreign key constraint to contact table
+-- This was missing and causing search relationship issues
+ALTER TABLE contact DROP CONSTRAINT IF EXISTS fk_contact_client_id;
+ALTER TABLE contact ADD CONSTRAINT fk_contact_client_id 
+    FOREIGN KEY (client_id) REFERENCES client(id) ON DELETE SET NULL;
+
+-- Add property table foreign key constraints to existing lookup tables
+ALTER TABLE property DROP CONSTRAINT IF EXISTS fk_property_type_id;
+ALTER TABLE property ADD CONSTRAINT fk_property_type_id 
+    FOREIGN KEY (property_type_id) REFERENCES property_type(id) ON DELETE SET NULL;
+
+ALTER TABLE property DROP CONSTRAINT IF EXISTS fk_property_stage_id;
+ALTER TABLE property ADD CONSTRAINT fk_property_stage_id 
+    FOREIGN KEY (property_stage_id) REFERENCES property_stage(id) ON DELETE SET NULL;
+
+ALTER TABLE property DROP CONSTRAINT IF EXISTS fk_property_record_type_id;
+ALTER TABLE property ADD CONSTRAINT fk_property_record_type_id 
+    FOREIGN KEY (property_record_type_id) REFERENCES property_record_type(id) ON DELETE SET NULL;
+
+-- Add deal table foreign key constraint to deal_stage lookup table
+ALTER TABLE deal DROP CONSTRAINT IF EXISTS fk_deal_stage_id;
+ALTER TABLE deal ADD CONSTRAINT fk_deal_stage_id 
+    FOREIGN KEY (stage_id) REFERENCES deal_stage(id) ON DELETE SET NULL;
+
+-- Add site_submit table foreign key constraint to submit_stage lookup table
+ALTER TABLE site_submit DROP CONSTRAINT IF EXISTS fk_site_submit_stage_id;
+ALTER TABLE site_submit ADD CONSTRAINT fk_site_submit_stage_id 
+    FOREIGN KEY (submit_stage_id) REFERENCES submit_stage(id) ON DELETE SET NULL;
+
 -- Ensure kanban_position column exists on deal (CRM-specific field, not from Salesforce)
 ALTER TABLE deal ADD COLUMN IF NOT EXISTS kanban_position INTEGER;
 

@@ -1,5 +1,5 @@
 // src/pages/DealDetailsPage.tsx
-import { useParams } from "react-router-dom";
+import { useParams, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import DealDetailsForm from "../components/DealDetailsForm";
@@ -12,42 +12,103 @@ import PaymentTab from '../components/PaymentTab';
 import DealHeaderBar from '../components/DealHeaderBar';
 
 export default function DealDetailsPage() {
-  const { dealId } = useParams();
+  const { dealId } = useParams<{ dealId: string }>();
+  const location = useLocation();
   const [deal, setDeal] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [isNewDeal, setIsNewDeal] = useState(false);
   
-  // Get contact count for the floating button badge
-  const { contacts } = useDealContacts(dealId || null);
+  console.log('DealDetailsPage - location:', location.pathname, 'dealId from params:', dealId);
+  
+  // Fallback: if dealId is undefined but pathname is /deal/new, treat as new deal
+  const actualDealId = dealId || (location.pathname === '/deal/new' ? 'new' : undefined);
+  
+  // Get contact count for the floating button badge (only for existing deals)
+  const { contacts } = useDealContacts(actualDealId && actualDealId !== 'new' ? actualDealId : null);
 
   useEffect(() => {
     const fetchDeal = async () => {
+      if (actualDealId === 'new') {
+        console.log('Creating new blank deal...');
+        // Create a blank deal object for new deals
+        const blankDeal = {
+          id: null,
+          deal_name: '',
+          client_id: null,
+          property_id: null,
+          deal_stage_id: null,
+          sf_broker: '',
+          sf_address: '',
+          sf_close_date: null,
+          sf_contract_date: null,
+          sf_list_date: null,
+          deal_side: null,
+          commission_rate: null,
+          gross_commission: null,
+          net_commission: null,
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        console.log('Blank deal created:', blankDeal);
+        setDeal(blankDeal);
+        setIsNewDeal(true);
+        return;
+      }
+
+      console.log('Fetching existing deal with ID:', actualDealId);
       const { data, error } = await supabase
         .from("deal")
         .select("*")
-        .eq("id", dealId)
+        .eq("id", actualDealId)
         .single();
 
-      if (!error && data) {
+      if (error) {
+        console.error('Error fetching deal:', error);
+      } else if (data) {
+        console.log('Existing deal loaded:', data);
         setDeal(data);
+        setIsNewDeal(false);
       }
     };
 
-    if (dealId) fetchDeal();
-  }, [dealId]);
+    console.log('DealDetailsPage useEffect - actualDealId:', actualDealId, 'type:', typeof actualDealId);
+    
+    if (actualDealId) {
+      console.log('DealDetailsPage useEffect triggered with actualDealId:', actualDealId);
+      fetchDeal();
+    } else {
+      console.log('No actualDealId provided - this should not happen for deal routes');
+    }
+  }, [actualDealId]);
 
   // Shared function to update deal state - used by Overview, Commission, and Payment tabs
   const handleDealUpdate = (updatedDeal: any) => {
     setDeal(updatedDeal);
+    // If this was a new deal that just got saved, update the URL and state
+    if (isNewDeal && updatedDeal.id) {
+      setIsNewDeal(false);
+      // Optional: Update URL to the new deal ID
+      // window.history.replaceState(null, '', `/deal/${updatedDeal.id}`);
+    }
   };
 
   // Handle Payment Tab's async update pattern
   const handleAsyncDealUpdate = async (updates: Partial<any>): Promise<void> => {
     const updatedDeal = { ...deal, ...updates };
     setDeal(updatedDeal);
+    // If this was a new deal that just got saved, update the state
+    if (isNewDeal && updatedDeal.id) {
+      setIsNewDeal(false);
+    }
     return Promise.resolve();
   };
 
-  if (!deal) return <div className="p-4">Loading...</div>;
+  console.log('DealDetailsPage render - deal:', deal, 'dealId:', dealId, 'actualDealId:', actualDealId, 'isNewDeal:', isNewDeal);
+  
+  if (!deal) {
+    return <div className="p-4">{actualDealId === 'new' ? 'Initializing new deal...' : 'Loading...'}</div>;
+  }
 
   return (
     <FloatingPanelManager>
@@ -104,17 +165,47 @@ export default function DealDetailsPage() {
           )}
 
           {activeTab === 'commission' && (
-            <CommissionTab dealId={dealId!} deal={deal} onDealUpdate={handleAsyncDealUpdate} />
+            <>
+              {isNewDeal ? (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                  <div className="flex">
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-yellow-800">Save Deal First</h3>
+                      <div className="mt-2 text-sm text-yellow-700">
+                        <p>Please save the deal in the Overview tab before managing commission details.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <CommissionTab dealId={dealId!} deal={deal} onDealUpdate={handleAsyncDealUpdate} />
+              )}
+            </>
           )}
 
           {activeTab === 'payments' && (
-            <PaymentTab deal={deal} onDealUpdate={handleAsyncDealUpdate} />
+            <>
+              {isNewDeal ? (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                  <div className="flex">
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-yellow-800">Save Deal First</h3>
+                      <div className="mt-2 text-sm text-yellow-700">
+                        <p>Please save the deal in the Overview tab before managing payments.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <PaymentTab deal={deal} onDealUpdate={handleAsyncDealUpdate} />
+              )}
+            </>
           )}
         </div>
       </FloatingPanelContainer>
       
-      {/* Floating Contact Panel */}
-      {dealId && <FloatingContactPanel dealId={dealId} />}
+      {/* Floating Contact Panel - only for existing deals */}
+      {dealId && dealId !== 'new' && <FloatingContactPanel dealId={dealId} />}
     </FloatingPanelManager>
   );
 }

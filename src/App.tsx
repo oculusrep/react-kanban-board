@@ -20,6 +20,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/master-pipeline" replace />} />
             <Route path="/master-pipeline" element={<KanbanBoard />} />
+            <Route path="/deal/new" element={<DealDetailsPage />} />
             <Route path="/deal/:dealId" element={<DealDetailsPage />} />
             <Route path="/property/new" element={<NewPropertyPage />} />
             <Route path="/property/:propertyId" element={<PropertyDetailsPage />} />

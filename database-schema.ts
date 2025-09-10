@@ -825,6 +825,13 @@ export type Database = {
             referencedRelation: "user"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "fk_contact_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
         ]
       }
       contact_contact_type: {
@@ -2160,7 +2167,29 @@ export type Database = {
           verified_longitude?: number | null
           zip?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_property_record_type_id"
+            columns: ["property_record_type_id"]
+            isOneToOne: false
+            referencedRelation: "property_record_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_property_stage_id"
+            columns: ["property_stage_id"]
+            isOneToOne: false
+            referencedRelation: "property_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_property_type_id"
+            columns: ["property_type_id"]
+            isOneToOne: false
+            referencedRelation: "property_type"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       property_contact: {
         Row: {
@@ -7399,6 +7428,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "fk_site_submit_stage_id"
+            columns: ["submit_stage_id"]
+            isOneToOne: false
+            referencedRelation: "submit_stage"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "site_submit_assignment_id_fkey"
             columns: ["assignment_id"]
             isOneToOne: false
@@ -7989,7 +8025,29 @@ export type Database = {
           verified_longitude: number | null
           zip: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_property_record_type_id"
+            columns: ["property_record_type_id"]
+            isOneToOne: false
+            referencedRelation: "property_record_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_property_stage_id"
+            columns: ["property_stage_id"]
+            isOneToOne: false
+            referencedRelation: "property_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_property_type_id"
+            columns: ["property_type_id"]
+            isOneToOne: false
+            referencedRelation: "property_type"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       property_with_stage: {
         Row: {
@@ -8048,7 +8106,29 @@ export type Database = {
           verified_longitude: number | null
           zip: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_property_record_type_id"
+            columns: ["property_record_type_id"]
+            isOneToOne: false
+            referencedRelation: "property_record_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_property_stage_id"
+            columns: ["property_stage_id"]
+            isOneToOne: false
+            referencedRelation: "property_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_property_type_id"
+            columns: ["property_type_id"]
+            isOneToOne: false
+            referencedRelation: "property_type"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       property_with_type: {
         Row: {
@@ -8107,7 +8187,29 @@ export type Database = {
           verified_longitude: number | null
           zip: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_property_record_type_id"
+            columns: ["property_record_type_id"]
+            isOneToOne: false
+            referencedRelation: "property_record_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_property_stage_id"
+            columns: ["property_stage_id"]
+            isOneToOne: false
+            referencedRelation: "property_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_property_type_id"
+            columns: ["property_type_id"]
+            isOneToOne: false
+            referencedRelation: "property_type"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Functions: {

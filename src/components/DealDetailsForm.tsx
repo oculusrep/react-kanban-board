@@ -229,7 +229,7 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
   const validateField = (field: keyof Deal, value: any): Record<string, string> => {
     const out: Record<string, string> = {};
     if (field === "deal_name") {
-      if (!value || String(value).trim().length === 0) out.deal_name = "Opportunity Name is required.";
+      if (!value || String(value).trim().length === 0) out.deal_name = "Deal Name is required.";
     }
     if (field === "deal_value") {
       if (value === null || value === "" || isNaN(Number(value))) out.deal_value = "Enter a number.";
@@ -297,7 +297,7 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
         <div className="grid grid-cols-2 gap-4">
           {/* Row 1: Opportunity (left) + Client (right) */}
           <Input
-            label="Opportunity Name"
+            label="Deal Name"
             value={form.deal_name}
             onChange={(v) => updateField("deal_name", v)}
           />

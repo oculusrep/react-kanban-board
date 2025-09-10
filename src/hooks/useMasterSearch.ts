@@ -49,7 +49,12 @@ export const useMasterSearch = () => {
         console.log('🔍 Searching deals...');
         const { data: deals, error: dealsError } = await supabase
           .from('deal')
-          .select('*')
+          .select(`
+            *,
+            client!client_id (client_name),
+            deal_stage (label, sort_order),
+            property (property_name, address, city, state)
+          `)
           .or(`deal_name.ilike.%${trimmedQuery}%,sf_broker.ilike.%${trimmedQuery}%,sf_address.ilike.%${trimmedQuery}%`)
           .limit(Math.ceil(limit / types.length));
 
@@ -70,13 +75,16 @@ export const useMasterSearch = () => {
             if (brokerMatch) score += 3;
             if (addressMatch) score += 2;
 
+            const address = [deal.property?.address, deal.property?.city, deal.property?.state]
+              .filter(Boolean).join(', ');
+
             searchResults.push({
               id: deal.id,
               type: 'deal',
               title,
-              subtitle: deal.sf_broker || 'Deal',
-              description: deal.sf_address || '',
-              metadata: '',
+              subtitle: deal.client?.client_name || 'No Client',
+              description: deal.property?.property_name || address,
+              metadata: deal.deal_stage?.label || 'No Stage',
               url: `/deal/${deal.id}`,
               score
             });
@@ -123,7 +131,10 @@ export const useMasterSearch = () => {
       if (types.includes('contact')) {
         const { data: contacts, error: contactsError } = await supabase
           .from('contact')
-          .select('*')
+          .select(`
+            *,
+            client!client_id (client_name)
+          `)
           .or(`first_name.ilike.%${trimmedQuery}%,last_name.ilike.%${trimmedQuery}%,company.ilike.%${trimmedQuery}%,email.ilike.%${trimmedQuery}%,title.ilike.%${trimmedQuery}%`)
           .limit(Math.ceil(limit / types.length));
 
@@ -153,7 +164,7 @@ export const useMasterSearch = () => {
               title: displayName,
               subtitle: contact.company || contact.title || 'Contact',
               description: contactInfo,
-              metadata: contact.source_type || '',
+              metadata: contact.client?.client_name || contact.source_type || '',
               url: `/contact/${contact.id}`,
               score
             });
@@ -165,7 +176,11 @@ export const useMasterSearch = () => {
       if (types.includes('property')) {
         const { data: properties, error: propertiesError } = await supabase
           .from('property')
-          .select('*')
+          .select(`
+            *,
+            property_type (label),
+            property_stage (label)
+          `)
           .or(`property_name.ilike.%${trimmedQuery}%,address.ilike.%${trimmedQuery}%,city.ilike.%${trimmedQuery}%,state.ilike.%${trimmedQuery}%,trade_area.ilike.%${trimmedQuery}%`)
           .limit(Math.ceil(limit / types.length));
 
@@ -192,8 +207,8 @@ export const useMasterSearch = () => {
               type: 'property',
               title,
               subtitle: address || 'Property',
-              description: property.trade_area || '',
-              metadata: '',
+              description: property.property_type?.label || property.trade_area || '',
+              metadata: property.property_stage?.label || '',
               url: `/property/${property.id}`,
               score
             });
@@ -203,13 +218,13 @@ export const useMasterSearch = () => {
 
       // Search Site Submits
       if (types.includes('site_submit')) {
+        console.log('🔍 Searching site submits...');
         const { data: siteSubmits, error: siteSubmitsError } = await supabase
           .from('site_submit')
           .select(`
             *,
             client!client_id (client_name),
             property (property_name, address, city, state),
-            submit_stage (name),
             property_unit (property_unit_name)
           `)
           .or(`site_submit_name.ilike.%${trimmedQuery}%,sf_account.ilike.%${trimmedQuery}%,notes.ilike.%${trimmedQuery}%`)
@@ -218,6 +233,7 @@ export const useMasterSearch = () => {
         if (siteSubmitsError) throw siteSubmitsError;
 
         if (siteSubmits) {
+          console.log(`📋 Found ${siteSubmits.length} site submits:`, siteSubmits);
           siteSubmits.forEach((siteSubmit: any) => {
             const title = siteSubmit.site_submit_name || 'Unnamed Site Submit';
             const titleMatch = title.toLowerCase().includes(trimmedQuery);
@@ -238,7 +254,7 @@ export const useMasterSearch = () => {
               title,
               subtitle: siteSubmit.client?.client_name || 'No Client',
               description: propertyInfo,
-              metadata: siteSubmit.submit_stage?.name || 'No Stage',
+              metadata: 'Site Submit',
               url: `/site-submit/${siteSubmit.id}`,
               score
             });

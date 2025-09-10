@@ -226,7 +226,7 @@ const SiteSubmitItem: React.FC<SiteSubmitItemProps> = ({ siteSubmit, onClick }) 
         </div>
         <div className="flex items-center justify-between mt-1">
           <p className="text-xs text-green-600 font-medium">
-            {siteSubmit.submit_stage?.name || siteSubmit.sf_submit_stage || 'No stage'}
+            {siteSubmit.sf_submit_stage || 'Site Submit'}
           </p>
           {siteSubmit.property_unit?.property_unit_name && (
             <p className="text-xs text-gray-600 font-medium">
@@ -385,9 +385,6 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
           .from('site_submit')
           .select(`
             *,
-            submit_stage (
-              name
-            ),
             client!client_id (
               client_name
             ),
