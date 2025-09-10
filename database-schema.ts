@@ -1,6 +1,4 @@
-Need to install the following packages:
-supabase@2.40.7
-Ok to proceed? (y) export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -656,11 +654,13 @@ export type Database = {
           sf_contact_type: string | null
           sf_converted_date: string | null
           sf_created_by_id: string | null
+          sf_email_campaigns: string | null
           sf_email_list: string | null
           sf_id: string | null
           sf_individual_id: string | null
           sf_lead_list: string | null
           sf_lead_notes: string | null
+          sf_lead_source: string | null
           sf_lead_status: string | null
           sf_lead_tags: string | null
           sf_master_record_id: string | null
@@ -710,11 +710,13 @@ export type Database = {
           sf_contact_type?: string | null
           sf_converted_date?: string | null
           sf_created_by_id?: string | null
+          sf_email_campaigns?: string | null
           sf_email_list?: string | null
           sf_id?: string | null
           sf_individual_id?: string | null
           sf_lead_list?: string | null
           sf_lead_notes?: string | null
+          sf_lead_source?: string | null
           sf_lead_status?: string | null
           sf_lead_tags?: string | null
           sf_master_record_id?: string | null
@@ -764,11 +766,13 @@ export type Database = {
           sf_contact_type?: string | null
           sf_converted_date?: string | null
           sf_created_by_id?: string | null
+          sf_email_campaigns?: string | null
           sf_email_list?: string | null
           sf_id?: string | null
           sf_individual_id?: string | null
           sf_lead_list?: string | null
           sf_lead_notes?: string | null
+          sf_lead_source?: string | null
           sf_lead_status?: string | null
           sf_lead_tags?: string | null
           sf_master_record_id?: string | null

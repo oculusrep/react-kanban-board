@@ -18,7 +18,62 @@ A comprehensive React application for managing real estate deals, payments, comm
 
 ## Recent Updates
 
-### Site Submit Management System with Enhanced User Experience (Latest)
+### Contact Management System with Slide Drawer Modal and Enhanced Sidebar (Latest)
+A comprehensive contact management system has been implemented with a sliding modal interface and improved sidebar functionality:
+
+#### Contact Form Modal System
+- **ContactFormModal** (`src/components/ContactFormModal.tsx`)
+  - Full-featured slide-out modal for creating and editing contacts directly from property sidebar
+  - Comprehensive field organization with logical sections:
+    - **Basic Information**: Source type (Contact/Lead), First/Last Name, Title, Company
+    - **Contact Information**: Email, Phone, Mobile Phone, Website
+    - **Mailing Address**: Complete address fields with state, zip, country
+    - **Professional Information**: ICSC Profile, LinkedIN connection and profile links, Tenant Rep relationships
+    - **Tags & Tracking**: Contact tags, creation/update tracking
+  - **Database Schema Integration**: Fixed column name mismatches (icsc_profile_link, linked_in_profile_link, linked_in_connection)
+  - **Salesforce Lead Integration**: Complete mapping from Salesforce Lead table to contact table with source_type='Lead'
+  - **Form Validation**: Comprehensive validation with proper error handling and user feedback
+
+#### Enhanced Property Sidebar with Minimize Functionality
+- **PropertySidebar** (`src/components/property/PropertySidebar.tsx`)
+  - **Sidebar Minimize/Expand**: Always-visible sidebar that can be minimized to a thin strip (48px) or expanded to full width (500px)
+  - **UI-Friendly Icons**: Improved minimize/expand button with panel collapse icons and blue hover states
+  - **Contact Display Enhancement**: Mobile phone numbers displayed with proper "Mobile" vs "Phone" labeling
+  - **ContactFormModal Integration**: Seamless modal state management with sliding animations
+  - **Contact Expansion Reset**: All contacts start collapsed on screen refresh for cleaner interface
+  - **Removed Close Functionality**: Sidebar is always accessible, only minimizes to maximize screen real estate
+
+#### Database Migration Enhancements
+- **Lead Table Integration** (`_master_migration_script.sql`)
+  - Added missing columns for Lead data: `sf_lead_source`, `sf_email_campaigns`
+  - Complete Salesforce Lead table mapping with 40+ fields and proper foreign key lookups
+  - Updated Contact table INSERT to include `source_type = 'Contact'` for existing contacts
+  - Added cleanup queries to fix existing NULL source_type values
+  - Comprehensive UPSERT patterns for both Contact and Lead data integration
+
+#### Property Detail Screen Improvements  
+- **PropertyDetailScreen** (`src/components/property/PropertyDetailScreen.tsx`)
+  - **Sliding Animation Support**: Main content slides left when Contact modal opens (lg:-translate-x-[400px])
+  - **Modal State Management**: Integrated contact and site submit modal state handling
+  - **Sidebar Integration**: Connected minimize functionality with proper state management
+  - **Removed Sidebar Toggle Bar**: Eliminated redundant toggle controls for cleaner interface
+
+#### Key User Experience Improvements
+1. **Streamlined Contact Management**: Create and edit contacts without leaving property context
+2. **Always-Available Sidebar**: Minimize/expand functionality keeps sidebar accessible while maximizing screen space
+3. **Enhanced Contact Display**: Mobile phone prioritization with clear labeling for better usability
+4. **Unified Data Model**: Contact and Lead data unified with proper source_type distinction
+5. **Professional Sliding Interface**: Smooth animations and responsive design for desktop and mobile
+6. **Collapsed Contact Default**: Clean initial state with contacts collapsed on page refresh
+
+#### Technical Enhancements
+- **Database Schema Fixes**: Resolved column name mismatches and NOT NULL constraint violations
+- **Migration Script Updates**: Added comprehensive Lead table integration with proper relationship mapping
+- **State Management**: Enhanced modal and sidebar state coordination
+- **Animation System**: CSS transition improvements for smooth sliding behavior
+- **Type Safety**: Full TypeScript integration with updated database schema types
+
+### Site Submit Management System with Enhanced User Experience
 A comprehensive site submit creation and management system has been implemented with intelligent form automation and improved user interaction:
 
 #### Site Submit Form Modal

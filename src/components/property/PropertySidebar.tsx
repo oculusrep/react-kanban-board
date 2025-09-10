@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Database } from '../../../database-schema';
 import SiteSubmitFormModal from '../SiteSubmitFormModal';
+import ContactFormModal from '../ContactFormModal';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type Deal = Database['public']['Tables']['deal']['Row'];
@@ -13,9 +14,11 @@ interface PropertyContactWithDetails extends Contact {
 
 interface PropertySidebarProps {
   propertyId: string;
-  isOpen: boolean;
-  onToggle: () => void;
+  isMinimized?: boolean;
+  onMinimize?: () => void;
   onDealClick?: (dealId: string) => void;
+  onSiteSubmitModalChange?: (isOpen: boolean) => void;
+  onContactModalChange?: (isOpen: boolean) => void;
 }
 
 // Sidebar Module Component
@@ -111,10 +114,12 @@ interface ContactItemProps {
   contact: PropertyContactWithDetails;
   isExpanded?: boolean;
   onToggle?: () => void;
+  onEdit?: (contactId: string) => void;
 }
 
-const ContactItem: React.FC<ContactItemProps> = ({ contact, isExpanded = false, onToggle }) => {
+const ContactItem: React.FC<ContactItemProps> = ({ contact, isExpanded = false, onToggle, onEdit }) => {
   const displayPhone = contact.mobile_phone || contact.phone;
+  const phoneLabel = contact.mobile_phone ? 'Mobile' : 'Phone';
   
   return (
     <div className="border-b border-gray-100 last:border-b-0">
@@ -134,7 +139,7 @@ const ContactItem: React.FC<ContactItemProps> = ({ contact, isExpanded = false, 
                 {contact.first_name} {contact.last_name}
               </span>
               {displayPhone && (
-                <span className="text-xs text-gray-500 truncate">{displayPhone}</span>
+                <span className="text-xs text-gray-500 truncate">{phoneLabel}: {displayPhone}</span>
               )}
             </div>
           </div>
@@ -153,9 +158,20 @@ const ContactItem: React.FC<ContactItemProps> = ({ contact, isExpanded = false, 
       {isExpanded && (
         <div className="px-2 pb-2 bg-blue-25">
           <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs space-y-2">
-            <div className="flex items-center space-x-2">
-              <span className="w-2 h-2 bg-blue-400 rounded-full"></span>
-              <span className="font-medium text-blue-900">Contact Details</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="w-2 h-2 bg-blue-400 rounded-full"></span>
+                <span className="font-medium text-blue-900">Contact Details</span>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit?.(contact.id);
+                }}
+                className="text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Edit
+              </button>
             </div>
             <div className="space-y-1 ml-4">
               {contact.title && (
@@ -257,9 +273,11 @@ const DealItem: React.FC<DealItemProps> = ({ deal, onClick }) => (
 
 const PropertySidebar: React.FC<PropertySidebarProps> = ({
   propertyId,
-  isOpen,
-  onToggle,
-  onDealClick
+  isMinimized = false,
+  onMinimize,
+  onDealClick,
+  onSiteSubmitModalChange,
+  onContactModalChange
 }) => {
   const [contacts, setContacts] = useState<PropertyContactWithDetails[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -268,6 +286,8 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false);
   const [editingSiteSubmitId, setEditingSiteSubmitId] = useState<string | null>(null);
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [editingContactId, setEditingContactId] = useState<string | null>(null);
 
   // Expansion states
   const getSmartDefaults = () => ({
@@ -281,10 +301,7 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
     return saved ? JSON.parse(saved) : getSmartDefaults();
   });
 
-  const [expandedContacts, setExpandedContacts] = useState<Record<string, boolean>>(() => {
-    const saved = localStorage.getItem(`expandedContacts_${propertyId}`);
-    return saved ? JSON.parse(saved) : {};
-  });
+  const [expandedContacts, setExpandedContacts] = useState<Record<string, boolean>>({});
 
   // Load real data
   useEffect(() => {
@@ -428,12 +445,38 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
   return (
     <>
       <div 
-        className={`fixed right-0 top-0 h-full w-[500px] bg-white border-l border-gray-200 shadow-xl transform transition-transform duration-300 ${
-          isOpen ? 'translate-x-0' : 'translate-x-full'
-        } z-40 overflow-y-auto`}
+        className={`fixed right-0 top-0 h-full bg-white border-l border-gray-200 shadow-xl transition-all duration-300 ${
+          isMinimized ? 'w-12' : 'w-[500px]'
+        } z-40 ${isMinimized ? 'overflow-hidden' : 'overflow-y-auto'}`}
         style={{ top: '180px', height: 'calc(100vh - 180px)' }}
       >
-      <div className="p-3">
+        {/* Header with minimize/expand controls */}
+        <div className={`flex items-center ${isMinimized ? 'justify-center' : 'justify-between'} p-2 border-b border-gray-200 bg-gray-50`}>
+          {!isMinimized && (
+            <h3 className="text-sm font-medium text-gray-700">Property Info</h3>
+          )}
+          <button
+            onClick={onMinimize}
+            className={`p-2 hover:bg-blue-100 hover:text-blue-600 rounded-md transition-colors group ${
+              isMinimized ? 'text-gray-600' : 'text-gray-500'
+            }`}
+            title={isMinimized ? "Expand sidebar" : "Minimize sidebar"}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {isMinimized ? (
+                // Expand icon - panel expand right
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7M4 12h16" />
+              ) : (
+                // Minimize icon - panel collapse right  
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M20 12H4" />
+              )}
+            </svg>
+          </button>
+        </div>
+        
+        {/* Sidebar Content */}
+        {!isMinimized && (
+          <div className="p-3">
         {loading ? (
           <div className="p-4 space-y-3">
             {[...Array(3)].map((_, i) => (
@@ -459,7 +502,11 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
             <SidebarModule
               title="Associated Contacts"
               count={contacts.length}
-              onAddNew={() => console.log('Add new contact')}
+              onAddNew={() => {
+                setEditingContactId(null);
+                setShowContactModal(true);
+                onContactModalChange?.(true);
+              }}
               isExpanded={expandedSidebarModules.contacts}
               onToggle={() => toggleSidebarModule('contacts')}
               icon="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"
@@ -471,6 +518,11 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
                   contact={contact} 
                   isExpanded={expandedContacts[contact.id]}
                   onToggle={() => toggleContact(contact.id)}
+                  onEdit={(contactId) => {
+                    setEditingContactId(contactId);
+                    setShowContactModal(true);
+                    onContactModalChange?.(true);
+                  }}
                 />
               ))}
             </SidebarModule>
@@ -502,6 +554,7 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
               onAddNew={() => {
                 setEditingSiteSubmitId(null);
                 setShowSiteSubmitModal(true);
+                onSiteSubmitModalChange?.(true);
               }}
               isExpanded={expandedSidebarModules.siteSubmits}
               onToggle={() => toggleSidebarModule('siteSubmits')}
@@ -515,13 +568,15 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
                   onClick={(id) => {
                     setEditingSiteSubmitId(id);
                     setShowSiteSubmitModal(true);
+                    onSiteSubmitModalChange?.(true);
                   }}
                 />
               ))}
             </SidebarModule>
           </>
         )}
-      </div>
+          </div>
+        )}
       </div>
 
       {/* Site Submit Form Modal - Outside sidebar container for proper z-index layering */}
@@ -530,18 +585,45 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
         onClose={() => {
           setShowSiteSubmitModal(false);
           setEditingSiteSubmitId(null);
+          onSiteSubmitModalChange?.(false);
         }}
         siteSubmitId={editingSiteSubmitId}
         propertyId={propertyId}
         onSave={(newSiteSubmit) => {
           setSiteSubmits(prev => [newSiteSubmit, ...prev]);
           setShowSiteSubmitModal(false);
+          onSiteSubmitModalChange?.(false);
         }}
         onUpdate={(updatedSiteSubmit) => {
           setSiteSubmits(prev => 
             prev.map(ss => ss.id === updatedSiteSubmit.id ? updatedSiteSubmit : ss)
           );
           setShowSiteSubmitModal(false);
+          onSiteSubmitModalChange?.(false);
+        }}
+      />
+
+      {/* Contact Form Modal - Outside sidebar container for proper z-index layering */}
+      <ContactFormModal
+        isOpen={showContactModal}
+        onClose={() => {
+          setShowContactModal(false);
+          setEditingContactId(null);
+          onContactModalChange?.(false);
+        }}
+        contactId={editingContactId}
+        propertyId={propertyId}
+        onSave={(newContact) => {
+          setContacts(prev => [{ ...newContact, isPrimaryContact: false }, ...prev]);
+          setShowContactModal(false);
+          onContactModalChange?.(false);
+        }}
+        onUpdate={(updatedContact) => {
+          setContacts(prev => 
+            prev.map(contact => contact.id === updatedContact.id ? { ...updatedContact, isPrimaryContact: contact.isPrimaryContact } : contact)
+          );
+          setShowContactModal(false);
+          onContactModalChange?.(false);
         }}
       />
     </>

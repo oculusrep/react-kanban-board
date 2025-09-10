@@ -142,14 +142,19 @@ FROM "salesforce_Account" a
 ON CONFLICT (sf_id) DO UPDATE SET
   client_name = EXCLUDED.client_name;
 
--- Upsert into contact table
+-- Add missing columns to contact table for Lead data
+ALTER TABLE contact ADD COLUMN IF NOT EXISTS sf_lead_source TEXT;
+ALTER TABLE contact ADD COLUMN IF NOT EXISTS sf_email_campaigns TEXT;
+
+-- Upsert into contact table from Salesforce Contact
 INSERT INTO contact (
   id,
   first_name,
   last_name,
   email,
   phone,
-  sf_id
+  sf_id,
+  source_type
 )
 SELECT
   gen_random_uuid(),
@@ -157,13 +162,155 @@ SELECT
   c."LastName",
   c."Email",
   c."Phone",
-  c."Id" AS sf_id
+  c."Id" AS sf_id,
+  'Contact' AS source_type
 FROM "salesforce_Contact" c
 ON CONFLICT (sf_id) DO UPDATE SET
   first_name = EXCLUDED.first_name,
   last_name = EXCLUDED.last_name,
   email = EXCLUDED.email,
-  phone = EXCLUDED.phone;
+  phone = EXCLUDED.phone,
+  source_type = EXCLUDED.source_type;
+
+-- Upsert into contact table from Salesforce Lead
+INSERT INTO contact (
+  id,
+  source_type,
+  sf_id,
+  first_name,
+  last_name,
+  middle_name,
+  salutation,
+  title,
+  company,
+  email,
+  phone,
+  mobile_phone,
+  website,
+  mailing_street,
+  mailing_city,
+  mailing_state,
+  mailing_zip,
+  mailing_country,
+  sf_name,
+  sf_lead_status,
+  lead_status_id,
+  sf_owner_id,
+  owner_id,
+  sf_photo_url,
+  sf_lead_source,
+  sf_individual_id,
+  sf_lead_list,
+  sf_lead_tags,
+  sf_converted_date,
+  sf_lead_notes,
+  sf_tenant_rep_id,
+  tenant_rep_contact_id,
+  sf_master_record_id,
+  tenant_repped,
+  sf_email_campaigns,
+  icsc_profile_link,
+  retail_sphere_link,
+  linked_in_connection,
+  linked_in_profile_link,
+  sf_created_by_id,
+  created_by_id,
+  created_at,
+  updated_by_sf_id,
+  updated_by_id,
+  updated_at
+)
+SELECT
+  gen_random_uuid(),
+  'Lead' AS source_type,
+  l."Id" AS sf_id,
+  l."FirstName",
+  l."LastName",
+  l."MiddleName",
+  l."Salutation",
+  l."Title",
+  l."Company",
+  l."Email",
+  l."Phone",
+  l."MobilePhone",
+  l."Website",
+  l."Street",
+  l."City",
+  l."State",
+  l."PostalCode",
+  l."Country",
+  l."Name" AS sf_name,
+  l."Status" AS sf_lead_status,
+  (SELECT id FROM lead_status WHERE name = l."Status" LIMIT 1) AS lead_status_id,
+  l."OwnerId" AS sf_owner_id,
+  (SELECT id FROM "user" WHERE sf_id = l."OwnerId" LIMIT 1) AS owner_id,
+  l."PhotoUrl" AS sf_photo_url,
+  l."LeadSource" AS sf_lead_source,
+  l."IndividualId" AS sf_individual_id,
+  l."Lead_List__c" AS sf_lead_list,
+  l."Lead_Tags__c" AS sf_lead_tags,
+  l."ConvertedDate" AS sf_converted_date,
+  l."Lead_Notes__c" AS sf_lead_notes,
+  l."Tenant_Rep__c" AS sf_tenant_rep_id,
+  (SELECT id FROM contact WHERE sf_id = l."Tenant_Rep__c" LIMIT 1) AS tenant_rep_contact_id,
+  l."MasterRecordId" AS sf_master_record_id,
+  l."Tenant_Repped__c" AS tenant_repped,
+  l."Email_Campaigns__c" AS sf_email_campaigns,
+  l."ICSC_Profile_Link__c" AS icsc_profile_link,
+  l."RetailSphere_Link__c" AS retail_sphere_link,
+  l."LinkedIN_Connection__c" AS linked_in_connection,
+  l."LinkedIN_Profile_Link__c" AS linked_in_profile_link,
+  l."CreatedById" AS sf_created_by_id,
+  (SELECT id FROM "user" WHERE sf_id = l."CreatedById" LIMIT 1) AS created_by_id,
+  l."CreatedDate" AS created_at,
+  l."LastModifiedById" AS updated_by_sf_id,
+  (SELECT id FROM "user" WHERE sf_id = l."LastModifiedById" LIMIT 1) AS updated_by_id,
+  l."LastModifiedDate" AS updated_at
+FROM "salesforce_Lead" l
+ON CONFLICT (sf_id) DO UPDATE SET
+  source_type = EXCLUDED.source_type,
+  first_name = EXCLUDED.first_name,
+  last_name = EXCLUDED.last_name,
+  middle_name = EXCLUDED.middle_name,
+  salutation = EXCLUDED.salutation,
+  title = EXCLUDED.title,
+  company = EXCLUDED.company,
+  email = EXCLUDED.email,
+  phone = EXCLUDED.phone,
+  mobile_phone = EXCLUDED.mobile_phone,
+  website = EXCLUDED.website,
+  mailing_street = EXCLUDED.mailing_street,
+  mailing_city = EXCLUDED.mailing_city,
+  mailing_state = EXCLUDED.mailing_state,
+  mailing_zip = EXCLUDED.mailing_zip,
+  mailing_country = EXCLUDED.mailing_country,
+  sf_name = EXCLUDED.sf_name,
+  sf_lead_status = EXCLUDED.sf_lead_status,
+  lead_status_id = EXCLUDED.lead_status_id,
+  sf_owner_id = EXCLUDED.sf_owner_id,
+  owner_id = EXCLUDED.owner_id,
+  sf_photo_url = EXCLUDED.sf_photo_url,
+  sf_lead_source = EXCLUDED.sf_lead_source,
+  sf_individual_id = EXCLUDED.sf_individual_id,
+  sf_lead_list = EXCLUDED.sf_lead_list,
+  sf_lead_tags = EXCLUDED.sf_lead_tags,
+  sf_converted_date = EXCLUDED.sf_converted_date,
+  sf_lead_notes = EXCLUDED.sf_lead_notes,
+  sf_tenant_rep_id = EXCLUDED.sf_tenant_rep_id,
+  tenant_rep_contact_id = EXCLUDED.tenant_rep_contact_id,
+  sf_master_record_id = EXCLUDED.sf_master_record_id,
+  tenant_repped = EXCLUDED.tenant_repped,
+  sf_email_campaigns = EXCLUDED.sf_email_campaigns,
+  icsc_profile_link = EXCLUDED.icsc_profile_link,
+  retail_sphere_link = EXCLUDED.retail_sphere_link,
+  linked_in_connection = EXCLUDED.linked_in_connection,
+  linked_in_profile_link = EXCLUDED.linked_in_profile_link,
+  sf_created_by_id = EXCLUDED.sf_created_by_id,
+  created_by_id = EXCLUDED.created_by_id,
+  created_at = EXCLUDED.created_at,
+  updated_by_sf_id = EXCLUDED.updated_by_sf_id,
+  updated_by_id = EXCLUDED.updated_by_id,
+  updated_at = EXCLUDED.updated_at;
 
 WITH opp AS (
   SELECT
@@ -1620,5 +1767,20 @@ ON CONFLICT (property_id, contact_id) DO UPDATE SET
 
 -- Add comment documenting the junction table
 COMMENT ON TABLE property_contact IS 'Junction table linking properties to contacts - many-to-many relationship mapped from Salesforce J_Property_2_Contacts__c';
+
+-- ==============================================================================
+-- Fix existing contacts that have NULL source_type (from previous migrations)
+-- ==============================================================================
+
+-- Update existing contacts from Salesforce Contact table to have source_type = 'Contact'
+UPDATE contact 
+SET source_type = 'Contact' 
+WHERE sf_id IS NOT NULL 
+  AND source_type IS NULL;
+
+-- Set default source_type for any remaining NULL values (manually created contacts)
+UPDATE contact 
+SET source_type = 'Contact' 
+WHERE source_type IS NULL;
 
 COMMIT;
