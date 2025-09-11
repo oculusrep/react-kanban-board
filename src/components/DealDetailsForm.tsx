@@ -41,6 +41,11 @@ interface Deal {
   commission_percent: number | null;
   flat_fee_override: number | null;
   fee: number | null;
+  house_percent: number | null;
+  origination_percent: number | null;
+  site_percent: number | null;
+  deal_percent: number | null;
+  number_of_payments: number | null;
   stage_id: string;
   probability: number | null;
   target_close_date: string | null;
@@ -279,6 +284,11 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
       probability: form.probability,
       deal_team_id: form.deal_team_id,
       stage_id: form.stage_id,
+      house_percent: form.house_percent,
+      origination_percent: form.origination_percent,
+      site_percent: form.site_percent,
+      deal_percent: form.deal_percent,
+      number_of_payments: form.number_of_payments,
       updated_at: new Date().toISOString(),
     };
 

@@ -46,6 +46,11 @@ export default function DealDetailsPage() {
           commission_rate: null,
           gross_commission: null,
           net_commission: null,
+          house_percent: 40,
+          origination_percent: 50,
+          site_percent: 25,
+          deal_percent: 25,
+          number_of_payments: 2,
           is_active: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -76,6 +81,10 @@ export default function DealDetailsPage() {
     
     if (actualDealId) {
       console.log('DealDetailsPage useEffect triggered with actualDealId:', actualDealId);
+      // Reset to Overview tab when creating a new deal
+      if (actualDealId === 'new') {
+        setActiveTab('overview');
+      }
       fetchDeal();
     } else {
       console.log('No actualDealId provided - this should not happen for deal routes');
@@ -166,7 +175,7 @@ export default function DealDetailsPage() {
 
           {activeTab === 'commission' && (
             <>
-              {isNewDeal ? (
+              {isNewDeal || !deal.id ? (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
                   <div className="flex">
                     <div className="ml-3">
@@ -178,14 +187,14 @@ export default function DealDetailsPage() {
                   </div>
                 </div>
               ) : (
-                <CommissionTab dealId={dealId!} deal={deal} onDealUpdate={handleAsyncDealUpdate} />
+                <CommissionTab dealId={deal.id} deal={deal} onDealUpdate={handleAsyncDealUpdate} onSwitchToPayments={() => setActiveTab('payments')} />
               )}
             </>
           )}
 
           {activeTab === 'payments' && (
             <>
-              {isNewDeal ? (
+              {isNewDeal || !deal.id ? (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
                   <div className="flex">
                     <div className="ml-3">

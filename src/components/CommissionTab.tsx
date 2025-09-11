@@ -8,6 +8,7 @@ interface CommissionTabProps {
   dealId: string;
   deal: Deal;
   onDealUpdate: DealUpdateHandler;
+  onSwitchToPayments: () => void;
 }
 
 interface SectionProps {
@@ -36,14 +37,13 @@ const Section: React.FC<SectionProps> = ({ title, help, children }) => {
   );
 };
 
-const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, onDealUpdate }) => {
+const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, onDealUpdate, onSwitchToPayments }) => {
   const [deal, setDeal] = useState<Deal | null>(propDeal);
   const [commissionSplits, setCommissionSplits] = useState<CommissionSplit[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
 
   // Update local deal state when prop changes
   useEffect(() => {
@@ -230,26 +230,6 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
     }
   };
 
-  const generatePayments = async () => {
-    try {
-      setIsGenerating(true);
-      
-      const { data, error } = await supabase.rpc('generate_payments_for_deal', {
-        deal_uuid: dealId
-      });
-
-      if (error) throw error;
-
-      // Refresh the data to show new payments
-      await fetchCommissionData();
-      
-      // Payment generation completed successfully
-    } catch (err) {
-      alert(`Error: ${err instanceof Error ? err.message : 'Failed to generate payments'}`);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
 
   const formatCurrency = (amount: number | null): string => {
     if (amount === null || amount === undefined) return '$0.00';
@@ -420,25 +400,20 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
         onDealUpdate={onDealUpdate} 
       />
 
-      {/* Payment Generation Section */}
-      <Section title="Payment Generation" help="Generate payments based on commission splits">
+      {/* Payment Management Section */}
+      <Section title="Payment Management" help="Manage payments based on commission splits">
         <div className="flex justify-end mb-3">
           <button
-            onClick={generatePayments}
-            disabled={commissionSplits.length === 0 || hasPayments || isGenerating}
-            className={`px-4 py-2 rounded font-medium text-sm ${
-              commissionSplits.length > 0 && !hasPayments && !isGenerating
-                ? 'bg-green-600 text-white hover:bg-green-700' 
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            }`}
+            onClick={onSwitchToPayments}
+            className="px-4 py-2 rounded font-medium text-sm bg-blue-600 text-white hover:bg-blue-700"
           >
-            {isGenerating ? 'Generating...' : 'Generate Payments'}
+            Go to Payments Tab
           </button>
         </div>
         
         {commissionSplits.length === 0 && (
           <div className="text-center text-gray-500 py-4">
-            <p className="text-sm">No commission splits available for payment generation.</p>
+            <p className="text-sm">No commission splits available. Commission splits are needed for payment generation.</p>
           </div>
         )}
       </Section>
