@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 
 export interface SearchResult {
   id: string;
-  type: 'deal' | 'client' | 'contact' | 'property' | 'site_submit';
+  type: 'deal' | 'client' | 'contact' | 'property' | 'site_submit' | 'assignment';
   title: string;
   subtitle?: string;
   description?: string;
@@ -14,7 +14,7 @@ export interface SearchResult {
 
 interface SearchOptions {
   limit?: number;
-  types?: Array<'deal' | 'client' | 'contact' | 'property' | 'site_submit'>;
+  types?: Array<'deal' | 'client' | 'contact' | 'property' | 'site_submit' | 'assignment'>;
   includeInactive?: boolean;
 }
 
@@ -28,7 +28,7 @@ export const useMasterSearch = () => {
   ): Promise<SearchResult[]> => {
     const {
       limit = 10,
-      types = ['deal', 'client', 'contact', 'property', 'site_submit'],
+      types = ['deal', 'client', 'contact', 'property', 'site_submit', 'assignment'],
       includeInactive = false
     } = options;
 
@@ -262,8 +262,43 @@ export const useMasterSearch = () => {
         }
       }
 
+      // Search Assignments
+      if (types.includes('assignment')) {
+        console.log('🔍 Searching assignments...');
+        const { data: assignments, error: assignmentsError } = await supabase
+          .from('assignment')
+          .select('*')
+          .or(`assignment_name.ilike.%${trimmedQuery}%,site_criteria.ilike.%${trimmedQuery}%`)
+          .limit(Math.ceil(limit / types.length));
+
+        if (assignmentsError) throw assignmentsError;
+
+        if (assignments) {
+          assignments.forEach((assignment: any) => {
+            const title = assignment.assignment_name || 'Unnamed Assignment';
+            const titleMatch = title.toLowerCase().includes(trimmedQuery);
+            
+            let score = 0;
+            if (title.toLowerCase().startsWith(trimmedQuery)) score += 10;
+            else if (titleMatch) score += 7;
+            if (assignment.site_criteria?.toLowerCase().includes(trimmedQuery)) score += 5;
+            
+            searchResults.push({
+              id: assignment.id,
+              type: 'assignment',
+              title,
+              subtitle: 'Assignment',
+              description: assignment.progress || '',
+              metadata: '',
+              url: `/assignment/${assignment.id}`,
+              score
+            });
+          });
+        }
+      }
+
       // Sort results by score (highest first), then by type priority, then alphabetically
-      const typePriority = { deal: 1, property: 2, client: 3, contact: 4, site_submit: 5 };
+      const typePriority = { deal: 1, property: 2, client: 3, contact: 4, site_submit: 5, assignment: 6 };
       searchResults.sort((a, b) => {
         // Primary sort by score
         const scoreDiff = (b.score || 0) - (a.score || 0);
@@ -293,7 +328,7 @@ export const useMasterSearch = () => {
 
   const searchByType = useCallback(async (
     query: string,
-    type: 'deal' | 'client' | 'contact' | 'property' | 'site_submit',
+    type: 'deal' | 'client' | 'contact' | 'property' | 'site_submit' | 'assignment',
     limit: number = 10
   ): Promise<SearchResult[]> => {
     return search(query, { types: [type], limit });

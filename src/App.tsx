@@ -6,6 +6,7 @@ import DealDetailsPage from "./pages/DealDetailsPage";
 import PropertyDetailsPage from "./pages/PropertyDetailsPage";
 import ContactDetailsPage from "./pages/ContactDetailsPage";
 import SiteSubmitDetailsPage from "./pages/SiteSubmitDetailsPage";
+import AssignmentDetailsPage from "./pages/AssignmentDetailsPage";
 import NewPropertyPage from "./components/property/NewPropertyPage";
 import Navbar from "./components/Navbar";
 import SearchTestPage from "./components/SearchTestPage";
@@ -22,6 +23,8 @@ function App() {
             <Route path="/master-pipeline" element={<KanbanBoard />} />
             <Route path="/deal/new" element={<DealDetailsPage />} />
             <Route path="/deal/:dealId" element={<DealDetailsPage />} />
+            <Route path="/assignment/new" element={<AssignmentDetailsPage />} />
+            <Route path="/assignment/:assignmentId" element={<AssignmentDetailsPage />} />
             <Route path="/property/new" element={<NewPropertyPage />} />
             <Route path="/property/:propertyId" element={<PropertyDetailsPage />} />
             <Route path="/contact/:contactId" element={<ContactDetailsPage />} />

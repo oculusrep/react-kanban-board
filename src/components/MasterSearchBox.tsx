@@ -11,7 +11,7 @@ interface MasterSearchBoxProps {
 }
 
 const MasterSearchBox: React.FC<MasterSearchBoxProps> = ({
-  placeholder = "Search deals, clients, contacts, properties, site submits...",
+  placeholder = "Search deals, clients, contacts, properties, site submits, assignments...",
   className = "",
   onSelect
 }) => {

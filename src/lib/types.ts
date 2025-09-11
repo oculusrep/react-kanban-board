@@ -133,6 +133,55 @@ export interface SiteSubmit {
   updated_at?: string;
 }
 
+export interface Assignment {
+  id: string;
+  assignment_name: string | null;
+  assignment_value: number | null;
+  client_id: string | null;
+  deal_id: string | null;
+  owner_id: string | null;
+  priority_id: string | null;
+  transaction_type_id: string | null;
+  due_date: string | null;
+  progress: string | null;
+  commission: number | null;
+  fee: number | null;
+  referral_fee: number | null;
+  referral_payee_id: string | null;
+  scoped: boolean | null;
+  site_criteria: string | null;
+  
+  // Salesforce fields
+  sf_id: string | null;
+  sf_account_id: string | null;
+  sf_opportunity_id: string | null;
+  sf_owner_id: string | null;
+  sf_priority: string | null;
+  sf_referral_payee: string | null;
+  sf_scoped_formula: string | null;
+  sf_transaction_type: string | null;
+  sf_num_of_pursuing_ownership: string | null;
+  sf_num_of_site_submits: string | null;
+  sf_number_of_pursuing_ownership: number | null;
+  sf_number_of_site_submits: number | null;
+  
+  // Audit fields
+  created_at: string | null;
+  updated_at: string | null;
+  created_by_id: string | null;
+  updated_by_id: string | null;
+  sf_created_by_id: string | null;
+  updated_by_sf_id: string | null;
+}
+
+export interface AssignmentPriority {
+  id: string;
+  label: string;
+  description: string | null;
+  active: boolean | null;
+  sort_order: number | null;
+}
+
 // Commission System Types
 export interface Broker {
   id: string;

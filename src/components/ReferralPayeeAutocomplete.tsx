@@ -6,6 +6,7 @@ interface ReferralPayeeAutocompleteProps {
   value: string | null; // This will be the client ID from database
   onChange: (clientId: string | null) => void; // Save client ID to database
   label?: string;
+  tabIndex?: number;
 }
 
 interface ClientSuggestion {
@@ -16,7 +17,8 @@ interface ClientSuggestion {
 const ReferralPayeeAutocomplete: React.FC<ReferralPayeeAutocompleteProps> = ({
   value,
   onChange,
-  label = "Referral Payee"
+  label = "Referral Payee",
+  tabIndex
 }) => {
   const [search, setSearch] = useState('');
   const [suggestions, setSuggestions] = useState<ClientSuggestion[]>([]);
@@ -94,6 +96,7 @@ const ReferralPayeeAutocomplete: React.FC<ReferralPayeeAutocompleteProps> = ({
         onFocus={handleFocus}
         placeholder={`Search ${label.toLowerCase()}...`}
         className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+        tabIndex={tabIndex}
       />
       {suggestions.filter((s) => s.label !== search).length > 0 && (
         <ul className="bg-white border border-gray-300 rounded mt-1 max-h-48 overflow-auto">

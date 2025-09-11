@@ -78,6 +78,7 @@ export default function Navbar() {
     properties: false,
     contacts: false,
     deals: false,
+    assignments: false,
   });
 
   const linkClass = (path: string) =>
@@ -135,6 +136,17 @@ export default function Navbar() {
     }
   ];
 
+  const assignmentsItems = [
+    {
+      label: "Add New Assignment",
+      action: () => navigate('/assignment/new')
+    },
+    {
+      label: "Search Assignments",
+      action: () => setSearchModals(prev => ({ ...prev, assignments: true }))
+    }
+  ];
+
   return (
     <nav className="bg-white shadow p-4">
       <div className="flex justify-between items-center">
@@ -147,6 +159,7 @@ export default function Navbar() {
           <DropdownMenu title="Properties" items={propertiesItems} />
           <DropdownMenu title="Contacts" items={contactsItems} />
           <DropdownMenu title="Deals" items={dealsItems} />
+          <DropdownMenu title="Assignments" items={assignmentsItems} />
         </div>
         
         {/* Center search box */}
@@ -209,6 +222,20 @@ export default function Navbar() {
           onSelect={(result) => {
             navigate(result.url || '/');
             setSearchModals(prev => ({ ...prev, deals: false }));
+          }}
+        />
+      )}
+
+      {searchModals.assignments && (
+        <DedicatedSearchModal
+          isOpen={searchModals.assignments}
+          onClose={() => setSearchModals(prev => ({ ...prev, assignments: false }))}
+          title="Search Assignments"
+          searchType="assignment"
+          onSearch={(query) => handleSearch(query, 'assignment')}
+          onSelect={(result) => {
+            navigate(result.url || '/');
+            setSearchModals(prev => ({ ...prev, assignments: false }));
           }}
         />
       )}

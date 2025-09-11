@@ -17,6 +17,7 @@ interface SiteSubmitFormModalProps {
   siteSubmitId?: string;
   propertyId?: string;
   propertyUnitId?: string;
+  assignmentId?: string;
 }
 
 interface FormData {
@@ -48,6 +49,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
   onUpdate,
   siteSubmitId,
   propertyId,
+  assignmentId,
   propertyUnitId
 }) => {
   const [formData, setFormData] = useState<FormData>({
@@ -107,6 +109,23 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
           }
         }
 
+        // Load assignment data for auto-population when creating from assignment
+        if (assignmentId && !siteSubmitId) {
+          const { data: assignmentData } = await supabase
+            .from('assignment')
+            .select('client_id, deal_id')
+            .eq('id', assignmentId)
+            .single();
+          
+          if (assignmentData) {
+            setFormData(prev => ({
+              ...prev,
+              client_id: assignmentData.client_id,
+              assignment_id: assignmentId,
+            }));
+          }
+        }
+
         // Load existing site submit if editing
         if (siteSubmitId) {
           const { data: siteSubmitData, error } = await supabase
@@ -153,7 +172,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
     if (isOpen) {
       loadData();
     }
-  }, [isOpen, siteSubmitId]);
+  }, [isOpen, siteSubmitId, assignmentId]);
 
   // Reset form when modal closes or siteSubmitId changes
   useEffect(() => {
@@ -164,7 +183,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
         client_id: null,
         property_id: propertyId || null,
         property_unit_id: propertyUnitId || null,
-        assignment_id: null,
+        assignment_id: assignmentId || null,
         submit_stage_id: null,
         date_submitted: new Date().toISOString().split('T')[0],
         loi_written: false,
@@ -245,7 +264,8 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
     if (!formData.client_id) {
       newErrors.client_id = 'Client selection is required';
     }
-    if (!formData.property_id) {
+    // Property is required unless we're creating from an assignment
+    if (!formData.property_id && !assignmentId) {
       newErrors.property_id = 'Property selection is required';
     }
 
@@ -275,7 +295,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
           .eq('id', siteSubmitId)
           .select(`
             *,
-            submit_stage (
+            submit_stage!site_submit_submit_stage_id_fkey (
               name
             ),
             client!client_id (
@@ -300,13 +320,14 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
         };
 
         console.log('About to insert site submit data:', submitData);
+        console.log('Form validation passed. FormData:', formData);
 
         const { data, error } = await supabase
           .from('site_submit')
           .insert(submitData)
           .select(`
             *,
-            submit_stage (
+            submit_stage!site_submit_submit_stage_id_fkey (
               name
             ),
             client!client_id (
@@ -323,6 +344,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
 
     } catch (error) {
       console.error('Error saving site submit:', error);
+      console.error('Full error object:', JSON.stringify(error, null, 2));
       // Log more detailed error information
       if (error instanceof Error) {
         console.error('Error message:', error.message);
