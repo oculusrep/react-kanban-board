@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Deal, Broker, CommissionSplit, DealUpdateHandler } from '../lib/types';
 import CommissionDetailsSection from './CommissionDetailsSection';
@@ -37,6 +37,16 @@ const Section: React.FC<SectionProps> = ({ title, help, children }) => {
   );
 };
 
+// Add simple cache for commission data to avoid refetching
+const commissionDataCache = new Map<string, {
+  splits: CommissionSplit[];
+  brokers: Broker[];
+  payments: any[];
+  timestamp: number;
+}>();
+
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
 const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, onDealUpdate, onSwitchToPayments }) => {
   const [deal, setDeal] = useState<Deal | null>(propDeal);
   const [commissionSplits, setCommissionSplits] = useState<CommissionSplit[]>([]);
@@ -45,38 +55,90 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Validation helper - SIMPLIFIED to avoid type issues  
+  const getValidationWarnings = useCallback((dealData: Deal | null): string[] => {
+    if (!dealData) return [];
+    const warnings: string[] = [];
+    
+    // Safely get values with defaults
+    const origination = Number(dealData.origination_percent) || 0;
+    const site = Number(dealData.site_percent) || 0;
+    const dealPercent = Number(dealData.deal_percent) || 0;
+    const commission = Number(dealData.commission_percent) || 0;
+    const referral = Number(dealData.referral_fee_percent) || 0;
+    
+    // Calculate total
+    const total = origination + site + dealPercent;
+    
+    if (total > 100) {
+      warnings.push(`Broker split percentages total ${total.toFixed(1)}% (over 100%)`);
+    }
+    
+    if (commission > 50) {
+      warnings.push(`Commission rate ${commission.toFixed(1)}% seems high`);
+    }
+    
+    if (referral > 100) {
+      warnings.push(`Referral fee ${referral.toFixed(1)}% cannot exceed 100%`);
+    }
+    
+    return warnings;
+  }, []);
+
+  // Memoize expensive calculations (must be at top level)
+  const hasPayments = useMemo(() => payments.length > 0, [payments.length]);
+  const validationWarnings = useMemo(() => getValidationWarnings(deal || propDeal), [deal, propDeal, getValidationWarnings]);
+
   // Update local deal state when prop changes
   useEffect(() => {
     setDeal(propDeal);
   }, [propDeal]);
 
-  useEffect(() => {
-    fetchCommissionData();
-  }, [dealId]);
+  // Memoized fetch function to avoid unnecessary re-creation
+  const fetchCommissionData = useCallback(async () => {
+    // Check cache first
+    const cached = commissionDataCache.get(dealId);
+    const now = Date.now();
+    
+    if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+      console.log('Using cached commission data for deal:', dealId);
+      setCommissionSplits(cached.splits);
+      setBrokers(cached.brokers);
+      setPayments(cached.payments);
+      setLoading(false);
+      return;
+    }
 
-  const fetchCommissionData = async () => {
     try {
       setLoading(true);
       
-      // Fetch commission splits
-      const { data: splitsData, error: splitsError } = await supabase
-        .from('commission_split')
-        .select('*')
-        .eq('deal_id', dealId);
+      // Execute queries in parallel for better performance
+      const [splitsResult, brokersResult] = await Promise.all([
+        supabase
+          .from('commission_split')
+          .select('*')
+          .eq('deal_id', dealId),
+        
+        supabase
+          .from('broker')
+          .select('id, name')
+      ]);
 
-      if (splitsError) throw splitsError;
+      if (splitsResult.error) {
+        throw splitsResult.error;
+      }
+      if (brokersResult.error) {
+        throw brokersResult.error;
+      }
 
-      // Fetch all brokers to join with commission splits
-      const { data: brokersData, error: brokersError } = await supabase
-        .from('broker')
-        .select('*');
-
-      if (brokersError) throw brokersError;
-      setBrokers(brokersData.filter(broker => broker.active));
+      const splitsData = splitsResult.data || [];
+      const brokersData = brokersResult.data || [];
+      
+      setBrokers(brokersData);
 
       // Join commission splits with broker data
-      const formattedSplits = splitsData.map(split => {
-        const broker = brokersData.find(b => b.id === split.broker_id);
+      const formattedSplits = splitsData.map((split) => {
+        const broker = brokersData.find((b) => b.id === split.broker_id);
         return {
           ...split,
           broker_name: broker ? broker.name : 'Unknown Broker'
@@ -84,35 +146,52 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
       });
       setCommissionSplits(formattedSplits);
 
-      // Fetch existing payments to check if generation is possible
+      // Fetch only essential payment data (lighter query)
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('payment')
-        .select('*')
+        .select('id, payment_sequence, payment_amount, payment_date_estimated, sf_payment_date_actual, deal_id')
         .eq('deal_id', dealId);
 
-      if (paymentsError) throw paymentsError;
+      if (paymentsError) {
+        throw paymentsError;
+      }
       
       // DEBUG: Log what payments were fetched
-      console.log('🔍 CommissionTab fetchCommissionData - payments found:', {
+      console.log('CommissionTab fetchCommissionData - payments found:', {
         dealId,
         paymentsCount: paymentsData?.length || 0,
-        payments: paymentsData?.map(p => ({
+        payments: paymentsData?.map((p) => ({
           id: p.id,
           sequence: p.payment_sequence,
           amount: p.payment_amount,
           estimated_date: p.payment_date_estimated,
-          actual_date: p.payment_date_actual
-        }))
+          actual_date: p.sf_payment_date_actual
+        })) || []
       });
       
-      setPayments(paymentsData);
+      setPayments(paymentsData || []);
+
+      // Cache the results for faster subsequent loads
+      const cacheData = {
+        splits: formattedSplits,
+        brokers: brokersData,
+        payments: paymentsData || [],
+        timestamp: Date.now()
+      };
+      commissionDataCache.set(dealId, cacheData);
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
-  };
+  }, [dealId]);
+
+  // Use effect with memoized function
+  useEffect(() => {
+    fetchCommissionData();
+  }, [fetchCommissionData]);
 
   // Commission calculation logic
   const calculateCommissionAmounts = (dealData: Deal): Deal => {
@@ -154,8 +233,10 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
   };
 
   // Update field function with shared state management
-  const updateField = async (field: string, value: any) => {
-    if (!deal) return;
+  const updateField = useCallback(async (field: string, value: any) => {
+    if (!deal) {
+      return;
+    }
     
     const updatedDeal = {
       ...deal,
@@ -176,7 +257,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
     
     // Prepare update payload - only send the fields that can be updated
     // Start with core commission fields that we know exist
-    const updatePayload: any = {
+    const updatePayload: Record<string, any> = {
       commission_percent: finalDeal.commission_percent,
       referral_fee_percent: finalDeal.referral_fee_percent,
       house_percent: finalDeal.house_percent,
@@ -189,13 +270,27 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
     };
 
     // Add calculated fields if they exist in the database
-    if (finalDeal.gci !== undefined) updatePayload.gci = finalDeal.gci;
-    if (finalDeal.referral_fee_usd !== undefined) updatePayload.referral_fee_usd = finalDeal.referral_fee_usd;
-    if (finalDeal.agci !== undefined) updatePayload.agci = finalDeal.agci;
-    if (finalDeal.house_usd !== undefined) updatePayload.house_usd = finalDeal.house_usd;
-    if (finalDeal.origination_usd !== undefined) updatePayload.origination_usd = finalDeal.origination_usd;
-    if (finalDeal.site_usd !== undefined) updatePayload.site_usd = finalDeal.site_usd;
-    if (finalDeal.deal_usd !== undefined) updatePayload.deal_usd = finalDeal.deal_usd;
+    if (finalDeal.gci !== undefined) {
+      updatePayload.gci = finalDeal.gci;
+    }
+    if (finalDeal.referral_fee_usd !== undefined) {
+      updatePayload.referral_fee_usd = finalDeal.referral_fee_usd;
+    }
+    if (finalDeal.agci !== undefined) {
+      updatePayload.agci = finalDeal.agci;
+    }
+    if (finalDeal.house_usd !== undefined) {
+      updatePayload.house_usd = finalDeal.house_usd;
+    }
+    if (finalDeal.origination_usd !== undefined) {
+      updatePayload.origination_usd = finalDeal.origination_usd;
+    }
+    if (finalDeal.site_usd !== undefined) {
+      updatePayload.site_usd = finalDeal.site_usd;
+    }
+    if (finalDeal.deal_usd !== undefined) {
+      updatePayload.deal_usd = finalDeal.deal_usd;
+    }
     
     // Handle referral payee - save as referral_payee_client_id in database
     if (field === 'referral_payee_client_id' && finalDeal.referral_payee_client_id !== undefined) {
@@ -225,10 +320,11 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
       setDeal(data);
       onDealUpdate(data);
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save';
       console.error('Error saving:', err);
-      alert(`Error saving: ${err instanceof Error ? err.message : 'Failed to save'}`);
+      alert(`Error saving: ${errorMessage}`);
     }
-  };
+  }, [deal, dealId, onDealUpdate]);
 
 
   const formatCurrency = (amount: number | null): string => {
@@ -239,34 +335,6 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
     }).format(amount);
   };
 
-  // Validation helper - SIMPLIFIED to avoid type issues
-  const getValidationWarnings = (dealData: Deal) => {
-    const warnings: string[] = [];
-    
-    // Safely get values with defaults
-    const origination = Number(dealData.origination_percent) || 0;
-    const site = Number(dealData.site_percent) || 0;
-    const deal = Number(dealData.deal_percent) || 0;
-    const commission = Number(dealData.commission_percent) || 0;
-    const referral = Number(dealData.referral_fee_percent) || 0;
-    
-    // Calculate total
-    const total = origination + site + deal;
-    
-    if (total > 100) {
-      warnings.push('Broker split percentages total ' + total.toFixed(1) + '% (over 100%)');
-    }
-    
-    if (commission > 50) {
-      warnings.push('Commission rate ' + commission.toFixed(1) + '% seems high');
-    }
-    
-    if (referral > 100) {
-      warnings.push('Referral fee ' + referral.toFixed(1) + '% cannot exceed 100%');
-    }
-    
-    return warnings;
-  };
 
   if (loading) {
     return (
@@ -299,8 +367,6 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
     );
   }
 
-  const hasPayments = payments.length > 0;
-  const validationWarnings = getValidationWarnings(deal);
 
   return (
     <div className="space-y-4">

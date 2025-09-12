@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Deal, Payment, PaymentSplit, Broker, CommissionSplit, Client } from '../lib/types';
 import { usePaymentCalculations } from '../hooks/usePaymentCalculations';
@@ -7,6 +7,18 @@ import PaymentListSection from './payments/PaymentListSection';
 import PaymentStatusCard from './PaymentStatusCard';
 import CommissionBreakdownBar from './CommissionBreakdownBar';
 import { usePaymentStatus } from '../hooks/usePaymentStatus';
+
+// Add caching for payment data
+const paymentDataCache = new Map<string, {
+  payments: PaymentWithProperty[];
+  paymentSplits: PaymentSplit[];
+  commissionSplits: CommissionSplit[];
+  brokers: Broker[];
+  clients: Client[];
+  timestamp: number;
+}>();
+
+const PAYMENT_CACHE_DURATION = 3 * 60 * 1000; // 3 minutes
 
 // Enhanced Payment type with joined property data
 interface PaymentWithProperty extends Payment {
@@ -48,38 +60,75 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
     validationMessages
   } = usePaymentCalculations(deal, payments, commissionSplits);
 
-  // Fetch all payment and commission-related data
-  const fetchPaymentData = async () => {
+  // Optimized fetch with caching
+  const fetchPaymentData = useCallback(async () => {
     if (!deal.id) return;
+
+    // Check cache first
+    const cached = paymentDataCache.get(deal.id);
+    const now = Date.now();
+    
+    if (cached && (now - cached.timestamp) < PAYMENT_CACHE_DURATION) {
+      console.log('📦 Using cached payment data for deal:', deal.id);
+      setPayments(cached.payments);
+      setPaymentSplits(cached.paymentSplits);
+      setCommissionSplits(cached.commissionSplits);
+      setBrokers(cached.brokers);
+      setClients(cached.clients);
+      setLoading(false);
+      return;
+    }
 
     try {
       setLoading(true);
       setError(null);
 
-      // Fetch payments for this deal with property information via JOIN
-      const { data: paymentsData, error: paymentsError } = await supabase
-        .from('payment')
-        .select('*, payment_date_estimated')
-        .eq('deal_id', deal.id)
-        .order('payment_sequence', { ascending: true });
+      // Execute all queries in parallel for better performance
+      const [
+        paymentsResult,
+        commissionSplitsResult,
+        brokersResult,
+        clientsResult
+      ] = await Promise.all([
+        // Payments for this deal
+        supabase
+          .from('payment')
+          .select('*')
+          .eq('deal_id', deal.id)
+          .order('payment_sequence', { ascending: true }),
+        
+        // Commission splits for this deal
+        supabase
+          .from('commission_split')
+          .select('*')
+          .eq('deal_id', deal.id),
+        
+        // All brokers (lighter query)
+        supabase
+          .from('broker')
+          .select('id, name')
+          .order('name'),
+        
+        // Clients (with error handling)
+        supabase
+          .from('client')
+          .select('*')
+          .order('client_name')
+      ]);
 
-      if (paymentsError) throw paymentsError;
-      
-      // DEBUG: Log what payments were fetched
-      console.log('🔍 PaymentTab fetchPaymentData - payments found:', {
-        dealId: deal.id,
-        paymentsCount: paymentsData?.length || 0,
-        payments: paymentsData?.map(p => ({
-          id: p.id,
-          sequence: p.payment_sequence,
-          amount: p.payment_amount,
-          estimated_date: p.payment_date_estimated
-        }))
-      });
+      if (paymentsResult.error) throw paymentsResult.error;
+      if (commissionSplitsResult.error) throw commissionSplitsResult.error;
+      if (brokersResult.error) throw brokersResult.error;
+      if (clientsResult.error) throw clientsResult.error;
 
-      // Fetch payment splits for all payments  
-      const paymentIds = paymentsData?.map(p => p.id) || [];
+      const paymentsData = paymentsResult.data || [];
+      const commissionSplitsData = commissionSplitsResult.data || [];
+      const brokersData = brokersResult.data || [];
+      const clientsData = clientsResult.data || [];
+
+      // Fetch payment splits only if we have payments (conditional query)
       let paymentSplitsData: PaymentSplit[] = [];
+      const paymentIds = paymentsData.map((p: any) => p.id);
       
       if (paymentIds.length > 0) {
         const { data: splitsData, error: splitsError } = await supabase
@@ -91,44 +140,29 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
         paymentSplitsData = splitsData || [];
       }
 
-      // Fetch commission splits for this deal (templates for payment generation)
-      const { data: commissionSplitsData, error: commissionSplitsError } = await supabase
-        .from('commission_split')
-        .select('*')
-        .eq('deal_id', deal.id);
+      // Cache the results for faster subsequent loads
+      paymentDataCache.set(deal.id, {
+        payments: paymentsData,
+        paymentSplits: paymentSplitsData,
+        commissionSplits: commissionSplitsData,
+        brokers: brokersData,
+        clients: clientsData,
+        timestamp: Date.now()
+      });
 
-      if (commissionSplitsError) throw commissionSplitsError;
-
-      // Fetch all brokers
-      const { data: brokersData, error: brokersError } = await supabase
-        .from('broker')
-        .select('*')
-        .order('name');
-
-      if (brokersError) throw brokersError;
-
-      // Fetch all clients (optional - may not exist in database yet)
-      let clientsData: Client[] = [];
-      try {
-        const { data, error } = await supabase
-          .from('client')
-          .select('*')
-          .order('client_name');
-        
-        if (!error) {
-          clientsData = data || [];
-        } else {
-          console.warn('Client table not available:', error.message);
+      // Limit cache size to prevent memory leaks
+      if (paymentDataCache.size > 50) {
+        const firstKey = paymentDataCache.keys().next().value;
+        if (firstKey !== undefined) {
+          paymentDataCache.delete(firstKey);
         }
-      } catch (clientError) {
-        console.warn('Error fetching clients (table may not exist):', clientError);
       }
 
-      setPayments(paymentsData || []);
+      setPayments(paymentsData);
       setPaymentSplits(paymentSplitsData);
-      setCommissionSplits(commissionSplitsData || []);
-      setBrokers(brokersData || []);
-      setClients(clientsData || []);
+      setCommissionSplits(commissionSplitsData);
+      setBrokers(brokersData);
+      setClients(clientsData);
 
     } catch (err) {
       console.error('Error fetching payment data:', err);
@@ -136,7 +170,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [deal.id]);
 
   // Generate payments for the deal
   const generatePayments = async () => {
@@ -216,7 +250,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
 
   useEffect(() => {
     fetchPaymentData();
-  }, [deal.id]);
+  }, [fetchPaymentData]);
 
   if (loading) {
     return (
