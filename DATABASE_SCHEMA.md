@@ -1,6 +1,145 @@
 # Database Schema Documentation
 
-## Recent Schema Changes - Payment Disbursement System
+## Recent Schema Changes - Activity Management System
+
+### New Activity Tables
+
+The activity system has been added to manage tasks, calls, emails and other activities from Salesforce Task records.
+
+#### Activity Lookup Tables
+
+```sql
+-- Activity status options
+CREATE TABLE activity_status (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    is_closed BOOLEAN DEFAULT FALSE,
+    is_default BOOLEAN DEFAULT FALSE,
+    sort_order INTEGER,
+    color VARCHAR(7),
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Activity type categories  
+CREATE TABLE activity_type (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    description TEXT,
+    icon VARCHAR(20),
+    color VARCHAR(7),
+    sort_order INTEGER,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Priority levels for activities
+CREATE TABLE activity_priority (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    is_high_priority BOOLEAN DEFAULT FALSE,
+    is_default BOOLEAN DEFAULT FALSE,
+    sort_order INTEGER,
+    color VARCHAR(7),
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Task type classifications
+CREATE TABLE activity_task_type (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    category VARCHAR(50),
+    description TEXT,
+    icon VARCHAR(20),
+    color VARCHAR(7),
+    sort_order INTEGER,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+#### Main Activity Table
+
+```sql
+CREATE TABLE activity (
+    -- Primary Key
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    
+    -- Salesforce Legacy Fields (Always Keep)
+    sf_id VARCHAR(18) UNIQUE,
+    sf_who_id VARCHAR(18),
+    sf_what_id VARCHAR(18),
+    sf_owner_id VARCHAR(18),
+    sf_account_id VARCHAR(18),
+    sf_created_by_id VARCHAR(18),
+    sf_updated_by VARCHAR(18),
+    sf_status VARCHAR(100),
+    sf_task_priority VARCHAR(100),
+    sf_task_subtype VARCHAR(100),
+    sf_task_type VARCHAR(100),
+    sf_is_closed BOOLEAN,
+    sf_is_recurring BOOLEAN,
+    
+    -- Active Foreign Key Relationships
+    contact_id UUID REFERENCES contact(id),
+    status_id UUID REFERENCES activity_status(id),
+    owner_id UUID REFERENCES "user"(id),
+    activity_priority_id UUID REFERENCES activity_priority(id),
+    user_id UUID REFERENCES "user"(id),
+    activity_type_id UUID REFERENCES activity_type(id),
+    activity_task_type_id UUID REFERENCES activity_task_type(id),
+    updated_by UUID REFERENCES "user"(id),
+    client_id UUID REFERENCES client(id),
+    
+    -- WhatId Relationship Mappings
+    deal_id UUID REFERENCES deal(id),
+    property_id UUID REFERENCES property(id),
+    site_submit_id UUID REFERENCES site_submit(id),
+    
+    -- WhatId Text References (for smaller objects)
+    related_object_type VARCHAR(50),
+    related_object_id VARCHAR(18),
+    
+    -- Core Activity Fields
+    subject VARCHAR(255),
+    description TEXT,
+    activity_date DATE,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    
+    -- Call-Specific Fields
+    call_disposition VARCHAR(100),
+    call_duration_seconds INTEGER,
+    
+    -- Boolean Flags
+    is_high_priority BOOLEAN,
+    meeting_held BOOLEAN,
+    completed_call BOOLEAN,
+    is_prospecting_call BOOLEAN,
+    completed_property_call BOOLEAN,
+    is_property_prospecting_call BOOLEAN
+);
+```
+
+### Activity WhatId Mapping
+
+Activities are linked to related objects through intelligent WhatId prefix mapping:
+
+- **006**: Deal objects (opportunity)
+- **a00**: Property objects  
+- **a05**: Site Submit objects
+- **a03**: Property Research (text reference)
+- **0XB**: List Email (text reference)
+- **a2R**: Individual Email (text reference)
+- **a1n**: Restaurant Trends (text reference)
+
+### Migration Data
+
+The system migrates ~23,435 Task records from `salesforce_Task` with full relationship mapping and data preservation.
+
+## Payment Disbursement System Updates
 
 ### Payment Table Updates
 

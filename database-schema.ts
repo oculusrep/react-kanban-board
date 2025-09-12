@@ -14,6 +14,501 @@ export type Database = {
   }
   public: {
     Tables: {
+      activity: {
+        Row: {
+          activity_date: string | null
+          activity_priority_id: string | null
+          activity_task_type_id: string | null
+          activity_type_id: string | null
+          call_disposition: string | null
+          call_duration_seconds: number | null
+          client_id: string | null
+          completed_at: string | null
+          completed_call: boolean | null
+          completed_property_call: boolean | null
+          contact_id: string | null
+          created_at: string | null
+          deal_id: string | null
+          description: string | null
+          id: string
+          is_high_priority: boolean | null
+          is_property_prospecting_call: boolean | null
+          is_prospecting_call: boolean | null
+          meeting_held: boolean | null
+          owner_id: string | null
+          property_id: string | null
+          related_object_id: string | null
+          related_object_type: string | null
+          sf_account_id: string | null
+          sf_created_by_id: string | null
+          sf_id: string | null
+          sf_is_closed: boolean | null
+          sf_is_recurring: boolean | null
+          sf_owner_id: string | null
+          sf_status: string | null
+          sf_task_priority: string | null
+          sf_task_subtype: string | null
+          sf_task_type: string | null
+          sf_updated_by: string | null
+          sf_what_id: string | null
+          sf_who_id: string | null
+          site_submit_id: string | null
+          status_id: string | null
+          subject: string | null
+          updated_at: string | null
+          updated_by: string | null
+          user_id: string | null
+        }
+        Insert: {
+          activity_date?: string | null
+          activity_priority_id?: string | null
+          activity_task_type_id?: string | null
+          activity_type_id?: string | null
+          call_disposition?: string | null
+          call_duration_seconds?: number | null
+          client_id?: string | null
+          completed_at?: string | null
+          completed_call?: boolean | null
+          completed_property_call?: boolean | null
+          contact_id?: string | null
+          created_at?: string | null
+          deal_id?: string | null
+          description?: string | null
+          id?: string
+          is_high_priority?: boolean | null
+          is_property_prospecting_call?: boolean | null
+          is_prospecting_call?: boolean | null
+          meeting_held?: boolean | null
+          owner_id?: string | null
+          property_id?: string | null
+          related_object_id?: string | null
+          related_object_type?: string | null
+          sf_account_id?: string | null
+          sf_created_by_id?: string | null
+          sf_id?: string | null
+          sf_is_closed?: boolean | null
+          sf_is_recurring?: boolean | null
+          sf_owner_id?: string | null
+          sf_status?: string | null
+          sf_task_priority?: string | null
+          sf_task_subtype?: string | null
+          sf_task_type?: string | null
+          sf_updated_by?: string | null
+          sf_what_id?: string | null
+          sf_who_id?: string | null
+          site_submit_id?: string | null
+          status_id?: string | null
+          subject?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          activity_date?: string | null
+          activity_priority_id?: string | null
+          activity_task_type_id?: string | null
+          activity_type_id?: string | null
+          call_disposition?: string | null
+          call_duration_seconds?: number | null
+          client_id?: string | null
+          completed_at?: string | null
+          completed_call?: boolean | null
+          completed_property_call?: boolean | null
+          contact_id?: string | null
+          created_at?: string | null
+          deal_id?: string | null
+          description?: string | null
+          id?: string
+          is_high_priority?: boolean | null
+          is_property_prospecting_call?: boolean | null
+          is_prospecting_call?: boolean | null
+          meeting_held?: boolean | null
+          owner_id?: string | null
+          property_id?: string | null
+          related_object_id?: string | null
+          related_object_type?: string | null
+          sf_account_id?: string | null
+          sf_created_by_id?: string | null
+          sf_id?: string | null
+          sf_is_closed?: boolean | null
+          sf_is_recurring?: boolean | null
+          sf_owner_id?: string | null
+          sf_status?: string | null
+          sf_task_priority?: string | null
+          sf_task_subtype?: string | null
+          sf_task_type?: string | null
+          sf_updated_by?: string | null
+          sf_what_id?: string | null
+          sf_who_id?: string | null
+          site_submit_id?: string | null
+          status_id?: string | null
+          subject?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_activity_priority_id_fkey"
+            columns: ["activity_priority_id"]
+            isOneToOne: false
+            referencedRelation: "activity_priority"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_activity_task_type_id_fkey"
+            columns: ["activity_task_type_id"]
+            isOneToOne: false
+            referencedRelation: "activity_task_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_activity_type_id_fkey"
+            columns: ["activity_type_id"]
+            isOneToOne: false
+            referencedRelation: "activity_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_deal_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "site_submit"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_status_id_fkey"
+            columns: ["status_id"]
+            isOneToOne: false
+            referencedRelation: "activity_status"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_contact_id"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_deal_id"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_deal_id"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_owner_id"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_priority_id"
+            columns: ["activity_priority_id"]
+            isOneToOne: false
+            referencedRelation: "activity_priority"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_property_id"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_property_id"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_deal_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_property_id"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_property_id"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_site_submit_id"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "site_submit"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_status_id"
+            columns: ["status_id"]
+            isOneToOne: false
+            referencedRelation: "activity_status"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_task_type_id"
+            columns: ["activity_task_type_id"]
+            isOneToOne: false
+            referencedRelation: "activity_task_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_type_id"
+            columns: ["activity_type_id"]
+            isOneToOne: false
+            referencedRelation: "activity_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_updated_by"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_user_id"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      activity_priority: {
+        Row: {
+          active: boolean | null
+          color: string | null
+          created_at: string | null
+          id: string
+          is_default: boolean | null
+          is_high_priority: boolean | null
+          name: string
+          sort_order: number | null
+        }
+        Insert: {
+          active?: boolean | null
+          color?: string | null
+          created_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          is_high_priority?: boolean | null
+          name: string
+          sort_order?: number | null
+        }
+        Update: {
+          active?: boolean | null
+          color?: string | null
+          created_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          is_high_priority?: boolean | null
+          name?: string
+          sort_order?: number | null
+        }
+        Relationships: []
+      }
+      activity_status: {
+        Row: {
+          active: boolean | null
+          color: string | null
+          created_at: string | null
+          id: string
+          is_closed: boolean | null
+          is_default: boolean | null
+          name: string
+          sort_order: number | null
+        }
+        Insert: {
+          active?: boolean | null
+          color?: string | null
+          created_at?: string | null
+          id?: string
+          is_closed?: boolean | null
+          is_default?: boolean | null
+          name: string
+          sort_order?: number | null
+        }
+        Update: {
+          active?: boolean | null
+          color?: string | null
+          created_at?: string | null
+          id?: string
+          is_closed?: boolean | null
+          is_default?: boolean | null
+          name?: string
+          sort_order?: number | null
+        }
+        Relationships: []
+      }
+      activity_task_type: {
+        Row: {
+          active: boolean | null
+          category: string | null
+          color: string | null
+          created_at: string | null
+          description: string | null
+          icon: string | null
+          id: string
+          name: string
+          sort_order: number | null
+        }
+        Insert: {
+          active?: boolean | null
+          category?: string | null
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          icon?: string | null
+          id?: string
+          name: string
+          sort_order?: number | null
+        }
+        Update: {
+          active?: boolean | null
+          category?: string | null
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          icon?: string | null
+          id?: string
+          name?: string
+          sort_order?: number | null
+        }
+        Relationships: []
+      }
+      activity_type: {
+        Row: {
+          active: boolean | null
+          color: string | null
+          created_at: string | null
+          description: string | null
+          icon: string | null
+          id: string
+          name: string
+          sort_order: number | null
+        }
+        Insert: {
+          active?: boolean | null
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          icon?: string | null
+          id?: string
+          name: string
+          sort_order?: number | null
+        }
+        Update: {
+          active?: boolean | null
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          icon?: string | null
+          id?: string
+          name?: string
+          sort_order?: number | null
+        }
+        Relationships: []
+      }
       assignment: {
         Row: {
           assignment_name: string | null
@@ -2835,6 +3330,84 @@ export type Database = {
           Relationship_Strength__c?: string | null
           Roles?: string | null
           StartDate?: string | null
+          SystemModstamp?: string | null
+        }
+        Relationships: []
+      }
+      salesforce_ActivityFieldHistory: {
+        Row: {
+          _airbyte_extracted_at: string
+          _airbyte_generation_id: number | null
+          _airbyte_meta: Json
+          _airbyte_raw_id: string
+          ActivityId: string | null
+          ChangedById: string | null
+          ChangedDate: string | null
+          CreatedById: string | null
+          CreatedDate: string | null
+          DataType: string | null
+          FieldName: string | null
+          Id: string | null
+          IsDataAvailable: boolean | null
+          LastModifiedById: string | null
+          LastModifiedDate: string | null
+          NewValueDateTime: string | null
+          NewValueNumber: number | null
+          NewValueText: string | null
+          OldValueDateTime: string | null
+          OldValueNumber: number | null
+          OldValueText: string | null
+          Operation: string | null
+          SystemModstamp: string | null
+        }
+        Insert: {
+          _airbyte_extracted_at: string
+          _airbyte_generation_id?: number | null
+          _airbyte_meta: Json
+          _airbyte_raw_id: string
+          ActivityId?: string | null
+          ChangedById?: string | null
+          ChangedDate?: string | null
+          CreatedById?: string | null
+          CreatedDate?: string | null
+          DataType?: string | null
+          FieldName?: string | null
+          Id?: string | null
+          IsDataAvailable?: boolean | null
+          LastModifiedById?: string | null
+          LastModifiedDate?: string | null
+          NewValueDateTime?: string | null
+          NewValueNumber?: number | null
+          NewValueText?: string | null
+          OldValueDateTime?: string | null
+          OldValueNumber?: number | null
+          OldValueText?: string | null
+          Operation?: string | null
+          SystemModstamp?: string | null
+        }
+        Update: {
+          _airbyte_extracted_at?: string
+          _airbyte_generation_id?: number | null
+          _airbyte_meta?: Json
+          _airbyte_raw_id?: string
+          ActivityId?: string | null
+          ChangedById?: string | null
+          ChangedDate?: string | null
+          CreatedById?: string | null
+          CreatedDate?: string | null
+          DataType?: string | null
+          FieldName?: string | null
+          Id?: string | null
+          IsDataAvailable?: boolean | null
+          LastModifiedById?: string | null
+          LastModifiedDate?: string | null
+          NewValueDateTime?: string | null
+          NewValueNumber?: number | null
+          NewValueText?: string | null
+          OldValueDateTime?: string | null
+          OldValueNumber?: number | null
+          OldValueText?: string | null
+          Operation?: string | null
           SystemModstamp?: string | null
         }
         Relationships: []
@@ -7637,48 +8210,6 @@ export type Database = {
           created_at?: string | null
           id?: string
           name?: string
-        }
-        Relationships: []
-      }
-      task: {
-        Row: {
-          assigned_to: string | null
-          client_id: string | null
-          completed: boolean
-          created_at: string
-          created_by: string | null
-          deal_id: string | null
-          due_date: string | null
-          id: string
-          notes: string | null
-          property_id: string | null
-          title: string | null
-        }
-        Insert: {
-          assigned_to?: string | null
-          client_id?: string | null
-          completed?: boolean
-          created_at?: string
-          created_by?: string | null
-          deal_id?: string | null
-          due_date?: string | null
-          id?: string
-          notes?: string | null
-          property_id?: string | null
-          title?: string | null
-        }
-        Update: {
-          assigned_to?: string | null
-          client_id?: string | null
-          completed?: boolean
-          created_at?: string
-          created_by?: string | null
-          deal_id?: string | null
-          due_date?: string | null
-          id?: string
-          notes?: string | null
-          property_id?: string | null
-          title?: string | null
         }
         Relationships: []
       }

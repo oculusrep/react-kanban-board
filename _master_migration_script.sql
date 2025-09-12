@@ -1818,4 +1818,477 @@ UPDATE contact
 SET source_type = 'Contact' 
 WHERE source_type IS NULL;
 
+-- ==============================================================================
+-- Activity System Migration (Task/Activity Management)
+-- ==============================================================================
+
+-- ==============================================================================
+-- Activity Lookup Tables (Must come first)
+-- ==============================================================================
+
+-- Activity Status lookup table
+CREATE TABLE IF NOT EXISTS activity_status (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    is_closed BOOLEAN DEFAULT FALSE,
+    is_default BOOLEAN DEFAULT FALSE,
+    sort_order INTEGER,
+    color VARCHAR(7),
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+INSERT INTO activity_status (name, is_closed, is_default, sort_order, color) VALUES
+('Open', false, true, 1, '#3B82F6'),
+('Completed', true, false, 2, '#10B981'),
+('In Progress', false, false, 3, '#F59E0B'),
+('Not Started', false, false, 4, '#6B7280'),
+('Waiting on someone else', false, false, 5, '#8B5CF6'),
+('Deferred', false, false, 6, '#EF4444')
+ON CONFLICT (name) DO UPDATE SET
+  is_closed = EXCLUDED.is_closed,
+  is_default = EXCLUDED.is_default,
+  sort_order = EXCLUDED.sort_order,
+  color = EXCLUDED.color,
+  active = EXCLUDED.active;
+
+CREATE INDEX IF NOT EXISTS idx_activity_status_default ON activity_status(is_default);
+CREATE INDEX IF NOT EXISTS idx_activity_status_closed ON activity_status(is_closed);
+
+-- Activity Type lookup table  
+CREATE TABLE IF NOT EXISTS activity_type (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    description TEXT,
+    icon VARCHAR(20),
+    color VARCHAR(7),
+    sort_order INTEGER,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+INSERT INTO activity_type (name, description, icon, color, sort_order) VALUES
+('Call', 'Phone call activities', 'Phone', '#10B981', 1),
+('Email', 'Email communication activities', 'Mail', '#8B5CF6', 2),
+('Task', 'General task activities', 'CheckSquare', '#3B82F6', 3),
+('ListEmail', 'Email list/campaign activities', 'Send', '#F59E0B', 4)
+ON CONFLICT (name) DO UPDATE SET
+  description = EXCLUDED.description,
+  icon = EXCLUDED.icon,
+  color = EXCLUDED.color,
+  sort_order = EXCLUDED.sort_order,
+  active = EXCLUDED.active;
+
+CREATE INDEX IF NOT EXISTS idx_activity_type_sort ON activity_type(sort_order);
+
+-- Activity Priority lookup table
+CREATE TABLE IF NOT EXISTS activity_priority (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    is_high_priority BOOLEAN DEFAULT FALSE,
+    is_default BOOLEAN DEFAULT FALSE,
+    sort_order INTEGER,
+    color VARCHAR(7),
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+INSERT INTO activity_priority (name, is_high_priority, is_default, sort_order, color) VALUES
+('Immediate', true, false, 1, '#DC2626'),
+('EOD', true, false, 2, '#EA580C'),
+('EOW', false, true, 3, '#F59E0B'),
+('Next Week', false, false, 4, '#3B82F6'),
+('Call Sheet', false, false, 5, '#8B5CF6'),
+('Prospecting List', false, false, 6, '#10B981'),
+('Normal', false, false, 7, '#6B7280'),
+('High', true, false, 8, '#EF4444'),
+('Low', false, false, 9, '#94A3B8')
+ON CONFLICT (name) DO UPDATE SET
+  is_high_priority = EXCLUDED.is_high_priority,
+  is_default = EXCLUDED.is_default,
+  sort_order = EXCLUDED.sort_order,
+  color = EXCLUDED.color,
+  active = EXCLUDED.active;
+
+CREATE INDEX IF NOT EXISTS idx_activity_priority_default ON activity_priority(is_default);
+CREATE INDEX IF NOT EXISTS idx_activity_priority_high ON activity_priority(is_high_priority);
+
+-- Activity Task Type lookup table
+CREATE TABLE IF NOT EXISTS activity_task_type (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    category VARCHAR(50),
+    description TEXT,
+    icon VARCHAR(20),
+    color VARCHAR(7),
+    sort_order INTEGER,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+INSERT INTO activity_task_type (name, category, description, icon, color, sort_order) VALUES
+('Assistant Task', 'administrative', 'Tasks handled by assistant', 'UserCheck', '#6B7280', 1),
+('Pipeline', 'sales', 'Pipeline management activities', 'TrendingUp', '#3B82F6', 2),
+('Prospecting', 'sales', 'New client prospecting activities', 'Search', '#10B981', 3),
+('Process', 'administrative', 'Internal process and workflow tasks', 'Settings', '#8B5CF6', 4),
+('Site Submit', 'operations', 'Site submission related activities', 'MapPin', '#F59E0B', 5),
+('Follow-ups', 'sales', 'Follow-up activities with clients', 'RotateCcw', '#EC4899', 6),
+('Call List', 'sales', 'Organized calling activities', 'Phone', '#059669', 7),
+('Property Research', 'research', 'Property research and analysis', 'BookOpen', '#06B6D4', 8),
+('Personal', 'personal', 'Personal tasks and activities', 'User', '#84CC16', 9),
+('CRM Future Projects', 'development', 'CRM system improvement tasks', 'Code', '#7C3AED', 10)
+ON CONFLICT (name) DO UPDATE SET
+  category = EXCLUDED.category,
+  description = EXCLUDED.description,
+  icon = EXCLUDED.icon,
+  color = EXCLUDED.color,
+  sort_order = EXCLUDED.sort_order,
+  active = EXCLUDED.active;
+
+CREATE INDEX IF NOT EXISTS idx_activity_task_type_category ON activity_task_type(category);
+CREATE INDEX IF NOT EXISTS idx_activity_task_type_sort ON activity_task_type(sort_order);
+
+-- ==============================================================================
+-- Main Activity Table
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS activity (
+    -- Primary Key
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    
+    -- Salesforce Legacy Fields (Always Keep)
+    sf_id VARCHAR(18) UNIQUE,
+    sf_who_id VARCHAR(18),
+    sf_what_id VARCHAR(18),
+    sf_owner_id VARCHAR(18),
+    sf_account_id VARCHAR(18),
+    sf_created_by_id VARCHAR(18),
+    sf_updated_by VARCHAR(18),
+    sf_status VARCHAR(100),
+    sf_task_priority VARCHAR(100),
+    sf_task_subtype VARCHAR(100),
+    sf_task_type VARCHAR(100),
+    sf_is_closed BOOLEAN,
+    sf_is_recurring BOOLEAN,
+    
+    -- Active Foreign Key Relationships
+    contact_id UUID REFERENCES contact(id),
+    status_id UUID REFERENCES activity_status(id),
+    owner_id UUID REFERENCES "user"(id),
+    activity_priority_id UUID REFERENCES activity_priority(id),
+    user_id UUID REFERENCES "user"(id),  -- Maps from CreatedById
+    activity_type_id UUID REFERENCES activity_type(id),
+    activity_task_type_id UUID REFERENCES activity_task_type(id),
+    updated_by UUID REFERENCES "user"(id),
+    client_id UUID REFERENCES client(id),
+    
+    -- WhatId Relationship Mappings (from our prefix analysis)
+    deal_id UUID REFERENCES deal(id),
+    property_id UUID REFERENCES property(id),
+    site_submit_id UUID REFERENCES site_submit(id),
+    
+    -- WhatId Text References (for smaller objects)
+    related_object_type VARCHAR(50),  -- 'property_research', 'list_email', etc.
+    related_object_id VARCHAR(18),
+    
+    -- Core Activity Fields
+    subject VARCHAR(255),
+    description TEXT,
+    activity_date DATE,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    
+    -- Call-Specific Fields
+    call_disposition VARCHAR(100),
+    call_duration_seconds INTEGER,
+    
+    -- Boolean Flags
+    is_high_priority BOOLEAN,
+    meeting_held BOOLEAN,
+    completed_call BOOLEAN,
+    is_prospecting_call BOOLEAN,
+    completed_property_call BOOLEAN,
+    is_property_prospecting_call BOOLEAN,
+    
+    -- Indexes
+    CONSTRAINT activity_sf_id_unique UNIQUE(sf_id)
+);
+
+-- Add any missing columns (for schema evolution)
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS sf_who_id VARCHAR(18);
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS sf_what_id VARCHAR(18);
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS sf_owner_id VARCHAR(18);
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS sf_account_id VARCHAR(18);
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS sf_created_by_id VARCHAR(18);
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS sf_updated_by VARCHAR(18);
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS sf_status VARCHAR(100);
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS sf_task_priority VARCHAR(100);
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS sf_task_subtype VARCHAR(100);
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS sf_task_type VARCHAR(100);
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS sf_is_closed BOOLEAN;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS sf_is_recurring BOOLEAN;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS contact_id UUID;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS status_id UUID;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS owner_id UUID;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS activity_priority_id UUID;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS user_id UUID;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS activity_type_id UUID;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS activity_task_type_id UUID;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS client_id UUID;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS deal_id UUID;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS property_id UUID;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS site_submit_id UUID;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS related_object_type VARCHAR(50);
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS related_object_id VARCHAR(18);
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS subject VARCHAR(255);
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS activity_date DATE;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS call_disposition VARCHAR(100);
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS call_duration_seconds INTEGER;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS is_high_priority BOOLEAN;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS meeting_held BOOLEAN;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS completed_call BOOLEAN;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS is_prospecting_call BOOLEAN;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS completed_property_call BOOLEAN;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS is_property_prospecting_call BOOLEAN;
+
+-- Add foreign key constraints (drop first to avoid conflicts)
+ALTER TABLE activity DROP CONSTRAINT IF EXISTS fk_activity_contact_id;
+ALTER TABLE activity ADD CONSTRAINT fk_activity_contact_id FOREIGN KEY (contact_id) REFERENCES contact(id);
+
+ALTER TABLE activity DROP CONSTRAINT IF EXISTS fk_activity_status_id;
+ALTER TABLE activity ADD CONSTRAINT fk_activity_status_id FOREIGN KEY (status_id) REFERENCES activity_status(id);
+
+ALTER TABLE activity DROP CONSTRAINT IF EXISTS fk_activity_owner_id;
+ALTER TABLE activity ADD CONSTRAINT fk_activity_owner_id FOREIGN KEY (owner_id) REFERENCES "user"(id);
+
+ALTER TABLE activity DROP CONSTRAINT IF EXISTS fk_activity_priority_id;
+ALTER TABLE activity ADD CONSTRAINT fk_activity_priority_id FOREIGN KEY (activity_priority_id) REFERENCES activity_priority(id);
+
+ALTER TABLE activity DROP CONSTRAINT IF EXISTS fk_activity_user_id;
+ALTER TABLE activity ADD CONSTRAINT fk_activity_user_id FOREIGN KEY (user_id) REFERENCES "user"(id);
+
+ALTER TABLE activity DROP CONSTRAINT IF EXISTS fk_activity_type_id;
+ALTER TABLE activity ADD CONSTRAINT fk_activity_type_id FOREIGN KEY (activity_type_id) REFERENCES activity_type(id);
+
+ALTER TABLE activity DROP CONSTRAINT IF EXISTS fk_activity_task_type_id;
+ALTER TABLE activity ADD CONSTRAINT fk_activity_task_type_id FOREIGN KEY (activity_task_type_id) REFERENCES activity_task_type(id);
+
+ALTER TABLE activity DROP CONSTRAINT IF EXISTS fk_activity_updated_by;
+ALTER TABLE activity ADD CONSTRAINT fk_activity_updated_by FOREIGN KEY (updated_by) REFERENCES "user"(id);
+
+ALTER TABLE activity DROP CONSTRAINT IF EXISTS fk_activity_client_id;
+ALTER TABLE activity ADD CONSTRAINT fk_activity_client_id FOREIGN KEY (client_id) REFERENCES client(id);
+
+ALTER TABLE activity DROP CONSTRAINT IF EXISTS fk_activity_deal_id;
+ALTER TABLE activity ADD CONSTRAINT fk_activity_deal_id FOREIGN KEY (deal_id) REFERENCES deal(id);
+
+ALTER TABLE activity DROP CONSTRAINT IF EXISTS fk_activity_property_id;
+ALTER TABLE activity ADD CONSTRAINT fk_activity_property_id FOREIGN KEY (property_id) REFERENCES property(id);
+
+ALTER TABLE activity DROP CONSTRAINT IF EXISTS fk_activity_site_submit_id;
+ALTER TABLE activity ADD CONSTRAINT fk_activity_site_submit_id FOREIGN KEY (site_submit_id) REFERENCES site_submit(id);
+
+-- ==============================================================================
+-- Activity Table Indexes
+-- ==============================================================================
+
+CREATE INDEX IF NOT EXISTS idx_activity_contact ON activity(contact_id);
+CREATE INDEX IF NOT EXISTS idx_activity_owner ON activity(owner_id);
+CREATE INDEX IF NOT EXISTS idx_activity_deal ON activity(deal_id);
+CREATE INDEX IF NOT EXISTS idx_activity_property ON activity(property_id);
+CREATE INDEX IF NOT EXISTS idx_activity_client ON activity(client_id);
+CREATE INDEX IF NOT EXISTS idx_activity_site_submit ON activity(site_submit_id);
+CREATE INDEX IF NOT EXISTS idx_activity_status ON activity(status_id);
+CREATE INDEX IF NOT EXISTS idx_activity_type ON activity(activity_type_id);
+CREATE INDEX IF NOT EXISTS idx_activity_task_type ON activity(activity_task_type_id);
+CREATE INDEX IF NOT EXISTS idx_activity_date ON activity(activity_date);
+CREATE INDEX IF NOT EXISTS idx_activity_created_at ON activity(created_at);
+CREATE INDEX IF NOT EXISTS idx_activity_related_object ON activity(related_object_type, related_object_id);
+CREATE INDEX IF NOT EXISTS idx_activity_sf_id ON activity(sf_id);
+CREATE INDEX IF NOT EXISTS idx_activity_sf_who_id ON activity(sf_who_id);
+CREATE INDEX IF NOT EXISTS idx_activity_sf_what_id ON activity(sf_what_id);
+CREATE INDEX IF NOT EXISTS idx_activity_sf_owner_id ON activity(sf_owner_id);
+
+-- ==============================================================================
+-- Activity Migration INSERT Query
+-- ==============================================================================
+
+-- Populate activity table from salesforce_Task
+INSERT INTO activity (
+    sf_id, sf_who_id, sf_what_id, sf_owner_id, sf_account_id, sf_created_by_id, sf_updated_by,
+    sf_status, sf_task_priority, sf_task_subtype, sf_task_type, sf_is_closed, sf_is_recurring,
+    contact_id, status_id, owner_id, activity_priority_id, user_id, activity_type_id, 
+    activity_task_type_id, updated_by, client_id,
+    deal_id, property_id, site_submit_id, related_object_type, related_object_id,
+    subject, description, activity_date, created_at, updated_at, completed_at,
+    call_disposition, call_duration_seconds, is_high_priority, meeting_held, completed_call,
+    is_prospecting_call, completed_property_call, is_property_prospecting_call
+)
+SELECT 
+    -- Salesforce Legacy Fields
+    st."Id", st."WhoId", st."WhatId", st."OwnerId", st."AccountId", st."CreatedById", st."LastModifiedById",
+    st."Status", st."Priority", st."TaskSubtype", st."Task_Type__c", st."IsClosed", st."IsRecurrence",
+    
+    -- Foreign Key Lookups
+    (SELECT id FROM contact WHERE sf_id = st."WhoId" LIMIT 1),
+    (SELECT id FROM activity_status WHERE is_default = true LIMIT 1), -- Will update based on Status later
+    (SELECT id FROM "user" WHERE sf_id = st."OwnerId" LIMIT 1),
+    (SELECT id FROM activity_priority WHERE is_default = true LIMIT 1), -- Will update based on Priority later
+    (SELECT id FROM "user" WHERE sf_id = st."CreatedById" LIMIT 1),
+    
+    -- Activity Type Mapping
+    CASE st."TaskSubtype"
+        WHEN 'Call' THEN (SELECT id FROM activity_type WHERE name = 'Call')
+        WHEN 'Email' THEN (SELECT id FROM activity_type WHERE name = 'Email')
+        WHEN 'ListEmail' THEN (SELECT id FROM activity_type WHERE name = 'ListEmail')
+        ELSE (SELECT id FROM activity_type WHERE name = 'Task')
+    END,
+    
+    -- Task Type Mapping (lookup by name if exists)
+    (SELECT id FROM activity_task_type WHERE name = st."Task_Type__c" LIMIT 1),
+    
+    (SELECT id FROM "user" WHERE sf_id = st."LastModifiedById" LIMIT 1),
+    (SELECT id FROM client WHERE sf_id = st."AccountId" LIMIT 1),
+    
+    -- WhatId Relationship Mappings (based on prefix analysis)
+    CASE LEFT(st."WhatId", 3)
+        WHEN '006' THEN (SELECT id FROM deal WHERE sf_id = st."WhatId" LIMIT 1)
+        ELSE NULL
+    END,
+    CASE LEFT(st."WhatId", 3)
+        WHEN 'a00' THEN (SELECT id FROM property WHERE sf_id = st."WhatId" LIMIT 1)
+        ELSE NULL
+    END,
+    CASE LEFT(st."WhatId", 3)
+        WHEN 'a05' THEN (SELECT id FROM site_submit WHERE sf_id = st."WhatId" LIMIT 1)
+        ELSE NULL
+    END,
+    
+    -- Related Object Text References
+    CASE LEFT(st."WhatId", 3)
+        WHEN 'a03' THEN 'property_research'
+        WHEN '0XB' THEN 'list_email'
+        WHEN 'a2R' THEN 'individual_email'
+        WHEN 'a1n' THEN 'restaurant_trends'
+        ELSE NULL
+    END,
+    CASE 
+        WHEN LEFT(st."WhatId", 3) IN ('a03', '0XB', 'a2R', 'a1n') THEN st."WhatId"
+        ELSE NULL
+    END,
+    
+    -- Core Fields
+    st."Subject", st."Description", st."ActivityDate"::DATE, 
+    st."CreatedDate"::TIMESTAMP, st."LastModifiedDate"::TIMESTAMP, st."CompletedDateTime"::TIMESTAMP,
+    
+    -- Call Fields
+    st."CallDisposition", st."CallDurationInSeconds",
+    
+    -- Boolean Fields
+    COALESCE(st."IsHighPriority", false), COALESCE(st."Meeting_Held__c", false), 
+    COALESCE(st."Completed_Call__c", false), COALESCE(st."Log_Prospecting_Call__c", false),
+    COALESCE(st."Completed_Property_Call__c", false), COALESCE(st."Log_Property_Prospecting_call__c", false)
+    
+FROM "salesforce_Task" st
+WHERE (st."IsDeleted" = false OR st."IsDeleted" IS NULL)
+ON CONFLICT (sf_id) DO UPDATE SET
+    -- Update logic for any re-runs
+    subject = EXCLUDED.subject,
+    description = EXCLUDED.description,
+    updated_at = EXCLUDED.updated_at,
+    completed_at = EXCLUDED.completed_at,
+    call_disposition = EXCLUDED.call_disposition,
+    call_duration_seconds = EXCLUDED.call_duration_seconds,
+    is_high_priority = EXCLUDED.is_high_priority,
+    meeting_held = EXCLUDED.meeting_held,
+    completed_call = EXCLUDED.completed_call,
+    is_prospecting_call = EXCLUDED.is_prospecting_call,
+    completed_property_call = EXCLUDED.completed_property_call,
+    is_property_prospecting_call = EXCLUDED.is_property_prospecting_call;
+
+-- ==============================================================================
+-- Post-Migration Updates for Complex Mappings
+-- ==============================================================================
+
+-- Update Priority based on Salesforce Priority field
+UPDATE activity SET activity_priority_id = (
+    SELECT ap.id FROM activity_priority ap 
+    WHERE ap.name = activity.sf_task_priority
+    LIMIT 1
+)
+WHERE sf_task_priority IS NOT NULL
+AND EXISTS (SELECT 1 FROM activity_priority WHERE name = activity.sf_task_priority);
+
+-- Update Status based on Salesforce Status field
+UPDATE activity SET status_id = (
+    SELECT ast.id FROM activity_status ast
+    WHERE ast.name = activity.sf_status
+    LIMIT 1
+)
+WHERE sf_status IS NOT NULL
+AND EXISTS (SELECT 1 FROM activity_status WHERE name = activity.sf_status);
+
+-- Handle Status values that don't have exact matches - map common variations
+UPDATE activity SET status_id = (
+    SELECT id FROM activity_status 
+    WHERE name = CASE 
+        WHEN activity.sf_status IN ('Completed', 'Complete') THEN 'Completed'
+        WHEN activity.sf_status IN ('Open', 'New', 'Started') THEN 'Open'
+        WHEN activity.sf_status = 'In Progress' THEN 'In Progress'
+        WHEN activity.sf_status = 'Not Started' THEN 'Not Started'
+        WHEN activity.sf_status = 'Waiting on someone else' THEN 'Waiting on someone else'
+        WHEN activity.sf_status = 'Deferred' THEN 'Deferred'
+        ELSE 'Open' -- Default fallback
+    END
+    LIMIT 1
+)
+WHERE status_id IS NULL AND sf_status IS NOT NULL;
+
+-- ==============================================================================
+-- Activity Migration Validation Queries
+-- ==============================================================================
+
+-- Validation: Check migration completeness
+-- This query shows the overall success of the migration
+DO $$
+DECLARE
+    total_activities INTEGER;
+    has_sf_id INTEGER;
+    mapped_contacts INTEGER;
+    mapped_deals INTEGER;
+    mapped_properties INTEGER;
+    mapped_site_submits INTEGER;
+    mapped_other_objects INTEGER;
+    validation_result TEXT;
+BEGIN
+    SELECT 
+        COUNT(*) as total,
+        COUNT(sf_id) as sf_ids,
+        COUNT(contact_id) as contacts,
+        COUNT(deal_id) as deals,
+        COUNT(property_id) as properties,
+        COUNT(site_submit_id) as site_submits,
+        COUNT(CASE WHEN related_object_type IS NOT NULL THEN 1 END) as others
+    INTO total_activities, has_sf_id, mapped_contacts, mapped_deals, mapped_properties, mapped_site_submits, mapped_other_objects
+    FROM activity;
+    
+    validation_result := 'Activity Migration Validation Results:' || CHR(10) ||
+                        'Total activities migrated: ' || total_activities || CHR(10) ||
+                        'Activities with Salesforce IDs: ' || has_sf_id || CHR(10) ||
+                        'Mapped to contacts: ' || mapped_contacts || CHR(10) ||
+                        'Mapped to deals: ' || mapped_deals || CHR(10) ||
+                        'Mapped to properties: ' || mapped_properties || CHR(10) ||
+                        'Mapped to site submits: ' || mapped_site_submits || CHR(10) ||
+                        'Mapped to other objects: ' || mapped_other_objects;
+                        
+    RAISE NOTICE '%', validation_result;
+END $$;
+
+-- Add helpful comment about WhatId mapping validation
+COMMENT ON TABLE activity IS 'Activity table migrated from salesforce_Task with normalized relationships. WhatId mappings: 006=deals, a00=properties, a05=site_submits, a03=property_research, 0XB=list_email, a2R=individual_email, a1n=restaurant_trends';
+
 COMMIT;
