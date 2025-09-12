@@ -13,6 +13,8 @@
     "@heroicons/react": "^2.2.0",
     "@supabase/supabase-js": "^2.53.0",
     "date-fns": "^4.1.0",
+    "email-addresses": "^5.0.0",
+    "email-reply-parser": "^2.0.1",
     "react": "^18.2.0",
     "react-datepicker": "^8.4.0",
     "react-dom": "^18.2.0",

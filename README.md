@@ -73,14 +73,47 @@ A comprehensive contact management system has been implemented with a sliding mo
 - **Animation System**: CSS transition improvements for smooth sliding behavior
 - **Type Safety**: Full TypeScript integration with updated database schema types
 
-### Activity Management System (Latest)
-A comprehensive activity management system has been implemented to handle tasks, calls, emails, and other activities migrated from Salesforce:
+### Deal Activity Management System with Advanced Email Parsing (Latest)
+A comprehensive activity management system has been implemented to handle tasks, calls, emails, and other activities with a dedicated Activity tab in the Deal Details interface:
+
+#### Deal Activity Tab Interface
+- **ActivityTab** (`src/components/ActivityTab.tsx`): Main activity interface integrated into Deal Details page
+- **Activity Summary Cards**: Real-time counts of Open, Completed, and All activities with filtering
+- **ActivityItem** (`src/components/ActivityItem.tsx`): Individual activity rows with expandable detail views
+- **ActivityDetailView** (`src/components/ActivityDetailView.tsx`): Expandable activity details with type-specific rendering
+- **Task Editing**: Inline editing for task activities with completion tracking
+- **Email Display**: Advanced email parsing and threading for email activities
+
+#### Advanced Email Parsing System
+- **Professional Email Parser** (`src/utils/professionalEmailParser.ts`): Utilizes `email-reply-parser` and `email-addresses` libraries
+- **AdvancedEmailView** (`src/components/AdvancedEmailView.tsx`): Gmail-style email display with threading
+- **Email Threading**: Separates email threads into individual messages with collapsible previous emails
+- **Header Parsing**: Extracts From, To, CC, Date, Subject information from email content
+- **Signature Detection**: Automatically identifies and separates email signatures
+- **Reply Detection**: Identifies reply/forward status with visual indicators
+- **⚠️ CURRENT LIMITATION**: Email parsing is functional but still requires refinement for complex email threads
 
 #### Activity System Architecture
 - **Comprehensive Activity Table**: Central `activity` table with full Salesforce Task migration (~23,435 records)
 - **Normalized Lookup Tables**: Separate lookup tables for status, priority, type, and task classifications
 - **Intelligent Relationship Mapping**: Smart WhatId mapping to deals, properties, site submits, and other objects
 - **Complete Salesforce Integration**: Preserves all original Salesforce data while providing normalized structure
+- **useActivities Hook** (`src/hooks/useActivities.ts`): Data fetching with relationship loading for contacts, users, activity types
+
+#### Activity Display Features
+- **Type-Specific Icons**: Different icons and styling for Call, Email, Task, ListEmail activities
+- **Completion Status Logic**: Multi-source completion checking (activity_status.is_closed, sf_is_closed, completed_call, sf_status)
+- **Expandable Interface**: Click subject lines to expand activity details
+- **Email List View**: Shows only subject and date for emails (no description preview)
+- **Email Expanded View**: Full email parsing with recipients, sender, body, and threading
+- **Task Edit Mode**: Inline editing for task activities with save/cancel functionality
+
+#### Email Parsing Libraries Integration
+- **email-reply-parser**: Professional library for email thread separation and content parsing
+- **email-addresses**: Robust email address parsing and validation
+- **ThreadedEmail Structure**: Individual email objects within threads with proper metadata
+- **Fallback Handling**: Graceful degradation when professional parsing fails
+- **Error Boundaries**: Comprehensive error handling to prevent UI crashes
 
 #### Activity Lookup Tables
 - **activity_status**: Status options (Open, Completed, In Progress, Not Started, Waiting on someone else, Deferred)
@@ -88,50 +121,31 @@ A comprehensive activity management system has been implemented to handle tasks,
 - **activity_priority**: Priority levels (Immediate, EOD, EOW, Next Week, Call Sheet, Prospecting List, Normal, High, Low)
 - **activity_task_type**: Task classifications (Assistant Task, Pipeline, Prospecting, Process, Site Submit, Follow-ups, Call List, Property Research, Personal, CRM Future Projects)
 
-#### Main Activity Table Features
-- **Salesforce Legacy Fields**: Preserves all original Salesforce fields (`sf_id`, `sf_who_id`, `sf_what_id`, etc.)
-- **Active Relationships**: Foreign key relationships to contacts, users, clients, deals, properties, site submits
-- **WhatId Intelligence**: Automatic object mapping based on Salesforce ID prefixes:
-  - `006` → Deals (Opportunities)
-  - `a00` → Properties
-  - `a05` → Site Submits
-  - `a03`, `0XB`, `a2R`, `a1n` → Text references for smaller objects
-- **Core Activity Data**: Subject, description, dates, completion tracking
-- **Call-Specific Fields**: Call disposition, duration tracking in seconds
-- **Custom Boolean Flags**: Meeting held, completed call, prospecting flags, property-related activities
-
-#### Migration and Data Integrity
-- **Complete Data Migration**: Migrates all ~23,435 Task records from `salesforce_Task`
-- **Smart Status/Priority Mapping**: Automatically maps Salesforce values to lookup tables with intelligent fallbacks
-- **Relationship Resolution**: Links activities to contacts, deals, properties, and other objects through foreign keys
-- **UPSERT Pattern**: Safe re-runnable migration with conflict resolution
-- **Built-in Validation**: Real-time validation reporting during migration process
-
-#### Database Schema Integration
-- **Full TypeScript Integration**: Complete type definitions in `database-schema.ts`
-- **Comprehensive Indexing**: Performance optimization for all common query patterns
-- **Foreign Key Constraints**: Proper referential integrity with cascading options
-- **Legacy Field Preservation**: Maintains Salesforce audit trail while enabling normalized queries
-
 #### Key Features
-1. **Complete Salesforce Task Migration**: All historical task data preserved and normalized
-2. **Intelligent Object Mapping**: Activities automatically linked to related deals, properties, contacts
-3. **Flexible Classification System**: Multiple dimensions of activity categorization (status, priority, type, task type)
-4. **Call Management**: Specialized fields for phone call activities with duration and disposition tracking
-5. **Prospecting Analytics**: Boolean flags for identifying and analyzing prospecting activities
-6. **Property-Specific Tracking**: Custom fields for property-related calls and activities
-7. **User Assignment**: Complete user relationship tracking for ownership and creation/modification
-8. **Date Management**: Activity scheduling, creation, modification, and completion timestamps
-9. **Boolean Flag System**: Comprehensive tracking of activity characteristics and completion states
-10. **Migration Validation**: Built-in reporting and validation to ensure successful data migration
+1. **Deal-Specific Activity View**: Activities filtered and displayed per deal with relationship context
+2. **Advanced Email Threading**: Gmail-style email display with collapsible previous messages
+3. **Professional Email Libraries**: Industry-standard parsing libraries for reliable email processing
+4. **Inline Task Editing**: Direct task modification within the activity interface
+5. **Smart Activity Filtering**: Summary cards with real-time counts and filtering capabilities
+6. **Type-Specific Display**: Different rendering for tasks, calls, emails, and list emails
+7. **Expandable Detail Views**: Click-to-expand interface for activity details
+8. **Relationship Loading**: Automatic loading of related contacts, users, and activity metadata
+9. **Error Recovery**: Fallback mechanisms for failed parsing or missing data
+10. **Mobile-Responsive**: Interface optimized for both desktop and mobile usage
+
+#### Known Issues & Future Improvements
+- **Email Parsing Refinement**: Current email threading works but needs improvement for complex multi-level email chains
+- **Library Integration**: Some edge cases with email-reply-parser library module loading in browser environment
+- **Thread Separation**: Advanced email threads with multiple forwards/replies need better parsing logic
+- **Performance Optimization**: Large email content parsing could benefit from lazy loading
 
 #### Technical Implementation
-- **Database Tables**: 5 new tables (activity + 4 lookup tables) with proper relationships and constraints
-- **Migration Integration**: Seamlessly integrated into master migration script with UPSERT patterns
-- **Performance Optimization**: Strategic indexing on all foreign keys and commonly queried fields  
-- **Data Validation**: Real-time migration validation with success reporting
-- **Legacy Preservation**: All Salesforce fields preserved for audit trail and future reference
-- **WhatId Documentation**: Comprehensive mapping documentation for object relationship understanding
+- **Database Integration**: 5 tables (activity + 4 lookup tables) with proper relationships
+- **TypeScript Safety**: Complete type definitions with proper error handling
+- **Component Architecture**: Modular design with reusable activity components
+- **Hook-Based Data**: Custom hooks for activity data management and real-time updates
+- **Professional Libraries**: Integration with industry-standard email parsing solutions
+- **Responsive Design**: Mobile-first interface with progressive enhancement
 
 ### Site Submit Management System with Enhanced User Experience
 A comprehensive site submit creation and management system has been implemented with intelligent form automation and improved user interaction:

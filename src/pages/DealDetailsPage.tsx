@@ -9,6 +9,7 @@ import { FloatingContactPanel } from "../components/FloatingContactPanel";
 import { useDealContacts } from "../hooks/useDealContacts";
 import CommissionTab from '../components/CommissionTab';
 import PaymentTab from '../components/PaymentTab';
+import ActivityTab from '../components/ActivityTab';
 import DealHeaderBar from '../components/DealHeaderBar';
 
 export default function DealDetailsPage() {
@@ -165,6 +166,16 @@ export default function DealDetailsPage() {
               >
                 Payments
               </button>
+              <button
+                onClick={() => setActiveTab('activity')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'activity'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Activity
+              </button>
             </nav>
           </div>
 
@@ -207,6 +218,25 @@ export default function DealDetailsPage() {
                 </div>
               ) : (
                 <PaymentTab deal={deal} onDealUpdate={handleAsyncDealUpdate} />
+              )}
+            </>
+          )}
+
+          {activeTab === 'activity' && (
+            <>
+              {isNewDeal || !deal.id ? (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                  <div className="flex">
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-yellow-800">Save Deal First</h3>
+                      <div className="mt-2 text-sm text-yellow-700">
+                        <p>Please save the deal in the Overview tab before viewing activities.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <ActivityTab dealId={deal.id} />
               )}
             </>
           )}
