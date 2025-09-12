@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { format } from 'date-fns';
 import { ActivityWithRelations } from '../hooks/useActivities';
 import { parseEmailDescription, formatEmailAddress, formatEmailBodyForDisplay } from '../utils/emailParser';
@@ -329,7 +329,22 @@ interface EmailReadOnlyViewProps {
 }
 
 const EmailReadOnlyView: React.FC<EmailReadOnlyViewProps> = ({ activity }) => {
-  const parsedEmail = parseEmailDescription(activity.description || '');
+  // Memoize email parsing to avoid re-parsing on every render
+  const parsedEmail = useMemo(() => 
+    parseEmailDescription(activity.description || ''), 
+    [activity.description]
+  );
+  
+  // Memoize formatted content to avoid re-formatting on every render
+  const formattedBody = useMemo(() => 
+    parsedEmail ? formatEmailBodyForDisplay(parsedEmail.body) : [], 
+    [parsedEmail?.body]
+  );
+  
+  const formattedFallbackDescription = useMemo(() => 
+    formatEmailBodyForDisplay(activity.description || ''), 
+    [activity.description]
+  );
   
   // Use activity subject as email subject if not parsed
   const emailSubject = parsedEmail?.subject || activity.subject || 'No Subject';
@@ -422,7 +437,7 @@ const EmailReadOnlyView: React.FC<EmailReadOnlyViewProps> = ({ activity }) => {
           </div>
           <div className="px-4 py-4">
             <div className="text-sm text-gray-700 leading-relaxed space-y-3">
-              {formatEmailBodyForDisplay(parsedEmail.body).map((paragraph, index) => (
+              {formattedBody.map((paragraph, index) => (
                 <p key={index} className="text-gray-700">
                   {paragraph}
                 </p>
@@ -443,7 +458,7 @@ const EmailReadOnlyView: React.FC<EmailReadOnlyViewProps> = ({ activity }) => {
           </div>
           <div className="px-4 py-4">
             <div className="text-sm text-gray-700 leading-relaxed space-y-3">
-              {formatEmailBodyForDisplay(activity.description).map((paragraph, index) => (
+              {formattedFallbackDescription.map((paragraph, index) => (
                 <p key={index} className="text-gray-700">
                   {paragraph}
                 </p>
