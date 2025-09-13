@@ -21,7 +21,7 @@ interface CallFormData {
   contact_id: string;
   related_object_id: string;
   related_object_type: string;
-  is_prospecting: boolean;
+  is_prospecting_call: boolean;
   completed_call: boolean;
   meeting_held: boolean;
   is_property_prospecting_call: boolean;
@@ -40,7 +40,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
     contact_id: '',
     related_object_id: parentObject?.id || '',
     related_object_type: parentObject?.type || '',
-    is_prospecting: false,
+    is_prospecting_call: false,
     completed_call: true, // Default to true for logged calls
     meeting_held: false,
     is_property_prospecting_call: false,
@@ -55,6 +55,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
   const [showRelatedDropdown, setShowRelatedDropdown] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [selectedRelatedObject, setSelectedRelatedObject] = useState<RelatedOption | null>(null);
 
   // Search contacts with debouncing
   useEffect(() => {
@@ -197,6 +198,67 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
     return () => clearTimeout(timeoutId);
   }, [formData.related_object_type, relatedSearch]);
 
+  // Fetch parent object data to populate name
+  useEffect(() => {
+    const fetchParentObjectData = async () => {
+      if (!parentObject?.id || !parentObject.type) return;
+
+      try {
+        let query: any;
+        let labelField: string;
+
+        switch (parentObject.type) {
+          case 'deal':
+            query = supabase.from('deal').select('id, deal_name').eq('id', parentObject.id).single();
+            labelField = 'deal_name';
+            break;
+          case 'contact':
+            query = supabase.from('contact').select('id, first_name, last_name, company').eq('id', parentObject.id).single();
+            labelField = 'name';
+            break;
+          case 'client':
+            query = supabase.from('client').select('id, client_name').eq('id', parentObject.id).single();
+            labelField = 'client_name';
+            break;
+          case 'property':
+            query = supabase.from('property').select('id, property_name').eq('id', parentObject.id).single();
+            labelField = 'property_name';
+            break;
+          case 'site_submit':
+            query = supabase.from('site_submit').select('id, site_submit_name').eq('id', parentObject.id).single();
+            labelField = 'site_submit_name';
+            break;
+          default:
+            return;
+        }
+
+        const { data: objectData, error } = await query;
+        if (error || !objectData) return;
+
+        let label: string;
+        if (parentObject.type === 'contact') {
+          label = `${objectData.first_name || ''} ${objectData.last_name || ''}`.trim();
+        } else {
+          label = objectData[labelField as keyof typeof objectData] as string;
+        }
+
+        const defaultRelatedObject: RelatedOption = {
+          id: objectData.id,
+          name: label || parentObject.name,
+          type: parentObject.type,
+          subtitle: parentObject.type === 'contact' ? objectData.company : undefined
+        };
+
+        setSelectedRelatedObject(defaultRelatedObject);
+        setRelatedSearch(defaultRelatedObject.name);
+      } catch (error) {
+        console.error('Error fetching parent object data:', error);
+      }
+    };
+
+    fetchParentObjectData();
+  }, [parentObject]);
+
   // Reset form when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -206,15 +268,19 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
         contact_id: '',
         related_object_id: parentObject?.id || '',
         related_object_type: parentObject?.type || '',
-        is_prospecting: false,
+        is_prospecting_call: false,
         completed_call: true,
         meeting_held: false,
         is_property_prospecting_call: false,
         completed_property_call: false
       });
-      setRelatedSearch(parentObject?.name || '');
       setContactSearch('');
       setErrors({});
+      // Don't reset relatedSearch here as it's set by the fetchParentObjectData effect
+      if (!parentObject?.id) {
+        setRelatedSearch('');
+        setSelectedRelatedObject(null);
+      }
     }
   }, [isOpen, parentObject]);
 
@@ -268,7 +334,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
         activity_date: new Date().toISOString(),
         completed_at: new Date().toISOString(),
         contact_id: formData.contact_id || null,
-        is_prospecting: formData.is_prospecting,
+        is_prospecting_call: formData.is_prospecting_call,
         completed_call: formData.completed_call,
         meeting_held: formData.meeting_held,
         is_property_prospecting_call: formData.is_property_prospecting_call,
@@ -335,6 +401,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
       related_object_id: option.id,
       related_object_type: option.type
     }));
+    setSelectedRelatedObject(option);
     setRelatedSearch(option.name);
     setShowRelatedDropdown(false);
   };
@@ -462,6 +529,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
                     related_object_type: e.target.value,
                     related_object_id: ''
                   }));
+                  setSelectedRelatedObject(null);
                   setRelatedSearch('');
                   setShowRelatedDropdown(false);
                 }}
@@ -478,22 +546,51 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
               <label htmlFor="related" className="block text-sm font-medium text-gray-700 mb-1">
                 Search {formData.related_object_type}s *
               </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={relatedSearch}
-                onChange={(e) => {
-                  setRelatedSearch(e.target.value);
-                  setShowRelatedDropdown(true);
-                }}
-                onFocus={() => setShowRelatedDropdown(true)}
-                className={`w-full px-3 py-2 pl-10 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.related_object_id ? 'border-red-300' : 'border-gray-300'
-                }`}
-                placeholder={`Search ${formData.related_object_type}s...`}
-              />
-              <MagnifyingGlassIcon className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            </div>
+              
+              {/* Selected Object Display */}
+              {selectedRelatedObject && (
+                <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium text-blue-900">{selectedRelatedObject.name}</div>
+                      <div className="text-sm text-blue-600 capitalize">
+                        {selectedRelatedObject.type}
+                        {selectedRelatedObject.subtitle && ` • ${selectedRelatedObject.subtitle}`}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedRelatedObject(null);
+                        setRelatedSearch('');
+                        setFormData(prev => ({ ...prev, related_object_id: '' }));
+                      }}
+                      className="text-blue-600 hover:text-blue-800 text-sm"
+                    >
+                      Change
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {!selectedRelatedObject && (
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={relatedSearch}
+                    onChange={(e) => {
+                      setRelatedSearch(e.target.value);
+                      setShowRelatedDropdown(true);
+                    }}
+                    onFocus={() => setShowRelatedDropdown(true)}
+                    className={`w-full px-3 py-2 pl-10 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      errors.related_object_id ? 'border-red-300' : 'border-gray-300'
+                    }`}
+                    placeholder={`Search ${formData.related_object_type}s...`}
+                  />
+                  <MagnifyingGlassIcon className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                </div>
+              )}
             
             {/* Related Dropdown */}
             {showRelatedDropdown && relatedOptions.length > 0 && (
@@ -529,8 +626,8 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
               <label className="flex items-center">
                 <input
                   type="checkbox"
-                  checked={formData.is_prospecting}
-                  onChange={(e) => setFormData(prev => ({ ...prev, is_prospecting: e.target.checked }))}
+                  checked={formData.is_prospecting_call}
+                  onChange={(e) => setFormData(prev => ({ ...prev, is_prospecting_call: e.target.checked }))}
                   className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
                 />
                 <span className="ml-2 text-sm text-gray-700">Prospecting Call</span>
