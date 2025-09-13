@@ -3,11 +3,13 @@ import { useGenericActivities } from '../hooks/useGenericActivities';
 import { ActivityTabConfig, ParentObject } from '../types/activity';
 import ActivityItem from './ActivityItem';
 import AddTaskModal from './AddTaskModal';
+import LogCallModal from './LogCallModal';
 import { 
   CalendarIcon,
   FunnelIcon,
   PlusIcon,
-  MagnifyingGlassIcon
+  MagnifyingGlassIcon,
+  PhoneIcon
 } from '@heroicons/react/24/outline';
 
 interface GenericActivityTabProps {
@@ -47,6 +49,7 @@ const GenericActivityTab: React.FC<GenericActivityTabProps> = ({ config }) => {
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
+  const [isLogCallModalOpen, setIsLogCallModalOpen] = useState(false);
 
   // Filter activities based on search and filters
   const filteredActivities = activities.filter(activity => {
@@ -177,6 +180,13 @@ const GenericActivityTab: React.FC<GenericActivityTabProps> = ({ config }) => {
               >
                 <PlusIcon className="w-4 h-4" />
                 Add Activity
+              </button>
+              <button
+                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                onClick={() => setIsLogCallModalOpen(true)}
+              >
+                <PhoneIcon className="w-4 h-4" />
+                Log Call
               </button>
               <button
                 className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
@@ -311,6 +321,20 @@ const GenericActivityTab: React.FC<GenericActivityTabProps> = ({ config }) => {
             console.log('New activity created:', newActivity);
             refetch();
             setIsAddTaskModalOpen(false);
+          }}
+          parentObject={parentObject}
+        />
+      )}
+
+      {/* Log Call Modal */}
+      {allowAdd && (
+        <LogCallModal
+          isOpen={isLogCallModalOpen}
+          onClose={() => setIsLogCallModalOpen(false)}
+          onCallLogged={() => {
+            console.log('Call logged successfully');
+            refetch();
+            setIsLogCallModalOpen(false);
           }}
           parentObject={parentObject}
         />

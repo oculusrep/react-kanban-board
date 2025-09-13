@@ -62,12 +62,27 @@ const PropertyPage = ({ propertyId, propertyName }) => {
 };
 ```
 
+### Sales Activity Tracking
+```tsx
+const SalesPage = ({ dealId, dealName }) => {
+  const config = {
+    parentObject: { id: dealId, type: 'deal', name: dealName },
+    title: 'Sales Activities',
+    showSummary: true,
+    allowAdd: true // Enables both "Add Activity" and "Log Call" buttons
+  };
+  
+  return <GenericActivityTab config={config} />;
+};
+```
+
 ## Features
 
 ### ✅ **Smart Defaults**
 - Automatically sets the parent object as the default "Related To"
-- Pre-selects "Task" type for new activities
+- Pre-selects "Task" type for new activities, "Call" type for call logging
 - Filters out system/automated users from assignment dropdown
+- Call logging defaults: completed_call = true, status = 'Completed'
 
 ### ✅ **Mobile-Optimized**
 - Responsive design with proper touch targets
@@ -82,7 +97,7 @@ const PropertyPage = ({ propertyId, propertyName }) => {
 
 ### ✅ **Flexible Configuration**
 - Show/hide summary statistics
-- Enable/disable add/edit capabilities
+- Enable/disable add/edit capabilities (includes both task and call logging)
 - Custom filters and validation
 - Configurable titles and help text
 
@@ -179,6 +194,14 @@ The system automatically handles:
 - Added visual feedback with outline → solid icon transitions
 - Integrated completion timestamp tracking (`completed_at` field)
 - Status toggles between 'Open' and 'Completed' with proper database updates
+
+### ✅ **Call Logging System**
+- Added "Log Call" button next to "Add Activity" with distinct green styling
+- Comprehensive call form with Subject, Comments, Related Contact, and Related To fields
+- Smart defaults: auto-populates Related To with current object context
+- Boolean call tracking fields: prospecting, completed_call, meeting_held, property prospecting
+- Autocomplete search for contacts and related objects with 300ms debouncing
+- Automatically sets activity type to 'Call' and status to 'Completed'
 
 ### ✅ **User Experience Improvements**
 - Filtered automated users from assignment dropdowns
