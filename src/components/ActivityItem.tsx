@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { ActivityWithRelations } from '../hooks/useActivities';
+import { supabase } from '../lib/supabaseClient';
 import { 
   PhoneIcon, 
   EnvelopeIcon, 
@@ -24,29 +25,51 @@ interface ActivityItemProps {
   onActivityUpdate?: (updatedActivity: ActivityWithRelations) => void;
 }
 
-const getActivityIcon = (activity: ActivityWithRelations) => {
+const getActivityIcon = (activity: ActivityWithRelations, onToggleComplete?: () => void) => {
   const isCompleted = activity.activity_status?.is_closed || activity.completed_call || activity.sf_is_closed;
   const iconClass = "w-5 h-5";
   
   // Determine icon based on activity type or Salesforce subtype
   const activityType = activity.activity_type?.name || activity.sf_task_subtype;
   
-  switch (activityType) {
-    case 'Call':
-      return isCompleted ? 
-        <PhoneIconSolid className={`${iconClass} text-green-500`} /> : 
-        <PhoneIcon className={`${iconClass} text-blue-500`} />;
-    case 'Email':
-    case 'ListEmail':
-      return isCompleted ? 
-        <EnvelopeIconSolid className={`${iconClass} text-green-500`} /> : 
-        <EnvelopeIcon className={`${iconClass} text-blue-500`} />;
-    case 'Task':
-    default:
-      return isCompleted ? 
-        <CheckCircleIconSolid className={`${iconClass} text-green-500`} /> : 
-        <CheckCircleIcon className={`${iconClass} text-gray-400`} />;
+  const iconElement = (() => {
+    switch (activityType) {
+      case 'Call':
+        return isCompleted ? 
+          <PhoneIconSolid className={`${iconClass} text-green-500`} /> : 
+          <PhoneIcon className={`${iconClass} text-blue-500`} />;
+      case 'Email':
+      case 'ListEmail':
+        return isCompleted ? 
+          <EnvelopeIconSolid className={`${iconClass} text-green-500`} /> : 
+          <EnvelopeIcon className={`${iconClass} text-blue-500`} />;
+      case 'Task':
+      default:
+        return isCompleted ? 
+          <CheckCircleIconSolid className={`${iconClass} text-green-500`} /> : 
+          <CheckCircleIcon className={`${iconClass} text-gray-400 hover:text-gray-600`} />;
+    }
+  })();
+
+  // For tasks, make the icon clickable to toggle completion
+  if ((activityType === 'Task' || !activityType) && onToggleComplete) {
+    return (
+      <button
+        onClick={onToggleComplete}
+        className="flex-shrink-0 p-0.5 rounded-full hover:bg-gray-100 transition-colors group"
+        title={isCompleted ? 'Mark as incomplete' : 'Mark as complete'}
+        aria-label={isCompleted ? 'Mark as incomplete' : 'Mark as complete'}
+      >
+        {isCompleted ? (
+          <CheckCircleIconSolid className={`${iconClass} text-green-500 group-hover:text-green-600`} />
+        ) : (
+          <CheckCircleIcon className={`${iconClass} text-gray-400 group-hover:text-green-500 transition-colors`} />
+        )}
+      </button>
+    );
   }
+
+  return iconElement;
 };
 
 const getPriorityBadge = (activity: ActivityWithRelations) => {
@@ -103,6 +126,7 @@ const formatCallDuration = (seconds: number | null) => {
 
 const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isToggling, setIsToggling] = useState(false);
   const activityDate = activity.activity_date ? new Date(activity.activity_date) : null;
   const createdDate = activity.created_at ? new Date(activity.created_at) : null;
   const displayDate = activityDate || createdDate;
@@ -111,13 +135,103 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate 
   const handleToggleExpand = () => {
     setIsExpanded(!isExpanded);
   };
+
+  const handleToggleComplete = async () => {
+    if (isToggling) return; // Prevent multiple clicks
+    
+    setIsToggling(true);
+    try {
+      const isCurrentlyCompleted = activity.activity_status?.is_closed || activity.completed_call || activity.sf_is_closed;
+      
+      // Find Open and Completed statuses
+      const { data: statuses } = await supabase
+        .from('activity_status')
+        .select('*')
+        .in('name', ['Open', 'Completed']);
+      
+      if (!statuses || statuses.length === 0) {
+        throw new Error('Could not find Open/Completed statuses');
+      }
+      
+      const openStatus = statuses.find(s => s.name?.toLowerCase() === 'open');
+      const completedStatus = statuses.find(s => s.name?.toLowerCase() === 'completed');
+      
+      const newStatusId = isCurrentlyCompleted ? openStatus?.id : completedStatus?.id;
+      
+      if (!newStatusId) {
+        throw new Error(`Could not find ${isCurrentlyCompleted ? 'Open' : 'Completed'} status`);
+      }
+      
+      // Update the activity status and completion timestamp
+      const updateData: any = { 
+        status_id: newStatusId,
+        updated_at: new Date().toISOString()
+      };
+      
+      // Set or clear completion timestamp based on status
+      if (isCurrentlyCompleted) {
+        // Marking as incomplete - clear completion timestamp
+        updateData.completed_at = null;
+      } else {
+        // Marking as complete - set completion timestamp
+        updateData.completed_at = new Date().toISOString();
+      }
+
+      const { data: updatedActivity, error } = await supabase
+        .from('activity')
+        .update(updateData)
+        .eq('id', activity.id)
+        .select(`
+          *,
+          activity_status!activity_status_id_fkey (
+            name,
+            color,
+            is_closed
+          ),
+          activity_type!activity_activity_type_id_fkey (
+            name,
+            color
+          ),
+          activity_priority!activity_activity_priority_id_fkey (
+            name,
+            color
+          ),
+          activity_task_type!activity_activity_task_type_id_fkey (
+            name,
+            category
+          ),
+          owner:user!activity_owner_id_fkey (
+            first_name,
+            last_name,
+            email
+          ),
+          contact!activity_contact_id_fkey (
+            first_name,
+            last_name,
+            company
+          )
+        `)
+        .single();
+      
+      if (error) throw error;
+      
+      // Call the update callback to refresh the parent
+      onActivityUpdate?.(updatedActivity);
+      
+    } catch (error) {
+      console.error('Error toggling activity completion:', error);
+      alert('Failed to update task status. Please try again.');
+    } finally {
+      setIsToggling(false);
+    }
+  };
   
   return (
     <div className="border-b border-gray-100 last:border-b-0 py-4 first:pt-0 last:pb-0">
       <div className="flex items-start gap-3">
         {/* Activity Icon */}
         <div className="flex-shrink-0 mt-1">
-          {getActivityIcon(activity)}
+          {getActivityIcon(activity, handleToggleComplete)}
         </div>
         
         {/* Main Content */}
