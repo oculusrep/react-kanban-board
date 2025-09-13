@@ -19,8 +19,8 @@ interface CallFormData {
   subject: string;
   comments: string;
   contact_id: string;
-  related_to: string;
-  related_to_type: string;
+  related_object_id: string;
+  related_object_type: string;
   is_prospecting: boolean;
   completed_call: boolean;
   meeting_held: boolean;
@@ -38,8 +38,8 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
     subject: '',
     comments: '',
     contact_id: '',
-    related_to: parentObject?.id || '',
-    related_to_type: parentObject?.type || '',
+    related_object_id: parentObject?.id || '',
+    related_object_type: parentObject?.type || '',
     is_prospecting: false,
     completed_call: true, // Default to true for logged calls
     meeting_held: false,
@@ -90,7 +90,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
     return () => clearTimeout(timeoutId);
   }, [contactSearch]);
 
-  // Search related objects with debouncing
+  // Search related objects with debouncing based on selected type
   useEffect(() => {
     const searchRelated = async () => {
       if (relatedSearch.length < 2) {
@@ -99,64 +99,93 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
       }
 
       try {
-        const searches = await Promise.all([
-          // Search deals
-          supabase
-            .from('deal')
-            .select('id, name')
-            .ilike('name', `%${relatedSearch}%`)
-            .limit(5),
-          
-          // Search contacts
-          supabase
-            .from('contact')
-            .select('id, first_name, last_name, company')
-            .or(`first_name.ilike.%${relatedSearch}%,last_name.ilike.%${relatedSearch}%,company.ilike.%${relatedSearch}%`)
-            .limit(5),
-          
-          // Search clients
-          supabase
-            .from('client')
-            .select('id, name')
-            .ilike('name', `%${relatedSearch}%`)
-            .limit(5),
-        ]);
+        let query: any;
+        let labelField: string;
 
-        const options: RelatedOption[] = [];
-
-        // Add deals
-        if (searches[0].data) {
-          searches[0].data.forEach(deal => {
-            options.push({
-              id: deal.id,
-              name: deal.name,
-              type: 'deal'
-            });
-          });
+        // Build query based on related object type
+        switch (formData.related_object_type) {
+          case 'contact':
+            query = supabase.from('contact').select('id, first_name, last_name, company');
+            labelField = 'name';
+            break;
+          case 'client':
+            query = supabase.from('client').select('id, client_name');
+            labelField = 'client_name';
+            break;
+          case 'deal':
+            query = supabase.from('deal').select('id, deal_name');
+            labelField = 'deal_name';
+            break;
+          case 'property':
+            query = supabase.from('property').select('id, property_name');
+            labelField = 'property_name';
+            break;
+          case 'site_submit':
+            query = supabase.from('site_submit').select('id, site_submit_name');
+            labelField = 'site_submit_name';
+            break;
+          default:
+            return;
         }
 
-        // Add contacts
-        if (searches[1].data) {
-          searches[1].data.forEach(contact => {
-            options.push({
-              id: contact.id,
-              name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
-              type: 'contact',
-              subtitle: contact.company || undefined
-            });
-          });
+        // Add search filter based on type
+        switch (formData.related_object_type) {
+          case 'contact':
+            query = query.or(`first_name.ilike.%${relatedSearch}%,last_name.ilike.%${relatedSearch}%,company.ilike.%${relatedSearch}%`);
+            break;
+          case 'client':
+            query = query.ilike('client_name', `%${relatedSearch}%`);
+            break;
+          case 'deal':
+            query = query.ilike('deal_name', `%${relatedSearch}%`);
+            break;
+          case 'property':
+            query = query.ilike('property_name', `%${relatedSearch}%`);
+            break;
+          case 'site_submit':
+            query = query.ilike('site_submit_name', `%${relatedSearch}%`);
+            break;
         }
 
-        // Add clients
-        if (searches[2].data) {
-          searches[2].data.forEach(client => {
-            options.push({
-              id: client.id,
-              name: client.name,
-              type: 'client'
-            });
-          });
+        const { data, error } = await query.limit(10);
+
+        if (error) {
+          console.error(`Error searching ${formData.related_object_type}:`, error);
+          return;
         }
+
+        const options: RelatedOption[] = (data || []).map((item: any) => {
+          let name: string;
+          let subtitle: string | undefined;
+
+          switch (formData.related_object_type) {
+            case 'contact':
+              name = `${item.first_name || ''} ${item.last_name || ''}`.trim();
+              subtitle = item.company || undefined;
+              break;
+            case 'client':
+              name = item.client_name || 'Unnamed Client';
+              break;
+            case 'deal':
+              name = item.deal_name || 'Unnamed Deal';
+              break;
+            case 'property':
+              name = item.property_name || 'Unnamed Property';
+              break;
+            case 'site_submit':
+              name = item.site_submit_name || 'Unnamed Submission';
+              break;
+            default:
+              name = 'Unknown';
+          }
+
+          return {
+            id: item.id,
+            name,
+            type: formData.related_object_type,
+            subtitle
+          };
+        });
 
         setRelatedOptions(options);
       } catch (error) {
@@ -166,7 +195,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
 
     const timeoutId = setTimeout(searchRelated, 300);
     return () => clearTimeout(timeoutId);
-  }, [relatedSearch]);
+  }, [formData.related_object_type, relatedSearch]);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -175,8 +204,8 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
         subject: '',
         comments: '',
         contact_id: '',
-        related_to: parentObject?.id || '',
-        related_to_type: parentObject?.type || '',
+        related_object_id: parentObject?.id || '',
+        related_object_type: parentObject?.type || '',
         is_prospecting: false,
         completed_call: true,
         meeting_held: false,
@@ -197,8 +226,8 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
     if (!formData.subject.trim()) {
       newErrors.subject = 'Subject is required';
     }
-    if (!formData.related_to) {
-      newErrors.related_to = 'Related to field is required';
+    if (!formData.related_object_id) {
+      newErrors.related_object_id = 'Related to field is required';
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -246,27 +275,30 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
         completed_property_call: formData.completed_property_call
       };
 
-      // Set the appropriate foreign key based on related_to_type
-      switch (formData.related_to_type) {
+      // Set the appropriate foreign key based on related_object_type
+      switch (formData.related_object_type) {
         case 'deal':
-          activityData.deal_id = formData.related_to;
+          activityData.deal_id = formData.related_object_id;
           break;
         case 'contact':
-          activityData.contact_id = formData.related_to;
+          // Don't override contact_id if it's already set from the contact field
+          if (!activityData.contact_id) {
+            activityData.contact_id = formData.related_object_id;
+          }
           break;
         case 'client':
-          activityData.client_id = formData.related_to;
+          activityData.client_id = formData.related_object_id;
           break;
         case 'property':
-          activityData.property_id = formData.related_to;
+          activityData.property_id = formData.related_object_id;
           break;
         case 'site_submit':
-          activityData.site_submit_id = formData.related_to;
+          activityData.site_submit_id = formData.related_object_id;
           break;
         default:
           // Use generic related_object fields as fallback
-          activityData.related_object_type = formData.related_to_type;
-          activityData.related_object_id = formData.related_to;
+          activityData.related_object_type = formData.related_object_type;
+          activityData.related_object_id = formData.related_object_id;
           break;
       }
 
@@ -300,8 +332,8 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
   const selectRelatedObject = (option: RelatedOption) => {
     setFormData(prev => ({ 
       ...prev, 
-      related_to: option.id,
-      related_to_type: option.type
+      related_object_id: option.id,
+      related_object_type: option.type
     }));
     setRelatedSearch(option.name);
     setShowRelatedDropdown(false);
@@ -417,10 +449,35 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
           </div>
 
           {/* Related To */}
-          <div className="relative">
-            <label htmlFor="related" className="block text-sm font-medium text-gray-700 mb-1">
-              Related To *
-            </label>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Related Object Type
+              </label>
+              <select
+                value={formData.related_object_type}
+                onChange={(e) => {
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    related_object_type: e.target.value,
+                    related_object_id: ''
+                  }));
+                  setRelatedSearch('');
+                  setShowRelatedDropdown(false);
+                }}
+                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+              >
+                <option value="deal">Deal</option>
+                <option value="contact">Contact</option>
+                <option value="client">Client</option>
+                <option value="property">Property</option>
+                <option value="site_submit">Site Submit</option>
+              </select>
+            </div>
+            <div className="relative">
+              <label htmlFor="related" className="block text-sm font-medium text-gray-700 mb-1">
+                Search {formData.related_object_type}s *
+              </label>
             <div className="relative">
               <input
                 type="text"
@@ -431,9 +488,9 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
                 }}
                 onFocus={() => setShowRelatedDropdown(true)}
                 className={`w-full px-3 py-2 pl-10 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.related_to ? 'border-red-300' : 'border-gray-300'
+                  errors.related_object_id ? 'border-red-300' : 'border-gray-300'
                 }`}
-                placeholder="Search deals, contacts, clients..."
+                placeholder={`Search ${formData.related_object_type}s...`}
               />
               <MagnifyingGlassIcon className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             </div>
@@ -453,7 +510,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
                         <div className="font-medium text-gray-900">{option.name}</div>
                         <div className="text-sm text-gray-500 capitalize">{option.type}</div>
                       </div>
-                      {formData.related_to === option.id && formData.related_to_type === option.type && (
+                      {formData.related_object_id === option.id && formData.related_object_type === option.type && (
                         <CheckIcon className="w-4 h-4 text-blue-600" />
                       )}
                     </div>
@@ -461,7 +518,8 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
                 ))}
               </div>
             )}
-            {errors.related_to && <p className="mt-1 text-sm text-red-600">{errors.related_to}</p>}
+            {errors.related_object_id && <p className="mt-1 text-sm text-red-600">{errors.related_object_id}</p>}
+            </div>
           </div>
 
           {/* Boolean Fields */}
