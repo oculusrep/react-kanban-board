@@ -1986,10 +1986,11 @@ CREATE TABLE IF NOT EXISTS activity (
     deal_id UUID REFERENCES deal(id),
     property_id UUID REFERENCES property(id),
     site_submit_id UUID REFERENCES site_submit(id),
-    
+    assignment_id UUID REFERENCES assignment(id),
+
     -- WhatId Text References (for smaller objects)
     related_object_type VARCHAR(50),  -- 'property_research', 'list_email', etc.
-    related_object_id VARCHAR(18),
+    related_object_id TEXT,  -- Changed from VARCHAR(18) to TEXT to support UUIDs
     
     -- Core Activity Fields
     subject VARCHAR(255),
@@ -2040,8 +2041,9 @@ ALTER TABLE activity ADD COLUMN IF NOT EXISTS client_id UUID;
 ALTER TABLE activity ADD COLUMN IF NOT EXISTS deal_id UUID;
 ALTER TABLE activity ADD COLUMN IF NOT EXISTS property_id UUID;
 ALTER TABLE activity ADD COLUMN IF NOT EXISTS site_submit_id UUID;
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS assignment_id UUID;
 ALTER TABLE activity ADD COLUMN IF NOT EXISTS related_object_type VARCHAR(50);
-ALTER TABLE activity ADD COLUMN IF NOT EXISTS related_object_id VARCHAR(18);
+ALTER TABLE activity ADD COLUMN IF NOT EXISTS related_object_id TEXT;
 ALTER TABLE activity ADD COLUMN IF NOT EXISTS subject VARCHAR(255);
 ALTER TABLE activity ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE activity ADD COLUMN IF NOT EXISTS activity_date DATE;
@@ -2054,6 +2056,9 @@ ALTER TABLE activity ADD COLUMN IF NOT EXISTS completed_call BOOLEAN;
 ALTER TABLE activity ADD COLUMN IF NOT EXISTS is_prospecting_call BOOLEAN;
 ALTER TABLE activity ADD COLUMN IF NOT EXISTS completed_property_call BOOLEAN;
 ALTER TABLE activity ADD COLUMN IF NOT EXISTS is_property_prospecting_call BOOLEAN;
+
+-- Modify column types for enhanced functionality
+ALTER TABLE activity ALTER COLUMN related_object_id TYPE TEXT;
 
 -- Add foreign key constraints (drop first to avoid conflicts)
 ALTER TABLE activity DROP CONSTRAINT IF EXISTS fk_activity_contact_id;
@@ -2092,6 +2097,9 @@ ALTER TABLE activity ADD CONSTRAINT fk_activity_property_id FOREIGN KEY (propert
 ALTER TABLE activity DROP CONSTRAINT IF EXISTS fk_activity_site_submit_id;
 ALTER TABLE activity ADD CONSTRAINT fk_activity_site_submit_id FOREIGN KEY (site_submit_id) REFERENCES site_submit(id);
 
+ALTER TABLE activity DROP CONSTRAINT IF EXISTS fk_activity_assignment_id;
+ALTER TABLE activity ADD CONSTRAINT fk_activity_assignment_id FOREIGN KEY (assignment_id) REFERENCES assignment(id);
+
 -- ==============================================================================
 -- Activity Table Indexes
 -- ==============================================================================
@@ -2102,6 +2110,7 @@ CREATE INDEX IF NOT EXISTS idx_activity_deal ON activity(deal_id);
 CREATE INDEX IF NOT EXISTS idx_activity_property ON activity(property_id);
 CREATE INDEX IF NOT EXISTS idx_activity_client ON activity(client_id);
 CREATE INDEX IF NOT EXISTS idx_activity_site_submit ON activity(site_submit_id);
+CREATE INDEX IF NOT EXISTS idx_activity_assignment ON activity(assignment_id);
 CREATE INDEX IF NOT EXISTS idx_activity_status ON activity(status_id);
 CREATE INDEX IF NOT EXISTS idx_activity_type ON activity(activity_type_id);
 CREATE INDEX IF NOT EXISTS idx_activity_task_type ON activity(activity_task_type_id);

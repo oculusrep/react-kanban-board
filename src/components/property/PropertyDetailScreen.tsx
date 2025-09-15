@@ -14,6 +14,7 @@ import LinksSection from './LinksSection';
 import NotesSection from './NotesSection';
 import PropertySidebar from './PropertySidebar';
 import PropertyUnitsSection from './PropertyUnitsSection';
+import GenericActivityTab from '../GenericActivityTab';
 
 type Property = Database['public']['Tables']['property']['Row'];
 type PropertyType = Database['public']['Tables']['property_type']['Row'];
@@ -370,6 +371,30 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
               isEditing={isEditing}
               onFieldUpdate={handleFieldUpdate}
             />
+
+            {/* Activities Section */}
+            {propertyId && (
+              <div className="bg-white rounded-lg border border-gray-200 mb-6">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h2 className="text-lg font-semibold text-gray-900">Activities</h2>
+                  <p className="text-sm text-gray-600 mt-1">Track all activities and tasks related to this property</p>
+                </div>
+                <div className="p-6">
+                  <GenericActivityTab
+                    config={{
+                      parentObject: {
+                        id: propertyId,
+                        type: 'property' as const,
+                        name: currentProperty.property_name || 'Property'
+                      },
+                      title: 'Property Activities',
+                      showSummary: true,
+                      allowAdd: true
+                    }}
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Validation Errors */}
             {isEditing && !validation.isValid && (

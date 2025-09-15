@@ -54,6 +54,11 @@ export function useGenericActivities(parentObject: ParentObject | null): UseGene
             last_name,
             email
           ),
+          updated_by_user:user!activity_updated_by_fkey (
+            first_name,
+            last_name,
+            email
+          ),
           contact!activity_contact_id_fkey (
             first_name,
             last_name,
@@ -77,6 +82,9 @@ export function useGenericActivities(parentObject: ParentObject | null): UseGene
           break;
         case 'site_submit':
           query = query.eq('site_submit_id', parentObject.id);
+          break;
+        case 'assignment':
+          query = query.eq('assignment_id', parentObject.id);
           break;
         default:
           // Fallback to related_object fields

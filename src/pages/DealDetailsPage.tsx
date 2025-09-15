@@ -144,7 +144,7 @@ export default function DealDetailsPage() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Overview
+                Details
               </button>
               <button
                 onClick={() => setActiveTab('commission')}
@@ -192,7 +192,7 @@ export default function DealDetailsPage() {
                     <div className="ml-3">
                       <h3 className="text-sm font-medium text-yellow-800">Save Deal First</h3>
                       <div className="mt-2 text-sm text-yellow-700">
-                        <p>Please save the deal in the Overview tab before managing commission details.</p>
+                        <p>Please save the deal in the Details tab before managing commission details.</p>
                       </div>
                     </div>
                   </div>
@@ -211,7 +211,7 @@ export default function DealDetailsPage() {
                     <div className="ml-3">
                       <h3 className="text-sm font-medium text-yellow-800">Save Deal First</h3>
                       <div className="mt-2 text-sm text-yellow-700">
-                        <p>Please save the deal in the Overview tab before managing payments.</p>
+                        <p>Please save the deal in the Details tab before managing payments.</p>
                       </div>
                     </div>
                   </div>
@@ -230,7 +230,7 @@ export default function DealDetailsPage() {
                     <div className="ml-3">
                       <h3 className="text-sm font-medium text-yellow-800">Save Deal First</h3>
                       <div className="mt-2 text-sm text-yellow-700">
-                        <p>Please save the deal in the Overview tab before viewing activities.</p>
+                        <p>Please save the deal in the Details tab before viewing activities.</p>
                       </div>
                     </div>
                   </div>

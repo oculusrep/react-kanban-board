@@ -126,6 +126,11 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
             if (currentUser && !formData.owner_id) {
               setFormData(prev => ({ ...prev, owner_id: currentUser.id }));
             }
+          } else {
+            // Development fallback when authentication is disabled
+            if (!formData.owner_id) {
+              setFormData(prev => ({ ...prev, owner_id: 'd4903827-c034-4acf-8765-2c1c65eac655' }));
+            }
           }
         }
         if (typesResult.data) setActivityTypes(typesResult.data);
@@ -349,6 +354,9 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
         if (currentUser) {
           setFormData(prev => ({ ...prev, owner_id: currentUser.id }));
         }
+      } else if (!user?.email && !formData.owner_id) {
+        // Development fallback when authentication is disabled
+        setFormData(prev => ({ ...prev, owner_id: 'd4903827-c034-4acf-8765-2c1c65eac655' }));
       }
     }
   }, [isOpen, effectiveParentObject, activityTypes, formData.activity_type_id]);
@@ -445,6 +453,9 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
             break;
           case 'site_submit':
             activityData.site_submit_id = formData.related_object_id;
+            break;
+          case 'assignment':
+            activityData.assignment_id = formData.related_object_id;
             break;
         }
       }

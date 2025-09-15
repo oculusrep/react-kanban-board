@@ -20,6 +20,7 @@ export type Database = {
           activity_priority_id: string | null
           activity_task_type_id: string | null
           activity_type_id: string | null
+          assignment_id: string | null
           call_disposition: string | null
           call_duration_seconds: number | null
           client_id: string | null
@@ -64,6 +65,7 @@ export type Database = {
           activity_priority_id?: string | null
           activity_task_type_id?: string | null
           activity_type_id?: string | null
+          assignment_id?: string | null
           call_disposition?: string | null
           call_duration_seconds?: number | null
           client_id?: string | null
@@ -108,6 +110,7 @@ export type Database = {
           activity_priority_id?: string | null
           activity_task_type_id?: string | null
           activity_type_id?: string | null
+          assignment_id?: string | null
           call_disposition?: string | null
           call_duration_seconds?: number | null
           client_id?: string | null
@@ -258,6 +261,13 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_assignment_id"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "assignment"
             referencedColumns: ["id"]
           },
           {
@@ -4582,6 +4592,63 @@ export type Database = {
           MasterLabel?: string | null
           SortOrder?: number | null
           SystemModstamp?: string | null
+        }
+        Relationships: []
+      }
+      salesforce_Note: {
+        Row: {
+          _airbyte_extracted_at: string
+          _airbyte_generation_id: number | null
+          _airbyte_meta: Json
+          _airbyte_raw_id: string
+          Body: string | null
+          CreatedById: string | null
+          CreatedDate: string | null
+          Id: string | null
+          IsDeleted: boolean | null
+          IsPrivate: boolean | null
+          LastModifiedById: string | null
+          LastModifiedDate: string | null
+          OwnerId: string | null
+          ParentId: string | null
+          SystemModstamp: string | null
+          Title: string | null
+        }
+        Insert: {
+          _airbyte_extracted_at: string
+          _airbyte_generation_id?: number | null
+          _airbyte_meta: Json
+          _airbyte_raw_id: string
+          Body?: string | null
+          CreatedById?: string | null
+          CreatedDate?: string | null
+          Id?: string | null
+          IsDeleted?: boolean | null
+          IsPrivate?: boolean | null
+          LastModifiedById?: string | null
+          LastModifiedDate?: string | null
+          OwnerId?: string | null
+          ParentId?: string | null
+          SystemModstamp?: string | null
+          Title?: string | null
+        }
+        Update: {
+          _airbyte_extracted_at?: string
+          _airbyte_generation_id?: number | null
+          _airbyte_meta?: Json
+          _airbyte_raw_id?: string
+          Body?: string | null
+          CreatedById?: string | null
+          CreatedDate?: string | null
+          Id?: string | null
+          IsDeleted?: boolean | null
+          IsPrivate?: boolean | null
+          LastModifiedById?: string | null
+          LastModifiedDate?: string | null
+          OwnerId?: string | null
+          ParentId?: string | null
+          SystemModstamp?: string | null
+          Title?: string | null
         }
         Relationships: []
       }

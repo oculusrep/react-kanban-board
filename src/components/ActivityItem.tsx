@@ -294,8 +294,8 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate 
             </div>
           </div>
           
-          {/* Description - Hide for emails, show for tasks and calls */}
-          {activity.description && !['Email', 'ListEmail'].includes(activityType || '') && (
+          {/* Description - Hide for emails and calls, show for tasks only */}
+          {activity.description && !['Email', 'ListEmail', 'Call'].includes(activityType || '') && (
             <p className="text-sm text-gray-600 mb-2 line-clamp-2">
               {activity.description}
             </p>
@@ -308,20 +308,30 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate 
               <div className="flex items-center gap-1">
                 <UserIcon className="w-4 h-4" />
                 <span>
-                  {activity.contact.first_name} {activity.contact.last_name}
+                  Contact: {activity.contact.first_name} {activity.contact.last_name}
                 </span>
               </div>
             )}
-            
-            {/* Owner */}
-            {activity.owner && (
+
+            {/* Assigned User / Updated By */}
+            {(activity.owner || activity.updated_by_user) && (
               <div className="flex items-center gap-1">
-                <UserIcon className="w-4 h-4" />
-                <span>
-                  {activity.owner.first_name && activity.owner.last_name 
-                    ? `${activity.owner.first_name} ${activity.owner.last_name}`
-                    : activity.owner.name
-                  }
+                <UserIcon className="w-4 h-4 text-blue-500" />
+                <span className="font-medium">
+                  {(() => {
+                    if (activityType === 'Call' && activity.updated_by_user) {
+                      const user = activity.updated_by_user;
+                      return `Updated by: ${user.first_name && user.last_name
+                        ? `${user.first_name} ${user.last_name}`
+                        : user.name || 'Unknown User'}`;
+                    } else if (activity.owner) {
+                      const user = activity.owner;
+                      return `Assigned to: ${user.first_name && user.last_name
+                        ? `${user.first_name} ${user.last_name}`
+                        : user.name || 'Unknown User'}`;
+                    }
+                    return '';
+                  })()}
                 </span>
               </div>
             )}

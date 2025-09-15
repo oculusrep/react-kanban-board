@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { useAuth } from '../contexts/AuthContext';
 import { ParentObject, RelatedOption } from '../types/activity';
 import {
   XMarkIcon,
@@ -36,6 +37,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
   parentObject,
   existingActivity
 }) => {
+  const { user } = useAuth();
   const [formData, setFormData] = useState<CallFormData>({
     subject: existingActivity?.subject || '',
     comments: existingActivity?.description || '',
@@ -52,6 +54,8 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
   const [contacts, setContacts] = useState<(RelatedOption & { company?: string })[]>([]);
   const [contactSearch, setContactSearch] = useState('');
   const [showContactDropdown, setShowContactDropdown] = useState(false);
+  const [users, setUsers] = useState<any[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [selectedRelatedObject, setSelectedRelatedObject] = useState<RelatedOption | null>(null);
@@ -239,7 +243,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
     fetchParentObjectData();
   }, [parentObject]);
 
-  // Reset form when modal opens
+  // Reset form when modal opens and load users for auto-assignment
   useEffect(() => {
     if (isOpen) {
       setFormData({
@@ -254,6 +258,50 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
         is_property_prospecting_call: existingActivity?.is_property_prospecting_call || false,
         completed_property_call: existingActivity?.completed_property_call || false
       });
+
+      // Load users for auto-assignment
+      const loadUsers = async () => {
+        try {
+          const { data: usersResult, error } = await supabase
+            .from('user')
+            .select('id, first_name, last_name, email')
+            .order('last_name');
+
+          if (error) throw error;
+
+          // Filter out automated/system users
+          if (usersResult) {
+            const filteredUsers = usersResult.filter(dbUser => {
+              const name = `${dbUser.first_name || ''} ${dbUser.last_name || ''}`.toLowerCase().trim();
+              const excludeNames = [
+                'automated process',
+                'chatter',
+                'insights',
+                'platform integration'
+              ];
+              return !excludeNames.some(excludeName => name.includes(excludeName));
+            });
+            setUsers(filteredUsers);
+
+            // Set current user ID for auto-assignment
+            if (user?.email) {
+              const currentUser = filteredUsers.find(dbUser =>
+                dbUser.email?.toLowerCase() === user.email?.toLowerCase()
+              );
+              if (currentUser) {
+                setCurrentUserId(currentUser.id);
+              }
+            } else {
+              // Development fallback when authentication is disabled
+              setCurrentUserId('d4903827-c034-4acf-8765-2c1c65eac655');
+            }
+          }
+        } catch (error) {
+          console.error('Error loading users:', error);
+        }
+      };
+
+      loadUsers();
 
       // Set contact search to existing contact name if editing
       if (existingActivity?.contact) {
@@ -340,6 +388,8 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
           activity_date: new Date().toISOString(),
           completed_at: new Date().toISOString(),
           contact_id: formData.contact_id || null,
+          owner_id: currentUserId, // Assign to current user
+          updated_by: currentUserId, // Track who updated/logged this call
           is_prospecting_call: formData.is_prospecting_call,
           completed_call: formData.completed_call,
           meeting_held: formData.meeting_held,
@@ -366,6 +416,9 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
             break;
           case 'site_submit':
             activityData.site_submit_id = formData.related_object_id;
+            break;
+          case 'assignment':
+            activityData.assignment_id = formData.related_object_id;
             break;
           default:
             // Use generic related_object fields as fallback

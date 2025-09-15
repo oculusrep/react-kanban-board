@@ -17,13 +17,14 @@ export interface ActivityWithRelations extends Activity {
   activity_priority?: ActivityPriority;
   activity_task_type?: ActivityTaskType;
   owner?: User;
+  updated_by_user?: User;
   contact?: Contact;
 }
 
 // Generic parent object interface
 export interface ParentObject {
   id: string;
-  type: 'deal' | 'contact' | 'client' | 'property' | 'site_submit';
+  type: 'deal' | 'contact' | 'client' | 'property' | 'site_submit' | 'assignment';
   name: string;
   displayName?: string; // Optional custom display name
 }
