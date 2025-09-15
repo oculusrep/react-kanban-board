@@ -18,7 +18,9 @@ interface DropdownMenuProps {
 
 const DropdownMenu: React.FC<DropdownMenuProps> = ({ title, items, recentItems, onRecentItemClick }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [currentRecentItems, setCurrentRecentItems] = useState(recentItems || []);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { getRecentItems } = useRecentlyViewed();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -30,6 +32,25 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ title, items, recentItems, 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Refresh recent items when dropdown opens
+  useEffect(() => {
+    if (isOpen && title) {
+      // Map dropdown titles to recent item types
+      const titleToTypeMap: { [key: string]: RecentItem['type'] } = {
+        'Properties': 'property',
+        'Contacts': 'contact',
+        'Deals': 'deal',
+        'Assignments': 'assignment'
+      };
+
+      const type = titleToTypeMap[title];
+      if (type) {
+        const fresh = getRecentItems(type);
+        setCurrentRecentItems(fresh);
+      }
+    }
+  }, [isOpen, title, getRecentItems]);
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -52,12 +73,12 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ title, items, recentItems, 
         <div className="absolute left-0 mt-2 w-64 bg-white border border-gray-200 rounded-md shadow-lg z-50">
           <div className="py-1">
             {/* Recent Items Section */}
-            {recentItems && recentItems.length > 0 && (
+            {currentRecentItems && currentRecentItems.length > 0 && (
               <>
                 <div className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-100">
                   Recently Viewed
                 </div>
-                {recentItems.map((item, index) => (
+                {currentRecentItems.map((item, index) => (
                   <button
                     key={`recent-${index}`}
                     onClick={() => {
@@ -101,7 +122,12 @@ export default function Navbar() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { getRecentItems } = useRecentlyViewed();
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
+  // Refresh recent items when location changes
+  useEffect(() => {
+    setRefreshTrigger(prev => prev + 1);
+  }, [location.pathname]);
 
   const [searchModals, setSearchModals] = useState({
     properties: false,
@@ -205,24 +231,28 @@ export default function Navbar() {
             items={propertiesItems}
             recentItems={getRecentItems('property')}
             onRecentItemClick={handleRecentItemClick}
+            key={`properties-${refreshTrigger}`}
           />
           <DropdownMenu
             title="Contacts"
             items={contactsItems}
             recentItems={getRecentItems('contact')}
             onRecentItemClick={handleRecentItemClick}
+            key={`contacts-${refreshTrigger}`}
           />
           <DropdownMenu
             title="Deals"
             items={dealsItems}
             recentItems={getRecentItems('deal')}
             onRecentItemClick={handleRecentItemClick}
+            key={`deals-${refreshTrigger}`}
           />
           <DropdownMenu
             title="Assignments"
             items={assignmentsItems}
             recentItems={getRecentItems('assignment')}
             onRecentItemClick={handleRecentItemClick}
+            key={`assignments-${refreshTrigger}`}
           />
         </div>
         
