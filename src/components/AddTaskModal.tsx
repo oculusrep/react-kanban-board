@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { 
-  Activity, 
-  ActivityInsert, 
-  ActivityType, 
-  ActivityPriority, 
-  ActivityTaskType, 
-  ActivityStatus, 
-  User, 
+import { useAuth } from '../contexts/AuthContext';
+import {
+  Activity,
+  ActivityInsert,
+  ActivityType,
+  ActivityPriority,
+  ActivityTaskType,
+  ActivityStatus,
+  User,
   Contact,
   ParentObject,
   RelatedOption
@@ -43,6 +44,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
   parentObject,
   dealId // Legacy support
 }) => {
+  const { user } = useAuth();
   // Handle legacy dealId prop
   const effectiveParentObject = parentObject || (dealId ? { id: dealId, type: 'deal' as const, name: '' } : null);
   const [formData, setFormData] = useState<FormData>({
@@ -104,8 +106,8 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
 
         // Filter out automated/system users
         if (usersResult.data) {
-          const filteredUsers = usersResult.data.filter(user => {
-            const name = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase().trim();
+          const filteredUsers = usersResult.data.filter(dbUser => {
+            const name = `${dbUser.first_name || ''} ${dbUser.last_name || ''}`.toLowerCase().trim();
             const excludeNames = [
               'automated process',
               'chatter',
@@ -115,6 +117,16 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
             return !excludeNames.some(excludeName => name.includes(excludeName));
           });
           setUsers(filteredUsers);
+
+          // Set default assigned user to current logged in user
+          if (user?.email) {
+            const currentUser = filteredUsers.find(dbUser =>
+              dbUser.email?.toLowerCase() === user.email?.toLowerCase()
+            );
+            if (currentUser && !formData.owner_id) {
+              setFormData(prev => ({ ...prev, owner_id: currentUser.id }));
+            }
+          }
         }
         if (typesResult.data) setActivityTypes(typesResult.data);
         if (taskTypesResult.data) setActivityTaskTypes(taskTypesResult.data);
@@ -327,6 +339,16 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
       const taskType = activityTypes.find(type => type.name === 'Task');
       if (taskType && !formData.activity_type_id) {
         setFormData(prev => ({ ...prev, activity_type_id: taskType.id }));
+      }
+
+      // Set default assigned user to current logged in user when modal reopens
+      if (user?.email && users.length > 0 && !formData.owner_id) {
+        const currentUser = users.find(dbUser =>
+          dbUser.email?.toLowerCase() === user.email?.toLowerCase()
+        );
+        if (currentUser) {
+          setFormData(prev => ({ ...prev, owner_id: currentUser.id }));
+        }
       }
     }
   }, [isOpen, effectiveParentObject, activityTypes, formData.activity_type_id]);
@@ -556,35 +578,8 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
                 </div>
               </div>
 
-              {/* Classification */}
+              {/* Optional Fields */}
               <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900 border-b border-gray-200 pb-2">
-                  Classification
-                </h3>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Task Type *
-                  </label>
-                  <select
-                    value={formData.activity_type_id || ''}
-                    onChange={(e) => updateFormData('activity_type_id', e.target.value || null)}
-                    className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm ${
-                      errors.activity_type_id ? 'border-red-300' : ''
-                    }`}
-                  >
-                    <option value="">Select type...</option>
-                    {activityTypes.map((type) => (
-                      <option key={type.id} value={type.id}>
-                        {type.name}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.activity_type_id && (
-                    <p className="mt-1 text-sm text-red-600">{errors.activity_type_id}</p>
-                  )}
-                </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Task Category
@@ -619,128 +614,6 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
                       </option>
                     ))}
                   </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Status *
-                  </label>
-                  <select
-                    value={formData.status_id || ''}
-                    onChange={(e) => updateFormData('status_id', e.target.value || null)}
-                    className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm ${
-                      errors.status_id ? 'border-red-300' : ''
-                    }`}
-                  >
-                    <option value="">Select status...</option>
-                    {activityStatuses
-                      .filter(status => ['open', 'completed'].includes(status.name?.toLowerCase() || ''))
-                      .map((status) => (
-                        <option key={status.id} value={status.id}>
-                          {status.name}
-                        </option>
-                      ))}
-                  </select>
-                  {errors.status_id && (
-                    <p className="mt-1 text-sm text-red-600">{errors.status_id}</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Related To */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900 border-b border-gray-200 pb-2">
-                  Related To
-                </h3>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Related Object Type
-                  </label>
-                  <select
-                    value={formData.related_object_type}
-                    onChange={(e) => handleRelatedTypeChange(e.target.value)}
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                  >
-                    {relatedObjectTypes.map((type) => (
-                      <option key={type.value} value={type.value}>
-                        {type.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="relative">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Related {relatedObjectTypes.find(t => t.value === formData.related_object_type)?.label}
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={relatedSearchTerm}
-                      onChange={(e) => handleRelatedSearch(e.target.value)}
-                      onFocus={() => setShowRelatedDropdown(relatedSearchTerm.length > 0)}
-                      onBlur={() => {
-                        // Delay hiding dropdown to allow clicks on options
-                        setTimeout(() => setShowRelatedDropdown(false), 150);
-                      }}
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm pr-10"
-                      placeholder={`Search ${relatedObjectTypes.find(t => t.value === formData.related_object_type)?.label.toLowerCase()}s...`}
-                    />
-                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                      <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                    </div>
-                    
-                    {/* Autocomplete Dropdown */}
-                    {showRelatedDropdown && filteredRelatedOptions.length > 0 && (
-                      <div className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
-                        {filteredRelatedOptions.map((option) => (
-                          <button
-                            key={option.id}
-                            type="button"
-                            className="text-left w-full px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-900 focus:outline-none focus:bg-blue-50"
-                            onMouseDown={(e) => {
-                              e.preventDefault(); // Prevent blur
-                              handleRelatedSelect(option);
-                            }}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    
-                    {/* No results message */}
-                    {showRelatedDropdown && relatedSearchTerm.length > 0 && filteredRelatedOptions.length === 0 && (
-                      <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md py-2 px-4 text-sm text-gray-500">
-                        No {relatedObjectTypes.find(t => t.value === formData.related_object_type)?.label.toLowerCase()}s found
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Selected object indicator */}
-                  {selectedRelatedObject && (
-                    <div className="mt-2 flex items-center justify-between bg-blue-50 rounded-md px-3 py-2">
-                      <span className="text-sm text-blue-900">
-                        Selected: {selectedRelatedObject.label}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedRelatedObject(null);
-                          setRelatedSearchTerm('');
-                          updateFormData('related_object_id', null);
-                        }}
-                        className="text-blue-600 hover:text-blue-800"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
 

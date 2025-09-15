@@ -1,9 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
 import { ActivityWithRelations } from '../hooks/useActivities';
 import { parseEmailDescription, formatEmailAddress, formatEmailBodyForDisplay } from '../utils/emailParser';
+import { supabase } from '../lib/supabaseClient';
 import AdvancedEmailView from './AdvancedEmailView';
-import { 
+import {
   XMarkIcon,
   PencilIcon,
   EyeIcon,
@@ -14,7 +15,8 @@ import {
   UserIcon,
   ClockIcon,
   DocumentTextIcon,
-  PaperClipIcon
+  PaperClipIcon,
+  MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
 
 interface ActivityDetailViewProps {
@@ -23,10 +25,10 @@ interface ActivityDetailViewProps {
   onClose: () => void;
 }
 
-const ActivityDetailView: React.FC<ActivityDetailViewProps> = ({ 
-  activity, 
-  onActivityUpdate, 
-  onClose 
+const ActivityDetailView: React.FC<ActivityDetailViewProps> = ({
+  activity,
+  onActivityUpdate,
+  onClose
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   
@@ -43,7 +45,7 @@ const ActivityDetailView: React.FC<ActivityDetailViewProps> = ({
                      (activity.sf_status && ['Completed', 'Complete', 'Closed'].includes(activity.sf_status));
 
   const handleEditToggle = () => {
-    if (isTask) {
+    if (isTask || isCall) {
       setIsEditing(!isEditing);
     }
   };
@@ -76,7 +78,7 @@ const ActivityDetailView: React.FC<ActivityDetailViewProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {isTask && (
+          {(isTask || isCall) && (
             <button
               onClick={handleEditToggle}
               className="p-2 text-gray-500 hover:text-blue-600 hover:bg-white rounded-md transition-colors"
@@ -96,9 +98,18 @@ const ActivityDetailView: React.FC<ActivityDetailViewProps> = ({
       </div>
 
       {/* Content based on activity type and edit mode */}
-      {isTask && isEditing ? (
-        <TaskEditForm 
-          activity={activity} 
+      {isEditing && isTask ? (
+        <TaskEditForm
+          activity={activity}
+          onSave={(updated) => {
+            onActivityUpdate?.(updated);
+            setIsEditing(false);
+          }}
+          onCancel={() => setIsEditing(false)}
+        />
+      ) : isEditing && isCall ? (
+        <CallEditForm
+          activity={activity}
           onSave={(updated) => {
             onActivityUpdate?.(updated);
             setIsEditing(false);
@@ -154,7 +165,7 @@ const TaskEditForm: React.FC<TaskEditFormProps> = ({ activity, onSave, onCancel 
           placeholder="Activity subject..."
         />
       </div>
-      
+
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
           Description
@@ -167,10 +178,10 @@ const TaskEditForm: React.FC<TaskEditFormProps> = ({ activity, onSave, onCancel 
           placeholder="Activity description..."
         />
       </div>
-      
+
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Activity Date
+          Due Date
         </label>
         <input
           type="date"
@@ -179,13 +190,357 @@ const TaskEditForm: React.FC<TaskEditFormProps> = ({ activity, onSave, onCancel 
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
         />
       </div>
-      
+
       <div className="flex gap-2 pt-2">
         <button
           onClick={handleSave}
           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
         >
           Save Changes
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Call Edit Form Component
+interface CallEditFormProps {
+  activity: ActivityWithRelations;
+  onSave: (activity: ActivityWithRelations) => void;
+  onCancel: () => void;
+}
+
+const CallEditForm: React.FC<CallEditFormProps> = ({ activity, onSave, onCancel }) => {
+  const [subject, setSubject] = useState(activity.subject || '');
+  const [description, setDescription] = useState(activity.description || '');
+  const [contactSearch, setContactSearch] = useState(
+    activity.contact ? `${activity.contact.first_name} ${activity.contact.last_name}`.trim() : ''
+  );
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [showContactDropdown, setShowContactDropdown] = useState(false);
+  const [selectedContactId, setSelectedContactId] = useState(activity.contact_id || '');
+  const [isProspectingCall, setIsProspectingCall] = useState(activity.is_prospecting_call || false);
+  const [completedCall, setCompletedCall] = useState(activity.completed_call ?? true);
+  const [meetingHeld, setMeetingHeld] = useState(activity.meeting_held || false);
+  const [isPropertyProspectingCall, setIsPropertyProspectingCall] = useState(activity.is_property_prospecting_call || false);
+  const [completedPropertyCall, setCompletedPropertyCall] = useState(activity.completed_property_call || false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Search contacts with debouncing
+  useEffect(() => {
+    const searchContacts = async () => {
+      if (contactSearch.length < 2) {
+        setContacts([]);
+        return;
+      }
+
+      try {
+        // Handle spaces in search by creating multiple OR conditions
+        const searchTerms = contactSearch.trim().split(/\s+/);
+        let orConditions = [];
+
+        if (searchTerms.length === 1) {
+          // Single term - search in all fields
+          orConditions = [
+            `first_name.ilike.%${searchTerms[0]}%`,
+            `last_name.ilike.%${searchTerms[0]}%`,
+            `company.ilike.%${searchTerms[0]}%`
+          ];
+        } else {
+          // Multiple terms - add all combinations
+          for (const term of searchTerms) {
+            orConditions.push(
+              `first_name.ilike.%${term}%`,
+              `last_name.ilike.%${term}%`,
+              `company.ilike.%${term}%`
+            );
+          }
+
+          // Also search for the full string in each field
+          orConditions.push(
+            `first_name.ilike.%${contactSearch}%`,
+            `last_name.ilike.%${contactSearch}%`,
+            `company.ilike.%${contactSearch}%`
+          );
+        }
+
+        const { data, error } = await supabase
+          .from('contact')
+          .select('id, first_name, last_name, company')
+          .or(orConditions.join(','))
+          .limit(50); // Get more results for better sorting
+
+        if (error) throw error;
+
+        if (!data) {
+          setContacts([]);
+          return;
+        }
+
+        // Sort results by relevance
+        const searchLower = contactSearch.toLowerCase().trim();
+        const sortSearchTerms = searchLower.split(/\s+/);
+
+        const sortedContacts = data.sort((a, b) => {
+          const aFullName = `${a.first_name || ''} ${a.last_name || ''}`.trim().toLowerCase();
+          const bFullName = `${b.first_name || ''} ${b.last_name || ''}`.trim().toLowerCase();
+          const aFirstName = (a.first_name || '').toLowerCase();
+          const aLastName = (a.last_name || '').toLowerCase();
+          const bFirstName = (b.first_name || '').toLowerCase();
+          const bLastName = (b.last_name || '').toLowerCase();
+
+          // Exact full name match gets highest priority
+          if (aFullName === searchLower) return -1;
+          if (bFullName === searchLower) return 1;
+
+          // Multi-term exact match (e.g., "john smith" matches first: John, last: Smith)
+          if (sortSearchTerms.length >= 2) {
+            const aExactMatch = aFirstName === sortSearchTerms[0] && aLastName === sortSearchTerms[1];
+            const bExactMatch = bFirstName === sortSearchTerms[0] && bLastName === sortSearchTerms[1];
+            if (aExactMatch && !bExactMatch) return -1;
+            if (bExactMatch && !aExactMatch) return 1;
+
+            // Multi-term starts with match
+            const aStartsMatch = aFirstName.startsWith(sortSearchTerms[0]) && aLastName.startsWith(sortSearchTerms[1]);
+            const bStartsMatch = bFirstName.startsWith(sortSearchTerms[0]) && bLastName.startsWith(sortSearchTerms[1]);
+            if (aStartsMatch && !bStartsMatch) return -1;
+            if (bStartsMatch && !aStartsMatch) return 1;
+          }
+
+          // Full name starts with search gets next priority
+          if (aFullName.startsWith(searchLower) && !bFullName.startsWith(searchLower)) return -1;
+          if (bFullName.startsWith(searchLower) && !aFullName.startsWith(searchLower)) return 1;
+
+          // First name exact match
+          if (aFirstName === searchLower && bFirstName !== searchLower) return -1;
+          if (bFirstName === searchLower && aFirstName !== searchLower) return 1;
+
+          // Last name exact match
+          if (aLastName === searchLower && bLastName !== searchLower) return -1;
+          if (bLastName === searchLower && aLastName !== searchLower) return 1;
+
+          // First name starts with search
+          if (aFirstName.startsWith(searchLower) && !bFirstName.startsWith(searchLower)) return -1;
+          if (bFirstName.startsWith(searchLower) && !aFirstName.startsWith(searchLower)) return 1;
+
+          // Last name starts with search
+          if (aLastName.startsWith(searchLower) && !bLastName.startsWith(searchLower)) return -1;
+          if (bLastName.startsWith(searchLower) && !aLastName.startsWith(searchLower)) return 1;
+
+          // Finally, sort alphabetically by full name
+          return aFullName.localeCompare(bFullName);
+        });
+
+        setContacts(sortedContacts.slice(0, 10)); // Take top 10 results
+      } catch (error) {
+        console.error('Error searching contacts:', error);
+      }
+    };
+
+    const timeoutId = setTimeout(searchContacts, 300);
+    return () => clearTimeout(timeoutId);
+  }, [contactSearch]);
+
+  const selectContact = (contact: any) => {
+    setSelectedContactId(contact.id);
+    setContactSearch(`${contact.first_name || ''} ${contact.last_name || ''}`.trim());
+    setShowContactDropdown(false);
+  };
+
+  const handleSave = async () => {
+    setIsLoading(true);
+    try {
+      const updateData: any = {
+        subject,
+        description: description || null,
+        updated_at: new Date().toISOString(),
+        contact_id: selectedContactId || null,
+        is_prospecting_call: isProspectingCall,
+        completed_call: completedCall,
+        meeting_held: meetingHeld,
+        is_property_prospecting_call: isPropertyProspectingCall,
+        completed_property_call: completedPropertyCall
+      };
+
+      const { error: updateError } = await supabase
+        .from('activity')
+        .update(updateData)
+        .eq('id', activity.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      // Return updated activity
+      const updatedActivity = {
+        ...activity,
+        ...updateData
+      };
+      onSave(updatedActivity);
+    } catch (error) {
+      console.error('Error updating call:', error);
+      alert('Failed to update call. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Subject *
+        </label>
+        <input
+          type="text"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+          placeholder="Call subject..."
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Comments
+        </label>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={3}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+          placeholder="Call notes or comments..."
+        />
+      </div>
+
+      {/* Related Contact */}
+      <div className="relative">
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Related Contact
+        </label>
+        <div className="relative">
+          <input
+            type="text"
+            value={contactSearch}
+            onChange={(e) => {
+              setContactSearch(e.target.value);
+              setShowContactDropdown(true);
+            }}
+            onFocus={() => setShowContactDropdown(true)}
+            className="w-full px-3 py-2 pl-10 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Search contacts..."
+          />
+          <MagnifyingGlassIcon className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+        </div>
+
+        {/* Contact Dropdown */}
+        {showContactDropdown && contacts.length > 0 && (
+          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+            {contacts.map((contact) => (
+              <button
+                key={contact.id}
+                type="button"
+                onClick={() => selectContact(contact)}
+                className="w-full px-3 py-2 text-left hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-gray-900">
+                      {`${contact.first_name || ''} ${contact.last_name || ''}`.trim()}
+                    </div>
+                    {contact.company && (
+                      <div className="text-sm text-gray-500">{contact.company}</div>
+                    )}
+                  </div>
+                  {selectedContactId === contact.id && (
+                    <CheckCircleIcon className="w-4 h-4 text-blue-600" />
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Boolean Fields */}
+      <div className="space-y-3">
+        <h4 className="text-sm font-medium text-gray-700">Call Details</h4>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={isProspectingCall}
+              onChange={(e) => setIsProspectingCall(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+            />
+            <span className="ml-2 text-sm text-gray-700">Prospect Call</span>
+          </label>
+
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={isPropertyProspectingCall}
+              onChange={(e) => setIsPropertyProspectingCall(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+            />
+            <span className="ml-2 text-sm text-gray-700">Property Prospect Call</span>
+          </label>
+
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={completedCall}
+              onChange={(e) => setCompletedCall(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+            />
+            <span className="ml-2 text-sm text-gray-700">Completed Call</span>
+          </label>
+
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={completedPropertyCall}
+              onChange={(e) => setCompletedPropertyCall(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+            />
+            <span className="ml-2 text-sm text-gray-700">Completed Property Call</span>
+          </label>
+
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={meetingHeld}
+              onChange={(e) => setMeetingHeld(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+            />
+            <span className="ml-2 text-sm text-gray-700">Meeting Held</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="flex gap-2 pt-2">
+        <button
+          onClick={handleSave}
+          disabled={isLoading}
+          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        >
+          {isLoading ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              Updating...
+            </>
+          ) : (
+            <>
+              <PhoneIcon className="w-4 h-4" />
+              Update Call
+            </>
+          )}
         </button>
         <button
           onClick={onCancel}
@@ -228,7 +583,7 @@ const ActivityReadOnlyView: React.FC<ActivityReadOnlyViewProps> = ({ activity })
           <div className="flex items-start gap-2">
             <CalendarIcon className="w-4 h-4 text-gray-500 mt-0.5" />
             <div>
-              <span className="text-sm font-medium text-gray-700">Activity Date</span>
+              <span className="text-sm font-medium text-gray-700">Due Date</span>
               <p className="text-sm text-gray-600">
                 {format(new Date(activity.activity_date), 'MMM d, yyyy')}
               </p>

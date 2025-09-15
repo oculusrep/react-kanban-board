@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { formatDistanceToNow, format } from 'date-fns';
+import { formatDistanceToNow, format, isAfter, startOfDay } from 'date-fns';
 import { ActivityWithRelations } from '../hooks/useActivities';
 import { supabase } from '../lib/supabaseClient';
 import { 
@@ -112,12 +112,42 @@ const getStatusBadge = (activity: ActivityWithRelations) => {
   );
 };
 
+const getOverdueBadge = (activity: ActivityWithRelations) => {
+  // Only show overdue for tasks (not calls or emails)
+  const activityType = activity.activity_type?.name || activity.sf_task_subtype;
+  if (activityType !== 'Task' && !activityType) return null;
+
+  // Don't show overdue if task is already completed
+  const isCompleted = activity.activity_status?.is_closed || activity.completed_call || activity.sf_is_closed;
+  if (isCompleted) return null;
+
+  // Check if activity_date (due date) is in the past (overdue)
+  if (!activity.activity_date) return null;
+
+  const dueDate = new Date(activity.activity_date);
+  const today = startOfDay(new Date());
+  const dueDateStart = startOfDay(dueDate);
+
+  // Only show if due date is before today (overdue)
+  if (!isAfter(today, dueDateStart)) return null;
+
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800"
+      title={`Overdue since ${format(dueDate, 'MMM d, yyyy')}`}
+    >
+      <ClockIcon className="w-3 h-3" />
+      Overdue
+    </span>
+  );
+};
+
 const formatCallDuration = (seconds: number | null) => {
   if (!seconds) return null;
-  
+
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
-  
+
   if (minutes > 0) {
     return `${minutes}m ${remainingSeconds}s`;
   }
@@ -258,6 +288,7 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate 
               </button>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
+              {getOverdueBadge(activity)}
               {getPriorityBadge(activity)}
               {getStatusBadge(activity)}
             </div>
@@ -308,6 +339,28 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate 
               <div className="flex items-center gap-1">
                 <span className="font-medium">
                   {activity.activity_task_type?.name || activity.sf_task_type}
+                </span>
+              </div>
+            )}
+
+            {/* Due Date - only for tasks */}
+            {((activityType === 'Task' || !activityType) && activity.activity_date) && (
+              <div className="flex items-center gap-1">
+                <ClockIcon className="w-4 h-4" />
+                <span className={`font-medium ${
+                  (() => {
+                    const isCompleted = activity.activity_status?.is_closed || activity.completed_call || activity.sf_is_closed;
+                    if (isCompleted) return 'text-gray-500';
+
+                    const dueDate = new Date(activity.activity_date);
+                    const today = startOfDay(new Date());
+                    const dueDateStart = startOfDay(dueDate);
+
+                    if (isAfter(today, dueDateStart)) return 'text-red-600'; // Overdue
+                    return 'text-gray-500'; // Not overdue
+                  })()
+                }`}>
+                  Due {format(new Date(activity.activity_date), 'MMM d, yyyy')}
                 </span>
               </div>
             )}
