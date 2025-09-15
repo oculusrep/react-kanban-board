@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import MasterSearchBox from "./MasterSearchBox";
 import DedicatedSearchModal from "./DedicatedSearchModal";
-import { useMasterSearch } from "../hooks/useMasterSearch";
+import { useRecentlyViewed, RecentItem } from "../hooks/useRecentlyViewed";
 
 interface DropdownMenuProps {
   title: string;
@@ -12,9 +12,11 @@ interface DropdownMenuProps {
     action: () => void;
     type?: 'link' | 'search';
   }>;
+  recentItems?: RecentItem[];
+  onRecentItemClick?: (item: RecentItem) => void;
 }
 
-const DropdownMenu: React.FC<DropdownMenuProps> = ({ title, items }) => {
+const DropdownMenu: React.FC<DropdownMenuProps> = ({ title, items, recentItems, onRecentItemClick }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -47,8 +49,34 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ title, items }) => {
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 mt-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50">
+        <div className="absolute left-0 mt-2 w-64 bg-white border border-gray-200 rounded-md shadow-lg z-50">
           <div className="py-1">
+            {/* Recent Items Section */}
+            {recentItems && recentItems.length > 0 && (
+              <>
+                <div className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                  Recently Viewed
+                </div>
+                {recentItems.map((item, index) => (
+                  <button
+                    key={`recent-${index}`}
+                    onClick={() => {
+                      onRecentItemClick?.(item);
+                      setIsOpen(false);
+                    }}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 transition-colors"
+                  >
+                    <div className="truncate font-medium">{item.name}</div>
+                    {item.subtitle && (
+                      <div className="text-xs text-gray-500 truncate">{item.subtitle}</div>
+                    )}
+                  </button>
+                ))}
+                <div className="border-b border-gray-100 my-1" />
+              </>
+            )}
+
+            {/* Regular Menu Items */}
             {items.map((item, index) => (
               <button
                 key={index}
@@ -56,7 +84,7 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ title, items }) => {
                   item.action();
                   setIsOpen(false);
                 }}
-                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
               >
                 {item.label}
               </button>
@@ -72,7 +100,8 @@ export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const { searchByType } = useMasterSearch();
+  const { getRecentItems } = useRecentlyViewed();
+
 
   const [searchModals, setSearchModals] = useState({
     properties: false,
@@ -90,15 +119,30 @@ export default function Navbar() {
     await signOut();
   };
 
-  const handleSearch = async (query: string, type: 'deal' | 'client' | 'contact' | 'property' | 'site_submit') => {
-    if (!query.trim()) return [];
-    
-    try {
-      const results = await searchByType(query, type, 20);
-      return results;
-    } catch (error) {
-      console.error(`Error searching ${type}:`, error);
-      return [];
+
+  const handleRecentItemClick = (item: RecentItem) => {
+    // Navigate to the appropriate detail page based on item type
+    switch (item.type) {
+      case 'deal':
+        navigate(`/deal/${item.id}`);
+        break;
+      case 'property':
+        navigate(`/property/${item.id}`);
+        break;
+      case 'contact':
+        navigate(`/contact/${item.id}`);
+        break;
+      case 'assignment':
+        navigate(`/assignment/${item.id}`);
+        break;
+      case 'client':
+        navigate(`/client/${item.id}`);
+        break;
+      case 'site_submit':
+        navigate(`/site-submit/${item.id}`);
+        break;
+      default:
+        console.warn('Unknown item type:', item.type);
     }
   };
 
@@ -156,10 +200,30 @@ export default function Navbar() {
             Master Pipeline
           </Link>
           
-          <DropdownMenu title="Properties" items={propertiesItems} />
-          <DropdownMenu title="Contacts" items={contactsItems} />
-          <DropdownMenu title="Deals" items={dealsItems} />
-          <DropdownMenu title="Assignments" items={assignmentsItems} />
+          <DropdownMenu
+            title="Properties"
+            items={propertiesItems}
+            recentItems={getRecentItems('property')}
+            onRecentItemClick={handleRecentItemClick}
+          />
+          <DropdownMenu
+            title="Contacts"
+            items={contactsItems}
+            recentItems={getRecentItems('contact')}
+            onRecentItemClick={handleRecentItemClick}
+          />
+          <DropdownMenu
+            title="Deals"
+            items={dealsItems}
+            recentItems={getRecentItems('deal')}
+            onRecentItemClick={handleRecentItemClick}
+          />
+          <DropdownMenu
+            title="Assignments"
+            items={assignmentsItems}
+            recentItems={getRecentItems('assignment')}
+            onRecentItemClick={handleRecentItemClick}
+          />
         </div>
         
         {/* Center search box */}
@@ -190,7 +254,6 @@ export default function Navbar() {
           onClose={() => setSearchModals(prev => ({ ...prev, properties: false }))}
           title="Search Properties"
           searchType="property"
-          onSearch={(query) => handleSearch(query, 'property')}
           onSelect={(result) => {
             navigate(result.url || '/');
             setSearchModals(prev => ({ ...prev, properties: false }));
@@ -204,7 +267,6 @@ export default function Navbar() {
           onClose={() => setSearchModals(prev => ({ ...prev, contacts: false }))}
           title="Search Contacts"
           searchType="contact"
-          onSearch={(query) => handleSearch(query, 'contact')}
           onSelect={(result) => {
             navigate(result.url || '/');
             setSearchModals(prev => ({ ...prev, contacts: false }));
@@ -218,7 +280,6 @@ export default function Navbar() {
           onClose={() => setSearchModals(prev => ({ ...prev, deals: false }))}
           title="Search Deals"
           searchType="deal"
-          onSearch={(query) => handleSearch(query, 'deal')}
           onSelect={(result) => {
             navigate(result.url || '/');
             setSearchModals(prev => ({ ...prev, deals: false }));
@@ -232,7 +293,6 @@ export default function Navbar() {
           onClose={() => setSearchModals(prev => ({ ...prev, assignments: false }))}
           title="Search Assignments"
           searchType="assignment"
-          onSearch={(query) => handleSearch(query, 'assignment')}
           onSelect={(result) => {
             navigate(result.url || '/');
             setSearchModals(prev => ({ ...prev, assignments: false }));

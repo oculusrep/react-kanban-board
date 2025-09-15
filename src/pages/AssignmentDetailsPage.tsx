@@ -5,6 +5,7 @@ import { Assignment } from "../lib/types";
 import AssignmentOverviewTab from "../components/AssignmentOverviewTab";
 import AssignmentSidebar from "../components/AssignmentSidebar";
 import GenericActivityTab from "../components/GenericActivityTab";
+import { useTrackPageView } from "../hooks/useRecentlyViewed";
 
 export default function AssignmentDetailsPage() {
   const { assignmentId } = useParams<{ assignmentId: string }>();
@@ -17,6 +18,7 @@ export default function AssignmentDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [sidebarMinimized, setSidebarMinimized] = useState(false);
   const [siteSubmitModalOpen, setSiteSubmitModalOpen] = useState(false);
+  const { trackView } = useTrackPageView();
 
   // Fallback: if assignmentId is undefined but pathname is /assignment/new, treat as new assignment
   const actualAssignmentId = assignmentId || (location.pathname === '/assignment/new' ? 'new' : undefined);
@@ -96,6 +98,13 @@ export default function AssignmentDetailsPage() {
           console.log('Assignment loaded:', data);
           setAssignment(data);
           setIsNewAssignment(false);
+          // Track this assignment as recently viewed
+          trackView(
+            data.id,
+            'assignment',
+            data.assignment_name || 'Unnamed Assignment',
+            data.client_id ? 'Client Assignment' : undefined
+          );
         } else {
           setError('Assignment not found');
         }

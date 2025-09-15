@@ -60,7 +60,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [selectedRelatedObject, setSelectedRelatedObject] = useState<RelatedOption | null>(null);
 
-  // Search contacts with debouncing
+  // Search contacts with debouncing - handles "first name last name" properly
   useEffect(() => {
     const searchContacts = async () => {
       if (contactSearch.length < 2) {
@@ -69,103 +69,33 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
       }
 
       try {
-        // Handle spaces in search by creating multiple OR conditions
-        const searchTerms = contactSearch.trim().split(/\s+/);
-        let orConditions = [];
+        const trimmedSearch = contactSearch.trim();
+        let query = supabase
+          .from('contact')
+          .select('id, first_name, last_name, company');
 
-        if (searchTerms.length === 1) {
-          // Single term - search in all fields
-          orConditions = [
-            `first_name.ilike.%${searchTerms[0]}%`,
-            `last_name.ilike.%${searchTerms[0]}%`,
-            `company.ilike.%${searchTerms[0]}%`
-          ];
+        // Check if search contains a space (likely "first name last name")
+        const searchTerms = trimmedSearch.split(/\s+/).filter(term => term.length > 0);
+
+        if (searchTerms.length >= 2) {
+          // Multi-word search: treat as "first name last name"
+          const firstName = searchTerms[0];
+          const lastName = searchTerms.slice(1).join(' '); // Handle multiple last names
+
+          // Search for first name AND last name combination, plus fallback to any field
+          query = query.or(`and(first_name.ilike.%${firstName}%,last_name.ilike.%${lastName}%),first_name.ilike.%${trimmedSearch}%,last_name.ilike.%${trimmedSearch}%,company.ilike.%${trimmedSearch}%`);
         } else {
-          // Multiple terms - add all combinations
-          for (const term of searchTerms) {
-            orConditions.push(
-              `first_name.ilike.%${term}%`,
-              `last_name.ilike.%${term}%`,
-              `company.ilike.%${term}%`
-            );
-          }
-
-          // Also search for the full string in each field
-          orConditions.push(
-            `first_name.ilike.%${contactSearch}%`,
-            `last_name.ilike.%${contactSearch}%`,
-            `company.ilike.%${contactSearch}%`
-          );
+          // Single word search: search in any field
+          query = query.or(`first_name.ilike.%${trimmedSearch}%,last_name.ilike.%${trimmedSearch}%,company.ilike.%${trimmedSearch}%`);
         }
 
-        const { data, error } = await supabase
-          .from('contact')
-          .select('id, first_name, last_name, company')
-          .or(orConditions.join(','))
-          .limit(50); // Get more results for better sorting
+        const { data, error } = await query
+          .order('last_name')
+          .limit(20);
 
         if (error) throw error;
 
-        if (!data) {
-          setContacts([]);
-          return;
-        }
-
-        // Sort results by relevance
-        const searchLower = contactSearch.toLowerCase().trim();
-        const sortSearchTerms = searchLower.split(/\s+/);
-
-        const sortedContacts = data.sort((a, b) => {
-          const aFullName = `${a.first_name || ''} ${a.last_name || ''}`.trim().toLowerCase();
-          const bFullName = `${b.first_name || ''} ${b.last_name || ''}`.trim().toLowerCase();
-          const aFirstName = (a.first_name || '').toLowerCase();
-          const aLastName = (a.last_name || '').toLowerCase();
-          const bFirstName = (b.first_name || '').toLowerCase();
-          const bLastName = (b.last_name || '').toLowerCase();
-
-          // Exact full name match gets highest priority
-          if (aFullName === searchLower) return -1;
-          if (bFullName === searchLower) return 1;
-
-          // Multi-term exact match (e.g., "john smith" matches first: John, last: Smith)
-          if (sortSearchTerms.length >= 2) {
-            const aExactMatch = aFirstName === sortSearchTerms[0] && aLastName === sortSearchTerms[1];
-            const bExactMatch = bFirstName === sortSearchTerms[0] && bLastName === sortSearchTerms[1];
-            if (aExactMatch && !bExactMatch) return -1;
-            if (bExactMatch && !aExactMatch) return 1;
-
-            // Multi-term starts with match
-            const aStartsMatch = aFirstName.startsWith(sortSearchTerms[0]) && aLastName.startsWith(sortSearchTerms[1]);
-            const bStartsMatch = bFirstName.startsWith(sortSearchTerms[0]) && bLastName.startsWith(sortSearchTerms[1]);
-            if (aStartsMatch && !bStartsMatch) return -1;
-            if (bStartsMatch && !aStartsMatch) return 1;
-          }
-
-          // Full name starts with search gets next priority
-          if (aFullName.startsWith(searchLower) && !bFullName.startsWith(searchLower)) return -1;
-          if (bFullName.startsWith(searchLower) && !aFullName.startsWith(searchLower)) return 1;
-
-          // First name exact match
-          if (aFirstName === searchLower && bFirstName !== searchLower) return -1;
-          if (bFirstName === searchLower && aFirstName !== searchLower) return 1;
-
-          // Last name exact match
-          if (aLastName === searchLower && bLastName !== searchLower) return -1;
-          if (bLastName === searchLower && aLastName !== searchLower) return 1;
-
-          // First name starts with search
-          if (aFirstName.startsWith(searchLower) && !bFirstName.startsWith(searchLower)) return -1;
-          if (bFirstName.startsWith(searchLower) && !aFirstName.startsWith(searchLower)) return 1;
-
-          // Last name starts with search
-          if (aLastName.startsWith(searchLower) && !bLastName.startsWith(searchLower)) return -1;
-          if (bLastName.startsWith(searchLower) && !aLastName.startsWith(searchLower)) return 1;
-
-          // Finally, sort alphabetically by full name
-          return aFullName.localeCompare(bFullName);
-        });
-
-        const contactOptions: (RelatedOption & { company?: string })[] = sortedContacts.slice(0, 10).map(contact => ({
+        const contactOptions: (RelatedOption & { company?: string })[] = (data || []).map(contact => ({
           id: contact.id,
           label: `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
           type: 'contact',
@@ -175,6 +105,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
         setContacts(contactOptions);
       } catch (error) {
         console.error('Error searching contacts:', error);
+        setContacts([]);
       }
     };
 

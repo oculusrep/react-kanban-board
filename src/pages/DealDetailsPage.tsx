@@ -11,6 +11,7 @@ import CommissionTab from '../components/CommissionTab';
 import PaymentTab from '../components/PaymentTab';
 import ActivityTab from '../components/ActivityTab';
 import DealHeaderBar from '../components/DealHeaderBar';
+import { useTrackPageView } from '../hooks/useRecentlyViewed';
 
 export default function DealDetailsPage() {
   const { dealId } = useParams<{ dealId: string }>();
@@ -18,6 +19,7 @@ export default function DealDetailsPage() {
   const [deal, setDeal] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [isNewDeal, setIsNewDeal] = useState(false);
+  const { trackView } = useTrackPageView();
   
   console.log('DealDetailsPage - location:', location.pathname, 'dealId from params:', dealId);
   
@@ -75,6 +77,13 @@ export default function DealDetailsPage() {
         console.log('Existing deal loaded:', data);
         setDeal(data);
         setIsNewDeal(false);
+        // Track this deal as recently viewed
+        trackView(
+          data.id,
+          'deal',
+          data.deal_name || 'Unnamed Deal',
+          data.sf_address || data.client?.client_name || undefined
+        );
       }
     };
 

@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { SearchResult } from '../hooks/useMasterSearch';
+import { supabase } from '../lib/supabaseClient';
 
 interface DedicatedSearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
-  searchType: 'deal' | 'contact' | 'property';
-  onSearch: (query: string) => Promise<SearchResult[]>;
+  searchType: 'deal' | 'contact' | 'property' | 'assignment';
   onSelect: (result: SearchResult) => void;
 }
 
@@ -15,7 +15,6 @@ const DedicatedSearchModal: React.FC<DedicatedSearchModalProps> = ({
   onClose,
   title,
   searchType,
-  onSearch,
   onSelect
 }) => {
   const [query, setQuery] = useState('');
@@ -36,17 +35,153 @@ const DedicatedSearchModal: React.FC<DedicatedSearchModalProps> = ({
     }
   }, [isOpen]);
 
-  // Debounced search
+  // Internal search function (like LogCallModal pattern)
   useEffect(() => {
-    if (!query.trim()) {
-      setResults([]);
-      return;
-    }
+    const performSearch = async () => {
+      if (!query.trim()) {
+        setResults([]);
+        return;
+      }
 
-    setLoading(true);
-    const timeoutId = setTimeout(async () => {
+      setLoading(true);
       try {
-        const searchResults = await onSearch(query);
+        const trimmedQuery = query.trim().toLowerCase();
+        let searchResults: SearchResult[] = [];
+
+        if (searchType === 'contact') {
+          // Contact search with "first name last name" handling like LogCallModal
+          let contactQuery = supabase
+            .from('contact')
+            .select('id, first_name, last_name, company, email, phone, mobile_phone, title');
+
+          const searchTerms = trimmedQuery.split(/\s+/).filter(term => term.length > 0);
+
+          if (searchTerms.length >= 2) {
+            // Multi-word search: treat as "first name last name"
+            const firstName = searchTerms[0];
+            const lastName = searchTerms.slice(1).join(' ');
+            contactQuery = contactQuery.or(`and(first_name.ilike.%${firstName}%,last_name.ilike.%${lastName}%),first_name.ilike.%${trimmedQuery}%,last_name.ilike.%${trimmedQuery}%,company.ilike.%${trimmedQuery}%,email.ilike.%${trimmedQuery}%`);
+          } else {
+            contactQuery = contactQuery.or(`first_name.ilike.%${trimmedQuery}%,last_name.ilike.%${trimmedQuery}%,company.ilike.%${trimmedQuery}%,email.ilike.%${trimmedQuery}%`);
+          }
+
+          const { data: contacts, error: contactsError } = await contactQuery
+            .order('last_name')
+            .limit(20);
+
+          if (contactsError) throw contactsError;
+
+          if (contacts) {
+            searchResults = contacts.map((contact) => {
+              const firstName = contact.first_name || '';
+              const lastName = contact.last_name || '';
+              const fullName = `${firstName} ${lastName}`.trim();
+              const displayName = fullName || 'Unnamed Contact';
+
+              const contactInfo = [contact.email, contact.phone, contact.mobile_phone]
+                .filter(Boolean)[0] || '';
+
+              return {
+                id: contact.id,
+                type: 'contact' as const,
+                title: displayName,
+                subtitle: contact.company || contact.title || 'Contact',
+                description: contactInfo,
+                metadata: '',
+                url: `/contact/${contact.id}`
+              };
+            });
+          }
+        } else if (searchType === 'deal') {
+          // Deal search
+          const { data: deals, error: dealsError } = await supabase
+            .from('deal')
+            .select(`
+              *,
+              client!client_id (client_name),
+              deal_stage (label),
+              property (property_name, address, city, state)
+            `)
+            .or(`deal_name.ilike.%${trimmedQuery}%,sf_broker.ilike.%${trimmedQuery}%,sf_address.ilike.%${trimmedQuery}%`)
+            .limit(20);
+
+          if (dealsError) throw dealsError;
+
+          if (deals) {
+            searchResults = deals.map((deal: any) => {
+              const title = deal.deal_name || 'Unnamed Deal';
+              const address = [deal.property?.address, deal.property?.city, deal.property?.state]
+                .filter(Boolean).join(', ');
+
+              return {
+                id: deal.id,
+                type: 'deal' as const,
+                title,
+                subtitle: deal.client?.client_name || 'No Client',
+                description: deal.property?.property_name || address,
+                metadata: deal.deal_stage?.label || 'No Stage',
+                url: `/deal/${deal.id}`
+              };
+            });
+          }
+        } else if (searchType === 'property') {
+          // Property search
+          const { data: properties, error: propertiesError } = await supabase
+            .from('property')
+            .select(`
+              *,
+              property_type (label),
+              property_stage (label)
+            `)
+            .or(`property_name.ilike.%${trimmedQuery}%,address.ilike.%${trimmedQuery}%,city.ilike.%${trimmedQuery}%,state.ilike.%${trimmedQuery}%`)
+            .limit(20);
+
+          if (propertiesError) throw propertiesError;
+
+          if (properties) {
+            searchResults = properties.map((property: any) => {
+              const title = property.property_name || 'Unnamed Property';
+              const address = [property.address, property.city, property.state]
+                .filter(Boolean).join(', ');
+
+              return {
+                id: property.id,
+                type: 'property' as const,
+                title,
+                subtitle: address || 'Property',
+                description: property.property_type?.label || '',
+                metadata: property.property_stage?.label || '',
+                url: `/property/${property.id}`
+              };
+            });
+          }
+        } else if (searchType === 'assignment') {
+          // Assignment search
+          const { data: assignments, error: assignmentsError } = await supabase
+            .from('assignment')
+            .select('*')
+            .or(`assignment_name.ilike.%${trimmedQuery}%,site_criteria.ilike.%${trimmedQuery}%`)
+            .limit(20);
+
+          if (assignmentsError) throw assignmentsError;
+
+          if (assignments) {
+            searchResults = assignments.map((assignment: any) => {
+              const title = assignment.assignment_name || 'Unnamed Assignment';
+
+              return {
+                id: assignment.id,
+                type: 'assignment' as const,
+                title,
+                subtitle: 'Assignment',
+                description: assignment.site_criteria || assignment.progress || '',
+                metadata: '',
+                url: `/assignment/${assignment.id}`
+              };
+            });
+          }
+        }
+
         setResults(searchResults);
         setSelectedIndex(-1);
       } catch (error) {
@@ -55,10 +190,11 @@ const DedicatedSearchModal: React.FC<DedicatedSearchModalProps> = ({
       } finally {
         setLoading(false);
       }
-    }, 300);
+    };
 
+    const timeoutId = setTimeout(performSearch, 300);
     return () => clearTimeout(timeoutId);
-  }, [query, onSearch]);
+  }, [query, searchType]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!results.length) return;
@@ -110,6 +246,12 @@ const DedicatedSearchModal: React.FC<DedicatedSearchModalProps> = ({
         return (
           <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+          </svg>
+        );
+      case 'assignment':
+        return (
+          <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
         );
       default:

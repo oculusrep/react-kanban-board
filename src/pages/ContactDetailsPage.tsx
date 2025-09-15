@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import ContactOverviewTab from '../components/ContactOverviewTab';
 import GenericActivityTab from '../components/GenericActivityTab';
+import { useTrackPageView } from '../hooks/useRecentlyViewed';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 
@@ -14,6 +15,7 @@ const ContactDetailsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { trackView } = useTrackPageView();
 
   const isNewContact = contactId === 'new';
 
@@ -43,6 +45,13 @@ const ContactDetailsPage: React.FC = () => {
           setError(`Failed to load contact: ${error.message}`);
         } else if (data) {
           setContact(data);
+          // Track this contact as recently viewed
+          trackView(
+            data.id,
+            'contact',
+            `${data.first_name || ''} ${data.last_name || ''}`.trim() || 'Unnamed Contact',
+            data.company || data.email || undefined
+          );
         } else {
           setError('Contact not found');
         }

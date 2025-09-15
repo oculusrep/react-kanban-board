@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import PropertyDetailScreen from "../components/property/PropertyDetailScreen";
 import { Database } from "../../database-schema";
+import { useTrackPageView } from "../hooks/useRecentlyViewed";
 
 type Property = Database['public']['Tables']['property']['Row'];
 
@@ -12,6 +13,7 @@ export default function PropertyDetailsPage() {
   const [property, setProperty] = useState<Property | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { trackView } = useTrackPageView();
 
   const isCreateMode = propertyId === 'create';
 
@@ -32,6 +34,13 @@ export default function PropertyDetailsPage() {
 
         if (error) throw error;
         setProperty(data);
+        // Track this property as recently viewed
+        trackView(
+          data.id,
+          'property',
+          data.property_name || 'Unnamed Property',
+          `${data.address || ''} ${data.city || ''} ${data.state || ''}`.trim() || undefined
+        );
       } catch (err) {
         console.error('Error fetching property:', err);
         setError(err instanceof Error ? err.message : 'Failed to load property');
