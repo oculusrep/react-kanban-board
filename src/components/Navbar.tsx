@@ -41,7 +41,8 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ title, items, recentItems, 
         'Properties': 'property',
         'Contacts': 'contact',
         'Deals': 'deal',
-        'Assignments': 'assignment'
+        'Assignments': 'assignment',
+        'Clients': 'client'
       };
 
       const type = titleToTypeMap[title];
@@ -134,6 +135,7 @@ export default function Navbar() {
     contacts: false,
     deals: false,
     assignments: false,
+    clients: false,
   });
 
   const linkClass = (path: string) =>
@@ -217,6 +219,17 @@ export default function Navbar() {
     }
   ];
 
+  const clientsItems = [
+    {
+      label: "Add New Client",
+      action: () => navigate('/client/new')
+    },
+    {
+      label: "Search Clients",
+      action: () => setSearchModals(prev => ({ ...prev, clients: true }))
+    }
+  ];
+
   return (
     <nav className="bg-white shadow p-4">
       <div className="flex justify-between items-center">
@@ -253,6 +266,13 @@ export default function Navbar() {
             recentItems={getRecentItems('assignment')}
             onRecentItemClick={handleRecentItemClick}
             key={`assignments-${refreshTrigger}`}
+          />
+          <DropdownMenu
+            title="Clients"
+            items={clientsItems}
+            recentItems={getRecentItems('client')}
+            onRecentItemClick={handleRecentItemClick}
+            key={`clients-${refreshTrigger}`}
           />
         </div>
         
@@ -326,6 +346,19 @@ export default function Navbar() {
           onSelect={(result) => {
             navigate(result.url || '/');
             setSearchModals(prev => ({ ...prev, assignments: false }));
+          }}
+        />
+      )}
+
+      {searchModals.clients && (
+        <DedicatedSearchModal
+          isOpen={searchModals.clients}
+          onClose={() => setSearchModals(prev => ({ ...prev, clients: false }))}
+          title="Search Clients"
+          searchType="client"
+          onSelect={(result) => {
+            navigate(result.url || '/');
+            setSearchModals(prev => ({ ...prev, clients: false }));
           }}
         />
       )}

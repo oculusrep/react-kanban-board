@@ -1,5 +1,6 @@
 // components/DealDetailsForm.tsx
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { formatCurrency, formatPercent, formatIntegerPercent } from "../utils/format";
 import FormattedInput from "./FormattedInput";
@@ -61,6 +62,7 @@ interface Props {
 }
 
 export default function DealDetailsForm({ deal, onSave }: Props) {
+  const navigate = useNavigate();
   const [form, setForm] = useState<Deal>(deal);
   const [saving, setSaving] = useState(false);
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -346,6 +348,8 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
               setClientSearch(label);
               setClientSuggestions([]);
             }}
+            selectedId={form.client_id}
+            onNavigate={(id) => navigate(`/client/${id}`)}
           />
 
           {/* Row 2: Property (left) + Property Unit (right) */}
@@ -582,12 +586,16 @@ function AlwaysEditableAutocomplete({
   setSearch,
   suggestions,
   onSelect,
+  selectedId,
+  onNavigate,
 }: {
   label: string;
   search: string;
   setSearch: (v: string) => void;
   suggestions: { id: string; label: string }[];
   onSelect: (id: string, label: string) => void;
+  selectedId?: string | null;
+  onNavigate?: (id: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -597,18 +605,34 @@ function AlwaysEditableAutocomplete({
     }
   };
 
+  const hasSelectedItem = selectedId && search.trim();
+
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700">{label}</label>
-      <input
-        ref={inputRef}
-        type="text"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        onFocus={handleFocus}
-        placeholder={`Search ${label.toLowerCase()}...`}
-        className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-      />
+      <div className="flex items-center space-x-2">
+        <input
+          ref={inputRef}
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onFocus={handleFocus}
+          placeholder={`Search ${label.toLowerCase()}...`}
+          className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+        />
+        {hasSelectedItem && onNavigate && (
+          <button
+            type="button"
+            onClick={() => onNavigate(selectedId)}
+            className="mt-1 inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            title={`View ${label}`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+          </button>
+        )}
+      </div>
       {suggestions.filter((s) => s.label !== search).length > 0 && (
         <ul className="bg-white border border-gray-300 rounded mt-1 max-h-48 overflow-auto">
           {suggestions

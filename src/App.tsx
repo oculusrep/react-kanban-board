@@ -5,6 +5,7 @@ import KanbanBoard from "./components/KanbanBoard";
 import DealDetailsPage from "./pages/DealDetailsPage";
 import PropertyDetailsPage from "./pages/PropertyDetailsPage";
 import ContactDetailsPage from "./pages/ContactDetailsPage";
+import ClientDetailsPage from "./pages/ClientDetailsPage";
 import SiteSubmitDetailsPage from "./pages/SiteSubmitDetailsPage";
 import AssignmentDetailsPage from "./pages/AssignmentDetailsPage";
 import NewPropertyPage from "./components/property/NewPropertyPage";
@@ -27,7 +28,10 @@ function App() {
             <Route path="/assignment/:assignmentId" element={<AssignmentDetailsPage />} />
             <Route path="/property/new" element={<NewPropertyPage />} />
             <Route path="/property/:propertyId" element={<PropertyDetailsPage />} />
+            <Route path="/contact/new" element={<ContactDetailsPage />} />
             <Route path="/contact/:contactId" element={<ContactDetailsPage />} />
+            <Route path="/client/new" element={<ClientDetailsPage />} />
+            <Route path="/client/:clientId" element={<ClientDetailsPage />} />
             <Route path="/site-submit/:siteSubmitId" element={<SiteSubmitDetailsPage />} />
             <Route path="/search-test" element={<SearchTestPage />} />
             <Route path="/search-debug" element={<SearchDebugPage />} />
