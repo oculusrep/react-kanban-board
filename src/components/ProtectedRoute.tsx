@@ -7,9 +7,9 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  // Temporarily disabled authentication for development
+  // Temporarily disabled authentication for testing notes functionality
   return <>{children}</>;
-  
+
   // const { user, loading } = useAuth();
 
   // if (loading) {

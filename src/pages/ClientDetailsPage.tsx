@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import ClientOverviewTab from '../components/ClientOverviewTab';
 import GenericActivityTab from '../components/GenericActivityTab';
+import ClientNotesSidebar from '../components/ClientNotesSidebar';
 import { useTrackPageView } from '../hooks/useRecentlyViewed';
 
 type Client = Database['public']['Tables']['client']['Row'];
@@ -15,6 +16,8 @@ const ClientDetailsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isNotesSidebarMinimized, setIsNotesSidebarMinimized] = useState(false);
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const { trackView } = useTrackPageView();
 
   const isNewClient = clientId === 'new';
@@ -104,32 +107,48 @@ const ClientDetailsPage: React.FC = () => {
 
   const tabs = [
     { id: 'overview', name: 'Overview' },
-    { id: 'activities', name: 'Activities' }
+    { id: 'activities', name: 'Activities' },
+    { id: 'notes', name: 'Notes' }
   ];
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              {isNewClient ? 'New Client' : client?.client_name || 'Unnamed Client'}
-            </h1>
-            {client?.type && (
-              <p className="text-sm text-gray-500 mt-1">
-                {client.type}
-              </p>
-            )}
+    <>
+      <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 transition-all duration-300 ${
+        !isNotesSidebarMinimized ? 'mr-[500px]' : 'mr-12'
+      }`}>
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">
+                {isNewClient ? 'New Client' : client?.client_name || 'Unnamed Client'}
+              </h1>
+              {client?.type && (
+                <p className="text-sm text-gray-500 mt-1">
+                  {client.type}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setIsNotesSidebarMinimized(!isNotesSidebarMinimized)}
+                className="inline-flex items-center px-3 py-2 border border-purple-300 rounded-md shadow-sm text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                title={isNotesSidebarMinimized ? "Show Notes Sidebar" : "Hide Notes Sidebar"}
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+                {isNotesSidebarMinimized ? 'Show' : 'Hide'} Notes
+              </button>
+              <button
+                onClick={() => navigate('/')}
+                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Back to Dashboard
+              </button>
+            </div>
           </div>
-          <button
-            onClick={() => navigate('/')}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            Back to Dashboard
-          </button>
         </div>
-      </div>
 
       {/* Tab Navigation */}
       <div className="border-b border-gray-200 mb-6">
@@ -165,8 +184,33 @@ const ClientDetailsPage: React.FC = () => {
             parentObject={client ? { id: client.id, type: 'client', name: client.client_name || 'Unnamed Client' } : null}
           />
         )}
+        {activeTab === 'notes' && (
+          <div className="text-gray-600">
+            <p className="mb-4">Notes are displayed in the sidebar. Use the sidebar to view and manage client notes.</p>
+            <button
+              onClick={() => setIsNotesSidebarMinimized(false)}
+              className="inline-flex items-center px-4 py-2 border border-purple-300 rounded-md shadow-sm text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+              Show Notes Sidebar
+            </button>
+          </div>
+        )}
       </div>
     </div>
+
+      {/* Notes Sidebar */}
+      {clientId && clientId !== 'new' && (
+        <ClientNotesSidebar
+          clientId={clientId}
+          isMinimized={isNotesSidebarMinimized}
+          onMinimize={() => setIsNotesSidebarMinimized(!isNotesSidebarMinimized)}
+          onNoteModalChange={setIsNoteModalOpen}
+        />
+      )}
+    </>
   );
 };
 

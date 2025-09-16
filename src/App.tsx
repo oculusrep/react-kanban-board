@@ -12,6 +12,7 @@ import NewPropertyPage from "./components/property/NewPropertyPage";
 import Navbar from "./components/Navbar";
 import SearchTestPage from "./components/SearchTestPage";
 import SearchDebugPage from "./components/SearchDebugPage";
+import NotesDebugPage from "./pages/NotesDebugPage";
 
 function App() {
   return (
@@ -35,6 +36,7 @@ function App() {
             <Route path="/site-submit/:siteSubmitId" element={<SiteSubmitDetailsPage />} />
             <Route path="/search-test" element={<SearchTestPage />} />
             <Route path="/search-debug" element={<SearchDebugPage />} />
+            <Route path="/notes-debug" element={<NotesDebugPage />} />
           </Routes>
         </div>
       </ProtectedRoute>

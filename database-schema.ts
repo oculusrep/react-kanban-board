@@ -2065,45 +2065,199 @@ export type Database = {
       }
       note: {
         Row: {
+          assignment_id: string | null
           body: string | null
           client_id: string | null
+          contact_id: string | null
+          content_size: number | null
           created_at: string
           created_by: string | null
           deal_id: string | null
           id: string
+          is_private: boolean | null
           last_modified_at: string | null
           last_modified_by: string | null
+          owner_id: string | null
           property_id: string | null
+          related_object_id: string | null
+          related_object_type: string | null
+          sf_content_document_id: string | null
+          sf_content_document_link_id: string | null
+          sf_content_note_id: string | null
+          sf_content_version_id: string | null
+          sf_created_by: string | null
+          sf_created_by_id: string | null
+          sf_modified_by: string | null
+          sf_note_id: string | null
+          sf_owner_id: string | null
+          sf_parent_id: string | null
+          sf_updated_by_id: string | null
+          share_type: string | null
           site_submit_id: string | null
           summary_for_thread_id: string | null
+          title: string | null
+          updated_at: string | null
+          updated_by: string | null
+          visibility: string | null
         }
         Insert: {
+          assignment_id?: string | null
           body?: string | null
           client_id?: string | null
+          contact_id?: string | null
+          content_size?: number | null
           created_at?: string
           created_by?: string | null
           deal_id?: string | null
           id?: string
+          is_private?: boolean | null
           last_modified_at?: string | null
           last_modified_by?: string | null
+          owner_id?: string | null
           property_id?: string | null
+          related_object_id?: string | null
+          related_object_type?: string | null
+          sf_content_document_id?: string | null
+          sf_content_document_link_id?: string | null
+          sf_content_note_id?: string | null
+          sf_content_version_id?: string | null
+          sf_created_by?: string | null
+          sf_created_by_id?: string | null
+          sf_modified_by?: string | null
+          sf_note_id?: string | null
+          sf_owner_id?: string | null
+          sf_parent_id?: string | null
+          sf_updated_by_id?: string | null
+          share_type?: string | null
           site_submit_id?: string | null
           summary_for_thread_id?: string | null
+          title?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
+          visibility?: string | null
         }
         Update: {
+          assignment_id?: string | null
           body?: string | null
           client_id?: string | null
+          contact_id?: string | null
+          content_size?: number | null
           created_at?: string
           created_by?: string | null
           deal_id?: string | null
           id?: string
+          is_private?: boolean | null
           last_modified_at?: string | null
           last_modified_by?: string | null
+          owner_id?: string | null
           property_id?: string | null
+          related_object_id?: string | null
+          related_object_type?: string | null
+          sf_content_document_id?: string | null
+          sf_content_document_link_id?: string | null
+          sf_content_note_id?: string | null
+          sf_content_version_id?: string | null
+          sf_created_by?: string | null
+          sf_created_by_id?: string | null
+          sf_modified_by?: string | null
+          sf_note_id?: string | null
+          sf_owner_id?: string | null
+          sf_parent_id?: string | null
+          sf_updated_by_id?: string | null
+          share_type?: string | null
           site_submit_id?: string | null
           summary_for_thread_id?: string | null
+          title?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
+          visibility?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_note_assignment_id"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "assignment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_note_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_note_contact_id"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_note_deal_id"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_note_deal_id"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_note_owner_id"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_note_property_id"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_note_property_id"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_deal_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_note_property_id"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_note_property_id"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_note_site_submit_id"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "site_submit"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_note_updated_by"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       payment: {
         Row: {
@@ -3893,6 +4047,375 @@ export type Database = {
           Suffix?: string | null
           SystemModstamp?: string | null
           Title?: string | null
+        }
+        Relationships: []
+      }
+      salesforce_ContentDocument: {
+        Row: {
+          _airbyte_extracted_at: string
+          _airbyte_generation_id: number | null
+          _airbyte_meta: Json
+          _airbyte_raw_id: string
+          ArchivedById: string | null
+          ArchivedDate: string | null
+          ContentAssetId: string | null
+          ContentModifiedDate: string | null
+          ContentSize: number | null
+          CreatedById: string | null
+          CreatedDate: string | null
+          Description: string | null
+          FileExtension: string | null
+          FileType: string | null
+          Id: string | null
+          IsArchived: boolean | null
+          IsDeleted: boolean | null
+          IsInternalOnly: boolean | null
+          LastModifiedById: string | null
+          LastModifiedDate: string | null
+          LastReferencedDate: string | null
+          LastViewedDate: string | null
+          LatestPublishedVersionId: string | null
+          OwnerId: string | null
+          ParentId: string | null
+          PublishStatus: string | null
+          SharingOption: string | null
+          SharingPrivacy: string | null
+          SystemModstamp: string | null
+          Title: string | null
+        }
+        Insert: {
+          _airbyte_extracted_at: string
+          _airbyte_generation_id?: number | null
+          _airbyte_meta: Json
+          _airbyte_raw_id: string
+          ArchivedById?: string | null
+          ArchivedDate?: string | null
+          ContentAssetId?: string | null
+          ContentModifiedDate?: string | null
+          ContentSize?: number | null
+          CreatedById?: string | null
+          CreatedDate?: string | null
+          Description?: string | null
+          FileExtension?: string | null
+          FileType?: string | null
+          Id?: string | null
+          IsArchived?: boolean | null
+          IsDeleted?: boolean | null
+          IsInternalOnly?: boolean | null
+          LastModifiedById?: string | null
+          LastModifiedDate?: string | null
+          LastReferencedDate?: string | null
+          LastViewedDate?: string | null
+          LatestPublishedVersionId?: string | null
+          OwnerId?: string | null
+          ParentId?: string | null
+          PublishStatus?: string | null
+          SharingOption?: string | null
+          SharingPrivacy?: string | null
+          SystemModstamp?: string | null
+          Title?: string | null
+        }
+        Update: {
+          _airbyte_extracted_at?: string
+          _airbyte_generation_id?: number | null
+          _airbyte_meta?: Json
+          _airbyte_raw_id?: string
+          ArchivedById?: string | null
+          ArchivedDate?: string | null
+          ContentAssetId?: string | null
+          ContentModifiedDate?: string | null
+          ContentSize?: number | null
+          CreatedById?: string | null
+          CreatedDate?: string | null
+          Description?: string | null
+          FileExtension?: string | null
+          FileType?: string | null
+          Id?: string | null
+          IsArchived?: boolean | null
+          IsDeleted?: boolean | null
+          IsInternalOnly?: boolean | null
+          LastModifiedById?: string | null
+          LastModifiedDate?: string | null
+          LastReferencedDate?: string | null
+          LastViewedDate?: string | null
+          LatestPublishedVersionId?: string | null
+          OwnerId?: string | null
+          ParentId?: string | null
+          PublishStatus?: string | null
+          SharingOption?: string | null
+          SharingPrivacy?: string | null
+          SystemModstamp?: string | null
+          Title?: string | null
+        }
+        Relationships: []
+      }
+      salesforce_ContentDocumentLink: {
+        Row: {
+          _airbyte_extracted_at: string
+          _airbyte_generation_id: number | null
+          _airbyte_meta: Json
+          _airbyte_raw_id: string
+          ContentDocumentId: string | null
+          Id: string | null
+          IsDeleted: boolean | null
+          LinkedEntityId: string | null
+          ShareType: string | null
+          SystemModstamp: string | null
+          Visibility: string | null
+        }
+        Insert: {
+          _airbyte_extracted_at: string
+          _airbyte_generation_id?: number | null
+          _airbyte_meta: Json
+          _airbyte_raw_id: string
+          ContentDocumentId?: string | null
+          Id?: string | null
+          IsDeleted?: boolean | null
+          LinkedEntityId?: string | null
+          ShareType?: string | null
+          SystemModstamp?: string | null
+          Visibility?: string | null
+        }
+        Update: {
+          _airbyte_extracted_at?: string
+          _airbyte_generation_id?: number | null
+          _airbyte_meta?: Json
+          _airbyte_raw_id?: string
+          ContentDocumentId?: string | null
+          Id?: string | null
+          IsDeleted?: boolean | null
+          LinkedEntityId?: string | null
+          ShareType?: string | null
+          SystemModstamp?: string | null
+          Visibility?: string | null
+        }
+        Relationships: []
+      }
+      salesforce_ContentNote: {
+        Row: {
+          _airbyte_extracted_at: string
+          _airbyte_generation_id: number | null
+          _airbyte_meta: Json
+          _airbyte_raw_id: string
+          Content: string | null
+          ContentModifiedDate: string | null
+          ContentSize: number | null
+          CreatedById: string | null
+          CreatedDate: string | null
+          FileExtension: string | null
+          FileType: string | null
+          Id: string | null
+          IsDeleted: boolean | null
+          IsReadOnly: boolean | null
+          LastModifiedById: string | null
+          LastModifiedDate: string | null
+          LastViewedDate: string | null
+          LatestContentId: string | null
+          LatestPublishedVersionId: string | null
+          OwnerId: string | null
+          SharingPrivacy: string | null
+          TextPreview: string | null
+          Title: string | null
+        }
+        Insert: {
+          _airbyte_extracted_at: string
+          _airbyte_generation_id?: number | null
+          _airbyte_meta: Json
+          _airbyte_raw_id: string
+          Content?: string | null
+          ContentModifiedDate?: string | null
+          ContentSize?: number | null
+          CreatedById?: string | null
+          CreatedDate?: string | null
+          FileExtension?: string | null
+          FileType?: string | null
+          Id?: string | null
+          IsDeleted?: boolean | null
+          IsReadOnly?: boolean | null
+          LastModifiedById?: string | null
+          LastModifiedDate?: string | null
+          LastViewedDate?: string | null
+          LatestContentId?: string | null
+          LatestPublishedVersionId?: string | null
+          OwnerId?: string | null
+          SharingPrivacy?: string | null
+          TextPreview?: string | null
+          Title?: string | null
+        }
+        Update: {
+          _airbyte_extracted_at?: string
+          _airbyte_generation_id?: number | null
+          _airbyte_meta?: Json
+          _airbyte_raw_id?: string
+          Content?: string | null
+          ContentModifiedDate?: string | null
+          ContentSize?: number | null
+          CreatedById?: string | null
+          CreatedDate?: string | null
+          FileExtension?: string | null
+          FileType?: string | null
+          Id?: string | null
+          IsDeleted?: boolean | null
+          IsReadOnly?: boolean | null
+          LastModifiedById?: string | null
+          LastModifiedDate?: string | null
+          LastViewedDate?: string | null
+          LatestContentId?: string | null
+          LatestPublishedVersionId?: string | null
+          OwnerId?: string | null
+          SharingPrivacy?: string | null
+          TextPreview?: string | null
+          Title?: string | null
+        }
+        Relationships: []
+      }
+      salesforce_ContentVersion: {
+        Row: {
+          _airbyte_extracted_at: string
+          _airbyte_generation_id: number | null
+          _airbyte_meta: Json
+          _airbyte_raw_id: string
+          Checksum: string | null
+          ContentBodyId: string | null
+          ContentDocumentId: string | null
+          ContentLocation: string | null
+          ContentModifiedById: string | null
+          ContentModifiedDate: string | null
+          ContentSize: number | null
+          ContentUrl: string | null
+          CreatedById: string | null
+          CreatedDate: string | null
+          Description: string | null
+          ExternalDataSourceId: string | null
+          ExternalDocumentInfo1: string | null
+          ExternalDocumentInfo2: string | null
+          FeaturedContentBoost: number | null
+          FeaturedContentDate: string | null
+          FileExtension: string | null
+          FileType: string | null
+          FirstPublishLocationId: string | null
+          Id: string | null
+          IsAssetEnabled: boolean | null
+          IsDeleted: boolean | null
+          IsLatest: boolean | null
+          IsMajorVersion: boolean | null
+          LastModifiedById: string | null
+          LastModifiedDate: string | null
+          NegativeRatingCount: number | null
+          Origin: string | null
+          OwnerId: string | null
+          PathOnClient: string | null
+          PositiveRatingCount: number | null
+          PublishStatus: string | null
+          RatingCount: number | null
+          ReasonForChange: string | null
+          SharingOption: string | null
+          SharingPrivacy: string | null
+          SystemModstamp: string | null
+          TagCsv: string | null
+          TextPreview: string | null
+          Title: string | null
+          VersionData: string | null
+          VersionDataUrl: string | null
+          VersionNumber: string | null
+        }
+        Insert: {
+          _airbyte_extracted_at: string
+          _airbyte_generation_id?: number | null
+          _airbyte_meta: Json
+          _airbyte_raw_id: string
+          Checksum?: string | null
+          ContentBodyId?: string | null
+          ContentDocumentId?: string | null
+          ContentLocation?: string | null
+          ContentModifiedById?: string | null
+          ContentModifiedDate?: string | null
+          ContentSize?: number | null
+          ContentUrl?: string | null
+          CreatedById?: string | null
+          CreatedDate?: string | null
+          Description?: string | null
+          ExternalDataSourceId?: string | null
+          ExternalDocumentInfo1?: string | null
+          ExternalDocumentInfo2?: string | null
+          FeaturedContentBoost?: number | null
+          FeaturedContentDate?: string | null
+          FileExtension?: string | null
+          FileType?: string | null
+          FirstPublishLocationId?: string | null
+          Id?: string | null
+          IsAssetEnabled?: boolean | null
+          IsDeleted?: boolean | null
+          IsLatest?: boolean | null
+          IsMajorVersion?: boolean | null
+          LastModifiedById?: string | null
+          LastModifiedDate?: string | null
+          NegativeRatingCount?: number | null
+          Origin?: string | null
+          OwnerId?: string | null
+          PathOnClient?: string | null
+          PositiveRatingCount?: number | null
+          PublishStatus?: string | null
+          RatingCount?: number | null
+          ReasonForChange?: string | null
+          SharingOption?: string | null
+          SharingPrivacy?: string | null
+          SystemModstamp?: string | null
+          TagCsv?: string | null
+          TextPreview?: string | null
+          Title?: string | null
+          VersionData?: string | null
+          VersionDataUrl?: string | null
+          VersionNumber?: string | null
+        }
+        Update: {
+          _airbyte_extracted_at?: string
+          _airbyte_generation_id?: number | null
+          _airbyte_meta?: Json
+          _airbyte_raw_id?: string
+          Checksum?: string | null
+          ContentBodyId?: string | null
+          ContentDocumentId?: string | null
+          ContentLocation?: string | null
+          ContentModifiedById?: string | null
+          ContentModifiedDate?: string | null
+          ContentSize?: number | null
+          ContentUrl?: string | null
+          CreatedById?: string | null
+          CreatedDate?: string | null
+          Description?: string | null
+          ExternalDataSourceId?: string | null
+          ExternalDocumentInfo1?: string | null
+          ExternalDocumentInfo2?: string | null
+          FeaturedContentBoost?: number | null
+          FeaturedContentDate?: string | null
+          FileExtension?: string | null
+          FileType?: string | null
+          FirstPublishLocationId?: string | null
+          Id?: string | null
+          IsAssetEnabled?: boolean | null
+          IsDeleted?: boolean | null
+          IsLatest?: boolean | null
+          IsMajorVersion?: boolean | null
+          LastModifiedById?: string | null
+          LastModifiedDate?: string | null
+          NegativeRatingCount?: number | null
+          Origin?: string | null
+          OwnerId?: string | null
+          PathOnClient?: string | null
+          PositiveRatingCount?: number | null
+          PublishStatus?: string | null
+          RatingCount?: number | null
+          ReasonForChange?: string | null
+          SharingOption?: string | null
+          SharingPrivacy?: string | null
+          SystemModstamp?: string | null
+          TagCsv?: string | null
+          TextPreview?: string | null
+          Title?: string | null
+          VersionData?: string | null
+          VersionDataUrl?: string | null
+          VersionNumber?: string | null
         }
         Relationships: []
       }

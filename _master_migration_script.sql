@@ -2509,12 +2509,9 @@ SELECT DISTINCT ON (cn."Id", cdl."LinkedEntityId")
 
     cd."Title" as title,
 
-    -- Decode base64 content from ContentNote
-    CASE
-        WHEN cn."Content" IS NOT NULL THEN
-            convert_from(decode(cn."Content", 'base64'), 'UTF8')
-        ELSE NULL
-    END as body,
+    -- Use TextPreview field which contains the actual readable note content
+    -- (Content field contains file paths, TextPreview contains the formatted text)
+    cn."TextPreview" as body,
 
     cv."ContentSize" as content_size,
     cdl."ShareType" as share_type,
@@ -2523,8 +2520,8 @@ SELECT DISTINCT ON (cn."Id", cdl."LinkedEntityId")
     cd."LastModifiedDate"::TIMESTAMPTZ as updated_at
 
 FROM "salesforce_ContentNote" cn
-JOIN "salesforce_ContentDocument" cd ON cn."Id" = cd."LatestPublishedVersionId"
-JOIN "salesforce_ContentVersion" cv ON cd."Id" = cv."ContentDocumentId" AND cv."IsLatest" = true
+JOIN "salesforce_ContentVersion" cv ON cn."LatestPublishedVersionId" = cv."Id"
+JOIN "salesforce_ContentDocument" cd ON cv."ContentDocumentId" = cd."Id"
 JOIN "salesforce_ContentDocumentLink" cdl ON cd."Id" = cdl."ContentDocumentId"
 WHERE cdl."LinkedEntityId" IS NOT NULL
   AND cn."Id" IS NOT NULL
