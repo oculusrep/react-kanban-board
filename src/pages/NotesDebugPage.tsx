@@ -694,54 +694,46 @@ const NotesDebugPage: React.FC = () => {
                   className="p-4 cursor-pointer"
                   onClick={() => toggleNoteExpansion(note.id)}
                 >
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-center justify-between">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-3 mb-2">
-                        <h3 className="text-lg font-medium text-gray-900 truncate">
+                      {/* Single line with title, tag, date, and size */}
+                      <div className="flex items-center space-x-3">
+                        <h3 className="text-base font-medium text-gray-900 truncate flex-shrink-0 max-w-xs">
                           {note.title || 'Untitled Note'}
                         </h3>
-                        <div className="flex items-center">
-                          <svg
-                            className={`h-5 w-5 text-gray-400 transition-transform duration-200 ${
-                              isExpanded ? 'transform rotate-180' : ''
-                            }`}
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </div>
-                      </div>
 
-                      <div className="flex items-center space-x-4 text-sm text-gray-500">
-                        <span>{formatDate(note.created_at)}</span>
-                        {note.body && (
-                          <span>({note.body.length} characters)</span>
-                        )}
-                      </div>
-
-                      {/* Grey Tags for Related Objects */}
-                      {relatedTags.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {relatedTags.map((tag, index) => (
-                            <span
-                              key={index}
-                              className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"
-                            >
-                              {tag.type}: {tag.name}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      {relatedTags.length === 0 && (
-                        <div className="mt-2">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                        {/* Single main tag */}
+                        {relatedTags.length > 0 ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 flex-shrink-0">
+                            {relatedTags[0].type}: {relatedTags[0].name}
+                            {relatedTags.length > 1 && <span className="ml-1 text-gray-500">+{relatedTags.length - 1}</span>}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 flex-shrink-0">
                             Unassigned
                           </span>
-                        </div>
-                      )}
+                        )}
+
+                        <span className="text-sm text-gray-500 flex-shrink-0">{formatDateShort(note.created_at)}</span>
+
+                        {note.body && (
+                          <span className="text-sm text-gray-500 flex-shrink-0">({note.body.length} chars)</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Expand/collapse arrow */}
+                    <div className="flex items-center ml-3">
+                      <svg
+                        className={`h-5 w-5 text-gray-400 transition-transform duration-200 ${
+                          isExpanded ? 'transform rotate-180' : ''
+                        }`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
                     </div>
                   </div>
                 </div>
