@@ -39,6 +39,10 @@ const NotesDebugPage: React.FC = () => {
   const [sampleContentNotes, setSampleContentNotes] = useState<any[]>([]);
   const [showAllExpanded, setShowAllExpanded] = useState(false);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [notesPerPage] = useState(25);
+
   useEffect(() => {
     loadNotesAndRelatedData();
   }, []);
@@ -179,6 +183,166 @@ const NotesDebugPage: React.FC = () => {
     }
   };
 
+  // Utility functions - defined before they're used
+  const formatDateShort = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+    try {
+      return new Date(dateString).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    } catch {
+      return 'Invalid Date';
+    }
+  };
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+    try {
+      return new Date(dateString).toLocaleString();
+    } catch {
+      return 'Invalid Date';
+    }
+  };
+
+  // Enhanced search function with multiple features
+  const searchNote = (note: Note, searchTerm: string): boolean => {
+    if (!searchTerm.trim()) return true;
+
+    const search = searchTerm.trim();
+
+    // Helper function to get all searchable text for a note
+    const getSearchableText = (note: Note): string => {
+      const parts = [
+        note.title || '',
+        note.body || '',
+        note.sf_content_note_id || '',
+        // Related object names
+        note.client_id && clientsMap[note.client_id]?.client_name || '',
+        note.deal_id && dealsMap[note.deal_id]?.deal_name || '',
+        note.contact_id && contactsMap[note.contact_id] ?
+          `${contactsMap[note.contact_id].first_name || ''} ${contactsMap[note.contact_id].last_name || ''}`.trim() : '',
+        // Date fields
+        formatDateShort(note.created_at),
+        formatDateShort(note.updated_at),
+      ];
+      return parts.filter(Boolean).join(' ').toLowerCase();
+    };
+
+    // Handle field-specific searches (e.g., "title:meeting", "client:huey", "date:2024")
+    const fieldMatch = search.match(/^(title|client|deal|contact|body|date):(.+)$/i);
+    if (fieldMatch) {
+      const [, field, value] = fieldMatch;
+      const valueLower = value.toLowerCase();
+
+      switch (field.toLowerCase()) {
+        case 'title':
+          return note.title?.toLowerCase().includes(valueLower) || false;
+        case 'client':
+          return note.client_id && clientsMap[note.client_id]?.client_name?.toLowerCase().includes(valueLower) || false;
+        case 'deal':
+          return note.deal_id && dealsMap[note.deal_id]?.deal_name?.toLowerCase().includes(valueLower) || false;
+        case 'contact':
+          if (!note.contact_id || !contactsMap[note.contact_id]) return false;
+          const contact = contactsMap[note.contact_id];
+          const fullName = `${contact.first_name || ''} ${contact.last_name || ''}`.toLowerCase();
+          return fullName.includes(valueLower);
+        case 'body':
+          return note.body?.toLowerCase().includes(valueLower) || false;
+        case 'date':
+          const dateStr = `${formatDateShort(note.created_at)} ${formatDateShort(note.updated_at)}`.toLowerCase();
+          return dateStr.includes(valueLower);
+        default:
+          return false;
+      }
+    }
+
+    // Handle phrase search with quotes (e.g., "exact phrase")
+    const phraseMatch = search.match(/^"(.+)"$/);
+    if (phraseMatch) {
+      const phrase = phraseMatch[1].toLowerCase();
+      return getSearchableText(note).includes(phrase);
+    }
+
+    // Handle exclude terms with minus (e.g., "meeting -call" finds notes with "meeting" but not "call")
+    const hasExcludeTerms = search.includes(' -');
+    if (hasExcludeTerms) {
+      const parts = search.split(' ');
+      const includeTerms = parts.filter(p => !p.startsWith('-')).map(p => p.toLowerCase());
+      const excludeTerms = parts.filter(p => p.startsWith('-')).map(p => p.substring(1).toLowerCase());
+
+      const text = getSearchableText(note);
+
+      // All include terms must match
+      const includeMatch = includeTerms.length === 0 || includeTerms.every(term => text.includes(term));
+
+      // No exclude terms should match
+      const excludeMatch = excludeTerms.some(term => text.includes(term));
+
+      return includeMatch && !excludeMatch;
+    }
+
+    // Handle multi-word search (all words must match somewhere)
+    const words = search.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+    if (words.length > 1) {
+      const text = getSearchableText(note);
+      return words.every(word => text.includes(word));
+    }
+
+    // Single word search (fuzzy matching)
+    const text = getSearchableText(note);
+    const singleWord = search.toLowerCase();
+
+    // Direct match
+    if (text.includes(singleWord)) {
+      return true;
+    }
+
+    // Partial/fuzzy matching for words longer than 3 characters
+    if (singleWord.length > 3) {
+      const words = text.split(/\s+/);
+      return words.some(word => {
+        // Check if the search term is a substring of any word
+        if (word.includes(singleWord)) return true;
+
+        // Check if any word starts with the search term
+        if (word.startsWith(singleWord)) return true;
+
+        // Simple fuzzy matching: allow 1 character difference for every 4 characters
+        if (singleWord.length >= 4) {
+          const allowedDifferences = Math.floor(singleWord.length / 4);
+          return levenshteinDistance(word, singleWord) <= allowedDifferences;
+        }
+
+        return false;
+      });
+    }
+
+    return false;
+  };
+
+  // Simple Levenshtein distance for fuzzy matching
+  const levenshteinDistance = (str1: string, str2: string): number => {
+    const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
+
+    for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
+    for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
+
+    for (let j = 1; j <= str2.length; j++) {
+      for (let i = 1; i <= str1.length; i++) {
+        const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
+        matrix[j][i] = Math.min(
+          matrix[j][i - 1] + 1,     // deletion
+          matrix[j - 1][i] + 1,     // insertion
+          matrix[j - 1][i - 1] + indicator // substitution
+        );
+      }
+    }
+
+    return matrix[str2.length][str1.length];
+  };
+
   const filteredNotes = notes.filter(note => {
     // Filter by type
     if (filter !== 'all') {
@@ -198,18 +362,25 @@ const NotesDebugPage: React.FC = () => {
       }
     }
 
-    // Filter by search term
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      return (
-        note.title?.toLowerCase().includes(searchLower) ||
-        note.body?.toLowerCase().includes(searchLower) ||
-        note.sf_content_note_id?.toLowerCase().includes(searchLower)
-      );
-    }
-
-    return true;
+    // Enhanced search
+    return searchNote(note, searchTerm);
   });
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredNotes.length / notesPerPage);
+  const startIndex = (currentPage - 1) * notesPerPage;
+  const endIndex = startIndex + notesPerPage;
+  const paginatedNotes = filteredNotes.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  const resetPagination = () => {
+    setCurrentPage(1);
+  };
+
+  // Update pagination when search or filter changes
+  React.useEffect(() => {
+    resetPagination();
+  }, [searchTerm, filter]);
 
   const getRelatedObjectName = (note: Note) => {
     if (note.client_id && clientsMap[note.client_id]) {
@@ -232,15 +403,6 @@ const NotesDebugPage: React.FC = () => {
       return `Site Submit: ${note.site_submit_id}`;
     }
     return 'Unassigned';
-  };
-
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return 'N/A';
-    try {
-      return new Date(dateString).toLocaleString();
-    } catch {
-      return 'Invalid Date';
-    }
   };
 
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
@@ -294,12 +456,12 @@ const NotesDebugPage: React.FC = () => {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Notes Debug - All Notes</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Notes</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Total notes: {notes.length} | Filtered: {filteredNotes.length}
+          Total notes: {notes.length} | Filtered: {filteredNotes.length} | Showing {startIndex + 1}-{Math.min(endIndex, filteredNotes.length)} of {filteredNotes.length}
         </p>
         <p className="text-xs text-blue-600 mt-1">
-          Check browser console for detailed database query logs
+          Advanced search: field filters, phrase matching, multi-word, exclusions, and fuzzy search
         </p>
 
         {/* Table Counts Summary */}
@@ -322,23 +484,6 @@ const NotesDebugPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Sample ContentNote Data */}
-        {sampleContentNotes.length > 0 && (
-          <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-yellow-800 mb-3">Sample ContentNote Data</h3>
-            <div className="space-y-3">
-              {sampleContentNotes.map((contentNote, index) => (
-                <div key={index} className="bg-white border border-yellow-200 rounded p-3 text-sm">
-                  <p><strong>ID:</strong> {contentNote.Id}</p>
-                  <p><strong>Content:</strong> <code className="bg-gray-100 px-1 rounded">{String(contentNote.Content).substring(0, 100)}...</code></p>
-                  {contentNote.TextPreview && (
-                    <p><strong>Text Preview:</strong> {contentNote.TextPreview}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Filters */}
@@ -358,15 +503,45 @@ const NotesDebugPage: React.FC = () => {
               <option value="unassigned">Unassigned ({notes.filter(n => !n.client_id && !n.deal_id && !n.contact_id && !n.property_id && !n.assignment_id && !n.site_submit_id).length})</option>
             </select>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Search:</label>
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search title, content, or ID..."
-              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            />
+          <div className="flex-1 max-w-lg">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Powerful Search:</label>
+            <div className="relative">
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder='Try: "huey magoo", client:huey, meeting -call, title:site, date:2024'
+                className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 pl-10"
+              />
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                >
+                  <svg className="h-4 w-4 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            {/* Search Help */}
+            <div className="mt-1 text-xs text-gray-600">
+              <details className="cursor-pointer">
+                <summary className="hover:text-blue-600">Search Help ▼</summary>
+                <div className="mt-1 space-y-1 text-xs bg-gray-50 p-2 rounded border">
+                  <div><strong>Field search:</strong> <code>client:huey</code>, <code>title:meeting</code>, <code>body:lease</code>, <code>date:2024</code></div>
+                  <div><strong>Phrase search:</strong> <code>"exact phrase"</code></div>
+                  <div><strong>Multiple words:</strong> <code>huey magoo lease</code> (all must match)</div>
+                  <div><strong>Exclude terms:</strong> <code>meeting -call</code> (has "meeting" but not "call")</div>
+                  <div><strong>Fuzzy matching:</strong> <code>hueymago</code> finds "huey magoo"</div>
+                </div>
+              </details>
+            </div>
           </div>
           <div className="flex items-end space-x-2">
             <button
@@ -389,9 +564,93 @@ const NotesDebugPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Pagination Controls - Top */}
+      {totalPages > 1 && (
+        <div className="mb-6 flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6 rounded-lg shadow-sm">
+          <div className="flex flex-1 justify-between sm:hidden">
+            <button
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+          <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm text-gray-700">
+                Showing <span className="font-medium">{startIndex + 1}</span> to{' '}
+                <span className="font-medium">{Math.min(endIndex, filteredNotes.length)}</span> of{' '}
+                <span className="font-medium">{filteredNotes.length}</span> results
+              </p>
+            </div>
+            <div>
+              <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                <button
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="sr-only">Previous</span>
+                  <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
+                  </svg>
+                </button>
+
+                {/* Page numbers */}
+                {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                  let pageNum;
+                  if (totalPages <= 7) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 4) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 3) {
+                    pageNum = totalPages - 6 + i;
+                  } else {
+                    pageNum = currentPage - 3 + i;
+                  }
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${
+                        currentPage === pageNum
+                          ? 'z-10 bg-blue-600 text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
+                          : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+
+                <button
+                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages}
+                  className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="sr-only">Next</span>
+                  <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </nav>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Notes List */}
       <div className="space-y-4">
-        {filteredNotes.length === 0 ? (
+        {paginatedNotes.length === 0 ? (
           <div className="text-center py-12">
             <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -402,84 +661,169 @@ const NotesDebugPage: React.FC = () => {
             </p>
           </div>
         ) : (
-          filteredNotes.map((note) => (
-            <div key={note.id} className="bg-white border border-gray-200 rounded-lg shadow-sm p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <h3 className="text-lg font-medium text-gray-900 truncate">
-                      {note.title || 'Untitled Note'}
-                    </h3>
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                      {getRelatedObjectName(note)}
-                    </span>
-                  </div>
+          paginatedNotes.map((note) => {
+            const isExpanded = expandedNotes.has(note.id);
+            const relatedTags = [];
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <p className="text-sm text-gray-500">Note ID: <span className="text-gray-900 font-mono">{note.id}</span></p>
-                      {note.sf_content_note_id && (
-                        <p className="text-sm text-gray-500">SF ID: <span className="text-gray-900 font-mono">{note.sf_content_note_id}</span></p>
-                      )}
-                      <p className="text-sm text-gray-500">Created: <span className="text-gray-900">{formatDate(note.created_at)}</span></p>
-                      {note.content_size && (
-                        <p className="text-sm text-gray-500">Size: <span className="text-gray-900">{Math.round(note.content_size / 1024)}KB</span></p>
-                      )}
-                    </div>
-                    <div>
-                      {note.client_id && <p className="text-sm text-gray-500">Client ID: <span className="text-gray-900 font-mono">{note.client_id}</span></p>}
-                      {note.deal_id && <p className="text-sm text-gray-500">Deal ID: <span className="text-gray-900 font-mono">{note.deal_id}</span></p>}
-                      {note.contact_id && <p className="text-sm text-gray-500">Contact ID: <span className="text-gray-900 font-mono">{note.contact_id}</span></p>}
-                      {note.property_id && <p className="text-sm text-gray-500">Property ID: <span className="text-gray-900 font-mono">{note.property_id}</span></p>}
-                      {note.assignment_id && <p className="text-sm text-gray-500">Assignment ID: <span className="text-gray-900 font-mono">{note.assignment_id}</span></p>}
-                      {note.site_submit_id && <p className="text-sm text-gray-500">Site Submit ID: <span className="text-gray-900 font-mono">{note.site_submit_id}</span></p>}
-                    </div>
-                  </div>
+            // Build related object tags
+            if (note.client_id && clientsMap[note.client_id]) {
+              relatedTags.push({ type: 'Client', name: clientsMap[note.client_id].client_name || 'Unnamed' });
+            }
+            if (note.deal_id && dealsMap[note.deal_id]) {
+              relatedTags.push({ type: 'Deal', name: dealsMap[note.deal_id].deal_name || 'Unnamed' });
+            }
+            if (note.contact_id && contactsMap[note.contact_id]) {
+              const contact = contactsMap[note.contact_id];
+              const name = `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unnamed';
+              relatedTags.push({ type: 'Contact', name });
+            }
+            if (note.property_id) {
+              relatedTags.push({ type: 'Property', name: note.property_id });
+            }
+            if (note.assignment_id) {
+              relatedTags.push({ type: 'Assignment', name: note.assignment_id });
+            }
+            if (note.site_submit_id) {
+              relatedTags.push({ type: 'Site Submit', name: note.site_submit_id });
+            }
 
-                  <div className="bg-gray-50 rounded-md p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm text-gray-600 font-medium">Content:</p>
-                      {note.body && (
-                        <button
-                          onClick={() => toggleNoteExpansion(note.id)}
-                          className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors"
-                        >
-                          {expandedNotes.has(note.id) ? 'Show Less' : 'Show Full Content'}
-                        </button>
-                      )}
-                    </div>
-                    <RichTextNote
-                      content={note.body || ''}
-                      className="text-sm"
-                      maxHeight={showAllExpanded || expandedNotes.has(note.id) ? "max-h-none" : "max-h-40"}
-                    />
-                    {note.body && note.body.length > 500 && !showAllExpanded && !expandedNotes.has(note.id) && (
-                      <div className="mt-2 text-xs text-blue-600 italic">
-                        Content truncated - click "Show Full Content" to see complete note ({note.body.length} characters)
+            return (
+              <div key={note.id} className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                {/* Top Level - Always Visible */}
+                <div
+                  className="p-4 cursor-pointer"
+                  onClick={() => toggleNoteExpansion(note.id)}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <h3 className="text-lg font-medium text-gray-900 truncate">
+                          {note.title || 'Untitled Note'}
+                        </h3>
+                        <div className="flex items-center">
+                          <svg
+                            className={`h-5 w-5 text-gray-400 transition-transform duration-200 ${
+                              isExpanded ? 'transform rotate-180' : ''
+                            }`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
                       </div>
-                    )}
-                  </div>
 
-                  {(note.share_type || note.visibility) && (
-                    <div className="mt-3 flex items-center space-x-4">
-                      {note.share_type && (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          Share: {note.share_type}
-                        </span>
+                      <div className="flex items-center space-x-4 text-sm text-gray-500">
+                        <span>{formatDate(note.created_at)}</span>
+                        {note.body && (
+                          <span>({note.body.length} characters)</span>
+                        )}
+                      </div>
+
+                      {/* Grey Tags for Related Objects */}
+                      {relatedTags.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {relatedTags.map((tag, index) => (
+                            <span
+                              key={index}
+                              className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"
+                            >
+                              {tag.type}: {tag.name}
+                            </span>
+                          ))}
+                        </div>
                       )}
-                      {note.visibility && (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          Visibility: {note.visibility}
-                        </span>
+
+                      {relatedTags.length === 0 && (
+                        <div className="mt-2">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                            Unassigned
+                          </span>
+                        </div>
                       )}
                     </div>
-                  )}
+                  </div>
                 </div>
+
+                {/* Expanded Content */}
+                {isExpanded && (
+                  <div className="px-4 pb-4 border-t border-gray-100">
+                    {/* Note Details */}
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 text-sm">
+                      <div className="space-y-1">
+                        <p className="text-gray-500">Note ID: <span className="text-gray-900 font-mono text-xs">{note.id}</span></p>
+                        {note.sf_content_note_id && (
+                          <p className="text-gray-500">Salesforce ID: <span className="text-gray-900 font-mono text-xs">{note.sf_content_note_id}</span></p>
+                        )}
+                        <p className="text-gray-500">Created: <span className="text-gray-900">{formatDate(note.created_at)}</span></p>
+                        {note.updated_at && note.updated_at !== note.created_at && (
+                          <p className="text-gray-500">Updated: <span className="text-gray-900">{formatDate(note.updated_at)}</span></p>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        {note.content_size && (
+                          <p className="text-gray-500">Size: <span className="text-gray-900">{Math.round(note.content_size / 1024)}KB</span></p>
+                        )}
+                        {note.share_type && (
+                          <p className="text-gray-500">Share Type: <span className="text-gray-900">{note.share_type}</span></p>
+                        )}
+                        {note.visibility && (
+                          <p className="text-gray-500">Visibility: <span className="text-gray-900">{note.visibility}</span></p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Note Content */}
+                    <div className="bg-gray-50 rounded-md p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-sm text-gray-600 font-medium">Content:</p>
+                        {note.body && note.body.length > 500 && (
+                          <span className="text-xs text-gray-500">
+                            {note.body.length.toLocaleString()} characters
+                          </span>
+                        )}
+                      </div>
+                      <RichTextNote
+                        content={note.body || 'No content available'}
+                        className="text-sm"
+                        maxHeight="max-h-none"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
+
+      {/* Pagination Controls - Bottom */}
+      {totalPages > 1 && (
+        <div className="mt-6 flex items-center justify-center">
+          <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+            <button
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="relative inline-flex items-center rounded-l-md px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+
+            <span className="relative inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300">
+              Page {currentPage} of {totalPages}
+            </span>
+
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className="relative inline-flex items-center rounded-r-md px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </nav>
+        </div>
+      )}
     </div>
   );
 };

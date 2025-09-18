@@ -56,12 +56,27 @@ node fix-all-notes.js
 
 ## 📊 **DEVELOPMENT RESULTS (September 18, 2025)**
 
-### **Execution Summary**:
+### **LATEST STATUS - PARTIAL COMPLETION** ⚠️:
+- **Current Note Count**: 1,000 notes (increased from original ~782)
+- **Historical Coverage**: 2017-2023 (6+ years of data)
+- **Content Fix Success**: 296 notes updated to full content
+  - 287 notes via ContentVersion fix
+  - 9 additional notes via API path cleanup
+- **Zero API Paths Remaining**: All content properly loaded
+
+### **🚨 CRITICAL ISSUE - AIRBYTE RECORD LIMIT**:
+- **Problem**: Airbyte appears to have a 1,000 record limit
+- **Evidence**: Exactly 1,000 ContentNote AND 1,000 ContentVersion records
+- **Expected Count**: Salesforce workbench shows 1,500+ ContentNote records
+- **Action Required**: Increase/remove Airbyte record limit before production
+
+### **Execution Summary** (Current Development Run):
 - **Total ContentVersions Found**: 295 text notes with VersionData paths
-- **Successfully Updated**: 287 notes
-- **Failed/Not Found**: 8 notes (ContentDocuments not linked to note records)
-- **Processing Time**: ~6 minutes
-- **Success Rate**: 97.3%
+- **Successfully Updated**: 287 notes via main script
+- **API Path Cleanup**: 9 additional notes fixed
+- **Total Fixed**: 296 notes with full content
+- **Processing Time**: ~8 minutes total
+- **Success Rate**: 100% (for available records)
 
 ### **Sample Updates**:
 - "Note From Lisa on Ground Lease" → 255 → 2,262 characters
@@ -166,16 +181,19 @@ node fix-all-notes.js
 
 ## 🎉 **EXPECTED RESULTS AFTER PRODUCTION RUN**
 
-### **Before**:
-- ~782 notes truncated at 255 characters
-- Limited context and incomplete information
-- Users see "..." at end of notes
+### **Current Status** (After Partial Fix):
+- **1,000 notes total** (up from original ~782)
+- **296 notes with full content** (no truncation)
+- **704 notes with truncated content** (remaining at 255 chars)
+- **Historical data**: 2017-2023 coverage
+- **Zero API paths remaining**
 
-### **After**:
-- All notes display full HTML content
-- Rich text formatting preserved (bold, bullets, line breaks)
-- Complete business context and details visible
-- No truncation - full notes from Salesforce
+### **After Complete Airbyte Fix** (Expected):
+- **1,500+ notes total** (matching Salesforce workbench)
+- **All notes with full HTML content**
+- **Rich text formatting preserved** (bold, bullets, line breaks)
+- **Complete business context** for all historical records
+- **No truncation** - full notes from Salesforce
 
 ### **User Experience**:
 - 📈 **Dramatically improved** note readability
@@ -217,4 +235,23 @@ rm update-notes-with-full-content.js
 
 ---
 
-**🎯 REMEMBER: This script must be run ONCE after production cutover to fix the truncated notes issue. It's a one-time fix that resolves the 255-character limitation permanently.**
+---
+
+## 🚨 **PENDING TASKS BEFORE PRODUCTION**
+
+### **CRITICAL**: Fix Airbyte Record Limit
+1. **Increase Airbyte record limit** from 1,000 to unlimited (or 5,000+)
+2. **Re-run Airbyte sync** for ContentNote and ContentVersion tables
+3. **Verify record counts** match Salesforce workbench (~1,500+ ContentNotes)
+4. **Run content fix scripts** on any new truncated notes
+
+### **Next Actions**:
+1. Find Airbyte stream/connector settings with record limits
+2. Remove or increase limits (look for "Batch Size", "Record Limit", "Max Records")
+3. Re-sync affected tables
+4. Run `fix-all-notes.js` again to fix any newly imported notes
+5. Verify final count matches expected totals
+
+---
+
+**🎯 REMEMBER: Fix the Airbyte record limit FIRST, then run the content fix script to ensure ALL notes are processed, not just the first 1,000.**
