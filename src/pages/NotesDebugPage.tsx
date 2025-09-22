@@ -109,17 +109,52 @@ const NotesDebugPage: React.FC = () => {
 
       console.log('Notes permission test (select id only):', { data: notesTestData, error: notesTestError });
 
-      // Load all notes
-      const { data: notesData, error: notesError } = await supabase
-        .from('note')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Load all notes - bypass Supabase's hard 1000 record limit using pagination
+      console.log('⚠️ Supabase has a hard 1000 record limit, using pagination to get all records...');
+
+      let allNotes = [];
+      let hasMore = true;
+      let offset = 0;
+      const batchSize = 1000;
+
+      while (hasMore) {
+        const { data: batchData, error: batchError } = await supabase
+          .from('note')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(offset, offset + batchSize - 1);
+
+        if (batchError) {
+          throw batchError;
+        }
+
+        if (batchData && batchData.length > 0) {
+          allNotes.push(...batchData);
+          offset += batchSize;
+          console.log(`Fetched batch: ${batchData.length} records, total so far: ${allNotes.length}`);
+
+          // If we got less than batchSize, we've reached the end
+          if (batchData.length < batchSize) {
+            hasMore = false;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+
+      const notesData = allNotes;
+      const notesError = null;
 
       console.log('Notes query result:', {
         data: notesData,
         error: notesError,
-        count: notesData?.length
+        count: notesData?.length,
+        actualLength: notesData ? notesData.length : 'null data'
       });
+
+      if (notesData && notesData.length >= 1000) {
+        console.warn('⚠️ Still hitting potential limit - got exactly 1000 or more records:', notesData.length);
+      }
 
       if (notesError) {
         console.error('Notes error:', notesError);
@@ -357,7 +392,7 @@ const NotesDebugPage: React.FC = () => {
           if (!note.contact_id) return false;
           break;
         case 'unassigned':
-          if (note.client_id || note.deal_id || note.contact_id || note.property_id || note.assignment_id || note.site_submit_id) return false;
+          if (note.client_id || note.deal_id || note.contact_id || note.property_id || note.assignment_id || note.site_submit_id || note.user_id) return false;
           break;
       }
     }
@@ -500,7 +535,7 @@ const NotesDebugPage: React.FC = () => {
               <option value="client">Client Notes ({notes.filter(n => n.client_id).length})</option>
               <option value="deal">Deal Notes ({notes.filter(n => n.deal_id).length})</option>
               <option value="contact">Contact Notes ({notes.filter(n => n.contact_id).length})</option>
-              <option value="unassigned">Unassigned ({notes.filter(n => !n.client_id && !n.deal_id && !n.contact_id && !n.property_id && !n.assignment_id && !n.site_submit_id).length})</option>
+              <option value="unassigned">Unassigned ({notes.filter(n => !n.client_id && !n.deal_id && !n.contact_id && !n.property_id && !n.assignment_id && !n.site_submit_id && !n.user_id).length})</option>
             </select>
           </div>
           <div className="flex-1 max-w-lg">

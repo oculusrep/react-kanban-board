@@ -2373,6 +2373,7 @@ ALTER TABLE note ADD COLUMN IF NOT EXISTS property_id UUID;
 ALTER TABLE note ADD COLUMN IF NOT EXISTS site_submit_id UUID;
 ALTER TABLE note ADD COLUMN IF NOT EXISTS assignment_id UUID;
 ALTER TABLE note ADD COLUMN IF NOT EXISTS contact_id UUID;
+ALTER TABLE note ADD COLUMN IF NOT EXISTS user_id UUID;
 ALTER TABLE note ADD COLUMN IF NOT EXISTS related_object_type VARCHAR(50);
 ALTER TABLE note ADD COLUMN IF NOT EXISTS related_object_id VARCHAR(18);
 ALTER TABLE note ADD COLUMN IF NOT EXISTS title TEXT;
@@ -2400,9 +2401,21 @@ CREATE INDEX IF NOT EXISTS idx_note_updated_at ON note(updated_at);
 CREATE INDEX IF NOT EXISTS idx_note_share_type ON note(share_type);
 
 -- Create unique constraint for ContentNote UPSERT
-CREATE UNIQUE INDEX IF NOT EXISTS note_content_note_link_unique
-ON note(sf_content_note_id, sf_content_document_link_id)
-WHERE sf_content_note_id IS NOT NULL AND sf_content_document_link_id IS NOT NULL;
+-- Drop any existing partial index that might conflict
+DROP INDEX IF EXISTS note_content_note_link_unique;
+
+-- Add unique constraint for UPSERT support (only if it doesn't exist)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'note_content_note_link_constraint'
+        AND table_name = 'note'
+    ) THEN
+        ALTER TABLE note ADD CONSTRAINT note_content_note_link_constraint
+        UNIQUE (sf_content_note_id, sf_content_document_link_id);
+    END IF;
+END $$;
 
 -- Data Migration from ContentNote system (using standard UPSERT pattern)
 INSERT INTO note (
@@ -2420,6 +2433,7 @@ INSERT INTO note (
     site_submit_id,
     assignment_id,
     contact_id,
+    user_id,
     related_object_type,
     related_object_id,
     title,
@@ -2472,8 +2486,13 @@ SELECT DISTINCT ON (cn."Id", cdl."LinkedEntityId")
 
     CASE
         WHEN cdl."LinkedEntityId" LIKE '003%' THEN (SELECT c.id FROM contact c WHERE c.sf_id = cdl."LinkedEntityId" LIMIT 1)
+        WHEN cdl."LinkedEntityId" LIKE '00Q%' THEN (SELECT c.id FROM contact c WHERE c.sf_id = cdl."LinkedEntityId" AND c.source_type = 'Lead' LIMIT 1)
         ELSE NULL
     END as contact_id,
+    CASE
+        WHEN cdl."LinkedEntityId" LIKE '005%' THEN (SELECT u.id FROM "user" u WHERE u.sf_id = cdl."LinkedEntityId" LIMIT 1)
+        ELSE NULL
+    END as user_id,
 
     -- Handle unmapped LinkedEntityId values
     CASE
@@ -2526,7 +2545,29 @@ JOIN "salesforce_ContentDocumentLink" cdl ON cd."Id" = cdl."ContentDocumentId"
 WHERE cdl."LinkedEntityId" IS NOT NULL
   AND cn."Id" IS NOT NULL
   AND cd."Id" IS NOT NULL
-ORDER BY cn."Id", cdl."LinkedEntityId", cd."CreatedDate" DESC;
+ORDER BY cn."Id", cdl."LinkedEntityId", cd."CreatedDate" DESC
+ON CONFLICT ON CONSTRAINT note_content_note_link_constraint DO UPDATE SET
+    sf_content_document_id = EXCLUDED.sf_content_document_id,
+    sf_content_version_id = EXCLUDED.sf_content_version_id,
+    sf_created_by_id = EXCLUDED.sf_created_by_id,
+    sf_updated_by_id = EXCLUDED.sf_updated_by_id,
+    created_by = EXCLUDED.created_by,
+    updated_by = EXCLUDED.updated_by,
+    client_id = EXCLUDED.client_id,
+    deal_id = EXCLUDED.deal_id,
+    property_id = EXCLUDED.property_id,
+    site_submit_id = EXCLUDED.site_submit_id,
+    assignment_id = EXCLUDED.assignment_id,
+    contact_id = EXCLUDED.contact_id,
+    user_id = EXCLUDED.user_id,
+    related_object_type = EXCLUDED.related_object_type,
+    related_object_id = EXCLUDED.related_object_id,
+    title = EXCLUDED.title,
+    body = EXCLUDED.body,
+    content_size = EXCLUDED.content_size,
+    share_type = EXCLUDED.share_type,
+    visibility = EXCLUDED.visibility,
+    updated_at = EXCLUDED.updated_at;
 
 -- Add foreign key constraints after data migration
 DO $$
