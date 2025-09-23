@@ -749,13 +749,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_attachment_note"
-            columns: ["note_id"]
-            isOneToOne: false
-            referencedRelation: "note"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "fk_attachment_thread_message"
             columns: ["thread_message_id"]
             isOneToOne: false
@@ -2065,15 +2058,98 @@ export type Database = {
       }
       note: {
         Row: {
+          body: string | null
+          content_size: number | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          sf_content_document_id: string | null
+          sf_content_note_id: string
+          sf_content_version_id: string | null
+          sf_created_by_id: string | null
+          sf_updated_by_id: string | null
+          share_type: string | null
+          title: string | null
+          updated_at: string | null
+          updated_by: string | null
+          visibility: string | null
+        }
+        Insert: {
+          body?: string | null
+          content_size?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          sf_content_document_id?: string | null
+          sf_content_note_id: string
+          sf_content_version_id?: string | null
+          sf_created_by_id?: string | null
+          sf_updated_by_id?: string | null
+          share_type?: string | null
+          title?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
+          visibility?: string | null
+        }
+        Update: {
+          body?: string | null
+          content_size?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          sf_content_document_id?: string | null
+          sf_content_note_id?: string
+          sf_content_version_id?: string | null
+          sf_created_by_id?: string | null
+          sf_updated_by_id?: string | null
+          share_type?: string | null
+          title?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
+          visibility?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_note_created_by"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_note_updated_by"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      note_backup: {
+        Row: {
           assignment_id: string | null
           body: string | null
           client_id: string | null
           contact_id: string | null
           content_size: number | null
-          created_at: string
+          created_at: string | null
           created_by: string | null
           deal_id: string | null
-          id: string
+          id: string | null
           is_private: boolean | null
           last_modified_at: string | null
           last_modified_by: string | null
@@ -2098,6 +2174,7 @@ export type Database = {
           title: string | null
           updated_at: string | null
           updated_by: string | null
+          user_id: string | null
           visibility: string | null
         }
         Insert: {
@@ -2106,10 +2183,10 @@ export type Database = {
           client_id?: string | null
           contact_id?: string | null
           content_size?: number | null
-          created_at?: string
+          created_at?: string | null
           created_by?: string | null
           deal_id?: string | null
-          id?: string
+          id?: string | null
           is_private?: boolean | null
           last_modified_at?: string | null
           last_modified_by?: string | null
@@ -2134,6 +2211,7 @@ export type Database = {
           title?: string | null
           updated_at?: string | null
           updated_by?: string | null
+          user_id?: string | null
           visibility?: string | null
         }
         Update: {
@@ -2142,10 +2220,10 @@ export type Database = {
           client_id?: string | null
           contact_id?: string | null
           content_size?: number | null
-          created_at?: string
+          created_at?: string | null
           created_by?: string | null
           deal_id?: string | null
-          id?: string
+          id?: string | null
           is_private?: boolean | null
           last_modified_at?: string | null
           last_modified_by?: string | null
@@ -2170,89 +2248,231 @@ export type Database = {
           title?: string | null
           updated_at?: string | null
           updated_by?: string | null
+          user_id?: string | null
           visibility?: string | null
+        }
+        Relationships: []
+      }
+      note_object_link: {
+        Row: {
+          assignment_id: string | null
+          client_id: string | null
+          contact_id: string | null
+          created_at: string | null
+          deal_id: string | null
+          id: string
+          note_id: string
+          object_id: string | null
+          object_type: string
+          property_id: string | null
+          related_object_id: string | null
+          related_object_type: string | null
+          sf_content_document_link_id: string
+          site_submit_id: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          assignment_id?: string | null
+          client_id?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          deal_id?: string | null
+          id?: string
+          note_id: string
+          object_id?: string | null
+          object_type: string
+          property_id?: string | null
+          related_object_id?: string | null
+          related_object_type?: string | null
+          sf_content_document_link_id: string
+          site_submit_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          assignment_id?: string | null
+          client_id?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          deal_id?: string | null
+          id?: string
+          note_id?: string
+          object_id?: string | null
+          object_type?: string
+          property_id?: string | null
+          related_object_id?: string | null
+          related_object_type?: string | null
+          sf_content_document_link_id?: string
+          site_submit_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "fk_note_assignment_id"
+            foreignKeyName: "fk_note_object_link_assignment_id"
             columns: ["assignment_id"]
             isOneToOne: false
             referencedRelation: "assignment"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_note_client_id"
+            foreignKeyName: "fk_note_object_link_client_id"
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "client"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_note_contact_id"
+            foreignKeyName: "fk_note_object_link_contact_id"
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contact"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_note_deal_id"
+            foreignKeyName: "fk_note_object_link_deal_id"
             columns: ["deal_id"]
             isOneToOne: false
             referencedRelation: "deal"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_note_deal_id"
+            foreignKeyName: "fk_note_object_link_deal_id"
             columns: ["deal_id"]
             isOneToOne: false
             referencedRelation: "deal_with_stage"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_note_owner_id"
-            columns: ["owner_id"]
+            foreignKeyName: "fk_note_object_link_note_id"
+            columns: ["note_id"]
             isOneToOne: false
-            referencedRelation: "user"
+            referencedRelation: "note"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_note_property_id"
+            foreignKeyName: "fk_note_object_link_property_id"
             columns: ["property_id"]
             isOneToOne: false
             referencedRelation: "property"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_note_property_id"
+            foreignKeyName: "fk_note_object_link_property_id"
             columns: ["property_id"]
             isOneToOne: false
             referencedRelation: "property_with_deal_type"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_note_property_id"
+            foreignKeyName: "fk_note_object_link_property_id"
             columns: ["property_id"]
             isOneToOne: false
             referencedRelation: "property_with_stage"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_note_property_id"
+            foreignKeyName: "fk_note_object_link_property_id"
             columns: ["property_id"]
             isOneToOne: false
             referencedRelation: "property_with_type"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_note_site_submit_id"
+            foreignKeyName: "fk_note_object_link_site_submit_id"
             columns: ["site_submit_id"]
             isOneToOne: false
             referencedRelation: "site_submit"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_note_updated_by"
-            columns: ["updated_by"]
+            foreignKeyName: "fk_note_object_link_user_id"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_object_link_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "assignment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_object_link_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_object_link_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_object_link_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_object_link_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_object_link_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "note"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_object_link_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_object_link_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_deal_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_object_link_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_object_link_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_object_link_site_submit_id_fkey"
+            columns: ["site_submit_id"]
+            isOneToOne: false
+            referencedRelation: "site_submit"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_object_link_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["id"]
