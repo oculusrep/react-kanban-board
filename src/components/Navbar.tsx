@@ -241,6 +241,9 @@ export default function Navbar() {
           <Link to="/notes-debug" className={linkClass("/notes-debug")}>
             Notes
           </Link>
+          <Link to="/mapping" className={linkClass("/mapping")}>
+            🗺️ Map
+          </Link>
           
           <DropdownMenu
             title="Properties"

@@ -13,6 +13,7 @@ import Navbar from "./components/Navbar";
 import SearchTestPage from "./components/SearchTestPage";
 import SearchDebugPage from "./components/SearchDebugPage";
 import NotesDebugPage from "./pages/NotesDebugPage";
+import MappingPage from "./pages/MappingPage";
 
 function App() {
   return (
@@ -37,6 +38,7 @@ function App() {
             <Route path="/search-test" element={<SearchTestPage />} />
             <Route path="/search-debug" element={<SearchDebugPage />} />
             <Route path="/notes-debug" element={<NotesDebugPage />} />
+            <Route path="/mapping" element={<MappingPage />} />
           </Routes>
         </div>
       </ProtectedRoute>
