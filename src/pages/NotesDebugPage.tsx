@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import RichTextNote from '../components/RichTextNote';
+import NoteAssociations from '../components/NoteAssociations';
 
 type Note = Database['public']['Tables']['note']['Row'];
 
@@ -30,13 +31,6 @@ const NotesDebugPage: React.FC = () => {
   const [clientsMap, setClientsMap] = useState<Record<string, Client>>({});
   const [dealsMap, setDealsMap] = useState<Record<string, Deal>>({});
   const [contactsMap, setContactsMap] = useState<Record<string, Contact>>({});
-  const [tableCounts, setTableCounts] = useState<{
-    notes: number;
-    contentNotes: number;
-    contentVersions: number;
-    contentDocLinks: number;
-  }>({ notes: 0, contentNotes: 0, contentVersions: 0, contentDocLinks: 0 });
-  const [sampleContentNotes, setSampleContentNotes] = useState<any[]>([]);
   const [showAllExpanded, setShowAllExpanded] = useState(false);
 
   // Pagination state
@@ -52,87 +46,124 @@ const NotesDebugPage: React.FC = () => {
     setError(null);
 
     try {
-      console.log('Loading notes from database...');
-
-      // First, test basic connection with a simple query
-      const { count, error: countError } = await supabase
-        .from('note')
-        .select('*', { count: 'exact', head: true });
-
-      console.log('Database connection test:', { count, error: countError });
-
-      // Test if the table exists by trying to get a single row
-      const { data: singleRow, error: singleError } = await supabase
-        .from('note')
-        .select('*')
-        .limit(1);
-
-      console.log('Single row test:', { data: singleRow, error: singleError });
-
-      // Check if the source ContentNote data exists
-      const { count: contentNoteCount, error: contentNoteError } = await supabase
-        .from('salesforce_ContentNote')
-        .select('*', { count: 'exact', head: true });
-
-      console.log('ContentNote source table test:', { count: contentNoteCount, error: contentNoteError });
-
-      // Sample a few ContentNotes to see the actual content structure
-      const { data: sampleContentNotes, error: sampleError } = await supabase
-        .from('salesforce_ContentNote')
-        .select('Id, Content, TextPreview')
-        .limit(3);
-
-      console.log('Sample ContentNote data:', { data: sampleContentNotes, error: sampleError });
-
-      // Check ContentVersion table
-      const { count: contentVersionCount, error: contentVersionError } = await supabase
-        .from('salesforce_ContentVersion')
-        .select('*', { count: 'exact', head: true });
-
-      console.log('ContentVersion source table test:', { count: contentVersionCount, error: contentVersionError });
-
-      // Check ContentDocumentLink table
-      const { count: contentDocLinkCount, error: contentDocLinkError } = await supabase
-        .from('salesforce_ContentDocumentLink')
-        .select('*', { count: 'exact', head: true });
-
-      console.log('ContentDocumentLink source table test:', { count: contentDocLinkCount, error: contentDocLinkError });
-
-      // Test RLS permissions - try with different auth contexts
-      console.log('Current user context:', await supabase.auth.getUser());
-
-      // Try to get notes with minimal select to test permissions
-      const { data: notesTestData, error: notesTestError } = await supabase
-        .from('note')
-        .select('id')
-        .limit(1);
-
-      console.log('Notes permission test (select id only):', { data: notesTestData, error: notesTestError });
-
-      // Load all notes - bypass Supabase's hard 1000 record limit using pagination
-      console.log('⚠️ Supabase has a hard 1000 record limit, using pagination to get all records...');
-
-      let allNotes = [];
+      // Load all notes with their relationships efficiently
+      let allNotesWithRelationships = [];
       let hasMore = true;
       let offset = 0;
       const batchSize = 1000;
 
       while (hasMore) {
-        const { data: batchData, error: batchError } = await supabase
+        // Load notes in batches
+        const { data: notesBatch, error: notesError } = await supabase
           .from('note')
           .select('*')
           .order('created_at', { ascending: false })
           .range(offset, offset + batchSize - 1);
 
-        if (batchError) {
-          throw batchError;
+        if (notesError) {
+          throw notesError;
         }
 
-        if (batchData && batchData.length > 0) {
-          allNotes.push(...batchData);
-          offset += batchSize;
-          console.log(`Fetched batch: ${batchData.length} records, total so far: ${allNotes.length}`);
+        // Get all relationships for this batch of notes
+        if (notesBatch && notesBatch.length > 0) {
+          const noteIds = notesBatch.map(note => note.id);
 
+          try {
+            // Get relationships in smaller batches to avoid URL length limits
+            const relationshipBatchSize = 100;
+            const allRelationships = [];
+
+            for (let i = 0; i < noteIds.length; i += relationshipBatchSize) {
+              const relationshipBatch = noteIds.slice(i, i + relationshipBatchSize);
+              try {
+                const { data: relationshipData } = await supabase
+                  .from('note_object_link')
+                  .select('*')
+                  .in('note_id', relationshipBatch);
+
+                if (relationshipData) {
+                  allRelationships.push(...relationshipData);
+                }
+              } catch (relBatchError) {
+                console.warn(`Error fetching relationship batch:`, relBatchError);
+              }
+            }
+
+            // Create a comprehensive map of note_id -> all relationships
+            const relationshipMap = new Map();
+            if (allRelationships) {
+              allRelationships.forEach(rel => {
+                if (!relationshipMap.has(rel.note_id)) {
+                  relationshipMap.set(rel.note_id, {
+                    client_id: null,
+                    deal_id: null,
+                    contact_id: null,
+                    property_id: null,
+                    assignment_id: null,
+                    site_submit_id: null,
+                    user_id: null,
+                  });
+                }
+
+                const noteRels = relationshipMap.get(rel.note_id);
+                // Set the specific relationship field
+                if (rel.client_id) noteRels.client_id = rel.client_id;
+                if (rel.deal_id) noteRels.deal_id = rel.deal_id;
+                if (rel.contact_id) noteRels.contact_id = rel.contact_id;
+                if (rel.property_id) noteRels.property_id = rel.property_id;
+                if (rel.assignment_id) noteRels.assignment_id = rel.assignment_id;
+                if (rel.site_submit_id) noteRels.site_submit_id = rel.site_submit_id;
+                if (rel.user_id) noteRels.user_id = rel.user_id;
+              });
+            }
+
+            // Apply relationships to notes
+            notesBatch.forEach(note => {
+              const relationships = relationshipMap.get(note.id);
+
+              if (relationships) {
+                // Note has relationships - apply all of them
+                (note as any).client_id = relationships.client_id;
+                (note as any).deal_id = relationships.deal_id;
+                (note as any).contact_id = relationships.contact_id;
+                (note as any).property_id = relationships.property_id;
+                (note as any).assignment_id = relationships.assignment_id;
+                (note as any).site_submit_id = relationships.site_submit_id;
+                (note as any).user_id = relationships.user_id;
+              } else {
+                // Note has no relationships (unassigned)
+                (note as any).client_id = null;
+                (note as any).deal_id = null;
+                (note as any).contact_id = null;
+                (note as any).property_id = null;
+                (note as any).assignment_id = null;
+                (note as any).site_submit_id = null;
+                (note as any).user_id = null;
+              }
+            });
+
+            allNotesWithRelationships.push(...notesBatch);
+
+          } catch (relError) {
+            console.warn(`Error getting batch relationships:`, relError);
+            // If batch relationship query fails, mark all notes as unassigned
+            notesBatch.forEach(note => {
+              (note as any).client_id = null;
+              (note as any).deal_id = null;
+              (note as any).contact_id = null;
+              (note as any).property_id = null;
+              (note as any).assignment_id = null;
+              (note as any).site_submit_id = null;
+              (note as any).user_id = null;
+            });
+            allNotesWithRelationships.push(...notesBatch);
+          }
+        }
+
+        const batchData = notesBatch;
+
+        if (batchData && batchData.length > 0) {
+          offset += batchSize;
           // If we got less than batchSize, we've reached the end
           if (batchData.length < batchSize) {
             hasMore = false;
@@ -142,23 +173,10 @@ const NotesDebugPage: React.FC = () => {
         }
       }
 
-      const notesData = allNotes;
-      const notesError = null;
+      const notesData = allNotesWithRelationships;
 
-      console.log('Notes query result:', {
-        data: notesData,
-        error: notesError,
-        count: notesData?.length,
-        actualLength: notesData ? notesData.length : 'null data'
-      });
-
-      if (notesData && notesData.length >= 1000) {
-        console.warn('⚠️ Still hitting potential limit - got exactly 1000 or more records:', notesData.length);
-      }
-
-      if (notesError) {
-        console.error('Notes error:', notesError);
-        throw notesError;
+      if (!notesData) {
+        throw new Error('Failed to load notes');
       }
 
       // Load clients for mapping
@@ -202,13 +220,6 @@ const NotesDebugPage: React.FC = () => {
       setClientsMap(clientsLookup);
       setDealsMap(dealsLookup);
       setContactsMap(contactsLookup);
-      setSampleContentNotes(sampleContentNotes || []);
-      setTableCounts({
-        notes: notesData?.length || 0,
-        contentNotes: contentNoteCount || 0,
-        contentVersions: contentVersionCount || 0,
-        contentDocLinks: contentDocLinkCount || 0
-      });
 
     } catch (err) {
       console.error('Error loading notes:', err);
@@ -391,8 +402,23 @@ const NotesDebugPage: React.FC = () => {
         case 'contact':
           if (!note.contact_id) return false;
           break;
+        case 'property':
+          if (!note.property_id) return false;
+          break;
+        case 'assignment':
+          if (!note.assignment_id) return false;
+          break;
+        case 'site_submit':
+          if (!note.site_submit_id) return false;
+          break;
+        case 'user':
+          if (!(note as any).user_id) return false;
+          break;
         case 'unassigned':
-          if (note.client_id || note.deal_id || note.contact_id || note.property_id || note.assignment_id || note.site_submit_id || note.user_id) return false;
+          // In normalized structure, unassigned means no relationships exist
+          // Since we're using inner join in our query, we won't get truly unassigned notes
+          // We need to check if all relationship fields are null
+          if (note.client_id || note.deal_id || note.contact_id || note.property_id || note.assignment_id || note.site_submit_id || (note as any).user_id) return false;
           break;
       }
     }
@@ -499,25 +525,6 @@ const NotesDebugPage: React.FC = () => {
           Advanced search: field filters, phrase matching, multi-word, exclusions, and fuzzy search
         </p>
 
-        {/* Table Counts Summary */}
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <p className="text-xs font-medium text-blue-800">Notes Table</p>
-            <p className="text-2xl font-bold text-blue-900">{tableCounts.notes}</p>
-          </div>
-          <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-            <p className="text-xs font-medium text-green-800">ContentNotes</p>
-            <p className="text-2xl font-bold text-green-900">{tableCounts.contentNotes}</p>
-          </div>
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-            <p className="text-xs font-medium text-yellow-800">ContentVersions</p>
-            <p className="text-2xl font-bold text-yellow-900">{tableCounts.contentVersions}</p>
-          </div>
-          <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-            <p className="text-xs font-medium text-purple-800">ContentDocLinks</p>
-            <p className="text-2xl font-bold text-purple-900">{tableCounts.contentDocLinks}</p>
-          </div>
-        </div>
 
       </div>
 
@@ -535,7 +542,11 @@ const NotesDebugPage: React.FC = () => {
               <option value="client">Client Notes ({notes.filter(n => n.client_id).length})</option>
               <option value="deal">Deal Notes ({notes.filter(n => n.deal_id).length})</option>
               <option value="contact">Contact Notes ({notes.filter(n => n.contact_id).length})</option>
-              <option value="unassigned">Unassigned ({notes.filter(n => !n.client_id && !n.deal_id && !n.contact_id && !n.property_id && !n.assignment_id && !n.site_submit_id && !n.user_id).length})</option>
+              <option value="property">Property Notes ({notes.filter(n => n.property_id).length})</option>
+              <option value="assignment">Assignment Notes ({notes.filter(n => n.assignment_id).length})</option>
+              <option value="site_submit">Site Submit Notes ({notes.filter(n => n.site_submit_id).length})</option>
+              <option value="user">User Notes ({notes.filter(n => (n as any).user_id).length})</option>
+              <option value="unassigned">Unassigned ({notes.filter(n => !n.client_id && !n.deal_id && !n.contact_id && !n.property_id && !n.assignment_id && !n.site_submit_id && !(n as any).user_id).length})</option>
             </select>
           </div>
           <div className="flex-1 max-w-lg">
@@ -723,7 +734,10 @@ const NotesDebugPage: React.FC = () => {
             }
 
             return (
-              <div key={note.id} className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+              <div
+                key={note.id}
+                className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow"
+              >
                 {/* Top Level - Always Visible */}
                 <div
                   className="p-4 cursor-pointer"
@@ -737,17 +751,31 @@ const NotesDebugPage: React.FC = () => {
                           {note.title || 'Untitled Note'}
                         </h3>
 
-                        {/* Single main tag */}
-                        {relatedTags.length > 0 ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 flex-shrink-0">
-                            {relatedTags[0].type}: {relatedTags[0].name}
-                            {relatedTags.length > 1 && <span className="ml-1 text-gray-500">+{relatedTags.length - 1}</span>}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 flex-shrink-0">
-                            Unassigned
-                          </span>
-                        )}
+                        {/* Note Associations */}
+                        <div className="flex-1 min-w-0">
+                          <NoteAssociations
+                            noteId={note.id}
+                            currentAssociations={{
+                              client_id: note.client_id || undefined,
+                              deal_id: note.deal_id || undefined,
+                              contact_id: note.contact_id || undefined,
+                              property_id: note.property_id || undefined,
+                              assignment_id: note.assignment_id || undefined,
+                              site_submit_id: note.site_submit_id || undefined,
+                              user_id: (note as any).user_id || undefined
+                            }}
+                            onAssociationChange={(updatedAssociations) => {
+                              // Update the specific note's associations in state without full page reload
+                              setNotes(prevNotes =>
+                                prevNotes.map(n =>
+                                  n.id === note.id
+                                    ? { ...n, ...updatedAssociations }
+                                    : n
+                                )
+                              );
+                            }}
+                          />
+                        </div>
 
                         <span className="text-sm text-gray-500 flex-shrink-0">{formatDateShort(note.created_at)}</span>
 
@@ -774,7 +802,7 @@ const NotesDebugPage: React.FC = () => {
                 </div>
 
                 {/* Expanded Content */}
-                {isExpanded && (
+                {(isExpanded || showAllExpanded) && (
                   <div className="px-4 pb-4 border-t border-gray-100">
                     {/* Note Details */}
                     <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 text-sm">

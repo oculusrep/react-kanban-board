@@ -2300,155 +2300,121 @@ END $$;
 -- Add helpful comment about WhatId mapping validation
 COMMENT ON TABLE activity IS 'Activity table migrated from salesforce_Task with normalized relationships. WhatId mappings: 006=deals, a00=properties, a05=site_submits, a03=property_research, 0XB=list_email, a2R=individual_email, a1n=restaurant_trends';
 
--- ============================================
--- NOTE TABLE MIGRATION FROM CONTENTNOTE SYSTEM
--- ============================================
+-- ==============================================================================
+-- NORMALIZED NOTE TABLE MIGRATION FROM CONTENTNOTE SYSTEM
+-- ==============================================================================
+-- This section creates the normalized note structure with separate note and
+-- note_object_link tables to eliminate content duplication.
 
--- Create the note table with proper schema for ContentNote system
+-- Create the main note table (unique notes only)
 CREATE TABLE IF NOT EXISTS note (
     -- Primary Key
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
 
-    -- Salesforce ContentNote System Fields (Always Keep)
-    sf_content_note_id VARCHAR(18),
-    sf_content_document_id VARCHAR(18),
-    sf_content_version_id VARCHAR(18),
-    sf_content_document_link_id VARCHAR(18),
-    sf_created_by_id VARCHAR(18),
-    sf_updated_by_id VARCHAR(18),
+    -- Salesforce ContentNote System Fields
+    sf_content_note_id TEXT UNIQUE NOT NULL,
+    sf_content_document_id TEXT,
+    sf_content_version_id TEXT,
 
-    -- Active Foreign Key Relationships
-    created_by UUID,
-    updated_by UUID,
-
-    -- Parent Relationship Mappings (from ContentDocumentLink.LinkedEntityId)
-    client_id UUID,        -- when LinkedEntityId starts with '001'
-    deal_id UUID,          -- when LinkedEntityId starts with '006'
-    property_id UUID,      -- when LinkedEntityId starts with 'a00'
-    site_submit_id UUID,   -- when LinkedEntityId starts with 'a05'
-    assignment_id UUID,    -- when LinkedEntityId starts with 'a02'
-    contact_id UUID,       -- when LinkedEntityId starts with '003'
-
-    -- Fallback for unmapped LinkedEntityId values
-    related_object_type VARCHAR(50),  -- Object type for unmapped LinkedEntityIds
-    related_object_id VARCHAR(18),    -- Salesforce Id for unmapped LinkedEntityIds
-
-    -- Core Note Fields
+    -- Note content (stored once per unique note)
     title TEXT,
     body TEXT,
     content_size INTEGER,
 
-    -- ContentNote specific fields
-    share_type VARCHAR(20),  -- From ContentDocumentLink.ShareType
-    visibility VARCHAR(20),  -- From ContentDocumentLink.Visibility
+    -- Salesforce metadata
+    share_type TEXT,
+    visibility TEXT,
+    sf_created_by_id TEXT,
+    sf_updated_by_id TEXT,
+
+    -- Local user references
+    created_by UUID,
+    updated_by UUID,
 
     -- Timestamps
-    created_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ,
-
-    -- Constraints
-    CONSTRAINT note_at_least_one_parent CHECK (
-        client_id IS NOT NULL OR
-        deal_id IS NOT NULL OR
-        property_id IS NOT NULL OR
-        site_submit_id IS NOT NULL OR
-        assignment_id IS NOT NULL OR
-        contact_id IS NOT NULL OR
-        (related_object_type IS NOT NULL AND related_object_id IS NOT NULL)
-    )
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Add any missing columns (for schema evolution)
-ALTER TABLE note ADD COLUMN IF NOT EXISTS sf_content_note_id VARCHAR(18);
-ALTER TABLE note ADD COLUMN IF NOT EXISTS sf_content_document_id VARCHAR(18);
-ALTER TABLE note ADD COLUMN IF NOT EXISTS sf_content_version_id VARCHAR(18);
-ALTER TABLE note ADD COLUMN IF NOT EXISTS sf_content_document_link_id VARCHAR(18);
-ALTER TABLE note ADD COLUMN IF NOT EXISTS sf_created_by_id VARCHAR(18);
-ALTER TABLE note ADD COLUMN IF NOT EXISTS sf_updated_by_id VARCHAR(18);
-ALTER TABLE note ADD COLUMN IF NOT EXISTS created_by UUID;
-ALTER TABLE note ADD COLUMN IF NOT EXISTS updated_by UUID;
-ALTER TABLE note ADD COLUMN IF NOT EXISTS client_id UUID;
-ALTER TABLE note ADD COLUMN IF NOT EXISTS deal_id UUID;
-ALTER TABLE note ADD COLUMN IF NOT EXISTS property_id UUID;
-ALTER TABLE note ADD COLUMN IF NOT EXISTS site_submit_id UUID;
-ALTER TABLE note ADD COLUMN IF NOT EXISTS assignment_id UUID;
-ALTER TABLE note ADD COLUMN IF NOT EXISTS contact_id UUID;
-ALTER TABLE note ADD COLUMN IF NOT EXISTS user_id UUID;
-ALTER TABLE note ADD COLUMN IF NOT EXISTS related_object_type VARCHAR(50);
-ALTER TABLE note ADD COLUMN IF NOT EXISTS related_object_id VARCHAR(18);
-ALTER TABLE note ADD COLUMN IF NOT EXISTS title TEXT;
-ALTER TABLE note ADD COLUMN IF NOT EXISTS body TEXT;
-ALTER TABLE note ADD COLUMN IF NOT EXISTS content_size INTEGER;
-ALTER TABLE note ADD COLUMN IF NOT EXISTS share_type VARCHAR(20);
-ALTER TABLE note ADD COLUMN IF NOT EXISTS visibility VARCHAR(20);
-ALTER TABLE note ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ;
-ALTER TABLE note ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
+-- Create the note-object relationship table
+CREATE TABLE IF NOT EXISTS note_object_link (
+    -- Primary Key
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
 
--- Create indexes for performance
+    -- Link to the note
+    note_id UUID NOT NULL,
+
+    -- Salesforce relationship identifier
+    sf_content_document_link_id TEXT UNIQUE NOT NULL,
+
+    -- Object type and ID (polymorphic relationship)
+    object_type TEXT NOT NULL,
+    object_id UUID,
+
+    -- Specific foreign keys for type safety and performance
+    client_id UUID,
+    deal_id UUID,
+    contact_id UUID,
+    property_id UUID,
+    assignment_id UUID,
+    site_submit_id UUID,
+    user_id UUID,
+
+    -- Salesforce metadata for the relationship
+    related_object_type TEXT,
+    related_object_id TEXT,
+
+    -- Timestamps
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Add indexes for performance
 CREATE INDEX IF NOT EXISTS idx_note_sf_content_note_id ON note(sf_content_note_id);
-CREATE INDEX IF NOT EXISTS idx_note_sf_content_document_id ON note(sf_content_document_id);
-CREATE INDEX IF NOT EXISTS idx_note_created_by ON note(created_by);
-CREATE INDEX IF NOT EXISTS idx_note_updated_by ON note(updated_by);
-CREATE INDEX IF NOT EXISTS idx_note_client_id ON note(client_id);
-CREATE INDEX IF NOT EXISTS idx_note_deal_id ON note(deal_id);
-CREATE INDEX IF NOT EXISTS idx_note_property_id ON note(property_id);
-CREATE INDEX IF NOT EXISTS idx_note_site_submit_id ON note(site_submit_id);
-CREATE INDEX IF NOT EXISTS idx_note_assignment_id ON note(assignment_id);
-CREATE INDEX IF NOT EXISTS idx_note_contact_id ON note(contact_id);
-CREATE INDEX IF NOT EXISTS idx_note_related_object ON note(related_object_type, related_object_id);
 CREATE INDEX IF NOT EXISTS idx_note_created_at ON note(created_at);
 CREATE INDEX IF NOT EXISTS idx_note_updated_at ON note(updated_at);
-CREATE INDEX IF NOT EXISTS idx_note_share_type ON note(share_type);
 
--- Create unique constraint for ContentNote UPSERT
--- Drop any existing partial index that might conflict
-DROP INDEX IF EXISTS note_content_note_link_unique;
+CREATE INDEX IF NOT EXISTS idx_note_object_link_note_id ON note_object_link(note_id);
+CREATE INDEX IF NOT EXISTS idx_note_object_link_object_type ON note_object_link(object_type);
+CREATE INDEX IF NOT EXISTS idx_note_object_link_sf_content_document_link_id ON note_object_link(sf_content_document_link_id);
 
--- Add unique constraint for UPSERT support (only if it doesn't exist)
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.table_constraints
-        WHERE constraint_name = 'note_content_note_link_constraint'
-        AND table_name = 'note'
-    ) THEN
-        ALTER TABLE note ADD CONSTRAINT note_content_note_link_constraint
-        UNIQUE (sf_content_note_id, sf_content_document_link_id);
-    END IF;
-END $$;
+-- Foreign key indexes for fast lookups
+CREATE INDEX IF NOT EXISTS idx_note_object_link_client_id ON note_object_link(client_id) WHERE client_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_note_object_link_deal_id ON note_object_link(deal_id) WHERE deal_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_note_object_link_contact_id ON note_object_link(contact_id) WHERE contact_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_note_object_link_property_id ON note_object_link(property_id) WHERE property_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_note_object_link_assignment_id ON note_object_link(assignment_id) WHERE assignment_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_note_object_link_site_submit_id ON note_object_link(site_submit_id) WHERE site_submit_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_note_object_link_user_id ON note_object_link(user_id) WHERE user_id IS NOT NULL;
 
--- Data Migration from ContentNote system (using standard UPSERT pattern)
+-- ==============================================================================
+-- STEP 1: MIGRATE UNIQUE NOTES (One record per ContentNote)
+-- ==============================================================================
 INSERT INTO note (
     sf_content_note_id,
     sf_content_document_id,
     sf_content_version_id,
-    sf_content_document_link_id,
-    sf_created_by_id,
-    sf_updated_by_id,
-    created_by,
-    updated_by,
-    client_id,
-    deal_id,
-    property_id,
-    site_submit_id,
-    assignment_id,
-    contact_id,
-    user_id,
-    related_object_type,
-    related_object_id,
     title,
     body,
     content_size,
     share_type,
     visibility,
+    sf_created_by_id,
+    sf_updated_by_id,
+    created_by,
+    updated_by,
     created_at,
     updated_at
 )
-SELECT DISTINCT ON (cn."Id", cdl."LinkedEntityId")
+SELECT DISTINCT ON (cn."Id")
     cn."Id" as sf_content_note_id,
     cd."Id" as sf_content_document_id,
     cv."Id" as sf_content_version_id,
-    cdl."Id" as sf_content_document_link_id,
+    cn."Title" as title,
+    cn."TextPreview" as body,
+    cv."ContentSize" as content_size,
+    NULL as share_type,  -- Will be set per relationship
+    NULL as visibility,  -- Will be set per relationship
     cd."CreatedById" as sf_created_by_id,
     cd."LastModifiedById" as sf_updated_by_id,
 
@@ -2458,101 +2424,103 @@ SELECT DISTINCT ON (cn."Id", cdl."LinkedEntityId")
     -- Map updated_by from LastModifiedById
     (SELECT u.id FROM "user" u WHERE u.sf_id = cd."LastModifiedById" LIMIT 1) as updated_by,
 
-    -- Map LinkedEntityId to appropriate relationship fields based on prefix
-    CASE
-        WHEN cdl."LinkedEntityId" LIKE '001%' THEN (SELECT c.id FROM client c WHERE c.sf_id = cdl."LinkedEntityId" LIMIT 1)
-        ELSE NULL
-    END as client_id,
-
-    CASE
-        WHEN cdl."LinkedEntityId" LIKE '006%' THEN (SELECT d.id FROM deal d WHERE d.sf_id = cdl."LinkedEntityId" LIMIT 1)
-        ELSE NULL
-    END as deal_id,
-
-    CASE
-        WHEN cdl."LinkedEntityId" LIKE 'a00%' THEN (SELECT p.id FROM property p WHERE p.sf_id = cdl."LinkedEntityId" LIMIT 1)
-        ELSE NULL
-    END as property_id,
-
-    CASE
-        WHEN cdl."LinkedEntityId" LIKE 'a05%' THEN (SELECT ss.id FROM site_submit ss WHERE ss.sf_id = cdl."LinkedEntityId" LIMIT 1)
-        ELSE NULL
-    END as site_submit_id,
-
-    CASE
-        WHEN cdl."LinkedEntityId" LIKE 'a02%' THEN (SELECT a.id FROM assignment a WHERE a.sf_id = cdl."LinkedEntityId" LIMIT 1)
-        ELSE NULL
-    END as assignment_id,
-
-    CASE
-        WHEN cdl."LinkedEntityId" LIKE '003%' THEN (SELECT c.id FROM contact c WHERE c.sf_id = cdl."LinkedEntityId" LIMIT 1)
-        WHEN cdl."LinkedEntityId" LIKE '00Q%' THEN (SELECT c.id FROM contact c WHERE c.sf_id = cdl."LinkedEntityId" AND c.source_type = 'Lead' LIMIT 1)
-        ELSE NULL
-    END as contact_id,
-    CASE
-        WHEN cdl."LinkedEntityId" LIKE '005%' THEN (SELECT u.id FROM "user" u WHERE u.sf_id = cdl."LinkedEntityId" LIMIT 1)
-        ELSE NULL
-    END as user_id,
-
-    -- Handle unmapped LinkedEntityId values
-    CASE
-        WHEN cdl."LinkedEntityId" IS NOT NULL
-        AND cdl."LinkedEntityId" NOT LIKE '001%'  -- not client
-        AND cdl."LinkedEntityId" NOT LIKE '006%'  -- not deal
-        AND cdl."LinkedEntityId" NOT LIKE 'a00%'  -- not property
-        AND cdl."LinkedEntityId" NOT LIKE 'a05%'  -- not site_submit
-        AND cdl."LinkedEntityId" NOT LIKE 'a02%'  -- not assignment
-        AND cdl."LinkedEntityId" NOT LIKE '003%'  -- not contact
-        THEN
-            CASE
-                WHEN cdl."LinkedEntityId" LIKE 'a03%' THEN 'property_research'
-                WHEN cdl."LinkedEntityId" LIKE '0XB%' THEN 'list_email'
-                WHEN cdl."LinkedEntityId" LIKE 'a2R%' THEN 'individual_email'
-                WHEN cdl."LinkedEntityId" LIKE 'a1n%' THEN 'restaurant_trends'
-                ELSE 'unknown'
-            END
-        ELSE NULL
-    END as related_object_type,
-
-    CASE
-        WHEN cdl."LinkedEntityId" IS NOT NULL
-        AND cdl."LinkedEntityId" NOT LIKE '001%'  -- not client
-        AND cdl."LinkedEntityId" NOT LIKE '006%'  -- not deal
-        AND cdl."LinkedEntityId" NOT LIKE 'a00%'  -- not property
-        AND cdl."LinkedEntityId" NOT LIKE 'a05%'  -- not site_submit
-        AND cdl."LinkedEntityId" NOT LIKE 'a02%'  -- not assignment
-        AND cdl."LinkedEntityId" NOT LIKE '003%'  -- not contact
-        THEN cdl."LinkedEntityId"
-        ELSE NULL
-    END as related_object_id,
-
-    cd."Title" as title,
-
-    -- Use TextPreview field which contains the actual readable note content
-    -- (Content field contains file paths, TextPreview contains the formatted text)
-    cn."TextPreview" as body,
-
-    cv."ContentSize" as content_size,
-    cdl."ShareType" as share_type,
-    cdl."Visibility" as visibility,
     cd."CreatedDate"::TIMESTAMPTZ as created_at,
     cd."LastModifiedDate"::TIMESTAMPTZ as updated_at
 
 FROM "salesforce_ContentNote" cn
 JOIN "salesforce_ContentVersion" cv ON cn."LatestPublishedVersionId" = cv."Id"
 JOIN "salesforce_ContentDocument" cd ON cv."ContentDocumentId" = cd."Id"
-JOIN "salesforce_ContentDocumentLink" cdl ON cd."Id" = cdl."ContentDocumentId"
-WHERE cdl."LinkedEntityId" IS NOT NULL
-  AND cn."Id" IS NOT NULL
+WHERE cn."Id" IS NOT NULL
   AND cd."Id" IS NOT NULL
-ORDER BY cn."Id", cdl."LinkedEntityId", cd."CreatedDate" DESC
-ON CONFLICT ON CONSTRAINT note_content_note_link_constraint DO UPDATE SET
+ORDER BY cn."Id", cd."CreatedDate" DESC
+ON CONFLICT (sf_content_note_id) DO UPDATE SET
     sf_content_document_id = EXCLUDED.sf_content_document_id,
     sf_content_version_id = EXCLUDED.sf_content_version_id,
+    title = EXCLUDED.title,
+    body = EXCLUDED.body,
+    content_size = EXCLUDED.content_size,
     sf_created_by_id = EXCLUDED.sf_created_by_id,
     sf_updated_by_id = EXCLUDED.sf_updated_by_id,
     created_by = EXCLUDED.created_by,
     updated_by = EXCLUDED.updated_by,
+    updated_at = EXCLUDED.updated_at;
+
+-- ==============================================================================
+-- STEP 2: MIGRATE NOTE-OBJECT RELATIONSHIPS (One record per ContentDocumentLink)
+-- ==============================================================================
+INSERT INTO note_object_link (
+    note_id,
+    sf_content_document_link_id,
+    object_type,
+    object_id,
+    client_id,
+    deal_id,
+    property_id,
+    site_submit_id,
+    assignment_id,
+    contact_id,
+    user_id,
+    related_object_type,
+    related_object_id,
+    created_at,
+    updated_at
+)
+SELECT
+    n.id as note_id,
+    cdl."Id" as sf_content_document_link_id,
+
+    -- Determine object type based on LinkedEntityId prefix
+    CASE
+        WHEN LEFT(cdl."LinkedEntityId", 3) = '001' THEN 'client'
+        WHEN LEFT(cdl."LinkedEntityId", 3) = '006' THEN 'deal'
+        WHEN LEFT(cdl."LinkedEntityId", 3) = 'a00' THEN 'property'
+        WHEN LEFT(cdl."LinkedEntityId", 3) = 'a05' THEN 'site_submit'
+        WHEN LEFT(cdl."LinkedEntityId", 3) = 'a02' THEN 'assignment'
+        WHEN LEFT(cdl."LinkedEntityId", 3) = '003' THEN 'contact'
+        WHEN LEFT(cdl."LinkedEntityId", 3) = '00Q' THEN 'contact'  -- Salesforce Lead IDs (now stored as contacts)
+        WHEN LEFT(cdl."LinkedEntityId", 3) = '005' THEN 'user'
+        ELSE 'unknown'
+    END as object_type,
+
+    -- Set object_id as the UUID of the first matched object
+    COALESCE(
+        (SELECT c.id FROM client c WHERE c.sf_id = cdl."LinkedEntityId" LIMIT 1),
+        (SELECT d.id FROM deal d WHERE d.sf_id = cdl."LinkedEntityId" LIMIT 1),
+        (SELECT p.id FROM property p WHERE p.sf_id = cdl."LinkedEntityId" LIMIT 1),
+        (SELECT s.id FROM site_submit s WHERE s.sf_id = cdl."LinkedEntityId" LIMIT 1),
+        (SELECT a.id FROM assignment a WHERE a.sf_id = cdl."LinkedEntityId" LIMIT 1),
+        (SELECT ct.id FROM contact ct WHERE ct.sf_id = cdl."LinkedEntityId" LIMIT 1),
+        (SELECT u.id FROM "user" u WHERE u.sf_id = cdl."LinkedEntityId" LIMIT 1)
+    ) as object_id,
+
+    -- Set specific foreign keys
+    (SELECT c.id FROM client c WHERE c.sf_id = cdl."LinkedEntityId" LIMIT 1) as client_id,
+    (SELECT d.id FROM deal d WHERE d.sf_id = cdl."LinkedEntityId" LIMIT 1) as deal_id,
+    (SELECT p.id FROM property p WHERE p.sf_id = cdl."LinkedEntityId" LIMIT 1) as property_id,
+    (SELECT s.id FROM site_submit s WHERE s.sf_id = cdl."LinkedEntityId" LIMIT 1) as site_submit_id,
+    (SELECT a.id FROM assignment a WHERE a.sf_id = cdl."LinkedEntityId" LIMIT 1) as assignment_id,
+    (SELECT ct.id FROM contact ct WHERE ct.sf_id = cdl."LinkedEntityId" LIMIT 1) as contact_id,
+    (SELECT u.id FROM "user" u WHERE u.sf_id = cdl."LinkedEntityId" LIMIT 1) as user_id,
+
+    -- Store the Salesforce object type and ID for unmapped objects
+    cdl."LinkedEntityId" as related_object_type,
+    cdl."LinkedEntityId" as related_object_id,
+
+    cdl."SystemModstamp"::TIMESTAMPTZ as created_at,
+    cdl."SystemModstamp"::TIMESTAMPTZ as updated_at
+
+FROM "salesforce_ContentNote" cn
+JOIN "salesforce_ContentVersion" cv ON cn."LatestPublishedVersionId" = cv."Id"
+JOIN "salesforce_ContentDocument" cd ON cv."ContentDocumentId" = cd."Id"
+JOIN "salesforce_ContentDocumentLink" cdl ON cd."Id" = cdl."ContentDocumentId"
+JOIN note n ON n.sf_content_note_id = cn."Id"
+WHERE cdl."LinkedEntityId" IS NOT NULL
+  AND cn."Id" IS NOT NULL
+  AND cd."Id" IS NOT NULL
+ORDER BY cn."Id", cdl."LinkedEntityId"
+ON CONFLICT (sf_content_document_link_id) DO UPDATE SET
+    object_type = EXCLUDED.object_type,
+    object_id = EXCLUDED.object_id,
     client_id = EXCLUDED.client_id,
     deal_id = EXCLUDED.deal_id,
     property_id = EXCLUDED.property_id,
@@ -2562,17 +2530,12 @@ ON CONFLICT ON CONSTRAINT note_content_note_link_constraint DO UPDATE SET
     user_id = EXCLUDED.user_id,
     related_object_type = EXCLUDED.related_object_type,
     related_object_id = EXCLUDED.related_object_id,
-    title = EXCLUDED.title,
-    body = EXCLUDED.body,
-    content_size = EXCLUDED.content_size,
-    share_type = EXCLUDED.share_type,
-    visibility = EXCLUDED.visibility,
     updated_at = EXCLUDED.updated_at;
 
 -- Add foreign key constraints after data migration
 DO $$
 BEGIN
-    -- Add foreign key constraints to user table
+    -- Foreign keys for note table
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.table_constraints
         WHERE constraint_name = 'fk_note_created_by' AND table_name = 'note'
@@ -2587,100 +2550,152 @@ BEGIN
         ALTER TABLE note ADD CONSTRAINT fk_note_updated_by FOREIGN KEY (updated_by) REFERENCES "user"(id);
     END IF;
 
-    -- Add foreign key constraints to other tables
+    -- Foreign key from note_object_link to note
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.table_constraints
-        WHERE constraint_name = 'fk_note_client_id' AND table_name = 'note'
+        WHERE constraint_name = 'fk_note_object_link_note_id' AND table_name = 'note_object_link'
     ) THEN
-        ALTER TABLE note ADD CONSTRAINT fk_note_client_id FOREIGN KEY (client_id) REFERENCES client(id);
+        ALTER TABLE note_object_link ADD CONSTRAINT fk_note_object_link_note_id FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE;
+    END IF;
+
+    -- Foreign keys for note_object_link table
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'fk_note_object_link_client_id' AND table_name = 'note_object_link'
+    ) THEN
+        ALTER TABLE note_object_link ADD CONSTRAINT fk_note_object_link_client_id FOREIGN KEY (client_id) REFERENCES client(id);
     END IF;
 
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.table_constraints
-        WHERE constraint_name = 'fk_note_deal_id' AND table_name = 'note'
+        WHERE constraint_name = 'fk_note_object_link_deal_id' AND table_name = 'note_object_link'
     ) THEN
-        ALTER TABLE note ADD CONSTRAINT fk_note_deal_id FOREIGN KEY (deal_id) REFERENCES deal(id);
+        ALTER TABLE note_object_link ADD CONSTRAINT fk_note_object_link_deal_id FOREIGN KEY (deal_id) REFERENCES deal(id);
     END IF;
 
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.table_constraints
-        WHERE constraint_name = 'fk_note_property_id' AND table_name = 'note'
+        WHERE constraint_name = 'fk_note_object_link_contact_id' AND table_name = 'note_object_link'
     ) THEN
-        ALTER TABLE note ADD CONSTRAINT fk_note_property_id FOREIGN KEY (property_id) REFERENCES property(id);
+        ALTER TABLE note_object_link ADD CONSTRAINT fk_note_object_link_contact_id FOREIGN KEY (contact_id) REFERENCES contact(id);
     END IF;
 
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.table_constraints
-        WHERE constraint_name = 'fk_note_site_submit_id' AND table_name = 'note'
+        WHERE constraint_name = 'fk_note_object_link_property_id' AND table_name = 'note_object_link'
     ) THEN
-        ALTER TABLE note ADD CONSTRAINT fk_note_site_submit_id FOREIGN KEY (site_submit_id) REFERENCES site_submit(id);
+        ALTER TABLE note_object_link ADD CONSTRAINT fk_note_object_link_property_id FOREIGN KEY (property_id) REFERENCES property(id);
     END IF;
 
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.table_constraints
-        WHERE constraint_name = 'fk_note_assignment_id' AND table_name = 'note'
+        WHERE constraint_name = 'fk_note_object_link_assignment_id' AND table_name = 'note_object_link'
     ) THEN
-        ALTER TABLE note ADD CONSTRAINT fk_note_assignment_id FOREIGN KEY (assignment_id) REFERENCES assignment(id);
+        ALTER TABLE note_object_link ADD CONSTRAINT fk_note_object_link_assignment_id FOREIGN KEY (assignment_id) REFERENCES assignment(id);
     END IF;
 
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.table_constraints
-        WHERE constraint_name = 'fk_note_contact_id' AND table_name = 'note'
+        WHERE constraint_name = 'fk_note_object_link_site_submit_id' AND table_name = 'note_object_link'
     ) THEN
-        ALTER TABLE note ADD CONSTRAINT fk_note_contact_id FOREIGN KEY (contact_id) REFERENCES contact(id);
+        ALTER TABLE note_object_link ADD CONSTRAINT fk_note_object_link_site_submit_id FOREIGN KEY (site_submit_id) REFERENCES site_submit(id);
     END IF;
 
-    RAISE NOTICE 'Foreign key constraints added to note table';
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'fk_note_object_link_user_id' AND table_name = 'note_object_link'
+    ) THEN
+        ALTER TABLE note_object_link ADD CONSTRAINT fk_note_object_link_user_id FOREIGN KEY (user_id) REFERENCES "user"(id);
+    END IF;
 
 EXCEPTION
     WHEN OTHERS THEN
         RAISE NOTICE 'Note: Some foreign key constraints may have failed to add: %', SQLERRM;
 END $$;
 
--- Validation queries for ContentNote migration
+-- Add constraints for normalized structure
+DO $$
+BEGIN
+    -- Unique constraint for note-object relationships
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'note_object_link_unique_relationship' AND table_name = 'note_object_link'
+    ) THEN
+        ALTER TABLE note_object_link ADD CONSTRAINT note_object_link_unique_relationship
+        UNIQUE (note_id, sf_content_document_link_id);
+    END IF;
+
+    -- Check constraint to ensure only one object type is set
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.check_constraints
+        WHERE constraint_name = 'note_object_link_single_object_type'
+    ) THEN
+        ALTER TABLE note_object_link ADD CONSTRAINT note_object_link_single_object_type
+        CHECK (
+            (CASE WHEN client_id IS NOT NULL THEN 1 ELSE 0 END) +
+            (CASE WHEN deal_id IS NOT NULL THEN 1 ELSE 0 END) +
+            (CASE WHEN contact_id IS NOT NULL THEN 1 ELSE 0 END) +
+            (CASE WHEN property_id IS NOT NULL THEN 1 ELSE 0 END) +
+            (CASE WHEN assignment_id IS NOT NULL THEN 1 ELSE 0 END) +
+            (CASE WHEN site_submit_id IS NOT NULL THEN 1 ELSE 0 END) +
+            (CASE WHEN user_id IS NOT NULL THEN 1 ELSE 0 END) <= 1
+        );
+    END IF;
+END $$;
+
+-- Validation queries for normalized ContentNote migration
 DO $$
 DECLARE
     total_notes INTEGER;
-    has_content_note_id INTEGER;
+    total_relationships INTEGER;
     mapped_clients INTEGER;
     mapped_deals INTEGER;
     mapped_properties INTEGER;
     mapped_site_submits INTEGER;
     mapped_assignments INTEGER;
     mapped_contacts INTEGER;
-    mapped_other_objects INTEGER;
+    mapped_users INTEGER;
+    unassigned_notes INTEGER;
     validation_result TEXT;
 BEGIN
-    RAISE NOTICE 'Running ContentNote Migration Validation...';
+    RAISE NOTICE 'Running Normalized ContentNote Migration Validation...';
 
-    SELECT
-        COUNT(*),
-        COUNT(CASE WHEN sf_content_note_id IS NOT NULL THEN 1 END),
-        COUNT(CASE WHEN client_id IS NOT NULL THEN 1 END),
-        COUNT(CASE WHEN deal_id IS NOT NULL THEN 1 END),
-        COUNT(CASE WHEN property_id IS NOT NULL THEN 1 END),
-        COUNT(CASE WHEN site_submit_id IS NOT NULL THEN 1 END),
-        COUNT(CASE WHEN assignment_id IS NOT NULL THEN 1 END),
-        COUNT(CASE WHEN contact_id IS NOT NULL THEN 1 END),
-        COUNT(CASE WHEN related_object_type IS NOT NULL THEN 1 END)
-    INTO total_notes, has_content_note_id, mapped_clients, mapped_deals, mapped_properties, mapped_site_submits, mapped_assignments, mapped_contacts, mapped_other_objects
-    FROM note;
+    -- Count notes and relationships
+    SELECT COUNT(*) INTO total_notes FROM note;
+    SELECT COUNT(*) INTO total_relationships FROM note_object_link;
 
-    validation_result := 'ContentNote Migration Validation Results:' || CHR(10) ||
-                        'Total notes migrated: ' || total_notes || CHR(10) ||
-                        'Notes with ContentNote IDs: ' || has_content_note_id || CHR(10) ||
+    -- Count relationships by type
+    SELECT COUNT(*) INTO mapped_clients FROM note_object_link WHERE client_id IS NOT NULL;
+    SELECT COUNT(*) INTO mapped_deals FROM note_object_link WHERE deal_id IS NOT NULL;
+    SELECT COUNT(*) INTO mapped_properties FROM note_object_link WHERE property_id IS NOT NULL;
+    SELECT COUNT(*) INTO mapped_site_submits FROM note_object_link WHERE site_submit_id IS NOT NULL;
+    SELECT COUNT(*) INTO mapped_assignments FROM note_object_link WHERE assignment_id IS NOT NULL;
+    SELECT COUNT(*) INTO mapped_contacts FROM note_object_link WHERE contact_id IS NOT NULL;
+    SELECT COUNT(*) INTO mapped_users FROM note_object_link WHERE user_id IS NOT NULL;
+
+    -- Count unassigned notes (notes with no relationships)
+    SELECT COUNT(*) INTO unassigned_notes
+    FROM note n
+    LEFT JOIN note_object_link nol ON n.id = nol.note_id
+    WHERE nol.id IS NULL;
+
+    validation_result := 'Normalized ContentNote Migration Validation Results:' || CHR(10) ||
+                        'Total unique notes migrated: ' || total_notes || CHR(10) ||
+                        'Total note-object relationships: ' || total_relationships || CHR(10) ||
                         'Mapped to clients: ' || mapped_clients || CHR(10) ||
                         'Mapped to deals: ' || mapped_deals || CHR(10) ||
                         'Mapped to properties: ' || mapped_properties || CHR(10) ||
                         'Mapped to site submits: ' || mapped_site_submits || CHR(10) ||
                         'Mapped to assignments: ' || mapped_assignments || CHR(10) ||
                         'Mapped to contacts: ' || mapped_contacts || CHR(10) ||
-                        'Mapped to other objects: ' || mapped_other_objects;
+                        'Mapped to users: ' || mapped_users || CHR(10) ||
+                        'Unassigned notes: ' || unassigned_notes;
 
     RAISE NOTICE '%', validation_result;
 END $$;
 
--- Add helpful comment about ContentNote system mapping
-COMMENT ON TABLE note IS 'Note table migrated from ContentNote system with normalized relationships. LinkedEntityId mappings: 001=clients, 006=deals, a00=properties, a05=site_submits, a02=assignments, 003=contacts, a03=property_research, 0XB=list_email, a2R=individual_email, a1n=restaurant_trends';
+-- Add helpful comments about the normalized structure
+COMMENT ON TABLE note IS 'Normalized note table storing unique ContentNote records without duplication. Each Salesforce ContentNote appears once here.';
+COMMENT ON TABLE note_object_link IS 'Many-to-many relationship table linking notes to business objects. ContentDocumentLink mappings: 001=clients, 006=deals, a00=properties, a05=site_submits, a02=assignments, 003=contacts, 005=users';
 
 COMMIT;

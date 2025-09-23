@@ -235,7 +235,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
         switch (formData.related_object_type) {
           case 'contact':
             query = supabase.from('contact').select('id, first_name, last_name, company');
-            labelField = 'name';
+            labelField = 'first_name';
             break;
           case 'client':
             query = supabase.from('client').select('id, client_name');

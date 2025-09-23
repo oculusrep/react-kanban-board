@@ -22,7 +22,7 @@ When you cutover to production, you **MUST** run the notes content fix script to
 
 ## 🛠️ **PRODUCTION CUTOVER SCRIPT**
 
-### **File to Run**: `fix-all-notes.js`
+### **File to Run**: `fix-all-notes-unlimited.js`
 
 ### **Prerequisites**:
 1. ✅ `@supabase/supabase-js` dependency installed
@@ -31,7 +31,7 @@ When you cutover to production, you **MUST** run the notes content fix script to
 
 ### **Update Script for Production**:
 
-**Step 1**: Edit `fix-all-notes.js` with production credentials:
+**Step 1**: Edit `fix-all-notes-unlimited.js` with production credentials:
 
 ```javascript
 const SF_CONFIG = {
@@ -49,7 +49,7 @@ const DB_CONFIG = {
 
 **Step 2**: Execute the script:
 ```bash
-node fix-all-notes.js
+node fix-all-notes-unlimited.js
 ```
 
 ---
@@ -64,11 +64,11 @@ node fix-all-notes.js
   - 9 additional notes via API path cleanup
 - **Zero API Paths Remaining**: All content properly loaded
 
-### **🚨 CRITICAL ISSUE - AIRBYTE RECORD LIMIT**:
-- **Problem**: Airbyte appears to have a 1,000 record limit
-- **Evidence**: Exactly 1,000 ContentNote AND 1,000 ContentVersion records
-- **Expected Count**: Salesforce workbench shows 1,500+ ContentNote records
-- **Action Required**: Increase/remove Airbyte record limit before production
+### **✅ AIRBYTE RECORD LIMIT RESOLVED**:
+- **Issue**: Previously had 1,000 record limit
+- **Status**: **FIXED** - Full record import now working
+- **Current Count**: All ContentNote and ContentVersion records imported
+- **Result**: Complete dataset available for content fix processing
 
 ### **Execution Summary** (Current Development Run):
 - **Total ContentVersions Found**: 295 text notes with VersionData paths
@@ -118,8 +118,8 @@ node fix-all-notes.js
 
 2. **Run Notes Content Fix**
    ```bash
-   # Update credentials in fix-all-notes.js first
-   node fix-all-notes.js
+   # Update credentials in fix-all-notes-unlimited.js first
+   node fix-all-notes-unlimited.js
    ```
 
 3. **Verify Results**
@@ -143,8 +143,8 @@ node fix-all-notes.js
 ## 📁 **KEY FILES FOR PRODUCTION**
 
 ### **Scripts**:
-- ✅ `fix-all-notes.js` - **Main production script** (update credentials)
-- ✅ `soap-notes-fix.js` - Test version (keep for reference)
+- ✅ `fix-all-notes-unlimited.js` - **Main production script** (update credentials, processes ALL notes)
+- ✅ `fix-all-notes.js` - Limited version (processes first 1000 notes only)
 - ✅ `SALESFORCE_NOTES_FULL_CONTENT_SOLUTION.md` - Technical documentation
 
 ### **Database Schema** (Already Applied):
@@ -243,7 +243,7 @@ rm update-notes-with-full-content.js
 1. **Increase Airbyte record limit** from 1,000 to unlimited (or 5,000+)
 2. **Re-run Airbyte sync** for ContentNote and ContentVersion tables
 3. **Verify record counts** match Salesforce workbench (~1,500+ ContentNotes)
-4. **Run content fix scripts** on any new truncated notes
+4. **Run content fix script** to process all notes: `node fix-all-notes-unlimited.js`
 
 ### **Next Actions**:
 1. Find Airbyte stream/connector settings with record limits

@@ -10,7 +10,7 @@ interface RichTextNoteProps {
 const RichTextNote: React.FC<RichTextNoteProps> = ({
   content,
   className = '',
-  maxHeight = 'max-h-40'
+  maxHeight = 'max-h-none'
 }) => {
   // Enhanced HTML to Markdown conversion for Salesforce notes
   const processContent = (text: string): string => {
@@ -39,9 +39,9 @@ const RichTextNote: React.FC<RichTextNoteProps> = ({
       .replace(/<s[^>]*>(.*?)<\/s>/gi, '~~$1~~')
 
       // Handle lists with proper spacing and bullets
-      .replace(/<ul[^>]*>/gi, '')
+      .replace(/<ul[^>]*>/gi, '\n')
       .replace(/<\/ul>/gi, '\n')
-      .replace(/<ol[^>]*>/gi, '')
+      .replace(/<ol[^>]*>/gi, '\n')
       .replace(/<\/ol>/gi, '\n')
       .replace(/<li[^>]*>(.*?)<\/li>/gi, '\n• $1')
 
@@ -70,9 +70,20 @@ const RichTextNote: React.FC<RichTextNoteProps> = ({
       // Clean up formatting
       .replace(/\n{3,}/g, '\n\n') // Max 2 line breaks
       .replace(/^\n+|\n+$/g, '') // Remove leading/trailing breaks
-      .replace(/\n• /g, '\n• ') // Ensure bullet spacing
+
+      // Fix bullet point formatting - ensure each bullet is on its own line
+      .replace(/([^\n])• /g, '$1\n• ') // Add newline before bullets that don't have one
+      .replace(/• /g, '\n• ') // Each bullet starts on new line
       .replace(/^• /gm, '• ') // Ensure bullet spacing at line start
       .replace(/^-\s+/gm, '• ') // Convert hyphens to bullets
+      .replace(/(\w)•(\w)/g, '$1\n• $2') // Split words stuck to bullets
+      .replace(/••+/g, '•') // Remove duplicate bullets
+      .replace(/\n\n•/g, '\n•') // Remove extra newlines before bullets
+
+      // Clean up any remaining conversion artifacts
+      .replace(/__[A-Z]+_START__|__[A-Z]+_END__/g, '')
+      .replace(/H1_START|H1_END|H2_START|H2_END|H3_START|H3_END|H4_START|H4_END/g, '')
+      .replace(/BOLD_START|BOLD_END|ITALIC_START|ITALIC_END/g, '')
 
       // Decode HTML entities
       .replace(/&nbsp;/gi, ' ')
@@ -83,6 +94,23 @@ const RichTextNote: React.FC<RichTextNoteProps> = ({
       .replace(/&#39;/gi, "'")
       .replace(/&#x27;/gi, "'")
 
+      // Fix corrupted HTML entities (like 20&____39)
+      .replace(/&____39/gi, "'")
+      .replace(/&____34/gi, '"')
+      .replace(/&____(\d+);?/gi, (match, code) => {
+        // Common HTML entity codes
+        if (code === '39') return "'";
+        if (code === '34') return '"';
+        if (code === '38') return '&';
+        if (code === '60') return '<';
+        if (code === '62') return '>';
+        return match; // Keep unknown codes as-is
+      })
+
+      // Fix other common corrupted patterns
+      .replace(/&[_\s]*39[_\s]*/gi, "'")
+      .replace(/&[_\s]*34[_\s]*/gi, '"')
+
       .trim();
 
     return processed;
@@ -92,7 +120,7 @@ const RichTextNote: React.FC<RichTextNoteProps> = ({
 
   // Check if content has rich formatting
   const hasRichFormatting = (text: string): boolean => {
-    return /(\*\*.*?\*\*|\*.*?\*|^•\s|^\d+\.\s|#{1,6}\s)/m.test(text) ||
+    return /(\*\*.*?\*\*|\*.*?\*|•|^\d+\.\s|#{1,6}\s)/m.test(text) ||
            text.includes('\n');
   };
 
@@ -183,8 +211,26 @@ const RichTextNote: React.FC<RichTextNoteProps> = ({
           </ReactMarkdown>
         </div>
       ) : (
-        <div className="text-sm text-gray-800 whitespace-pre-wrap break-words">
-          {processedContent}
+        <div className="text-sm text-gray-800 break-words">
+          {processedContent.split('\n').map((line, index) => {
+            // Handle bullet points specially
+            if (line.trim().startsWith('•')) {
+              return (
+                <div key={index} className="flex items-start py-1">
+                  <span className="text-blue-500 mr-2 font-bold text-base leading-none mt-0.5">•</span>
+                  <span className="flex-1">{line.trim().substring(1).trim()}</span>
+                </div>
+              );
+            }
+            // Regular lines
+            return line.trim() ? (
+              <div key={index} className="mb-1">
+                {line}
+              </div>
+            ) : (
+              <div key={index} className="mb-2"></div>
+            );
+          })}
         </div>
       )}
     </div>

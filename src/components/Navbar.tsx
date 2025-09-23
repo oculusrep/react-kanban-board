@@ -239,7 +239,7 @@ export default function Navbar() {
             Master Pipeline
           </Link>
           <Link to="/notes-debug" className={linkClass("/notes-debug")}>
-            Notes Debug
+            Notes
           </Link>
           
           <DropdownMenu

@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import ContactOverviewTab from '../components/ContactOverviewTab';
 import GenericActivityTab from '../components/GenericActivityTab';
+import ContactSidebar from '../components/ContactSidebar';
 import { useTrackPageView } from '../hooks/useRecentlyViewed';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
@@ -15,6 +16,7 @@ const ContactDetailsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
   const { trackView } = useTrackPageView();
 
   const isNewContact = contactId === 'new';
@@ -135,44 +137,57 @@ const ContactDetailsPage: React.FC = () => {
     : 'New Contact';
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Contact Header Bar */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6 md:justify-start md:space-x-10">
-            <div className="flex justify-start lg:w-0 lg:flex-1">
-              <h1 className="text-2xl font-bold text-gray-900">
-                {contactName}
-              </h1>
-              {contact?.company && (
-                <span className="ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                  {contact.company}
-                </span>
-              )}
-            </div>
+    <>
+      <div className="min-h-screen bg-gray-50">
+        {/* Contact Header Bar */}
+        <div className="bg-white border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center py-6 md:justify-start md:space-x-10">
+              <div className="flex justify-start lg:w-0 lg:flex-1">
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {contactName}
+                </h1>
+                {contact?.company && (
+                  <span className="ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                    {contact.company}
+                  </span>
+                )}
+              </div>
 
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => navigate('/master-pipeline')}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-              >
-                Back to Pipeline
-              </button>
-              {contact?.source_type && (
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                  contact.source_type === 'Lead'
-                    ? 'bg-yellow-100 text-yellow-800'
-                    : 'bg-blue-100 text-blue-800'
-                }`}>
-                  {contact.source_type}
-                </span>
-              )}
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setIsSidebarMinimized(!isSidebarMinimized)}
+                  className="inline-flex items-center px-3 py-2 border border-blue-300 rounded-md shadow-sm text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  title={isSidebarMinimized ? "Show Contact Sidebar" : "Hide Contact Sidebar"}
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                  {isSidebarMinimized ? 'Show' : 'Hide'} Info
+                </button>
+                <button
+                  onClick={() => navigate('/master-pipeline')}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Back to Pipeline
+                </button>
+                {contact?.source_type && (
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    contact.source_type === 'Lead'
+                      ? 'bg-yellow-100 text-yellow-800'
+                      : 'bg-blue-100 text-blue-800'
+                  }`}>
+                    {contact.source_type}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <div className={`max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8 transition-all duration-300 ${
+          !isSidebarMinimized ? 'mr-[500px]' : 'mr-12'
+        }`}>
         {/* Tab Navigation */}
         <div className="border-b border-gray-200 mb-6">
           <nav className="-mb-px flex space-x-8">
@@ -238,8 +253,20 @@ const ContactDetailsPage: React.FC = () => {
             )}
           </>
         )}
+        </div>
       </div>
-    </div>
+
+      {/* Contact Sidebar */}
+      {contactId && contactId !== 'new' && (
+        <ContactSidebar
+          contactId={contactId}
+          isMinimized={isSidebarMinimized}
+          onMinimize={() => setIsSidebarMinimized(!isSidebarMinimized)}
+          onPropertyClick={(propertyId) => navigate(`/property/${propertyId}`)}
+          onDealClick={(dealId) => navigate(`/deal/${dealId}`)}
+        />
+      )}
+    </>
   );
 };
 
