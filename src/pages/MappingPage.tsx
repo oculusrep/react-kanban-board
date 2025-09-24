@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import GoogleMapContainer from '../components/mapping/GoogleMapContainer';
 import BatchGeocodingPanel from '../components/mapping/BatchGeocodingPanel';
+import PropertyLayer, { PropertyLoadingConfig, PropertyLoadingMode } from '../components/mapping/layers/PropertyLayer';
 import { geocodingService } from '../services/geocodingService';
 
 const MappingPage: React.FC = () => {
@@ -10,6 +11,11 @@ const MappingPage: React.FC = () => {
   const [isGeocodingTest, setIsGeocodingTest] = useState(false);
   const [showBatchPanel, setShowBatchPanel] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
+  const [showProperties, setShowProperties] = useState(false);
+  const [propertiesCount, setPropertiesCount] = useState(0);
+  const [propertyLoadingConfig, setPropertyLoadingConfig] = useState<PropertyLoadingConfig>({
+    mode: 'static-all'
+  });
 
   const handleMapLoad = (map: google.maps.Map) => {
     setMapInstance(map);
@@ -85,6 +91,19 @@ const MappingPage: React.FC = () => {
                   Centers on your location or Atlanta, GA
                 </div>
 
+                {/* Layer Toggle */}
+                <button
+                  onClick={() => setShowProperties(!showProperties)}
+                  className={`px-3 py-1 text-sm rounded border flex items-center space-x-2 transition-colors ${
+                    showProperties
+                      ? 'bg-green-100 hover:bg-green-200 text-green-700 border-green-300'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300'
+                  }`}
+                >
+                  <span>{showProperties ? '👁️' : '🙈'}</span>
+                  <span>Properties ({propertiesCount})</span>
+                </button>
+
                 {/* Admin Menu */}
                 <div className="relative">
                   <button
@@ -96,7 +115,7 @@ const MappingPage: React.FC = () => {
                   </button>
 
                   {showAdminMenu && (
-                    <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                    <div className="absolute right-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
                       <div className="py-1">
                         <button
                           onClick={() => {
@@ -108,6 +127,25 @@ const MappingPage: React.FC = () => {
                           <span>🏢</span>
                           <span>Batch Geocoding</span>
                         </button>
+
+                        <div className="border-t border-gray-200 px-4 py-2">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Property Loading Mode:
+                          </label>
+                          <select
+                            value={propertyLoadingConfig.mode}
+                            onChange={(e) => setPropertyLoadingConfig({ mode: e.target.value as PropertyLoadingMode })}
+                            className="w-full text-xs border border-gray-300 rounded px-2 py-1"
+                          >
+                            <option value="static-1000">📊 Static: 1,000 properties</option>
+                            <option value="static-2000">📊 Static: 2,000 properties</option>
+                            <option value="static-all">📊 Static: All properties</option>
+                            {/* <option value="bounds-based">🗺️ Dynamic: Visible area only</option> */}
+                          </select>
+                          <div className="text-xs text-gray-500 mt-1">
+                            🔒 Fixed dataset - {propertyLoadingConfig.mode === 'static-all' ? 'Complete' : 'Limited'} for performance
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -154,6 +192,14 @@ const MappingPage: React.FC = () => {
               className=""
             />
 
+            {/* Property Layer */}
+            <PropertyLayer
+              map={mapInstance}
+              isVisible={showProperties}
+              loadingConfig={propertyLoadingConfig}
+              onPropertiesLoaded={setPropertiesCount}
+            />
+
             {/* Optional Map Info Overlay (can be toggled) */}
             {mapInstance && (
               <div className="absolute bottom-4 left-4 bg-white bg-opacity-90 rounded-lg shadow-sm p-3 text-xs">
@@ -168,6 +214,14 @@ const MappingPage: React.FC = () => {
                     <span className="text-gray-500">Zoom:</span>
                     <span className="font-mono text-gray-900 ml-2">{mapInstance.getZoom()}</span>
                   </div>
+                  {propertiesCount > 0 && (
+                    <div>
+                      <span className="text-gray-500">Properties:</span>
+                      <span className="font-mono text-gray-900 ml-2">
+                        {propertiesCount} loaded ({propertyLoadingConfig.mode}), {showProperties ? 'visible' : 'hidden'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

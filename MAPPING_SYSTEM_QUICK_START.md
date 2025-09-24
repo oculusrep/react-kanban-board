@@ -7,9 +7,9 @@
 ## 🎯 Where We Are
 
 **Current Phase**: Phase 1 - Foundation & Geocoding
-**Completed**: 1.1 Google Maps Setup ✅, 1.2 Enhanced Geocoding ✅, 1.3 Batch Geocoding ✅
-**Next Task**: 1.4 Property Layer Foundation
-**Goal**: Create property layer with clustering for map visualization
+**Completed**: 1.1 Google Maps Setup ✅, 1.2 Enhanced Geocoding ✅, 1.3 Batch Geocoding ✅, 1.4 Property Layer Foundation ✅
+**Next Task**: Phase 2 - Data Layers & Filtering
+**Goal**: Complete mapping foundation ready for client portal features
 
 ---
 
@@ -43,34 +43,34 @@ const getDisplayCoordinates = (property) => {
 
 ## 🛠️ Next Development Session
 
-### **Start Here: Phase 1.4 Property Layer Foundation**
+### **Start Here: Phase 2 - Data Layers & Filtering**
 
 1. **Verify Current System**
    ```bash
    # Ensure dev server is running
    npm run dev
-   # Visit mapping page - should show clean interface
+   # Visit mapping page - fully functional property layer
    ```
 
-2. **Test Admin Functions**
+2. **Test Property Layer**
    - Visit `http://localhost:5173/mapping`
-   - Click "⚙️ Admin" dropdown in top navigation
-   - Click "🏢 Batch Geocoding" to open panel
-   - All properties should already be geocoded (0 need processing)
-   - Test panel close functionality
+   - Click "👁️ Properties" button to toggle property layer
+   - Should see all ~3,312 properties with clustering
+   - Navigate to Nashville, TN - properties should now be visible
+   - Test info windows by clicking markers
 
-3. **Ready for Property Layer**
+3. **Ready for Site Submits Layer**
    ```typescript
-   // Next: Create PropertyLayer component
-   // Goal: Display geocoded properties as markers on map
-   // Requirement: Handle 6,000+ markers with clustering
+   // Next: Create SiteSubmitsLayer component
+   // Goal: Client-specific site submits with stage filtering
+   // Requirement: Color-coded markers by stage
    ```
 
-4. **Map Marker Implementation**
-   - Create PropertyLayer.tsx component
-   - Integrate with Google Maps clustering
-   - Add toggle controls for layer visibility
-   - Connect to database with geocoded coordinates
+4. **Site Submits Implementation**
+   - Create SiteSubmitsLayer.tsx component
+   - Add client dropdown filter in admin menu
+   - Implement stage-based marker colors
+   - Add stage filter controls
 
 ### **Key Environment Variables**
 ```bash
@@ -95,19 +95,20 @@ LIMIT 10;
 
 ---
 
-## 📁 File Structure (What to Create)
+## 📁 File Structure (Current Status)
 
 ```
 src/components/mapping/
 ├── GoogleMapContainer.tsx        ← ✅ Complete
 ├── BatchGeocodingPanel.tsx       ← ✅ Complete
 ├── layers/
-│   └── PropertyLayer.tsx        ← Phase 1.4 (NEXT)
+│   ├── PropertyLayer.tsx        ← ✅ Complete (Phase 1.4)
+│   └── SiteSubmitsLayer.tsx     ← Phase 2.1 (NEXT)
 ├── hooks/
 │   ├── useGeocodingBatch.ts     ← ✅ Complete
 │   └── useMapData.ts            ← Phase 2.3
 └── services/
-    └── googleMapsService.ts     ← Phase 1.2
+    └── googleMapsService.ts     ← ✅ Complete
 ```
 
 ---
@@ -132,20 +133,21 @@ curl "https://maps.googleapis.com/maps/api/geocode/json?address=Atlanta,GA&key=Y
 
 ## 📊 Progress Check
 
-**Current Status**: ✅ Phase 1.3 Complete - Production-ready batch geocoding system
+**Current Status**: ✅ Phase 1.4 Complete - Full property layer with clustering and pagination
 
-**Today's Goal**: ✅ Full batch geocoding system with admin UX completed
+**Today's Goal**: ✅ Property markers display all ~3,312 properties with clustering
 
-**Next Goal**: Phase 1.4 Property Layer Foundation (display markers on map)
+**Next Goal**: Phase 2.1 Site Submits Layer (client-filtered data layer)
 
 ---
 
 ## 🚨 Important Notes
 
 ### **Performance Requirements**
-- Must handle 6,000+ markers with clustering
-- Layers should NOT load initially (toggle on-demand)
-- Use map bounds-based queries for efficiency
+- ✅ Handles 3,312 property markers with clustering
+- ✅ Layers toggle on-demand (not loaded initially)
+- Uses pagination to bypass 1000-row Supabase limit
+- **SCALING ALERT**: At 5,000+ properties, consider bounds-based loading
 
 ### **Access Control**
 - **Admin**: See all properties and site submits
@@ -188,7 +190,8 @@ The mapping page at `http://localhost:5173/mapping` features:
 **✅ Checkpoint 1.1**: Basic map renders, centered on Atlanta/user location
 **✅ Checkpoint 1.2**: Enhanced geocoding service with Google API + OSM fallback
 **✅ Checkpoint 1.3**: Batch geocoding fills missing property coordinates
-**⬜ Checkpoint 1.4**: Property layer with clustering and toggle functionality
+**✅ Checkpoint 1.4**: Property layer with clustering and toggle functionality
+**⬜ Checkpoint 2.1**: Site submits layer with client filtering and stage colors
 
 ---
 
@@ -207,4 +210,32 @@ The mapping page at `http://localhost:5173/mapping` features:
 - `MAPPING_SYSTEM_PROGRESS_TRACKER.md` - Detailed progress tracking
 - `MAPPING_SYSTEM_QUICK_START.md` - This file (quick context)
 
-**Ready for Phase 1.4! 🚀 Create PropertyLayer.tsx for map markers**
+**Ready for Phase 2.1! 🚀 Create SiteSubmitsLayer.tsx for client-filtered markers**
+
+---
+
+## 🚨 SCALING CONSIDERATIONS (Future Planning)
+
+### **Performance Thresholds**
+- **3,312 properties**: ✅ Current system handles well
+- **5,000 properties**: Start monitoring performance, consider optimizations
+- **7,500 properties**: Implement bounds-based loading as default
+- **10,000+ properties**: Requires server-side clustering
+
+### **Technical Issues at Scale**
+- **Browser Memory**: 10,000+ markers = 10-20MB memory usage
+- **Map Rendering**: Google Maps performance degrades after 5,000-10,000 markers
+- **Network Transfer**: Large datasets increase load times significantly
+- **Pagination Overhead**: Multiple API calls add latency
+
+### **Recommended Solutions (When Needed)**
+1. **Bounds-Based Loading**: Uncomment the bounds-based option in admin menu
+2. **Hybrid Approach**: Auto-switch based on dataset size
+3. **Virtual Clustering**: Pre-cluster data server-side
+4. **Progressive Loading**: Load high-priority areas first
+5. **Database Optimization**: Add spatial indexes, consider PostGIS
+
+### **Implementation Timeline**
+- Implement bounds-based loading when property count exceeds 5,000
+- Add server-side clustering when count exceeds 10,000
+- Monitor user feedback on performance at each threshold
