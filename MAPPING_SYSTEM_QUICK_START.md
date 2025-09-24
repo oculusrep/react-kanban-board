@@ -214,6 +214,32 @@ The mapping page at `http://localhost:5173/mapping` features:
 
 ---
 
+## 🔐 SECURITY RULES - API KEY DOCUMENTATION
+
+**⚠️ CRITICAL SECURITY RULE: NEVER include actual API keys in documentation files**
+
+### **Documentation Standards**:
+- ✅ **Always use placeholders**: `your_api_key_here`, `YOUR_KEY`, `[API_KEY]`
+- ❌ **Never use actual keys**: Real API keys belong only in `.env` files
+- 📝 **Key descriptions**: Include purpose and restrictions for each key
+- 🔍 **Review commits**: Check for exposed secrets before committing
+
+### **Approved Placeholder Formats**:
+```bash
+# Good examples
+VITE_GOOGLE_MAPS_API_KEY=your_maps_api_key_here
+VITE_API_KEY=[YOUR_API_KEY]
+DATABASE_URL=your_database_connection_string
+```
+
+### **Why This Matters**:
+- GitHub automatically scans for API keys in public repositories
+- Exposed keys can be used maliciously by anyone
+- Key rotation is required after any public exposure
+- Documentation should guide setup, not expose credentials
+
+---
+
 ## 🚨 SCALING CONSIDERATIONS (Future Planning)
 
 ### **Performance Thresholds**
