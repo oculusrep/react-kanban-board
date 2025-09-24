@@ -1,12 +1,43 @@
 import React, { useState } from 'react';
 import GoogleMapContainer from '../components/mapping/GoogleMapContainer';
+import { geocodingService } from '../services/geocodingService';
 
 const MappingPage: React.FC = () => {
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
+  const [testAddress, setTestAddress] = useState('1600 Amphitheatre Parkway, Mountain View, CA');
+  const [geocodeResult, setGeocodeResult] = useState<string>('');
+  const [isGeocodingTest, setIsGeocodingTest] = useState(false);
 
   const handleMapLoad = (map: google.maps.Map) => {
     setMapInstance(map);
     console.log('Map loaded successfully:', map);
+  };
+
+  const testGeocoding = async () => {
+    if (!testAddress.trim()) return;
+
+    setIsGeocodingTest(true);
+    setGeocodeResult('Testing geocoding...');
+
+    try {
+      console.log('🧪 Testing enhanced geocoding service...');
+      const result = await geocodingService.geocodeAddress(testAddress);
+
+      if ('latitude' in result) {
+        setGeocodeResult(`✅ Success (${result.provider}):
+        📍 ${result.latitude.toFixed(6)}, ${result.longitude.toFixed(6)}
+        📧 ${result.formatted_address}
+        🏙️ City: ${result.city || 'N/A'}
+        🗺️ State: ${result.state || 'N/A'}
+        📮 ZIP: ${result.zip || 'N/A'}`);
+      } else {
+        setGeocodeResult(`❌ Error: ${result.error} (${result.code})`);
+      }
+    } catch (error) {
+      setGeocodeResult(`❌ Exception: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsGeocodingTest(false);
+    }
   };
 
   return (
@@ -24,12 +55,41 @@ const MappingPage: React.FC = () => {
                     {mapInstance ? 'Ready' : 'Loading...'}
                   </span>
                 </div>
-                <div className="text-sm text-gray-500">Phase 1.1: Foundation</div>
+                <div className="text-sm text-gray-500">Phase 1.2: Enhanced Geocoding</div>
               </div>
             </div>
             <div className="text-sm text-gray-600">
-              Centers on your location or Atlanta, GA
+              Google API + OSM Fallback
             </div>
+          </div>
+        </div>
+
+        {/* Geocoding Test Panel */}
+        <div className="flex-shrink-0 bg-blue-50 border-b border-blue-200 px-4 py-2">
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <label className="text-sm font-medium text-blue-900">🧪 Test Geocoding:</label>
+              <input
+                type="text"
+                value={testAddress}
+                onChange={(e) => setTestAddress(e.target.value)}
+                placeholder="Enter address to geocode..."
+                className="px-3 py-1 border border-blue-300 rounded text-sm w-80"
+                disabled={isGeocodingTest}
+              />
+              <button
+                onClick={testGeocoding}
+                disabled={isGeocodingTest || !testAddress.trim()}
+                className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isGeocodingTest ? 'Testing...' : 'Test'}
+              </button>
+            </div>
+            {geocodeResult && (
+              <div className="flex-1 text-xs font-mono bg-white rounded px-2 py-1 border max-w-md overflow-hidden">
+                <pre className="whitespace-pre-wrap">{geocodeResult}</pre>
+              </div>
+            )}
           </div>
         </div>
 

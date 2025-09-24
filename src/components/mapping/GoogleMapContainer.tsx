@@ -63,17 +63,24 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
   };
 
   useEffect(() => {
+    let isMounted = true;
+
     const initializeMap = async () => {
-      if (!mapRef.current) return;
+      if (!mapRef.current || !isMounted) {
+        return;
+      }
 
       try {
         console.log('🗺️ Starting map initialization...');
         setIsLoading(true);
         setError(null);
 
-        // Get user location first
+        // Get user location first (only if mounted)
         console.log('📍 Getting user location...');
         const location = await getUserLocation();
+
+        if (!isMounted) return; // Check if component is still mounted
+
         setUserLocation(location);
         console.log('📍 Location result:', location);
 
@@ -88,7 +95,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           throw new Error('Google Maps API key is not configured. Check VITE_GOOGLE_MAPS_API_KEY in .env');
         }
 
-        // Initialize Google Maps loader
+        // Initialize Google Maps loader with consistent libraries
         const loader = new Loader({
           apiKey: apiKey,
           version: 'weekly',
@@ -98,12 +105,22 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         // Load Google Maps
         console.log('🔄 Loading Google Maps API...');
         const google = await loader.load();
+
+        if (!isMounted) return; // Check if component is still mounted
+
         console.log('✅ Google Maps API loaded successfully');
+
+        // Verify DOM element exists before creating map
+        if (!mapRef.current) {
+          throw new Error('Map container element not found');
+        }
+
+        console.log('✅ Creating map instance...');
 
         // Create map instance
         const map = new google.maps.Map(mapRef.current, {
           center: mapCenter,
-          zoom: location ? 12 : 10, // Zoom closer if we have user location
+          zoom: location ? 12 : 10,
           mapTypeId: google.maps.MapTypeId.ROADMAP,
           mapTypeControl: true,
           streetViewControl: true,
@@ -113,7 +130,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         });
 
         // Add a marker at the center location
-        const marker = new google.maps.Marker({
+        const marker = new (google.maps as any).Marker({
           position: mapCenter,
           map: map,
           title: location ? 'Your Location' : 'Atlanta, GA',
@@ -150,6 +167,8 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           infoWindow.open(map, marker);
         });
 
+        if (!isMounted) return; // Final check before setting state
+
         // Store map instance
         mapInstanceRef.current = map;
 
@@ -162,13 +181,28 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         setIsLoading(false);
 
       } catch (error) {
+        if (!isMounted) return;
         console.error('❌ Error initializing Google Maps:', error);
         setError(error instanceof Error ? error.message : 'Failed to load map');
         setIsLoading(false);
       }
     };
 
-    initializeMap();
+    // Initialize map immediately if ref is available
+    if (mapRef.current) {
+      initializeMap();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, []); // Remove onMapLoad dependency to prevent re-initialization
+
+  // Handle onMapLoad callback changes without re-initializing the map
+  useEffect(() => {
+    if (mapInstanceRef.current && onMapLoad) {
+      onMapLoad(mapInstanceRef.current);
+    }
   }, [onMapLoad]);
 
   // Cleanup on unmount

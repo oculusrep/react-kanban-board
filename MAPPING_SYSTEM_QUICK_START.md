@@ -7,8 +7,9 @@
 ## 🎯 Where We Are
 
 **Current Phase**: Phase 1 - Foundation & Geocoding
-**Next Task**: 1.1 Google Maps API Setup
-**Goal**: Get basic Google Maps rendering with property data
+**Completed**: 1.1 Google Maps Setup ✅, 1.2 Enhanced Geocoding ✅
+**Next Task**: 1.3 Batch Geocoding Implementation
+**Goal**: Process properties needing coordinates from database
 
 ---
 
@@ -42,37 +43,49 @@ const getDisplayCoordinates = (property) => {
 
 ## 🛠️ Next Development Session
 
-### **Start Here: Phase 1.1 Google Maps API Setup**
+### **Start Here: Phase 1.3 Batch Geocoding Implementation**
 
-1. **Environment Check**
+1. **Verify Current Setup**
    ```bash
-   # Verify API keys are in .env
+   # Check both API keys are configured
    cat .env | grep GOOGLE
+   # Should show both VITE_GOOGLE_MAPS_API_KEY and VITE_GOOGLE_GEOCODING_API_KEY
    ```
 
-2. **Install Dependencies** (if not done)
-   ```bash
-   npm install @googlemaps/js-api-loader @types/google.maps
-   ```
+2. **Test Current Geocoding**
+   - Visit `http://localhost:5173/mapping`
+   - Use blue test panel to verify Google geocoding works
+   - Should see "Success (google)" results
 
-3. **Create Basic Map Component**
+3. **Ready for Batch Processing**
    ```typescript
-   // Create: src/components/mapping/GoogleMapContainer.tsx
-   // Goal: Basic map centered on Atlanta, GA with user location fallback
+   // Next: Create hook for batch geocoding UI
+   // Goal: Process properties missing coordinates from database
    ```
 
-4. **Test Map Rendering**
-   - Add GoogleMapContainer to a test page
-   - Verify map loads without errors
-   - Test user geolocation permission
+4. **Database Integration**
+   - Use existing `getPropertiesNeedingGeocoding()` function
+   - Process in batches with progress tracking
+   - Update property coordinates in database
 
-### **Quick Database Query to Test With**
+### **Key Environment Variables**
+```bash
+# Two separate API keys for security
+VITE_GOOGLE_MAPS_API_KEY=AIzaSyCkyg8AffmFMfd4rGfFLFe9rKEvn4-Mx1U
+VITE_GOOGLE_GEOCODING_API_KEY=AIzaSyCmOVZRorUZzNDDPz52_QKpZ8nYW3XShWs
+```
+
+### **Database Query to Find Properties Needing Geocoding**
 ```sql
--- Get first 10 properties with coordinates for testing
-SELECT id, property_name, address, city, state,
-       latitude, longitude, verified_latitude, verified_longitude
+-- Properties missing coordinates (both regular AND verified coordinates are null)
+SELECT id, property_name, address, city, state, zip
 FROM property
-WHERE (latitude IS NOT NULL OR verified_latitude IS NOT NULL)
+WHERE latitude IS NULL
+  AND longitude IS NULL
+  AND verified_latitude IS NULL
+  AND verified_longitude IS NULL
+  AND address IS NOT NULL
+  AND address != ''
 LIMIT 10;
 ```
 
@@ -140,10 +153,30 @@ curl "https://maps.googleapis.com/maps/api/geocode/json?address=Atlanta,GA&key=Y
 
 ---
 
+## 🧪 Testing Interface
+
+The mapping page at `http://localhost:5173/mapping` includes:
+
+### **Blue Test Panel Features**
+- **Address Input**: Test any address for geocoding
+- **Real-time Results**: See provider (google/openstreetmap) and detailed parsing
+- **Error Debugging**: View specific API error messages
+- **Success Validation**: Confirm coordinates, formatted address, city/state/ZIP parsing
+
+### **Expected Output**
+```
+✅ Success (google):
+📍 33.918085, -84.465807
+📧 [Full formatted address from Google]
+🏙️ City: [Parsed city]
+🗺️ State: [Parsed state]
+📮 ZIP: [Parsed ZIP]
+```
+
 ## 🎯 Quick Success Checkpoints
 
 **✅ Checkpoint 1.1**: Basic map renders, centered on Atlanta/user location
-**⬜ Checkpoint 1.2**: Enhanced geocoding service with Google API + OSM fallback
+**✅ Checkpoint 1.2**: Enhanced geocoding service with Google API + OSM fallback
 **⬜ Checkpoint 1.3**: Batch geocoding fills missing property coordinates
 **⬜ Checkpoint 1.4**: Property layer with clustering and toggle functionality
 

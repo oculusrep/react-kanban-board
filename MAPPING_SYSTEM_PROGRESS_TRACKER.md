@@ -7,7 +7,7 @@
 
 ## 📊 Overall Progress
 
-**Phase 1**: ⬜ 0% Complete (0/4 sections)
+**Phase 1**: 🔄 50% Complete (2/4 sections)
 **Phase 2**: ⬜ 0% Complete (0/4 sections)
 **Phase 3**: ⬜ 0% Complete (0/4 sections)
 **Phase 4**: ⬜ 0% Complete (0/4 sections)
@@ -30,14 +30,22 @@
 
 ---
 
-### 1.2 Enhanced Geocoding Service ⬜ Not Started
-- [ ] Upgrade existing geocodingService.ts to use Google Geocoding API
-- [ ] Keep OpenStreetMap as fallback for rate limiting
-- [ ] Add batch geocoding with rate limiting (respect Google quotas)
-- [ ] Create database queries to identify properties missing coordinates
+### 1.2 Enhanced Geocoding Service ✅ Complete
+- [x] Upgrade existing geocodingService.ts to use Google Geocoding API
+- [x] Keep OpenStreetMap as fallback for rate limiting
+- [x] Add batch geocoding with rate limiting (respect Google quotas)
+- [x] Create database queries to identify properties missing coordinates
 
-**Status**: ⬜ Not Started
+**Status**: ✅ Complete
 **Notes**:
+- ✅ Google Geocoding API integrated as primary service with proper API key separation
+- ✅ OpenStreetMap Nominatim fallback system working correctly
+- ✅ Rate limiting implemented (Google: 100ms, OSM: 1100ms between requests)
+- ✅ Batch processing system with progress tracking and retry logic
+- ✅ Database integration functions for finding/updating properties missing coordinates
+- ✅ Interactive test interface added to mapping page with detailed result display
+- ✅ Comprehensive error handling and logging for debugging
+- ✅ API key security: Separate keys for Maps JS API vs Geocoding API
 
 ---
 
@@ -204,7 +212,28 @@
 
 **Current Blockers**: None
 
-**Resolved Issues**: None
+**Resolved Issues**:
+- ✅ **Google Maps Marker Deprecation Warning**: Using legacy API temporarily, will upgrade to AdvancedMarkerElement in Phase 1.4
+- ✅ **API Key Referer Restrictions**: Separated Maps JavaScript API key from Geocoding API key for proper security
+- ✅ **Geocoding API REQUEST_DENIED**: Issue was referer restrictions blocking REST API calls vs browser-based API calls
+
+## 🔑 Critical Learnings & API Key Architecture
+
+### **API Key Separation Strategy**
+**Problem**: Single API key with HTTP referer restrictions blocked Geocoding API (REST) while allowing Maps JavaScript API (browser)
+
+**Solution**: Two separate API keys with different restriction types:
+
+| API Key | Purpose | Restrictions | APIs Enabled |
+|---------|---------|--------------|--------------|
+| `VITE_GOOGLE_MAPS_API_KEY` | Browser-based mapping | HTTP Referrers | Maps JavaScript API, Places API |
+| `VITE_GOOGLE_GEOCODING_API_KEY` | Address geocoding | None/IP restrictions | Geocoding API only |
+
+### **Why This Separation is Critical**
+- **Security**: Each key has minimum required permissions (principle of least privilege)
+- **Functionality**: Different Google APIs have different restriction requirements
+- **Monitoring**: Separate usage tracking and quota management per service
+- **Flexibility**: Can rotate/disable keys independently
 
 ---
 
@@ -222,6 +251,32 @@
 - Get basic map rendering working
 
 **Notes**: Project officially started with full requirements documented.
+
+---
+
+### Day 2 - September 24, 2025
+**Focus**: Phase 1.1 & 1.2 - Google Maps Foundation + Enhanced Geocoding
+**Completed**:
+- ✅ **Phase 1.1**: Basic Google Maps rendering with user location detection
+- ✅ Fixed Google Maps initialization and component stability issues
+- ✅ Resolved API key referer restrictions for GitHub Codespaces
+- ✅ **Phase 1.2**: Enhanced geocoding service with Google API + OSM fallback
+- ✅ Implemented proper API key separation architecture
+- ✅ Added rate limiting and batch processing capabilities
+- ✅ Created interactive test interface for geocoding validation
+- ✅ Comprehensive debugging and error handling system
+
+**Key Breakthroughs**:
+- **API Key Architecture**: Discovered need for separate keys (Maps JS vs Geocoding API)
+- **Debugging System**: Enhanced logging revealed exact failure points
+- **Fallback Strategy**: Google→OSM system working perfectly
+
+**Next Day Goals**:
+- Begin Phase 1.3: Batch Geocoding Implementation
+- Process actual property database records
+- Implement progress tracking for batch operations
+
+**Notes**: Solid foundation established. Ready to geocode production property data.
 
 ---
 
