@@ -75,8 +75,8 @@ const getDisplayCoordinates = (property) => {
 ### **Key Environment Variables**
 ```bash
 # Two separate API keys for security
-VITE_GOOGLE_MAPS_API_KEY=AIzaSyCkyg8AffmFMfd4rGfFLFe9rKEvn4-Mx1U
-VITE_GOOGLE_GEOCODING_API_KEY=AIzaSyCmOVZRorUZzNDDPz52_QKpZ8nYW3XShWs
+VITE_GOOGLE_MAPS_API_KEY=your_maps_api_key_here
+VITE_GOOGLE_GEOCODING_API_KEY=your_geocoding_api_key_here
 ```
 
 ### **Database Query to Find Properties Needing Geocoding**

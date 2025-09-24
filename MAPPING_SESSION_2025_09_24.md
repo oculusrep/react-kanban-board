@@ -52,8 +52,8 @@
 
 **Solution**: Separate API keys with appropriate restrictions
 ```bash
-VITE_GOOGLE_MAPS_API_KEY=AIzaSyCkyg8AffmFMfd4rGfFLFe9rKEvn4-Mx1U      # Maps JS + Places
-VITE_GOOGLE_GEOCODING_API_KEY=AIzaSyCmOVZRorUZzNDDPz52_QKpZ8nYW3XShWs  # Geocoding only
+VITE_GOOGLE_MAPS_API_KEY=your_maps_api_key_here      # Maps JS + Places
+VITE_GOOGLE_GEOCODING_API_KEY=your_geocoding_api_key_here  # Geocoding only
 ```
 
 ### **Debugging Process**
