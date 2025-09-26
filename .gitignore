@@ -2,6 +2,10 @@ node_modules
 node_modules/
 node_modules/
 
+# Build output (contains bundled code with potential secrets)
+dist/
+build/
+
 # Environment variables (NEVER commit these)
 .env
 .env.local
