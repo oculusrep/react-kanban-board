@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import GoogleMapContainer from '../components/mapping/GoogleMapContainer';
 import BatchGeocodingPanel from '../components/mapping/BatchGeocodingPanel';
 import PropertyLayer, { PropertyLoadingConfig } from '../components/mapping/layers/PropertyLayer';
 import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/layers/SiteSubmitLayer';
 import LayerPanel from '../components/mapping/LayerPanel';
+import MapContextMenu from '../components/mapping/MapContextMenu';
 import { LayerManagerProvider, useLayerManager } from '../components/mapping/layers/LayerManager';
 import { geocodingService } from '../services/geocodingService';
 import SiteSubmitFormModal from '../components/SiteSubmitFormModal';
+import InlinePropertyCreationModal from '../components/mapping/InlinePropertyCreationModal';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { supportsRightClick } from '../utils/deviceDetection';
 
 // Inner component that uses the LayerManager context
 const MappingPageContent: React.FC = () => {
@@ -20,10 +23,29 @@ const MappingPageContent: React.FC = () => {
 
   // Modal states
   const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false);
+  const [showPropertyModal, setShowPropertyModal] = useState(false);
   const [pinDropCoordinates, setPinDropCoordinates] = useState<{lat: number, lng: number} | null>(null);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
+  const [recentlyCreatedPropertyIds, setRecentlyCreatedPropertyIds] = useState<Set<string>>(new Set());
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    isVisible: boolean;
+    x: number;
+    y: number;
+    coordinates: { lat: number; lng: number } | null;
+  }>({
+    isVisible: false,
+    x: 0,
+    y: 0,
+    coordinates: null,
+  });
 
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Get layer state from context
+  const { layerState, setLayerCount, setLayerLoading, setLayerError, createMode, refreshLayer } = useLayerManager();
 
   // Check for property creation success and refresh layer
   useEffect(() => {
@@ -39,15 +61,15 @@ const MappingPageContent: React.FC = () => {
     }
   }, [location.search, refreshLayer]);
 
-  // Get layer state from context
-  const { layerState, setLayerCount, setLayerLoading, setLayerError, createMode, refreshLayer } = useLayerManager();
-
   const handleMapLoad = (map: google.maps.Map) => {
     setMapInstance(map);
     console.log('Map loaded successfully:', map);
 
     // Add click listener for pin dropping
     map.addListener('click', (event: google.maps.MapMouseEvent) => {
+      // Close context menu on any click
+      setContextMenu(prev => ({ ...prev, isVisible: false }));
+
       if (createMode && event.latLng) {
         const lat = event.latLng.lat();
         const lng = event.latLng.lng();
@@ -61,30 +83,75 @@ const MappingPageContent: React.FC = () => {
           case 'site_submit':
             openSiteSubmitCreationModal(lat, lng);
             break;
-          case 'activity':
-            console.log('🚧 Activity creation not implemented yet');
-            break;
         }
       }
     });
+
+    // Add right-click listener for desktop context menu
+    if (supportsRightClick()) {
+      const mapDiv = map.getDiv();
+
+      mapDiv.addEventListener('contextmenu', (e: MouseEvent) => {
+        e.preventDefault(); // Prevent browser context menu
+
+        // Get coordinates from the click position
+        const bounds = mapDiv.getBoundingClientRect();
+        const x = e.clientX - bounds.left;
+        const y = e.clientY - bounds.top;
+
+        // Convert pixel position to lat/lng
+        const projection = map.getProjection();
+        if (projection) {
+          const ne = map.getBounds()?.getNorthEast();
+          const sw = map.getBounds()?.getSouthWest();
+
+          if (ne && sw) {
+            const lat = sw.lat() + (ne.lat() - sw.lat()) * (1 - y / bounds.height);
+            const lng = sw.lng() + (ne.lng() - sw.lng()) * (x / bounds.width);
+
+            setContextMenu({
+              isVisible: true,
+              x: e.clientX,
+              y: e.clientY,
+              coordinates: { lat, lng },
+            });
+          }
+        }
+      });
+    }
   };
 
   // Modal handlers for pin dropping
   const openPropertyCreationModal = (lat: number, lng: number) => {
     console.log('🏢 Opening property creation with coordinates:', { lat, lng });
-    // Navigate to new property page with coordinates as URL params
-    const params = new URLSearchParams({
-      lat: lat.toString(),
-      lng: lng.toString(),
-      source: 'map-pin'
-    });
-    navigate(`/property/new?${params.toString()}`);
+    setPinDropCoordinates({ lat, lng });
+    setShowPropertyModal(true);
   };
 
   const openSiteSubmitCreationModal = (lat: number, lng: number) => {
     console.log('📍 Opening site submit creation modal with coordinates:', { lat, lng });
     setPinDropCoordinates({ lat, lng });
     setShowSiteSubmitModal(true);
+  };
+
+  // Handle property creation success
+  const handlePropertyCreated = (property: any) => {
+    console.log('✅ Property created successfully:', property);
+
+    // Add to recently created set
+    setRecentlyCreatedPropertyIds(prev => new Set([...prev, property.id]));
+
+    // Auto-remove from recently created after 30 seconds
+    setTimeout(() => {
+      setRecentlyCreatedPropertyIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(property.id);
+        return newSet;
+      });
+    }, 30000);
+
+    // Refresh the property layer to show the new item
+    refreshLayer('properties');
   };
 
   // Handle site submit creation success
@@ -95,9 +162,26 @@ const MappingPageContent: React.FC = () => {
   };
 
   // Handle modal close
+  const handlePropertyModalClose = () => {
+    setShowPropertyModal(false);
+    setPinDropCoordinates(null);
+  };
+
   const handleSiteSubmitModalClose = () => {
     setShowSiteSubmitModal(false);
     setPinDropCoordinates(null);
+    setSelectedPropertyId(null);
+  };
+
+  // Context menu handlers
+  const handleContextMenuCreateProperty = () => {
+    if (contextMenu.coordinates) {
+      openPropertyCreationModal(contextMenu.coordinates.lat, contextMenu.coordinates.lng);
+    }
+  };
+
+  const handleContextMenuClose = () => {
+    setContextMenu(prev => ({ ...prev, isVisible: false }));
   };
 
   const testGeocoding = async () => {
@@ -127,15 +211,15 @@ const MappingPageContent: React.FC = () => {
     }
   };
 
-  // Property layer configuration (simplified)
-  const propertyLoadingConfig: PropertyLoadingConfig = {
+  // Property layer configuration (memoized to prevent infinite re-renders)
+  const propertyLoadingConfig: PropertyLoadingConfig = useMemo(() => ({
     mode: 'static-all'
-  };
+  }), []);
 
-  // Site submit layer configuration (simplified)
-  const siteSubmitLoadingConfig: SiteSubmitLoadingConfig = {
+  // Site submit layer configuration (memoized to prevent infinite re-renders)
+  const siteSubmitLoadingConfig: SiteSubmitLoadingConfig = useMemo(() => ({
     mode: 'static-100'
-  };
+  }), []);
 
   return (
     <div className="h-screen w-screen bg-gray-50 overflow-hidden">
@@ -256,7 +340,7 @@ const MappingPageContent: React.FC = () => {
                   <span className="font-medium">
                     {createMode === 'property' ? 'Click map to create Property' :
                      createMode === 'site_submit' ? 'Click map to create Site Submit' :
-                     'Click map to create Activity'}
+                     'Click map to create item'}
                   </span>
                 </div>
               </div>
@@ -267,10 +351,20 @@ const MappingPageContent: React.FC = () => {
               map={mapInstance}
               isVisible={layerState.properties?.isVisible || false}
               loadingConfig={propertyLoadingConfig}
+              recentlyCreatedIds={recentlyCreatedPropertyIds}
               onPropertiesLoaded={(count) => {
                 setLayerCount('properties', count);
                 setLayerLoading('properties', false);
                 console.log('🏢 Properties loaded, visibility:', layerState.properties?.isVisible);
+              }}
+              onCreateSiteSubmit={(property) => {
+                // Set property coordinates and ID, then open site submit modal
+                const coords = property.verified_latitude && property.verified_longitude
+                  ? { lat: property.verified_latitude, lng: property.verified_longitude }
+                  : { lat: property.latitude, lng: property.longitude };
+                setPinDropCoordinates(coords);
+                setSelectedPropertyId(property.id);
+                setShowSiteSubmitModal(true);
               }}
             />
 
@@ -288,14 +382,35 @@ const MappingPageContent: React.FC = () => {
             {/* Modern Layer Panel */}
             <LayerPanel />
 
+            {/* Property Creation Modal */}
+            {pinDropCoordinates && (
+              <InlinePropertyCreationModal
+                isOpen={showPropertyModal}
+                onClose={handlePropertyModalClose}
+                onSave={handlePropertyCreated}
+                coordinates={pinDropCoordinates}
+              />
+            )}
+
             {/* Site Submit Modal */}
             <SiteSubmitFormModal
               isOpen={showSiteSubmitModal}
               onClose={handleSiteSubmitModalClose}
               onSave={handleSiteSubmitCreated}
-              // Pre-fill coordinates from pin drop
+              // Pre-fill coordinates and property from property selection
+              propertyId={selectedPropertyId || undefined}
               initialLatitude={pinDropCoordinates?.lat}
               initialLongitude={pinDropCoordinates?.lng}
+            />
+
+            {/* Context Menu for Desktop Right-Click */}
+            <MapContextMenu
+              x={contextMenu.x}
+              y={contextMenu.y}
+              isVisible={contextMenu.isVisible}
+              coordinates={contextMenu.coordinates}
+              onCreateProperty={handleContextMenuCreateProperty}
+              onClose={handleContextMenuClose}
             />
 
             {/* Map Info Overlay */}
@@ -312,9 +427,34 @@ const MappingPageContent: React.FC = () => {
                     <span className="text-gray-500">Zoom:</span>
                     <span className="font-mono text-gray-900 ml-2">{mapInstance.getZoom()}</span>
                   </div>
+
+                  {/* Pin Color Legend */}
+                  <div className="mt-3 pt-2 border-t border-gray-200">
+                    <div className="text-gray-600 font-medium mb-1">Pin Colors:</div>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                        <span className="text-gray-600">Recently Created</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <span className="text-gray-600">Verified Location</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                        <span className="text-gray-600">Geocoded Location</span>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="text-xs text-gray-400 mt-2">
                     🗺️ Modern Layer Management Active
                   </div>
+                  {supportsRightClick() && (
+                    <div className="text-xs text-gray-400 mt-1">
+                      💡 Right-click to create properties
+                    </div>
+                  )}
                 </div>
               </div>
             )}

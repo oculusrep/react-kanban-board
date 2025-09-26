@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 
 // Layer configuration types
 export interface LayerConfig {
@@ -13,7 +13,7 @@ export interface LayerConfig {
   permissions?: LayerPermissions; // For future use
 }
 
-export type LayerType = 'property' | 'site_submit' | 'activity' | 'custom';
+export type LayerType = 'property' | 'site_submit' | 'custom';
 
 export interface LayerPermissions {
   canView: boolean;
@@ -58,7 +58,7 @@ export interface LayerManagerContextType {
   setCreateMode: (mode: CreateMode | null) => void;
 }
 
-export type CreateMode = 'property' | 'site_submit' | 'activity';
+export type CreateMode = 'property' | 'site_submit';
 
 // Default system layers
 const DEFAULT_LAYERS: LayerConfig[] = [
@@ -68,7 +68,7 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     type: 'property',
     icon: '🏢',
     description: 'All properties in the system',
-    defaultVisible: false,
+    defaultVisible: true,
     isSystemLayer: true,
   },
   {
@@ -79,17 +79,8 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     description: 'Site submission data with stage-based visualization',
     defaultVisible: false,
     isSystemLayer: true,
-  },
-  // Future layers can be added here
-  {
-    id: 'activities',
-    name: 'Activities',
-    type: 'activity',
-    icon: '📋',
-    description: 'Activity and task data',
-    defaultVisible: false,
-    isSystemLayer: true,
   }
+  // Future layers can be added here
 ];
 
 const LayerManagerContext = createContext<LayerManagerContextType | undefined>(undefined);
@@ -127,7 +118,7 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     setLayerState(initialState);
   }, []); // Empty dependency array - run only once
 
-  const toggleLayer = (layerId: string) => {
+  const toggleLayer = useCallback((layerId: string) => {
     setLayerState(prev => ({
       ...prev,
       [layerId]: {
@@ -135,9 +126,9 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
         isVisible: !prev[layerId]?.isVisible,
       }
     }));
-  };
+  }, []);
 
-  const setLayerCount = (layerId: string, count: number) => {
+  const setLayerCount = useCallback((layerId: string, count: number) => {
     setLayerState(prev => ({
       ...prev,
       [layerId]: {
@@ -146,9 +137,9 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
         lastUpdated: new Date(),
       }
     }));
-  };
+  }, []);
 
-  const setLayerLoading = (layerId: string, isLoading: boolean) => {
+  const setLayerLoading = useCallback((layerId: string, isLoading: boolean) => {
     setLayerState(prev => ({
       ...prev,
       [layerId]: {
@@ -156,9 +147,9 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
         isLoading,
       }
     }));
-  };
+  }, []);
 
-  const setLayerError = (layerId: string, hasError: boolean) => {
+  const setLayerError = useCallback((layerId: string, hasError: boolean) => {
     setLayerState(prev => ({
       ...prev,
       [layerId]: {
@@ -166,24 +157,34 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
         hasError,
       }
     }));
-  };
+  }, []);
 
-  const refreshLayer = (layerId: string) => {
+  const refreshLayer = useCallback((layerId: string) => {
     console.log(`🔄 Refreshing layer: ${layerId}`);
     // Set loading state
-    setLayerLoading(layerId, true);
+    setLayerState(prev => ({
+      ...prev,
+      [layerId]: {
+        ...prev[layerId],
+        isLoading: true,
+      }
+    }));
     // Increment refresh trigger to force re-fetch in layer components
     setRefreshTrigger(prev => ({
       ...prev,
       [layerId]: (prev[layerId] || 0) + 1
     }));
-  };
+  }, []);
 
-  const togglePanel = () => {
+  const togglePanel = useCallback(() => {
     setIsPanelOpen(prev => !prev);
-  };
+  }, []);
 
-  const value: LayerManagerContextType = {
+  const memoizedRefreshTrigger = useMemo(() => refreshTrigger, [
+    JSON.stringify(refreshTrigger)
+  ]);
+
+  const value: LayerManagerContextType = useMemo(() => ({
     layers,
     layerState,
     toggleLayer,
@@ -191,12 +192,25 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     setLayerLoading,
     setLayerError,
     refreshLayer,
-    refreshTrigger,
+    refreshTrigger: memoizedRefreshTrigger,
     isPanelOpen,
     togglePanel,
     createMode,
     setCreateMode,
-  };
+  }), [
+    layers,
+    layerState,
+    toggleLayer,
+    setLayerCount,
+    setLayerLoading,
+    setLayerError,
+    refreshLayer,
+    memoizedRefreshTrigger,
+    isPanelOpen,
+    togglePanel,
+    createMode,
+    setCreateMode,
+  ]);
 
   return (
     <LayerManagerContext.Provider value={value}>

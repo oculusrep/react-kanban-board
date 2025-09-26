@@ -28,9 +28,18 @@ interface PropertyLayerProps {
   isVisible: boolean;
   loadingConfig: PropertyLoadingConfig;
   onPropertiesLoaded?: (count: number) => void;
+  onCreateSiteSubmit?: (property: Property) => void;
+  recentlyCreatedIds?: Set<string>; // Track recently created properties
 }
 
-const PropertyLayer: React.FC<PropertyLayerProps> = ({ map, isVisible, loadingConfig, onPropertiesLoaded }) => {
+const PropertyLayer: React.FC<PropertyLayerProps> = ({
+  map,
+  isVisible,
+  loadingConfig,
+  onPropertiesLoaded,
+  onCreateSiteSubmit,
+  recentlyCreatedIds = new Set()
+}) => {
   const [properties, setProperties] = useState<Property[]>([]);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
   const [clusterer, setClusterer] = useState<MarkerClusterer | null>(null);
@@ -185,6 +194,15 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({ map, isVisible, loadingCo
       );
 
       console.log(`📍 Found ${validProperties.length} properties with coordinates (${loadingConfig.mode})`);
+
+      // Debug: Log a few properties to see their coordinate data
+      if (validProperties.length > 0) {
+        console.log('🔍 Sample properties:', validProperties.slice(0, 3).map(p => ({
+          id: p.id,
+          name: p.property_name,
+          coords: getDisplayCoordinates(p)
+        })));
+      }
       setProperties(validProperties);
       onPropertiesLoaded?.(validProperties.length);
 
@@ -200,7 +218,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({ map, isVisible, loadingCo
   const createMarkers = () => {
     if (!map || !properties.length) return;
 
-    console.log('🗺️ Creating markers for properties...');
+    console.log('🗺️ Creating markers for properties...', properties.length, 'properties');
 
     // Clear existing markers
     markers.forEach(marker => marker.setMap(null));
@@ -210,6 +228,17 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({ map, isVisible, loadingCo
       if (!coords) return null;
 
       // Create info window content
+      const createSiteSubmitButton = onCreateSiteSubmit ? `
+        <div class="mt-3 pt-3 border-t border-gray-200">
+          <button
+            id="create-site-submit-${property.id}"
+            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-3 rounded text-sm transition-colors"
+          >
+            📍 Create Site Submit
+          </button>
+        </div>
+      ` : '';
+
       const infoContent = `
         <div class="p-3 max-w-sm">
           <h3 class="font-semibold text-lg text-gray-900 mb-2">
@@ -221,10 +250,11 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({ map, isVisible, loadingCo
             ${property.state ? `<div><strong>State:</strong> ${property.state}</div>` : ''}
             ${property.zip ? `<div><strong>ZIP:</strong> ${property.zip}</div>` : ''}
             <div><strong>Coordinates:</strong> ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}</div>
-            <div class="text-xs ${coords.verified ? 'text-green-600' : 'text-blue-600'}">
-              ${coords.verified ? '✓ Verified Location' : '📍 Geocoded Location'}
+            <div class="text-xs ${isRecentlyCreated ? 'text-red-600' : coords.verified ? 'text-green-600' : 'text-blue-600'}">
+              ${isRecentlyCreated ? '🆕 Recently Created' : coords.verified ? '✓ Verified Location' : '📍 Geocoded Location'}
             </div>
           </div>
+          ${createSiteSubmitButton}
         </div>
       `;
 
@@ -232,14 +262,24 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({ map, isVisible, loadingCo
         content: infoContent
       });
 
+      // Determine marker color based on property type and recent creation
+      const isRecentlyCreated = recentlyCreatedIds.has(property.id);
+      let iconUrl: string;
+
+      if (isRecentlyCreated) {
+        iconUrl = 'https://maps.google.com/mapfiles/ms/icons/red-dot.png'; // Recently created - red
+      } else if (coords.verified) {
+        iconUrl = 'https://maps.google.com/mapfiles/ms/icons/green-dot.png'; // Verified - green
+      } else {
+        iconUrl = 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png'; // Geocoded - blue
+      }
+
       const marker = new google.maps.Marker({
         position: { lat: coords.lat, lng: coords.lng },
         map: null, // Don't show initially
         title: property.property_name || property.address,
         icon: {
-          url: coords.verified
-            ? 'https://maps.google.com/mapfiles/ms/icons/green-dot.png'  // Verified - green
-            : 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',  // Geocoded - blue
+          url: iconUrl,
           scaledSize: new google.maps.Size(32, 32),
           origin: new google.maps.Point(0, 0),
           anchor: new google.maps.Point(16, 32)
@@ -248,6 +288,21 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({ map, isVisible, loadingCo
 
       marker.addListener('click', () => {
         infoWindow.open(map, marker);
+
+        // Add event listener for the site submit button after info window opens
+        if (onCreateSiteSubmit) {
+          // Use setTimeout to ensure the DOM element exists
+          setTimeout(() => {
+            const button = document.getElementById(`create-site-submit-${property.id}`);
+            if (button) {
+              button.addEventListener('click', (e) => {
+                e.stopPropagation();
+                infoWindow.close();
+                onCreateSiteSubmit(property);
+              });
+            }
+          }, 100);
+        }
       });
 
       return marker;
@@ -297,6 +352,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({ map, isVisible, loadingCo
   // Get refresh trigger from LayerManager
   const { refreshTrigger } = useLayerManager();
   const propertyRefreshTrigger = refreshTrigger.properties || 0;
+
 
   // Load properties when component mounts or map/config changes or refresh is triggered
   useEffect(() => {

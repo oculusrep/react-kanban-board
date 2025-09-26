@@ -2,6 +2,7 @@ export interface GeocodeResult {
   latitude: number;
   longitude: number;
   formatted_address: string;
+  street_address?: string;
   city?: string;
   state?: string;
   zip?: string;
@@ -469,14 +470,52 @@ class GeocodingService {
 
       const addressComponents = result.address || {};
 
+      console.log('🏙️ Address components from OSM:', addressComponents);
+
+      // Extract street address from components, avoiding business names
+      const streetNumber = addressComponents.house_number || '';
+      const streetName = addressComponents.road ||
+                         addressComponents.pedestrian ||
+                         addressComponents.path ||
+                         addressComponents.footway ||
+                         addressComponents.cycleway || '';
+
+      // Build clean street address
+      let streetAddress = '';
+      if (streetNumber && streetName) {
+        streetAddress = `${streetNumber} ${streetName}`;
+      } else if (streetName) {
+        streetAddress = streetName;
+      } else if (streetNumber) {
+        streetAddress = streetNumber;
+      }
+      streetAddress = streetAddress.trim();
+
+      const city = addressComponents.city ||
+                   addressComponents.town ||
+                   addressComponents.village ||
+                   addressComponents.hamlet ||
+                   addressComponents.municipality ||
+                   addressComponents.suburb ||
+                   addressComponents.neighbourhood;
+
+      console.log('🏙️ Extracted city:', city);
+      console.log('🗺️ Available city fields:', {
+        city: addressComponents.city,
+        town: addressComponents.town,
+        village: addressComponents.village,
+        hamlet: addressComponents.hamlet,
+        municipality: addressComponents.municipality,
+        suburb: addressComponents.suburb,
+        neighbourhood: addressComponents.neighbourhood
+      });
+
       return {
         latitude: lat,
         longitude: lng,
         formatted_address: result.display_name,
-        city: addressComponents.city || 
-              addressComponents.town || 
-              addressComponents.village || 
-              addressComponents.hamlet,
+        street_address: streetAddress, // Add clean street address
+        city: city,
         state: addressComponents.state,
         zip: addressComponents.postcode,
         county: addressComponents.county,

@@ -10,6 +10,7 @@ import PropertyPSFField from './PropertyPSFField';
 import { usePropertyGeocoding } from '../../hooks/usePropertyGeocoding';
 import { usePropertyRecordTypes } from '../../hooks/usePropertyRecordTypes';
 import { useProperty } from '../../hooks/useProperty';
+import { geocodingService } from '../../services/geocodingService';
 
 type Property = Database['public']['Tables']['property']['Row'];
 type PropertyUnit = Database['public']['Tables']['property_unit']['Row'] & {
@@ -37,6 +38,8 @@ const NewPropertyPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isReverseGeocoding, setIsReverseGeocoding] = useState(false);
+  const [reverseGeocodeError, setReverseGeocodeError] = useState<string | null>(null);
   const { isGeocoding, geocodeError, geocodeProperty, getCurrentLocation, clearError } = usePropertyGeocoding();
   const { propertyRecordTypes, isLoading: isLoadingRecordTypes, error: recordTypesError } = usePropertyRecordTypes();
   const { createProperty } = useProperty();
@@ -68,6 +71,50 @@ const NewPropertyPage: React.FC = () => {
   const handleFieldUpdate = (field: keyof NewPropertyFormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
+
+  // Auto-populate address from coordinates when component loads
+  useEffect(() => {
+    const reverseGeocodeCoordinates = async () => {
+      if (isFromMapPin && initialLat && initialLng && !formData.address) {
+        setIsReverseGeocoding(true);
+        setReverseGeocodeError(null);
+
+        try {
+          console.log('🔄 Reverse geocoding coordinates:', { lat: initialLat, lng: initialLng });
+          const result = await geocodingService.reverseGeocode(
+            parseFloat(initialLat),
+            parseFloat(initialLng)
+          );
+
+          if ('latitude' in result) {
+            console.log('✅ Reverse geocoding successful:', result);
+            console.log('🏠 Extracted street address:', result.street_address);
+            console.log('📍 Full formatted address:', result.formatted_address);
+
+            // Auto-populate the address fields
+            setFormData(prev => ({
+              ...prev,
+              address: result.street_address || result.formatted_address.split(',')[0] || '', // Use clean street address
+              city: result.city || '',
+              state: result.state || '',
+              zip: result.zip || '',
+              property_notes: prev.property_notes + '\n\nAddress auto-populated from map coordinates via reverse geocoding.'
+            }));
+          } else {
+            console.warn('⚠️ Reverse geocoding failed:', result.error);
+            setReverseGeocodeError(result.error || 'Failed to determine address from coordinates');
+          }
+        } catch (error) {
+          console.error('❌ Reverse geocoding error:', error);
+          setReverseGeocodeError(error instanceof Error ? error.message : 'Failed to determine address from coordinates');
+        } finally {
+          setIsReverseGeocoding(false);
+        }
+      }
+    };
+
+    reverseGeocodeCoordinates();
+  }, [isFromMapPin, initialLat, initialLng]);
 
   // Unit management functions
   const addUnit = () => {
@@ -207,6 +254,7 @@ const NewPropertyPage: React.FC = () => {
     setIsSubmitting(true);
     try {
       console.log('Creating new property:', formData);
+      console.log('🗺️ Map pin info:', { isFromMapPin, initialLat, initialLng });
       
       // Create the property in the database
       const propertyData = {
@@ -222,7 +270,12 @@ const NewPropertyPage: React.FC = () => {
         rent_psf: formData.rent_psf,
         nnn_psf: formData.nnn_psf,
         property_notes: formData.property_notes,
-        acres: formData.acres
+        acres: formData.acres,
+        // Include coordinates from map pin if available
+        ...(isFromMapPin && initialLat && initialLng ? {
+          verified_latitude: parseFloat(initialLat),
+          verified_longitude: parseFloat(initialLng)
+        } : {})
       } as Omit<Property, 'id' | 'created_at' | 'updated_at'>;
 
       const createdProperty = await createProperty(propertyData);
@@ -377,7 +430,16 @@ const NewPropertyPage: React.FC = () => {
                     Location: {parseFloat(initialLat).toFixed(6)}, {parseFloat(initialLng).toFixed(6)}
                   </div>
                   <div className="text-xs text-blue-600 mt-1">
-                    💡 Consider reverse geocoding this location to auto-fill the address fields
+                    {isReverseGeocoding ? (
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                        <span>🔄 Auto-populating address from coordinates...</span>
+                      </div>
+                    ) : formData.address ? (
+                      <span>✅ Address auto-populated from map coordinates</span>
+                    ) : (
+                      <span>💡 Consider reverse geocoding this location to auto-fill the address fields</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -410,6 +472,34 @@ const NewPropertyPage: React.FC = () => {
         </div>
 
         {/* Error Display */}
+        {reverseGeocodeError && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 mb-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.728-.833-2.498 0L4.316 15.5C3.546 16.333 4.508 18 6.048 18z" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-yellow-800">Address Auto-Population Failed</h3>
+                <div className="mt-2 text-sm text-yellow-700">
+                  <p>{reverseGeocodeError}</p>
+                  <p className="mt-1">Please enter the address information manually.</p>
+                </div>
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setReverseGeocodeError(null)}
+                    className="text-sm text-yellow-600 hover:text-yellow-500 underline"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {recordTypesError && (
           <div className="bg-red-50 border border-red-200 rounded-md p-4">
             <div className="flex">

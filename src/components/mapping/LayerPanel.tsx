@@ -14,7 +14,6 @@ const CreateModeButton: React.FC<CreateModeButtonProps> = ({ layerId, layerName,
     switch (layerId) {
       case 'properties': return 'property';
       case 'site_submits': return 'site_submit';
-      case 'activities': return 'activity';
       default: return null;
     }
   };
@@ -34,7 +33,6 @@ const CreateModeButton: React.FC<CreateModeButtonProps> = ({ layerId, layerName,
     switch (layerId) {
       case 'properties': return 'Create Property';
       case 'site_submits': return 'Create Site Submit';
-      case 'activities': return 'Create Activity';
       default: return 'Create Item';
     }
   };
@@ -152,14 +150,23 @@ const LayerGroup: React.FC<LayerGroupProps> = ({
         )}
       </div>
 
-      {/* Create Mode Controls */}
-      {isVisible && (layerId === 'properties' || layerId === 'site_submits') && (
+      {/* Create Mode Controls - Only for Properties */}
+      {isVisible && layerId === 'properties' && (
         <div className="border-t border-gray-100 px-3 py-2 bg-gray-50">
           <CreateModeButton
             layerId={layerId}
             layerName={name}
             icon={icon}
           />
+        </div>
+      )}
+
+      {/* Site Submit Info - No standalone creation */}
+      {isVisible && layerId === 'site_submits' && (
+        <div className="border-t border-gray-100 px-3 py-2 bg-gray-50">
+          <div className="text-xs text-gray-600 p-2 bg-blue-50 rounded border border-blue-200">
+            💡 Click property markers to create site submits
+          </div>
         </div>
       )}
     </div>
@@ -262,7 +269,7 @@ const LayerPanel: React.FC = () => {
             <div className="text-xs text-blue-700 p-2 bg-blue-50 rounded border border-blue-200 flex items-center space-x-2">
               <span>🎯</span>
               <span>
-                <strong>{createMode === 'property' ? 'Property' : createMode === 'site_submit' ? 'Site Submit' : 'Activity'}</strong>
+                <strong>{createMode === 'property' ? 'Property' : createMode === 'site_submit' ? 'Site Submit' : 'Item'}</strong>
                 {' '}creation mode active - click map to create
               </span>
             </div>
