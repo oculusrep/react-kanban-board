@@ -18,6 +18,9 @@ interface SiteSubmitFormModalProps {
   propertyId?: string;
   propertyUnitId?: string;
   assignmentId?: string;
+  // Pre-fill coordinates from map pin dropping
+  initialLatitude?: number;
+  initialLongitude?: number;
 }
 
 interface FormData {
@@ -50,7 +53,9 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
   siteSubmitId,
   propertyId,
   assignmentId,
-  propertyUnitId
+  propertyUnitId,
+  initialLatitude,
+  initialLongitude
 }) => {
   const [formData, setFormData] = useState<FormData>({
     site_submit_name: '',
@@ -68,8 +73,8 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
     customer_comments: '',
     competitor_data: '',
     record_type_id: null,
-    verified_latitude: null,
-    verified_longitude: null,
+    verified_latitude: initialLatitude || null,
+    verified_longitude: initialLongitude || null,
     year_1_rent: null,
     ti: null,
   });
@@ -194,8 +199,8 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
         customer_comments: '',
         competitor_data: '',
         record_type_id: null,
-        verified_latitude: null,
-        verified_longitude: null,
+        verified_latitude: initialLatitude || null,
+        verified_longitude: initialLongitude || null,
         year_1_rent: null,
         ti: null,
       });
@@ -203,7 +208,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
       setUserEditedName(false); // Reset name editing flag
       setPropertyName('');
     }
-  }, [isOpen, propertyId, propertyUnitId]);
+  }, [isOpen, propertyId, propertyUnitId, initialLatitude, initialLongitude]);
 
   // Auto-generate site submit name from client and property
   const generateSiteSubmitName = (clientId: string | null, propName: string): string => {

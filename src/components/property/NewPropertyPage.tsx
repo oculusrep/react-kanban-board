@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Database } from '../../database-schema';
 import { supabase } from '../../lib/supabaseClient';
 import PropertyInputField from './PropertyInputField';
@@ -35,10 +35,17 @@ interface NewPropertyFormData {
 
 const NewPropertyPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { isGeocoding, geocodeError, geocodeProperty, getCurrentLocation, clearError } = usePropertyGeocoding();
   const { propertyRecordTypes, isLoading: isLoadingRecordTypes, error: recordTypesError } = usePropertyRecordTypes();
   const { createProperty } = useProperty();
+  // Check for coordinates from map pin dropping
+  const urlParams = new URLSearchParams(location.search);
+  const initialLat = urlParams.get('lat');
+  const initialLng = urlParams.get('lng');
+  const isFromMapPin = urlParams.get('source') === 'map-pin';
+
   const [formData, setFormData] = useState<NewPropertyFormData>({
     property_record_type_id: null,
     property_name: '',
@@ -51,7 +58,9 @@ const NewPropertyPage: React.FC = () => {
     asking_purchase_price: null,
     rent_psf: null,
     nnn_psf: null,
-    property_notes: '',
+    property_notes: isFromMapPin && initialLat && initialLng
+      ? `Created from map pin at coordinates: ${parseFloat(initialLat).toFixed(6)}, ${parseFloat(initialLng).toFixed(6)}`
+      : '',
     acres: null,
     units: []
   });
@@ -281,8 +290,14 @@ const NewPropertyPage: React.FC = () => {
         console.warn('⚠️ Property created but geocoding failed:', error);
       });
       
-      // Navigate to property detail view with the real property ID
-      navigate(`/property/${createdProperty.id}`);
+      // Navigate based on where we came from
+      if (isFromMapPin) {
+        // Return to mapping page with success indicator
+        navigate('/mapping?propertyCreated=true');
+      } else {
+        // Navigate to property detail view with the real property ID
+        navigate(`/property/${createdProperty.id}`);
+      }
       
     } catch (error) {
       console.error('Error creating property:', error);
@@ -351,10 +366,35 @@ const NewPropertyPage: React.FC = () => {
       <div className="max-w-4xl mx-auto px-4 sm:px-6">
         {/* Header */}
         <div className="mb-6">
+          {/* Map Pin Alert */}
+          {isFromMapPin && initialLat && initialLng && (
+            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
+              <div className="flex items-start gap-3">
+                <span className="text-blue-600 text-lg">📍</span>
+                <div>
+                  <div className="text-sm font-medium text-blue-800">Creating Property from Map Pin</div>
+                  <div className="text-xs text-blue-700 mt-1">
+                    Location: {parseFloat(initialLat).toFixed(6)}, {parseFloat(initialLng).toFixed(6)}
+                  </div>
+                  <div className="text-xs text-blue-600 mt-1">
+                    💡 Consider reverse geocoding this location to auto-fill the address fields
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Add New Property</h1>
-              <p className="text-sm text-gray-600 mt-1">Enter essential property information to get started</p>
+              <h1 className="text-2xl font-bold text-gray-900">
+                {isFromMapPin ? 'Add Property from Map Pin' : 'Add New Property'}
+              </h1>
+              <p className="text-sm text-gray-600 mt-1">
+                {isFromMapPin
+                  ? 'Complete the property details for the location you selected on the map'
+                  : 'Enter essential property information to get started'
+                }
+              </p>
             </div>
             
             <button

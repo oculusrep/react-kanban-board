@@ -14,6 +14,7 @@ import SearchTestPage from "./components/SearchTestPage";
 import SearchDebugPage from "./components/SearchDebugPage";
 import NotesDebugPage from "./pages/NotesDebugPage";
 import MappingPage from "./pages/MappingPage";
+import MappingPageNew from "./pages/MappingPageNew";
 
 function App() {
   return (
@@ -38,7 +39,8 @@ function App() {
             <Route path="/search-test" element={<SearchTestPage />} />
             <Route path="/search-debug" element={<SearchDebugPage />} />
             <Route path="/notes-debug" element={<NotesDebugPage />} />
-            <Route path="/mapping" element={<MappingPage />} />
+            <Route path="/mapping" element={<MappingPageNew />} />
+            <Route path="/mapping-old" element={<MappingPage />} />
           </Routes>
         </div>
       </ProtectedRoute>

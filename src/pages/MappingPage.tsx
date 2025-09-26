@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import GoogleMapContainer from '../components/mapping/GoogleMapContainer';
 import BatchGeocodingPanel from '../components/mapping/BatchGeocodingPanel';
 import PropertyLayer, { PropertyLoadingConfig, PropertyLoadingMode } from '../components/mapping/layers/PropertyLayer';
+import SiteSubmitLayer, { SiteSubmitLoadingConfig, SiteSubmitLoadingMode } from '../components/mapping/layers/SiteSubmitLayer';
 import { geocodingService } from '../services/geocodingService';
+import { supabase } from '../lib/supabaseClient';
 
 const MappingPage: React.FC = () => {
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
@@ -17,9 +19,48 @@ const MappingPage: React.FC = () => {
     mode: 'static-all'
   });
 
+  // Site Submit Layer State
+  const [showSiteSubmits, setShowSiteSubmits] = useState(false);
+  const [siteSubmitsCount, setSiteSubmitsCount] = useState(0);
+  const [siteSubmitLoadingConfig, setSiteSubmitLoadingConfig] = useState<SiteSubmitLoadingConfig>({
+    mode: 'static-100'
+  });
+
+  // Client Data for Filtering
+  const [clients, setClients] = useState<Array<{id: string; client_name: string}>>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+
   const handleMapLoad = (map: google.maps.Map) => {
     setMapInstance(map);
     console.log('Map loaded successfully:', map);
+  };
+
+  // Load clients for filtering
+  useEffect(() => {
+    const loadClients = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('client')
+          .select('id, client_name')
+          .order('client_name');
+
+        if (error) throw error;
+        setClients(data || []);
+      } catch (err) {
+        console.error('Error loading clients:', err);
+      }
+    };
+
+    loadClients();
+  }, []);
+
+  // Handle client filter change
+  const handleClientFilterChange = (clientId: string | null) => {
+    setSelectedClientId(clientId);
+    setSiteSubmitLoadingConfig({
+      mode: clientId ? 'client-filtered' : 'static-100',
+      clientId: clientId
+    });
   };
 
   const testGeocoding = async () => {
@@ -91,7 +132,7 @@ const MappingPage: React.FC = () => {
                   Centers on your location or Atlanta, GA
                 </div>
 
-                {/* Layer Toggle */}
+                {/* Layer Toggles */}
                 <button
                   onClick={() => setShowProperties(!showProperties)}
                   className={`px-3 py-1 text-sm rounded border flex items-center space-x-2 transition-colors ${
@@ -102,6 +143,18 @@ const MappingPage: React.FC = () => {
                 >
                   <span>{showProperties ? '👁️' : '🙈'}</span>
                   <span>Properties ({propertiesCount})</span>
+                </button>
+
+                <button
+                  onClick={() => setShowSiteSubmits(!showSiteSubmits)}
+                  className={`px-3 py-1 text-sm rounded border flex items-center space-x-2 transition-colors ${
+                    showSiteSubmits
+                      ? 'bg-blue-100 hover:bg-blue-200 text-blue-700 border-blue-300'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300'
+                  }`}
+                >
+                  <span>{showSiteSubmits ? '👁️' : '🙈'}</span>
+                  <span>Site Submits ({siteSubmitsCount})</span>
                 </button>
 
                 {/* Admin Menu */}
@@ -144,6 +197,49 @@ const MappingPage: React.FC = () => {
                           </select>
                           <div className="text-xs text-gray-500 mt-1">
                             🔒 Fixed dataset - {propertyLoadingConfig.mode === 'static-all' ? 'Complete' : 'Limited'} for performance
+                          </div>
+                        </div>
+
+                        <div className="border-t border-gray-200 px-4 py-2">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Site Submit Client Filter:
+                          </label>
+                          <select
+                            value={selectedClientId || ''}
+                            onChange={(e) => handleClientFilterChange(e.target.value || null)}
+                            className="w-full text-xs border border-gray-300 rounded px-2 py-1"
+                          >
+                            <option value="">📊 All Clients (100 limit)</option>
+                            {clients.map(client => (
+                              <option key={client.id} value={client.id}>
+                                🏢 {client.client_name}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="text-xs text-gray-500 mt-1">
+                            🔍 {selectedClientId ? 'Showing client-specific site submits' : 'Limited to 100 for performance'}
+                          </div>
+                        </div>
+
+                        <div className="border-t border-gray-200 px-4 py-2">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Site Submit Loading Mode:
+                          </label>
+                          <select
+                            value={siteSubmitLoadingConfig.mode}
+                            onChange={(e) => setSiteSubmitLoadingConfig({
+                              mode: e.target.value as SiteSubmitLoadingMode,
+                              clientId: selectedClientId
+                            })}
+                            className="w-full text-xs border border-gray-300 rounded px-2 py-1"
+                            disabled={selectedClientId !== null} // Disable when client filter is active
+                          >
+                            <option value="static-100">📊 Static: 100 site submits</option>
+                            <option value="static-500">📊 Static: 500 site submits</option>
+                            <option value="static-all">📊 Static: All site submits</option>
+                          </select>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {selectedClientId ? '🔍 Client filter overrides mode' : '🎯 Stage-based marker colors'}
                           </div>
                         </div>
                       </div>
@@ -200,6 +296,14 @@ const MappingPage: React.FC = () => {
               onPropertiesLoaded={setPropertiesCount}
             />
 
+            {/* Site Submit Layer */}
+            <SiteSubmitLayer
+              map={mapInstance}
+              isVisible={showSiteSubmits}
+              loadingConfig={siteSubmitLoadingConfig}
+              onSiteSubmitsLoaded={setSiteSubmitsCount}
+            />
+
             {/* Optional Map Info Overlay (can be toggled) */}
             {mapInstance && (
               <div className="absolute bottom-4 left-4 bg-white bg-opacity-90 rounded-lg shadow-sm p-3 text-xs">
@@ -219,6 +323,14 @@ const MappingPage: React.FC = () => {
                       <span className="text-gray-500">Properties:</span>
                       <span className="font-mono text-gray-900 ml-2">
                         {propertiesCount} loaded ({propertyLoadingConfig.mode}), {showProperties ? 'visible' : 'hidden'}
+                      </span>
+                    </div>
+                  )}
+                  {siteSubmitsCount > 0 && (
+                    <div>
+                      <span className="text-gray-500">Site Submits:</span>
+                      <span className="font-mono text-gray-900 ml-2">
+                        {siteSubmitsCount} loaded ({selectedClientId ? 'filtered' : siteSubmitLoadingConfig.mode}), {showSiteSubmits ? 'visible' : 'hidden'}
                       </span>
                     </div>
                   )}

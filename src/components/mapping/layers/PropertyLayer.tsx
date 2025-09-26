@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import { supabase } from '../../../lib/supabaseClient';
+import { useLayerManager } from './LayerManager';
 
 interface Property {
   id: string;
@@ -293,12 +294,16 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({ map, isVisible, loadingCo
     }
   };
 
-  // Load properties when component mounts or map/config changes
+  // Get refresh trigger from LayerManager
+  const { refreshTrigger } = useLayerManager();
+  const propertyRefreshTrigger = refreshTrigger.properties || 0;
+
+  // Load properties when component mounts or map/config changes or refresh is triggered
   useEffect(() => {
     if (map) {
       fetchProperties();
     }
-  }, [map, loadingConfig]);
+  }, [map, loadingConfig, propertyRefreshTrigger]);
 
   // For bounds-based loading, reload when map bounds change
   useEffect(() => {
