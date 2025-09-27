@@ -6,21 +6,28 @@ import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/
 import LayerNavigationSlideout from '../components/mapping/slideouts/LayerNavigationSlideout';
 import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
 import MapContextMenu from '../components/mapping/MapContextMenu';
+import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
+import ClientSelector from '../components/mapping/ClientSelector';
+import { ClientSearchResult } from '../hooks/useClientSearch';
+import AddressSearchBox from '../components/mapping/AddressSearchBox';
 import { LayerManagerProvider, useLayerManager } from '../components/mapping/layers/LayerManager';
 import { geocodingService } from '../services/geocodingService';
 import SiteSubmitFormModal from '../components/SiteSubmitFormModal';
 import InlinePropertyCreationModal from '../components/mapping/InlinePropertyCreationModal';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supportsRightClick } from '../utils/deviceDetection';
+import { supabase } from '../lib/supabaseClient';
 
 // Inner component that uses the LayerManager context
 const MappingPageContent: React.FC = () => {
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
-  const [testAddress, setTestAddress] = useState('1600 Amphitheatre Parkway, Mountain View, CA');
-  const [geocodeResult, setGeocodeResult] = useState<string>('');
-  const [isGeocodingTest, setIsGeocodingTest] = useState(false);
+  const [searchAddress, setSearchAddress] = useState('');
+  const [searchResult, setSearchResult] = useState<string>('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchMarkers, setSearchMarkers] = useState<google.maps.Marker[]>([]);
   const [showBatchPanel, setShowBatchPanel] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
+  const [verifyingPropertyId, setVerifyingPropertyId] = useState<string | null>(null);
 
   // Modal states
   const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false);
@@ -33,6 +40,9 @@ const MappingPageContent: React.FC = () => {
   const [isPinDetailsOpen, setIsPinDetailsOpen] = useState(false);
   const [selectedPinData, setSelectedPinData] = useState<any>(null);
   const [selectedPinType, setSelectedPinType] = useState<'property' | 'site_submit' | null>(null);
+
+  // Client selector state
+  const [selectedClient, setSelectedClient] = useState<ClientSearchResult | null>(null);
   // Initialize recently created IDs from sessionStorage
   const [recentlyCreatedPropertyIds, setRecentlyCreatedPropertyIds] = useState<Set<string>>(() => {
     try {
@@ -54,6 +64,19 @@ const MappingPageContent: React.FC = () => {
     x: 0,
     y: 0,
     coordinates: null,
+  });
+
+  // Property context menu state
+  const [propertyContextMenu, setPropertyContextMenu] = useState<{
+    isVisible: boolean;
+    x: number;
+    y: number;
+    property: any | null;
+  }>({
+    isVisible: false,
+    x: 0,
+    y: 0,
+    property: null,
   });
 
   const navigate = useNavigate();
@@ -91,8 +114,9 @@ const MappingPageContent: React.FC = () => {
 
     // Add click listener for pin dropping
     map.addListener('click', (event: google.maps.MapMouseEvent) => {
-      // Close context menu on any click
+      // Close context menus on any click
       setContextMenu(prev => ({ ...prev, isVisible: false }));
+      setPropertyContextMenu(prev => ({ ...prev, isVisible: false }));
 
       if (createMode && event.latLng) {
         const lat = event.latLng.lat();
@@ -162,11 +186,17 @@ const MappingPageContent: React.FC = () => {
   const handlePropertyCreated = (property: any) => {
     console.log('✅ Property created successfully:', property);
 
+    // Clear any search markers since we're creating a property at this location
+    searchMarkers.forEach(marker => marker.setMap(null));
+    setSearchMarkers([]);
+
     // Add to recently created set (persists until browser tab closed or manually cleared)
     setRecentlyCreatedPropertyIds(prev => new Set([...prev, property.id]));
 
     // Refresh the property layer to show the new item
     refreshLayer('properties');
+
+    console.log('🧹 Cleared search markers, property session pin should be visible');
   };
 
   // Handle site submit creation success
@@ -212,6 +242,21 @@ const MappingPageContent: React.FC = () => {
     setContextMenu(prev => ({ ...prev, isVisible: false }));
   };
 
+  // Property context menu handlers
+  const handlePropertyRightClick = (property: any, x: number, y: number) => {
+    console.log('🎯 Property right-clicked:', property.id, { x, y });
+    setPropertyContextMenu({
+      isVisible: true,
+      x,
+      y,
+      property,
+    });
+  };
+
+  const handlePropertyContextMenuClose = () => {
+    setPropertyContextMenu(prev => ({ ...prev, isVisible: false }));
+  };
+
   // Pin click handlers for slideout
   const handlePinClick = (data: any, type: 'property' | 'site_submit') => {
     // Always update the selected data when clicking on a pin
@@ -224,32 +269,144 @@ const MappingPageContent: React.FC = () => {
     setIsPinDetailsOpen(false);
     setSelectedPinData(null);
     setSelectedPinType(null);
+    // Cancel any ongoing verification
+    setVerifyingPropertyId(null);
   };
 
-  const testGeocoding = async () => {
-    if (!testAddress.trim()) return;
+  // Handle location verification
+  const handleVerifyLocation = (propertyId: string) => {
+    console.log('🎯 Starting location verification for property:', propertyId);
+    setVerifyingPropertyId(propertyId);
+  };
 
-    setIsGeocodingTest(true);
-    setGeocodeResult('Testing geocoding...');
+  // Handle location verified (save to database)
+  const handleLocationVerified = async (propertyId: string, lat: number, lng: number) => {
+    console.log('📍 Saving verified location for property:', propertyId, { lat, lng });
 
     try {
-      console.log('🧪 Testing enhanced geocoding service...');
-      const result = await geocodingService.geocodeAddress(testAddress);
+      // Perform reverse geocoding to get address at new location
+      console.log('🌍 Getting address for new location...');
+      const reverseGeocodeResult = await geocodingService.reverseGeocode(lat, lng);
+
+      let updateData: any = {
+        verified_latitude: lat,
+        verified_longitude: lng
+      };
+
+      // If reverse geocoding succeeded, update address fields too
+      if ('latitude' in reverseGeocodeResult) {
+        console.log('✅ Reverse geocoding successful:', reverseGeocodeResult.formatted_address);
+
+        // Update address fields with the new location's address
+        updateData = {
+          ...updateData,
+          address: reverseGeocodeResult.street_address || reverseGeocodeResult.formatted_address,
+          city: reverseGeocodeResult.city,
+          state: reverseGeocodeResult.state,
+          zip: reverseGeocodeResult.zip,
+        };
+
+        console.log('📮 Updated address data:', updateData);
+      } else {
+        console.warn('⚠️ Reverse geocoding failed, only updating coordinates:', reverseGeocodeResult.error);
+      }
+
+      // Update the property with verified coordinates and potentially new address
+      const { error } = await supabase
+        .from('property')
+        .update(updateData)
+        .eq('id', propertyId);
+
+      if (error) {
+        throw error;
+      }
+
+      console.log('✅ Successfully saved verified location to database');
+
+      // Complete verification
+      setVerifyingPropertyId(null);
+
+      // Refresh property layer to show updated coordinates
+      refreshLayer('properties');
+
+      console.log('✅ Location verification completed');
+    } catch (error) {
+      console.error('❌ Failed to save verified location:', error);
+      // Keep verification mode active on error so user can try again
+    }
+  };
+
+  const handleAddressSearch = async () => {
+    if (!searchAddress.trim()) return;
+
+    setIsSearching(true);
+    setSearchResult('Searching...');
+
+    try {
+      console.log('🔍 Searching for address:', searchAddress);
+      const result = await geocodingService.geocodeAddress(searchAddress);
 
       if ('latitude' in result) {
-        setGeocodeResult(`✅ Success (${result.provider}):
-        📍 ${result.latitude.toFixed(6)}, ${result.longitude.toFixed(6)}
-        📧 ${result.formatted_address}
-        🏙️ City: ${result.city || 'N/A'}
-        🗺️ State: ${result.state || 'N/A'}
-        📮 ZIP: ${result.zip || 'N/A'}`);
+        setSearchResult(`Found: ${result.formatted_address}`);
+
+        // Add a search pin at the geocoded location
+        if (mapInstance) {
+          console.log('📍 Adding search pin for address...');
+
+          // Clear any existing search markers
+          searchMarkers.forEach(marker => marker.setMap(null));
+
+          // Center the map on the geocoded location
+          const position = { lat: result.latitude, lng: result.longitude };
+          mapInstance.setCenter(position);
+          mapInstance.setZoom(16); // Zoom in for street-level view
+
+          // Create a marker to show the location
+          const marker = new google.maps.Marker({
+            position: position,
+            map: mapInstance,
+            title: result.formatted_address,
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 8,
+              fillColor: '#3B82F6',
+              fillOpacity: 1,
+              strokeColor: '#FFFFFF',
+              strokeWeight: 2
+            }
+          });
+
+          // Add info window with address details
+          const infoWindow = new google.maps.InfoWindow({
+            content: `
+              <div style="font-size: 12px; max-width: 250px;">
+                <strong>Search Result</strong><br>
+                📍 ${result.formatted_address}<br>
+                🏙️ ${result.city || 'N/A'}, ${result.state || 'N/A'} ${result.zip || ''}<br>
+                📊 ${result.latitude.toFixed(6)}, ${result.longitude.toFixed(6)}
+              </div>
+            `
+          });
+
+          marker.addListener('click', () => {
+            infoWindow.open(mapInstance, marker);
+          });
+
+          // Auto-open the info window
+          infoWindow.open(mapInstance, marker);
+
+          // Track the search marker
+          setSearchMarkers([marker]);
+
+          console.log('✅ Search pin added');
+        }
       } else {
-        setGeocodeResult(`❌ Error: ${result.error} (${result.code})`);
+        setSearchResult(`❌ Error: ${result.error}`);
       }
     } catch (error) {
-      setGeocodeResult(`❌ Exception: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setSearchResult(`❌ Exception: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
-      setIsGeocodingTest(false);
+      setIsSearching(false);
     }
   };
 
@@ -260,8 +417,9 @@ const MappingPageContent: React.FC = () => {
 
   // Site submit layer configuration (memoized to prevent infinite re-renders)
   const siteSubmitLoadingConfig: SiteSubmitLoadingConfig = useMemo(() => ({
-    mode: 'static-100'
-  }), []);
+    mode: selectedClient ? 'client-filtered' : 'static-100',
+    clientId: selectedClient?.id || null
+  }), [selectedClient]);
 
   return (
     <div className="h-screen w-screen bg-gray-50 overflow-hidden">
@@ -296,8 +454,28 @@ const MappingPageContent: React.FC = () => {
           <div className="flex-shrink-0 bg-white shadow-sm border-b border-gray-200 px-4 py-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
-                <h2 className="text-lg font-semibold text-gray-900">Interactive Map</h2>
-                <div className="text-sm text-gray-500">Modern Layer Management</div>
+                {/* Address Search with Auto-Suggest */}
+                <div className="flex items-center space-x-2">
+                  <AddressSearchBox
+                    value={searchAddress}
+                    onChange={setSearchAddress}
+                    onSearch={handleAddressSearch}
+                    disabled={isSearching}
+                    placeholder="Search Address, City, State..."
+                  />
+                  <button
+                    onClick={handleAddressSearch}
+                    disabled={isSearching || !searchAddress.trim()}
+                    className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSearching ? '🔄 Searching...' : '🔍 Search'}
+                  </button>
+                </div>
+                {searchResult && (
+                  <div className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded max-w-md truncate">
+                    {searchResult}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center space-x-4">
@@ -316,6 +494,19 @@ const MappingPageContent: React.FC = () => {
                     <span>Clear Session Pins ({recentlyCreatedPropertyIds.size})</span>
                   </button>
                 )}
+
+                {/* Client Selector */}
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm font-medium text-gray-700">Client:</label>
+                  <div className="w-64">
+                    <ClientSelector
+                      selectedClient={selectedClient}
+                      onClientSelect={setSelectedClient}
+                      placeholder="Search active clients..."
+                      className="text-sm"
+                    />
+                  </div>
+                </div>
 
                 {/* Admin Menu */}
                 <div className="relative">
@@ -361,34 +552,6 @@ const MappingPageContent: React.FC = () => {
             </div>
           </div>
 
-          {/* Geocoding Test Panel */}
-          <div className="flex-shrink-0 bg-blue-50 border-b border-blue-200 px-4 py-2">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <label className="text-sm font-medium text-blue-900">🧪 Test Geocoding:</label>
-                <input
-                  type="text"
-                  value={testAddress}
-                  onChange={(e) => setTestAddress(e.target.value)}
-                  placeholder="Enter address to geocode..."
-                  className="px-3 py-1 border border-blue-300 rounded text-sm w-80"
-                  disabled={isGeocodingTest}
-                />
-                <button
-                  onClick={testGeocoding}
-                  disabled={isGeocodingTest || !testAddress.trim()}
-                  className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isGeocodingTest ? 'Testing...' : 'Test'}
-                </button>
-              </div>
-              {geocodeResult && (
-                <div className="flex-1 text-xs font-mono bg-white rounded px-2 py-1 border max-w-md overflow-hidden">
-                  <pre className="whitespace-pre-wrap">{geocodeResult}</pre>
-                </div>
-              )}
-            </div>
-          </div>
 
           {/* Full Screen Map */}
           <div className="flex-1 relative">
@@ -423,6 +586,9 @@ const MappingPageContent: React.FC = () => {
               })()}
               loadingConfig={propertyLoadingConfig}
               recentlyCreatedIds={recentlyCreatedPropertyIds}
+              verifyingPropertyId={verifyingPropertyId}
+              onLocationVerified={handleLocationVerified}
+              onPropertyRightClick={handlePropertyRightClick}
               onPropertiesLoaded={(count) => {
                 setLayerCount('properties', count);
                 setLayerLoading('properties', false);
@@ -465,6 +631,8 @@ const MappingPageContent: React.FC = () => {
               onOpen={() => setIsPinDetailsOpen(true)}
               data={selectedPinData}
               type={selectedPinType}
+              onVerifyLocation={handleVerifyLocation}
+              isVerifyingLocation={!!verifyingPropertyId}
             />
 
             {/* Property Creation Modal */}
@@ -496,6 +664,16 @@ const MappingPageContent: React.FC = () => {
               coordinates={contextMenu.coordinates}
               onCreateProperty={handleContextMenuCreateProperty}
               onClose={handleContextMenuClose}
+            />
+
+            {/* Property Context Menu for Right-Click on Properties */}
+            <PropertyContextMenu
+              x={propertyContextMenu.x}
+              y={propertyContextMenu.y}
+              isVisible={propertyContextMenu.isVisible}
+              property={propertyContextMenu.property}
+              onVerifyLocation={handleVerifyLocation}
+              onClose={handlePropertyContextMenuClose}
             />
 
           </div>

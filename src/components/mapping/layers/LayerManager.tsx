@@ -68,7 +68,7 @@ const DEFAULT_LAYERS: LayerConfig[] = [
     type: 'property',
     icon: '🏢',
     description: 'All properties in the system',
-    defaultVisible: true,
+    defaultVisible: false,
     isSystemLayer: true,
   },
   {

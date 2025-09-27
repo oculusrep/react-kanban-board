@@ -32,6 +32,9 @@ interface PropertyLayerProps {
   onCreateSiteSubmit?: (property: Property) => void;
   recentlyCreatedIds?: Set<string>; // Track recently created properties
   onPinClick?: (property: Property) => void;
+  verifyingPropertyId?: string | null; // Property being verified
+  onLocationVerified?: (propertyId: string, lat: number, lng: number) => void;
+  onPropertyRightClick?: (property: Property, x: number, y: number) => void;
 }
 
 const PropertyLayer: React.FC<PropertyLayerProps> = ({
@@ -41,7 +44,10 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   onPropertiesLoaded,
   onCreateSiteSubmit,
   recentlyCreatedIds = new Set(),
-  onPinClick
+  onPinClick,
+  verifyingPropertyId = null,
+  onLocationVerified,
+  onPropertyRightClick
 }) => {
   const [properties, setProperties] = useState<Property[]>([]);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
@@ -239,13 +245,27 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       const coords = getDisplayCoordinates(property);
       if (!coords) return null;
 
+      const isBeingVerified = verifyingPropertyId === property.id;
       const marker = new google.maps.Marker({
         position: { lat: coords.lat, lng: coords.lng },
         map: null, // Don't show initially, let visibility logic handle it
         title: `🆕 ${property.property_name || property.address}`,
-        icon: ModernMarkerStyles.property.recent(),
-        zIndex: 1000 // Higher z-index to show above other markers
+        icon: isBeingVerified ? ModernMarkerStyles.property.verifying() : ModernMarkerStyles.property.recent(),
+        zIndex: isBeingVerified ? 2000 : 1000, // Higher z-index when verifying
+        draggable: isBeingVerified
       });
+
+      // Add drag listener for verification
+      if (isBeingVerified && onLocationVerified) {
+        marker.addListener('dragend', (event: google.maps.MapMouseEvent) => {
+          if (event.latLng) {
+            const newLat = event.latLng.lat();
+            const newLng = event.latLng.lng();
+            console.log('📍 Property location verified:', { propertyId: property.id, lat: newLat, lng: newLng });
+            onLocationVerified(property.id, newLat, newLng);
+          }
+        });
+      }
 
       // Add info window for session markers
       const infoContent = `
@@ -283,6 +303,15 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
         // Fallback to info window
         infoWindow.open(map, marker);
       });
+
+      // Add right-click listener for session markers
+      if (onPropertyRightClick) {
+        marker.addListener('rightclick', (event: google.maps.MapMouseEvent) => {
+          if (event.domEvent) {
+            onPropertyRightClick(property, event.domEvent.clientX, event.domEvent.clientY);
+          }
+        });
+      }
 
       return marker;
     }).filter(marker => marker !== null) as google.maps.Marker[];
@@ -358,12 +387,27 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
         markerIcon = ModernMarkerStyles.property.geocoded(); // Geocoded - blue
       }
 
+      const isBeingVerified = verifyingPropertyId === property.id;
       const marker = new google.maps.Marker({
         position: { lat: coords.lat, lng: coords.lng },
         map: null, // Don't show initially
         title: property.property_name || property.address,
-        icon: markerIcon
+        icon: isBeingVerified ? ModernMarkerStyles.property.verifying() : markerIcon,
+        draggable: isBeingVerified,
+        zIndex: isBeingVerified ? 2000 : 100
       });
+
+      // Add drag listener for verification
+      if (isBeingVerified && onLocationVerified) {
+        marker.addListener('dragend', (event: google.maps.MapMouseEvent) => {
+          if (event.latLng) {
+            const newLat = event.latLng.lat();
+            const newLng = event.latLng.lng();
+            console.log('📍 Property location verified:', { propertyId: property.id, lat: newLat, lng: newLng });
+            onLocationVerified(property.id, newLat, newLng);
+          }
+        });
+      }
 
       marker.addListener('click', () => {
         // Use modern slideout instead of info window
@@ -390,6 +434,15 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
           }, 100);
         }
       });
+
+      // Add right-click listener for regular markers
+      if (onPropertyRightClick) {
+        marker.addListener('rightclick', (event: google.maps.MapMouseEvent) => {
+          if (event.domEvent) {
+            onPropertyRightClick(property, event.domEvent.clientX, event.domEvent.clientY);
+          }
+        });
+      }
 
       return marker;
     }).filter(marker => marker !== null) as google.maps.Marker[];
@@ -473,7 +526,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     if (properties.length > 0) {
       createMarkers();
     }
-  }, [properties, map, recentlyCreatedIds]); // Add recentlyCreatedIds dependency
+  }, [properties, map, recentlyCreatedIds, verifyingPropertyId]); // Add recentlyCreatedIds and verifyingPropertyId dependencies
 
   // Create session markers when recently created IDs change or properties load
   // Session markers are shown when the main layer is hidden or always (depending on UX choice)
@@ -492,24 +545,24 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       sessionMarkers.forEach(marker => marker.setMap(null));
       setSessionMarkers([]);
     }
-  }, [properties, recentlyCreatedIds, map]);
+  }, [properties, recentlyCreatedIds, map, verifyingPropertyId]);
 
-  // Update session marker visibility - session markers follow layer visibility
+  // Update session marker visibility - session markers are ALWAYS visible when they exist
   useEffect(() => {
     console.log(`🔄 PropertyLayer: Updating session marker visibility`, {
-      isVisible,
       sessionMarkersCount: sessionMarkers.length,
-      hasMap: !!map
+      hasMap: !!map,
+      note: 'Session markers are always visible regardless of layer state'
     });
 
     sessionMarkers.forEach(marker => {
-      marker.setMap(isVisible ? map : null);
+      marker.setMap(map); // Always show session markers when map exists
     });
 
     if (sessionMarkers.length > 0) {
-      console.log(`🎯 PropertyLayer: Session markers ${isVisible ? 'shown' : 'hidden'} (${sessionMarkers.length} markers)`);
+      console.log(`🎯 PropertyLayer: Session markers shown (${sessionMarkers.length} markers) - always visible`);
     }
-  }, [isVisible, sessionMarkers, map]);
+  }, [sessionMarkers, map]); // Removed isVisible dependency - session markers always visible
 
   // Set up clustering when markers are ready
   useEffect(() => {

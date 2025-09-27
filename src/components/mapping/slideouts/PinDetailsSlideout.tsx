@@ -32,6 +32,8 @@ interface PinDetailsSlideoutProps {
   onOpen?: () => void;
   data: Property | SiteSubmit | null;
   type: 'property' | 'site_submit' | null;
+  onVerifyLocation?: (propertyId: string) => void;
+  isVerifyingLocation?: boolean;
 }
 
 type TabType = 'property' | 'financial' | 'activity' | 'location';
@@ -41,7 +43,9 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   onClose,
   onOpen,
   data,
-  type
+  type,
+  onVerifyLocation,
+  isVerifyingLocation = false
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('property');
   const [isEditing, setIsEditing] = useState(false);
@@ -180,8 +184,16 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                 <button className="w-full px-3 py-2 text-sm bg-blue-50 text-blue-700 border border-blue-200 rounded-md hover:bg-blue-100 transition-colors">
                   📍 Center Map on This Location
                 </button>
-                <button className="w-full px-3 py-2 text-sm bg-green-50 text-green-700 border border-green-200 rounded-md hover:bg-green-100 transition-colors">
-                  🎯 Verify Pin Location
+                <button
+                  onClick={() => onVerifyLocation && property && onVerifyLocation(property.id)}
+                  disabled={!onVerifyLocation || !property || isVerifyingLocation}
+                  className={`w-full px-3 py-2 text-sm border rounded-md transition-colors ${
+                    isVerifyingLocation
+                      ? 'bg-orange-50 text-orange-700 border-orange-200'
+                      : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  {isVerifyingLocation ? '🔄 Drag Pin to Verify...' : '🎯 Verify Pin Location'}
                 </button>
               </div>
             </div>
@@ -314,10 +326,12 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     <>
       {/* Slideout */}
       <div
-        className={`fixed top-0 right-0 h-full bg-white border-l border-gray-200 shadow-2xl transform transition-all duration-500 ease-in-out z-40 ${
+        className={`fixed right-0 bg-white border-l border-gray-200 shadow-2xl transform transition-all duration-500 ease-in-out z-40 flex flex-col ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
         style={{
+          top: '64px', // Start cleanly below the single top navigation bar
+          height: 'calc(100vh - 64px)', // Full height minus top bar
           width: '400px',
           transitionProperty: 'transform, opacity, box-shadow',
           transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)', // Spring-like easing
@@ -436,7 +450,13 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-8">
+        <div
+          className="flex-1 overflow-y-auto px-6 py-8"
+          style={{
+            scrollBehavior: 'smooth',
+            minHeight: 0 // Ensures flex-1 works properly with overflow
+          }}
+        >
           {renderTabContent()}
         </div>
 
@@ -497,9 +517,11 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       {/* Slide Out Arrow - When slideout is open */}
       {isOpen && (
         <div
-          className="fixed top-1/2 transform -translate-y-1/2 z-[60] transition-all duration-300 ease-out cursor-pointer"
+          className="fixed z-[60] transition-all duration-300 ease-out cursor-pointer"
           style={{
+            top: 'calc(50vh + 30px)', // Center of visible slideout area (50% + half of top bar height)
             right: '395px', // Just outside the slideout border
+            transform: 'translateY(-50%)'
           }}
           onClick={onClose}
         >
@@ -514,9 +536,11 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       {/* Slide In Arrow - When slideout is closed but property is selected */}
       {!isOpen && data && (
         <div
-          className="fixed top-1/2 transform -translate-y-1/2 z-50 transition-all duration-300 ease-out cursor-pointer"
+          className="fixed z-50 transition-all duration-300 ease-out cursor-pointer"
           style={{
+            top: 'calc(50vh + 30px)', // Center of available map area (accounting for top bar)
             right: '20px',
+            transform: 'translateY(-50%)',
             animation: 'slideArrow 2s ease-in-out infinite'
           }}
           onClick={onOpen}

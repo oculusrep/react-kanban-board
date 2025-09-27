@@ -74,6 +74,7 @@ export const MarkerColors = {
   RECENT: '#EF4444',      // Red - for recently created
   VERIFIED: '#10B981',    // Green - for verified locations
   GEOCODED: '#3B82F6',    // Blue - for geocoded locations
+  VERIFYING: '#F97316',   // Orange - for verification in progress
 
   // Site submit colors (by status)
   SUBMITTED: '#8B5CF6',   // Purple
@@ -97,7 +98,8 @@ export const ModernMarkerStyles = {
   property: {
     recent: () => createModernMarkerIcon(MarkerColors.RECENT, 32),
     verified: () => createModernMarkerIcon(MarkerColors.VERIFIED, 28),
-    geocoded: () => createModernMarkerIcon(MarkerColors.GEOCODED, 28)
+    geocoded: () => createModernMarkerIcon(MarkerColors.GEOCODED, 28),
+    verifying: () => createModernMarkerIcon(MarkerColors.VERIFYING, 32)
   },
 
   // For site submits - use pin-style markers

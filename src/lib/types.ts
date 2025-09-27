@@ -80,6 +80,7 @@ export interface Client {
   type: string | null;
   phone: string | null;
   email: string | null;
+  is_active_client: boolean;
   created_at?: string;
   updated_at?: string;
   sf_id?: string | null;
