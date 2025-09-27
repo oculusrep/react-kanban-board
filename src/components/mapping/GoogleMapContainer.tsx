@@ -125,19 +125,19 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           mapTypeId: google.maps.MapTypeId.ROADMAP,
           mapTypeControl: true,
           mapTypeControlOptions: {
-            position: google.maps.ControlPosition.TOP_RIGHT,
+            position: google.maps.ControlPosition.TOP_LEFT,
           },
           streetViewControl: true,
           streetViewControlOptions: {
-            position: google.maps.ControlPosition.RIGHT_TOP,
+            position: google.maps.ControlPosition.LEFT_TOP,
           },
           fullscreenControl: true,
           fullscreenControlOptions: {
-            position: google.maps.ControlPosition.TOP_RIGHT,
+            position: google.maps.ControlPosition.TOP_LEFT,
           },
           zoomControl: true,
           zoomControlOptions: {
-            position: google.maps.ControlPosition.RIGHT_CENTER,
+            position: google.maps.ControlPosition.LEFT_CENTER,
           },
           gestureHandling: 'greedy'
         });

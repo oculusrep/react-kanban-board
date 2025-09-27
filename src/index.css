@@ -67,18 +67,3 @@
   }
 }
 
-/* Enhanced slideout content animations */
-.slideout-content > * {
-  animation: slideInContent 0.6s ease-out forwards;
-}
-
-@keyframes slideInContent {
-  from {
-    transform: translateX(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}

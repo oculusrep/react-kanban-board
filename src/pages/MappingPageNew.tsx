@@ -214,6 +214,7 @@ const MappingPageContent: React.FC = () => {
 
   // Pin click handlers for slideout
   const handlePinClick = (data: any, type: 'property' | 'site_submit') => {
+    // Always update the selected data when clicking on a pin
     setSelectedPinData(data);
     setSelectedPinType(type);
     setIsPinDetailsOpen(true);
@@ -415,7 +416,11 @@ const MappingPageContent: React.FC = () => {
             {/* Property Layer - Connected to Layer Manager */}
             <PropertyLayer
               map={mapInstance}
-              isVisible={layerState.properties?.isVisible || false}
+              isVisible={(() => {
+                const isVisible = layerState.properties?.isVisible || false;
+                console.log('🏢 PropertyLayer isVisible prop:', isVisible, 'layerState.properties:', layerState.properties);
+                return isVisible;
+              })()}
               loadingConfig={propertyLoadingConfig}
               recentlyCreatedIds={recentlyCreatedPropertyIds}
               onPropertiesLoaded={(count) => {
@@ -457,6 +462,7 @@ const MappingPageContent: React.FC = () => {
             <PinDetailsSlideout
               isOpen={isPinDetailsOpen}
               onClose={handlePinDetailsClose}
+              onOpen={() => setIsPinDetailsOpen(true)}
               data={selectedPinData}
               type={selectedPinType}
             />

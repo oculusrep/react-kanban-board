@@ -424,13 +424,16 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
 
   // Update marker visibility
   const updateMarkerVisibility = () => {
-    if (!clusterer) return;
+    if (!clusterer) {
+      console.log('⚠️ PropertyLayer: No clusterer available for visibility update');
+      return;
+    }
 
     if (isVisible) {
-      console.log(`👁️ Showing ${markers.length} property markers`);
+      console.log(`👁️ PropertyLayer: Showing ${markers.length} property markers`);
       clusterer.addMarkers(markers);
     } else {
-      console.log('🙈 Hiding property markers');
+      console.log('🙈 PropertyLayer: Hiding property markers');
       clusterer.clearMarkers();
     }
   };
@@ -491,13 +494,21 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     }
   }, [properties, recentlyCreatedIds, map]);
 
-  // Update session marker visibility - always show session markers regardless of layer visibility
+  // Update session marker visibility - session markers follow layer visibility
   useEffect(() => {
+    console.log(`🔄 PropertyLayer: Updating session marker visibility`, {
+      isVisible,
+      sessionMarkersCount: sessionMarkers.length,
+      hasMap: !!map
+    });
+
     sessionMarkers.forEach(marker => {
-      // Session markers follow the layer visibility but persist in memory until tab close
-      // They have higher z-index and distinct red color so they won't be confused with regular pins
       marker.setMap(isVisible ? map : null);
     });
+
+    if (sessionMarkers.length > 0) {
+      console.log(`🎯 PropertyLayer: Session markers ${isVisible ? 'shown' : 'hidden'} (${sessionMarkers.length} markers)`);
+    }
   }, [isVisible, sessionMarkers, map]);
 
   // Set up clustering when markers are ready
@@ -509,6 +520,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
 
   // Update visibility when isVisible prop changes
   useEffect(() => {
+    console.log(`🔄 PropertyLayer: isVisible changed to ${isVisible}, updating marker visibility`);
     updateMarkerVisibility();
   }, [isVisible, clusterer, markers]);
 
