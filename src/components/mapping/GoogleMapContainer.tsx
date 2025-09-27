@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
+import { createModernPinIcon, MarkerColors } from './utils/modernMarkers';
 
 interface GoogleMapContainerProps {
   height?: string;
@@ -146,15 +147,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           position: mapCenter,
           map: map,
           title: location ? 'Your Location' : 'Atlanta, GA',
-          icon: {
-            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="${location ? '#22c55e' : '#3b82f6'}"/>
-              </svg>
-            `),
-            scaledSize: new google.maps.Size(24, 24),
-            anchor: new google.maps.Point(12, 24)
-          }
+          icon: createModernPinIcon(location ? MarkerColors.VERIFIED : MarkerColors.DEFAULT, 28)
         });
 
         // Add info window

@@ -16,3 +16,12 @@ build/
 # API Keys and Secrets
 *.key
 *.pem
+
+# Design references (screenshots can be large)
+design-references/*.png
+design-references/*.jpg
+design-references/*.jpeg
+design-references/*.gif
+design-references/*.pdf
+design-references/*.webp
+!design-references/README.md

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from './LayerManager';
+import { ModernMarkerStyles, MarkerColors, createModernPinIcon } from '../utils/modernMarkers';
 
 interface SiteSubmit {
   id: string;
@@ -44,22 +45,23 @@ interface SiteSubmitLayerProps {
   isVisible: boolean;
   loadingConfig: SiteSubmitLoadingConfig;
   onSiteSubmitsLoaded?: (count: number) => void;
+  onPinClick?: (siteSubmit: SiteSubmit) => void;
 }
 
-// Stage-based marker colors mapping
+// Stage-based marker colors mapping (modern colors)
 const STAGE_MARKER_COLORS: Record<string, string> = {
-  'New': 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',        // Blue for new submissions
-  'In Progress': 'https://maps.google.com/mapfiles/ms/icons/orange-dot.png', // Orange for in progress
-  'Under Review': 'https://maps.google.com/mapfiles/ms/icons/yellow-dot.png', // Yellow for under review
-  'Approved': 'https://maps.google.com/mapfiles/ms/icons/green-dot.png',    // Green for approved
-  'Rejected': 'https://maps.google.com/mapfiles/ms/icons/red-dot.png',      // Red for rejected
-  'On Hold': 'https://maps.google.com/mapfiles/ms/icons/purple-dot.png',    // Purple for on hold
-  'Cancelled': 'https://maps.google.com/mapfiles/ms/icons/ltblue-dot.png',  // Light blue for cancelled
+  'New': MarkerColors.SUBMITTED,        // Purple for new submissions
+  'In Progress': MarkerColors.PENDING,  // Amber for in progress
+  'Under Review': '#F59E0B',           // Orange for under review
+  'Approved': MarkerColors.APPROVED,    // Green for approved
+  'Rejected': MarkerColors.REJECTED,    // Red for rejected
+  'On Hold': '#8B5CF6',               // Purple for on hold
+  'Cancelled': '#6B7280',             // Gray for cancelled
 };
 
-const DEFAULT_MARKER_COLOR = 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png';
+const DEFAULT_MARKER_COLOR = MarkerColors.SUBMITTED;
 
-const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadingConfig, onSiteSubmitsLoaded }) => {
+const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadingConfig, onSiteSubmitsLoaded, onPinClick }) => {
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
   const [clusterer, setClusterer] = useState<MarkerClusterer | null>(null);
@@ -85,19 +87,16 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
     return null;
   };
 
-  // Get marker color based on submit stage
-  const getMarkerColor = (siteSubmit: SiteSubmit, verified: boolean) => {
-    // If verified coordinates, make marker slightly more prominent
-    if (verified) {
-      return siteSubmit.submit_stage?.name
-        ? STAGE_MARKER_COLORS[siteSubmit.submit_stage.name] || DEFAULT_MARKER_COLOR
-        : DEFAULT_MARKER_COLOR;
-    }
-
-    // Regular stage-based coloring for sf_property coordinates
-    return siteSubmit.submit_stage?.name
-      ? STAGE_MARKER_COLORS[siteSubmit.submit_stage.name] || DEFAULT_MARKER_COLOR
+  // Get modern marker icon based on submit stage
+  const getMarkerIcon = (siteSubmit: SiteSubmit, verified: boolean): google.maps.Icon => {
+    const stageName = siteSubmit.submit_stage?.name;
+    const color = stageName
+      ? STAGE_MARKER_COLORS[stageName] || DEFAULT_MARKER_COLOR
       : DEFAULT_MARKER_COLOR;
+
+    // Use larger size for verified coordinates to show prominence
+    const size = verified ? 32 : 28;
+    return createModernPinIcon(color, size);
   };
 
   // Fetch site submits based on loading configuration
@@ -307,7 +306,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
       const coords = getDisplayCoordinates(siteSubmit);
       if (!coords) return null;
 
-      const markerColor = getMarkerColor(siteSubmit, coords.verified);
+      const markerIcon = getMarkerIcon(siteSubmit, coords.verified);
 
       // Create info window content
       const infoContent = `
@@ -338,15 +337,17 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
         position: { lat: coords.lat, lng: coords.lng },
         map: null, // Don't show initially
         title: siteSubmit.site_submit_name || `Site Submit - ${siteSubmit.client?.client_name}`,
-        icon: {
-          url: markerColor,
-          scaledSize: new google.maps.Size(32, 32),
-          origin: new google.maps.Point(0, 0),
-          anchor: new google.maps.Point(16, 32)
-        }
+        icon: markerIcon
       });
 
       marker.addListener('click', () => {
+        // Use modern slideout instead of info window
+        if (onPinClick) {
+          onPinClick(siteSubmit);
+          return;
+        }
+
+        // Fallback to info window
         infoWindow.open(map, marker);
       });
 

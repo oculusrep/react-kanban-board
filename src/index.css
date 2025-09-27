@@ -28,3 +28,57 @@
   clip-path: none;
   border-radius: 0.375rem;
 }
+
+/* Slideout animations */
+@keyframes slideArrow {
+  0% {
+    transform: translateY(-50%) translateX(0);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translateY(-50%) translateX(-8px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-50%) translateX(0);
+    opacity: 0.7;
+  }
+}
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutToRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+/* Enhanced slideout content animations */
+.slideout-content > * {
+  animation: slideInContent 0.6s ease-out forwards;
+}
+
+@keyframes slideInContent {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}

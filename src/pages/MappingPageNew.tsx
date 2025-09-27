@@ -3,7 +3,8 @@ import GoogleMapContainer from '../components/mapping/GoogleMapContainer';
 import BatchGeocodingPanel from '../components/mapping/BatchGeocodingPanel';
 import PropertyLayer, { PropertyLoadingConfig } from '../components/mapping/layers/PropertyLayer';
 import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/layers/SiteSubmitLayer';
-import LayerPanel from '../components/mapping/LayerPanel';
+import LayerNavigationSlideout from '../components/mapping/slideouts/LayerNavigationSlideout';
+import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
 import MapContextMenu from '../components/mapping/MapContextMenu';
 import { LayerManagerProvider, useLayerManager } from '../components/mapping/layers/LayerManager';
 import { geocodingService } from '../services/geocodingService';
@@ -26,6 +27,12 @@ const MappingPageContent: React.FC = () => {
   const [showPropertyModal, setShowPropertyModal] = useState(false);
   const [pinDropCoordinates, setPinDropCoordinates] = useState<{lat: number, lng: number} | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
+
+  // Slideout states
+  const [isLayerNavOpen, setIsLayerNavOpen] = useState(false);
+  const [isPinDetailsOpen, setIsPinDetailsOpen] = useState(false);
+  const [selectedPinData, setSelectedPinData] = useState<any>(null);
+  const [selectedPinType, setSelectedPinType] = useState<'property' | 'site_submit' | null>(null);
   // Initialize recently created IDs from sessionStorage
   const [recentlyCreatedPropertyIds, setRecentlyCreatedPropertyIds] = useState<Set<string>>(() => {
     try {
@@ -203,6 +210,19 @@ const MappingPageContent: React.FC = () => {
 
   const handleContextMenuClose = () => {
     setContextMenu(prev => ({ ...prev, isVisible: false }));
+  };
+
+  // Pin click handlers for slideout
+  const handlePinClick = (data: any, type: 'property' | 'site_submit') => {
+    setSelectedPinData(data);
+    setSelectedPinType(type);
+    setIsPinDetailsOpen(true);
+  };
+
+  const handlePinDetailsClose = () => {
+    setIsPinDetailsOpen(false);
+    setSelectedPinData(null);
+    setSelectedPinType(null);
   };
 
   const testGeocoding = async () => {
@@ -403,6 +423,7 @@ const MappingPageContent: React.FC = () => {
                 setLayerLoading('properties', false);
                 console.log('🏢 Properties loaded, visibility:', layerState.properties?.isVisible);
               }}
+              onPinClick={(property) => handlePinClick(property, 'property')}
               onCreateSiteSubmit={(property) => {
                 // Set property coordinates and ID, then open site submit modal
                 const coords = property.verified_latitude && property.verified_longitude
@@ -423,10 +444,22 @@ const MappingPageContent: React.FC = () => {
                 setLayerCount('site_submits', count);
                 setLayerLoading('site_submits', false);
               }}
+              onPinClick={(siteSubmit) => handlePinClick(siteSubmit, 'site_submit')}
             />
 
-            {/* Modern Layer Panel */}
-            <LayerPanel />
+            {/* Modern Slideout Navigation */}
+            <LayerNavigationSlideout
+              isOpen={isLayerNavOpen}
+              onToggle={() => setIsLayerNavOpen(!isLayerNavOpen)}
+            />
+
+            {/* Pin Details Slideout */}
+            <PinDetailsSlideout
+              isOpen={isPinDetailsOpen}
+              onClose={handlePinDetailsClose}
+              data={selectedPinData}
+              type={selectedPinType}
+            />
 
             {/* Property Creation Modal */}
             {pinDropCoordinates && (

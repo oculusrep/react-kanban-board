@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from './LayerManager';
+import { ModernMarkerStyles } from '../utils/modernMarkers';
 
 interface Property {
   id: string;
@@ -30,6 +31,7 @@ interface PropertyLayerProps {
   onPropertiesLoaded?: (count: number) => void;
   onCreateSiteSubmit?: (property: Property) => void;
   recentlyCreatedIds?: Set<string>; // Track recently created properties
+  onPinClick?: (property: Property) => void;
 }
 
 const PropertyLayer: React.FC<PropertyLayerProps> = ({
@@ -38,7 +40,8 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   loadingConfig,
   onPropertiesLoaded,
   onCreateSiteSubmit,
-  recentlyCreatedIds = new Set()
+  recentlyCreatedIds = new Set(),
+  onPinClick
 }) => {
   const [properties, setProperties] = useState<Property[]>([]);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
@@ -240,12 +243,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
         position: { lat: coords.lat, lng: coords.lng },
         map: null, // Don't show initially, let visibility logic handle it
         title: `🆕 ${property.property_name || property.address}`,
-        icon: {
-          url: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png', // Red for recently created
-          scaledSize: new google.maps.Size(32, 32),
-          origin: new google.maps.Point(0, 0),
-          anchor: new google.maps.Point(16, 32)
-        },
+        icon: ModernMarkerStyles.property.recent(),
         zIndex: 1000 // Higher z-index to show above other markers
       });
 
@@ -276,6 +274,13 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       });
 
       marker.addListener('click', () => {
+        // Use modern slideout for session markers too
+        if (onPinClick) {
+          onPinClick(property);
+          return;
+        }
+
+        // Fallback to info window
         infoWindow.open(map, marker);
       });
 
@@ -342,30 +347,32 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
         content: infoContent
       });
 
-      // Determine marker color based on property type and recent creation
-      let iconUrl: string;
+      // Determine marker icon based on property type and recent creation
+      let markerIcon: google.maps.Icon;
 
       if (isRecentlyCreated) {
-        iconUrl = 'https://maps.google.com/mapfiles/ms/icons/red-dot.png'; // Recently created - red
+        markerIcon = ModernMarkerStyles.property.recent(); // Recently created - red
       } else if (coords.verified) {
-        iconUrl = 'https://maps.google.com/mapfiles/ms/icons/green-dot.png'; // Verified - green
+        markerIcon = ModernMarkerStyles.property.verified(); // Verified - green
       } else {
-        iconUrl = 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png'; // Geocoded - blue
+        markerIcon = ModernMarkerStyles.property.geocoded(); // Geocoded - blue
       }
 
       const marker = new google.maps.Marker({
         position: { lat: coords.lat, lng: coords.lng },
         map: null, // Don't show initially
         title: property.property_name || property.address,
-        icon: {
-          url: iconUrl,
-          scaledSize: new google.maps.Size(32, 32),
-          origin: new google.maps.Point(0, 0),
-          anchor: new google.maps.Point(16, 32)
-        }
+        icon: markerIcon
       });
 
       marker.addListener('click', () => {
+        // Use modern slideout instead of info window
+        if (onPinClick) {
+          onPinClick(property);
+          return;
+        }
+
+        // Fallback to info window if no modern handler
         infoWindow.open(map, marker);
 
         // Add event listener for the site submit button after info window opens
@@ -487,9 +494,9 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   // Update session marker visibility - always show session markers regardless of layer visibility
   useEffect(() => {
     sessionMarkers.forEach(marker => {
-      // Always show session markers (they persist until tab close or manual clear)
+      // Session markers follow the layer visibility but persist in memory until tab close
       // They have higher z-index and distinct red color so they won't be confused with regular pins
-      marker.setMap(map);
+      marker.setMap(isVisible ? map : null);
     });
   }, [isVisible, sessionMarkers, map]);
 
