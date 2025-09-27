@@ -130,16 +130,16 @@ function fetchSalesforceContent(versionDataPath, sessionId, instanceUrl) {
  * Main processing function
  */
 async function processAllNotes() {
-  console.log('=€ Starting PRODUCTION Notes Content Fix (UNLIMITED)');
-  console.log('=Ë This script processes ALL notes without limits');
+  console.log('=ï¿½ Starting PRODUCTION Notes Content Fix (UNLIMITED)');
+  console.log('=ï¿½ This script processes ALL notes without limits');
 
   try {
     // Step 1: Authenticate with Salesforce
-    console.log('\n1ã Authenticating with Salesforce...');
+    console.log('\n1ï¿½ Authenticating with Salesforce...');
     const { sessionId, instanceUrl } = await soapLogin();
 
     // Step 2: Get all notes that need content fix
-    console.log('\n2ã Loading truncated notes from database...');
+    console.log('\n2ï¿½ Loading truncated notes from database...');
     const { data: notes, error: notesError } = await supabase
       .from('note')
       .select('id, title, body, sf_content_document_id')
@@ -150,7 +150,7 @@ async function processAllNotes() {
       throw new Error(`Database error: ${notesError.message}`);
     }
 
-    console.log(`=Ý Found ${notes.length} notes that may need content updates`);
+    console.log(`=ï¿½ Found ${notes.length} notes that may need content updates`);
 
     if (notes.length === 0) {
       console.log(' No notes need updating. All notes already have full content!');
@@ -158,7 +158,7 @@ async function processAllNotes() {
     }
 
     // Step 3: Get ContentVersion data for VersionData paths
-    console.log('\n3ã Loading ContentVersion data for API paths...');
+    console.log('\n3ï¿½ Loading ContentVersion data for API paths...');
     const { data: contentVersions, error: cvError } = await supabase
       .from('content_version')
       .select('id, content_document_id, version_data, text_preview')
@@ -169,7 +169,7 @@ async function processAllNotes() {
       throw new Error(`ContentVersion error: ${cvError.message}`);
     }
 
-    console.log(`=Ä Found ${contentVersions.length} ContentVersions with API paths`);
+    console.log(`=ï¿½ Found ${contentVersions.length} ContentVersions with API paths`);
 
     // Step 4: Create mapping from ContentDocument to VersionData path
     const contentDocumentToPath = {};
@@ -179,10 +179,10 @@ async function processAllNotes() {
       }
     });
 
-    console.log(`= Created ${Object.keys(contentDocumentToPath).length} ContentDocument ’ VersionData mappings`);
+    console.log(`= Created ${Object.keys(contentDocumentToPath).length} ContentDocument ï¿½ VersionData mappings`);
 
     // Step 5: Process each note
-    console.log('\n4ã Processing notes with full content...\n');
+    console.log('\n4ï¿½ Processing notes with full content...\n');
 
     let processed = 0;
     let updated = 0;
@@ -195,14 +195,14 @@ async function processAllNotes() {
       try {
         // Check if note has ContentDocument mapping
         if (!note.sf_content_document_id) {
-          console.log(`í  [${processed}/${notes.length}] ${note.title || 'Untitled'} - No ContentDocument ID`);
+          console.log(`ï¿½  [${processed}/${notes.length}] ${note.title || 'Untitled'} - No ContentDocument ID`);
           skipped++;
           continue;
         }
 
         const versionDataPath = contentDocumentToPath[note.sf_content_document_id];
         if (!versionDataPath) {
-          console.log(`í  [${processed}/${notes.length}] ${note.title || 'Untitled'} - No VersionData path`);
+          console.log(`ï¿½  [${processed}/${notes.length}] ${note.title || 'Untitled'} - No VersionData path`);
           skipped++;
           continue;
         }
@@ -223,10 +223,10 @@ async function processAllNotes() {
             throw new Error(`Update failed: ${updateError.message}`);
           }
 
-          console.log(` [${processed}/${notes.length}] Updated: ${note.title || 'Untitled'} (${note.body?.length || 0} ’ ${fullContent.length} chars)`);
+          console.log(` [${processed}/${notes.length}] Updated: ${note.title || 'Untitled'} (${note.body?.length || 0} ï¿½ ${fullContent.length} chars)`);
           updated++;
         } else {
-          console.log(`í  [${processed}/${notes.length}] ${note.title || 'Untitled'} - No improvement needed`);
+          console.log(`ï¿½  [${processed}/${notes.length}] ${note.title || 'Untitled'} - No improvement needed`);
           skipped++;
         }
 
@@ -241,27 +241,27 @@ async function processAllNotes() {
     }
 
     // Step 6: Final results
-    console.log('\n=Ê FINAL RESULTS:');
+    console.log('\n=ï¿½ FINAL RESULTS:');
     console.log('PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP');
-    console.log(`=Ý Total Notes Processed: ${processed}`);
+    console.log(`=ï¿½ Total Notes Processed: ${processed}`);
     console.log(` Successfully Updated: ${updated}`);
-    console.log(`í  Skipped (no improvement): ${skipped}`);
+    console.log(`ï¿½  Skipped (no improvement): ${skipped}`);
     console.log(`L Errors: ${errors}`);
     console.log('PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP');
 
     if (updated > 0) {
-      console.log('\n<‰ SUCCESS! Notes content fix completed.');
-      console.log('=¡ Verify results in UI - notes should now display full content with rich formatting.');
+      console.log('\n<ï¿½ SUCCESS! Notes content fix completed.');
+      console.log('=ï¿½ Verify results in UI - notes should now display full content with rich formatting.');
     } else {
-      console.log('\n   No notes were updated. This may indicate:');
+      console.log('\nï¿½  No notes were updated. This may indicate:');
       console.log('   - All notes already have full content');
       console.log('   - ContentDocument mappings are missing');
       console.log('   - VersionData paths are invalid');
     }
 
   } catch (error) {
-    console.error('\n=¥ CRITICAL ERROR:', error.message);
-    console.error('=' Check your credentials and network connection');
+    console.error('\n=ï¿½ CRITICAL ERROR:', error.message);
+    console.error('=âš ï¸ Check your credentials and network connection');
     process.exit(1);
   }
 }
@@ -269,13 +269,13 @@ async function processAllNotes() {
 // Execute if run directly
 if (require.main === module) {
   console.log('= Production Notes Content Fix Script');
-  console.log('   IMPORTANT: Update SF_CONFIG and DB_CONFIG with production credentials before running!');
+  console.log('ï¿½  IMPORTANT: Update SF_CONFIG and DB_CONFIG with production credentials before running!');
   console.log('');
 
   // Basic credential validation
   if (SF_CONFIG.username.includes('YOUR_PRODUCTION') || DB_CONFIG.supabaseUrl.includes('YOUR-PRODUCTION')) {
     console.error('L CONFIGURATION ERROR: Please update SF_CONFIG and DB_CONFIG with real production credentials');
-    console.error('=Ý Edit this file and replace placeholder values before running');
+    console.error('=ï¿½ Edit this file and replace placeholder values before running');
     process.exit(1);
   }
 

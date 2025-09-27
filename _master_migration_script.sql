@@ -2698,4 +2698,87 @@ END $$;
 COMMENT ON TABLE note IS 'Normalized note table storing unique ContentNote records without duplication. Each Salesforce ContentNote appears once here.';
 COMMENT ON TABLE note_object_link IS 'Many-to-many relationship table linking notes to business objects. ContentDocumentLink mappings: 001=clients, 006=deals, a00=properties, a05=site_submits, a02=assignments, 003=contacts, 005=users';
 
+-- ==============================================================================
+-- Global Site Submit Stage Fix: Submitted-Reviewing
+-- ==============================================================================
+
+-- Ensure "Submitted-Reviewing" stage exists (proper upsert without assuming unique constraint)
+INSERT INTO submit_stage (id, name)
+SELECT
+    gen_random_uuid(),
+    'Submitted-Reviewing'
+WHERE NOT EXISTS (
+    SELECT 1 FROM submit_stage WHERE name = 'Submitted-Reviewing'
+);
+
+-- Global fix for all site submits with Submitted-Reviewing stage
+DO $$
+DECLARE
+    submitted_reviewing_id UUID;
+    affected_count INTEGER;
+    rec RECORD;
+BEGIN
+    RAISE NOTICE 'Running Global Submitted-Reviewing Stage Fix...';
+
+    -- Get the stage ID
+    SELECT id INTO submitted_reviewing_id
+    FROM submit_stage
+    WHERE name = 'Submitted-Reviewing';
+
+    IF submitted_reviewing_id IS NULL THEN
+        RAISE EXCEPTION 'Failed to find or create Submitted-Reviewing stage';
+    END IF;
+
+    RAISE NOTICE 'Submitted-Reviewing stage ID: %', submitted_reviewing_id;
+
+    -- Update all site_submits that have sf_submit_stage = 'Submitted-Reviewing'
+    -- but are not mapped to the correct submit_stage_id
+    UPDATE site_submit
+    SET submit_stage_id = submitted_reviewing_id
+    WHERE sf_submit_stage = 'Submitted-Reviewing'
+      AND (submit_stage_id IS NULL OR submit_stage_id != submitted_reviewing_id);
+
+    GET DIAGNOSTICS affected_count = ROW_COUNT;
+    RAISE NOTICE 'Updated % site_submit records to map to Submitted-Reviewing stage', affected_count;
+
+    -- Check for any variations of the stage name that might need fixing
+    UPDATE site_submit
+    SET submit_stage_id = submitted_reviewing_id
+    WHERE (
+        sf_submit_stage ILIKE '%submitted%review%' OR
+        sf_submit_stage ILIKE '%submit%review%' OR
+        sf_submit_stage = 'Submitted - Reviewing' OR
+        sf_submit_stage = 'Submitted Reviewing'
+    )
+    AND (submit_stage_id IS NULL OR submit_stage_id != submitted_reviewing_id);
+
+    GET DIAGNOSTICS affected_count = ROW_COUNT;
+    RAISE NOTICE 'Updated % additional site_submit records with similar stage names', affected_count;
+
+    -- Report final counts
+    SELECT COUNT(*) INTO affected_count
+    FROM site_submit ss
+    JOIN submit_stage st ON ss.submit_stage_id = st.id
+    WHERE st.name = 'Submitted-Reviewing';
+
+    RAISE NOTICE 'Total site_submits now mapped to Submitted-Reviewing stage: %', affected_count;
+
+    -- Show breakdown by client
+    RAISE NOTICE 'Breakdown by client:';
+    FOR rec IN
+        SELECT
+            COALESCE(c.client_name, 'No Client') as client_name,
+            COUNT(*) as count
+        FROM site_submit ss
+        JOIN submit_stage st ON ss.submit_stage_id = st.id
+        LEFT JOIN client c ON ss.client_id = c.id
+        WHERE st.name = 'Submitted-Reviewing'
+        GROUP BY c.client_name
+        ORDER BY count DESC
+    LOOP
+        RAISE NOTICE '  %: % records', rec.client_name, rec.count;
+    END LOOP;
+
+END $$;
+
 COMMIT;

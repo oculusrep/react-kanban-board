@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from './LayerManager';
-import { ModernMarkerStyles, MarkerColors, createModernPinIcon } from '../utils/modernMarkers';
+import { createStageMarkerIcon } from '../utils/stageMarkers';
 
 interface SiteSubmit {
   id: string;
@@ -38,6 +38,7 @@ export type SiteSubmitLoadingMode = 'static-100' | 'static-500' | 'static-all' |
 export interface SiteSubmitLoadingConfig {
   mode: SiteSubmitLoadingMode;
   clientId?: string | null; // For client filtering
+  visibleStages?: Set<string>; // For stage filtering
 }
 
 interface SiteSubmitLayerProps {
@@ -46,22 +47,11 @@ interface SiteSubmitLayerProps {
   loadingConfig: SiteSubmitLoadingConfig;
   onSiteSubmitsLoaded?: (count: number) => void;
   onPinClick?: (siteSubmit: SiteSubmit) => void;
+  onStageCountsUpdate?: (counts: Record<string, number>) => void;
 }
 
-// Stage-based marker colors mapping (modern colors)
-const STAGE_MARKER_COLORS: Record<string, string> = {
-  'New': MarkerColors.SUBMITTED,        // Purple for new submissions
-  'In Progress': MarkerColors.PENDING,  // Amber for in progress
-  'Under Review': '#F59E0B',           // Orange for under review
-  'Approved': MarkerColors.APPROVED,    // Green for approved
-  'Rejected': MarkerColors.REJECTED,    // Red for rejected
-  'On Hold': '#8B5CF6',               // Purple for on hold
-  'Cancelled': '#6B7280',             // Gray for cancelled
-};
 
-const DEFAULT_MARKER_COLOR = MarkerColors.SUBMITTED;
-
-const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadingConfig, onSiteSubmitsLoaded, onPinClick }) => {
+const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadingConfig, onSiteSubmitsLoaded, onPinClick, onStageCountsUpdate }) => {
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
   const [clusterer, setClusterer] = useState<MarkerClusterer | null>(null);
@@ -87,16 +77,10 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
     return null;
   };
 
-  // Get modern marker icon based on submit stage
-  const getMarkerIcon = (siteSubmit: SiteSubmit, verified: boolean): google.maps.Icon => {
-    const stageName = siteSubmit.submit_stage?.name;
-    const color = stageName
-      ? STAGE_MARKER_COLORS[stageName] || DEFAULT_MARKER_COLOR
-      : DEFAULT_MARKER_COLOR;
-
-    // Use larger size for verified coordinates to show prominence
-    const size = verified ? 32 : 28;
-    return createModernPinIcon(color, size);
+  // Get marker icon based on submit stage
+  const getMarkerIcon = (siteSubmit: SiteSubmit): google.maps.Icon => {
+    const stageName = siteSubmit.submit_stage?.name || 'Monitor';
+    return createStageMarkerIcon(stageName, 32);
   };
 
   // Fetch site submits based on loading configuration
@@ -263,8 +247,17 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
           );
 
           console.log(`📍 Found ${validSiteSubmits.length} site submits with coordinates (static-all via pagination)`);
+
+          // Calculate stage counts for legend
+          const stageCounts: Record<string, number> = {};
+          validSiteSubmits.forEach(siteSubmit => {
+            const stageName = siteSubmit.submit_stage?.name || 'Monitor';
+            stageCounts[stageName] = (stageCounts[stageName] || 0) + 1;
+          });
+
           setSiteSubmits(validSiteSubmits);
           onSiteSubmitsLoaded?.(validSiteSubmits.length);
+          onStageCountsUpdate?.(stageCounts);
 
           setIsLoading(false);
           return; // Exit early since we've handled the request
@@ -281,8 +274,17 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
       );
 
       console.log(`📍 Found ${validSiteSubmits.length} site submits with coordinates (${loadingConfig.mode})`);
+
+      // Calculate stage counts for legend
+      const stageCounts: Record<string, number> = {};
+      validSiteSubmits.forEach(siteSubmit => {
+        const stageName = siteSubmit.submit_stage?.name || 'Monitor';
+        stageCounts[stageName] = (stageCounts[stageName] || 0) + 1;
+      });
+
       setSiteSubmits(validSiteSubmits);
       onSiteSubmitsLoaded?.(validSiteSubmits.length);
+      onStageCountsUpdate?.(stageCounts);
 
     } catch (err) {
       console.error('❌ Error fetching site submits:', err);
@@ -306,7 +308,13 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
       const coords = getDisplayCoordinates(siteSubmit);
       if (!coords) return null;
 
-      const markerIcon = getMarkerIcon(siteSubmit, coords.verified);
+      // Skip if stage is not visible
+      const stageName = siteSubmit.submit_stage?.name || 'Monitor';
+      if (loadingConfig.visibleStages && !loadingConfig.visibleStages.has(stageName)) {
+        return null;
+      }
+
+      const markerIcon = getMarkerIcon(siteSubmit);
 
       // Create info window content
       const infoContent = `
@@ -406,12 +414,12 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
     }
   }, [map, loadingConfig, siteSubmitRefreshTrigger]);
 
-  // Create markers when site submits load
+  // Create markers when site submits load or stage visibility changes
   useEffect(() => {
     if (siteSubmits.length > 0) {
       createMarkers();
     }
-  }, [siteSubmits, map]);
+  }, [siteSubmits, map, loadingConfig.visibleStages]);
 
   // Set up clustering when markers are ready
   useEffect(() => {

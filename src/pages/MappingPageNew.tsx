@@ -14,6 +14,8 @@ import { LayerManagerProvider, useLayerManager } from '../components/mapping/lay
 import { geocodingService } from '../services/geocodingService';
 import SiteSubmitFormModal from '../components/SiteSubmitFormModal';
 import InlinePropertyCreationModal from '../components/mapping/InlinePropertyCreationModal';
+import SiteSubmitLegend from '../components/mapping/SiteSubmitLegend';
+import { STAGE_CATEGORIES } from '../components/mapping/SiteSubmitPin';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supportsRightClick } from '../utils/deviceDetection';
 import { supabase } from '../lib/supabaseClient';
@@ -43,6 +45,14 @@ const MappingPageContent: React.FC = () => {
 
   // Client selector state
   const [selectedClient, setSelectedClient] = useState<ClientSearchResult | null>(null);
+
+  // Site submit legend state
+  const [visibleStages, setVisibleStages] = useState<Set<string>>(() => {
+    // Initialize with all stages visible
+    const allStages = Object.values(STAGE_CATEGORIES).flatMap(category => category.stages);
+    return new Set(allStages);
+  });
+  const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
   // Initialize recently created IDs from sessionStorage
   const [recentlyCreatedPropertyIds, setRecentlyCreatedPropertyIds] = useState<Set<string>>(() => {
     try {
@@ -418,8 +428,46 @@ const MappingPageContent: React.FC = () => {
   // Site submit layer configuration (memoized to prevent infinite re-renders)
   const siteSubmitLoadingConfig: SiteSubmitLoadingConfig = useMemo(() => ({
     mode: selectedClient ? 'client-filtered' : 'static-100',
-    clientId: selectedClient?.id || null
-  }), [selectedClient]);
+    clientId: selectedClient?.id || null,
+    visibleStages: visibleStages
+  }), [selectedClient, visibleStages]);
+
+  // Stage toggle handlers
+  const handleStageToggle = (stageName: string) => {
+    setVisibleStages(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(stageName)) {
+        newSet.delete(stageName);
+      } else {
+        newSet.add(stageName);
+      }
+      return newSet;
+    });
+  };
+
+  const handleCategoryToggle = (categoryKey: string) => {
+    const category = STAGE_CATEGORIES[categoryKey as keyof typeof STAGE_CATEGORIES];
+    if (!category) return;
+
+    const categoryStages = category.stages;
+    const allVisible = categoryStages.every(stage => visibleStages.has(stage));
+
+    setVisibleStages(prev => {
+      const newSet = new Set(prev);
+      if (allVisible) {
+        // Hide all stages in category
+        categoryStages.forEach(stage => newSet.delete(stage));
+      } else {
+        // Show all stages in category
+        categoryStages.forEach(stage => newSet.add(stage));
+      }
+      return newSet;
+    });
+  };
+
+  const handleStageCountsUpdate = (counts: Record<string, number>) => {
+    setStageCounts(counts);
+  };
 
   return (
     <div className="h-screen w-screen bg-gray-50 overflow-hidden">
@@ -616,6 +664,7 @@ const MappingPageContent: React.FC = () => {
                 setLayerLoading('site_submits', false);
               }}
               onPinClick={(siteSubmit) => handlePinClick(siteSubmit, 'site_submit')}
+              onStageCountsUpdate={handleStageCountsUpdate}
             />
 
             {/* Modern Slideout Navigation */}
@@ -675,6 +724,16 @@ const MappingPageContent: React.FC = () => {
               onVerifyLocation={handleVerifyLocation}
               onClose={handlePropertyContextMenuClose}
             />
+
+            {/* Site Submit Legend - Show when site submit layer is visible */}
+            {layerState.site_submits?.isVisible && (
+              <SiteSubmitLegend
+                visibleStages={visibleStages}
+                onStageToggle={handleStageToggle}
+                onCategoryToggle={handleCategoryToggle}
+                totalCounts={stageCounts}
+              />
+            )}
 
           </div>
         </div>
