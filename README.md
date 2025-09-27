@@ -442,5 +442,133 @@ npm run dev
 ## Database
 The application uses Supabase for data persistence. Ensure your database schema includes the latest migration updates for disbursement tracking.
 
+### Site Submit Mapping System - Current State ✅
+A comprehensive mapping interface with advanced filtering, clustering, and real-time site submit management has been implemented:
+
+#### System Architecture
+- **Google Maps Integration**: Custom markers with stage-based styling and clustering
+- **Supabase Database**: Real-time data persistence with proper relationships
+- **LayerManager Pattern**: Context-based refresh system for immediate UI updates
+- **TypeScript**: Full type safety with database schema integration
+
+#### Key Components
+
+##### **PinDetailsSlideout.tsx** - Main sidebar interface
+- **Location**: `/src/components/mapping/slideouts/PinDetailsSlideout.tsx`
+- **Features**:
+  - ✅ Real-time stage dropdown updates (no page refresh needed)
+  - ✅ Multiple tabs: Submit, Property, Financial, Activity, Location
+  - ✅ Edit functionality with save/cancel
+  - ✅ Property verification tools
+  - ✅ LayerManager integration for immediate UI refresh
+
+##### **SiteSubmitLayer.tsx** - Map markers management
+- **Location**: `/src/components/mapping/layers/SiteSubmitLayer.tsx`
+- **Features**: Manages site submit markers using `createStageMarkerIcon` for consistent styling
+
+##### **SiteSubmitLegend.tsx** - Interactive legend
+- **Location**: `/src/components/mapping/SiteSubmitLegend.tsx`
+- **Features**:
+  - ✅ Collapsible legend with custom stage ordering
+  - ✅ "Submitted-Reviewing" prioritized at top
+  - ✅ Individual stage show/hide controls
+  - ✅ Show All/Hide All bulk actions
+  - ✅ Dynamic height based on stage count
+
+##### **SiteSubmitPin.tsx** - Pin design component
+- **Location**: `/src/components/mapping/SiteSubmitPin.tsx`
+- **Features**: ✅ Synchronized icons with map pins using `STAGE_CONFIGURATIONS`
+
+##### **stageMarkers.ts** - Icon configuration
+- **Location**: `/src/components/mapping/utils/stageMarkers.ts`
+- **Features**: ✅ Defines SVG paths, colors, and categories for all stages
+
+#### Recent Fixes & Enhancements ✅
+
+##### Real-Time Stage Updates
+- **Issue**: Stage dropdown changes saved to database but required page refresh to see updates
+- **Solution**: Implemented LayerManager integration with local state management
+- **Result**: Stage changes now appear immediately in both dropdown and map pins
+
+##### Icon Synchronization
+- **Issue**: Legend icons didn't match map pin icons
+- **Solutions**:
+  - ✅ Fixed "Pursuing Ownership" to use target/bullseye icon (was using star)
+  - ✅ Updated "Pass" to proper circle-with-line (prohibited symbol) in gray color
+  - ✅ Removed duplicate stage configurations that caused inconsistencies
+  - ✅ Synchronized all icons between legend and map pins
+
+#### Stage Categories & Colors
+```typescript
+Categories:
+- pipeline: Blue tones (Pre-Submittal, Ready to Submit, Submitted-Reviewing)
+- review: Orange/Yellow (Mike to Review, LOI, Tour)
+- contract: Purple (At Lease/PSA, Under Contract, Executed Deal)
+- construction: Orange/Brown (Closed - Under Construction, Store Open)
+- success: Green/Teal (Booked, Protected)
+- monitoring: Blue/Red/Gray (Monitor, Pursuing Ownership, Unassigned Territory)
+- declined: Gray/Dark (Lost/Killed, Pass, Not Available, Use Conflict, Use Declined)
+```
+
+#### Current Status: Ready for Next Phase 🚧
+
+##### ✅ Completed Features
+- Real-time stage updates working perfectly
+- Synchronized icons between legend and map
+- Stable sidebar functionality with all tabs
+- Comprehensive stage management system
+- LayerManager refresh integration
+
+##### 🚧 Next Phase Planned
+1. **Enhanced Tab Functionality**:
+   - Make more Submit tab fields editable with real-time saves
+   - Add form validation and date pickers
+   - Implement client selection dropdown
+   - Add financial calculations (PSF, annual totals)
+   - Expand Activity tab with timeline/history view
+   - Add property image upload/display
+
+2. **Custom Layer Control System**:
+   - Layer toggle interface with sidebar controls
+   - Individual layer visibility and opacity controls
+   - Additional data layers (boundaries, demographics, competition)
+   - Advanced filtering with multi-criteria options
+   - Geographic boundary filters
+
+#### Technical Patterns Established
+
+##### Real-Time Updates Pattern
+```typescript
+const handleDataChange = async (newValue) => {
+  // 1. Update database
+  const { data, error } = await supabase.from('table').update(...)
+  // 2. Update local state immediately
+  setLocalState(newValue)
+  // 3. Trigger layer refresh
+  refreshLayer('layer_id')
+}
+```
+
+##### Icon Synchronization Pattern
+```typescript
+// Ensure legend and map pins use same configuration
+const config = STAGE_CONFIGURATIONS[stageName]
+const lucideIcon = iconMap[stageName] || Search
+```
+
+#### File Structure
+```
+src/components/mapping/
+├── slideouts/
+│   └── PinDetailsSlideout.tsx (✅ Real-time updates)
+├── layers/
+│   ├── LayerManager.tsx (Context for refresh triggers)
+│   └── SiteSubmitLayer.tsx (Map markers)
+├── utils/
+│   └── stageMarkers.ts (✅ Icon configs fixed)
+├── SiteSubmitLegend.tsx (✅ Synchronized icons)
+└── SiteSubmitPin.tsx (✅ Synchronized icons)
+```
+
 ### Critical Files
 **⚠️ IMPORTANT**: The `_master_migration_script.sql` file contains the complete database schema and essential migrations. **NEVER DELETE THIS FILE** - it is critical for database setup and contains all table structures, relationships, and data integrity constraints.

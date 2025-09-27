@@ -23,10 +23,11 @@ export const SiteSubmitPin: React.FC<SiteSubmitPinProps> = ({
   showTooltip = false
 }) => {
   const getStageConfig = (stage: string) => {
+    // Icon mapping synchronized with stageMarkers.ts to ensure legend matches map pins
     const iconMap: Record<string, any> = {
       'Pre-Submittal': Edit,
       'Ready to Submit': Upload,
-      'Submitted-Reviewing': Eye,  // Legacy name - not in actual DB
+      'Submitted-Reviewing': Eye,
       'Mike to Review': UserCheck,
       'LOI': FileText,
       'Tour': Navigation,
@@ -38,7 +39,7 @@ export const SiteSubmitPin: React.FC<SiteSubmitPinProps> = ({
       'Booked': DollarSign,
       'Protected': Shield,
       'Monitor': Search,
-      'Pursuing Ownership': Target,
+      'Pursuing Ownership': Target,  // Fixed: now matches map pin icon (target/bullseye)
       'Unassigned Territory': MapPin,
       'Lost / Killed': XCircle,
       'Pass': Ban,

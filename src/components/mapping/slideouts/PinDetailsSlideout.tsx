@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from '../../../lib/supabaseClient';
+import { useLayerManager } from '../layers/LayerManager';
 
 interface Property {
   id: string;
@@ -64,10 +66,45 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   const [activeTab, setActiveTab] = useState<TabType>(type === 'site_submit' ? 'submit' : 'property');
   const [isEditing, setIsEditing] = useState(false);
   const [propertyStatus, setPropertyStatus] = useState<'lease' | 'purchase'>('lease');
+  const [submitStages, setSubmitStages] = useState<{ id: string; name: string }[]>([]);
+  const [currentStageId, setCurrentStageId] = useState<string>('');
+  const { refreshLayer } = useLayerManager();
 
   // Reset to default tab when type changes
   useEffect(() => {
     setActiveTab(type === 'site_submit' ? 'submit' : 'property');
+  }, [type]);
+
+  // Initialize current stage ID when data changes
+  useEffect(() => {
+    if (type === 'site_submit' && data) {
+      const siteSubmitData = data as SiteSubmit;
+      setCurrentStageId(siteSubmitData.submit_stage_id || '');
+    }
+  }, [data, type]);
+
+  // Load submit stages for dropdown
+  useEffect(() => {
+    const loadSubmitStages = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('submit_stage')
+          .select('id, name')
+          .order('name');
+
+        if (error) {
+          console.error('Error loading submit stages:', error);
+        } else if (data) {
+          setSubmitStages(data);
+        }
+      } catch (err) {
+        console.error('Failed to load submit stages:', err);
+      }
+    };
+
+    if (type === 'site_submit') {
+      loadSubmitStages();
+    }
   }, [type]);
 
   if (!data || !type) return null;
@@ -75,6 +112,45 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   const isProperty = type === 'property';
   const property = isProperty ? (data as Property) : (data as SiteSubmit).property;
   const siteSubmit = !isProperty ? (data as SiteSubmit) : null;
+
+  // Handle stage change with immediate database update
+  const handleStageChange = async (newStageId: string) => {
+    if (!siteSubmit || !newStageId) return;
+
+    try {
+      console.log(`🔄 Updating stage for site submit ${siteSubmit.id} to stage ${newStageId}`);
+
+      // Update database immediately
+      const { data: updatedData, error } = await supabase
+        .from('site_submit')
+        .update({
+          submit_stage_id: newStageId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', siteSubmit.id)
+        .select(`
+          *,
+          submit_stage!site_submit_submit_stage_id_fkey (
+            id,
+            name
+          )
+        `)
+        .single();
+
+      if (error) {
+        console.error('Error updating stage:', error);
+        // Could show error notification here
+      } else {
+        console.log('✅ Stage updated successfully:', updatedData);
+        // Update local state immediately to show new stage in dropdown
+        setCurrentStageId(newStageId);
+        // Trigger refresh of site submit layer to show changes immediately
+        refreshLayer('site_submits');
+      }
+    } catch (err) {
+      console.error('Failed to update stage:', err);
+    }
+  };
 
   // Tab configuration based on type
   const getAvailableTabs = (): { id: TabType; label: string; icon: string }[] => {
@@ -106,30 +182,16 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Stage</label>
               <select
-                value={siteSubmit?.submit_stage?.name || ''}
+                value={currentStageId}
+                onChange={(e) => handleStageChange(e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
               >
                 <option value="">Select Stage...</option>
-                <option value="Submitted-Reviewing">Submitted-Reviewing</option>
-                <option value="Ready to Submit">Ready to Submit</option>
-                <option value="Pre-Submittal">Pre-Submittal</option>
-                <option value="Mike to Review">Mike to Review</option>
-                <option value="Pursuing Ownership">Pursuing Ownership</option>
-                <option value="Pass">Pass</option>
-                <option value="Use Declined">Use Declined</option>
-                <option value="Use Conflict">Use Conflict</option>
-                <option value="Not Available">Not Available</option>
-                <option value="Protected">Protected</option>
-                <option value="Unassigned Territory">Unassigned Territory</option>
-                <option value="Lost / Killed">Lost / Killed</option>
-                <option value="Monitor">Monitor</option>
-                <option value="LOI">LOI</option>
-                <option value="At Lease/PSA">At Lease/PSA</option>
-                <option value="Under Contract / Contingent">Under Contract / Contingent</option>
-                <option value="Booked">Booked</option>
-                <option value="Executed Deal">Executed Deal</option>
-                <option value="Closed - Under Construction">Closed - Under Construction</option>
-                <option value="Store Open">Store Open</option>
+                {submitStages.map((stage) => (
+                  <option key={stage.id} value={stage.id}>
+                    {stage.name}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -572,47 +634,48 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           <div className="p-6 border-b border-gray-200">
             <div className="flex items-start justify-between">
               <div>
-                <h1 className="text-xl font-bold text-gray-900 mb-1">
-                  {property?.property_name || property?.address || 'Unnamed Property'}
+                <h1 className={`font-bold text-gray-900 mb-1 ${isProperty ? 'text-xl' : 'text-lg'}`}>
+                  {isProperty
+                    ? (property?.property_name || property?.address || 'Unnamed Property')
+                    : (siteSubmit?.site_submit_name || siteSubmit?.property?.property_name || 'Site Submit')
+                  }
                 </h1>
-                <p className="text-sm text-gray-600 mb-3">
-                  by {property?.city || 'Unknown Location'}
-                </p>
+                {property?.city && (
+                  <p className="text-sm text-gray-600 mb-3">
+                    {property.city}
+                  </p>
+                )}
 
-                {/* Property Status */}
-                <div className="flex items-center space-x-3 mb-4">
-                  <div className="text-sm text-gray-600 font-medium">Property is for...</div>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => setPropertyStatus('lease')}
-                      className={`px-4 py-2 rounded-full text-sm font-semibold border transition-all duration-200 ${
-                        propertyStatus === 'lease'
-                          ? 'bg-orange-100 text-orange-700 border-orange-200 shadow-sm'
-                          : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-                      }`}
-                    >
-                      {propertyStatus === 'lease' ? '●' : '○'} Lease
-                    </button>
-                    <button
-                      onClick={() => setPropertyStatus('purchase')}
-                      className={`px-4 py-2 rounded-full text-sm font-semibold border transition-all duration-200 ${
-                        propertyStatus === 'purchase'
-                          ? 'bg-orange-100 text-orange-700 border-orange-200 shadow-sm'
-                          : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-                      }`}
-                    >
-                      {propertyStatus === 'purchase' ? '●' : '○'} Purchase
-                    </button>
+                {/* Property Status - Only show for properties */}
+                {isProperty && (
+                  <div className="flex items-center space-x-3 mb-4">
+                    <div className="text-sm text-gray-600 font-medium">Property is for...</div>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => setPropertyStatus('lease')}
+                        className={`px-4 py-2 rounded-full text-sm font-semibold border transition-all duration-200 ${
+                          propertyStatus === 'lease'
+                            ? 'bg-orange-100 text-orange-700 border-orange-200 shadow-sm'
+                            : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                        }`}
+                      >
+                        {propertyStatus === 'lease' ? '●' : '○'} Lease
+                      </button>
+                      <button
+                        onClick={() => setPropertyStatus('purchase')}
+                        className={`px-4 py-2 rounded-full text-sm font-semibold border transition-all duration-200 ${
+                          propertyStatus === 'purchase'
+                            ? 'bg-orange-100 text-orange-700 border-orange-200 shadow-sm'
+                            : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                        }`}
+                      >
+                        {propertyStatus === 'purchase' ? '●' : '○'} Purchase
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
-              {/* User Avatar */}
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-                  <span className="text-xs font-medium text-gray-600">J</span>
-                </div>
-              </div>
             </div>
           </div>
         </div>

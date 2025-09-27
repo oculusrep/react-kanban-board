@@ -23,11 +23,6 @@ export const STAGE_CONFIGURATIONS: Record<string, StageConfig> = {
     iconPath: 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z', // Eye
     category: 'pipeline'
   },
-  'Executed Deal': {
-    color: '#7c3aed',
-    iconPath: 'M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14l-3-3', // CheckCircle
-    category: 'contract'
-  },
   'Not Available': {
     color: '#4b5563',
     iconPath: 'M6 4h4v16H6zM14 4h4v16h-4z', // Pause
@@ -100,7 +95,7 @@ export const STAGE_CONFIGURATIONS: Record<string, StageConfig> = {
   },
   'Pursuing Ownership': {
     color: '#dc2626',
-    iconPath: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z', // Target
+    iconPath: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM12 6c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6 2.69-6 6-6zM12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z', // Target/Bullseye
     category: 'monitoring'
   },
   'Unassigned Territory': {
@@ -116,13 +111,8 @@ export const STAGE_CONFIGURATIONS: Record<string, StageConfig> = {
     category: 'declined'
   },
   'Pass': {
-    color: '#dc2626',
-    iconPath: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM4 12c0-4.42 3.58-8 8-8 1.85 0 3.55.63 4.9 1.69L5.69 16.9C4.63 15.55 4 13.85 4 12z', // Ban
-    category: 'declined'
-  },
-  'Not Available': {
-    color: '#4b5563',
-    iconPath: 'M6 4h4v16H6zM14 4h4v16h-4z', // Pause
+    color: '#6b7280',
+    iconPath: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM4 12c0-4.42 3.58-8 8-8 1.85 0 3.55.63 4.9 1.69L5.69 16.9C4.63 15.55 4 13.85 4 12zM12 20c-1.85 0-3.55-.63-4.9-1.69L18.31 7.1C19.37 8.45 20 10.15 20 12c0 4.42-3.58 8-8 8z', // Circle with diagonal line (prohibited)
     category: 'declined'
   },
   'Use Conflict': {
