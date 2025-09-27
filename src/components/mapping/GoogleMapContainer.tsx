@@ -137,7 +137,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           },
           zoomControl: true,
           zoomControlOptions: {
-            position: google.maps.ControlPosition.LEFT_CENTER,
+            position: google.maps.ControlPosition.LEFT_TOP,
           },
           gestureHandling: 'greedy'
         });

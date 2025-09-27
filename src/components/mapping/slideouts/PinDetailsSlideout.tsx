@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface Property {
   id: string;
@@ -19,11 +19,25 @@ interface SiteSubmit {
   site_submit_name?: string;
   property_id: string;
   client_id?: string;
+  submit_stage_id?: string;
   year_1_rent?: number;
   ti?: number;
+  notes?: string;
+  // New fields for Submit tab
+  property_unit?: string;
+  sf_property_unit?: string; // Database field name
+  date_submitted?: string;
+  loi_written?: boolean;
+  loi_date?: string;
+  delivery_date?: string;
+  delivery_timeframe?: string;
+  created_at?: string;
+  updated_at?: string;
+  // Related data
   property?: Property;
   client?: { client_name: string };
-  submit_stage?: { name: string };
+  submit_stage?: { id: string; name: string };
+  property_unit?: { property_unit_name: string };
 }
 
 interface PinDetailsSlideoutProps {
@@ -36,7 +50,7 @@ interface PinDetailsSlideoutProps {
   isVerifyingLocation?: boolean;
 }
 
-type TabType = 'property' | 'financial' | 'activity' | 'location';
+type TabType = 'property' | 'submit' | 'financial' | 'activity' | 'location';
 
 const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   isOpen,
@@ -47,9 +61,14 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   onVerifyLocation,
   isVerifyingLocation = false
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('property');
+  const [activeTab, setActiveTab] = useState<TabType>(type === 'site_submit' ? 'submit' : 'property');
   const [isEditing, setIsEditing] = useState(false);
   const [propertyStatus, setPropertyStatus] = useState<'lease' | 'purchase'>('lease');
+
+  // Reset to default tab when type changes
+  useEffect(() => {
+    setActiveTab(type === 'site_submit' ? 'submit' : 'property');
+  }, [type]);
 
   if (!data || !type) return null;
 
@@ -68,7 +87,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       ];
     } else {
       return [
-        { id: 'property' as TabType, label: 'DETAILS', icon: '📍' },
+        { id: 'submit' as TabType, label: 'SUBMIT', icon: '📝' },
         { id: 'financial' as TabType, label: 'FINANCIAL', icon: '💰' },
         { id: 'activity' as TabType, label: 'ACTIVITY', icon: '📋' },
         { id: 'location' as TabType, label: 'LOCATION', icon: '📍' },
@@ -80,6 +99,181 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
   const renderTabContent = () => {
     switch (activeTab) {
+      case 'submit':
+        return (
+          <div className="space-y-3">
+            {/* Submit Stage - Editable */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Stage</label>
+              <select
+                value={siteSubmit?.submit_stage?.name || ''}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+              >
+                <option value="">Select Stage...</option>
+                <option value="Submitted-Reviewing">Submitted-Reviewing</option>
+                <option value="Ready to Submit">Ready to Submit</option>
+                <option value="Pre-Submittal">Pre-Submittal</option>
+                <option value="Mike to Review">Mike to Review</option>
+                <option value="Pursuing Ownership">Pursuing Ownership</option>
+                <option value="Pass">Pass</option>
+                <option value="Use Declined">Use Declined</option>
+                <option value="Use Conflict">Use Conflict</option>
+                <option value="Not Available">Not Available</option>
+                <option value="Protected">Protected</option>
+                <option value="Unassigned Territory">Unassigned Territory</option>
+                <option value="Lost / Killed">Lost / Killed</option>
+                <option value="Monitor">Monitor</option>
+                <option value="LOI">LOI</option>
+                <option value="At Lease/PSA">At Lease/PSA</option>
+                <option value="Under Contract / Contingent">Under Contract / Contingent</option>
+                <option value="Booked">Booked</option>
+                <option value="Executed Deal">Executed Deal</option>
+                <option value="Closed - Under Construction">Closed - Under Construction</option>
+                <option value="Store Open">Store Open</option>
+              </select>
+            </div>
+
+            {/* Property Name */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Property Name</label>
+              <input
+                type="text"
+                value={siteSubmit?.property?.property_name || ''}
+                disabled={!isEditing}
+                placeholder="Enter property name..."
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+              />
+            </div>
+
+            {/* Property Unit (if not null) */}
+            {(siteSubmit?.property_unit?.property_unit_name || siteSubmit?.sf_property_unit) && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Property Unit</label>
+                <input
+                  type="text"
+                  value={siteSubmit?.property_unit?.property_unit_name || siteSubmit?.sf_property_unit || ''}
+                  disabled={!isEditing}
+                  placeholder="Enter unit name..."
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+            )}
+
+            {/* Date Submitted */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Date Submitted</label>
+              <input
+                type="date"
+                value={
+                  siteSubmit?.date_submitted ||
+                  (siteSubmit?.created_at ? siteSubmit.created_at.split('T')[0] : '')
+                }
+                disabled={!isEditing}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+              />
+            </div>
+
+            {/* LOI Written Boolean */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">LOI Written</label>
+              <div className="flex items-center space-x-3">
+                <label className="flex items-center text-sm">
+                  <input
+                    type="radio"
+                    name="loi_written"
+                    checked={siteSubmit?.loi_written === true}
+                    disabled={!isEditing}
+                    className="mr-1 scale-90"
+                  />
+                  Yes
+                </label>
+                <label className="flex items-center text-sm">
+                  <input
+                    type="radio"
+                    name="loi_written"
+                    checked={siteSubmit?.loi_written === false}
+                    disabled={!isEditing}
+                    className="mr-1 scale-90"
+                  />
+                  No
+                </label>
+              </div>
+            </div>
+
+            {/* LOI Date (shows if LOI Written is true) */}
+            {siteSubmit?.loi_written && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">LOI Date</label>
+                <input
+                  type="date"
+                  value={siteSubmit?.loi_date ? siteSubmit.loi_date.split('T')[0] : ''}
+                  disabled={!isEditing}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+            )}
+
+            {/* Delivery Date */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Delivery Date</label>
+              <input
+                type="date"
+                value={siteSubmit?.delivery_date ? siteSubmit.delivery_date.split('T')[0] : ''}
+                disabled={!isEditing}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+              />
+            </div>
+
+            {/* Delivery Timeframe */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Delivery Timeframe</label>
+              <input
+                type="text"
+                value={siteSubmit?.delivery_timeframe || ''}
+                disabled={!isEditing}
+                placeholder="e.g., 60-90 days..."
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+              />
+            </div>
+
+            {/* Year 1 Rent & TI in same row */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Year 1 Rent</label>
+                <input
+                  type="number"
+                  value={siteSubmit?.year_1_rent || ''}
+                  disabled={!isEditing}
+                  placeholder="Amount..."
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">TI</label>
+                <input
+                  type="number"
+                  value={siteSubmit?.ti || ''}
+                  disabled={!isEditing}
+                  placeholder="Amount..."
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+              <textarea
+                rows={3}
+                value={siteSubmit?.notes || ''}
+                disabled={!isEditing}
+                placeholder="Enter notes..."
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+              />
+            </div>
+          </div>
+        );
+
       case 'property':
         return (
           <div className="space-y-6">
@@ -330,8 +524,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
         style={{
-          top: '64px', // Start cleanly below the single top navigation bar
-          height: 'calc(100vh - 64px)', // Full height minus top bar
+          top: '67px', // Snap directly under the nav bar (precise measurement)
+          height: 'calc(100vh - 67px)', // Full height minus exact nav bar height
           width: '400px',
           transitionProperty: 'transform, opacity, box-shadow',
           transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)', // Spring-like easing
@@ -451,7 +645,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
         {/* Content */}
         <div
-          className="flex-1 overflow-y-auto px-6 py-8"
+          className="flex-1 overflow-y-auto px-4 py-4"
           style={{
             scrollBehavior: 'smooth',
             minHeight: 0 // Ensures flex-1 works properly with overflow
@@ -461,7 +655,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="border-t border-gray-200 p-6 bg-gray-50">
+        <div className="border-t border-gray-200 p-3 bg-gray-50">
           {isEditing ? (
             <div className="flex items-center justify-center space-x-3">
               <button
@@ -478,33 +672,25 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
               </button>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {/* Primary Action Buttons */}
-              <div className="flex items-center space-x-3">
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 font-medium text-sm shadow-sm hover:shadow-md"
-                >
-                  EDIT {isProperty ? 'PROPERTY' : 'SITE SUBMIT'}
-                </button>
-                <button className="flex-1 px-4 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-all duration-200 font-medium text-sm shadow-sm hover:shadow-md">
+              <div className="flex items-center space-x-2">
+                {isProperty && (
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="flex-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-all duration-200 font-medium text-sm"
+                  >
+                    EDIT PROPERTY
+                  </button>
+                )}
+                <button className="flex-1 px-3 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 transition-all duration-200 font-medium text-sm">
                   VIEW IN PIPELINE
                 </button>
               </div>
 
-              {/* Secondary Action Buttons */}
-              <div className="flex items-center space-x-3">
-                <button className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-all duration-200 font-medium text-sm border border-gray-200">
-                  ARCHIVE
-                </button>
-                <button className="flex-1 px-4 py-3 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-all duration-200 font-medium text-sm border border-green-200">
-                  {isProperty ? 'VETTED BY MASTER BROKER' : 'APPROVED'}
-                </button>
-              </div>
-
               {/* Tertiary Actions */}
-              <div className="flex items-center justify-center pt-2">
-                <button className="text-sm text-gray-500 hover:text-gray-700 transition-colors font-medium">
+              <div className="flex items-center justify-center pt-1">
+                <button className="text-xs text-gray-500 hover:text-gray-700 transition-colors font-medium">
                   VIEW FULL DETAILS →
                 </button>
               </div>
@@ -519,7 +705,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         <div
           className="fixed z-[60] transition-all duration-300 ease-out cursor-pointer"
           style={{
-            top: 'calc(50vh + 30px)', // Center of visible slideout area (50% + half of top bar height)
+            top: 'calc(50vh + 33.5px)', // Center of visible slideout area (50% + half of nav bar height)
             right: '395px', // Just outside the slideout border
             transform: 'translateY(-50%)'
           }}
@@ -538,7 +724,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         <div
           className="fixed z-50 transition-all duration-300 ease-out cursor-pointer"
           style={{
-            top: 'calc(50vh + 30px)', // Center of available map area (accounting for top bar)
+            top: 'calc(50vh + 33.5px)', // Center of available map area (accounting for nav bar)
             right: '20px',
             transform: 'translateY(-50%)',
             animation: 'slideArrow 2s ease-in-out infinite'

@@ -90,8 +90,19 @@ export const SiteSubmitPin: React.FC<SiteSubmitPinProps> = ({
   return (
     <div className="relative group">
       <div
-        className={`${getBgClass(config.color)} rounded-full flex items-center justify-center shadow-lg border-2 border-white cursor-pointer hover:shadow-xl hover:scale-110 transition-all duration-200 relative ${className}`}
-        style={{ width: size, height: size }}
+        className={`${getBgClass(config.color)} rounded-full flex items-center justify-center border-2 border-white cursor-pointer hover:scale-110 transition-all duration-200 relative ${className}`}
+        style={{
+          width: size,
+          height: size,
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+          filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1))'
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.25)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.15)';
+        }}
         onClick={onClick}
       >
         <Icon className="text-white" style={{ width: size * 0.5, height: size * 0.5 }} />

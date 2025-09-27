@@ -17,6 +17,16 @@ interface SiteSubmit {
   notes?: string;
   year_1_rent?: number;
   ti?: number;
+  // New fields for Submit tab - matching database field names
+  property_unit?: string;
+  sf_property_unit?: string; // Database field name
+  date_submitted?: string;
+  loi_written?: boolean;
+  loi_date?: string;
+  delivery_date?: string;
+  delivery_timeframe?: string;
+  created_at?: string;
+  updated_at?: string;
   // Related data (optional for now while debugging)
   client?: {
     id: string;
@@ -31,6 +41,9 @@ interface SiteSubmit {
     property_name?: string;
     address: string;
   };
+  property_unit?: {
+    property_unit_name: string;
+  };
 }
 
 export type SiteSubmitLoadingMode = 'static-100' | 'static-500' | 'static-all' | 'client-filtered';
@@ -39,6 +52,11 @@ export interface SiteSubmitLoadingConfig {
   mode: SiteSubmitLoadingMode;
   clientId?: string | null; // For client filtering
   visibleStages?: Set<string>; // For stage filtering
+  clusterConfig?: {
+    minimumClusterSize: number;
+    gridSize: number;
+    maxZoom: number;
+  };
 }
 
 interface SiteSubmitLayerProps {
@@ -139,6 +157,13 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
           notes,
           year_1_rent,
           ti,
+          sf_property_unit,
+          delivery_date,
+          loi_written,
+          loi_date,
+          delivery_timeframe,
+          created_at,
+          updated_at,
           client!site_submit_client_id_fkey (
             id,
             client_name
@@ -151,6 +176,9 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
             id,
             property_name,
             address
+          ),
+          property_unit!site_submit_property_unit_id_fkey (
+            property_unit_name
           )
         `)
         .or('and(sf_property_latitude.not.is.null,sf_property_longitude.not.is.null),and(verified_latitude.not.is.null,verified_longitude.not.is.null)');
@@ -201,6 +229,13 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
                 notes,
                 year_1_rent,
                 ti,
+                sf_property_unit,
+                delivery_date,
+                loi_written,
+                loi_date,
+                delivery_timeframe,
+                created_at,
+                updated_at,
                 client!site_submit_client_id_fkey (
                   id,
                   client_name
@@ -213,6 +248,9 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
                   id,
                   property_name,
                   address
+                ),
+                property_unit!site_submit_property_unit_id_fkey (
+                  property_unit_name
                 )
               `)
               .or('and(sf_property_latitude.not.is.null,sf_property_longitude.not.is.null),and(verified_latitude.not.is.null,verified_longitude.not.is.null)')
@@ -248,6 +286,15 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
 
           console.log(`📍 Found ${validSiteSubmits.length} site submits with coordinates (static-all via pagination)`);
 
+          // Debug: Log property unit data to understand the structure
+          if (validSiteSubmits.length > 0) {
+            console.log('🔍 Sample site submit data for property unit debugging (pagination):', {
+              sf_property_unit: validSiteSubmits[0]?.sf_property_unit,
+              property_unit: validSiteSubmits[0]?.property_unit,
+              fullRecord: validSiteSubmits[0]
+            });
+          }
+
           // Calculate stage counts for legend
           const stageCounts: Record<string, number> = {};
           validSiteSubmits.forEach(siteSubmit => {
@@ -275,6 +322,15 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
 
       console.log(`📍 Found ${validSiteSubmits.length} site submits with coordinates (${loadingConfig.mode})`);
 
+      // Debug: Log property unit data to understand the structure
+      if (validSiteSubmits.length > 0) {
+        console.log('🔍 Sample site submit data for property unit debugging:', {
+          sf_property_unit: validSiteSubmits[0]?.sf_property_unit,
+          property_unit: validSiteSubmits[0]?.property_unit,
+          fullRecord: validSiteSubmits[0]
+        });
+      }
+
       // Calculate stage counts for legend
       const stageCounts: Record<string, number> = {};
       validSiteSubmits.forEach(siteSubmit => {
@@ -300,6 +356,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
     if (!map || !siteSubmits.length) return;
 
     console.log('🗺️ Creating markers for site submits...');
+    console.log('📊 Visible stages:', loadingConfig.visibleStages ? Array.from(loadingConfig.visibleStages) : 'all');
 
     // Clear existing markers
     markers.forEach(marker => marker.setMap(null));
@@ -311,6 +368,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
       // Skip if stage is not visible
       const stageName = siteSubmit.submit_stage?.name || 'Monitor';
       if (loadingConfig.visibleStages && !loadingConfig.visibleStages.has(stageName)) {
+        console.log(`🙈 Hiding marker for stage: ${stageName} (not in visible stages:`, Array.from(loadingConfig.visibleStages));
         return null;
       }
 
@@ -362,28 +420,36 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
       return marker;
     }).filter(marker => marker !== null) as google.maps.Marker[];
 
-    console.log(`✅ Created ${newMarkers.length} site submit markers`);
+    console.log(`✅ Created ${newMarkers.length} site submit markers (total site submits: ${siteSubmits.length})`);
     setMarkers(newMarkers);
   };
 
   // Set up marker clustering
   const setupClustering = () => {
-    if (!map || !markers.length) return;
+    if (!map) return;
 
-    // Clear existing clusterer
+    // Properly dispose of existing clusterer
     if (clusterer) {
+      console.log('🧹 Disposing of existing clusterer...');
       clusterer.clearMarkers();
+      clusterer.setMap(null); // Remove clusterer from map
     }
 
-    console.log('🔗 Setting up site submit marker clustering...');
+    console.log(`🔗 Setting up site submit marker clustering with ${markers.length} markers...`);
+
+    const clusterConfig = loadingConfig.clusterConfig || {
+      minimumClusterSize: 5,
+      gridSize: 60,
+      maxZoom: 15
+    };
 
     const newClusterer = new MarkerClusterer({
       map,
       markers: [],
-      gridSize: 60,
-      maxZoom: 15,
+      gridSize: clusterConfig.gridSize,
+      maxZoom: clusterConfig.maxZoom,
       averageCenter: true,
-      minimumClusterSize: 2
+      minimumClusterSize: clusterConfig.minimumClusterSize
     });
 
     setClusterer(newClusterer);
@@ -421,9 +487,9 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
     }
   }, [siteSubmits, map, loadingConfig.visibleStages]);
 
-  // Set up clustering when markers are ready
+  // Set up clustering when markers change (including when empty)
   useEffect(() => {
-    if (markers.length > 0) {
+    if (map) {
       setupClustering();
     }
   }, [markers, map]);
@@ -437,7 +503,9 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
   useEffect(() => {
     return () => {
       if (clusterer) {
+        console.log('🧹 Cleanup: Disposing of clusterer on unmount');
         clusterer.clearMarkers();
+        clusterer.setMap(null);
       }
       markers.forEach(marker => marker.setMap(null));
     };

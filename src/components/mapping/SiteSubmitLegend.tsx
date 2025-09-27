@@ -6,18 +6,27 @@ interface SiteSubmitLegendProps {
   visibleStages: Set<string>;
   onStageToggle: (stageName: string) => void;
   onCategoryToggle?: (categoryKey: string) => void;
+  onShowAll?: () => void;
+  onHideAll?: () => void;
   totalCounts?: Record<string, number>;
   className?: string;
+  forceExpanded?: boolean;
 }
 
 const SiteSubmitLegend: React.FC<SiteSubmitLegendProps> = ({
   visibleStages,
   onStageToggle,
   onCategoryToggle,
+  onShowAll,
+  onHideAll,
   totalCounts = {},
-  className = ''
+  className = '',
+  forceExpanded = false
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Use forceExpanded prop to override local state
+  const effectiveIsExpanded = forceExpanded || isExpanded;
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
   const toggleCategory = (categoryKey: string) => {
@@ -97,9 +106,23 @@ const SiteSubmitLegend: React.FC<SiteSubmitLegendProps> = ({
     return [...orderedStages, ...remainingStages];
   };
 
+  // Calculate dynamic height based on number of stages
+  const stagesWithCounts = getStagesWithCounts();
+  const stageCount = stagesWithCounts.length;
+
+  // Each stage row is approximately 28px (py-1 + content + space-y-0.5)
+  // Plus minimal padding (8px top/bottom) and footer (56px)
+  const calculateContentHeight = () => {
+    const baseHeight = (stageCount * 28) + 8 + 56;
+    const maxHeight = typeof window !== 'undefined' ? window.innerHeight * 0.7 : 600;
+    return Math.min(baseHeight, maxHeight);
+  };
+
+  const dynamicHeight = effectiveIsExpanded ? `${calculateContentHeight()}px` : '0px';
+
   return (
     <div className={`fixed bottom-0 left-4 bg-white rounded-t-lg shadow-lg border border-gray-200 border-b-0 z-50 transition-transform duration-300 ease-in-out ${className} ${
-      isExpanded ? 'translate-y-0' : 'translate-y-[calc(100%-3rem)]'
+      effectiveIsExpanded ? 'translate-y-0' : 'translate-y-[calc(100%-3rem)]'
     }`}>
       {/* Header */}
       <div
@@ -109,7 +132,7 @@ const SiteSubmitLegend: React.FC<SiteSubmitLegendProps> = ({
         <div className="flex items-center space-x-2">
           <h3 className="font-semibold text-gray-800">Site Submit Legend</h3>
         </div>
-        {isExpanded ? (
+        {effectiveIsExpanded ? (
           <ChevronDown className="w-5 h-5 text-gray-500" />
         ) : (
           <ChevronUp className="w-5 h-5 text-gray-500" />
@@ -117,11 +140,17 @@ const SiteSubmitLegend: React.FC<SiteSubmitLegendProps> = ({
       </div>
 
       {/* Expanded Content */}
-      <div className={`border-t border-gray-200 max-h-96 overflow-y-auto transition-all duration-300 ${
-        isExpanded ? 'opacity-100 max-h-96' : 'opacity-0 max-h-0 overflow-hidden'
-      }`}>
-          <div className="p-2 space-y-0.5">
-            {getStagesWithCounts().map(stage => {
+      <div
+        className={`border-t border-gray-200 transition-all duration-300 ${
+          effectiveIsExpanded ? 'opacity-100' : 'opacity-0 overflow-hidden'
+        }`}
+        style={{
+          height: dynamicHeight,
+          maxHeight: effectiveIsExpanded ? `${typeof window !== 'undefined' ? window.innerHeight * 0.7 : 600}px` : '0px'
+        }}
+      >
+          <div className="p-1 space-y-0.5">
+            {stagesWithCounts.map(stage => {
               const isVisible = visibleStages.has(stage);
               const count = totalCounts[stage] || 0;
 
@@ -158,15 +187,20 @@ const SiteSubmitLegend: React.FC<SiteSubmitLegendProps> = ({
           </div>
 
           {/* Footer Actions */}
-          <div className="p-2 bg-gray-50 rounded-b-lg border-t border-gray-200">
+          <div className="p-1.5 bg-gray-50 rounded-b-lg border-t border-gray-200">
             <div className="flex justify-between space-x-2">
               <button
                 onClick={() => {
-                  getStagesWithCounts().forEach(stage => {
-                    if (!visibleStages.has(stage)) {
-                      onStageToggle(stage);
-                    }
-                  });
+                  if (onShowAll) {
+                    onShowAll();
+                  } else {
+                    // Fallback to individual toggles
+                    getStagesWithCounts().forEach(stage => {
+                      if (!visibleStages.has(stage)) {
+                        onStageToggle(stage);
+                      }
+                    });
+                  }
                 }}
                 className="flex-1 px-3 py-1.5 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors"
               >
@@ -174,11 +208,16 @@ const SiteSubmitLegend: React.FC<SiteSubmitLegendProps> = ({
               </button>
               <button
                 onClick={() => {
-                  getStagesWithCounts().forEach(stage => {
-                    if (visibleStages.has(stage)) {
-                      onStageToggle(stage);
-                    }
-                  });
+                  if (onHideAll) {
+                    onHideAll();
+                  } else {
+                    // Fallback to individual toggles
+                    getStagesWithCounts().forEach(stage => {
+                      if (visibleStages.has(stage)) {
+                        onStageToggle(stage);
+                      }
+                    });
+                  }
                 }}
                 className="flex-1 px-3 py-1.5 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
               >

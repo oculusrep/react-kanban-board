@@ -53,6 +53,14 @@ const MappingPageContent: React.FC = () => {
     return new Set(allStages);
   });
   const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
+  const [isLegendExpanded, setIsLegendExpanded] = useState(false);
+
+  // Clustering configuration
+  const [clusterConfig, setClusterConfig] = useState({
+    minimumClusterSize: 5,
+    gridSize: 60,
+    maxZoom: 15
+  });
   // Initialize recently created IDs from sessionStorage
   const [recentlyCreatedPropertyIds, setRecentlyCreatedPropertyIds] = useState<Set<string>>(() => {
     try {
@@ -102,7 +110,7 @@ const MappingPageContent: React.FC = () => {
   }, [recentlyCreatedPropertyIds]);
 
   // Get layer state from context
-  const { layerState, setLayerCount, setLayerLoading, setLayerError, createMode, refreshLayer } = useLayerManager();
+  const { layerState, setLayerCount, setLayerLoading, setLayerError, createMode, refreshLayer, toggleLayer } = useLayerManager();
 
   // Check for property creation success and refresh layer
   useEffect(() => {
@@ -429,18 +437,23 @@ const MappingPageContent: React.FC = () => {
   const siteSubmitLoadingConfig: SiteSubmitLoadingConfig = useMemo(() => ({
     mode: selectedClient ? 'client-filtered' : 'static-100',
     clientId: selectedClient?.id || null,
-    visibleStages: visibleStages
-  }), [selectedClient, visibleStages]);
+    visibleStages: visibleStages,
+    clusterConfig: clusterConfig
+  }), [selectedClient, visibleStages, clusterConfig]);
 
   // Stage toggle handlers
   const handleStageToggle = (stageName: string) => {
+    console.log(`🎯 Toggling stage: ${stageName}`);
     setVisibleStages(prev => {
       const newSet = new Set(prev);
       if (newSet.has(stageName)) {
+        console.log(`➖ Hiding stage: ${stageName}`);
         newSet.delete(stageName);
       } else {
+        console.log(`➕ Showing stage: ${stageName}`);
         newSet.add(stageName);
       }
+      console.log(`👁️ New visible stages:`, Array.from(newSet));
       return newSet;
     });
   };
@@ -465,8 +478,46 @@ const MappingPageContent: React.FC = () => {
     });
   };
 
+  const handleShowAll = () => {
+    console.log('🎯 Show All clicked');
+    const allStages = Object.values(STAGE_CATEGORIES).flatMap(category => category.stages);
+    setVisibleStages(new Set(allStages));
+    console.log('👁️ All stages now visible:', allStages);
+  };
+
+  const handleHideAll = () => {
+    console.log('🎯 Hide All clicked');
+    setVisibleStages(new Set());
+    console.log('👁️ All stages now hidden');
+  };
+
   const handleStageCountsUpdate = (counts: Record<string, number>) => {
     setStageCounts(counts);
+  };
+
+  // Custom client selection handler that auto-enables site submits and expands legend
+  const handleClientSelection = (client: ClientSearchResult | null) => {
+    setSelectedClient(client);
+
+    if (client) {
+      // Auto-enable site submits layer if not already visible
+      if (!layerState.site_submits?.isVisible) {
+        console.log('🎯 Client selected, auto-enabling site submits layer');
+        toggleLayer('site_submits');
+      }
+
+      // Auto-expand legend to show filtered results
+      setIsLegendExpanded(true);
+      console.log('📊 Client selected, expanding legend to show results');
+    } else {
+      // When client is cleared, turn off site submits layer and collapse legend
+      if (layerState.site_submits?.isVisible) {
+        console.log('🎯 Client cleared, auto-disabling site submits layer');
+        toggleLayer('site_submits');
+      }
+      setIsLegendExpanded(false);
+      console.log('📊 Client cleared, collapsing legend');
+    }
   };
 
   return (
@@ -549,7 +600,7 @@ const MappingPageContent: React.FC = () => {
                   <div className="w-64">
                     <ClientSelector
                       selectedClient={selectedClient}
-                      onClientSelect={setSelectedClient}
+                      onClientSelect={handleClientSelection}
                       placeholder="Search active clients..."
                       className="text-sm"
                     />
@@ -592,6 +643,51 @@ const MappingPageContent: React.FC = () => {
                             <span>Clear Session Pins ({recentlyCreatedPropertyIds.size})</span>
                           </button>
                         )}
+
+                        {/* Clustering Configuration */}
+                        <div className="border-t border-gray-200 mt-1 pt-1">
+                          <div className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                            Site Submit Clustering
+                          </div>
+
+                          <div className="px-4 py-2 space-y-2">
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">Min pins to cluster:</label>
+                              <select
+                                value={clusterConfig.minimumClusterSize}
+                                onChange={(e) => setClusterConfig(prev => ({
+                                  ...prev,
+                                  minimumClusterSize: parseInt(e.target.value)
+                                }))}
+                                className="w-full text-xs border border-gray-300 rounded px-2 py-1"
+                              >
+                                <option value={2}>2 pins</option>
+                                <option value={3}>3 pins</option>
+                                <option value={5}>5 pins</option>
+                                <option value={8}>8 pins</option>
+                                <option value={10}>10 pins</option>
+                                <option value={999}>No clustering</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">Cluster grid size:</label>
+                              <select
+                                value={clusterConfig.gridSize}
+                                onChange={(e) => setClusterConfig(prev => ({
+                                  ...prev,
+                                  gridSize: parseInt(e.target.value)
+                                }))}
+                                className="w-full text-xs border border-gray-300 rounded px-2 py-1"
+                              >
+                                <option value={40}>Tight (40px)</option>
+                                <option value={60}>Normal (60px)</option>
+                                <option value={80}>Loose (80px)</option>
+                                <option value={100}>Very loose (100px)</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -731,7 +827,10 @@ const MappingPageContent: React.FC = () => {
                 visibleStages={visibleStages}
                 onStageToggle={handleStageToggle}
                 onCategoryToggle={handleCategoryToggle}
+                onShowAll={handleShowAll}
+                onHideAll={handleHideAll}
                 totalCounts={stageCounts}
+                forceExpanded={isLegendExpanded}
               />
             )}
 

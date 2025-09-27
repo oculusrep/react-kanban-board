@@ -785,6 +785,7 @@ export type Database = {
           created_by_id: string | null
           description: string | null
           id: string
+          is_active_client: boolean | null
           owner_id: string | null
           parent_id: string | null
           phone: string | null
@@ -817,6 +818,7 @@ export type Database = {
           created_by_id?: string | null
           description?: string | null
           id?: string
+          is_active_client?: boolean | null
           owner_id?: string | null
           parent_id?: string | null
           phone?: string | null
@@ -849,6 +851,7 @@ export type Database = {
           created_by_id?: string | null
           description?: string | null
           id?: string
+          is_active_client?: boolean | null
           owner_id?: string | null
           parent_id?: string | null
           phone?: string | null
