@@ -42,6 +42,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
 }) => {
   const [properties, setProperties] = useState<Property[]>([]);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
+  const [sessionMarkers, setSessionMarkers] = useState<google.maps.Marker[]>([]); // Always visible session pins
   const [clusterer, setClusterer] = useState<MarkerClusterer | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -214,18 +215,97 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     }
   };
 
+  // Create session markers for recently created properties (always visible)
+  const createSessionMarkers = () => {
+    if (!map || recentlyCreatedIds.size === 0) {
+      console.log('🚫 Not creating session markers:', { map: !!map, recentlyCreatedIdsSize: recentlyCreatedIds.size });
+      return;
+    }
+
+    console.log('🆕 Creating session markers for recently created properties...', [...recentlyCreatedIds]);
+
+    // Clear existing session markers
+    sessionMarkers.forEach(marker => marker.setMap(null));
+
+    // Find recently created properties from current properties list
+    const recentlyCreatedProperties = properties.filter(property =>
+      recentlyCreatedIds.has(property.id)
+    );
+
+    const newSessionMarkers: google.maps.Marker[] = recentlyCreatedProperties.map(property => {
+      const coords = getDisplayCoordinates(property);
+      if (!coords) return null;
+
+      const marker = new google.maps.Marker({
+        position: { lat: coords.lat, lng: coords.lng },
+        map: null, // Don't show initially, let visibility logic handle it
+        title: `🆕 ${property.property_name || property.address}`,
+        icon: {
+          url: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png', // Red for recently created
+          scaledSize: new google.maps.Size(32, 32),
+          origin: new google.maps.Point(0, 0),
+          anchor: new google.maps.Point(16, 32)
+        },
+        zIndex: 1000 // Higher z-index to show above other markers
+      });
+
+      // Add info window for session markers
+      const infoContent = `
+        <div class="p-3 max-w-sm">
+          <h3 class="font-semibold text-lg text-gray-900 mb-2">
+            🆕 ${property.property_name || 'Property'}
+          </h3>
+          <div class="space-y-1 text-sm text-gray-600">
+            <div><strong>Address:</strong> ${property.address}</div>
+            ${property.city ? `<div><strong>City:</strong> ${property.city}</div>` : ''}
+            ${property.state ? `<div><strong>State:</strong> ${property.state}</div>` : ''}
+            ${property.zip ? `<div><strong>ZIP:</strong> ${property.zip}</div>` : ''}
+            <div><strong>Coordinates:</strong> ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}</div>
+            <div class="text-xs text-red-600 font-medium">
+              🆕 Recently Created (Session Pin)
+            </div>
+            <div class="text-xs text-blue-600 mt-2">
+              💡 Stays visible until you close tab or clear manually
+            </div>
+          </div>
+        </div>
+      `;
+
+      const infoWindow = new google.maps.InfoWindow({
+        content: infoContent
+      });
+
+      marker.addListener('click', () => {
+        infoWindow.open(map, marker);
+      });
+
+      return marker;
+    }).filter(marker => marker !== null) as google.maps.Marker[];
+
+    console.log(`✅ Created ${newSessionMarkers.length} session markers`);
+    setSessionMarkers(newSessionMarkers);
+  };
+
   // Create markers for all properties
   const createMarkers = () => {
     if (!map || !properties.length) return;
 
     console.log('🗺️ Creating markers for properties...', properties.length, 'properties');
+    console.log('🔍 Recently created IDs to exclude:', [...recentlyCreatedIds]);
 
     // Clear existing markers
     markers.forEach(marker => marker.setMap(null));
 
-    const newMarkers: google.maps.Marker[] = properties.map(property => {
-      const coords = getDisplayCoordinates(property);
-      if (!coords) return null;
+    const filteredProperties = properties.filter(property => !recentlyCreatedIds.has(property.id));
+    console.log('📊 Filtered properties count:', filteredProperties.length, 'out of', properties.length);
+
+    const newMarkers: google.maps.Marker[] = filteredProperties
+      .map(property => {
+        const coords = getDisplayCoordinates(property);
+        if (!coords) return null;
+
+        // This is always false now since we filtered out recently created
+        const isRecentlyCreated = false;
 
       // Create info window content
       const createSiteSubmitButton = onCreateSiteSubmit ? `
@@ -263,7 +343,6 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       });
 
       // Determine marker color based on property type and recent creation
-      const isRecentlyCreated = recentlyCreatedIds.has(property.id);
       let iconUrl: string;
 
       if (isRecentlyCreated) {
@@ -379,12 +458,40 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     };
   }, [map, loadingConfig.mode]);
 
-  // Create markers when properties load
+  // Create markers when properties load or recently created IDs change
   useEffect(() => {
     if (properties.length > 0) {
       createMarkers();
     }
-  }, [properties, map]);
+  }, [properties, map, recentlyCreatedIds]); // Add recentlyCreatedIds dependency
+
+  // Create session markers when recently created IDs change or properties load
+  // Session markers are shown when the main layer is hidden or always (depending on UX choice)
+  useEffect(() => {
+    console.log('🔄 Session marker effect triggered:', {
+      propertiesCount: properties.length,
+      recentlyCreatedIdsSize: recentlyCreatedIds.size,
+      recentlyCreatedIds: [...recentlyCreatedIds]
+    });
+
+    if (properties.length > 0 && recentlyCreatedIds.size > 0) {
+      createSessionMarkers();
+    } else if (recentlyCreatedIds.size === 0) {
+      // Clear session markers when no recently created IDs
+      console.log('🧹 Clearing session markers because no recently created IDs');
+      sessionMarkers.forEach(marker => marker.setMap(null));
+      setSessionMarkers([]);
+    }
+  }, [properties, recentlyCreatedIds, map]);
+
+  // Update session marker visibility - always show session markers regardless of layer visibility
+  useEffect(() => {
+    sessionMarkers.forEach(marker => {
+      // Always show session markers (they persist until tab close or manual clear)
+      // They have higher z-index and distinct red color so they won't be confused with regular pins
+      marker.setMap(map);
+    });
+  }, [isVisible, sessionMarkers, map]);
 
   // Set up clustering when markers are ready
   useEffect(() => {
@@ -405,6 +512,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
         clusterer.clearMarkers();
       }
       markers.forEach(marker => marker.setMap(null));
+      sessionMarkers.forEach(marker => marker.setMap(null));
     };
   }, []);
 

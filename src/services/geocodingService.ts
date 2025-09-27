@@ -440,6 +440,129 @@ class GeocodingService {
   }
 
   /**
+   * Validate if city name corresponds to ZIP code using Google's postal data
+   */
+  private async validateCityZipCorrespondence(city: string, zip: string): Promise<boolean> {
+    if (!city || !zip) return false;
+
+    try {
+      const apiKey = import.meta.env.VITE_GOOGLE_GEOCODING_API_KEY;
+      if (!apiKey) return false;
+
+      // Query Google with ZIP code to see what city it returns
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?` + new URLSearchParams({
+          address: zip,
+          key: apiKey,
+        })
+      );
+
+      if (!response.ok) return false;
+
+      const data = await response.json();
+
+      if (data.status === 'OK' && data.results?.[0]) {
+        const components = data.results[0].address_components || [];
+        const zipCity = components.find((comp: any) =>
+          comp.types.includes('locality')
+        )?.long_name;
+
+        console.log(`🔍 ZIP ${zip} validation: expected city "${city}", ZIP maps to "${zipCity}"`);
+
+        // Check if cities match (case-insensitive)
+        if (zipCity && city.toLowerCase() === zipCity.toLowerCase()) {
+          console.log('✅ City-ZIP correspondence validated');
+          return true;
+        } else {
+          console.log('❌ City-ZIP mismatch detected');
+          return false;
+        }
+      }
+    } catch (error) {
+      console.error('❌ ZIP validation error:', error);
+    }
+
+    return false;
+  }
+
+  /**
+   * Reverse geocode using Google API as fallback for better city detection
+   */
+  async reverseGeocodeWithGoogle(lat: number, lng: number): Promise<GeocodeResult | GeocodeError> {
+    try {
+      const apiKey = import.meta.env.VITE_GOOGLE_GEOCODING_API_KEY;
+      if (!apiKey) {
+        throw new Error('Google Geocoding API key not configured');
+      }
+
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?` + new URLSearchParams({
+          latlng: `${lat},${lng}`,
+          key: apiKey,
+        })
+      );
+
+      if (!response.ok) {
+        throw new Error(`Google Geocoding API responded with status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.status !== 'OK' || !data.results || data.results.length === 0) {
+        return { error: `Google API error: ${data.status}`, code: 'GOOGLE_API_ERROR' };
+      }
+
+      const result = data.results[0];
+      console.log('🗺️ Google Geocoding result:', result);
+
+      // Extract components from Google's response
+      const components = result.address_components || [];
+      let streetNumber = '';
+      let streetName = '';
+      let city = '';
+      let state = '';
+      let zip = '';
+
+      components.forEach((component: any) => {
+        const types = component.types;
+        if (types.includes('street_number')) {
+          streetNumber = component.long_name;
+        } else if (types.includes('route')) {
+          streetName = component.long_name;
+        } else if (types.includes('locality')) {
+          city = component.long_name;
+        } else if (types.includes('administrative_area_level_1')) {
+          state = component.short_name;
+        } else if (types.includes('postal_code')) {
+          zip = component.long_name;
+        }
+      });
+
+      const streetAddress = `${streetNumber} ${streetName}`.trim();
+
+      console.log('🏙️ Google extracted city:', city);
+
+      return {
+        latitude: lat,
+        longitude: lng,
+        formatted_address: result.formatted_address,
+        street_address: streetAddress,
+        city: city,
+        state: state,
+        zip: zip,
+        provider: 'google',
+      };
+
+    } catch (error) {
+      console.error('Google reverse geocoding error:', error);
+      return {
+        error: error instanceof Error ? error.message : 'Google reverse geocoding failed',
+        code: 'GOOGLE_GEOCODING_ERROR'
+      };
+    }
+  }
+
+  /**
    * Reverse geocode coordinates to get address
    */
   async reverseGeocode(lat: number, lng: number): Promise<GeocodeResult | GeocodeError> {
@@ -471,6 +594,7 @@ class GeocodingService {
       const addressComponents = result.address || {};
 
       console.log('🏙️ Address components from OSM:', addressComponents);
+      console.log('🔍 Full OSM result:', result);
 
       // Extract street address from components, avoiding business names
       const streetNumber = addressComponents.house_number || '';
@@ -491,15 +615,40 @@ class GeocodingService {
       }
       streetAddress = streetAddress.trim();
 
+      // Try multiple OSM address component fields for city
       const city = addressComponents.city ||
                    addressComponents.town ||
                    addressComponents.village ||
                    addressComponents.hamlet ||
                    addressComponents.municipality ||
                    addressComponents.suburb ||
-                   addressComponents.neighbourhood;
+                   addressComponents.neighbourhood ||
+                   addressComponents.locality ||
+                   addressComponents.city_district ||
+                   addressComponents.borough ||
+                   // As a fallback, try to extract from county if it contains "County"
+                   (addressComponents.county && addressComponents.county.includes('County')
+                     ? addressComponents.county.replace(' County', '')
+                     : null) ||
+                   // Last resort: try to parse from formatted_address
+                   (() => {
+                     try {
+                       const parts = result.display_name.split(',').map(p => p.trim());
+                       // Look for a part that might be a city (not numbers, not state codes)
+                       for (let i = 1; i < parts.length - 2; i++) {
+                         const part = parts[i];
+                         if (part && !/^\d/.test(part) && part.length > 2 && part !== addressComponents.state) {
+                           return part;
+                         }
+                       }
+                     } catch (e) {
+                       return null;
+                     }
+                     return null;
+                   })();
 
-      console.log('🏙️ Extracted city:', city);
+      console.log('🏙️ Extracted city from OSM:', city);
+      console.log('📮 ZIP code from OSM:', addressComponents.postcode);
       console.log('🗺️ Available city fields:', {
         city: addressComponents.city,
         town: addressComponents.town,
@@ -507,8 +656,71 @@ class GeocodingService {
         hamlet: addressComponents.hamlet,
         municipality: addressComponents.municipality,
         suburb: addressComponents.suburb,
-        neighbourhood: addressComponents.neighbourhood
+        neighbourhood: addressComponents.neighbourhood,
+        locality: addressComponents.locality,
+        city_district: addressComponents.city_district,
+        borough: addressComponents.borough,
+        county: addressComponents.county
       });
+
+      // Check if OSM city result is unreliable (county names, neighborhoods, shopping centers, etc.)
+      const isUnreliableCity = !city ||
+                              city === 'Cobb' ||
+                              city.includes('County') ||
+                              city.includes('Shopping') ||
+                              city.includes('Center') ||
+                              city.includes('Plaza') ||
+                              city.includes('Mall') ||
+                              city.includes('on ') || // "Gates on Woodlawn"
+                              city.includes('at ') || // "Shops at Something"
+                              city.includes('of ') || // "Village of Something"
+                              city.includes('Commons') ||
+                              city.includes('Village') ||
+                              city.includes('Park') ||
+                              city.includes('Square') ||
+                              city.includes('Point') ||
+                              city.includes('Ridge') ||
+                              city.includes('Hills') ||
+                              city.includes('Crossing') ||
+                              city.includes('Landing') ||
+                              city.includes('Station') ||
+                              city.includes('Apartments') ||
+                              city.includes('Condos') ||
+                              city.includes('Townhomes') ||
+                              // Common neighborhood/subdivision patterns
+                              /^The /.test(city) || // "The Oaks", "The Commons"
+                              /\d/.test(city) || // Contains numbers (likely address/building)
+                              city.length > 20; // Very long names are likely neighborhoods
+
+      // If city seems valid, validate against ZIP code
+      let cityZipValidated = false;
+      if (!isUnreliableCity && city && addressComponents.postcode) {
+        cityZipValidated = await this.validateCityZipCorrespondence(city, addressComponents.postcode);
+      }
+
+      // Use Google fallback if city is unreliable OR doesn't match ZIP code
+      if (isUnreliableCity || (!cityZipValidated && addressComponents.postcode)) {
+        const reason = isUnreliableCity ?
+          'detected neighborhood/shopping center' :
+          'city-ZIP code mismatch';
+        console.log(`🔄 OSM city not reliable (${reason}), trying Google Geocoding API...`);
+
+        const googleResult = await this.reverseGeocodeWithGoogle(lat, lng);
+
+        if ('latitude' in googleResult && googleResult.city) {
+          console.log('✅ Using Google result for better city data');
+          return {
+            ...googleResult,
+            // Keep OSM's street address if it's better
+            street_address: streetAddress || googleResult.street_address,
+            provider: 'google'
+          };
+        } else {
+          console.log('⚠️ Google fallback also failed, using OSM result');
+        }
+      } else if (cityZipValidated) {
+        console.log('✅ OSM city validated against ZIP code, using OSM result');
+      }
 
       return {
         latitude: lat,
@@ -519,6 +731,7 @@ class GeocodingService {
         state: addressComponents.state,
         zip: addressComponents.postcode,
         county: addressComponents.county,
+        provider: 'openstreetmap',
       };
 
     } catch (error) {

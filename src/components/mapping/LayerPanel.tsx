@@ -192,7 +192,7 @@ const LayerPanel: React.FC = () => {
   if (!isPanelOpen) {
     // Collapsed state - just show toggle button
     return (
-      <div className="fixed left-4 top-20 z-[60]">
+      <div className="fixed left-4 top-32 z-[10]">
         <button
           onClick={togglePanel}
           className="bg-white border border-gray-300 rounded-lg p-3 shadow-lg hover:shadow-xl transition-shadow"
@@ -206,7 +206,7 @@ const LayerPanel: React.FC = () => {
   }
 
   return (
-    <div className="fixed left-4 top-20 bottom-4 w-80 z-[60] flex flex-col">
+    <div className="fixed left-4 top-32 bottom-4 w-80 z-[10] flex flex-col">
       {/* Panel Container */}
       <div className="bg-white rounded-lg shadow-xl border border-gray-200 flex flex-col h-full">
         {/* Panel Header */}

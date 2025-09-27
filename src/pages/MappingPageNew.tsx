@@ -26,7 +26,15 @@ const MappingPageContent: React.FC = () => {
   const [showPropertyModal, setShowPropertyModal] = useState(false);
   const [pinDropCoordinates, setPinDropCoordinates] = useState<{lat: number, lng: number} | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
-  const [recentlyCreatedPropertyIds, setRecentlyCreatedPropertyIds] = useState<Set<string>>(new Set());
+  // Initialize recently created IDs from sessionStorage
+  const [recentlyCreatedPropertyIds, setRecentlyCreatedPropertyIds] = useState<Set<string>>(() => {
+    try {
+      const stored = sessionStorage.getItem('recentlyCreatedPropertyIds');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -43,6 +51,15 @@ const MappingPageContent: React.FC = () => {
 
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Persist recently created IDs to sessionStorage
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('recentlyCreatedPropertyIds', JSON.stringify([...recentlyCreatedPropertyIds]));
+    } catch (error) {
+      console.warn('Failed to persist session pins to sessionStorage:', error);
+    }
+  }, [recentlyCreatedPropertyIds]);
 
   // Get layer state from context
   const { layerState, setLayerCount, setLayerLoading, setLayerError, createMode, refreshLayer } = useLayerManager();
@@ -138,17 +155,8 @@ const MappingPageContent: React.FC = () => {
   const handlePropertyCreated = (property: any) => {
     console.log('✅ Property created successfully:', property);
 
-    // Add to recently created set
+    // Add to recently created set (persists until browser tab closed or manually cleared)
     setRecentlyCreatedPropertyIds(prev => new Set([...prev, property.id]));
-
-    // Auto-remove from recently created after 30 seconds
-    setTimeout(() => {
-      setRecentlyCreatedPropertyIds(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(property.id);
-        return newSet;
-      });
-    }, 30000);
 
     // Refresh the property layer to show the new item
     refreshLayer('properties');
@@ -165,6 +173,19 @@ const MappingPageContent: React.FC = () => {
   const handlePropertyModalClose = () => {
     setShowPropertyModal(false);
     setPinDropCoordinates(null);
+  };
+
+  // Function to manually clear session pins if needed
+  const clearSessionPins = () => {
+    console.log('🧹 Clearing session pins...', recentlyCreatedPropertyIds);
+    setRecentlyCreatedPropertyIds(new Set());
+    try {
+      sessionStorage.removeItem('recentlyCreatedPropertyIds');
+      console.log('✅ Cleared from sessionStorage');
+    } catch (error) {
+      console.warn('Failed to clear session pins from sessionStorage:', error);
+    }
+    console.log('🧹 Session pins cleared manually');
   };
 
   const handleSiteSubmitModalClose = () => {
@@ -263,6 +284,18 @@ const MappingPageContent: React.FC = () => {
                   Use layer panel to control map data
                 </div>
 
+                {/* Clear Session Pins Button (when available) */}
+                {recentlyCreatedPropertyIds.size > 0 && (
+                  <button
+                    onClick={clearSessionPins}
+                    className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded border border-red-300 flex items-center space-x-1"
+                    title="Clear your red session pins"
+                  >
+                    <span>🧹</span>
+                    <span>Clear Session Pins ({recentlyCreatedPropertyIds.size})</span>
+                  </button>
+                )}
+
                 {/* Admin Menu */}
                 <div className="relative">
                   <button
@@ -274,7 +307,7 @@ const MappingPageContent: React.FC = () => {
                   </button>
 
                   {showAdminMenu && (
-                    <div className="absolute right-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                    <div className="absolute right-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
                       <div className="py-1">
                         <button
                           onClick={() => {
@@ -286,6 +319,19 @@ const MappingPageContent: React.FC = () => {
                           <span>🏢</span>
                           <span>Batch Geocoding</span>
                         </button>
+
+                        {recentlyCreatedPropertyIds.size > 0 && (
+                          <button
+                            onClick={() => {
+                              clearSessionPins();
+                              setShowAdminMenu(false);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-700 flex items-center space-x-2"
+                          >
+                            <span>🧹</span>
+                            <span>Clear Session Pins ({recentlyCreatedPropertyIds.size})</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -334,7 +380,7 @@ const MappingPageContent: React.FC = () => {
 
             {/* Create Mode Overlay */}
             {createMode && (
-              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-50">
+              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-20">
                 <div className="flex items-center space-x-2">
                   <span>🎯</span>
                   <span className="font-medium">
@@ -413,51 +459,6 @@ const MappingPageContent: React.FC = () => {
               onClose={handleContextMenuClose}
             />
 
-            {/* Map Info Overlay */}
-            {mapInstance && (
-              <div className="absolute bottom-4 right-4 bg-white bg-opacity-90 rounded-lg shadow-sm p-3 text-xs">
-                <div className="space-y-1">
-                  <div>
-                    <span className="text-gray-500">Center:</span>
-                    <span className="font-mono text-gray-900 ml-2">
-                      {mapInstance.getCenter()?.lat().toFixed(4)}, {mapInstance.getCenter()?.lng().toFixed(4)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Zoom:</span>
-                    <span className="font-mono text-gray-900 ml-2">{mapInstance.getZoom()}</span>
-                  </div>
-
-                  {/* Pin Color Legend */}
-                  <div className="mt-3 pt-2 border-t border-gray-200">
-                    <div className="text-gray-600 font-medium mb-1">Pin Colors:</div>
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                        <span className="text-gray-600">Recently Created</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span className="text-gray-600">Verified Location</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                        <span className="text-gray-600">Geocoded Location</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-xs text-gray-400 mt-2">
-                    🗺️ Modern Layer Management Active
-                  </div>
-                  {supportsRightClick() && (
-                    <div className="text-xs text-gray-400 mt-1">
-                      💡 Right-click to create properties
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>

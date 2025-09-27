@@ -123,9 +123,21 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           zoom: location ? 12 : 10,
           mapTypeId: google.maps.MapTypeId.ROADMAP,
           mapTypeControl: true,
+          mapTypeControlOptions: {
+            position: google.maps.ControlPosition.TOP_RIGHT,
+          },
           streetViewControl: true,
+          streetViewControlOptions: {
+            position: google.maps.ControlPosition.RIGHT_TOP,
+          },
           fullscreenControl: true,
+          fullscreenControlOptions: {
+            position: google.maps.ControlPosition.TOP_RIGHT,
+          },
           zoomControl: true,
+          zoomControlOptions: {
+            position: google.maps.ControlPosition.RIGHT_CENTER,
+          },
           gestureHandling: 'greedy'
         });
 
@@ -265,11 +277,31 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         style={{ minHeight: '200px' }}
       />
 
-      {/* Map info overlay */}
-      {!isLoading && !error && (
-        <div className="absolute top-2 right-2 bg-white bg-opacity-90 rounded-md px-2 py-1 text-xs text-gray-600 shadow">
-          {userLocation ? '📍 Your Location' : '🏙️ Atlanta, GA'}
-        </div>
+      {/* Center on Location Button */}
+      {!isLoading && !error && mapInstanceRef.current && (
+        <button
+          onClick={() => {
+            if (userLocation && mapInstanceRef.current) {
+              mapInstanceRef.current.panTo(userLocation);
+              mapInstanceRef.current.setZoom(15);
+            } else {
+              // Request location if we don't have it
+              getUserLocation().then((location) => {
+                if (location && mapInstanceRef.current) {
+                  setUserLocation(location);
+                  mapInstanceRef.current.panTo(location);
+                  mapInstanceRef.current.setZoom(15);
+                }
+              });
+            }
+          }}
+          className="absolute bottom-6 left-6 bg-white hover:bg-gray-50 rounded-full p-3 shadow-lg border border-gray-200 transition-colors"
+          title={userLocation ? "Center on your location" : "Get your location"}
+        >
+          <span className="text-lg">
+            {userLocation ? '📍' : '🎯'}
+          </span>
+        </button>
       )}
     </div>
   );

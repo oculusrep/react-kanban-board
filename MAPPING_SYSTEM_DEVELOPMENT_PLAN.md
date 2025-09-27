@@ -1,11 +1,43 @@
 # 🗺️ Integrated Mapping System - Development Plan
 
-## 📋 Project Overview
+## 📋 Project Vision
 
-**Goal**: Build an integrated mapping system that serves as the central hub for property and site submit visualization, eliminating the need to constantly switch between separate screens.
+**Goal**: Build an integrated mapping system that serves as the central hub for property and site submit visualization, eliminating the need to constantly switch between separate screens. This system will replace the current disconnected Salesforce Maps workflow with a seamless, integrated experience.
 
 **Dataset**: ~3,500 properties + 2,403 site submits
 **APIs**: Google Maps JavaScript API, Places API, Geocoding API, Directions API
+
+## 🏗️ Core Architecture Requirements
+
+### 1. Slideable Interface Design
+- **Dual-pane layout**: Main CRM on left, map on right with adjustable slider
+- **Full-screen toggle**: Ability to expand map to full screen and collapse back
+- **Context preservation**: When viewing a property/site_submit, clicking slider instantly shows location on map
+- **Modal sidebars**: Edit property/site_submit information directly from map pins without leaving map view
+
+### 2. Layer-Based Visualization System
+**Primary Data Layers (Toggle On/Off):**
+- **Properties Layer**: All property records with status-based styling
+- **Property Units Layer**: Individual units within properties (retail/shopping centers)
+- **Site Submits Layer**: All site submission records with client associations
+- **Custom Query Layers**: Dynamic layers created from saved database queries
+
+### 3. User Access Control Architecture
+**Admin View (Core Users):**
+- Access to ALL layers and data
+- Ability to create/edit/share custom layers
+- Full CRUD operations on map objects
+
+**Customer Portal View:**
+- **Site Submit Access**: Only see site submits associated with their account
+- **Special Layer Access**: Curated layers shared specifically with them
+- **Read-only interactions**: View and basic filtering only
+
+### 4. Layer Management System
+- **On-demand layer creation**: Create layers from custom database queries
+- **Layer persistence**: Save and name custom layers
+- **Layer sharing**: Share specific layers with customers/users
+- **Layer permissions**: Control who can view/edit specific layers
 
 ---
 
@@ -31,6 +63,43 @@
 - **Context-sensitive slider**: Appears on property/site submit pages
 - **Dedicated mapping page**: Full mapping experience at `/mapping`
 - **Pin Interaction**: Slide-out sidebar with simplified read/edit forms (similar to existing property detail screen)
+
+## 🗄️ Database Integration Points
+
+### Current Schema Elements to Map:
+```sql
+-- Primary mapping tables
+property (
+  id, property_name, address, city, state, zip,
+  latitude, longitude, verified_latitude, verified_longitude,
+  property_stage_id, property_type_id, property_record_type_id
+)
+
+property_unit (
+  id, property_id, property_unit_name,
+  sqft, rent, nnn, lease_expiration_date
+)
+
+site_submit (
+  id, property_id, assignment_id, client_id,
+  site_submit_date, site_submit_status_id
+)
+
+-- Supporting lookup tables
+property_stage, property_type, property_record_type
+site_submit_status, assignment, client
+```
+
+### Geocoding Priority:
+1. **Properties**: Use verified_latitude/verified_longitude if available, fallback to latitude/longitude
+2. **Site Submits**: Inherit coordinates from associated property
+3. **Missing Coordinates**: Queue for Google Places API geocoding
+
+### Existing System Integration:
+- **Database-first development**: All components follow database schema
+- **Custom hooks pattern**: Business logic in reusable hooks
+- **TypeScript safety**: Full type integration with database schema
+- **Modular components**: Focused, single-responsibility components
 
 ---
 
@@ -167,30 +236,44 @@ src/components/mapping/
 ├── MapSystem.tsx                 (Main container with context-sensitive slider)
 ├── MappingPage.tsx              (Dedicated full-screen mapping page)
 ├── GoogleMapContainer.tsx        (Google Maps wrapper component)
-├── LayerManager.tsx             (Layer toggle controls)
+├── LayerManager.tsx             (Layer toggle controls & custom layer creation)
 ├── MapSidebar.tsx               (Slide-out sidebar for pin editing)
 ├── layers/
 │   ├── PropertyLayer.tsx        (Property markers with clustering)
+│   ├── PropertyUnitLayer.tsx    (Individual unit markers within properties)
 │   ├── SiteSubmitLayer.tsx      (Site submit markers with client filtering)
+│   ├── CustomQueryLayer.tsx     (Dynamic layers from saved queries)
 │   └── LayerTypes.ts            (TypeScript interfaces)
 ├── forms/
 │   ├── PropertyMapForm.tsx      (Simplified property edit form)
 │   ├── SiteSubmitMapForm.tsx    (Simplified site submit edit form)
-│   └── PinVerificationModal.tsx (Drag-and-drop coordinate verification)
+│   ├── PinVerificationModal.tsx (Drag-and-drop coordinate verification)
+│   └── CustomLayerModal.tsx     (Create/edit custom query layers)
 ├── hooks/
 │   ├── useMapData.ts            (Database integration)
 │   ├── useLayerState.ts         (Layer visibility management)
 │   ├── useGeocodingBatch.ts     (Batch geocoding operations)
-│   └── useMapIntegration.ts     (CRM page integration)
+│   ├── useMapIntegration.ts     (CRM page integration)
+│   ├── useCustomLayers.ts       (Custom layer CRUD operations)
+│   └── useLayerPermissions.ts   (User access control for layers)
 ├── services/
 │   ├── googleMapsService.ts     (Google Maps API wrapper)
 │   ├── geocodingService.ts      (Enhanced with Google + OSM fallback)
-│   └── markerClusterService.ts  (Clustering configuration)
+│   ├── markerClusterService.ts  (Clustering configuration)
+│   └── customQueryService.ts    (Dynamic layer query execution)
 └── utils/
     ├── mapHelpers.ts            (Utility functions)
     ├── markerStyles.ts          (Marker colors and icons)
-    └── coordinateUtils.ts       (Coordinate validation and conversion)
+    ├── coordinateUtils.ts       (Coordinate validation and conversion)
+    └── layerPermissions.ts      (Access control utilities)
 ```
+
+### Component Architecture Patterns:
+- **Follow established patterns**: Database-first development with proper TypeScript interfaces
+- **Custom hooks for business logic**: Keep components focused on UI, logic in hooks
+- **Component composition**: Small, focused components over complex single components
+- **Error handling**: Graceful degradation when APIs fail or are rate limited
+- **Performance first**: Always consider the 6,000+ marker impact
 
 ---
 
@@ -304,6 +387,28 @@ WHERE ss.client_id = $1
 - Context-sensitive map integration on existing CRM pages
 - Dedicated mapping page provides full functionality
 - System integrates seamlessly with existing workflow
+
+### **Overall Success Metrics:**
+- **Workflow efficiency**: Reduce screen switching by 80%
+- **Data visualization**: All properties/site_submits have accurate map representation
+- **User adoption**: Customer portal engagement with map features
+- **Performance**: Sub-2-second layer switching and map interactions
+
+---
+
+## 🔄 Development Approach
+
+### Follow Established Patterns:
+1. **Custom hooks for business logic** (useMapData, useLayerManager)
+2. **Separate services** for API calls (geocodingService, mapsService)
+3. **Component composition** over complex single components
+4. **Database-first typing** with proper interfaces
+
+### API Integration Best Practices:
+1. **Error handling**: Graceful degradation when APIs fail
+2. **Rate limiting**: Respect Google API quotas
+3. **Caching**: Store geocoded results in database
+4. **Loading states**: Proper user feedback during API calls
 
 ---
 

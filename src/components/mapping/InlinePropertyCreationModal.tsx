@@ -135,10 +135,10 @@ const InlinePropertyCreationModal: React.FC<InlinePropertyCreationModalProps> = 
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-[90]" onClick={onClose} />
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-[45]" onClick={onClose} />
 
       {/* Modal */}
-      <div className="fixed inset-4 bg-white rounded-lg shadow-xl z-[100] flex flex-col max-w-2xl mx-auto">
+      <div className="fixed inset-4 bg-white rounded-lg shadow-xl z-[50] flex flex-col max-w-2xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div>

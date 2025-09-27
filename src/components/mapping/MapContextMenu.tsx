@@ -23,13 +23,13 @@ const MapContextMenu: React.FC<MapContextMenuProps> = ({
     <>
       {/* Backdrop to close menu */}
       <div
-        className="fixed inset-0 z-[70]"
+        className="fixed inset-0 z-[30]"
         onClick={onClose}
       />
 
       {/* Context Menu */}
       <div
-        className="fixed z-[80] bg-white rounded-lg shadow-xl border border-gray-200 py-2 min-w-[200px]"
+        className="fixed z-[40] bg-white rounded-lg shadow-xl border border-gray-200 py-2 min-w-[200px]"
         style={{
           left: `${x}px`,
           top: `${y}px`,
