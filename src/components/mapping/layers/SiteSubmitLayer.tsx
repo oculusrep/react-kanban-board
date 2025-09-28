@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from './LayerManager';
-import { createStageMarkerIcon } from '../utils/stageMarkers';
+import { createStageMarkerIcon, createVerifiedStageMarkerIcon } from '../utils/stageMarkers';
 
 interface SiteSubmit {
   id: string;
@@ -66,10 +66,23 @@ interface SiteSubmitLayerProps {
   onSiteSubmitsLoaded?: (count: number) => void;
   onPinClick?: (siteSubmit: SiteSubmit) => void;
   onStageCountsUpdate?: (counts: Record<string, number>) => void;
+  onSiteSubmitRightClick?: (siteSubmit: SiteSubmit, x: number, y: number) => void;
+  verifyingSiteSubmitId?: string | null; // Site submit being verified
+  onLocationVerified?: (siteSubmitId: string, lat: number, lng: number) => void;
 }
 
 
-const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadingConfig, onSiteSubmitsLoaded, onPinClick, onStageCountsUpdate }) => {
+const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
+  map,
+  isVisible,
+  loadingConfig,
+  onSiteSubmitsLoaded,
+  onPinClick,
+  onStageCountsUpdate,
+  onSiteSubmitRightClick,
+  verifyingSiteSubmitId = null,
+  onLocationVerified
+}) => {
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
   const [clusterer, setClusterer] = useState<MarkerClusterer | null>(null);
@@ -95,9 +108,16 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
     return null;
   };
 
-  // Get marker icon based on submit stage
+  // Get marker icon based on submit stage and verification status
   const getMarkerIcon = (siteSubmit: SiteSubmit): google.maps.Icon => {
     const stageName = siteSubmit.submit_stage?.name || 'Monitor';
+    const coords = getDisplayCoordinates(siteSubmit);
+
+    // Use verified marker if this site submit has verified coordinates
+    if (coords?.verified) {
+      return createVerifiedStageMarkerIcon(stageName, 32);
+    }
+
     return createStageMarkerIcon(stageName, 32);
   };
 
@@ -399,11 +419,92 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
         content: infoContent
       });
 
+      const isBeingVerified = verifyingSiteSubmitId === siteSubmit.id;
       const marker = new google.maps.Marker({
         position: { lat: coords.lat, lng: coords.lng },
         map: null, // Don't show initially
         title: siteSubmit.site_submit_name || `Site Submit - ${siteSubmit.client?.client_name}`,
-        icon: markerIcon
+        icon: markerIcon,
+        draggable: true, // Always draggable for site submit pins
+        zIndex: isBeingVerified ? 2000 : 1000 // Higher z-index than properties (which use 500 max)
+      });
+
+      // Handle marker drag to update verified location
+      marker.addListener('dragend', async (event: google.maps.MapMouseEvent) => {
+        if (!event.latLng) return;
+
+        const newLat = event.latLng.lat();
+        const newLng = event.latLng.lng();
+
+        console.log(`📍 Site submit pin dragged to: ${newLat}, ${newLng}`);
+
+        // If this is a verification drag (from right-click), use the callback
+        if (isBeingVerified && onLocationVerified) {
+          onLocationVerified(siteSubmit.id, newLat, newLng);
+          return;
+        }
+
+        // Otherwise handle direct drag (existing behavior)
+        try {
+          // Update verified coordinates in database
+          const { error } = await supabase
+            .from('site_submit')
+            .update({
+              verified_latitude: newLat,
+              verified_longitude: newLng
+            })
+            .eq('id', siteSubmit.id);
+
+          if (error) {
+            console.error('❌ Failed to update verified location:', error);
+            // Revert marker position on error
+            marker.setPosition({ lat: coords.lat, lng: coords.lng });
+            alert('Failed to save new location. Please try again.');
+            return;
+          }
+
+          console.log('✅ Verified location updated successfully');
+
+          // Update local state to reflect the change
+          const updatedSiteSubmit = { ...siteSubmit, verified_latitude: newLat, verified_longitude: newLng };
+          setSiteSubmits(prev => prev.map(submit =>
+            submit.id === siteSubmit.id
+              ? updatedSiteSubmit
+              : submit
+          ));
+
+          // Update marker icon to show verified status
+          const newMarkerIcon = getMarkerIcon(updatedSiteSubmit);
+          marker.setIcon(newMarkerIcon);
+
+          // Update info window content to show verified status
+          const updatedInfoContent = `
+            <div class="p-3 max-w-sm">
+              <h3 class="font-semibold text-lg text-gray-900 mb-2">
+                ${siteSubmit.site_submit_name || 'Site Submit'}
+              </h3>
+              <div class="space-y-1 text-sm text-gray-600">
+                ${siteSubmit.client ? `<div><strong>Client:</strong> ${siteSubmit.client.client_name}</div>` : siteSubmit.client_id ? `<div><strong>Client ID:</strong> ${siteSubmit.client_id}</div>` : ''}
+                ${siteSubmit.submit_stage ? `<div><strong>Stage:</strong> ${siteSubmit.submit_stage.name}</div>` : siteSubmit.submit_stage_id ? `<div><strong>Stage ID:</strong> ${siteSubmit.submit_stage_id}</div>` : ''}
+                ${siteSubmit.property ? `<div><strong>Property:</strong> ${siteSubmit.property.property_name || 'N/A'}</div>` : siteSubmit.property_id ? `<div><strong>Property ID:</strong> ${siteSubmit.property_id}</div>` : ''}
+                <div><strong>Coordinates:</strong> ${newLat.toFixed(6)}, ${newLng.toFixed(6)}</div>
+                ${siteSubmit.year_1_rent ? `<div><strong>Year 1 Rent:</strong> $${siteSubmit.year_1_rent.toLocaleString()}</div>` : ''}
+                ${siteSubmit.ti ? `<div><strong>TI:</strong> $${siteSubmit.ti.toLocaleString()}</div>` : ''}
+                <div class="text-xs text-green-600">
+                  ✓ Verified Location (moved from property location)
+                </div>
+                ${siteSubmit.notes ? `<div class="mt-2 p-2 bg-gray-50 rounded text-xs"><strong>Notes:</strong> ${siteSubmit.notes}</div>` : ''}
+              </div>
+            </div>
+          `;
+          infoWindow.setContent(updatedInfoContent);
+
+        } catch (err) {
+          console.error('❌ Error updating verified location:', err);
+          // Revert marker position on error
+          marker.setPosition({ lat: coords.lat, lng: coords.lng });
+          alert('Failed to save new location. Please try again.');
+        }
       });
 
       marker.addListener('click', () => {
@@ -416,6 +517,18 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
         // Fallback to info window
         infoWindow.open(map, marker);
       });
+
+      // Add right-click listener for site submit markers
+      if (onSiteSubmitRightClick) {
+        marker.addListener('rightclick', (event: google.maps.MapMouseEvent) => {
+          if (event.domEvent) {
+            // Prevent the map's contextmenu event from firing
+            event.domEvent.preventDefault();
+            event.domEvent.stopPropagation();
+            onSiteSubmitRightClick(siteSubmit, event.domEvent.clientX, event.domEvent.clientY);
+          }
+        });
+      }
 
       return marker;
     }).filter(marker => marker !== null) as google.maps.Marker[];
@@ -485,7 +598,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({ map, isVisible, loadi
     if (siteSubmits.length > 0) {
       createMarkers();
     }
-  }, [siteSubmits, map, loadingConfig.visibleStages]);
+  }, [siteSubmits, map, loadingConfig.visibleStages, verifyingSiteSubmitId]);
 
   // Set up clustering when markers change (including when empty)
   useEffect(() => {

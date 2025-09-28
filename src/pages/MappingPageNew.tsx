@@ -7,6 +7,7 @@ import LayerNavigationSlideout from '../components/mapping/slideouts/LayerNaviga
 import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
 import MapContextMenu from '../components/mapping/MapContextMenu';
 import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
+import SiteSubmitContextMenu from '../components/mapping/SiteSubmitContextMenu';
 import ClientSelector from '../components/mapping/ClientSelector';
 import { ClientSearchResult } from '../hooks/useClientSearch';
 import AddressSearchBox from '../components/mapping/AddressSearchBox';
@@ -97,6 +98,25 @@ const MappingPageContent: React.FC = () => {
     property: null,
   });
 
+  // Site submit context menu state
+  const [siteSubmitContextMenu, setSiteSubmitContextMenu] = useState<{
+    isVisible: boolean;
+    x: number;
+    y: number;
+    siteSubmit: any | null;
+  }>({
+    isVisible: false,
+    x: 0,
+    y: 0,
+    siteSubmit: null,
+  });
+
+  // Site submit verification state
+  const [verifyingSiteSubmitId, setVerifyingSiteSubmitId] = useState<string | null>(null);
+
+  // Flag to prevent property context menu when site submit was just clicked
+  const [suppressPropertyContextMenu, setSuppressPropertyContextMenu] = useState<boolean>(false);
+
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -135,6 +155,7 @@ const MappingPageContent: React.FC = () => {
       // Close context menus on any click
       setContextMenu(prev => ({ ...prev, isVisible: false }));
       setPropertyContextMenu(prev => ({ ...prev, isVisible: false }));
+      setSiteSubmitContextMenu(prev => ({ ...prev, isVisible: false }));
 
       if (createMode && event.latLng) {
         const lat = event.latLng.lat();
@@ -224,6 +245,37 @@ const MappingPageContent: React.FC = () => {
     refreshLayer('site_submits');
   };
 
+  // Handle site submit location verified (save to database)
+  const handleSiteSubmitLocationVerified = async (siteSubmitId: string, lat: number, lng: number) => {
+    console.log('📍 Saving verified location for site submit:', siteSubmitId, { lat, lng });
+
+    try {
+      // Update verified coordinates in database
+      const { error } = await supabase
+        .from('site_submit')
+        .update({
+          verified_latitude: lat,
+          verified_longitude: lng
+        })
+        .eq('id', siteSubmitId);
+
+      if (error) {
+        throw error;
+      }
+
+      console.log('✅ Site submit verified location saved successfully');
+
+      // Clear verification state
+      setVerifyingSiteSubmitId(null);
+      // Refresh site submit layer to show updated coordinates
+      refreshLayer('site_submits');
+      console.log('✅ Site submit location verification completed');
+    } catch (error) {
+      console.error('❌ Failed to save site submit verified location:', error);
+      // Keep verification mode active on error so user can try again
+    }
+  };
+
   // Handle modal close
   const handlePropertyModalClose = () => {
     setShowPropertyModal(false);
@@ -263,6 +315,13 @@ const MappingPageContent: React.FC = () => {
   // Property context menu handlers
   const handlePropertyRightClick = (property: any, x: number, y: number) => {
     console.log('🎯 Property right-clicked:', property.id, { x, y });
+
+    // Don't show property context menu if site submit context menu was just triggered
+    if (suppressPropertyContextMenu) {
+      console.log('🚫 Suppressing property context menu - site submit was clicked');
+      return;
+    }
+
     setPropertyContextMenu({
       isVisible: true,
       x,
@@ -273,6 +332,34 @@ const MappingPageContent: React.FC = () => {
 
   const handlePropertyContextMenuClose = () => {
     setPropertyContextMenu(prev => ({ ...prev, isVisible: false }));
+  };
+
+  // Site submit context menu handlers
+  const handleSiteSubmitRightClick = (siteSubmit: any, x: number, y: number) => {
+    console.log('🎯 Site submit right-clicked:', siteSubmit.id, { x, y });
+
+    // Close any existing context menus
+    setContextMenu(prev => ({ ...prev, isVisible: false }));
+    setPropertyContextMenu(prev => ({ ...prev, isVisible: false }));
+
+    // Set flag to suppress property context menu
+    setSuppressPropertyContextMenu(true);
+
+    // Clear the suppression flag after a longer delay
+    setTimeout(() => {
+      setSuppressPropertyContextMenu(false);
+    }, 200);
+
+    setSiteSubmitContextMenu({
+      isVisible: true,
+      x,
+      y,
+      siteSubmit,
+    });
+  };
+
+  const handleSiteSubmitContextMenuClose = () => {
+    setSiteSubmitContextMenu(prev => ({ ...prev, isVisible: false }));
   };
 
   // Pin click handlers for slideout
@@ -295,6 +382,40 @@ const MappingPageContent: React.FC = () => {
   const handleVerifyLocation = (propertyId: string) => {
     console.log('🎯 Starting location verification for property:', propertyId);
     setVerifyingPropertyId(propertyId);
+  };
+
+  // Handle site submit location verification
+  const handleSiteSubmitVerifyLocation = (siteSubmitId: string) => {
+    console.log('🎯 Starting location verification for site submit:', siteSubmitId);
+    setVerifyingSiteSubmitId(siteSubmitId);
+  };
+
+  // Handle site submit location reset (clear verified coordinates)
+  const handleSiteSubmitResetLocation = async (siteSubmitId: string) => {
+    console.log('🔄 Resetting site submit location to property location:', siteSubmitId);
+
+    try {
+      // Clear verified coordinates in database
+      const { error } = await supabase
+        .from('site_submit')
+        .update({
+          verified_latitude: null,
+          verified_longitude: null
+        })
+        .eq('id', siteSubmitId);
+
+      if (error) {
+        throw error;
+      }
+
+      console.log('✅ Site submit location reset successfully');
+
+      // Refresh site submit layer to show property coordinates
+      refreshLayer('site_submits');
+    } catch (error) {
+      console.error('❌ Failed to reset site submit location:', error);
+      alert('Failed to reset location. Please try again.');
+    }
   };
 
   // Handle location verified (save to database)
@@ -761,6 +882,9 @@ const MappingPageContent: React.FC = () => {
               }}
               onPinClick={(siteSubmit) => handlePinClick(siteSubmit, 'site_submit')}
               onStageCountsUpdate={handleStageCountsUpdate}
+              onSiteSubmitRightClick={handleSiteSubmitRightClick}
+              verifyingSiteSubmitId={verifyingSiteSubmitId}
+              onLocationVerified={handleSiteSubmitLocationVerified}
             />
 
             {/* Modern Slideout Navigation */}
@@ -819,6 +943,17 @@ const MappingPageContent: React.FC = () => {
               property={propertyContextMenu.property}
               onVerifyLocation={handleVerifyLocation}
               onClose={handlePropertyContextMenuClose}
+            />
+
+            {/* Site Submit Context Menu for Right-Click on Site Submits */}
+            <SiteSubmitContextMenu
+              x={siteSubmitContextMenu.x}
+              y={siteSubmitContextMenu.y}
+              isVisible={siteSubmitContextMenu.isVisible}
+              siteSubmit={siteSubmitContextMenu.siteSubmit}
+              onVerifyLocation={handleSiteSubmitVerifyLocation}
+              onResetLocation={handleSiteSubmitResetLocation}
+              onClose={handleSiteSubmitContextMenuClose}
             />
 
             {/* Site Submit Legend - Show when site submit layer is visible */}

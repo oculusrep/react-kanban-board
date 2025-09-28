@@ -22,6 +22,15 @@ The notes system provides rich text note creation, editing, and display capabili
 - **Successfully restored full content** for truncated notes from Salesforce
 - **Automated script** fetches complete content via Salesforce VersionData API
 
+### ✅ **Site Submit Pin Right-Click Functionality** (September 2025)
+- **Desktop right-click context menu** for site submit pins (identical to property pins)
+- **Verify Pin Location** - enables dragging to set verified coordinates independently of property location
+- **Copy Coordinates** - copies current pin coordinates to clipboard
+- **Reset to Property Location** - clears verified coordinates and returns pin to property location
+- **Visual distinction** - verified pins show green dashed border with checkmark overlay
+- **Database integration** - saves to `verified_latitude`/`verified_longitude` fields in `site_submit` table
+- **Event handling** - prevents property/map context menus from interfering with site submit menus
+
 ## Architecture
 
 ### Core Components

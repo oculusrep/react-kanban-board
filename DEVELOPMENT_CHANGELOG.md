@@ -2,6 +2,52 @@
 
 ## September 28, 2025
 
+### 🗺️ **Site Submit Pin Right-Click Functionality**
+
+#### **Background**
+User requested identical right-click functionality for site submit pins as exists for property pins, allowing independent location verification without affecting the underlying property coordinates.
+
+#### **Changes Made**
+- **Created SiteSubmitContextMenu.tsx**:
+  - Identical design to PropertyContextMenu for consistent UX
+  - Three menu options: Verify Pin Location, Copy Coordinates, Reset to Property Location
+  - Shows site submit name, client, and stage information
+  - Support for verified location status detection
+
+- **Enhanced SiteSubmitLayer.tsx**:
+  - Added right-click event listeners to all site submit markers
+  - Implemented verified location coordinate handling with priority over property coordinates
+  - Added draggable pin functionality with database persistence
+  - Higher z-index (1000) for site submit pins to appear above property pins (100)
+  - Visual distinction with verified marker icons (green border + checkmark)
+
+- **Updated MappingPageNew.tsx**:
+  - Added site submit context menu state management
+  - Implemented right-click handlers and verification workflow
+  - Added suppression mechanism to prevent multiple context menus appearing
+  - Integrated verified location save/reset functionality with database
+
+- **Enhanced modernMarkers.ts**:
+  - Created `createVerifiedStageMarkerIcon()` function for distinctive verified pins
+  - Added green dashed border and checkmark overlay for verified locations
+  - Maintained original pin design with additional verification indicators
+
+#### **Technical Details**
+- **Database fields**: Uses existing `verified_latitude`/`verified_longitude` in `site_submit` table
+- **Event handling**: `preventDefault()` and `stopPropagation()` to prevent context menu conflicts
+- **Visual hierarchy**: Site submit pins (z-index 1000) render above property pins (z-index 100)
+- **State management**: Verification state tracking and suppression flags for clean UX
+- **Coordinate priority**: Verified coordinates take precedence over property coordinates in display
+
+#### **User Experience**
+- **Right-click site submit pin** → Site submit context menu appears (only)
+- **"Verify Pin Location"** → Pin becomes draggable with enhanced styling
+- **Drag to new location** → Automatically saves verified coordinates
+- **"Reset to Property Location"** → Clears verified coordinates, returns to property location
+- **Visual feedback** → Green dashed border and checkmark for verified pins
+
+---
+
 ### 🎨 **Rich Text Editor Upgrade**
 
 #### **Background**

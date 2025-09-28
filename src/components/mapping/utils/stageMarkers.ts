@@ -165,6 +165,64 @@ export const createStageMarkerSVG = (stageName: string, size: number = 32): stri
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 };
 
+// Create SVG data URL for a verified stage marker (with double border to indicate it's verified)
+export const createVerifiedStageMarkerSVG = (stageName: string, size: number = 32): string => {
+  const config = STAGE_CONFIGURATIONS[stageName] || {
+    color: '#3b82f6',
+    iconPath: 'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0zM12 7a3 3 0 1 1 0 6 3 3 0 0 1 0-6z',
+    category: 'monitoring'
+  };
+
+  const iconSize = size * 0.5;
+  const iconOffset = (size - iconSize) / 2;
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size + 6}" viewBox="0 0 ${size} ${size + 6}">
+      <!-- Outer verified ring -->
+      <circle cx="${size/2}" cy="${size/2}" r="${(size-2)/2}"
+              fill="none"
+              stroke="#10b981"
+              stroke-width="3"
+              stroke-dasharray="2,2"
+              filter="drop-shadow(0 2px 4px rgba(0,0,0,0.3))"/>
+
+      <!-- Pin body -->
+      <circle cx="${size/2}" cy="${size/2}" r="${(size-8)/2}"
+              fill="${config.color}"
+              stroke="white"
+              stroke-width="2"/>
+
+      <!-- Pin tail -->
+      <polygon points="${size/2},${size-2} ${size/2-3},${size-8} ${size/2+3},${size-8}"
+               fill="${config.color}"
+               stroke="white"
+               stroke-width="1"/>
+
+      <!-- Icon -->
+      <g transform="translate(${iconOffset}, ${iconOffset}) scale(${iconSize/24})">
+        <path d="${config.iconPath}"
+              fill="white"
+              stroke="none"/>
+      </g>
+
+      <!-- Verified checkmark overlay -->
+      <circle cx="${size-6}" cy="6" r="4" fill="#10b981" stroke="white" stroke-width="1"/>
+      <path d="M${size-8} 6 L${size-6} 8 L${size-4} 4" stroke="white" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
+
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+};
+
+// Create Google Maps Icon object for a verified stage (with visual distinction)
+export const createVerifiedStageMarkerIcon = (stageName: string, size: number = 32): google.maps.Icon => {
+  return {
+    url: createVerifiedStageMarkerSVG(stageName, size),
+    scaledSize: new google.maps.Size(size, size + 6),
+    anchor: new google.maps.Point(size/2, size)
+  };
+};
+
 // Create Google Maps Icon object for a stage
 export const createStageMarkerIcon = (stageName: string, size: number = 32): google.maps.Icon => {
   return {

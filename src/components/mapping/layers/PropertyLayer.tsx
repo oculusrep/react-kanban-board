@@ -308,6 +308,9 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       if (onPropertyRightClick) {
         marker.addListener('rightclick', (event: google.maps.MapMouseEvent) => {
           if (event.domEvent) {
+            // Prevent the map's contextmenu event from firing
+            event.domEvent.preventDefault();
+            event.domEvent.stopPropagation();
             onPropertyRightClick(property, event.domEvent.clientX, event.domEvent.clientY);
           }
         });
@@ -439,6 +442,9 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       if (onPropertyRightClick) {
         marker.addListener('rightclick', (event: google.maps.MapMouseEvent) => {
           if (event.domEvent) {
+            // Prevent the map's contextmenu event from firing
+            event.domEvent.preventDefault();
+            event.domEvent.stopPropagation();
             onPropertyRightClick(property, event.domEvent.clientX, event.domEvent.clientY);
           }
         });

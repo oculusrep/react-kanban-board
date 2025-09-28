@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
-import { createModernPinIcon, MarkerColors } from './utils/modernMarkers';
+import { createModernPinIcon, MarkerColors, createMutedPlacesStyle } from './utils/modernMarkers';
 
 interface GoogleMapContainerProps {
   height?: string;
@@ -118,7 +118,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
 
         console.log('✅ Creating map instance...');
 
-        // Create map instance
+        // Create map instance with muted places styling
         const map = new google.maps.Map(mapRef.current, {
           center: mapCenter,
           zoom: location ? 12 : 10,
@@ -139,7 +139,8 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           zoomControlOptions: {
             position: google.maps.ControlPosition.LEFT_TOP,
           },
-          gestureHandling: 'greedy'
+          gestureHandling: 'greedy',
+          styles: createMutedPlacesStyle() // Apply muted styling to reduce Google Places visibility
         });
 
         // Add a marker at the center location
