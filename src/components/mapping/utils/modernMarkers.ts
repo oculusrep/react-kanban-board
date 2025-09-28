@@ -3,13 +3,21 @@
 export const createModernMarkerIcon = (color: string, size: number = 28): google.maps.Icon => {
   const svg = `
     <svg width="${size}" height="${size}" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <!-- Outer ring with subtle shadow -->
-      <circle cx="14" cy="14" r="13" fill="rgba(0,0,0,0.1)" />
-      <circle cx="14" cy="13.5" r="12" fill="white" stroke="${color}" stroke-width="2"/>
-      <!-- Inner dot -->
-      <circle cx="14" cy="13.5" r="6" fill="${color}"/>
-      <!-- Highlight for depth -->
-      <circle cx="12" cy="11.5" r="2" fill="rgba(255,255,255,0.6)"/>
+      <!-- Enhanced drop shadow for better visibility -->
+      <circle cx="14" cy="15" r="13" fill="rgba(0,0,0,0.25)" />
+      <!-- Thick white border for high contrast -->
+      <circle cx="14" cy="14" r="12" fill="white" stroke="${color}" stroke-width="3"/>
+      <!-- Pulsing ring effect for animation -->
+      <circle cx="14" cy="14" r="10" fill="none" stroke="${color}" stroke-width="1" opacity="0.5">
+        <animate attributeName="r" values="10;14;10" dur="2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.5;0;0.5" dur="2s" repeatCount="indefinite"/>
+      </circle>
+      <!-- Inner dot with better contrast -->
+      <circle cx="14" cy="14" r="5" fill="${color}"/>
+      <!-- Bright highlight for 3D effect -->
+      <circle cx="12" cy="12" r="2" fill="rgba(255,255,255,0.9)"/>
+      <!-- Small center dot for precision -->
+      <circle cx="14" cy="14" r="1.5" fill="white"/>
     </svg>
   `;
 
@@ -68,6 +76,56 @@ export const createModernSquareIcon = (color: string, size: number = 24): google
   };
 };
 
+// New distinctive diamond marker for maximum visibility
+export const createDiamondMarkerIcon = (color: string, size: number = 30): google.maps.Icon => {
+  const svg = `
+    <svg width="${size}" height="${size}" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Enhanced shadow -->
+      <path d="M15 3L25 15L15 27L5 15Z" fill="rgba(0,0,0,0.3)" transform="translate(1,1)"/>
+      <!-- White border for contrast -->
+      <path d="M15 2L26 15L15 28L4 15Z" fill="white" stroke="${color}" stroke-width="2"/>
+      <!-- Inner diamond -->
+      <path d="M15 6L22 15L15 24L8 15Z" fill="${color}"/>
+      <!-- Highlight -->
+      <path d="M15 8L18 15L15 18L12 15Z" fill="rgba(255,255,255,0.8)"/>
+      <!-- Center dot -->
+      <circle cx="15" cy="15" r="2" fill="white"/>
+    </svg>
+  `;
+
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(size, size),
+    origin: new google.maps.Point(0, 0),
+    anchor: new google.maps.Point(size / 2, size / 2)
+  };
+};
+
+// Hexagonal marker for another distinctive option
+export const createHexagonMarkerIcon = (color: string, size: number = 28): google.maps.Icon => {
+  const svg = `
+    <svg width="${size}" height="${size}" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Shadow -->
+      <path d="M14 2L22 7V19L14 24L6 19V7L14 2Z" fill="rgba(0,0,0,0.2)" transform="translate(1,1)"/>
+      <!-- Main hexagon with thick border -->
+      <path d="M14 1L23 6.5V19.5L14 25L5 19.5V6.5L14 1Z" fill="white" stroke="${color}" stroke-width="3"/>
+      <!-- Inner hexagon -->
+      <path d="M14 5L19 8.5V17.5L14 21L9 17.5V8.5L14 5Z" fill="${color}"/>
+      <!-- Highlight -->
+      <path d="M14 8L16.5 9.5V16.5L14 18L11.5 16.5V9.5L14 8Z" fill="rgba(255,255,255,0.7)"/>
+      <!-- Center -->
+      <circle cx="14" cy="14" r="1.5" fill="white"/>
+    </svg>
+  `;
+
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(size, size),
+    origin: new google.maps.Point(0, 0),
+    anchor: new google.maps.Point(size / 2, size / 2)
+  };
+};
+
 // Color palette for modern markers
 export const MarkerColors = {
   // Primary colors (vibrant but professional)
@@ -94,15 +152,15 @@ export const MarkerColors = {
 
 // Predefined marker styles for different use cases
 export const ModernMarkerStyles = {
-  // For properties - use circular markers
+  // For properties - use distinctive diamond markers for maximum visibility
   property: {
-    recent: () => createModernMarkerIcon(MarkerColors.RECENT, 32),
-    verified: () => createModernMarkerIcon(MarkerColors.VERIFIED, 28),
-    geocoded: () => createModernMarkerIcon(MarkerColors.GEOCODED, 28),
-    verifying: () => createModernMarkerIcon(MarkerColors.VERIFYING, 32)
+    recent: () => createDiamondMarkerIcon(MarkerColors.RECENT, 32),
+    verified: () => createHexagonMarkerIcon(MarkerColors.VERIFIED, 30),
+    geocoded: () => createDiamondMarkerIcon(MarkerColors.GEOCODED, 30),
+    verifying: () => createModernMarkerIcon(MarkerColors.VERIFYING, 32) // Enhanced with animation
   },
 
-  // For site submits - use pin-style markers
+  // For site submits - use pin-style markers (traditional but enhanced)
   siteSubmit: {
     submitted: () => createModernPinIcon(MarkerColors.SUBMITTED, 28),
     approved: () => createModernPinIcon(MarkerColors.APPROVED, 28),
@@ -110,11 +168,33 @@ export const ModernMarkerStyles = {
     pending: () => createModernPinIcon(MarkerColors.PENDING, 28)
   },
 
-  // For special markers - use square markers
+  // For special markers - use varied shapes for differentiation
   special: {
-    retail: () => createModernSquareIcon(MarkerColors.RETAIL, 24),
+    retail: () => createHexagonMarkerIcon(MarkerColors.RETAIL, 26),
     office: () => createModernSquareIcon(MarkerColors.OFFICE, 24),
-    industrial: () => createModernSquareIcon(MarkerColors.INDUSTRIAL, 24),
-    mixedUse: () => createModernSquareIcon(MarkerColors.MIXED_USE, 24)
+    industrial: () => createDiamondMarkerIcon(MarkerColors.INDUSTRIAL, 28),
+    mixedUse: () => createHexagonMarkerIcon(MarkerColors.MIXED_USE, 26)
+  },
+
+  // Alternative high-visibility styles (for when you need maximum distinction)
+  highVisibility: {
+    diamonds: {
+      recent: () => createDiamondMarkerIcon(MarkerColors.RECENT, 34),
+      verified: () => createDiamondMarkerIcon(MarkerColors.VERIFIED, 30),
+      geocoded: () => createDiamondMarkerIcon(MarkerColors.GEOCODED, 30),
+      verifying: () => createDiamondMarkerIcon(MarkerColors.VERIFYING, 34)
+    },
+    hexagons: {
+      recent: () => createHexagonMarkerIcon(MarkerColors.RECENT, 32),
+      verified: () => createHexagonMarkerIcon(MarkerColors.VERIFIED, 28),
+      geocoded: () => createHexagonMarkerIcon(MarkerColors.GEOCODED, 28),
+      verifying: () => createHexagonMarkerIcon(MarkerColors.VERIFYING, 32)
+    },
+    enhanced: {
+      recent: () => createModernMarkerIcon(MarkerColors.RECENT, 34),
+      verified: () => createModernMarkerIcon(MarkerColors.VERIFIED, 30),
+      geocoded: () => createModernMarkerIcon(MarkerColors.GEOCODED, 30),
+      verifying: () => createModernMarkerIcon(MarkerColors.VERIFYING, 34)
+    }
   }
 } as const;
