@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useRef, useMemo } from 'react';
 import ReactQuill from 'react-quill';
 
 interface QuillWrapperProps {
@@ -8,6 +8,21 @@ interface QuillWrapperProps {
   formats?: string[];
   placeholder?: string;
   className?: string;
+}
+
+// Only suppress findDOMNode warnings in development
+if (process.env.NODE_ENV === 'development') {
+  const originalConsoleError = console.error;
+  console.error = (...args: any[]) => {
+    if (
+      typeof args[0] === 'string' &&
+      (args[0].includes('findDOMNode is deprecated') ||
+       args[0].includes('Warning: findDOMNode is deprecated'))
+    ) {
+      return; // Suppress the warning in development only
+    }
+    originalConsoleError(...args);
+  };
 }
 
 const QuillWrapper: React.FC<QuillWrapperProps> = ({
@@ -20,23 +35,10 @@ const QuillWrapper: React.FC<QuillWrapperProps> = ({
 }) => {
   const quillRef = useRef<ReactQuill>(null);
 
-  // Suppress findDOMNode warning in development
-  useEffect(() => {
-    const originalConsoleError = console.error;
-    console.error = (...args: any[]) => {
-      if (
-        typeof args[0] === 'string' &&
-        args[0].includes('findDOMNode is deprecated')
-      ) {
-        return; // Suppress the warning
-      }
-      originalConsoleError(...args);
-    };
-
-    return () => {
-      console.error = originalConsoleError;
-    };
-  }, []);
+  // Memoize the style object to prevent unnecessary re-renders
+  const editorStyle = useMemo(() => ({
+    minHeight: '200px',
+  }), []);
 
   return (
     <ReactQuill
@@ -48,9 +50,7 @@ const QuillWrapper: React.FC<QuillWrapperProps> = ({
       formats={formats}
       placeholder={placeholder}
       className={className}
-      style={{
-        minHeight: '200px',
-      }}
+      style={editorStyle}
     />
   );
 };
