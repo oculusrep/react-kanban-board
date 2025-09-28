@@ -40,6 +40,8 @@ interface SiteSubmit {
     id: string;
     property_name?: string;
     address: string;
+    city?: string;
+    zip?: string;
   };
   property_unit?: {
     property_unit_name: string;
@@ -195,7 +197,10 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
           property!site_submit_property_id_fkey (
             id,
             property_name,
-            address
+            address,
+            city,
+            state,
+            zip
           ),
           property_unit!site_submit_property_unit_id_fkey (
             property_unit_name
@@ -267,7 +272,10 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
                 property!site_submit_property_id_fkey (
                   id,
                   property_name,
-                  address
+                  address,
+                  city,
+                  state,
+                  zip
                 ),
                 property_unit!site_submit_property_unit_id_fkey (
                   property_unit_name

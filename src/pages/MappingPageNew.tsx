@@ -44,6 +44,10 @@ const MappingPageContent: React.FC = () => {
   const [selectedPinData, setSelectedPinData] = useState<any>(null);
   const [selectedPinType, setSelectedPinType] = useState<'property' | 'site_submit' | null>(null);
 
+  // Property details slideout (for "View Full Details" from site submit)
+  const [isPropertyDetailsOpen, setIsPropertyDetailsOpen] = useState(false);
+  const [selectedPropertyData, setSelectedPropertyData] = useState<any>(null);
+
   // Client selector state
   const [selectedClient, setSelectedClient] = useState<ClientSearchResult | null>(null);
 
@@ -376,6 +380,23 @@ const MappingPageContent: React.FC = () => {
     setSelectedPinType(null);
     // Cancel any ongoing verification
     setVerifyingPropertyId(null);
+    // Also close property details slideout if it's open
+    if (isPropertyDetailsOpen) {
+      setIsPropertyDetailsOpen(false);
+      setSelectedPropertyData(null);
+    }
+  };
+
+  // Handle viewing property details from site submit
+  const handleViewPropertyDetails = (property: any) => {
+    console.log('🏢 Opening property details slideout:', property);
+    setSelectedPropertyData(property);
+    setIsPropertyDetailsOpen(true);
+  };
+
+  const handlePropertyDetailsClose = () => {
+    setIsPropertyDetailsOpen(false);
+    setSelectedPropertyData(null);
   };
 
   // Handle location verification
@@ -902,6 +923,20 @@ const MappingPageContent: React.FC = () => {
               type={selectedPinType}
               onVerifyLocation={handleVerifyLocation}
               isVerifyingLocation={!!verifyingPropertyId}
+              onViewPropertyDetails={handleViewPropertyDetails}
+              rightOffset={isPropertyDetailsOpen ? 500 : 0} // Shift left when property details is open
+            />
+
+            {/* Property Details Slideout (for "View Full Details" from site submit) */}
+            <PinDetailsSlideout
+              isOpen={isPropertyDetailsOpen}
+              onClose={handlePropertyDetailsClose}
+              onOpen={() => setIsPropertyDetailsOpen(true)}
+              data={selectedPropertyData}
+              type="property"
+              onVerifyLocation={handleVerifyLocation}
+              isVerifyingLocation={!!verifyingPropertyId}
+              rightOffset={0} // Always positioned at the far right
             />
 
             {/* Property Creation Modal */}

@@ -2,6 +2,52 @@
 
 ## September 28, 2025
 
+### 🏢 **Site Submit Property Tab Enhancements**
+
+#### **Background**
+User requested improvements to the Property tab in site submit slideouts, including:
+- Displaying property fields as read-only text instead of form inputs
+- Formatting addresses in proper mailing address format with city, state, zip
+- Adding "View Full Details" functionality to open property slideout alongside site submit slideout
+- Condensing spacing and removing unnecessary labels
+
+#### **Changes Made**
+- **Enhanced PinDetailsSlideout.tsx**:
+  - Converted property fields from input boxes to clean text displays
+  - Reformatted address to show as mailing address (street, then "city, state zip")
+  - Added `onViewPropertyDetails` prop and `rightOffset` prop for dual slideout positioning
+  - Removed blue "View Full Details" button and enhanced existing gray button with same functionality
+  - Removed separate city/zip labels and stage field from Property tab
+  - Condensed spacing from `space-y-6` to `space-y-4` for better layout
+
+- **Enhanced SiteSubmitLayer.tsx**:
+  - Added `state` field to property queries in both main and pagination queries
+  - Updated SiteSubmit interface to include city, state, and zip fields in property type
+  - Ensured proper data fetching for address formatting
+
+- **Enhanced MappingPageNew.tsx**:
+  - Added second PinDetailsSlideout for property details with positioning logic
+  - Implemented `handleViewPropertyDetails` to open property slideout with 500px offset
+  - Added state management for dual slideout coordination
+  - Site submit slideout shifts left when property details opens, keeping map visible
+
+#### **Features Added**
+- **Dual Slideout System**: Site submit slideout shifts left while property slideout opens on right
+- **Proper Address Formatting**: Displays as "123 Main St" then "City, ST 12345"
+- **Read-only Property Display**: Clean text display instead of disabled form inputs
+- **Enhanced UX**: Gray "VIEW FULL DETAILS →" button at bottom opens property slideout
+- **State Data Integration**: Proper fetching and display of state information from database
+
+#### **Technical Implementation**
+- Property data now includes city, state, zip fields in all SiteSubmit queries
+- Slideout positioning uses `rightOffset` prop for coordinated dual-panel layout
+- Address formatting intelligently handles missing city/state/zip components
+- Form fields converted to text divs with "N/A" fallbacks for missing data
+
+---
+
+## September 28, 2025
+
 ### 🗺️ **Site Submit Pin Right-Click Functionality**
 
 #### **Background**

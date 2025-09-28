@@ -27,7 +27,6 @@ interface SiteSubmit {
   ti?: number;
   notes?: string;
   // New fields for Submit tab
-  property_unit?: string;
   sf_property_unit?: string; // Database field name
   date_submitted?: string;
   loi_written?: boolean;
@@ -51,6 +50,8 @@ interface PinDetailsSlideoutProps {
   type: 'property' | 'site_submit' | null;
   onVerifyLocation?: (propertyId: string) => void;
   isVerifyingLocation?: boolean;
+  onViewPropertyDetails?: (property: Property) => void;
+  rightOffset?: number; // Offset from right edge in pixels
 }
 
 type TabType = 'property' | 'submit' | 'financial' | 'activity' | 'location';
@@ -62,20 +63,78 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   data,
   type,
   onVerifyLocation,
-  isVerifyingLocation = false
+  isVerifyingLocation = false,
+  onViewPropertyDetails,
+  rightOffset = 0
 }) => {
+  console.log('PinDetailsSlideout rendering with:', { isOpen, data, type });
   const [activeTab, setActiveTab] = useState<TabType>(type === 'site_submit' ? 'submit' : 'property');
   const [isEditing, setIsEditing] = useState(false);
   const [propertyStatus, setPropertyStatus] = useState<'lease' | 'purchase'>('lease');
   const [submitStages, setSubmitStages] = useState<{ id: string; name: string }[]>([]);
   const [currentStageId, setCurrentStageId] = useState<string>('');
   const [isMinimized, setIsMinimized] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [lastSavedData, setLastSavedData] = useState<any>(null);
+
+  // Form state for site submit fields
+  const [formData, setFormData] = useState({
+    dateSubmitted: '',
+    loiDate: '',
+    deliveryDate: '',
+    deliveryTimeframe: '',
+    notes: ''
+  });
+
   const { refreshLayer } = useLayerManager();
 
   // Reset to default tab when type changes
   useEffect(() => {
     setActiveTab(type === 'site_submit' ? 'submit' : 'property');
   }, [type]);
+
+  // Initialize form data when data loads
+  useEffect(() => {
+    if (type === 'site_submit' && data) {
+      const siteSubmitData = data as SiteSubmit;
+
+      // Check if we have saved data and it matches the current data
+      const shouldUseSavedData = lastSavedData &&
+        lastSavedData.id === siteSubmitData.id &&
+        lastSavedData.date_submitted;
+
+      console.log('🔍 Form initialization check:', {
+        type,
+        hasData: !!data,
+        dataId: data?.id,
+        shouldUseSavedData,
+        lastSavedData: lastSavedData ? { id: lastSavedData.id, date_submitted: lastSavedData.date_submitted } : null,
+        currentData: { id: siteSubmitData.id, date_submitted: siteSubmitData.date_submitted }
+      });
+
+      if (shouldUseSavedData) {
+        console.log('🔄 Using last saved data for form initialization');
+        setFormData({
+          dateSubmitted: lastSavedData.date_submitted ? lastSavedData.date_submitted.split('T')[0] : '',
+          loiDate: lastSavedData.loi_date ? lastSavedData.loi_date.split('T')[0] : '',
+          deliveryDate: lastSavedData.delivery_date ? lastSavedData.delivery_date.split('T')[0] : '',
+          deliveryTimeframe: lastSavedData.delivery_timeframe || '',
+          notes: lastSavedData.notes || ''
+        });
+      } else {
+        console.log('📥 Initializing form data with fresh siteSubmit:', siteSubmitData);
+        setFormData({
+          dateSubmitted: siteSubmitData.date_submitted || (siteSubmitData.created_at ? siteSubmitData.created_at.split('T')[0] : ''),
+          loiDate: siteSubmitData.loi_date ? siteSubmitData.loi_date.split('T')[0] : '',
+          deliveryDate: siteSubmitData.delivery_date ? siteSubmitData.delivery_date.split('T')[0] : '',
+          deliveryTimeframe: siteSubmitData.delivery_timeframe || '',
+          notes: siteSubmitData.notes || ''
+        });
+      }
+
+      setHasChanges(false);
+    }
+  }, [data, type, lastSavedData]);
 
   // Initialize current stage ID when data changes
   useEffect(() => {
@@ -154,6 +213,58 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     }
   };
 
+  // Handle saving all form data changes
+  const handleSaveChanges = async () => {
+    if (!siteSubmit) return;
+
+    try {
+      console.log(`💾 Saving changes for site submit ${siteSubmit.id}`);
+      console.log('📝 Form data being saved:', formData);
+
+      // Update database with all form data
+      const { data: updatedData, error } = await supabase
+        .from('site_submit')
+        .update({
+          date_submitted: formData.dateSubmitted || null,
+          loi_date: formData.loiDate || null,
+          delivery_date: formData.deliveryDate || null,
+          delivery_timeframe: formData.deliveryTimeframe || null,
+          notes: formData.notes || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', siteSubmit.id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error saving changes:', error);
+        // Could show error notification here
+      } else {
+        console.log('✅ Changes saved successfully:', updatedData);
+        console.log('📅 Updated date_submitted in DB:', updatedData.date_submitted);
+
+        // Update form data with fresh values from database to ensure consistency
+        const newFormData = {
+          dateSubmitted: updatedData.date_submitted ? updatedData.date_submitted.split('T')[0] : '',
+          loiDate: updatedData.loi_date ? updatedData.loi_date.split('T')[0] : '',
+          deliveryDate: updatedData.delivery_date ? updatedData.delivery_date.split('T')[0] : '',
+          deliveryTimeframe: updatedData.delivery_timeframe || '',
+          notes: updatedData.notes || ''
+        };
+
+        console.log('🔄 Setting form data to:', newFormData);
+        setFormData(newFormData);
+
+        setHasChanges(false);
+        setLastSavedData(updatedData); // Store the saved data to use on reopen
+        // Trigger refresh of site submit layer to show changes immediately
+        refreshLayer('site_submits');
+      }
+    } catch (err) {
+      console.error('💥 Failed to save changes:', err);
+    }
+  };
+
   // Tab configuration based on type with modern Lucide icons
   const getAvailableTabs = (): { id: TabType; label: string; icon: React.ReactNode }[] => {
     if (isProperty) {
@@ -161,14 +272,14 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         { id: 'property' as TabType, label: 'PROPERTY', icon: <Building2 size={16} /> },
         { id: 'financial' as TabType, label: 'FINANCIAL', icon: <DollarSign size={16} /> },
         { id: 'activity' as TabType, label: 'ACTIVITY', icon: <Activity size={16} /> },
-        { id: 'location' as TabType, label: 'LOCATION', icon: <MapPin size={16} /> },
+        { id: 'location' as TabType, label: 'PROPERTY', icon: <Building2 size={16} /> },
       ];
     } else {
       return [
         { id: 'submit' as TabType, label: 'SUBMIT', icon: <FileText size={16} /> },
         { id: 'financial' as TabType, label: 'FINANCIAL', icon: <DollarSign size={16} /> },
         { id: 'activity' as TabType, label: 'ACTIVITY', icon: <Activity size={16} /> },
-        { id: 'location' as TabType, label: 'LOCATION', icon: <MapPin size={16} /> },
+        { id: 'location' as TabType, label: 'PROPERTY', icon: <Building2 size={16} /> },
       ];
     }
   };
@@ -180,61 +291,38 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       case 'submit':
         return (
           <div className="space-y-3">
-            {/* Submit Stage - Editable */}
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Stage</label>
-              <select
-                value={currentStageId}
-                onChange={(e) => handleStageChange(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-              >
-                <option value="">Select Stage...</option>
-                {submitStages.map((stage) => (
-                  <option key={stage.id} value={stage.id}>
-                    {stage.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Property Name */}
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Property Name</label>
-              <input
-                type="text"
-                value={siteSubmit?.property?.property_name || ''}
-                disabled={!isEditing}
-                placeholder="Enter property name..."
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
-              />
-            </div>
-
-            {/* Property Unit (if not null) */}
-            {(siteSubmit?.property_unit?.property_unit_name || siteSubmit?.sf_property_unit) && (
+            {/* Stage & Date Submitted in same row */}
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Property Unit</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Stage</label>
+                <select
+                  value={currentStageId}
+                  onChange={(e) => {
+                    handleStageChange(e.target.value);
+                    setHasChanges(true);
+                  }}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                >
+                  <option value="">Select Stage...</option>
+                  {submitStages.map((stage) => (
+                    <option key={stage.id} value={stage.id}>
+                      {stage.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Date Submitted</label>
                 <input
-                  type="text"
-                  value={siteSubmit?.property_unit?.property_unit_name || siteSubmit?.sf_property_unit || ''}
-                  disabled={!isEditing}
-                  placeholder="Enter unit name..."
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                  type="date"
+                  value={formData.dateSubmitted}
+                  onChange={(e) => {
+                    setFormData(prev => ({ ...prev, dateSubmitted: e.target.value }));
+                    setHasChanges(true);
+                  }}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent "
                 />
               </div>
-            )}
-
-            {/* Date Submitted */}
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Date Submitted</label>
-              <input
-                type="date"
-                value={
-                  siteSubmit?.date_submitted ||
-                  (siteSubmit?.created_at ? siteSubmit.created_at.split('T')[0] : '')
-                }
-                disabled={!isEditing}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
-              />
             </div>
 
             {/* LOI Written Boolean */}
@@ -246,7 +334,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                     type="radio"
                     name="loi_written"
                     checked={siteSubmit?.loi_written === true}
-                    disabled={!isEditing}
+                    onChange={() => {}}
+                    readOnly
                     className="mr-1 scale-90"
                   />
                   Yes
@@ -256,7 +345,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                     type="radio"
                     name="loi_written"
                     checked={siteSubmit?.loi_written === false}
-                    disabled={!isEditing}
+                    onChange={() => {}}
+                    readOnly
                     className="mr-1 scale-90"
                   />
                   No
@@ -264,75 +354,64 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
               </div>
             </div>
 
-            {/* LOI Date (shows if LOI Written is true) */}
-            {siteSubmit?.loi_written && (
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">LOI Date</label>
-                <input
-                  type="date"
-                  value={siteSubmit?.loi_date ? siteSubmit.loi_date.split('T')[0] : ''}
-                  disabled={!isEditing}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
-                />
-              </div>
-            )}
-
-            {/* Delivery Date */}
+            {/* LOI Date */}
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Delivery Date</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                LOI Date {!siteSubmit?.loi_written && <span className="text-gray-400">(if applicable)</span>}
+              </label>
               <input
                 type="date"
-                value={siteSubmit?.delivery_date ? siteSubmit.delivery_date.split('T')[0] : ''}
-                disabled={!isEditing}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                value={formData.loiDate}
+                onChange={(e) => {
+                  setFormData(prev => ({ ...prev, loiDate: e.target.value }));
+                  setHasChanges(true);
+                }}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent "
               />
             </div>
 
-            {/* Delivery Timeframe */}
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Delivery Timeframe</label>
-              <input
-                type="text"
-                value={siteSubmit?.delivery_timeframe || ''}
-                disabled={!isEditing}
-                placeholder="e.g., 60-90 days..."
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
-              />
-            </div>
-
-            {/* Year 1 Rent & TI in same row */}
+            {/* Est Delivery Date & Delivery Timeframe in same row */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Year 1 Rent</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Est Delivery Date</label>
                 <input
-                  type="number"
-                  value={siteSubmit?.year_1_rent || ''}
-                  disabled={!isEditing}
-                  placeholder="Amount..."
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                  type="date"
+                  value={formData.deliveryDate}
+                  onChange={(e) => {
+                    setFormData(prev => ({ ...prev, deliveryDate: e.target.value }));
+                    setHasChanges(true);
+                  }}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent "
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">TI</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Delivery Timeframe</label>
                 <input
-                  type="number"
-                  value={siteSubmit?.ti || ''}
-                  disabled={!isEditing}
-                  placeholder="Amount..."
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                  type="text"
+                  value={formData.deliveryTimeframe}
+                  onChange={(e) => {
+                    setFormData(prev => ({ ...prev, deliveryTimeframe: e.target.value }));
+                    setHasChanges(true);
+                  }}
+                  placeholder="e.g., 60-90 days..."
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent "
                 />
               </div>
             </div>
+
 
             {/* Notes */}
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
               <textarea
                 rows={3}
-                value={siteSubmit?.notes || ''}
-                disabled={!isEditing}
+                value={formData.notes}
+                onChange={(e) => {
+                  setFormData(prev => ({ ...prev, notes: e.target.value }));
+                  setHasChanges(true);
+                }}
                 placeholder="Enter notes..."
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent "
               />
             </div>
           </div>
@@ -350,7 +429,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                 value={isProperty ? property?.property_name || '' : siteSubmit?.site_submit_name || ''}
                 disabled={!isEditing}
                 placeholder="Enter value..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600 transition-all duration-200"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent  transition-all duration-200"
               />
             </div>
 
@@ -361,7 +440,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                 value={property?.address || ''}
                 disabled={!isEditing}
                 placeholder="Enter address..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600 transition-all duration-200"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent  transition-all duration-200"
               />
             </div>
 
@@ -371,9 +450,10 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                 <input
                   type="text"
                   value={property?.city || ''}
-                  disabled={!isEditing}
+                  onChange={() => {}}
+                  readOnly
                   placeholder="Enter city..."
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600 transition-all duration-200"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent  transition-all duration-200"
                 />
               </div>
               <div>
@@ -381,9 +461,10 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                 <input
                   type="text"
                   value={property?.zip || ''}
-                  disabled={!isEditing}
+                  onChange={() => {}}
+                  readOnly
                   placeholder="Enter ZIP..."
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600 transition-all duration-200"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent  transition-all duration-200"
                 />
               </div>
             </div>
@@ -403,58 +484,33 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         return (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Coordinates</label>
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Latitude</label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={property?.verified_latitude || property?.latitude || ''}
-                      disabled={!isEditing}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Longitude</label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={property?.verified_longitude || property?.longitude || ''}
-                      disabled={!isEditing}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
-                    />
-                  </div>
-                </div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {isProperty ? 'Property Name' : 'Site Submit Name'}
+              </label>
+              <div className="text-gray-900 font-medium">
+                {isProperty ? property?.property_name || 'N/A' : siteSubmit?.site_submit_name || 'N/A'}
+              </div>
+            </div>
 
-                {property?.verified_latitude && property?.verified_longitude && (
-                  <div className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
-                    ✓ Verified coordinates available
-                  </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+              <div className="text-gray-900">
+                {property?.address && (
+                  <>
+                    <div>{property.address}</div>
+                    {(property?.city || property?.state || property?.zip) && (
+                      <div>
+                        {property?.city && `${property.city}, `}
+                        {property?.state && `${property.state}  `}
+                        {property?.zip && property.zip}
+                      </div>
+                    )}
+                  </>
                 )}
+                {!property?.address && 'N/A'}
               </div>
             </div>
 
-            <div className="border-t pt-4">
-              <h4 className="text-sm font-medium text-gray-700 mb-2">Location Actions</h4>
-              <div className="space-y-2">
-                <button className="w-full px-3 py-2 text-sm bg-blue-50 text-blue-700 border border-blue-200 rounded-md hover:bg-blue-100 transition-colors">
-                  📍 Center Map on This Location
-                </button>
-                <button
-                  onClick={() => onVerifyLocation && property && onVerifyLocation(property.id)}
-                  disabled={!onVerifyLocation || !property || isVerifyingLocation}
-                  className={`w-full px-3 py-2 text-sm border rounded-md transition-colors ${
-                    isVerifyingLocation
-                      ? 'bg-orange-50 text-orange-700 border-orange-200'
-                      : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                  {isVerifyingLocation ? '🔄 Drag Pin to Verify...' : '🎯 Verify Pin Location'}
-                </button>
-              </div>
-            </div>
           </div>
         );
 
@@ -469,8 +525,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                     <input
                       type="number"
                       placeholder="Enter value..."
-                      disabled={!isEditing}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600 transition-all duration-200"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent  transition-all duration-200"
                     />
                   </div>
                   <div>
@@ -478,8 +533,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                     <input
                       type="number"
                       placeholder="$ 0"
-                      disabled={!isEditing}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600 transition-all duration-200"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent  transition-all duration-200"
                     />
                   </div>
                 </div>
@@ -487,8 +541,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">Lease Type</label>
                     <select
-                      disabled={!isEditing}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
                     >
                       <option>Full Service/Modified Gross</option>
                       <option>Triple Net</option>
@@ -500,8 +553,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                     <input
                       type="number"
                       placeholder="Enter value..."
-                      disabled={!isEditing}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
                     />
                   </div>
                 </div>
@@ -511,8 +563,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                     <input
                       type="number"
                       placeholder="$ 0"
-                      disabled={!isEditing}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
                     />
                   </div>
                   <div>
@@ -520,31 +571,37 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                     <input
                       type="text"
                       placeholder="Enter name..."
-                      disabled={!isEditing}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
                     />
                   </div>
                 </div>
               </>
             ) : (
               <>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Year 1 Rent</label>
-                  <input
-                    type="number"
-                    value={siteSubmit?.year_1_rent || ''}
-                    disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">TI (Tenant Improvement)</label>
-                  <input
-                    type="number"
-                    value={siteSubmit?.ti || ''}
-                    disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
-                  />
+                {/* Year 1 Rent & TI in same row */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Year 1 Rent</label>
+                    <input
+                      type="number"
+                      value={siteSubmit?.year_1_rent || ''}
+                      onChange={() => {}}
+                      readOnly
+                      placeholder="Amount..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">TI (Tenant Improvement)</label>
+                    <input
+                      type="number"
+                      value={siteSubmit?.ti || ''}
+                      onChange={() => {}}
+                      readOnly
+                      placeholder="Amount..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
+                    />
+                  </div>
                 </div>
               </>
             )}
@@ -584,10 +641,11 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     <>
       {/* Slideout - Match PropertySidebar styling */}
       <div
-        className={`fixed right-0 top-0 h-full bg-white border-l border-gray-200 shadow-xl transition-all duration-300 z-40 ${
+        className={`fixed top-0 h-full bg-white border-l border-gray-200 shadow-xl transition-all duration-300 z-40 ${
           !isOpen ? 'translate-x-full' : isMinimized ? 'w-12' : 'w-[500px]'
         } ${isMinimized ? 'overflow-hidden' : 'overflow-y-auto'}`}
         style={{
+          right: `${rightOffset}px`,
           top: '67px', // Match navbar height
           height: 'calc(100vh - 67px)',
           transform: !isOpen ? 'translateX(100%)' : 'translateX(0)'
@@ -596,7 +654,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         {/* Hero Section */}
         <div className="relative">
           {/* Hero Image */}
-          <div className={`${isMinimized ? 'h-16' : 'h-48'} bg-gradient-to-br from-blue-400 via-blue-500 to-blue-600 relative overflow-hidden transition-all duration-300`}>
+          <div className={`${isMinimized ? 'h-16' : 'h-48'} bg-gradient-to-br from-gray-400 via-gray-500 to-gray-600 relative overflow-hidden transition-all duration-300`}>
             {/* Property Image Placeholder */}
             <div className="absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center">
               <div className="text-white text-center">
@@ -651,7 +709,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
           {/* Property Header Info */}
           {!isMinimized && (
-          <div className="p-6 border-b border-gray-200">
+          <div className="px-6 py-4 border-b border-gray-200">
             <div className="flex items-start justify-between">
               <div>
                 <h1 className={`font-bold text-gray-900 mb-1 ${isProperty ? 'text-xl' : 'text-lg'}`}>
@@ -660,6 +718,21 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                     : (siteSubmit?.site_submit_name || siteSubmit?.property?.property_name || 'Site Submit')
                   }
                 </h1>
+
+                {/* Property Information - For site submits only */}
+                {!isProperty && siteSubmit && (
+                  <div className="mb-1 space-y-0.5">
+                    <p className="text-sm text-gray-600">
+                      <span className="font-medium">Property:</span> {siteSubmit?.property?.property_name || 'Not specified'}
+                    </p>
+                    {(siteSubmit?.property_unit?.property_unit_name || siteSubmit?.sf_property_unit) && (
+                      <p className="text-sm text-gray-600">
+                        <span className="font-medium">Unit:</span> {siteSubmit?.property_unit?.property_unit_name || siteSubmit?.sf_property_unit}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {property?.city && (
                   <p className="text-sm text-gray-600 mb-3">
                     {property.city}
@@ -767,27 +840,45 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
             </div>
           ) : (
             <div className="space-y-2">
-              {/* Primary Action Buttons */}
-              <div className="flex items-center space-x-2">
-                {isProperty && (
+              {/* Update Site Submit button - only show when changes made to site submits */}
+              {hasChanges && !isProperty && (
+                <div className="flex items-center justify-center">
+                  <button
+                    onClick={handleSaveChanges}
+                    className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all duration-200 font-medium text-sm shadow-sm hover:shadow-md"
+                  >
+                    UPDATE SITE SUBMIT
+                  </button>
+                </div>
+              )}
+
+              {/* Property Edit Button */}
+              {isProperty && (
+                <div className="flex items-center space-x-2">
                   <button
                     onClick={() => setIsEditing(true)}
                     className="flex-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-all duration-200 font-medium text-sm"
                   >
                     EDIT PROPERTY
                   </button>
-                )}
-                <button className="flex-1 px-3 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 transition-all duration-200 font-medium text-sm">
-                  VIEW IN PIPELINE
-                </button>
-              </div>
+                </div>
+              )}
 
               {/* Tertiary Actions */}
-              <div className="flex items-center justify-center pt-1">
-                <button className="text-xs text-gray-500 hover:text-gray-700 transition-colors font-medium">
-                  VIEW FULL DETAILS →
-                </button>
-              </div>
+              {!hasChanges && (
+                <div className="flex items-center justify-center pt-1">
+                  <button
+                    onClick={() => {
+                      if (!isProperty && property && onViewPropertyDetails) {
+                        onViewPropertyDetails(property);
+                      }
+                    }}
+                    className="text-xs text-gray-500 hover:text-gray-700 transition-colors font-medium"
+                  >
+                    VIEW FULL DETAILS →
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
