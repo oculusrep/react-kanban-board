@@ -966,6 +966,7 @@ const MappingPageContent: React.FC = () => {
                 onHideAll={handleHideAll}
                 totalCounts={stageCounts}
                 forceExpanded={isLegendExpanded}
+                onToggleExpanded={setIsLegendExpanded}
               />
             )}
 

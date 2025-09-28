@@ -185,6 +185,96 @@ export const createMutedPlacesStyle = () => {
   ];
 };
 
+// Function to create muted places style optimized for satellite view (more visible labels)
+export const createSatelliteMutedPlacesStyle = () => {
+  return [
+    {
+      featureType: "poi",
+      elementType: "labels.icon",
+      stylers: [
+        { visibility: "on" },
+        { saturation: -50 }, // Less saturated colors
+        { lightness: 20 },   // Lighter appearance
+        { gamma: 0.8 }       // Reduced contrast
+      ]
+    },
+    {
+      featureType: "poi",
+      elementType: "labels.text",
+      stylers: [
+        { visibility: "on" },
+        { color: "#ffffff" },    // White text for visibility on satellite
+        { weight: 0.6 },         // Thinner weight
+        { saturation: -20 }      // Less colorful but more visible
+      ]
+    },
+    {
+      featureType: "poi",
+      elementType: "labels.text.stroke",
+      stylers: [
+        { visibility: "on" },
+        { color: "#666666" },    // Gray shadow/stroke
+        { weight: 2.0 }          // Stroke width for shadow effect
+      ]
+    },
+    {
+      featureType: "poi.business",
+      elementType: "labels.icon",
+      stylers: [
+        { visibility: "on" },
+        { saturation: -60 },     // Very muted colors
+        { lightness: 30 },       // Much lighter
+        { gamma: 0.7 }           // Low contrast
+      ]
+    },
+    {
+      featureType: "poi.business",
+      elementType: "labels.text",
+      stylers: [
+        { visibility: "on" },    // Show all business labels
+        { color: "#ffffff" },    // White text for visibility on satellite
+        { weight: 0.7 }          // Thinner text
+      ]
+    },
+    {
+      featureType: "poi.business",
+      elementType: "labels.text.stroke",
+      stylers: [
+        { visibility: "on" },
+        { color: "#666666" },    // Gray shadow/stroke
+        { weight: 2.0 }          // Stroke width for shadow effect
+      ]
+    },
+    {
+      featureType: "transit",
+      elementType: "labels.icon",
+      stylers: [
+        { visibility: "on" },
+        { saturation: -40 },
+        { lightness: 25 },
+        { gamma: 0.8 }
+      ]
+    },
+    {
+      featureType: "transit",
+      elementType: "labels.text",
+      stylers: [
+        { color: "#ffffff" },    // White text for satellite view
+        { weight: 0.6 }          // Thinner text
+      ]
+    },
+    {
+      featureType: "transit",
+      elementType: "labels.text.stroke",
+      stylers: [
+        { visibility: "on" },
+        { color: "#666666" },    // Gray shadow/stroke
+        { weight: 2.0 }          // Stroke width for shadow effect
+      ]
+    }
+  ];
+};
+
 // Color palette for modern markers
 export const MarkerColors = {
   // Primary colors (vibrant but professional)

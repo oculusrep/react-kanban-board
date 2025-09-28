@@ -11,6 +11,7 @@ interface SiteSubmitLegendProps {
   totalCounts?: Record<string, number>;
   className?: string;
   forceExpanded?: boolean;
+  onToggleExpanded?: (expanded: boolean) => void;
 }
 
 const SiteSubmitLegend: React.FC<SiteSubmitLegendProps> = ({
@@ -21,12 +22,13 @@ const SiteSubmitLegend: React.FC<SiteSubmitLegendProps> = ({
   onHideAll,
   totalCounts = {},
   className = '',
-  forceExpanded = false
+  forceExpanded = false,
+  onToggleExpanded
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Use forceExpanded prop to override local state
-  const effectiveIsExpanded = forceExpanded || isExpanded;
+  // Use forceExpanded prop to override local state when provided
+  const effectiveIsExpanded = forceExpanded !== undefined ? forceExpanded : isExpanded;
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
   const toggleCategory = (categoryKey: string) => {
@@ -127,7 +129,15 @@ const SiteSubmitLegend: React.FC<SiteSubmitLegendProps> = ({
       {/* Header */}
       <div
         className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50 rounded-t-lg"
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => {
+          if (onToggleExpanded) {
+            // If parent is controlling expansion state, notify parent
+            onToggleExpanded(!effectiveIsExpanded);
+          } else {
+            // Otherwise, manage state locally
+            setIsExpanded(!isExpanded);
+          }
+        }}
       >
         <div className="flex items-center space-x-2">
           <h3 className="font-semibold text-gray-800">Site Submit Legend</h3>

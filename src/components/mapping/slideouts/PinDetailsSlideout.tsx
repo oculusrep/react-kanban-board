@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from '../layers/LayerManager';
+import { FileText, DollarSign, Building2, Activity, MapPin } from 'lucide-react';
 
 interface Property {
   id: string;
@@ -68,6 +69,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   const [propertyStatus, setPropertyStatus] = useState<'lease' | 'purchase'>('lease');
   const [submitStages, setSubmitStages] = useState<{ id: string; name: string }[]>([]);
   const [currentStageId, setCurrentStageId] = useState<string>('');
+  const [isMinimized, setIsMinimized] = useState(false);
   const { refreshLayer } = useLayerManager();
 
   // Reset to default tab when type changes
@@ -152,21 +154,21 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     }
   };
 
-  // Tab configuration based on type
-  const getAvailableTabs = (): { id: TabType; label: string; icon: string }[] => {
+  // Tab configuration based on type with modern Lucide icons
+  const getAvailableTabs = (): { id: TabType; label: string; icon: React.ReactNode }[] => {
     if (isProperty) {
       return [
-        { id: 'property' as TabType, label: 'PROPERTY', icon: '🏢' },
-        { id: 'financial' as TabType, label: 'FINANCIAL', icon: '💰' },
-        { id: 'activity' as TabType, label: 'ACTIVITY', icon: '📋' },
-        { id: 'location' as TabType, label: 'LOCATION', icon: '📍' },
+        { id: 'property' as TabType, label: 'PROPERTY', icon: <Building2 size={16} /> },
+        { id: 'financial' as TabType, label: 'FINANCIAL', icon: <DollarSign size={16} /> },
+        { id: 'activity' as TabType, label: 'ACTIVITY', icon: <Activity size={16} /> },
+        { id: 'location' as TabType, label: 'LOCATION', icon: <MapPin size={16} /> },
       ];
     } else {
       return [
-        { id: 'submit' as TabType, label: 'SUBMIT', icon: '📝' },
-        { id: 'financial' as TabType, label: 'FINANCIAL', icon: '💰' },
-        { id: 'activity' as TabType, label: 'ACTIVITY', icon: '📋' },
-        { id: 'location' as TabType, label: 'LOCATION', icon: '📍' },
+        { id: 'submit' as TabType, label: 'SUBMIT', icon: <FileText size={16} /> },
+        { id: 'financial' as TabType, label: 'FINANCIAL', icon: <DollarSign size={16} /> },
+        { id: 'activity' as TabType, label: 'ACTIVITY', icon: <Activity size={16} /> },
+        { id: 'location' as TabType, label: 'LOCATION', icon: <MapPin size={16} /> },
       ];
     }
   };
@@ -580,24 +582,21 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
   return (
     <>
-      {/* Slideout */}
+      {/* Slideout - Match PropertySidebar styling */}
       <div
-        className={`fixed right-0 bg-white border-l border-gray-200 shadow-2xl transform transition-all duration-500 ease-in-out z-40 flex flex-col ${
-          isOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}
+        className={`fixed right-0 top-0 h-full bg-white border-l border-gray-200 shadow-xl transition-all duration-300 z-40 ${
+          !isOpen ? 'translate-x-full' : isMinimized ? 'w-12' : 'w-[500px]'
+        } ${isMinimized ? 'overflow-hidden' : 'overflow-y-auto'}`}
         style={{
-          top: '67px', // Snap directly under the nav bar (precise measurement)
-          height: 'calc(100vh - 67px)', // Full height minus exact nav bar height
-          width: '400px',
-          transitionProperty: 'transform, opacity, box-shadow',
-          transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)', // Spring-like easing
-          boxShadow: isOpen ? '0 25px 50px -12px rgba(0, 0, 0, 0.25)' : 'none'
+          top: '67px', // Match navbar height
+          height: 'calc(100vh - 67px)',
+          transform: !isOpen ? 'translateX(100%)' : 'translateX(0)'
         }}
       >
         {/* Hero Section */}
         <div className="relative">
           {/* Hero Image */}
-          <div className="h-48 bg-gradient-to-br from-blue-400 via-blue-500 to-blue-600 relative overflow-hidden">
+          <div className={`${isMinimized ? 'h-16' : 'h-48'} bg-gradient-to-br from-blue-400 via-blue-500 to-blue-600 relative overflow-hidden transition-all duration-300`}>
             {/* Property Image Placeholder */}
             <div className="absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center">
               <div className="text-white text-center">
@@ -606,21 +605,41 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
               </div>
             </div>
 
-            {/* Close Button */}
-            <button
-              onClick={onClose}
-              className="absolute top-4 right-4 p-2 bg-black bg-opacity-20 hover:bg-black hover:bg-opacity-40 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
-              title="Close details"
-            >
-              <svg
-                className="w-5 h-5 text-white transition-transform duration-200 hover:rotate-90"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            {/* Header Controls */}
+            <div className="absolute top-4 right-4 flex space-x-2">
+              {/* Minimize/Expand Button */}
+              <button
+                onClick={() => setIsMinimized(!isMinimized)}
+                className="p-2 bg-black bg-opacity-20 hover:bg-black hover:bg-opacity-40 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
+                title={isMinimized ? "Expand sidebar" : "Minimize sidebar"}
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {isMinimized ? (
+                    // Expand icon
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7M4 12h16" />
+                  ) : (
+                    // Minimize icon
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M20 12H4" />
+                  )}
+                </svg>
+              </button>
+
+              {/* Close Button */}
+              <button
+                onClick={onClose}
+                className="p-2 bg-black bg-opacity-20 hover:bg-black hover:bg-opacity-40 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
+                title="Close details"
+              >
+                <svg
+                  className="w-5 h-5 text-white transition-transform duration-200 hover:rotate-90"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
 
             {/* "SEE IN PIPELINE" Badge */}
             <div className="absolute top-4 left-4">
@@ -631,6 +650,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           </div>
 
           {/* Property Header Info */}
+          {!isMinimized && (
           <div className="p-6 border-b border-gray-200">
             <div className="flex items-start justify-between">
               <div>
@@ -678,35 +698,44 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
             </div>
           </div>
+          )}
         </div>
 
-        {/* Tabs */}
+        {/* Tabs - Modern Compact Design */}
+        {!isMinimized && (
         <div className="border-b border-gray-200 bg-white">
-          <nav className="flex space-x-0 px-6">
-            {availableTabs.map((tab, index) => (
+          <nav className="flex px-4 overflow-x-auto scrollbar-hide">
+            {availableTabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`relative px-6 py-4 text-sm font-semibold transition-all duration-200 border-b-3 ${
+                className={`relative flex-shrink-0 flex items-center gap-2 px-4 py-3 text-xs font-medium transition-all duration-200 border-b-2 ${
                   activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600 bg-white'
-                    : 'border-transparent text-gray-600 hover:text-gray-800 hover:border-gray-300'
-                } ${index === 0 ? '' : 'ml-8'}`}
+                    ? 'border-blue-500 text-blue-600 bg-blue-50/50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
               >
-                <div className="flex items-center justify-center">
-                  <span className="font-medium tracking-wide">{tab.label}</span>
-                </div>
+                <span className={`transition-colors duration-200 ${
+                  activeTab === tab.id ? 'text-blue-600' : 'text-gray-400'
+                }`}>
+                  {tab.icon}
+                </span>
+                <span className="font-semibold tracking-wide whitespace-nowrap">
+                  {tab.label}
+                </span>
 
                 {/* Active tab indicator */}
                 {activeTab === tab.id && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full" />
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
                 )}
               </button>
             ))}
           </nav>
         </div>
+        )}
 
         {/* Content */}
+        {!isMinimized && (
         <div
           className="flex-1 overflow-y-auto px-4 py-4"
           style={{
@@ -716,8 +745,10 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         >
           {renderTabContent()}
         </div>
+        )}
 
         {/* Footer Actions */}
+        {!isMinimized && (
         <div className="border-t border-gray-200 p-3 bg-gray-50">
           {isEditing ? (
             <div className="flex items-center justify-center space-x-3">
@@ -760,22 +791,24 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
             </div>
           )}
         </div>
+        )}
       </div>
 
 
-      {/* Slide Out Arrow - When slideout is open */}
-      {isOpen && (
+
+      {/* Expand Arrow - When slideout is minimized */}
+      {isOpen && isMinimized && (
         <div
           className="fixed z-[60] transition-all duration-300 ease-out cursor-pointer"
           style={{
-            top: 'calc(50vh + 33.5px)', // Center of visible slideout area (50% + half of nav bar height)
-            right: '395px', // Just outside the slideout border
+            top: 'calc(50vh + 33.5px)',
+            right: '7px', // Just outside the minimized slideout
             transform: 'translateY(-50%)'
           }}
-          onClick={onClose}
+          onClick={() => setIsMinimized(false)}
         >
-          <div className="bg-white border-2 border-gray-300 text-gray-600 px-2 py-3 rounded-l-md shadow-xl hover:bg-gray-50 hover:text-gray-800 hover:border-gray-400 transition-all duration-200">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+          <div className="bg-blue-500 text-white px-2 py-3 rounded-l-md shadow-xl hover:bg-blue-600 transition-all duration-200">
+            <svg className="w-4 h-4 transform rotate-180" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
             </svg>
           </div>
@@ -787,7 +820,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         <div
           className="fixed z-50 transition-all duration-300 ease-out cursor-pointer"
           style={{
-            top: 'calc(50vh + 33.5px)', // Center of available map area (accounting for nav bar)
+            top: 'calc(50vh + 33.5px)', // Center of available map area
             right: '20px',
             transform: 'translateY(-50%)',
             animation: 'slideArrow 2s ease-in-out infinite'

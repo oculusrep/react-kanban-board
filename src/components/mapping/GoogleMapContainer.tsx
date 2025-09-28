@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
-import { createModernPinIcon, MarkerColors, createMutedPlacesStyle } from './utils/modernMarkers';
+import { createModernPinIcon, MarkerColors, createMutedPlacesStyle, createSatelliteMutedPlacesStyle } from './utils/modernMarkers';
 
 interface GoogleMapContainerProps {
   height?: string;
@@ -20,9 +20,292 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [labelsVisible, setLabelsVisible] = useState(true);
+  const labelsControlRef = useRef<{
+    updateButtonStates: () => void;
+    showLabelsControl: () => void;
+    hideLabelsControl: () => void;
+    updateLabelsState: (visible: boolean) => void;
+  } | null>(null);
 
   // Atlanta, GA coordinates as fallback
   const ATLANTA_CENTER = { lat: 33.7490, lng: -84.3880 };
+
+  // Create styles to hide only Google Places (POI), keep road labels
+  const createNoPlacesStyle = () => [
+    {
+      featureType: "poi",
+      elementType: "labels",
+      stylers: [{ visibility: "off" }]
+    },
+    {
+      featureType: "poi.business",
+      elementType: "labels",
+      stylers: [{ visibility: "off" }]
+    },
+    {
+      featureType: "poi.attraction",
+      elementType: "labels",
+      stylers: [{ visibility: "off" }]
+    },
+    {
+      featureType: "poi.government",
+      elementType: "labels",
+      stylers: [{ visibility: "off" }]
+    },
+    {
+      featureType: "poi.medical",
+      elementType: "labels",
+      stylers: [{ visibility: "off" }]
+    },
+    {
+      featureType: "poi.park",
+      elementType: "labels",
+      stylers: [{ visibility: "off" }]
+    },
+    {
+      featureType: "poi.place_of_worship",
+      elementType: "labels",
+      stylers: [{ visibility: "off" }]
+    },
+    {
+      featureType: "poi.school",
+      elementType: "labels",
+      stylers: [{ visibility: "off" }]
+    },
+    {
+      featureType: "poi.sports_complex",
+      elementType: "labels",
+      stylers: [{ visibility: "off" }]
+    },
+    {
+      featureType: "transit.station",
+      elementType: "labels",
+      stylers: [{ visibility: "off" }]
+    }
+  ];
+
+  // Create custom map type control with labels checkbox
+  const createCustomMapTypeControl = (map: google.maps.Map, onToggleLabels: (newValue: boolean) => void) => {
+    let currentLabelsVisible = labelsVisible;
+    const controlDiv = document.createElement('div');
+    controlDiv.style.margin = '10px';
+
+    // Main container
+    const mainContainer = document.createElement('div');
+    mainContainer.style.display = 'flex';
+    mainContainer.style.flexDirection = 'column';
+    mainContainer.style.gap = '4px';
+
+    // Button container for Map/Satellite
+    const buttonContainer = document.createElement('div');
+    buttonContainer.style.display = 'flex';
+    buttonContainer.style.backgroundColor = '#fff';
+    buttonContainer.style.borderRadius = '3px';
+    buttonContainer.style.boxShadow = '0 2px 6px rgba(0,0,0,.3)';
+    buttonContainer.style.overflow = 'hidden';
+
+    // Create buttons
+    const createButton = (text: string, isActive: boolean = false) => {
+      const button = document.createElement('button');
+      button.style.backgroundColor = isActive ? '#1a73e8' : '#fff';
+      button.style.color = isActive ? '#fff' : 'rgb(25,25,25)';
+      button.style.border = 'none';
+      button.style.cursor = 'pointer';
+      button.style.fontFamily = 'Roboto,Arial,sans-serif';
+      button.style.fontSize = '16px';
+      button.style.lineHeight = '38px';
+      button.style.padding = '0 12px';
+      button.style.textAlign = 'center';
+      button.style.height = '40px';
+      button.style.transition = 'all 0.2s';
+      button.textContent = text;
+      return button;
+    };
+
+    const mapButton = createButton('Map', map.getMapTypeId() === google.maps.MapTypeId.ROADMAP);
+    const satelliteButton = createButton('Satellite', map.getMapTypeId() === google.maps.MapTypeId.SATELLITE);
+
+    // Labels checkbox container
+    const labelsContainer = document.createElement('div');
+    labelsContainer.style.backgroundColor = '#fff';
+    labelsContainer.style.borderRadius = '3px';
+    labelsContainer.style.boxShadow = '0 2px 6px rgba(0,0,0,.3)';
+    labelsContainer.style.padding = '8px 12px';
+    labelsContainer.style.display = 'none'; // Initially hidden
+    labelsContainer.style.alignItems = 'center';
+    labelsContainer.style.gap = '6px';
+    labelsContainer.style.cursor = 'pointer';
+    labelsContainer.style.fontSize = '14px';
+    labelsContainer.style.fontFamily = 'Roboto,Arial,sans-serif';
+
+    const labelsCheckbox = document.createElement('input');
+    labelsCheckbox.type = 'checkbox';
+    labelsCheckbox.checked = currentLabelsVisible;
+    labelsCheckbox.style.cursor = 'pointer';
+
+    const labelsLabel = document.createElement('span');
+    labelsLabel.textContent = 'Labels';
+    labelsLabel.style.cursor = 'pointer';
+    labelsLabel.style.userSelect = 'none';
+
+    labelsContainer.appendChild(labelsCheckbox);
+    labelsContainer.appendChild(labelsLabel);
+
+    // Add hover effects
+    const addHoverEffects = (button: HTMLButtonElement) => {
+      button.addEventListener('mouseenter', () => {
+        if (button.style.backgroundColor !== 'rgb(26, 115, 232)') {
+          button.style.backgroundColor = '#f8f9fa';
+        }
+      });
+      button.addEventListener('mouseleave', () => {
+        if (button.style.backgroundColor !== 'rgb(26, 115, 232)') {
+          button.style.backgroundColor = '#fff';
+        }
+      });
+    };
+
+    addHoverEffects(mapButton);
+    addHoverEffects(satelliteButton);
+
+    // Update button states
+    const updateButtonStates = () => {
+      const currentMapType = map.getMapTypeId();
+
+      // Update map/satellite buttons
+      mapButton.style.backgroundColor = currentMapType === google.maps.MapTypeId.ROADMAP ? '#1a73e8' : '#fff';
+      mapButton.style.color = currentMapType === google.maps.MapTypeId.ROADMAP ? '#fff' : 'rgb(25,25,25)';
+
+      const isSatelliteMode = currentMapType === google.maps.MapTypeId.SATELLITE || currentMapType === google.maps.MapTypeId.HYBRID;
+      satelliteButton.style.backgroundColor = isSatelliteMode ? '#1a73e8' : '#fff';
+      satelliteButton.style.color = isSatelliteMode ? '#fff' : 'rgb(25,25,25)';
+
+      // Update labels checkbox
+      labelsCheckbox.checked = currentLabelsVisible;
+
+      // Labels container visibility is managed by show/hide functions
+    };
+
+    // Store functions to show/hide labels control
+    let showLabelsControlFunc: () => void;
+    let hideLabelsControlFunc: () => void;
+
+    // Button click handlers
+    mapButton.addEventListener('click', () => {
+      map.setMapTypeId(google.maps.MapTypeId.ROADMAP);
+
+      // Show labels control when clicking map/satellite
+      if (showLabelsControlFunc) showLabelsControlFunc();
+
+      // Apply appropriate styles for road map
+      if (currentLabelsVisible) {
+        map.setOptions({ styles: createMutedPlacesStyle() });
+      } else {
+        map.setOptions({ styles: [...createMutedPlacesStyle(), ...createNoPlacesStyle()] });
+      }
+
+      updateButtonStates();
+    });
+
+    satelliteButton.addEventListener('click', () => {
+      // Always use HYBRID for satellite (shows roads and labels)
+      map.setMapTypeId(google.maps.MapTypeId.HYBRID);
+
+      // Apply styles based on current labels setting
+      if (currentLabelsVisible) {
+        map.setOptions({ styles: createSatelliteMutedPlacesStyle() }); // Show labels with satellite-optimized muted places
+      } else {
+        map.setOptions({ styles: createNoPlacesStyle() }); // Hide places, keep road labels
+      }
+
+      // Show labels control when clicking map/satellite
+      if (showLabelsControlFunc) showLabelsControlFunc();
+
+      updateButtonStates();
+    });
+
+    // Labels checkbox handler
+    const handleLabelsToggle = (fromCheckbox = false) => {
+      let newLabelsVisible;
+
+      if (fromCheckbox) {
+        // If triggered by checkbox change, use checkbox state
+        newLabelsVisible = labelsCheckbox.checked;
+      } else {
+        // If triggered by container click, toggle checkbox first
+        labelsCheckbox.checked = !labelsCheckbox.checked;
+        newLabelsVisible = labelsCheckbox.checked;
+      }
+
+      // Update map styles based on labels visibility and map type
+      const currentMapType = map.getMapTypeId();
+
+      console.log('Labels toggle:', newLabelsVisible, 'Map type:', currentMapType);
+
+      if (newLabelsVisible) {
+        // Show labels (including places)
+        if (currentMapType === google.maps.MapTypeId.ROADMAP) {
+          // For road map, use muted places style (shows all labels)
+          map.setOptions({ styles: createMutedPlacesStyle() });
+        } else {
+          // For satellite views, use HYBRID with satellite-optimized muted places style
+          map.setMapTypeId(google.maps.MapTypeId.HYBRID);
+          map.setOptions({ styles: createSatelliteMutedPlacesStyle() });
+        }
+      } else {
+        // Hide only Google Places, keep road labels
+        if (currentMapType === google.maps.MapTypeId.ROADMAP) {
+          // For road map, combine muted places with no places style
+          map.setOptions({ styles: [...createMutedPlacesStyle(), ...createNoPlacesStyle()] });
+        } else {
+          // For satellite views, use HYBRID but hide places
+          map.setMapTypeId(google.maps.MapTypeId.HYBRID);
+          map.setOptions({ styles: createNoPlacesStyle() });
+        }
+      }
+
+      // Update the local variable
+      currentLabelsVisible = newLabelsVisible;
+
+      // Call the callback to update React state
+      onToggleLabels(newLabelsVisible);
+    };
+
+    labelsContainer.addEventListener('click', (e) => {
+      if (e.target !== labelsCheckbox) {
+        handleLabelsToggle(false);
+      }
+    });
+    labelsCheckbox.addEventListener('change', () => handleLabelsToggle(true));
+
+    // Listen for map type changes
+    map.addListener('maptypeid_changed', updateButtonStates);
+
+    buttonContainer.appendChild(mapButton);
+    buttonContainer.appendChild(satelliteButton);
+
+    mainContainer.appendChild(buttonContainer);
+    mainContainer.appendChild(labelsContainer);
+    controlDiv.appendChild(mainContainer);
+
+    // Assign the functions
+    showLabelsControlFunc = () => { labelsContainer.style.display = 'flex'; };
+    hideLabelsControlFunc = () => { labelsContainer.style.display = 'none'; };
+
+    return {
+      controlDiv,
+      updateButtonStates: () => {
+        updateButtonStates();
+      },
+      showLabelsControl: showLabelsControlFunc,
+      hideLabelsControl: hideLabelsControlFunc,
+      updateLabelsState: (visible: boolean) => {
+        currentLabelsVisible = visible;
+        labelsCheckbox.checked = visible;
+      }
+    };
+  };
 
   // Get user's current location
   const getUserLocation = async (): Promise<{ lat: number; lng: number } | null> => {
@@ -123,24 +406,25 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           center: mapCenter,
           zoom: location ? 12 : 10,
           mapTypeId: google.maps.MapTypeId.ROADMAP,
-          mapTypeControl: true,
-          mapTypeControlOptions: {
-            position: google.maps.ControlPosition.TOP_LEFT,
-          },
+          mapTypeControl: false, // Disable default map type control
           streetViewControl: true,
           streetViewControlOptions: {
             position: google.maps.ControlPosition.LEFT_TOP,
           },
           fullscreenControl: true,
           fullscreenControlOptions: {
-            position: google.maps.ControlPosition.TOP_LEFT,
+            position: google.maps.ControlPosition.TOP_RIGHT,
           },
           zoomControl: true,
           zoomControlOptions: {
             position: google.maps.ControlPosition.LEFT_TOP,
           },
+          rotateControl: true,
+          rotateControlOptions: {
+            position: google.maps.ControlPosition.LEFT_TOP,
+          },
           gestureHandling: 'greedy',
-          styles: createMutedPlacesStyle() // Apply muted styling to reduce Google Places visibility
+          styles: labelsVisible ? createMutedPlacesStyle() : [...createMutedPlacesStyle(), ...createNoLabelsStyle()] // Only apply to road map initially
         });
 
         // Add a marker at the center location
@@ -178,6 +462,36 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         // Store map instance
         mapInstanceRef.current = map;
 
+        // Add custom map type control with labels toggle
+        const mapTypeControl = createCustomMapTypeControl(map, setLabelsVisible);
+        labelsControlRef.current = mapTypeControl;
+        map.controls[google.maps.ControlPosition.TOP_LEFT].push(mapTypeControl.controlDiv);
+
+        // Hide labels control when clicking on the map
+        map.addListener('click', () => {
+          if (mapTypeControl.hideLabelsControl) {
+            mapTypeControl.hideLabelsControl();
+          }
+        });
+
+        // Handle map type changes to apply correct styles
+        map.addListener('maptypeid_changed', () => {
+          const currentMapType = map.getMapTypeId();
+          console.log('Map type changed to:', currentMapType);
+
+          if (currentMapType === google.maps.MapTypeId.SATELLITE || currentMapType === google.maps.MapTypeId.HYBRID) {
+            // For satellite/hybrid, no custom styles needed (Google handles everything)
+            map.setOptions({ styles: [] });
+          } else {
+            // For road map, use muted places styles
+            if (labelsVisible) {
+              map.setOptions({ styles: createMutedPlacesStyle() });
+            } else {
+              map.setOptions({ styles: [...createMutedPlacesStyle(), ...createNoLabelsStyle()] });
+            }
+          }
+        });
+
         // Call callback if provided
         if (onMapLoad) {
           onMapLoad(map);
@@ -202,7 +516,15 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
     return () => {
       isMounted = false;
     };
-  }, []); // Remove onMapLoad dependency to prevent re-initialization
+  }, []);
+
+  // Update button states when labels visibility changes
+  useEffect(() => {
+    if (labelsControlRef.current) {
+      labelsControlRef.current.updateLabelsState(labelsVisible);
+      labelsControlRef.current.updateButtonStates();
+    }
+  }, [labelsVisible]);
 
   // Handle onMapLoad callback changes without re-initializing the map
   useEffect(() => {
