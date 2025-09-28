@@ -4,6 +4,7 @@ import { Database } from '../../database-schema';
 import RichTextNote from './RichTextNote';
 import ContactFormModal from './ContactFormModal';
 import SiteSubmitFormModal from './SiteSubmitFormModal';
+import NoteFormModal from './NoteFormModal';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type Note = Database['public']['Tables']['note']['Row'];
@@ -346,6 +347,8 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
   const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false);
   const [editingSiteSubmitId, setEditingSiteSubmitId] = useState<string | null>(null);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
 
   // Expansion states
   const getSmartDefaults = () => ({
@@ -569,22 +572,28 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
                   ))}
                 </SidebarModule>
 
-                {/* Associated Notes */}
+                {/* Notes */}
                 <SidebarModule
-                  title="Associated Notes"
+                  title="Notes"
                   count={notes.length}
-                  onAddNew={() => console.log('Add new note')}
+                  onAddNew={() => {
+                    setEditingNoteId(null);
+                    setShowNoteModal(true);
+                  }}
                   isExpanded={expandedSidebarModules.notes}
                   onToggle={() => toggleSidebarModule('notes')}
                   icon="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                   isEmpty={notes.length === 0}
-                  showAddButton={false}
+                  showAddButton={true}
                 >
                   {notes.map(note => (
                     <NoteItem
                       key={note.id}
                       note={note}
-                      onClick={() => console.log('Navigate to note', note.id)}
+                      onClick={(noteId) => {
+                        setEditingNoteId(noteId);
+                        setShowNoteModal(true);
+                      }}
                     />
                   ))}
                 </SidebarModule>
@@ -686,6 +695,27 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
           );
           setShowSiteSubmitModal(false);
           onSiteSubmitModalChange?.(false);
+        }}
+      />
+
+      {/* Note Form Modal */}
+      <NoteFormModal
+        isOpen={showNoteModal}
+        onClose={() => {
+          setShowNoteModal(false);
+          setEditingNoteId(null);
+        }}
+        noteId={editingNoteId}
+        clientId={clientId}
+        onSave={(newNote) => {
+          setNotes(prev => [newNote, ...prev]);
+          setShowNoteModal(false);
+        }}
+        onUpdate={(updatedNote) => {
+          setNotes(prev =>
+            prev.map(note => note.id === updatedNote.id ? updatedNote : note)
+          );
+          setShowNoteModal(false);
         }}
       />
     </>

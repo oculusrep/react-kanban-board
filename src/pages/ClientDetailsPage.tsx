@@ -180,9 +180,14 @@ const ClientDetailsPage: React.FC = () => {
             onDelete={!isNewClient ? handleDelete : undefined}
           />
         )}
-        {activeTab === 'activities' && (
+        {activeTab === 'activities' && client && (
           <GenericActivityTab
-            parentObject={client ? { id: client.id, type: 'client', name: client.client_name || 'Unnamed Client' } : null}
+            config={{
+              parentObject: { id: client.id, type: 'client', name: client.client_name || 'Unnamed Client' },
+              title: 'Client Activities',
+              showSummary: true,
+              allowAdd: true
+            }}
           />
         )}
         {activeTab === 'notes' && (
