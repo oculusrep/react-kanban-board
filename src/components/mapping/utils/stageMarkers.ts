@@ -5,124 +5,124 @@ export interface StageConfig {
   category: string;
 }
 
-// Stage configurations with SVG icon paths (simplified Lucide React icons)
+// Stage configurations with simplified SVG icon paths (optimized for small marker size)
 export const STAGE_CONFIGURATIONS: Record<string, StageConfig> = {
   // Early Pipeline (Blue tones)
   'Pre-Submittal': {
     color: '#64748b',
-    iconPath: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z', // Edit
+    iconPath: 'M6 4h12v12H6z M18 18l-6-6 M15 9h3', // Edit (simplified)
     category: 'pipeline'
   },
   'Ready to Submit': {
     color: '#3b82f6',
-    iconPath: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12', // Upload
+    iconPath: 'M12 4L8 8h3v8h2v-8h3z', // Upload (simplified arrow up)
     category: 'pipeline'
   },
   'Submitted-Reviewing': {
     color: '#2563eb',
-    iconPath: 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z', // Eye
+    iconPath: 'M12 8c2.2 0 4 1.8 4 4s-1.8 4-4 4-4-1.8-4-4 1.8-4 4-4z M12 10c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2z', // Eye (simplified)
     category: 'pipeline'
   },
   'Not Available': {
     color: '#4b5563',
-    iconPath: 'M6 4h4v16H6zM14 4h4v16h-4z', // Pause
+    iconPath: 'M8 6h2v12H8z M14 6h2v12h-2z', // Pause (simplified)
     category: 'declined'
   },
 
   // Active Review (Orange/Yellow tones)
   'Mike to Review': {
     color: '#f97316',
-    iconPath: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8zM16 11l2 2 4-4', // UserCheck
+    iconPath: 'M12 6c2.2 0 4 1.8 4 4s-1.8 4-4 4-4-1.8-4-4 1.8-4 4-4z M16 14l2 2 4-4', // UserCheck (simplified)
     category: 'review'
   },
   'LOI': {
     color: '#ca8a04',
-    iconPath: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8', // FileText
+    iconPath: 'M7 4h8l3 3v11H7z M9 10h6 M9 13h6 M9 16h4', // FileText (simplified)
     category: 'review'
   },
   'Tour': {
     color: '#6366f1',
-    iconPath: 'M3 11l19-9-9 19-2-8-8-2z', // Navigation
+    iconPath: 'M6 12l12-6-6 12-2-4z', // Navigation (simplified arrow)
     category: 'review'
   },
 
   // Contract Phase (Purple tones)
   'At Lease/PSA': {
     color: '#a855f7',
-    iconPath: 'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z', // HandHeart
+    iconPath: 'M12 6c3.3 0 6 2.7 6 6 0 2-1 3.8-2.5 4.8L12 20l-3.5-3.2C7 15.8 6 14 6 12c0-3.3 2.7-6 6-6z', // Heart (simplified)
     category: 'contract'
   },
   'Under Contract / Contingent': {
     color: '#9333ea',
-    iconPath: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4', // Shield
+    iconPath: 'M12 4l6 3v6c0 3-6 6-6 6s-6-3-6-6V7z M10 11l2 2 4-4', // Shield (simplified)
     category: 'contract'
   },
   'Executed Deal': {
     color: '#7c3aed',
-    iconPath: 'M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14l-3-3', // CheckCircle
+    iconPath: 'M12 4c4.4 0 8 3.6 8 8s-3.6 8-8 8-8-3.6-8-8 3.6-8 8-8z M9 12l2 2 4-4', // CheckCircle (simplified)
     category: 'contract'
   },
 
   // Construction & Opening
   'Closed - Under Construction': {
     color: '#c2410c',
-    iconPath: 'M2 20h20M8.5 14.5L4 9l4-7 4 7-4.5 5.5zM16 20v-5a4 4 0 1 1 8 0v5', // Construction
+    iconPath: 'M12 4l6 4v12H6V8z M9 12h6 M9 15h6', // Construction (simplified)
     category: 'construction'
   },
   'Store Open': {
     color: '#15803d',
-    iconPath: 'M3 21h18M6 21V7h12v14M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 12h4', // Store
+    iconPath: 'M6 8h12v12H6z M6 8V6h12v2 M10 12h4', // Store (simplified)
     category: 'construction'
   },
 
   // Success States (Green tones)
   'Booked': {
     color: '#22c55e',
-    iconPath: 'M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6', // DollarSign
+    iconPath: 'M12 4v16 M8 8c0-2.2 1.8-4 4-4s4 1.8 4 4c0 1.1-.4 2.1-1.1 2.9 M7 16c0-2.8 2.2-5 5-5s5 2.2 5 5', // Dollar (simplified)
     category: 'success'
   },
   'Protected': {
     color: '#0891b2',
-    iconPath: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', // Shield
+    iconPath: 'M12 4l6 3v6c0 3-6 6-6 6s-6-3-6-6V7z', // Shield (simplified)
     category: 'success'
   },
 
   // Monitoring (Light blue)
   'Monitor': {
     color: '#0ea5e9',
-    iconPath: 'M11 2a9 9 0 1 1 0 18 9 9 0 0 1 0-18zM21 21l-4.35-4.35', // Search
+    iconPath: 'M12 4c4.4 0 8 3.6 8 8s-3.6 8-8 8-8-3.6-8-8 3.6-8 8-8z M18 18l-2-2', // Search (simplified)
     category: 'monitoring'
   },
   'Pursuing Ownership': {
     color: '#dc2626',
-    iconPath: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM12 6c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6 2.69-6 6-6zM12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z', // Target/Bullseye
+    iconPath: 'M12 4c4.4 0 8 3.6 8 8s-3.6 8-8 8-8-3.6-8-8 3.6-8 8-8z M12 8c2.2 0 4 1.8 4 4s-1.8 4-4 4-4-1.8-4-4 1.8-4 4-4z M12 10c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2z', // Target (simplified)
     category: 'monitoring'
   },
   'Unassigned Territory': {
     color: '#6b7280',
-    iconPath: 'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0zM12 7a3 3 0 1 1 0 6 3 3 0 0 1 0-6z', // MapPin
+    iconPath: 'M12 4c3.3 0 6 2.7 6 6 0 4-6 10-6 10s-6-6-6-10c0-3.3 2.7-6 6-6z M12 7c1.7 0 3 1.3 3 3s-1.3 3-3 3-3-1.3-3-3 1.3-3 3-3z', // MapPin (simplified)
     category: 'monitoring'
   },
 
   // Declined/Ended (Dark tones)
   'Lost / Killed': {
     color: '#1f2937',
-    iconPath: 'M18 6L6 18M6 6l12 12', // XCircle
+    iconPath: 'M6 6l12 12 M18 6L6 18', // X (simplified)
     category: 'declined'
   },
   'Pass': {
     color: '#6b7280',
-    iconPath: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM4 12c0-4.42 3.58-8 8-8 1.85 0 3.55.63 4.9 1.69L5.69 16.9C4.63 15.55 4 13.85 4 12zM12 20c-1.85 0-3.55-.63-4.9-1.69L18.31 7.1C19.37 8.45 20 10.15 20 12c0 4.42-3.58 8-8 8z', // Circle with diagonal line (prohibited)
+    iconPath: 'M12 4c4.4 0 8 3.6 8 8s-3.6 8-8 8-8-3.6-8-8 3.6-8 8-8z M6 6l12 12', // Ban (simplified)
     category: 'declined'
   },
   'Use Conflict': {
     color: '#a16207',
-    iconPath: 'M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM12 15.75h.007v.008H12v-.008z', // AlertCircle
+    iconPath: 'M12 4c4.4 0 8 3.6 8 8s-3.6 8-8 8-8-3.6-8-8 3.6-8 8-8z M12 8v4 M12 16h.01', // AlertCircle (simplified)
     category: 'declined'
   },
   'Use Declined': {
     color: '#991b1b',
-    iconPath: 'M18 6L6 18M6 6l12 12', // XCircle
+    iconPath: 'M6 6l12 12 M18 6L6 18', // X (simplified)
     category: 'declined'
   }
 };
@@ -154,10 +154,14 @@ export const createStageMarkerSVG = (stageName: string, size: number = 32): stri
                stroke-width="1"/>
 
       <!-- Icon -->
-      <g transform="translate(${iconOffset}, ${iconOffset}) scale(${iconSize/24})">
+      <g transform="translate(${iconOffset}, ${iconOffset})">
         <path d="${config.iconPath}"
               fill="white"
-              stroke="none"/>
+              stroke="white"
+              stroke-width="0.5"
+              stroke-linejoin="round"
+              stroke-linecap="round"
+              transform="scale(${iconSize/24})"/>
       </g>
     </svg>
   `;
@@ -199,10 +203,14 @@ export const createVerifiedStageMarkerSVG = (stageName: string, size: number = 3
                stroke-width="1"/>
 
       <!-- Icon -->
-      <g transform="translate(${iconOffset}, ${iconOffset}) scale(${iconSize/24})">
+      <g transform="translate(${iconOffset}, ${iconOffset})">
         <path d="${config.iconPath}"
               fill="white"
-              stroke="none"/>
+              stroke="white"
+              stroke-width="0.5"
+              stroke-linejoin="round"
+              stroke-linecap="round"
+              transform="scale(${iconSize/24})"/>
       </g>
 
       <!-- Verified checkmark overlay -->
