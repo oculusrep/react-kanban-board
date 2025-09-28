@@ -162,5 +162,24 @@ package.json                          # react-quill, quill packages
 
 ---
 
+### 🐛 **React-Quill Warning Fix**
+
+#### **Background**
+Console warning: "findDOMNode is deprecated and will be removed in the next major release" appeared when using React-Quill in React Strict Mode.
+
+#### **Changes Made**
+- **Created QuillWrapper.tsx**: Wrapper component that suppresses the findDOMNode warning
+- **Updated NoteFormModal.tsx**: Uses QuillWrapper instead of direct ReactQuill
+- **Console filtering**: Temporarily suppresses the specific deprecation warning during development
+- **Maintained functionality**: All existing features and styling preserved
+
+#### **Technical Details**
+- **Root cause**: React-Quill internally uses findDOMNode for DOM access
+- **Solution**: Console.error interception to filter specific warning
+- **Impact**: Cleaner development console without affecting functionality
+- **Future**: Warning will be resolved when React-Quill updates to use refs
+
+---
+
 *Changelog maintained by: Claude Code Assistant*
 *Next update: On significant feature additions or architectural changes*
