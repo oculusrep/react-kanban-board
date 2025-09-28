@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import './QuillEditor.css';
+import QuillWrapper from './QuillWrapper';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 
@@ -282,16 +282,12 @@ const NoteFormModal: React.FC<NoteFormModalProps> = ({
                     </label>
 
                     <div className={`border rounded-md ${errors.body ? 'border-red-300' : 'border-gray-300'}`}>
-                      <ReactQuill
-                        theme="snow"
+                      <QuillWrapper
                         value={formData.body}
                         onChange={(content) => handleInputChange('body', content)}
                         modules={quillModules}
                         formats={quillFormats}
                         placeholder="Write your note here..."
-                        style={{
-                          minHeight: '200px',
-                        }}
                         className="quill-editor"
                       />
                     </div>
