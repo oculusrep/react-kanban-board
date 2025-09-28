@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import RichTextNote from '../components/RichTextNote';
 import NoteAssociations from '../components/NoteAssociations';
+import NoteFormModal from '../components/NoteFormModal';
 
 type Note = Database['public']['Tables']['note']['Row'];
 
@@ -36,6 +37,10 @@ const NotesDebugPage: React.FC = () => {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [notesPerPage] = useState(25);
+
+  // Modal state
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     loadNotesAndRelatedData();
@@ -468,6 +473,38 @@ const NotesDebugPage: React.FC = () => {
 
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
 
+  // Note modal handlers
+  const handleCreateNote = () => {
+    setEditingNoteId(undefined);
+    setIsNoteModalOpen(true);
+  };
+
+  const handleEditNote = (noteId: string) => {
+    setEditingNoteId(noteId);
+    setIsNoteModalOpen(true);
+  };
+
+  const handleNoteModalClose = () => {
+    setIsNoteModalOpen(false);
+    setEditingNoteId(undefined);
+  };
+
+  const handleNoteSaved = (savedNote: Note) => {
+    // Refresh the notes list to show the new/updated note
+    loadNotesAndRelatedData();
+    handleNoteModalClose();
+  };
+
+  const handleNoteUpdated = (updatedNote: Note) => {
+    // Update the specific note in the current state without full reload
+    setNotes(prevNotes =>
+      prevNotes.map(note =>
+        note.id === updatedNote.id ? updatedNote : note
+      )
+    );
+    handleNoteModalClose();
+  };
+
   const toggleNoteExpansion = (noteId: string) => {
     const newExpanded = new Set(expandedNotes);
     if (newExpanded.has(noteId)) {
@@ -517,15 +554,26 @@ const NotesDebugPage: React.FC = () => {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Notes</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Total notes: {notes.length} | Filtered: {filteredNotes.length} | Showing {startIndex + 1}-{Math.min(endIndex, filteredNotes.length)} of {filteredNotes.length}
-        </p>
-        <p className="text-xs text-blue-600 mt-1">
-          Advanced search: field filters, phrase matching, multi-word, exclusions, and fuzzy search
-        </p>
-
-
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Notes</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Total notes: {notes.length} | Filtered: {filteredNotes.length} | Showing {startIndex + 1}-{Math.min(endIndex, filteredNotes.length)} of {filteredNotes.length}
+            </p>
+            <p className="text-xs text-blue-600 mt-1">
+              Advanced search: field filters, phrase matching, multi-word, exclusions, and fuzzy search
+            </p>
+          </div>
+          <button
+            onClick={handleCreateNote}
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+          >
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            New Note
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -805,28 +853,25 @@ const NotesDebugPage: React.FC = () => {
                 {(isExpanded || showAllExpanded) && (
                   <div className="px-4 pb-4 border-t border-gray-100">
                     {/* Note Details */}
-                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 text-sm">
-                      <div className="space-y-1">
-                        <p className="text-gray-500">Note ID: <span className="text-gray-900 font-mono text-xs">{note.id}</span></p>
-                        {note.sf_content_note_id && (
-                          <p className="text-gray-500">Salesforce ID: <span className="text-gray-900 font-mono text-xs">{note.sf_content_note_id}</span></p>
-                        )}
+                    <div className="mt-4 flex items-center justify-between mb-4">
+                      <div className="text-sm space-y-1">
                         <p className="text-gray-500">Created: <span className="text-gray-900">{formatDate(note.created_at)}</span></p>
                         {note.updated_at && note.updated_at !== note.created_at && (
                           <p className="text-gray-500">Updated: <span className="text-gray-900">{formatDate(note.updated_at)}</span></p>
                         )}
                       </div>
-                      <div className="space-y-1">
-                        {note.content_size && (
-                          <p className="text-gray-500">Size: <span className="text-gray-900">{Math.round(note.content_size / 1024)}KB</span></p>
-                        )}
-                        {note.share_type && (
-                          <p className="text-gray-500">Share Type: <span className="text-gray-900">{note.share_type}</span></p>
-                        )}
-                        {note.visibility && (
-                          <p className="text-gray-500">Visibility: <span className="text-gray-900">{note.visibility}</span></p>
-                        )}
-                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditNote(note.id);
+                        }}
+                        className="inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors"
+                      >
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        Edit Note
+                      </button>
                     </div>
 
                     {/* Note Content */}
@@ -879,6 +924,15 @@ const NotesDebugPage: React.FC = () => {
           </nav>
         </div>
       )}
+
+      {/* Note Form Modal */}
+      <NoteFormModal
+        isOpen={isNoteModalOpen}
+        onClose={handleNoteModalClose}
+        onSave={handleNoteSaved}
+        onUpdate={handleNoteUpdated}
+        noteId={editingNoteId}
+      />
     </div>
   );
 };

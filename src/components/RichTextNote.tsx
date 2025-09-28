@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
+import './QuillEditor.css';
 
 interface RichTextNoteProps {
   content: string;
@@ -12,6 +13,11 @@ const RichTextNote: React.FC<RichTextNoteProps> = ({
   className = '',
   maxHeight = 'max-h-none'
 }) => {
+  // Check if content is HTML (from React-Quill) or Markdown (legacy)
+  const isHtmlContent = (text: string): boolean => {
+    return /<[^>]+>/.test(text) && !text.includes('**') && !text.includes('##');
+  };
+
   // Enhanced HTML to Markdown conversion for Salesforce notes
   const processContent = (text: string): string => {
     if (!text) return '';
@@ -116,19 +122,27 @@ const RichTextNote: React.FC<RichTextNoteProps> = ({
     return processed;
   };
 
-  const processedContent = processContent(content);
+  // Determine content type and how to render
+  const isHtml = isHtmlContent(content);
+  const processedContent = isHtml ? content : processContent(content);
 
-  // Check if content has rich formatting
+  // Check if content has rich formatting (for markdown)
   const hasRichFormatting = (text: string): boolean => {
     return /(\*\*.*?\*\*|\*.*?\*|•|^\d+\.\s|#{1,6}\s)/m.test(text) ||
            text.includes('\n');
   };
 
-  const shouldUseMarkdown = hasRichFormatting(processedContent);
+  const shouldUseMarkdown = !isHtml && hasRichFormatting(processedContent);
 
   return (
     <div className={`${className} ${maxHeight} overflow-y-auto`}>
-      {shouldUseMarkdown ? (
+      {isHtml ? (
+        // Render HTML content directly (from React-Quill)
+        <div
+          className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-800 prose-strong:text-gray-900 prose-ul:text-gray-800 prose-li:text-gray-800 quill-content"
+          dangerouslySetInnerHTML={{ __html: content }}
+        />
+      ) : shouldUseMarkdown ? (
         <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-800 prose-strong:text-gray-900 prose-ul:text-gray-800 prose-li:text-gray-800">
           <ReactMarkdown
             components={{
