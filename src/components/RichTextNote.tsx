@@ -139,7 +139,7 @@ const RichTextNote: React.FC<RichTextNoteProps> = ({
       {isHtml ? (
         // Render HTML content directly (from React-Quill)
         <div
-          className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-800 prose-strong:text-gray-900 prose-ul:text-gray-800 prose-li:text-gray-800 quill-content"
+          className="quill-content"
           dangerouslySetInnerHTML={{ __html: content }}
         />
       ) : shouldUseMarkdown ? (

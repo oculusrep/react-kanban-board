@@ -42,14 +42,47 @@
   color: #1d4ed8;
 }
 
-.quill-content ul,
+.quill-content ul {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+  list-style-type: disc;
+  list-style-position: outside;
+}
+
 .quill-content ol {
   margin: 0.5rem 0;
   padding-left: 1.5rem;
+  list-style-type: decimal;
+  list-style-position: outside;
 }
 
 .quill-content li {
   margin: 0.25rem 0;
+  display: list-item;
+}
+
+/* Ensure nested lists work properly */
+.quill-content ul ul {
+  list-style-type: circle;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.quill-content ul ul ul {
+  list-style-type: square;
+}
+
+/* Override any potential Tailwind reset */
+.quill-content ul, .quill-content ol {
+  list-style: revert;
+}
+
+.quill-content ul {
+  list-style-type: disc !important;
+}
+
+.quill-content ol {
+  list-style-type: decimal !important;
 }
 
 .quill-content a {
