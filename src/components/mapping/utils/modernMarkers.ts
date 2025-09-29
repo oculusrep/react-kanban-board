@@ -24,16 +24,14 @@ export const createModernMarkerIcon = (color: string, size: number = 28): google
 export const createModernPinIcon = (color: string, size: number = 32): google.maps.Icon => {
   const svg = `
     <svg width="${size}" height="${size}" viewBox="0 0 32 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <!-- Drop shadow -->
-      <ellipse cx="16" cy="38" rx="8" ry="3" fill="rgba(0,0,0,0.2)"/>
-      <!-- Main pin shape -->
-      <path d="M16 2C10.477 2 6 6.477 6 12C6 19.25 16 34 16 34S26 19.25 26 12C26 6.477 21.523 2 16 2Z"
+      <!-- Main pin shape - wider and more rounded -->
+      <path d="M16 2C9.373 2 4 7.373 4 14C4 22.5 16 34 16 34S28 22.5 28 14C28 7.373 22.627 2 16 2Z"
             fill="${color}" stroke="white" stroke-width="2"/>
-      <!-- Inner circle -->
-      <circle cx="16" cy="12" r="5" fill="white"/>
-      <circle cx="16" cy="12" r="3" fill="${color}"/>
+      <!-- Inner circle - larger -->
+      <circle cx="16" cy="14" r="7" fill="white"/>
+      <circle cx="16" cy="14" r="5" fill="${color}"/>
       <!-- Highlight -->
-      <circle cx="14.5" cy="10.5" r="1.5" fill="rgba(255,255,255,0.8)"/>
+      <circle cx="14" cy="12" r="2" fill="rgba(255,255,255,0.8)"/>
     </svg>
   `;
 
@@ -301,12 +299,13 @@ export const MarkerColors = {
 
 // Predefined marker styles for different use cases
 export const ModernMarkerStyles = {
-  // For properties - use distinctive house markers for maximum visibility
+  // For properties - use modern pin markers
   property: {
-    recent: () => createHouseMarkerIcon(MarkerColors.RECENT, 32),
-    verified: () => createHouseMarkerIcon(MarkerColors.VERIFIED, 30),
-    geocoded: () => createHouseMarkerIcon(MarkerColors.GEOCODED, 30),
-    verifying: () => createHouseMarkerIcon(MarkerColors.VERIFYING, 32)
+    recent: () => createModernPinIcon(MarkerColors.RECENT, 32),
+    verified: () => createModernPinIcon(MarkerColors.VERIFIED, 30),
+    geocoded: () => createModernPinIcon(MarkerColors.GEOCODED, 30),
+    verifying: () => createModernPinIcon(MarkerColors.VERIFYING, 32),
+    selected: () => createModernPinIcon('#FF6B00', 60) // Large orange pin for selected property
   },
 
   // For site submits - use pin-style markers

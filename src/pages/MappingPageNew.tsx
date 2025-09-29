@@ -305,6 +305,54 @@ const MappingPageContent: React.FC = () => {
     setSelectedPropertyId(null);
   };
 
+  // Center map on property pin with appropriate zoom to avoid clusters
+  const handleCenterOnPin = (lat: number, lng: number) => {
+    if (mapInstance) {
+      console.log('🎯 Centering map on coordinates:', { lat, lng });
+
+      // Set zoom level to 15 which shows more context while still avoiding clusters
+      const targetZoom = 15;
+
+      mapInstance.setCenter({ lat, lng });
+      mapInstance.setZoom(targetZoom);
+
+      console.log('✅ Map centered and zoomed to level', targetZoom);
+    } else {
+      console.warn('⚠️ Cannot center map: mapInstance not available');
+    }
+  };
+
+  // Handle property selection from search
+  const handlePropertySearch = (property: any) => {
+    console.log('🏢 Property selected from search:', property);
+    console.log('🏢 Property details:', {
+      id: property.id,
+      name: property.property_name,
+      coordinates: { lat: property.latitude, lng: property.longitude },
+      verified: { lat: property.verified_latitude, lng: property.verified_longitude }
+    });
+
+    // Ensure properties layer is visible
+    if (!layerState.properties?.isVisible) {
+      console.log('🔍 Making properties layer visible for search result');
+      toggleLayer('properties');
+    }
+
+    // Center map on the property
+    const coords = property.verified_latitude && property.verified_longitude
+      ? { lat: property.verified_latitude, lng: property.verified_longitude }
+      : { lat: property.latitude, lng: property.longitude };
+
+    console.log('🎯 Centering on coordinates:', coords);
+    handleCenterOnPin(coords.lat, coords.lng);
+
+    // Open the property in the sidebar
+    console.log('📋 Opening property sidebar...');
+    handlePinClick(property, 'property');
+
+    console.log('✅ Property search handling complete');
+  };
+
   // Context menu handlers
   const handleContextMenuCreateProperty = () => {
     if (contextMenu.coordinates) {
@@ -701,8 +749,9 @@ const MappingPageContent: React.FC = () => {
                     value={searchAddress}
                     onChange={setSearchAddress}
                     onSearch={handleAddressSearch}
+                    onPropertySelect={handlePropertySearch}
                     disabled={isSearching}
-                    placeholder="Search Address, City, State..."
+                    placeholder="Search Address, City, State, or Property Name..."
                   />
                   <button
                     onClick={handleAddressSearch}
@@ -873,6 +922,7 @@ const MappingPageContent: React.FC = () => {
               loadingConfig={propertyLoadingConfig}
               recentlyCreatedIds={recentlyCreatedPropertyIds}
               verifyingPropertyId={verifyingPropertyId}
+              selectedPropertyId={selectedPinType === 'property' && selectedPinData ? selectedPinData.id : null}
               onLocationVerified={handleLocationVerified}
               onPropertyRightClick={handlePropertyRightClick}
               onPropertiesLoaded={(count) => {
@@ -924,6 +974,7 @@ const MappingPageContent: React.FC = () => {
               onVerifyLocation={handleVerifyLocation}
               isVerifyingLocation={!!verifyingPropertyId}
               onViewPropertyDetails={handleViewPropertyDetails}
+              onCenterOnPin={handleCenterOnPin}
               rightOffset={isPropertyDetailsOpen ? 500 : 0} // Shift left when property details is open
             />
 
@@ -936,6 +987,7 @@ const MappingPageContent: React.FC = () => {
               type="property"
               onVerifyLocation={handleVerifyLocation}
               isVerifyingLocation={!!verifyingPropertyId}
+              onCenterOnPin={handleCenterOnPin}
               rightOffset={0} // Always positioned at the far right
             />
 

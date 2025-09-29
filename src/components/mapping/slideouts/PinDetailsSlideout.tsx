@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from '../layers/LayerManager';
 import { FileText, DollarSign, Building2, Activity, MapPin } from 'lucide-react';
+import PropertyInputField from '../../property/PropertyInputField';
+import PropertyPSFField from '../../property/PropertyPSFField';
+import PropertySqftField from '../../property/PropertySqftField';
 
 interface Property {
   id: string;
@@ -15,6 +18,11 @@ interface Property {
   longitude: number;
   verified_latitude?: number;
   verified_longitude?: number;
+  rent_psf?: number;
+  nnn_psf?: number;
+  acres?: number;
+  building_sqft?: number;
+  available_sqft?: number;
 }
 
 interface SiteSubmit {
@@ -52,6 +60,7 @@ interface PinDetailsSlideoutProps {
   isVerifyingLocation?: boolean;
   onViewPropertyDetails?: (property: Property) => void;
   rightOffset?: number; // Offset from right edge in pixels
+  onCenterOnPin?: (lat: number, lng: number) => void; // Function to center map on pin
 }
 
 type TabType = 'property' | 'submit' | 'financial' | 'activity' | 'location';
@@ -65,7 +74,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   onVerifyLocation,
   isVerifyingLocation = false,
   onViewPropertyDetails,
-  rightOffset = 0
+  rightOffset = 0,
+  onCenterOnPin
 }) => {
   console.log('PinDetailsSlideout rendering with:', { isOpen, data, type });
   const [activeTab, setActiveTab] = useState<TabType>(type === 'site_submit' ? 'submit' : 'property');
@@ -85,6 +95,22 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     deliveryTimeframe: '',
     notes: ''
   });
+
+  // Form state for property fields
+  const [propertyFormData, setPropertyFormData] = useState({
+    property_name: '',
+    address: '',
+    city: '',
+    zip: '',
+    rent_psf: null as number | null,
+    nnn_psf: null as number | null,
+    acres: null as number | null,
+    building_sqft: null as number | null,
+    available_sqft: null as number | null
+  });
+
+  const [hasPropertyChanges, setHasPropertyChanges] = useState(false);
+  const [lastSavedPropertyData, setLastSavedPropertyData] = useState<Property | null>(null);
 
   const { refreshLayer } = useLayerManager();
 
@@ -136,6 +162,63 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     }
   }, [data, type, lastSavedData]);
 
+  // Initialize property form data when data loads
+  useEffect(() => {
+    if (type === 'property' && data) {
+      const propertyData = data as Property;
+
+      // Check if we have saved data and it matches the current data
+      const shouldUseSavedData = lastSavedPropertyData &&
+        lastSavedPropertyData.id === propertyData.id;
+
+      console.log('📥 Property form initialization check:', {
+        type,
+        hasData: !!data,
+        dataId: data?.id,
+        shouldUseSavedData,
+        hasPropertyChanges,
+        lastSavedPropertyData: lastSavedPropertyData ? {
+          id: lastSavedPropertyData.id,
+          property_name: lastSavedPropertyData.property_name
+        } : null,
+        currentData: {
+          id: propertyData.id,
+          property_name: propertyData.property_name
+        }
+      });
+
+      // Only initialize form if we don't have unsaved changes and we don't have saved data
+      if (!hasPropertyChanges && !shouldUseSavedData) {
+        console.log('📥 Initializing property form data from props:', propertyData);
+        setPropertyFormData({
+          property_name: propertyData.property_name || '',
+          address: propertyData.address || '',
+          city: propertyData.city || '',
+          zip: propertyData.zip || '',
+          rent_psf: propertyData.rent_psf || null,
+          nnn_psf: propertyData.nnn_psf || null,
+          acres: propertyData.acres || null,
+          building_sqft: propertyData.building_sqft || null,
+          available_sqft: propertyData.available_sqft || null
+        });
+
+        // Set property status based on existing data - if has acres, likely purchase; if has rent_psf, likely lease
+        if (propertyData.acres && !propertyData.rent_psf) {
+          setPropertyStatus('purchase');
+        } else {
+          setPropertyStatus('lease');
+        }
+
+        setHasPropertyChanges(false);
+      } else if (shouldUseSavedData) {
+        console.log('🔄 Using last saved property data for form initialization');
+        // Data is already up to date from the save operation
+      } else {
+        console.log('⚠️ Skipping property form initialization - has unsaved changes');
+      }
+    }
+  }, [data, type, lastSavedPropertyData, hasPropertyChanges]);
+
   // Initialize current stage ID when data changes
   useEffect(() => {
     if (type === 'site_submit' && data) {
@@ -143,6 +226,29 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       setCurrentStageId(siteSubmitData.submit_stage_id || '');
     }
   }, [data, type]);
+
+  // Center map on property when sidebar opens
+  useEffect(() => {
+    if (isOpen && data && onCenterOnPin) {
+      const isProperty = type === 'property';
+      const property = isProperty ? (data as Property) : (data as SiteSubmit).property;
+
+      if (property) {
+        // Use verified coordinates if available, otherwise use regular coordinates
+        const coords = property.verified_latitude && property.verified_longitude
+          ? { lat: property.verified_latitude, lng: property.verified_longitude }
+          : { lat: property.latitude, lng: property.longitude };
+
+        console.log('🎯 Centering map on property:', {
+          propertyId: property.id,
+          propertyName: property.property_name,
+          coordinates: coords
+        });
+
+        onCenterOnPin(coords.lat, coords.lng);
+      }
+    }
+  }, [isOpen, data, type, onCenterOnPin]);
 
   // Load submit stages for dropdown
   useEffect(() => {
@@ -213,6 +319,83 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     }
   };
 
+  // Handle saving property changes
+  const handleSavePropertyChanges = async () => {
+    if (!property) return;
+
+    try {
+      console.log(`💾 Saving property changes for ${property.id}`);
+      console.log('📝 Property form data being saved:', propertyFormData);
+
+      // Update database with property data
+      const { data: updatedData, error } = await supabase
+        .from('property')
+        .update({
+          property_name: propertyFormData.property_name || null,
+          address: propertyFormData.address || null,
+          city: propertyFormData.city || null,
+          zip: propertyFormData.zip || null,
+          rent_psf: propertyFormData.rent_psf,
+          nnn_psf: propertyFormData.nnn_psf,
+          acres: propertyFormData.acres,
+          building_sqft: propertyFormData.building_sqft,
+          available_sqft: propertyFormData.available_sqft,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', property.id)
+        .select(`
+          id,
+          property_name,
+          address,
+          city,
+          state,
+          zip,
+          latitude,
+          longitude,
+          verified_latitude,
+          verified_longitude,
+          rent_psf,
+          nnn_psf,
+          acres,
+          building_sqft,
+          available_sqft
+        `)
+        .single();
+
+      if (error) {
+        console.error('❌ Error saving property changes:', error);
+        // Could show error notification here
+      } else {
+        console.log('✅ Property changes saved successfully:', updatedData);
+
+        // Update the form data to match what was actually saved in the database
+        setPropertyFormData({
+          property_name: updatedData.property_name || '',
+          address: updatedData.address || '',
+          city: updatedData.city || '',
+          zip: updatedData.zip || '',
+          rent_psf: updatedData.rent_psf || null,
+          nnn_psf: updatedData.nnn_psf || null,
+          acres: updatedData.acres || null,
+          building_sqft: updatedData.building_sqft || null,
+          available_sqft: updatedData.available_sqft || null
+        });
+
+        // Store the saved data to prevent form reinitialization
+        setLastSavedPropertyData(updatedData);
+
+        setHasPropertyChanges(false);
+
+        // Trigger refresh of property layer to show changes immediately
+        refreshLayer('properties');
+
+        console.log('🔄 Property data synchronized with database');
+      }
+    } catch (err) {
+      console.error('💥 Failed to save property changes:', err);
+    }
+  };
+
   // Handle saving all form data changes
   const handleSaveChanges = async () => {
     if (!siteSubmit) return;
@@ -272,7 +455,6 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         { id: 'property' as TabType, label: 'PROPERTY', icon: <Building2 size={16} /> },
         { id: 'financial' as TabType, label: 'FINANCIAL', icon: <DollarSign size={16} /> },
         { id: 'activity' as TabType, label: 'ACTIVITY', icon: <Activity size={16} /> },
-        { id: 'location' as TabType, label: 'PROPERTY', icon: <Building2 size={16} /> },
       ];
     } else {
       return [
@@ -419,55 +601,170 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
       case 'property':
         return (
-          <div className="space-y-6">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-3">
-                {isProperty ? 'Property Name' : 'Site Submit Name'}
-              </label>
-              <input
-                type="text"
-                value={isProperty ? property?.property_name || '' : siteSubmit?.site_submit_name || ''}
-                disabled={!isEditing}
-                placeholder="Enter value..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent  transition-all duration-200"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-3">Address</label>
-              <input
-                type="text"
-                value={property?.address || ''}
-                disabled={!isEditing}
-                placeholder="Enter address..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent  transition-all duration-200"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-3">City</label>
-                <input
-                  type="text"
-                  value={property?.city || ''}
-                  onChange={() => {}}
-                  readOnly
-                  placeholder="Enter city..."
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent  transition-all duration-200"
+          <div className="space-y-3">
+            {isProperty ? (
+              <>
+                <PropertyInputField
+                  label="Property Name"
+                  value={propertyFormData.property_name}
+                  onChange={(value) => {
+                    setPropertyFormData(prev => ({ ...prev, property_name: value as string }));
+                    setHasPropertyChanges(true);
+                  }}
+                  placeholder="Enter property name..."
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-3">ZIP</label>
-                <input
-                  type="text"
-                  value={property?.zip || ''}
-                  onChange={() => {}}
-                  readOnly
-                  placeholder="Enter ZIP..."
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent  transition-all duration-200"
+
+                <PropertyInputField
+                  label="Address"
+                  value={propertyFormData.address}
+                  onChange={(value) => {
+                    setPropertyFormData(prev => ({ ...prev, address: value as string }));
+                    setHasPropertyChanges(true);
+                  }}
+                  placeholder="Enter address..."
                 />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <PropertyInputField
+                    label="City"
+                    value={propertyFormData.city}
+                    onChange={(value) => {
+                      setPropertyFormData(prev => ({ ...prev, city: value as string }));
+                      setHasPropertyChanges(true);
+                    }}
+                    placeholder="Enter city..."
+                  />
+                  <PropertyInputField
+                    label="ZIP"
+                    value={propertyFormData.zip}
+                    onChange={(value) => {
+                      setPropertyFormData(prev => ({ ...prev, zip: value as string }));
+                      setHasPropertyChanges(true);
+                    }}
+                    placeholder="Enter ZIP..."
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Site Submit Name</label>
+                  <input
+                    type="text"
+                    value={siteSubmit?.site_submit_name || ''}
+                    readOnly
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded bg-gray-50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Address</label>
+                  <input
+                    type="text"
+                    value={property?.address || ''}
+                    readOnly
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded bg-gray-50"
+                  />
+                </div>
+              </>
+            )}
+
+            {/* Lease/Purchase Toggle - only for properties */}
+            {isProperty && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
+                <div className="flex rounded-md border border-gray-300 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setPropertyStatus('lease')}
+                    className={`flex-1 px-3 py-2 text-xs font-medium transition-all duration-200 ${
+                      propertyStatus === 'lease'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Lease
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPropertyStatus('purchase')}
+                    className={`flex-1 px-3 py-2 text-xs font-medium border-l border-gray-300 transition-all duration-200 ${
+                      propertyStatus === 'purchase'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Purchase
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Financial Fields - only for properties */}
+            {isProperty && (
+              <>
+                {propertyStatus === 'lease' ? (
+                  /* Lease Fields */
+                  <>
+                    <PropertySqftField
+                      label="Available Sq Ft"
+                      value={propertyFormData.available_sqft}
+                      onChange={(value) => {
+                        setPropertyFormData(prev => ({ ...prev, available_sqft: value }));
+                        setHasPropertyChanges(true);
+                      }}
+                      placeholder="10,000"
+                      helpText="Leasable square footage"
+                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <PropertyPSFField
+                        label="Rent PSF"
+                        value={propertyFormData.rent_psf}
+                        onChange={(value) => {
+                          setPropertyFormData(prev => ({ ...prev, rent_psf: value }));
+                          setHasPropertyChanges(true);
+                        }}
+                        placeholder="25.00"
+                        helpText="Base rent per square foot"
+                      />
+                      <PropertyPSFField
+                        label="NNN PSF"
+                        value={propertyFormData.nnn_psf}
+                        onChange={(value) => {
+                          setPropertyFormData(prev => ({ ...prev, nnn_psf: value }));
+                          setHasPropertyChanges(true);
+                        }}
+                        placeholder="8.50"
+                        helpText="Triple net charges per square foot"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  /* Purchase Fields */
+                  <>
+                    <PropertySqftField
+                      label="Building Sq Ft"
+                      value={propertyFormData.building_sqft}
+                      onChange={(value) => {
+                        setPropertyFormData(prev => ({ ...prev, building_sqft: value }));
+                        setHasPropertyChanges(true);
+                      }}
+                      placeholder="50,000"
+                      helpText="Total building square footage"
+                    />
+                    <PropertyInputField
+                      label="Acres"
+                      value={propertyFormData.acres}
+                      onChange={(value) => {
+                        setPropertyFormData(prev => ({ ...prev, acres: value as number }));
+                        setHasPropertyChanges(true);
+                      }}
+                      type="number"
+                      placeholder="2.5"
+                    />
+                  </>
+                )}
+              </>
+            )}
 
             {!isProperty && siteSubmit?.submit_stage && (
               <div>
@@ -699,29 +996,49 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
               </button>
             </div>
 
-            {/* "SEE IN PIPELINE" Badge */}
+            {/* Entity Type Badge */}
             <div className="absolute top-4 left-4">
-              <div className="bg-orange-500 text-white px-3 py-1 rounded text-xs font-semibold">
-                SEE IN PIPELINE
+              <div className={`text-white px-3 py-1 rounded text-xs font-semibold ${
+                isProperty ? 'bg-blue-600' : 'bg-purple-600'
+              }`}>
+                {isProperty ? 'PROPERTY' : 'SITE SUBMIT'}
               </div>
             </div>
           </div>
 
           {/* Property Header Info */}
           {!isMinimized && (
-          <div className="px-6 py-4 border-b border-gray-200">
+          <div className="px-6 py-3 border-b border-gray-200">
             <div className="flex items-start justify-between">
-              <div>
-                <h1 className={`font-bold text-gray-900 mb-1 ${isProperty ? 'text-xl' : 'text-lg'}`}>
-                  {isProperty
-                    ? (property?.property_name || property?.address || 'Unnamed Property')
-                    : (siteSubmit?.site_submit_name || siteSubmit?.property?.property_name || 'Site Submit')
-                  }
-                </h1>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <h1 className={`font-bold text-gray-900 mb-1 ${isProperty ? 'text-lg' : 'text-base'}`}>
+                    {isProperty
+                      ? (propertyFormData.property_name || propertyFormData.address || property?.address || 'Unnamed Property')
+                      : (siteSubmit?.site_submit_name || siteSubmit?.property?.property_name || 'Site Submit')
+                    }
+                  </h1>
+
+                  {/* Pin icon to center map on property */}
+                  {onCenterOnPin && property && (
+                    <button
+                      onClick={() => {
+                        const coords = property.verified_latitude && property.verified_longitude
+                          ? { lat: property.verified_latitude, lng: property.verified_longitude }
+                          : { lat: property.latitude, lng: property.longitude };
+                        onCenterOnPin(coords.lat, coords.lng);
+                      }}
+                      className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-all duration-200"
+                      title="Center map on this property"
+                    >
+                      <MapPin size={16} />
+                    </button>
+                  )}
+                </div>
 
                 {/* Property Information - For site submits only */}
                 {!isProperty && siteSubmit && (
-                  <div className="mb-1 space-y-0.5">
+                  <div className="mb-2 space-y-0.5">
                     <p className="text-sm text-gray-600">
                       <span className="font-medium">Property:</span> {siteSubmit?.property?.property_name || 'Not specified'}
                     </p>
@@ -733,20 +1050,14 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                   </div>
                 )}
 
-                {property?.city && (
-                  <p className="text-sm text-gray-600 mb-3">
-                    {property.city}
-                  </p>
-                )}
-
                 {/* Property Status - Only show for properties */}
                 {isProperty && (
-                  <div className="flex items-center space-x-3 mb-4">
-                    <div className="text-sm text-gray-600 font-medium">Property is for...</div>
-                    <div className="flex space-x-2">
+                  <div className="flex items-center space-x-2">
+                    <div className="text-xs text-gray-600 font-medium">For:</div>
+                    <div className="flex space-x-1">
                       <button
                         onClick={() => setPropertyStatus('lease')}
-                        className={`px-4 py-2 rounded-full text-sm font-semibold border transition-all duration-200 ${
+                        className={`px-3 py-1 rounded-full text-xs font-medium border transition-all duration-200 ${
                           propertyStatus === 'lease'
                             ? 'bg-orange-100 text-orange-700 border-orange-200 shadow-sm'
                             : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
@@ -756,7 +1067,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                       </button>
                       <button
                         onClick={() => setPropertyStatus('purchase')}
-                        className={`px-4 py-2 rounded-full text-sm font-semibold border transition-all duration-200 ${
+                        className={`px-3 py-1 rounded-full text-xs font-medium border transition-all duration-200 ${
                           propertyStatus === 'purchase'
                             ? 'bg-orange-100 text-orange-700 border-orange-200 shadow-sm'
                             : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
@@ -810,7 +1121,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         {/* Content */}
         {!isMinimized && (
         <div
-          className="flex-1 overflow-y-auto px-4 py-4"
+          className="flex-1 overflow-y-auto px-4 py-3"
           style={{
             scrollBehavior: 'smooth',
             minHeight: 0 // Ensures flex-1 works properly with overflow
@@ -852,20 +1163,20 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                 </div>
               )}
 
-              {/* Property Edit Button */}
-              {isProperty && (
-                <div className="flex items-center space-x-2">
+              {/* Update Property button - only show when changes made to properties */}
+              {hasPropertyChanges && isProperty && (
+                <div className="flex items-center justify-center">
                   <button
-                    onClick={() => setIsEditing(true)}
-                    className="flex-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-all duration-200 font-medium text-sm"
+                    onClick={handleSavePropertyChanges}
+                    className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all duration-200 font-medium text-sm shadow-sm hover:shadow-md"
                   >
-                    EDIT PROPERTY
+                    UPDATE PROPERTY
                   </button>
                 </div>
               )}
 
               {/* Tertiary Actions */}
-              {!hasChanges && (
+              {!hasChanges && !hasPropertyChanges && (
                 <div className="flex items-center justify-center pt-1">
                   <button
                     onClick={() => {

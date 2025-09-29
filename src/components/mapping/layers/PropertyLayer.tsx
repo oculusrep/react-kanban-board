@@ -35,6 +35,7 @@ interface PropertyLayerProps {
   verifyingPropertyId?: string | null; // Property being verified
   onLocationVerified?: (propertyId: string, lat: number, lng: number) => void;
   onPropertyRightClick?: (property: Property, x: number, y: number) => void;
+  selectedPropertyId?: string | null; // Currently selected property for editing
 }
 
 const PropertyLayer: React.FC<PropertyLayerProps> = ({
@@ -47,7 +48,8 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   onPinClick,
   verifyingPropertyId = null,
   onLocationVerified,
-  onPropertyRightClick
+  onPropertyRightClick,
+  selectedPropertyId = null
 }) => {
   const [properties, setProperties] = useState<Property[]>([]);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
@@ -379,10 +381,16 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
         content: infoContent
       });
 
-      // Determine marker icon based on property type and recent creation
+      // Determine marker icon based on property state and selection
       let markerIcon: google.maps.Icon;
+      const isSelected = selectedPropertyId === property.id;
+      const isBeingVerified = verifyingPropertyId === property.id;
 
-      if (isRecentlyCreated) {
+      if (isSelected) {
+        markerIcon = ModernMarkerStyles.property.selected(); // Selected - large orange
+      } else if (isBeingVerified) {
+        markerIcon = ModernMarkerStyles.property.verifying(); // Verifying - orange
+      } else if (isRecentlyCreated) {
         markerIcon = ModernMarkerStyles.property.recent(); // Recently created - red
       } else if (coords.verified) {
         markerIcon = ModernMarkerStyles.property.verified(); // Verified - green
@@ -390,14 +398,13 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
         markerIcon = ModernMarkerStyles.property.geocoded(); // Geocoded - blue
       }
 
-      const isBeingVerified = verifyingPropertyId === property.id;
       const marker = new google.maps.Marker({
         position: { lat: coords.lat, lng: coords.lng },
         map: null, // Don't show initially
         title: property.property_name || property.address,
-        icon: isBeingVerified ? ModernMarkerStyles.property.verifying() : markerIcon,
+        icon: markerIcon,
         draggable: isBeingVerified,
-        zIndex: isBeingVerified ? 2000 : 100
+        zIndex: isSelected ? 3000 : (isBeingVerified ? 2000 : 100) // Highest z-index for selected
       });
 
       // Add drag listener for verification
@@ -532,7 +539,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     if (properties.length > 0) {
       createMarkers();
     }
-  }, [properties, map, recentlyCreatedIds, verifyingPropertyId]); // Add recentlyCreatedIds and verifyingPropertyId dependencies
+  }, [properties, map, recentlyCreatedIds, verifyingPropertyId, selectedPropertyId]); // Add selectedPropertyId dependency
 
   // Create session markers when recently created IDs change or properties load
   // Session markers are shown when the main layer is hidden or always (depending on UX choice)
