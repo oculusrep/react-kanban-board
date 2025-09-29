@@ -8,6 +8,7 @@ interface PropertySqftFieldProps {
   disabled?: boolean;
   tabIndex?: number;
   helpText?: string;
+  compact?: boolean;
 }
 
 const PropertySqftField: React.FC<PropertySqftFieldProps> = ({
@@ -17,7 +18,8 @@ const PropertySqftField: React.FC<PropertySqftFieldProps> = ({
   placeholder = "10,000",
   disabled = false,
   tabIndex,
-  helpText
+  helpText,
+  compact = false
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -69,7 +71,7 @@ const PropertySqftField: React.FC<PropertySqftFieldProps> = ({
   if (isEditing) {
     return (
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+        <label className={`block font-medium text-gray-700 mb-1 ${compact ? 'text-xs' : 'text-sm'}`}>{label}</label>
         <input
           type="text"
           inputMode="numeric"
@@ -82,11 +84,11 @@ const PropertySqftField: React.FC<PropertySqftFieldProps> = ({
             setTimeout(() => e.target.select(), 0);
           }}
           placeholder={placeholder}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-base min-h-[44px]"
+          className={`w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${compact ? 'text-sm' : 'text-base min-h-[44px]'}`}
           tabIndex={tabIndex}
           autoFocus
         />
-        {helpText && (
+        {helpText && !compact && (
           <p className="text-xs text-gray-500 mt-1">{helpText}</p>
         )}
       </div>
@@ -95,7 +97,7 @@ const PropertySqftField: React.FC<PropertySqftFieldProps> = ({
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label className={`block font-medium text-gray-700 mb-1 ${compact ? 'text-xs' : 'text-sm'}`}>{label}</label>
       <div
         onClick={() => handleStartEdit()}
         onKeyDown={(e) => {
@@ -110,7 +112,9 @@ const PropertySqftField: React.FC<PropertySqftFieldProps> = ({
         }}
         onFocus={handleFocus}
         tabIndex={tabIndex || 0}
-        className={`mt-1 px-3 py-2 rounded-md shadow-sm border text-base min-h-[44px] flex items-center transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+        className={`mt-1 px-3 py-2 rounded-md shadow-sm border flex items-center transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+          compact ? 'text-sm' : 'text-base min-h-[44px]'
+        } ${
           disabled
             ? 'bg-gray-100 cursor-not-allowed border-gray-200'
             : 'cursor-pointer hover:bg-blue-50 border-transparent hover:border-blue-200 bg-white'
@@ -123,7 +127,7 @@ const PropertySqftField: React.FC<PropertySqftFieldProps> = ({
           {displayValue}
         </span>
       </div>
-      {helpText && (
+      {helpText && !compact && (
         <p className="text-xs text-gray-500 mt-1">{helpText}</p>
       )}
     </div>

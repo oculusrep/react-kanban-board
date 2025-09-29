@@ -2,9 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from '../layers/LayerManager';
 import { FileText, DollarSign, Building2, Activity, MapPin } from 'lucide-react';
-import PropertyInputField from '../../property/PropertyInputField';
-import PropertyPSFField from '../../property/PropertyPSFField';
-import PropertySqftField from '../../property/PropertySqftField';
 
 interface Property {
   id: string;
@@ -187,7 +184,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         }
       });
 
-      // Only initialize form if we don't have unsaved changes and we don't have saved data
+      // Only initialize form if we don't have unsaved changes and no saved data
       if (!hasPropertyChanges && !shouldUseSavedData) {
         console.log('📥 Initializing property form data from props:', propertyData);
         setPropertyFormData({
@@ -321,27 +318,40 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
   // Handle saving property changes
   const handleSavePropertyChanges = async () => {
-    if (!property) return;
+    console.log('🔍 handleSavePropertyChanges called');
+    console.log('🔍 property:', property);
+    console.log('🔍 propertyFormData:', propertyFormData);
+    console.log('🔍 hasPropertyChanges:', hasPropertyChanges);
+
+    if (!property) {
+      console.log('❌ No property data, returning early');
+      return;
+    }
 
     try {
       console.log(`💾 Saving property changes for ${property.id}`);
       console.log('📝 Property form data being saved:', propertyFormData);
 
+      // Prepare the update object
+      const updateData = {
+        property_name: propertyFormData.property_name || null,
+        address: propertyFormData.address || null,
+        city: propertyFormData.city || null,
+        zip: propertyFormData.zip || null,
+        rent_psf: propertyFormData.rent_psf,
+        nnn_psf: propertyFormData.nnn_psf,
+        acres: propertyFormData.acres,
+        building_sqft: propertyFormData.building_sqft,
+        available_sqft: propertyFormData.available_sqft,
+        updated_at: new Date().toISOString()
+      };
+
+      console.log('📝 Database update object:', updateData);
+
       // Update database with property data
       const { data: updatedData, error } = await supabase
         .from('property')
-        .update({
-          property_name: propertyFormData.property_name || null,
-          address: propertyFormData.address || null,
-          city: propertyFormData.city || null,
-          zip: propertyFormData.zip || null,
-          rent_psf: propertyFormData.rent_psf,
-          nnn_psf: propertyFormData.nnn_psf,
-          acres: propertyFormData.acres,
-          building_sqft: propertyFormData.building_sqft,
-          available_sqft: propertyFormData.available_sqft,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', property.id)
         .select(`
           id,
@@ -364,6 +374,12 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
       if (error) {
         console.error('❌ Error saving property changes:', error);
+        console.error('❌ Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
         // Could show error notification here
       } else {
         console.log('✅ Property changes saved successfully:', updatedData);
@@ -604,45 +620,61 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           <div className="space-y-3">
             {isProperty ? (
               <>
-                <PropertyInputField
-                  label="Property Name"
-                  value={propertyFormData.property_name}
-                  onChange={(value) => {
-                    setPropertyFormData(prev => ({ ...prev, property_name: value as string }));
-                    setHasPropertyChanges(true);
-                  }}
-                  placeholder="Enter property name..."
-                />
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Property Name</label>
+                  <input
+                    type="text"
+                    value={propertyFormData.property_name || ''}
+                    onChange={(e) => {
+                      setPropertyFormData(prev => ({ ...prev, property_name: e.target.value }));
+                      setHasPropertyChanges(true);
+                    }}
+                    placeholder="Enter property name..."
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  />
+                </div>
 
-                <PropertyInputField
-                  label="Address"
-                  value={propertyFormData.address}
-                  onChange={(value) => {
-                    setPropertyFormData(prev => ({ ...prev, address: value as string }));
-                    setHasPropertyChanges(true);
-                  }}
-                  placeholder="Enter address..."
-                />
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Address</label>
+                  <input
+                    type="text"
+                    value={propertyFormData.address || ''}
+                    onChange={(e) => {
+                      setPropertyFormData(prev => ({ ...prev, address: e.target.value }));
+                      setHasPropertyChanges(true);
+                    }}
+                    placeholder="Enter address..."
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  />
+                </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <PropertyInputField
-                    label="City"
-                    value={propertyFormData.city}
-                    onChange={(value) => {
-                      setPropertyFormData(prev => ({ ...prev, city: value as string }));
-                      setHasPropertyChanges(true);
-                    }}
-                    placeholder="Enter city..."
-                  />
-                  <PropertyInputField
-                    label="ZIP"
-                    value={propertyFormData.zip}
-                    onChange={(value) => {
-                      setPropertyFormData(prev => ({ ...prev, zip: value as string }));
-                      setHasPropertyChanges(true);
-                    }}
-                    placeholder="Enter ZIP..."
-                  />
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">City</label>
+                    <input
+                      type="text"
+                      value={propertyFormData.city || ''}
+                      onChange={(e) => {
+                        setPropertyFormData(prev => ({ ...prev, city: e.target.value }));
+                        setHasPropertyChanges(true);
+                      }}
+                      placeholder="Enter city..."
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">ZIP</label>
+                    <input
+                      type="text"
+                      value={propertyFormData.zip || ''}
+                      onChange={(e) => {
+                        setPropertyFormData(prev => ({ ...prev, zip: e.target.value }));
+                        setHasPropertyChanges(true);
+                      }}
+                      placeholder="Enter ZIP..."
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    />
+                  </div>
                 </div>
               </>
             ) : (
@@ -705,62 +737,87 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                 {propertyStatus === 'lease' ? (
                   /* Lease Fields */
                   <>
-                    <PropertySqftField
-                      label="Available Sq Ft"
-                      value={propertyFormData.available_sqft}
-                      onChange={(value) => {
-                        setPropertyFormData(prev => ({ ...prev, available_sqft: value }));
-                        setHasPropertyChanges(true);
-                      }}
-                      placeholder="10,000"
-                      helpText="Leasable square footage"
-                    />
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Available Sq Ft</label>
+                      <input
+                        type="number"
+                        value={propertyFormData.available_sqft || ''}
+                        onChange={(e) => {
+                          const value = e.target.value ? parseInt(e.target.value) : null;
+                          setPropertyFormData(prev => ({ ...prev, available_sqft: value }));
+                          setHasPropertyChanges(true);
+                        }}
+                        placeholder="10,000"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <PropertyPSFField
-                        label="Rent PSF"
-                        value={propertyFormData.rent_psf}
-                        onChange={(value) => {
-                          setPropertyFormData(prev => ({ ...prev, rent_psf: value }));
-                          setHasPropertyChanges(true);
-                        }}
-                        placeholder="25.00"
-                        helpText="Base rent per square foot"
-                      />
-                      <PropertyPSFField
-                        label="NNN PSF"
-                        value={propertyFormData.nnn_psf}
-                        onChange={(value) => {
-                          setPropertyFormData(prev => ({ ...prev, nnn_psf: value }));
-                          setHasPropertyChanges(true);
-                        }}
-                        placeholder="8.50"
-                        helpText="Triple net charges per square foot"
-                      />
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Rent PSF</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={propertyFormData.rent_psf || ''}
+                          onChange={(e) => {
+                            const value = e.target.value ? parseFloat(e.target.value) : null;
+                            setPropertyFormData(prev => ({ ...prev, rent_psf: value }));
+                            setHasPropertyChanges(true);
+                          }}
+                          placeholder="25.00"
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">NNN PSF</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={propertyFormData.nnn_psf || ''}
+                          onChange={(e) => {
+                            const value = e.target.value ? parseFloat(e.target.value) : null;
+                            setPropertyFormData(prev => ({ ...prev, nnn_psf: value }));
+                            setHasPropertyChanges(true);
+                          }}
+                          placeholder="8.50"
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
                     </div>
                   </>
                 ) : (
                   /* Purchase Fields */
                   <>
-                    <PropertySqftField
-                      label="Building Sq Ft"
-                      value={propertyFormData.building_sqft}
-                      onChange={(value) => {
-                        setPropertyFormData(prev => ({ ...prev, building_sqft: value }));
-                        setHasPropertyChanges(true);
-                      }}
-                      placeholder="50,000"
-                      helpText="Total building square footage"
-                    />
-                    <PropertyInputField
-                      label="Acres"
-                      value={propertyFormData.acres}
-                      onChange={(value) => {
-                        setPropertyFormData(prev => ({ ...prev, acres: value as number }));
-                        setHasPropertyChanges(true);
-                      }}
-                      type="number"
-                      placeholder="2.5"
-                    />
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Building Sq Ft</label>
+                      <input
+                        type="number"
+                        value={propertyFormData.building_sqft || ''}
+                        onChange={(e) => {
+                          const value = e.target.value ? parseInt(e.target.value) : null;
+                          setPropertyFormData(prev => ({ ...prev, building_sqft: value }));
+                          setHasPropertyChanges(true);
+                        }}
+                        placeholder="50,000"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Acres</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={propertyFormData.acres || ''}
+                        onChange={(e) => {
+                          setPropertyFormData(prev => ({
+                            ...prev,
+                            acres: e.target.value ? parseFloat(e.target.value) : null
+                          }));
+                          setHasPropertyChanges(true);
+                        }}
+                        placeholder="2.5"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                      />
+                    </div>
                   </>
                 )}
               </>

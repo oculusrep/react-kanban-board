@@ -99,7 +99,12 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
           latitude,
           longitude,
           verified_latitude,
-          verified_longitude
+          verified_longitude,
+          rent_psf,
+          nnn_psf,
+          acres,
+          building_sqft,
+          available_sqft
         `)
         .or('and(latitude.not.is.null,longitude.not.is.null),and(verified_latitude.not.is.null,verified_longitude.not.is.null)');
 
@@ -137,7 +142,12 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
                 latitude,
                 longitude,
                 verified_latitude,
-                verified_longitude
+                verified_longitude,
+                rent_psf,
+                nnn_psf,
+                acres,
+                building_sqft,
+                available_sqft
               `)
               .or('and(latitude.not.is.null,longitude.not.is.null),and(verified_latitude.not.is.null,verified_longitude.not.is.null)')
               .range(pageStart, pageStart + pageSize - 1)
