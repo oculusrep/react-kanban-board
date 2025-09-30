@@ -7,13 +7,15 @@ interface GoogleMapContainerProps {
   width?: string;
   className?: string;
   onMapLoad?: (map: google.maps.Map) => void;
+  onCenterOnLocationReady?: (centerFunction: () => void) => void;
 }
 
 const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
   height = '400px',
   width = '100%',
   className = '',
-  onMapLoad
+  onMapLoad,
+  onCenterOnLocationReady
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
@@ -492,9 +494,29 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           }
         });
 
-        // Call callback if provided
+        // Create center on location function
+        const centerOnLocation = () => {
+          if (userLocation && mapInstanceRef.current) {
+            mapInstanceRef.current.panTo(userLocation);
+            mapInstanceRef.current.setZoom(15);
+          } else {
+            // Request location if we don't have it
+            getUserLocation().then((location) => {
+              if (location && mapInstanceRef.current) {
+                setUserLocation(location);
+                mapInstanceRef.current.panTo(location);
+                mapInstanceRef.current.setZoom(15);
+              }
+            });
+          }
+        };
+
+        // Call callbacks if provided
         if (onMapLoad) {
           onMapLoad(map);
+        }
+        if (onCenterOnLocationReady) {
+          onCenterOnLocationReady(centerOnLocation);
         }
 
         console.log('✅ Google Maps initialized successfully');
@@ -592,33 +614,6 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         className="w-full h-full"
         style={{ minHeight: '200px' }}
       />
-
-      {/* Center on Location Button */}
-      {!isLoading && !error && mapInstanceRef.current && (
-        <button
-          onClick={() => {
-            if (userLocation && mapInstanceRef.current) {
-              mapInstanceRef.current.panTo(userLocation);
-              mapInstanceRef.current.setZoom(15);
-            } else {
-              // Request location if we don't have it
-              getUserLocation().then((location) => {
-                if (location && mapInstanceRef.current) {
-                  setUserLocation(location);
-                  mapInstanceRef.current.panTo(location);
-                  mapInstanceRef.current.setZoom(15);
-                }
-              });
-            }
-          }}
-          className="absolute bottom-6 left-6 bg-white hover:bg-gray-50 rounded-full p-3 shadow-lg border border-gray-200 transition-colors"
-          title={userLocation ? "Center on your location" : "Get your location"}
-        >
-          <span className="text-lg">
-            {userLocation ? '📍' : '🎯'}
-          </span>
-        </button>
-      )}
     </div>
   );
 };

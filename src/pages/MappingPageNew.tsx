@@ -46,6 +46,9 @@ const MappingPageContent: React.FC = () => {
   const [isPropertyDetailsOpen, setIsPropertyDetailsOpen] = useState(false);
   const [selectedPropertyData, setSelectedPropertyData] = useState<any>(null);
 
+  // Center on location function
+  const [centerOnLocation, setCenterOnLocation] = useState<(() => void) | null>(null);
+
   // Client selector state
   const [selectedClient, setSelectedClient] = useState<ClientSearchResult | null>(null);
 
@@ -785,6 +788,15 @@ const MappingPageContent: React.FC = () => {
                   >
                     {isSearching ? '🔄 Searching...' : '🔍 Search'}
                   </button>
+                  <button
+                    onClick={() => centerOnLocation?.()}
+                    disabled={!centerOnLocation}
+                    className="px-3 py-1 bg-white text-gray-700 text-sm rounded hover:bg-gray-50 border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
+                    title="Center map on your location"
+                  >
+                    <span>📍</span>
+                    <span>My Location</span>
+                  </button>
                 </div>
                 {searchResult && (
                   <div className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded max-w-md truncate">
@@ -932,6 +944,7 @@ const MappingPageContent: React.FC = () => {
               height="100%"
               width="100%"
               onMapLoad={handleMapLoad}
+              onCenterOnLocationReady={(fn) => setCenterOnLocation(() => fn)}
               className={createMode ? 'cursor-crosshair' : ''}
             />
 
