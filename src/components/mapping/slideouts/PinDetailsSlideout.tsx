@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from '../layers/LayerManager';
-import { FileText, DollarSign, Building2, Activity, MapPin } from 'lucide-react';
+import { usePropertyRecordTypes } from '../../../hooks/usePropertyRecordTypes';
+import { useProperty } from '../../../hooks/useProperty';
+import PropertyInputField from '../../property/PropertyInputField';
+import PropertyPSFField from '../../property/PropertyPSFField';
+import PropertyCurrencyField from '../../property/PropertyCurrencyField';
+import { FileText, DollarSign, Building2, Activity, MapPin, Edit3 } from 'lucide-react';
+import { Database } from '../../../database-schema';
+
+type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
 interface Property {
   id: string;
@@ -20,6 +28,7 @@ interface Property {
   acres?: number;
   building_sqft?: number;
   available_sqft?: number;
+  property_record_type_id?: string;
 }
 
 interface SiteSubmit {
@@ -60,7 +69,7 @@ interface PinDetailsSlideoutProps {
   onCenterOnPin?: (lat: number, lng: number) => void; // Function to center map on pin
 }
 
-type TabType = 'property' | 'submit' | 'financial' | 'activity' | 'location';
+type TabType = 'property' | 'submit' | 'location';
 
 const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   isOpen,
@@ -76,13 +85,28 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 }) => {
   console.log('PinDetailsSlideout rendering with:', { isOpen, data, type });
   const [activeTab, setActiveTab] = useState<TabType>(type === 'site_submit' ? 'submit' : 'property');
-  const [isEditing, setIsEditing] = useState(false);
-  const [propertyStatus, setPropertyStatus] = useState<'lease' | 'purchase'>('lease');
   const [submitStages, setSubmitStages] = useState<{ id: string; name: string }[]>([]);
   const [currentStageId, setCurrentStageId] = useState<string>('');
   const [isMinimized, setIsMinimized] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [lastSavedData, setLastSavedData] = useState<any>(null);
+  const [isEditingPropertyType, setIsEditingPropertyType] = useState(false);
+
+  // Local state for property data (so we can update it immediately)
+  const [localPropertyData, setLocalPropertyData] = useState<Property | null>(null);
+
+  // Use shared hooks
+  const { propertyRecordTypes, isLoading: isLoadingRecordTypes } = usePropertyRecordTypes();
+  const { updateProperty } = useProperty(localPropertyData?.id || undefined);
+
+  // Sync local property data with incoming data prop
+  useEffect(() => {
+    console.log('🔄 Syncing localPropertyData:', { data, type, hasData: !!data });
+    if (data && type === 'property') {
+      setLocalPropertyData(data as Property);
+      console.log('✅ Set localPropertyData:', (data as Property).id, (data as Property).property_name);
+    }
+  }, [data, type]);
 
   // Form state for site submit fields
   const [formData, setFormData] = useState({
@@ -93,21 +117,6 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     notes: ''
   });
 
-  // Form state for property fields
-  const [propertyFormData, setPropertyFormData] = useState({
-    property_name: '',
-    address: '',
-    city: '',
-    zip: '',
-    rent_psf: null as number | null,
-    nnn_psf: null as number | null,
-    acres: null as number | null,
-    building_sqft: null as number | null,
-    available_sqft: null as number | null
-  });
-
-  const [hasPropertyChanges, setHasPropertyChanges] = useState(false);
-  const [lastSavedPropertyData, setLastSavedPropertyData] = useState<Property | null>(null);
 
   const { refreshLayer } = useLayerManager();
 
@@ -159,62 +168,6 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     }
   }, [data, type, lastSavedData]);
 
-  // Initialize property form data when data loads
-  useEffect(() => {
-    if (type === 'property' && data) {
-      const propertyData = data as Property;
-
-      // Check if we have saved data and it matches the current data
-      const shouldUseSavedData = lastSavedPropertyData &&
-        lastSavedPropertyData.id === propertyData.id;
-
-      console.log('📥 Property form initialization check:', {
-        type,
-        hasData: !!data,
-        dataId: data?.id,
-        shouldUseSavedData,
-        hasPropertyChanges,
-        lastSavedPropertyData: lastSavedPropertyData ? {
-          id: lastSavedPropertyData.id,
-          property_name: lastSavedPropertyData.property_name
-        } : null,
-        currentData: {
-          id: propertyData.id,
-          property_name: propertyData.property_name
-        }
-      });
-
-      // Only initialize form if we don't have unsaved changes and no saved data
-      if (!hasPropertyChanges && !shouldUseSavedData) {
-        console.log('📥 Initializing property form data from props:', propertyData);
-        setPropertyFormData({
-          property_name: propertyData.property_name || '',
-          address: propertyData.address || '',
-          city: propertyData.city || '',
-          zip: propertyData.zip || '',
-          rent_psf: propertyData.rent_psf || null,
-          nnn_psf: propertyData.nnn_psf || null,
-          acres: propertyData.acres || null,
-          building_sqft: propertyData.building_sqft || null,
-          available_sqft: propertyData.available_sqft || null
-        });
-
-        // Set property status based on existing data - if has acres, likely purchase; if has rent_psf, likely lease
-        if (propertyData.acres && !propertyData.rent_psf) {
-          setPropertyStatus('purchase');
-        } else {
-          setPropertyStatus('lease');
-        }
-
-        setHasPropertyChanges(false);
-      } else if (shouldUseSavedData) {
-        console.log('🔄 Using last saved property data for form initialization');
-        // Data is already up to date from the save operation
-      } else {
-        console.log('⚠️ Skipping property form initialization - has unsaved changes');
-      }
-    }
-  }, [data, type, lastSavedPropertyData, hasPropertyChanges]);
 
   // Initialize current stage ID when data changes
   useEffect(() => {
@@ -271,10 +224,12 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     }
   }, [type]);
 
+  // Property record types are now loaded via usePropertyRecordTypes hook
+
   if (!data || !type) return null;
 
   const isProperty = type === 'property';
-  const property = isProperty ? (data as Property) : (data as SiteSubmit).property;
+  const property = isProperty ? localPropertyData : (data as SiteSubmit)?.property;
   const siteSubmit = !isProperty ? (data as SiteSubmit) : null;
 
   // Handle stage change with immediate database update
@@ -316,99 +271,37 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     }
   };
 
-  // Handle saving property changes
-  const handleSavePropertyChanges = async () => {
-    console.log('🔍 handleSavePropertyChanges called');
-    console.log('🔍 property:', property);
-    console.log('🔍 propertyFormData:', propertyFormData);
-    console.log('🔍 hasPropertyChanges:', hasPropertyChanges);
 
-    if (!property) {
-      console.log('❌ No property data, returning early');
+  // Handle field updates for property (auto-save)
+  const handlePropertyFieldUpdate = async (field: keyof Property, value: any) => {
+    console.log(`🎯 handlePropertyFieldUpdate called:`, { field, value, hasLocalPropertyData: !!localPropertyData });
+
+    if (!localPropertyData) {
+      console.error('❌ No localPropertyData, cannot update field');
       return;
     }
 
     try {
-      console.log(`💾 Saving property changes for ${property.id}`);
-      console.log('📝 Property form data being saved:', propertyFormData);
+      console.log(`💾 Auto-saving property field ${field}:`, value);
 
-      // Prepare the update object
-      const updateData = {
-        property_name: propertyFormData.property_name || null,
-        address: propertyFormData.address || null,
-        city: propertyFormData.city || null,
-        zip: propertyFormData.zip || null,
-        rent_psf: propertyFormData.rent_psf,
-        nnn_psf: propertyFormData.nnn_psf,
-        acres: propertyFormData.acres,
-        building_sqft: propertyFormData.building_sqft,
-        available_sqft: propertyFormData.available_sqft,
-        updated_at: new Date().toISOString()
-      };
+      // Update local state immediately for instant UI feedback
+      setLocalPropertyData(prev => {
+        const updated = prev ? { ...prev, [field]: value } : null;
+        console.log('📝 Updated localPropertyData:', updated);
+        return updated;
+      });
 
-      console.log('📝 Database update object:', updateData);
+      // Update using shared hook (background save)
+      await updateProperty({ [field]: value });
 
-      // Update database with property data
-      const { data: updatedData, error } = await supabase
-        .from('property')
-        .update(updateData)
-        .eq('id', property.id)
-        .select(`
-          id,
-          property_name,
-          address,
-          city,
-          state,
-          zip,
-          latitude,
-          longitude,
-          verified_latitude,
-          verified_longitude,
-          rent_psf,
-          nnn_psf,
-          acres,
-          building_sqft,
-          available_sqft
-        `)
-        .single();
-
-      if (error) {
-        console.error('❌ Error saving property changes:', error);
-        console.error('❌ Error details:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        });
-        // Could show error notification here
-      } else {
-        console.log('✅ Property changes saved successfully:', updatedData);
-
-        // Update the form data to match what was actually saved in the database
-        setPropertyFormData({
-          property_name: updatedData.property_name || '',
-          address: updatedData.address || '',
-          city: updatedData.city || '',
-          zip: updatedData.zip || '',
-          rent_psf: updatedData.rent_psf || null,
-          nnn_psf: updatedData.nnn_psf || null,
-          acres: updatedData.acres || null,
-          building_sqft: updatedData.building_sqft || null,
-          available_sqft: updatedData.available_sqft || null
-        });
-
-        // Store the saved data to prevent form reinitialization
-        setLastSavedPropertyData(updatedData);
-
-        setHasPropertyChanges(false);
-
-        // Trigger refresh of property layer to show changes immediately
-        refreshLayer('properties');
-
-        console.log('🔄 Property data synchronized with database');
-      }
+      console.log('✅ Field auto-saved successfully:', { field, value });
+      // Don't refresh the layer - it causes the slideout to close
     } catch (err) {
-      console.error('💥 Failed to save property changes:', err);
+      console.error('💥 Failed to auto-save field:', err);
+      // Revert local state on error
+      if (data && type === 'property') {
+        setLocalPropertyData(data as Property);
+      }
     }
   };
 
@@ -469,14 +362,10 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     if (isProperty) {
       return [
         { id: 'property' as TabType, label: 'PROPERTY', icon: <Building2 size={16} /> },
-        { id: 'financial' as TabType, label: 'FINANCIAL', icon: <DollarSign size={16} /> },
-        { id: 'activity' as TabType, label: 'ACTIVITY', icon: <Activity size={16} /> },
       ];
     } else {
       return [
         { id: 'submit' as TabType, label: 'SUBMIT', icon: <FileText size={16} /> },
-        { id: 'financial' as TabType, label: 'FINANCIAL', icon: <DollarSign size={16} /> },
-        { id: 'activity' as TabType, label: 'ACTIVITY', icon: <Activity size={16} /> },
         { id: 'location' as TabType, label: 'PROPERTY', icon: <Building2 size={16} /> },
       ];
     }
@@ -616,66 +505,213 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         );
 
       case 'property':
+        // Determine property type for conditional field display
+        const propertyRecordTypeLabel = property?.property_record_type_id && propertyRecordTypes.length > 0
+          ? propertyRecordTypes.find(type => type.id === property.property_record_type_id)?.label?.toLowerCase() || ''
+          : '';
+        const isShoppingCenterType = propertyRecordTypeLabel.includes('shopping') || propertyRecordTypeLabel.includes('retail');
+        const isLandType = propertyRecordTypeLabel.includes('land');
+
         return (
-          <div className="space-y-3">
+          <div className="space-y-2 text-sm">
             {isProperty ? (
               <>
+                {/* Property Name */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Property Name</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Property Name</label>
                   <input
                     type="text"
-                    value={propertyFormData.property_name || ''}
-                    onChange={(e) => {
-                      setPropertyFormData(prev => ({ ...prev, property_name: e.target.value }));
-                      setHasPropertyChanges(true);
-                    }}
+                    value={property?.property_name || ''}
+                    onChange={(e) => handlePropertyFieldUpdate('property_name', e.target.value)}
                     placeholder="Enter property name..."
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
 
+                {/* Address */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Address</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
                   <input
                     type="text"
-                    value={propertyFormData.address || ''}
-                    onChange={(e) => {
-                      setPropertyFormData(prev => ({ ...prev, address: e.target.value }));
-                      setHasPropertyChanges(true);
-                    }}
+                    value={property?.address || ''}
+                    onChange={(e) => handlePropertyFieldUpdate('address', e.target.value)}
                     placeholder="Enter address..."
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                {/* City, State, ZIP on one line */}
+                <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">City</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
                     <input
                       type="text"
-                      value={propertyFormData.city || ''}
-                      onChange={(e) => {
-                        setPropertyFormData(prev => ({ ...prev, city: e.target.value }));
-                        setHasPropertyChanges(true);
-                      }}
-                      placeholder="Enter city..."
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                      value={property?.city || ''}
+                      onChange={(e) => handlePropertyFieldUpdate('city', e.target.value)}
+                      placeholder="City..."
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">ZIP</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
                     <input
                       type="text"
-                      value={propertyFormData.zip || ''}
-                      onChange={(e) => {
-                        setPropertyFormData(prev => ({ ...prev, zip: e.target.value }));
-                        setHasPropertyChanges(true);
-                      }}
-                      placeholder="Enter ZIP..."
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                      value={property?.state || ''}
+                      onChange={(e) => handlePropertyFieldUpdate('state', e.target.value)}
+                      placeholder="State..."
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">ZIP</label>
+                    <input
+                      type="text"
+                      value={property?.zip || ''}
+                      onChange={(e) => handlePropertyFieldUpdate('zip', e.target.value)}
+                      placeholder="ZIP..."
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
                 </div>
+
+                {/* Financial Fields - For Shopping Centers */}
+                {isShoppingCenterType && (
+                  <>
+                    {/* Available Sqft */}
+                    <div className="pt-2 border-t border-gray-200">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Available Sqft</label>
+                      <input
+                        type="number"
+                        value={property?.available_sqft || ''}
+                        onChange={(e) => handlePropertyFieldUpdate('available_sqft', e.target.value ? parseFloat(e.target.value) : null)}
+                        placeholder="0"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    {/* Rent PSF and NNN PSF */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Rent PSF</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={property?.rent_psf || ''}
+                          onChange={(e) => handlePropertyFieldUpdate('rent_psf', e.target.value ? parseFloat(e.target.value) : null)}
+                          placeholder="0.00"
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">NNN PSF</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={property?.nnn_psf || ''}
+                          onChange={(e) => handlePropertyFieldUpdate('nnn_psf', e.target.value ? parseFloat(e.target.value) : null)}
+                          placeholder="0.00"
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* All-In Rent Calculation */}
+                    {property?.rent_psf && property?.nnn_psf && property?.available_sqft && (
+                      <div className="p-2 bg-blue-50 rounded text-xs">
+                        <div className="font-medium text-blue-900">All-In Rent</div>
+                        <div className="text-sm font-bold text-blue-700">
+                          ${(property.rent_psf + property.nnn_psf).toFixed(2)} / SF
+                        </div>
+                        <div className="text-xs text-blue-600">
+                          Total annual: ${((property.rent_psf + property.nnn_psf) * property.available_sqft).toLocaleString()}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Land Fields */}
+                {isLandType && (
+                  <>
+                    <div className="pt-2 border-t border-gray-200">
+                      <h4 className="text-sm font-semibold text-gray-900 mb-2">Land Information</h4>
+
+                      {/* Row 1: Asking Purchase Price, Asking Ground Lease Price */}
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Asking Purchase Price</label>
+                          <input
+                            type="number"
+                            value={property?.asking_purchase_price || ''}
+                            onChange={(e) => handlePropertyFieldUpdate('asking_purchase_price', e.target.value ? parseFloat(e.target.value) : null)}
+                            placeholder="0"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Asking Ground Lease Price</label>
+                          <input
+                            type="number"
+                            value={property?.asking_lease_price || ''}
+                            onChange={(e) => handlePropertyFieldUpdate('asking_lease_price', e.target.value ? parseFloat(e.target.value) : null)}
+                            placeholder="0"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Row 2: NNN, Acres */}
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">NNN</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={property?.nnn_psf || ''}
+                            onChange={(e) => handlePropertyFieldUpdate('nnn_psf', e.target.value ? parseFloat(e.target.value) : null)}
+                            placeholder="0.00"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Acres</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={property?.acres || ''}
+                            onChange={(e) => handlePropertyFieldUpdate('acres', e.target.value ? parseFloat(e.target.value) : null)}
+                            placeholder="0.00"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Row 3: Building Sqft, Lease Expiration Date */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Building Sqft</label>
+                          <input
+                            type="number"
+                            value={property?.building_sqft || ''}
+                            onChange={(e) => handlePropertyFieldUpdate('building_sqft', e.target.value ? parseFloat(e.target.value) : null)}
+                            placeholder="0"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Lease Expiration Date</label>
+                          <input
+                            type="text"
+                            value={property?.lease_expiration_date || ''}
+                            onChange={(e) => handlePropertyFieldUpdate('lease_expiration_date', e.target.value)}
+                            placeholder="MM/DD/YYYY"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </>
             ) : (
               <>
@@ -697,129 +733,6 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded bg-gray-50"
                   />
                 </div>
-              </>
-            )}
-
-            {/* Lease/Purchase Toggle - only for properties */}
-            {isProperty && (
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
-                <div className="flex rounded-md border border-gray-300 overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setPropertyStatus('lease')}
-                    className={`flex-1 px-3 py-2 text-xs font-medium transition-all duration-200 ${
-                      propertyStatus === 'lease'
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-white text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    Lease
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPropertyStatus('purchase')}
-                    className={`flex-1 px-3 py-2 text-xs font-medium border-l border-gray-300 transition-all duration-200 ${
-                      propertyStatus === 'purchase'
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-white text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    Purchase
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Financial Fields - only for properties */}
-            {isProperty && (
-              <>
-                {propertyStatus === 'lease' ? (
-                  /* Lease Fields */
-                  <>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Available Sq Ft</label>
-                      <input
-                        type="number"
-                        value={propertyFormData.available_sqft || ''}
-                        onChange={(e) => {
-                          const value = e.target.value ? parseInt(e.target.value) : null;
-                          setPropertyFormData(prev => ({ ...prev, available_sqft: value }));
-                          setHasPropertyChanges(true);
-                        }}
-                        placeholder="10,000"
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Rent PSF</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={propertyFormData.rent_psf || ''}
-                          onChange={(e) => {
-                            const value = e.target.value ? parseFloat(e.target.value) : null;
-                            setPropertyFormData(prev => ({ ...prev, rent_psf: value }));
-                            setHasPropertyChanges(true);
-                          }}
-                          placeholder="25.00"
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">NNN PSF</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={propertyFormData.nnn_psf || ''}
-                          onChange={(e) => {
-                            const value = e.target.value ? parseFloat(e.target.value) : null;
-                            setPropertyFormData(prev => ({ ...prev, nnn_psf: value }));
-                            setHasPropertyChanges(true);
-                          }}
-                          placeholder="8.50"
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                        />
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  /* Purchase Fields */
-                  <>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Building Sq Ft</label>
-                      <input
-                        type="number"
-                        value={propertyFormData.building_sqft || ''}
-                        onChange={(e) => {
-                          const value = e.target.value ? parseInt(e.target.value) : null;
-                          setPropertyFormData(prev => ({ ...prev, building_sqft: value }));
-                          setHasPropertyChanges(true);
-                        }}
-                        placeholder="50,000"
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Acres</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={propertyFormData.acres || ''}
-                        onChange={(e) => {
-                          setPropertyFormData(prev => ({
-                            ...prev,
-                            acres: e.target.value ? parseFloat(e.target.value) : null
-                          }));
-                          setHasPropertyChanges(true);
-                        }}
-                        placeholder="2.5"
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                      />
-                    </div>
-                  </>
-                )}
               </>
             )}
 
@@ -868,123 +781,6 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           </div>
         );
 
-      case 'financial':
-        return (
-          <div className="space-y-6">
-            {isProperty ? (
-              <>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">Market Rent PSF</label>
-                    <input
-                      type="number"
-                      placeholder="Enter value..."
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent  transition-all duration-200"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">Annual Gross Rent</label>
-                    <input
-                      type="number"
-                      placeholder="$ 0"
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent  transition-all duration-200"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Lease Type</label>
-                    <select
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
-                    >
-                      <option>Full Service/Modified Gross</option>
-                      <option>Triple Net</option>
-                      <option>Gross</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Square Footage</label>
-                    <input
-                      type="number"
-                      placeholder="Enter value..."
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Tenant Allowance PSF</label>
-                    <input
-                      type="number"
-                      placeholder="$ 0"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Leasing Agent</label>
-                    <input
-                      type="text"
-                      placeholder="Enter name..."
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
-                    />
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                {/* Year 1 Rent & TI in same row */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Year 1 Rent</label>
-                    <input
-                      type="number"
-                      value={siteSubmit?.year_1_rent || ''}
-                      onChange={() => {}}
-                      readOnly
-                      placeholder="Amount..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">TI (Tenant Improvement)</label>
-                    <input
-                      type="number"
-                      value={siteSubmit?.ti || ''}
-                      onChange={() => {}}
-                      readOnly
-                      placeholder="Amount..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
-                    />
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        );
-
-      case 'activity':
-        return (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Notes</label>
-              <textarea
-                rows={6}
-                value={property?.property_notes || ''}
-                disabled={!isEditing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
-                placeholder="Enter value..."
-              />
-            </div>
-            {!isProperty && (
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Client</label>
-                <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md">
-                  {siteSubmit?.client?.client_name || 'No client assigned'}
-                </div>
-              </div>
-            )}
-          </div>
-        );
 
       default:
         return <div>Content for {activeTab}</div>;
@@ -1071,7 +867,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                 <div className="flex items-center justify-between">
                   <h1 className={`font-bold text-gray-900 mb-1 ${isProperty ? 'text-lg' : 'text-base'}`}>
                     {isProperty
-                      ? (propertyFormData.property_name || propertyFormData.address || property?.address || 'Unnamed Property')
+                      ? (property?.property_name || property?.address || 'Unnamed Property')
                       : (siteSubmit?.site_submit_name || siteSubmit?.property?.property_name || 'Site Submit')
                     }
                   </h1>
@@ -1093,6 +889,49 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                   )}
                 </div>
 
+                {/* Property Type - For properties only */}
+                {isProperty && property && (
+                  <div className="mt-2">
+                    {!isEditingPropertyType ? (
+                      <div
+                        className="inline-flex items-center gap-2 px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium cursor-pointer hover:bg-green-200 transition-colors"
+                        onClick={() => setIsEditingPropertyType(true)}
+                      >
+                        <span>
+                          {property.property_record_type_id && propertyRecordTypes.length > 0
+                            ? propertyRecordTypes.find(type => type.id === property.property_record_type_id)?.label || 'Unknown Type'
+                            : 'Set Property Type'
+                          }
+                        </span>
+                        <Edit3 size={12} className="text-green-600" />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={property.property_record_type_id || ''}
+                          onChange={(e) => {
+                            handlePropertyFieldUpdate('property_record_type_id', e.target.value);
+                            setIsEditingPropertyType(false);
+                          }}
+                          className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                          autoFocus
+                          onBlur={() => setIsEditingPropertyType(false)}
+                          disabled={isLoadingRecordTypes}
+                        >
+                          <option value="">
+                            {isLoadingRecordTypes ? 'Loading types...' : 'Select property type...'}
+                          </option>
+                          {propertyRecordTypes.map(type => (
+                            <option key={type.id} value={type.id}>
+                              {type.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Property Information - For site submits only */}
                 {!isProperty && siteSubmit && (
                   <div className="mb-2 space-y-0.5">
@@ -1107,34 +946,6 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                   </div>
                 )}
 
-                {/* Property Status - Only show for properties */}
-                {isProperty && (
-                  <div className="flex items-center space-x-2">
-                    <div className="text-xs text-gray-600 font-medium">For:</div>
-                    <div className="flex space-x-1">
-                      <button
-                        onClick={() => setPropertyStatus('lease')}
-                        className={`px-3 py-1 rounded-full text-xs font-medium border transition-all duration-200 ${
-                          propertyStatus === 'lease'
-                            ? 'bg-orange-100 text-orange-700 border-orange-200 shadow-sm'
-                            : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-                        }`}
-                      >
-                        {propertyStatus === 'lease' ? '●' : '○'} Lease
-                      </button>
-                      <button
-                        onClick={() => setPropertyStatus('purchase')}
-                        className={`px-3 py-1 rounded-full text-xs font-medium border transition-all duration-200 ${
-                          propertyStatus === 'purchase'
-                            ? 'bg-orange-100 text-orange-700 border-orange-200 shadow-sm'
-                            : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-                        }`}
-                      >
-                        {propertyStatus === 'purchase' ? '●' : '○'} Purchase
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
 
             </div>
@@ -1191,64 +1002,35 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         {/* Footer Actions */}
         {!isMinimized && (
         <div className="border-t border-gray-200 p-3 bg-gray-50">
-          {isEditing ? (
-            <div className="flex items-center justify-center space-x-3">
-              <button
-                onClick={() => setIsEditing(false)}
-                className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all duration-200 font-medium text-sm shadow-sm hover:shadow-md"
-              >
-                SAVE CHANGES
-              </button>
-              <button
-                onClick={() => setIsEditing(false)}
-                className="flex-1 px-4 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all duration-200 font-medium text-sm"
-              >
-                CANCEL
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {/* Update Site Submit button - only show when changes made to site submits */}
-              {hasChanges && !isProperty && (
-                <div className="flex items-center justify-center">
-                  <button
-                    onClick={handleSaveChanges}
-                    className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all duration-200 font-medium text-sm shadow-sm hover:shadow-md"
-                  >
-                    UPDATE SITE SUBMIT
-                  </button>
-                </div>
-              )}
+          <div className="space-y-2">
+            {/* Update Site Submit button - only show when changes made to site submits */}
+            {hasChanges && !isProperty && (
+              <div className="flex items-center justify-center">
+                <button
+                  onClick={handleSaveChanges}
+                  className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all duration-200 font-medium text-sm shadow-sm hover:shadow-md"
+                >
+                  UPDATE SITE SUBMIT
+                </button>
+              </div>
+            )}
 
-              {/* Update Property button - only show when changes made to properties */}
-              {hasPropertyChanges && isProperty && (
-                <div className="flex items-center justify-center">
-                  <button
-                    onClick={handleSavePropertyChanges}
-                    className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all duration-200 font-medium text-sm shadow-sm hover:shadow-md"
-                  >
-                    UPDATE PROPERTY
-                  </button>
-                </div>
-              )}
-
-              {/* Tertiary Actions */}
-              {!hasChanges && !hasPropertyChanges && (
-                <div className="flex items-center justify-center pt-1">
-                  <button
-                    onClick={() => {
-                      if (!isProperty && property && onViewPropertyDetails) {
-                        onViewPropertyDetails(property);
-                      }
-                    }}
-                    className="text-xs text-gray-500 hover:text-gray-700 transition-colors font-medium"
-                  >
-                    VIEW FULL DETAILS →
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+            {/* Tertiary Actions */}
+            {!hasChanges && (
+              <div className="flex items-center justify-center pt-1">
+                <button
+                  onClick={() => {
+                    if (!isProperty && property && onViewPropertyDetails) {
+                      onViewPropertyDetails(property);
+                    }
+                  }}
+                  className="text-xs text-gray-500 hover:text-gray-700 transition-colors font-medium"
+                >
+                  VIEW FULL DETAILS →
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         )}
       </div>
