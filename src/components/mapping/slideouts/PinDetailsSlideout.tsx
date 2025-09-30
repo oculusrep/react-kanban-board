@@ -321,8 +321,10 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       // Clear the changes flag
       setHasPropertyChanges(false);
 
-      // Refresh the property layer to show updated data
+      // Refresh both property and site submit layers to show updated data
+      // Site submit layer needs refresh because it caches property data
       refreshLayer('properties');
+      refreshLayer('site_submits');
     } catch (err) {
       console.error('💥 Failed to save property:', err);
       alert('Failed to save property changes. Please try again.');
