@@ -99,6 +99,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
   // Local state for property data (so we can update it immediately)
   const [localPropertyData, setLocalPropertyData] = useState<Property | null>(null);
+  const [hasPropertyChanges, setHasPropertyChanges] = useState(false);
+  const [isSavingProperty, setIsSavingProperty] = useState(false);
 
   // Use shared hooks
   const { propertyRecordTypes, isLoading: isLoadingRecordTypes } = usePropertyRecordTypes();
@@ -277,8 +279,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   };
 
 
-  // Handle field updates for property (auto-save)
-  const handlePropertyFieldUpdate = async (field: keyof Property, value: any) => {
+  // Handle field updates for property (track changes, save on button click)
+  const handlePropertyFieldUpdate = (field: keyof Property, value: any) => {
     console.log(`🎯 handlePropertyFieldUpdate called:`, { field, value, hasLocalPropertyData: !!localPropertyData });
 
     if (!localPropertyData) {
@@ -286,30 +288,46 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       return;
     }
 
-    try {
-      console.log(`💾 Auto-saving property field ${field}:`, value);
+    // Update local state immediately for instant UI feedback
+    const updatedProperty = { ...localPropertyData, [field]: value };
+    setLocalPropertyData(updatedProperty);
+    console.log('📝 Updated localPropertyData:', updatedProperty);
 
-      // Update local state immediately for instant UI feedback
-      const updatedProperty = { ...localPropertyData, [field]: value };
-      setLocalPropertyData(updatedProperty);
-      console.log('📝 Updated localPropertyData:', updatedProperty);
+    // Mark that there are unsaved changes
+    setHasPropertyChanges(true);
+  };
+
+  // Save property changes to database
+  const handleSavePropertyChanges = async () => {
+    if (!localPropertyData) return;
+
+    try {
+      setIsSavingProperty(true);
+      console.log('💾 Saving property changes:', localPropertyData);
+
+      // Extract only the fields that should be updated (exclude id, created_at, updated_at)
+      const { id, ...propertyUpdates } = localPropertyData;
+
+      // Save all changes to database
+      await updateProperty(propertyUpdates);
+
+      console.log('✅ Property saved successfully');
 
       // Notify parent of the update so it can update its state
       if (onDataUpdate) {
-        onDataUpdate(updatedProperty as Property);
+        onDataUpdate(localPropertyData as Property);
       }
 
-      // Update using shared hook (background save)
-      await updateProperty({ [field]: value });
+      // Clear the changes flag
+      setHasPropertyChanges(false);
 
-      console.log('✅ Field auto-saved successfully:', { field, value });
-      // Don't refresh the layer - it causes the slideout to close
+      // Refresh the property layer to show updated data
+      refreshLayer('properties');
     } catch (err) {
-      console.error('💥 Failed to auto-save field:', err);
-      // Revert local state on error
-      if (data && type === 'property') {
-        setLocalPropertyData(data as Property);
-      }
+      console.error('💥 Failed to save property:', err);
+      alert('Failed to save property changes. Please try again.');
+    } finally {
+      setIsSavingProperty(false);
     }
   };
 
@@ -1011,6 +1029,19 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         {!isMinimized && (
         <div className="border-t border-gray-200 p-3 bg-gray-50">
           <div className="space-y-2">
+            {/* Update Property button - only show when changes made to properties */}
+            {hasPropertyChanges && isProperty && (
+              <div className="flex items-center justify-center">
+                <button
+                  onClick={handleSavePropertyChanges}
+                  disabled={isSavingProperty}
+                  className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all duration-200 font-medium text-sm shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSavingProperty ? 'SAVING...' : 'UPDATE PROPERTY'}
+                </button>
+              </div>
+            )}
+
             {/* Update Site Submit button - only show when changes made to site submits */}
             {hasChanges && !isProperty && (
               <div className="flex items-center justify-center">
@@ -1024,7 +1055,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
             )}
 
             {/* Tertiary Actions */}
-            {!hasChanges && (
+            {!hasChanges && !hasPropertyChanges && (
               <div className="flex items-center justify-center pt-1">
                 <button
                   onClick={() => {
