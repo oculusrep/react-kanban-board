@@ -3,7 +3,6 @@ import GoogleMapContainer from '../components/mapping/GoogleMapContainer';
 import BatchGeocodingPanel from '../components/mapping/BatchGeocodingPanel';
 import PropertyLayer, { PropertyLoadingConfig } from '../components/mapping/layers/PropertyLayer';
 import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/layers/SiteSubmitLayer';
-import LayerNavigationSlideout from '../components/mapping/slideouts/LayerNavigationSlideout';
 import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
 import MapContextMenu from '../components/mapping/MapContextMenu';
 import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
@@ -39,7 +38,6 @@ const MappingPageContent: React.FC = () => {
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
 
   // Slideout states
-  const [isLayerNavOpen, setIsLayerNavOpen] = useState(false);
   const [isPinDetailsOpen, setIsPinDetailsOpen] = useState(false);
   const [selectedPinData, setSelectedPinData] = useState<any>(null);
   const [selectedPinType, setSelectedPinType] = useState<'property' | 'site_submit' | null>(null);
@@ -796,21 +794,22 @@ const MappingPageContent: React.FC = () => {
               </div>
 
               <div className="flex items-center space-x-4">
-                <div className="text-sm text-gray-600">
-                  Use layer panel to control map data
-                </div>
-
-                {/* Clear Session Pins Button (when available) */}
-                {recentlyCreatedPropertyIds.size > 0 && (
+                {/* Properties Layer Toggle */}
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm font-medium text-gray-700">All Properties:</label>
                   <button
-                    onClick={clearSessionPins}
-                    className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded border border-red-300 flex items-center space-x-1"
-                    title="Clear your red session pins"
+                    onClick={() => toggleLayer('properties')}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      layerState.properties?.isVisible ? 'bg-blue-600' : 'bg-gray-300'
+                    }`}
                   >
-                    <span>🧹</span>
-                    <span>Clear Session Pins ({recentlyCreatedPropertyIds.size})</span>
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        layerState.properties?.isVisible ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
                   </button>
-                )}
+                </div>
 
                 {/* Client Selector */}
                 <div className="flex items-center space-x-2">
@@ -824,6 +823,18 @@ const MappingPageContent: React.FC = () => {
                     />
                   </div>
                 </div>
+
+                {/* Clear Session Pins Button (when available) */}
+                {recentlyCreatedPropertyIds.size > 0 && (
+                  <button
+                    onClick={clearSessionPins}
+                    className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded border border-red-300 flex items-center space-x-1"
+                    title="Clear your red session pins"
+                  >
+                    <span>🧹</span>
+                    <span>Clear Session Pins ({recentlyCreatedPropertyIds.size})</span>
+                  </button>
+                )}
 
                 {/* Admin Menu */}
                 <div className="relative">
@@ -991,12 +1002,6 @@ const MappingPageContent: React.FC = () => {
               onSiteSubmitRightClick={handleSiteSubmitRightClick}
               verifyingSiteSubmitId={verifyingSiteSubmitId}
               onLocationVerified={handleSiteSubmitLocationVerified}
-            />
-
-            {/* Modern Slideout Navigation */}
-            <LayerNavigationSlideout
-              isOpen={isLayerNavOpen}
-              onToggle={() => setIsLayerNavOpen(!isLayerNavOpen)}
             />
 
             {/* Pin Details Slideout */}
