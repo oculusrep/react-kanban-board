@@ -86,7 +86,14 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
           latitude,
           longitude,
           verified_latitude,
-          verified_longitude
+          verified_longitude,
+          property_record_type_id,
+          rent_psf,
+          nnn_psf,
+          acres,
+          building_sqft,
+          available_sqft,
+          property_notes
         `)
         .or(`property_name.ilike.%${query}%,address.ilike.%${query}%`)
         .or('and(latitude.not.is.null,longitude.not.is.null),and(verified_latitude.not.is.null,verified_longitude.not.is.null)')

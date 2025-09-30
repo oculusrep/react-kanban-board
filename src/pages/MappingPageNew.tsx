@@ -332,12 +332,6 @@ const MappingPageContent: React.FC = () => {
       verified: { lat: property.verified_latitude, lng: property.verified_longitude }
     });
 
-    // Ensure properties layer is visible
-    if (!layerState.properties?.isVisible) {
-      console.log('🔍 Making properties layer visible for search result');
-      toggleLayer('properties');
-    }
-
     // Center map on the property
     const coords = property.verified_latitude && property.verified_longitude
       ? { lat: property.verified_latitude, lng: property.verified_longitude }
@@ -440,6 +434,17 @@ const MappingPageContent: React.FC = () => {
     console.log('🏢 Opening property details slideout:', property);
     setSelectedPropertyData(property);
     setIsPropertyDetailsOpen(true);
+  };
+
+  // Handle data updates from slideout
+  const handlePinDataUpdate = (updatedData: any) => {
+    console.log('📝 Pin data updated:', updatedData);
+    setSelectedPinData(updatedData);
+  };
+
+  const handlePropertyDataUpdate = (updatedData: any) => {
+    console.log('📝 Property data updated:', updatedData);
+    setSelectedPropertyData(updatedData);
   };
 
   const handlePropertyDetailsClose = () => {
@@ -922,7 +927,15 @@ const MappingPageContent: React.FC = () => {
               loadingConfig={propertyLoadingConfig}
               recentlyCreatedIds={recentlyCreatedPropertyIds}
               verifyingPropertyId={verifyingPropertyId}
-              selectedPropertyId={selectedPinType === 'property' && selectedPinData ? selectedPinData.id : null}
+              selectedPropertyId={(() => {
+                const id = selectedPinType === 'property' && selectedPinData ? selectedPinData.id : null;
+                console.log('🎯 PropertyLayer selectedPropertyId calculated:', {
+                  selectedPinType,
+                  selectedPinDataId: selectedPinData?.id,
+                  resultingId: id
+                });
+                return id;
+              })()}
               onLocationVerified={handleLocationVerified}
               onPropertyRightClick={handlePropertyRightClick}
               onPropertiesLoaded={(count) => {
@@ -975,6 +988,7 @@ const MappingPageContent: React.FC = () => {
               isVerifyingLocation={!!verifyingPropertyId}
               onViewPropertyDetails={handleViewPropertyDetails}
               onCenterOnPin={handleCenterOnPin}
+              onDataUpdate={handlePinDataUpdate}
               rightOffset={isPropertyDetailsOpen ? 500 : 0} // Shift left when property details is open
             />
 
@@ -988,6 +1002,7 @@ const MappingPageContent: React.FC = () => {
               onVerifyLocation={handleVerifyLocation}
               isVerifyingLocation={!!verifyingPropertyId}
               onCenterOnPin={handleCenterOnPin}
+              onDataUpdate={handlePropertyDataUpdate}
               rightOffset={0} // Always positioned at the far right
             />
 

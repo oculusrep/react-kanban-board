@@ -29,6 +29,9 @@ interface Property {
   building_sqft?: number;
   available_sqft?: number;
   property_record_type_id?: string;
+  asking_purchase_price?: number;
+  asking_lease_price?: number;
+  lease_expiration_date?: string;
 }
 
 interface SiteSubmit {
@@ -67,6 +70,7 @@ interface PinDetailsSlideoutProps {
   onViewPropertyDetails?: (property: Property) => void;
   rightOffset?: number; // Offset from right edge in pixels
   onCenterOnPin?: (lat: number, lng: number) => void; // Function to center map on pin
+  onDataUpdate?: (updatedData: Property | SiteSubmit) => void; // Callback when data is updated
 }
 
 type TabType = 'property' | 'submit' | 'location';
@@ -81,7 +85,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   isVerifyingLocation = false,
   onViewPropertyDetails,
   rightOffset = 0,
-  onCenterOnPin
+  onCenterOnPin,
+  onDataUpdate
 }) => {
   console.log('PinDetailsSlideout rendering with:', { isOpen, data, type });
   const [activeTab, setActiveTab] = useState<TabType>(type === 'site_submit' ? 'submit' : 'property');
@@ -285,11 +290,14 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       console.log(`💾 Auto-saving property field ${field}:`, value);
 
       // Update local state immediately for instant UI feedback
-      setLocalPropertyData(prev => {
-        const updated = prev ? { ...prev, [field]: value } : null;
-        console.log('📝 Updated localPropertyData:', updated);
-        return updated;
-      });
+      const updatedProperty = { ...localPropertyData, [field]: value };
+      setLocalPropertyData(updatedProperty);
+      console.log('📝 Updated localPropertyData:', updatedProperty);
+
+      // Notify parent of the update so it can update its state
+      if (onDataUpdate) {
+        onDataUpdate(updatedProperty as Property);
+      }
 
       // Update using shared hook (background save)
       await updateProperty({ [field]: value });

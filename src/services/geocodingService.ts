@@ -30,6 +30,43 @@ class GeocodingService {
   private lastGoogleRequest = 0;
   private lastOsmRequest = 0;
 
+  // State name to abbreviation mapping
+  private readonly STATE_ABBREVIATIONS: Record<string, string> = {
+    'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR', 'California': 'CA',
+    'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE', 'Florida': 'FL', 'Georgia': 'GA',
+    'Hawaii': 'HI', 'Idaho': 'ID', 'Illinois': 'IL', 'Indiana': 'IN', 'Iowa': 'IA',
+    'Kansas': 'KS', 'Kentucky': 'KY', 'Louisiana': 'LA', 'Maine': 'ME', 'Maryland': 'MD',
+    'Massachusetts': 'MA', 'Michigan': 'MI', 'Minnesota': 'MN', 'Mississippi': 'MS', 'Missouri': 'MO',
+    'Montana': 'MT', 'Nebraska': 'NE', 'Nevada': 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ',
+    'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC', 'North Dakota': 'ND', 'Ohio': 'OH',
+    'Oklahoma': 'OK', 'Oregon': 'OR', 'Pennsylvania': 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC',
+    'South Dakota': 'SD', 'Tennessee': 'TN', 'Texas': 'TX', 'Utah': 'UT', 'Vermont': 'VT',
+    'Virginia': 'VA', 'Washington': 'WA', 'West Virginia': 'WV', 'Wisconsin': 'WI', 'Wyoming': 'WY',
+    'District of Columbia': 'DC', 'Puerto Rico': 'PR', 'Guam': 'GU', 'Virgin Islands': 'VI'
+  };
+
+  /**
+   * Convert full state name to abbreviation
+   */
+  private toStateAbbreviation(stateName: string | undefined): string | undefined {
+    if (!stateName) return undefined;
+
+    // If it's already an abbreviation (2 characters), return it
+    if (stateName.length === 2) {
+      return stateName.toUpperCase();
+    }
+
+    // Try to find matching abbreviation
+    const abbreviation = this.STATE_ABBREVIATIONS[stateName];
+    if (abbreviation) {
+      return abbreviation;
+    }
+
+    // If no match found, log warning and return the original
+    console.warn(`⚠️ Unknown state name: "${stateName}", returning as-is`);
+    return stateName;
+  }
+
   /**
    * Rate limiter utility
    */
@@ -191,7 +228,7 @@ class GeocodingService {
               addressComponents.town ||
               addressComponents.village ||
               addressComponents.hamlet,
-        state: addressComponents.state,
+        state: this.toStateAbbreviation(addressComponents.state),
         zip: addressComponents.postcode,
         county: addressComponents.county,
         provider: 'openstreetmap',
@@ -728,7 +765,7 @@ class GeocodingService {
         formatted_address: result.display_name,
         street_address: streetAddress, // Add clean street address
         city: city,
-        state: addressComponents.state,
+        state: this.toStateAbbreviation(addressComponents.state),
         zip: addressComponents.postcode,
         county: addressComponents.county,
         provider: 'openstreetmap',

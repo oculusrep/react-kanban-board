@@ -3,19 +3,14 @@ import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from './LayerManager';
 import { ModernMarkerStyles } from '../utils/modernMarkers';
+import { Database } from '../../../database-schema';
 
-interface Property {
-  id: string;
-  property_name?: string;
-  address: string;
-  city?: string;
-  state?: string;
-  zip?: string;
-  latitude: number;
-  longitude: number;
-  verified_latitude?: number;
-  verified_longitude?: number;
-}
+type Property = Database['public']['Tables']['property']['Row'] & {
+  property_record_type?: {
+    id: string;
+    label: string;
+  };
+};
 
 export type PropertyLoadingMode = 'static-1000' | 'static-2000' | 'static-all' | 'bounds-based';
 
@@ -36,6 +31,7 @@ interface PropertyLayerProps {
   onLocationVerified?: (propertyId: string, lat: number, lng: number) => void;
   onPropertyRightClick?: (property: Property, x: number, y: number) => void;
   selectedPropertyId?: string | null; // Currently selected property for editing
+  selectedPropertyData?: Property | null; // Full property data when selected from search
 }
 
 const PropertyLayer: React.FC<PropertyLayerProps> = ({
@@ -49,12 +45,14 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   verifyingPropertyId = null,
   onLocationVerified,
   onPropertyRightClick,
-  selectedPropertyId = null
+  selectedPropertyId = null,
+  selectedPropertyData = null
 }) => {
   const [properties, setProperties] = useState<Property[]>([]);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
   const [sessionMarkers, setSessionMarkers] = useState<google.maps.Marker[]>([]); // Always visible session pins
   const [clusterer, setClusterer] = useState<MarkerClusterer | null>(null);
+  const [selectedMarker, setSelectedMarker] = useState<google.maps.Marker | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -104,7 +102,12 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
           nnn_psf,
           acres,
           building_sqft,
-          available_sqft
+          available_sqft,
+          property_record_type_id,
+          property_record_type (
+            id,
+            label
+          )
         `)
         .or('and(latitude.not.is.null,longitude.not.is.null),and(verified_latitude.not.is.null,verified_longitude.not.is.null)');
 
@@ -147,7 +150,12 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
                 nnn_psf,
                 acres,
                 building_sqft,
-                available_sqft
+                available_sqft,
+                property_record_type_id,
+                property_record_type (
+                  id,
+                  label
+                )
               `)
               .or('and(latitude.not.is.null,longitude.not.is.null),and(verified_latitude.not.is.null,verified_longitude.not.is.null)')
               .range(pageStart, pageStart + pageSize - 1)
@@ -341,12 +349,24 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
 
     console.log('🗺️ Creating markers for properties...', properties.length, 'properties');
     console.log('🔍 Recently created IDs to exclude:', [...recentlyCreatedIds]);
+    console.log('🎯 Current selectedPropertyId:', selectedPropertyId);
 
-    // Clear existing markers
+    // Clear existing markers from map and clusterer
+    console.log('🧹 Clearing existing markers:', {
+      markersCount: markers.length,
+      clustererExists: !!clusterer,
+      selectedMarkerId: selectedMarker ? selectedMarker.getTitle() : null
+    });
+
+    if (clusterer) {
+      clusterer.clearMarkers();
+    }
     markers.forEach(marker => marker.setMap(null));
 
     const filteredProperties = properties.filter(property => !recentlyCreatedIds.has(property.id));
     console.log('📊 Filtered properties count:', filteredProperties.length, 'out of', properties.length);
+
+    let newSelectedMarker: google.maps.Marker | null = null;
 
     const newMarkers: google.maps.Marker[] = filteredProperties
       .map(property => {
@@ -395,6 +415,21 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       let markerIcon: google.maps.Icon;
       const isSelected = selectedPropertyId === property.id;
       const isBeingVerified = verifyingPropertyId === property.id;
+
+      // Debug logging for selection
+      if (isSelected) {
+        console.log('🧡 Property is SELECTED:', property.id, property.property_name || property.address);
+      }
+
+      // Debug logging to catch multiple orange pins
+      if (selectedPropertyId) {
+        console.log('🔍 Selection check:', {
+          propertyId: property.id,
+          selectedPropertyId,
+          isSelected,
+          propertyName: property.property_name || property.address
+        });
+      }
 
       if (isSelected) {
         markerIcon = ModernMarkerStyles.property.selected(); // Selected - large orange
@@ -467,35 +502,39 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
         });
       }
 
+      // Store reference to selected marker
+      if (isSelected) {
+        newSelectedMarker = marker;
+      }
+
       return marker;
     }).filter(marker => marker !== null) as google.maps.Marker[];
 
     console.log(`✅ Created ${newMarkers.length} markers`);
     setMarkers(newMarkers);
+    setSelectedMarker(newSelectedMarker);
   };
 
   // Set up marker clustering
   const setupClustering = () => {
-    if (!map || !markers.length) return;
+    if (!map) return;
 
-    // Clear existing clusterer
-    if (clusterer) {
-      clusterer.clearMarkers();
+    // Only create clusterer if it doesn't exist
+    if (!clusterer) {
+      console.log('🔗 Setting up marker clustering...');
+
+      const newClusterer = new MarkerClusterer({
+        map,
+        markers: [],
+        gridSize: 60,
+        maxZoom: 15,
+        averageCenter: true,
+        minimumClusterSize: 2
+      });
+
+      setClusterer(newClusterer);
+      console.log('✅ Clustering initialized');
     }
-
-    console.log('🔗 Setting up marker clustering...');
-
-    const newClusterer = new MarkerClusterer({
-      map,
-      markers: [],
-      gridSize: 60,
-      maxZoom: 15,
-      averageCenter: true,
-      minimumClusterSize: 2
-    });
-
-    setClusterer(newClusterer);
-    console.log('✅ Clustering initialized');
   };
 
   // Update marker visibility
@@ -505,12 +544,37 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       return;
     }
 
+    // Always clear first to ensure clean state
+    clusterer.clearMarkers();
+
     if (isVisible) {
-      console.log(`👁️ PropertyLayer: Showing ${markers.length} property markers`);
-      clusterer.addMarkers(markers);
+      // Separate selected marker from regular markers
+      const regularMarkers = markers.filter(marker => marker !== selectedMarker);
+
+      console.log(`👁️ PropertyLayer: Showing ${regularMarkers.length} clustered markers + ${selectedMarker ? 1 : 0} selected marker`);
+
+      // Add regular markers to clusterer
+      clusterer.addMarkers(regularMarkers);
+
+      // Show selected marker directly on map (not clustered)
+      if (selectedMarker) {
+        selectedMarker.setMap(map);
+        console.log('🧡 Selected marker shown individually (not clustered)');
+      }
     } else {
-      console.log('🙈 PropertyLayer: Hiding property markers');
-      clusterer.clearMarkers();
+      console.log('🙈 PropertyLayer: Hiding property markers (except selected)');
+      // Hide regular markers but KEEP selected marker visible
+      markers.forEach(marker => {
+        if (marker !== selectedMarker) {
+          marker.setMap(null);
+        }
+      });
+
+      // Show selected marker even when layer is hidden
+      if (selectedMarker) {
+        selectedMarker.setMap(map);
+        console.log('🧡 Selected marker kept visible even with layer hidden');
+      }
     }
   };
 
@@ -549,7 +613,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     if (properties.length > 0) {
       createMarkers();
     }
-  }, [properties, map, recentlyCreatedIds, verifyingPropertyId, selectedPropertyId]); // Add selectedPropertyId dependency
+  }, [properties, map, recentlyCreatedIds, verifyingPropertyId, selectedPropertyId]); // selectedPropertyId dependency ensures markers refresh when selection changes
 
   // Create session markers when recently created IDs change or properties load
   // Session markers are shown when the main layer is hidden or always (depending on UX choice)
@@ -587,12 +651,12 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     }
   }, [sessionMarkers, map]); // Removed isVisible dependency - session markers always visible
 
-  // Set up clustering when markers are ready
+  // Set up clustering when map is ready (only once)
   useEffect(() => {
-    if (markers.length > 0) {
+    if (map) {
       setupClustering();
     }
-  }, [markers, map]);
+  }, [map]);
 
   // Update visibility when isVisible prop changes
   useEffect(() => {
