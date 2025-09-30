@@ -621,25 +621,31 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Rent PSF</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={property?.rent_psf || ''}
-                          onChange={(e) => handlePropertyFieldUpdate('rent_psf', e.target.value ? parseFloat(e.target.value) : null)}
-                          placeholder="0.00"
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                        />
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={property?.rent_psf || ''}
+                            onChange={(e) => handlePropertyFieldUpdate('rent_psf', e.target.value ? parseFloat(e.target.value) : null)}
+                            placeholder="0.00"
+                            className="w-full pl-7 pr-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">NNN PSF</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={property?.nnn_psf || ''}
-                          onChange={(e) => handlePropertyFieldUpdate('nnn_psf', e.target.value ? parseFloat(e.target.value) : null)}
-                          placeholder="0.00"
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                        />
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={property?.nnn_psf || ''}
+                            onChange={(e) => handlePropertyFieldUpdate('nnn_psf', e.target.value ? parseFloat(e.target.value) : null)}
+                            placeholder="0.00"
+                            className="w-full pl-7 pr-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
                       </div>
                     </div>
 
