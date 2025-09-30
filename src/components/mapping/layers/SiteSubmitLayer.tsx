@@ -200,7 +200,20 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
             address,
             city,
             state,
-            zip
+            zip,
+            latitude,
+            longitude,
+            verified_latitude,
+            verified_longitude,
+            property_record_type_id,
+            available_sqft,
+            rent_psf,
+            nnn_psf,
+            acres,
+            building_sqft,
+            asking_purchase_price,
+            asking_lease_price,
+            lease_expiration_date
           ),
           property_unit!site_submit_property_unit_id_fkey (
             property_unit_name
@@ -275,7 +288,20 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
                   address,
                   city,
                   state,
-                  zip
+                  zip,
+                  latitude,
+                  longitude,
+                  verified_latitude,
+                  verified_longitude,
+                  property_record_type_id,
+                  available_sqft,
+                  rent_psf,
+                  nnn_psf,
+                  acres,
+                  building_sqft,
+                  asking_purchase_price,
+                  asking_lease_price,
+                  lease_expiration_date
                 ),
                 property_unit!site_submit_property_unit_id_fkey (
                   property_unit_name
