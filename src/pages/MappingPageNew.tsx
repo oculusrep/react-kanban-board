@@ -430,9 +430,31 @@ const MappingPageContent: React.FC = () => {
   };
 
   // Handle viewing property details from site submit
-  const handleViewPropertyDetails = (property: any) => {
+  const handleViewPropertyDetails = async (property: any) => {
     console.log('🏢 Opening property details slideout:', property);
-    setSelectedPropertyData(property);
+
+    // Fetch fresh property data from database to ensure we have latest values
+    try {
+      const { data: freshPropertyData, error } = await supabase
+        .from('property')
+        .select('*')
+        .eq('id', property.id)
+        .single();
+
+      if (error) {
+        console.error('❌ Error fetching fresh property data:', error);
+        // Fall back to cached data if fetch fails
+        setSelectedPropertyData(property);
+      } else {
+        console.log('✅ Fetched fresh property data:', freshPropertyData);
+        setSelectedPropertyData(freshPropertyData);
+      }
+    } catch (err) {
+      console.error('❌ Exception fetching fresh property data:', err);
+      // Fall back to cached data if fetch fails
+      setSelectedPropertyData(property);
+    }
+
     setIsPropertyDetailsOpen(true);
   };
 
