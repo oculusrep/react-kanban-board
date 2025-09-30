@@ -624,10 +624,19 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
                           <input
-                            type="number"
-                            step="0.01"
-                            value={property?.rent_psf || ''}
-                            onChange={(e) => handlePropertyFieldUpdate('rent_psf', e.target.value ? parseFloat(e.target.value) : null)}
+                            type="text"
+                            value={property?.rent_psf != null ? property.rent_psf.toFixed(2) : ''}
+                            onChange={(e) => {
+                              const value = e.target.value.replace(/[^0-9.]/g, '');
+                              handlePropertyFieldUpdate('rent_psf', value ? parseFloat(value) : null);
+                            }}
+                            onBlur={(e) => {
+                              // Format to 2 decimals on blur
+                              const value = parseFloat(e.target.value.replace(/[^0-9.]/g, ''));
+                              if (!isNaN(value)) {
+                                handlePropertyFieldUpdate('rent_psf', value);
+                              }
+                            }}
                             placeholder="0.00"
                             className="w-full pl-7 pr-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                           />
@@ -638,10 +647,19 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
                           <input
-                            type="number"
-                            step="0.01"
-                            value={property?.nnn_psf || ''}
-                            onChange={(e) => handlePropertyFieldUpdate('nnn_psf', e.target.value ? parseFloat(e.target.value) : null)}
+                            type="text"
+                            value={property?.nnn_psf != null ? property.nnn_psf.toFixed(2) : ''}
+                            onChange={(e) => {
+                              const value = e.target.value.replace(/[^0-9.]/g, '');
+                              handlePropertyFieldUpdate('nnn_psf', value ? parseFloat(value) : null);
+                            }}
+                            onBlur={(e) => {
+                              // Format to 2 decimals on blur
+                              const value = parseFloat(e.target.value.replace(/[^0-9.]/g, ''));
+                              if (!isNaN(value)) {
+                                handlePropertyFieldUpdate('nnn_psf', value);
+                              }
+                            }}
                             placeholder="0.00"
                             className="w-full pl-7 pr-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                           />
