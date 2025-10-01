@@ -398,3 +398,27 @@ export const VALIDATION_RULES = {
     maxPayments: 12, // Maximum number of payments
   }
 } as const;
+
+// Dropbox Integration Types
+export interface DropboxFolderMapping {
+  id: string;
+  entity_type: 'client' | 'property' | 'deal';
+  entity_id: string;
+  sf_id: string;
+  dropbox_folder_path: string;
+  sfdb_file_found: boolean;
+  last_verified_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DropboxFile {
+  id: string;
+  name: string;
+  path: string;
+  type: 'file' | 'folder';
+  size: number | null;
+  modified: string | null;
+  shared_link: string | null;
+  icon?: string; // Optional: for file type icons
+}

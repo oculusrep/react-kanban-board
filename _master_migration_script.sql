@@ -2781,4 +2781,57 @@ BEGIN
 
 END $$;
 
+-- =============================================================================
+-- DROPBOX FOLDER MAPPING TABLE
+-- =============================================================================
+-- Maps Salesforce records to their Dropbox folders
+-- Used to connect client/property/deal records to Dropbox file storage
+
+CREATE TABLE IF NOT EXISTS dropbox_folder_mapping (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+
+  -- Entity identification
+  entity_type VARCHAR(50) NOT NULL, -- 'client', 'property', 'deal'
+  entity_id UUID NOT NULL,
+
+  -- Salesforce reference for verification
+  sf_id VARCHAR(18) NOT NULL,
+
+  -- Dropbox folder path
+  dropbox_folder_path TEXT NOT NULL,
+
+  -- Metadata
+  sfdb_file_found BOOLEAN DEFAULT true,
+  last_verified_at TIMESTAMP DEFAULT NOW(),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+
+  -- Ensure one mapping per entity
+  CONSTRAINT unique_entity_mapping UNIQUE(entity_type, entity_id),
+  CONSTRAINT unique_sf_id UNIQUE(sf_id)
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_dropbox_entity_type ON dropbox_folder_mapping(entity_type);
+CREATE INDEX IF NOT EXISTS idx_dropbox_entity_id ON dropbox_folder_mapping(entity_id);
+CREATE INDEX IF NOT EXISTS idx_dropbox_sf_id ON dropbox_folder_mapping(sf_id);
+CREATE INDEX IF NOT EXISTS idx_dropbox_folder_path ON dropbox_folder_mapping(dropbox_folder_path);
+
+-- Update trigger
+CREATE OR REPLACE FUNCTION update_dropbox_folder_mapping_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_dropbox_folder_mapping_updated_at
+  BEFORE UPDATE ON dropbox_folder_mapping
+  FOR EACH ROW
+  EXECUTE FUNCTION update_dropbox_folder_mapping_updated_at();
+
+-- Add comment
+COMMENT ON TABLE dropbox_folder_mapping IS 'Maps CRM records to Dropbox folders via Salesforce ID and .sfdb marker files';
+
 COMMIT;
