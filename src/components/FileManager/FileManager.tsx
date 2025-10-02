@@ -44,6 +44,7 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
   const [newFolderName, setNewFolderName] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: DropboxFile } | null>(null);
 
   // Auto-refresh every 30 seconds to catch external Dropbox changes
   useEffect(() => {
@@ -221,6 +222,38 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
       setIsRefreshing(false);
     }
   };
+
+  // Handle right click
+  const handleRightClick = (e: React.MouseEvent, file: DropboxFile) => {
+    e.preventDefault();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      file
+    });
+  };
+
+  // Handle copy link
+  const handleCopyLink = async (file: DropboxFile) => {
+    try {
+      const url = await getSharedLink(file.path);
+      await navigator.clipboard.writeText(url);
+      setContextMenu(null);
+      alert('Dropbox link copied to clipboard!');
+    } catch (err) {
+      console.error('Error copying link:', err);
+      alert('Failed to copy link. Please try again.');
+    }
+  };
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setContextMenu(null);
+    if (contextMenu) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [contextMenu]);
 
   // Setup react-dropzone
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -456,6 +489,7 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
             <div
               key={file.id}
               className="px-6 py-3 hover:bg-gray-50 transition-colors group"
+              onContextMenu={(e) => file.type === 'file' && handleRightClick(e, file)}
             >
               <div className="flex items-center justify-between">
                 <div
@@ -528,6 +562,28 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
           ))
         )}
       </div> {/* End of dropzone wrapper */}
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          className="fixed bg-white border border-gray-200 rounded-md shadow-lg py-1 z-50"
+          style={{
+            top: `${contextMenu.y}px`,
+            left: `${contextMenu.x}px`,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => handleCopyLink(contextMenu.file)}
+            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            <span>Copy Dropbox Link</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };
