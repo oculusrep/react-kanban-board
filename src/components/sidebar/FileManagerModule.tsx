@@ -16,27 +16,49 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
 }) => {
   console.log('🗂️ FileManagerModule rendered:', { entityType, entityId, isExpanded });
 
-  const { files, loading, error, uploadFiles, deleteItem, getSharedLink, refreshFiles } = useDropboxFiles(
+  const { files, folderPath, loading, error, uploadFiles, deleteItem, getSharedLink, refreshFiles } = useDropboxFiles(
     entityType,
     entityId
   );
   const [uploading, setUploading] = useState(false);
+  const [currentPath, setCurrentPath] = useState<string>('');
 
-  // Count files and folders separately
-  const actualFiles = files.filter(f => f.type === 'file');
-  const folders = files.filter(f => f.type === 'folder');
+  // Get breadcrumbs from current path
+  const getBreadcrumbs = () => {
+    if (!currentPath) return [];
+    const parts = currentPath.split('/').filter(Boolean);
+    return parts.map((part, index) => ({
+      name: part,
+      path: '/' + parts.slice(0, index + 1).join('/')
+    }));
+  };
+
+  // Filter files based on current path
+  const getCurrentFiles = () => {
+    if (!folderPath) return [];
+    const targetPath = folderPath + currentPath;
+    return files.filter(file => {
+      const parentPath = file.path.substring(0, file.path.lastIndexOf('/'));
+      return parentPath === targetPath;
+    });
+  };
+
+  const currentFiles = getCurrentFiles();
+  const actualFiles = currentFiles.filter(f => f.type === 'file');
+  const folders = currentFiles.filter(f => f.type === 'folder');
   const fileCount = actualFiles.length;
   const folderCount = folders.length;
   const totalCount = fileCount + folderCount;
 
   console.log('🗂️ FileManagerModule state:', {
+    currentPath,
     fileCount,
     folderCount,
     totalCount,
     loading,
     error,
     filesLength: files.length,
-    files: files
+    currentFilesLength: currentFiles.length
   });
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,6 +74,12 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
         setUploading(false);
         e.target.value = '';
       }
+    }
+  };
+
+  const handleFolderClick = (folder: any) => {
+    if (folder.type === 'folder') {
+      setCurrentPath(folder.path.replace(folderPath || '', ''));
     }
   };
 
@@ -182,7 +210,39 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
         </label>
       </div>
       {isExpanded && (
-        <div className="max-h-64 overflow-y-auto">
+        <>
+          {/* Breadcrumb Navigation */}
+          {!loading && !error && (
+            <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
+              <div className="flex items-center text-xs text-gray-600 space-x-1">
+                <button
+                  onClick={() => setCurrentPath('')}
+                  className="hover:text-blue-600 transition-colors flex items-center"
+                  title="Go to root"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                  </svg>
+                </button>
+                {getBreadcrumbs().map((crumb, index) => (
+                  <React.Fragment key={crumb.path}>
+                    <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    <button
+                      onClick={() => setCurrentPath(crumb.path)}
+                      className="hover:text-blue-600 transition-colors truncate max-w-[100px]"
+                      title={crumb.name}
+                    >
+                      {crumb.name}
+                    </button>
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="max-h-64 overflow-y-auto">
           {loading ? (
             <div className="p-4 text-center">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
@@ -216,7 +276,8 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
               {folders.map((folder: any) => (
                 <div
                   key={folder.path}
-                  className="p-2 hover:bg-gray-50 group transition-colors"
+                  className="p-2 hover:bg-blue-50 group transition-colors cursor-pointer"
+                  onClick={() => handleFolderClick(folder)}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2 flex-1 min-w-0">
@@ -224,13 +285,16 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
                         <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
                       </svg>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
+                        <p className="text-sm font-medium text-gray-900 truncate group-hover:text-blue-600">
                           {folder.name}
                         </p>
                         <p className="text-xs text-gray-500">
                           Folder
                         </p>
                       </div>
+                      <svg className="w-4 h-4 text-gray-400 group-hover:text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
                     </div>
                   </div>
                 </div>
@@ -272,6 +336,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
             </div>
           )}
         </div>
+        </>
       )}
     </div>
   );

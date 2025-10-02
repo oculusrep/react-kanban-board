@@ -246,10 +246,11 @@ DealDetailsPage
 
 ## Known Limitations
 
-1. **No Folder Navigation in Sidebar**
-   - Sidebar module only shows files at root level of entity folder
-   - Does not support subfolder navigation (kept simple for sidebar UX)
-   - Full FileManager component (if used elsewhere) has full folder navigation
+1. ~~**No Folder Navigation in Sidebar**~~ ✅ **FIXED - October 2, 2025**
+   - ~~Sidebar module only shows files at root level of entity folder~~
+   - ~~Does not support subfolder navigation (kept simple for sidebar UX)~~
+   - ~~Full FileManager component (if used elsewhere) has full folder navigation~~
+   - **Sidebar now has full folder navigation with breadcrumbs!**
 
 2. **No Drag-and-Drop in Sidebar**
    - Upload via button only (keeps sidebar simple)
@@ -376,6 +377,51 @@ The `FileManagerModule` component was filtering files using the wrong property:
 ✅ Sidebar now displays files correctly
 ✅ Matches behavior of Files tab
 ✅ No TypeScript errors
+
+---
+
+## Folder Navigation Feature - October 2, 2025
+
+### Enhancement
+Added full folder navigation to the FileManagerModule sidebar component, matching the functionality of the Files tab.
+
+### Features Added
+1. **Breadcrumb Navigation**
+   - Home icon to return to root folder
+   - Clickable breadcrumb path showing current location
+   - Compact design optimized for sidebar width
+
+2. **Clickable Folders**
+   - Folders now have cursor pointer and hover effects
+   - Click to navigate into subfolder
+   - Visual arrow indicator on hover
+   - Blue highlight on hover for better UX
+
+3. **Path Filtering**
+   - Files are filtered based on current path
+   - Only shows files/folders in current directory
+   - Matches FileManager component behavior
+
+### Changes Applied
+**File:** [src/components/sidebar/FileManagerModule.tsx](../src/components/sidebar/FileManagerModule.tsx)
+
+**State Management:**
+- Added `currentPath` state to track current folder
+- Added `folderPath` from useDropboxFiles hook
+- Implemented `getBreadcrumbs()` function for navigation UI
+- Implemented `getCurrentFiles()` to filter by current path
+
+**UI Updates:**
+- Added breadcrumb navigation bar below header
+- Made folders clickable with `onClick` handler
+- Added chevron arrow to indicate folders are clickable
+- Changed folder hover to blue highlight
+
+### User Experience
+- Click a folder to drill down into it
+- Click breadcrumb segments to navigate back up
+- Click home icon to return to root
+- Seamless navigation matching Files tab behavior
 
 ---
 
