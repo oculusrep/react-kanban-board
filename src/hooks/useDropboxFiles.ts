@@ -32,10 +32,19 @@ export function useDropboxFiles(
   const [uploading, setUploading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Initialize Dropbox service with access token from environment
-  const dropboxService = new DropboxService(
-    import.meta.env.VITE_DROPBOX_ACCESS_TOKEN || ''
-  );
+  // Initialize Dropbox service with access token and refresh credentials from environment
+  let dropboxService: DropboxService | null = null;
+
+  try {
+    dropboxService = new DropboxService(
+      import.meta.env.VITE_DROPBOX_ACCESS_TOKEN || '',
+      import.meta.env.VITE_DROPBOX_REFRESH_TOKEN || '',
+      import.meta.env.VITE_DROPBOX_APP_KEY || '',
+      import.meta.env.VITE_DROPBOX_APP_SECRET || ''
+    );
+  } catch (err: any) {
+    // Token not configured - will be handled in fetchFiles
+  }
 
   /**
    * Fetch files from Dropbox for the current entity
@@ -44,6 +53,15 @@ export function useDropboxFiles(
     if (!entityId) {
       setFiles([]);
       setFolderPath(null);
+      return;
+    }
+
+    // Check if Dropbox service is initialized
+    if (!dropboxService) {
+      setError('Dropbox access token is required. Please set VITE_DROPBOX_ACCESS_TOKEN in your .env file.');
+      setFiles([]);
+      setFolderPath(null);
+      setLoading(false);
       return;
     }
 
@@ -95,6 +113,10 @@ export function useDropboxFiles(
    */
   const uploadFiles = useCallback(
     async (fileList: FileList) => {
+      if (!dropboxService) {
+        throw new Error('Dropbox service not initialized');
+      }
+
       if (!folderPath) {
         throw new Error('No folder path available');
       }
@@ -105,7 +127,7 @@ export function useDropboxFiles(
       try {
         // Upload all files in parallel
         const uploadPromises = Array.from(fileList).map(file =>
-          dropboxService.uploadFile(file, folderPath)
+          dropboxService!.uploadFile(file, folderPath)
         );
 
         await Promise.all(uploadPromises);
@@ -129,6 +151,10 @@ export function useDropboxFiles(
    */
   const createFolder = useCallback(
     async (folderName: string) => {
+      if (!dropboxService) {
+        throw new Error('Dropbox service not initialized');
+      }
+
       if (!folderPath) {
         throw new Error('No folder path available');
       }
@@ -156,6 +182,10 @@ export function useDropboxFiles(
    */
   const deleteItem = useCallback(
     async (path: string) => {
+      if (!dropboxService) {
+        throw new Error('Dropbox service not initialized');
+      }
+
       setError(null);
 
       try {
@@ -179,6 +209,10 @@ export function useDropboxFiles(
    */
   const getSharedLink = useCallback(
     async (path: string): Promise<string> => {
+      if (!dropboxService) {
+        throw new Error('Dropbox service not initialized');
+      }
+
       try {
         const link = await dropboxService.getSharedLink(path);
         return link;

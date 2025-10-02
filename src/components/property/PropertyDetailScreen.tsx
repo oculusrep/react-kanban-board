@@ -15,6 +15,7 @@ import NotesSection from './NotesSection';
 import PropertySidebar from './PropertySidebar';
 import PropertyUnitsSection from './PropertyUnitsSection';
 import GenericActivityTab from '../GenericActivityTab';
+import FileManager from '../FileManager/FileManager';
 
 type Property = Database['public']['Tables']['property']['Row'];
 type PropertyType = Database['public']['Tables']['property_type']['Row'];
@@ -371,6 +372,16 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
               isEditing={isEditing}
               onFieldUpdate={handleFieldUpdate}
             />
+
+            {/* Files Section */}
+            {propertyId && (
+              <div className="mb-6">
+                <FileManager
+                  entityType="property"
+                  entityId={propertyId}
+                />
+              </div>
+            )}
 
             {/* Activities Section */}
             {propertyId && (

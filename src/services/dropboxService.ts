@@ -14,9 +14,78 @@ export interface DropboxFile {
 class DropboxService {
   private dbx: Dropbox;
   private readonly ALLOWED_BASE_PATH = '/Salesforce Documents';
+  private accessToken: string;
+  private refreshToken: string;
+  private appKey: string;
+  private appSecret: string;
 
-  constructor(accessToken: string) {
+  constructor(accessToken: string, refreshToken?: string, appKey?: string, appSecret?: string) {
+    if (!accessToken) {
+      throw new Error('Dropbox access token is required. Please set VITE_DROPBOX_ACCESS_TOKEN in your .env file.');
+    }
+    this.accessToken = accessToken;
+    this.refreshToken = refreshToken || '';
+    this.appKey = appKey || '';
+    this.appSecret = appSecret || '';
     this.dbx = new Dropbox({ accessToken });
+  }
+
+  /**
+   * Refresh the access token using the refresh token
+   */
+  private async refreshAccessToken(): Promise<void> {
+    if (!this.refreshToken || !this.appKey || !this.appSecret) {
+      console.warn('Cannot auto-refresh token: missing refresh token or app credentials');
+      return;
+    }
+
+    try {
+      const response = await fetch('https://api.dropboxapi.com/oauth2/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: this.refreshToken,
+          client_id: this.appKey,
+          client_secret: this.appSecret,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Token refresh failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      this.accessToken = data.access_token;
+
+      // Update Dropbox client with new token
+      this.dbx = new Dropbox({ accessToken: this.accessToken });
+
+      console.log('✅ Dropbox access token refreshed automatically');
+    } catch (error) {
+      console.error('Failed to refresh access token:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Wrapper to handle token expiration and auto-refresh
+   */
+  private async executeWithTokenRefresh<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error: any) {
+      // Check if error is due to expired token (401 Unauthorized)
+      if (error.status === 401 || error.error?.error === 'expired_access_token') {
+        console.log('🔄 Access token expired, refreshing...');
+        await this.refreshAccessToken();
+        // Retry the operation with new token
+        return await operation();
+      }
+      throw error;
+    }
   }
 
   /**
@@ -37,10 +106,10 @@ class DropboxService {
   async listFolderContents(folderPath: string): Promise<DropboxFile[]> {
     this.validatePath(folderPath);
 
-    try {
+    return this.executeWithTokenRefresh(async () => {
       const response = await this.dbx.filesListFolder({
         path: folderPath,
-        recursive: false,
+        recursive: true,  // Fetch all files recursively so subfolders work
         include_deleted: false
       });
 
@@ -61,10 +130,7 @@ class DropboxService {
         });
 
       return files;
-    } catch (error: any) {
-      console.error('Error listing folder contents:', error);
-      throw new Error(`Failed to list folder contents: ${error.error?.error_summary || error.message}`);
-    }
+    });
   }
 
   /**
@@ -75,33 +141,32 @@ class DropboxService {
   async getSharedLink(path: string): Promise<string> {
     this.validatePath(path);
 
-    try {
-      // Try to create a new shared link
-      const response = await this.dbx.sharingCreateSharedLinkWithSettings({
-        path: path,
-        settings: {
-          requested_visibility: 'public',
-          audience: 'public',
-          access: 'viewer'
-        }
-      });
+    return this.executeWithTokenRefresh(async () => {
+      try {
+        // Try to create a new shared link
+        const response = await this.dbx.sharingCreateSharedLinkWithSettings({
+          path: path,
+          settings: {
+            requested_visibility: 'public',
+            audience: 'public',
+            access: 'viewer'
+          }
+        });
 
-      return response.result.url;
-    } catch (error: any) {
-      // If link already exists (error 409), fetch existing link
-      if (error.status === 409 || error.error?.error?.['.tag'] === 'shared_link_already_exists') {
-        try {
+        return response.result.url;
+      } catch (error: any) {
+        // If link already exists (error 409), fetch existing link
+        if (error.status === 409 || error.error?.error?.['.tag'] === 'shared_link_already_exists') {
           const existingLinks = await this.dbx.sharingListSharedLinks({ path });
           if (existingLinks.result.links.length > 0) {
             return existingLinks.result.links[0].url;
           }
-        } catch (fetchError: any) {
-          throw new Error(`Failed to fetch existing shared link: ${fetchError.message}`);
+          throw new Error('Shared link exists but could not be retrieved');
         }
-      }
 
-      throw new Error(`Failed to get shared link: ${error.error?.error_summary || error.message}`);
-    }
+        throw new Error(`Failed to get shared link: ${error.error?.error_summary || error.message}`);
+      }
+    });
   }
 
   /**
@@ -119,7 +184,7 @@ class DropboxService {
 
     this.validatePath(uploadPath);
 
-    try {
+    return this.executeWithTokenRefresh(async () => {
       const response = await this.dbx.filesUpload({
         path: uploadPath,
         contents: file,
@@ -138,10 +203,7 @@ class DropboxService {
         modified: result.server_modified,
         shared_link: null
       };
-    } catch (error: any) {
-      console.error('Error uploading file:', error);
-      throw new Error(`Failed to upload file: ${error.error?.error_summary || error.message}`);
-    }
+    });
   }
 
   /**
@@ -152,7 +214,7 @@ class DropboxService {
   async createFolder(folderPath: string): Promise<DropboxFile> {
     this.validatePath(folderPath);
 
-    try {
+    return this.executeWithTokenRefresh(async () => {
       const response = await this.dbx.filesCreateFolderV2({
         path: folderPath,
         autorename: false
@@ -169,10 +231,7 @@ class DropboxService {
         modified: null,
         shared_link: null
       };
-    } catch (error: any) {
-      console.error('Error creating folder:', error);
-      throw new Error(`Failed to create folder: ${error.error?.error_summary || error.message}`);
-    }
+    });
   }
 
   /**
@@ -182,12 +241,9 @@ class DropboxService {
   async deleteFileOrFolder(path: string): Promise<void> {
     this.validatePath(path);
 
-    try {
+    return this.executeWithTokenRefresh(async () => {
       await this.dbx.filesDeleteV2({ path });
-    } catch (error: any) {
-      console.error('Error deleting file/folder:', error);
-      throw new Error(`Failed to delete: ${error.error?.error_summary || error.message}`);
-    }
+    });
   }
 }
 
