@@ -6,6 +6,7 @@ import DealDetailsForm from "../components/DealDetailsForm";
 import { FloatingPanelManager } from "../components/FloatingPanelManager";
 import { FloatingPanelContainer } from "../components/FloatingPanelContainer";
 import { FloatingContactPanel } from "../components/FloatingContactPanel";
+import { FloatingFilePanel } from "../components/FloatingFilePanel";
 import { useDealContacts } from "../hooks/useDealContacts";
 import CommissionTab from '../components/CommissionTab';
 import PaymentTab from '../components/PaymentTab';
@@ -251,9 +252,14 @@ export default function DealDetailsPage() {
           )}
         </div>
       </FloatingPanelContainer>
-      
-      {/* Floating Contact Panel - only for existing deals */}
-      {dealId && dealId !== 'new' && <FloatingContactPanel dealId={dealId} />}
+
+      {/* Floating Panels - only for existing deals */}
+      {dealId && dealId !== 'new' && (
+        <>
+          <FloatingContactPanel dealId={dealId} />
+          <FloatingFilePanel dealId={dealId} />
+        </>
+      )}
     </FloatingPanelManager>
   );
 }

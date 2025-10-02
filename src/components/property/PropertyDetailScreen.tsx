@@ -47,6 +47,7 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
   const [unitsExpanded, setUnitsExpanded] = useState(false);
   const [siteSubmitModalOpen, setSiteSubmitModalOpen] = useState(false);
   const [contactModalOpen, setContactModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('details');
 
   const { 
     property, 
@@ -288,6 +289,44 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
           siteSubmitModalOpen ? 'lg:-translate-x-[350px]' : contactModalOpen ? 'lg:-translate-x-[400px]' : ''
         }`}>
           <div className="max-w-4xl mx-auto p-4 pb-8">
+            {/* Tab Navigation */}
+            {propertyId && (
+              <div className="border-b border-gray-200 mb-6">
+                <nav className="-mb-px flex space-x-8">
+                  <button
+                    onClick={() => setActiveTab('details')}
+                    className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                      activeTab === 'details'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    Property Details
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('activity')}
+                    className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                      activeTab === 'activity'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    Activity
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('files')}
+                    className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                      activeTab === 'files'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    Files
+                  </button>
+                </nav>
+              </div>
+            )}
+
             {/* Validation Warnings */}
             {isEditing && validation.warnings.length > 0 && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
@@ -322,69 +361,63 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
               </div>
             )}
 
-            <PropertyDetailsSection
-              property={currentProperty}
-              isEditing={isEditing}
-              onFieldUpdate={handleFieldUpdate}
-              propertyRecordTypes={propertyRecordTypes}
-            />
-
-            <LocationSection
-              property={currentProperty}
-              onFieldUpdate={handleFieldUpdate}
-              onGetCurrentLocation={handleGetCurrentLocation}
-            />
-
-            {/* Property Units Section */}
-            {propertyId && (
-              <PropertyUnitsSection
-                propertyId={propertyId}
-                isEditing={isEditing}
-                isExpanded={unitsExpanded}
-                onToggle={() => setUnitsExpanded(!unitsExpanded)}
-                onUnitsChange={(units) => {
-                  console.log('Units updated:', units);
-                }}
-              />
-            )}
-
-            <FinancialSection
-              property={{
-                ...currentProperty,
-                property_record_type: propertyRecordTypes.find(rt => rt.id === currentProperty.property_record_type_id)
-              }}
-              onFieldUpdate={handleFieldUpdate}
-            />
-
-            <MarketAnalysisSection
-              property={currentProperty}
-              onFieldUpdate={handleFieldUpdate}
-            />
-
-            <LinksSection
-              property={currentProperty}
-              isEditing={isEditing}
-              onFieldUpdate={handleFieldUpdate}
-            />
-
-            <NotesSection
-              property={currentProperty}
-              isEditing={isEditing}
-              onFieldUpdate={handleFieldUpdate}
-            />
-
-            {/* Files Section */}
-            {propertyId && (
-              <div className="mb-6">
-                <FileManager
-                  entityType="property"
-                  entityId={propertyId}
+            {/* Tab Content */}
+            {activeTab === 'details' && (
+              <>
+                <PropertyDetailsSection
+                  property={currentProperty}
+                  isEditing={isEditing}
+                  onFieldUpdate={handleFieldUpdate}
+                  propertyRecordTypes={propertyRecordTypes}
                 />
-              </div>
+
+                <LocationSection
+                  property={currentProperty}
+                  onFieldUpdate={handleFieldUpdate}
+                  onGetCurrentLocation={handleGetCurrentLocation}
+                />
+
+                {/* Property Units Section */}
+                {propertyId && (
+                  <PropertyUnitsSection
+                    propertyId={propertyId}
+                    isEditing={isEditing}
+                    isExpanded={unitsExpanded}
+                    onToggle={() => setUnitsExpanded(!unitsExpanded)}
+                    onUnitsChange={(units) => {
+                      console.log('Units updated:', units);
+                    }}
+                  />
+                )}
+
+                <FinancialSection
+                  property={{
+                    ...currentProperty,
+                    property_record_type: propertyRecordTypes.find(rt => rt.id === currentProperty.property_record_type_id)
+                  }}
+                  onFieldUpdate={handleFieldUpdate}
+                />
+
+                <MarketAnalysisSection
+                  property={currentProperty}
+                  onFieldUpdate={handleFieldUpdate}
+                />
+
+                <LinksSection
+                  property={currentProperty}
+                  isEditing={isEditing}
+                  onFieldUpdate={handleFieldUpdate}
+                />
+
+                <NotesSection
+                  property={currentProperty}
+                  isEditing={isEditing}
+                  onFieldUpdate={handleFieldUpdate}
+                />
+              </>
             )}
 
-            {/* Activities Section */}
-            {propertyId && (
+            {activeTab === 'activity' && propertyId && (
               <div className="bg-white rounded-lg border border-gray-200 mb-6">
                 <div className="px-6 py-4 border-b border-gray-200">
                   <h2 className="text-lg font-semibold text-gray-900">Activities</h2>
@@ -404,6 +437,15 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
                     }}
                   />
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'files' && propertyId && (
+              <div className="mb-6">
+                <FileManager
+                  entityType="property"
+                  entityId={propertyId}
+                />
               </div>
             )}
 

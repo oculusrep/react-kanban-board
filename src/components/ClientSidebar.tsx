@@ -5,6 +5,7 @@ import RichTextNote from './RichTextNote';
 import ContactFormModal from './ContactFormModal';
 import SiteSubmitFormModal from './SiteSubmitFormModal';
 import NoteFormModal from './NoteFormModal';
+import FileManagerModule from './sidebar/FileManagerModule';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type Note = Database['public']['Tables']['note']['Row'];
@@ -355,7 +356,8 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
     contacts: contacts.length > 0,
     notes: notes.length > 0,
     deals: deals.length > 0,
-    siteSubmits: siteSubmits.length > 0
+    siteSubmits: siteSubmits.length > 0,
+    files: true  // Files expanded by default
   });
 
   const [expandedSidebarModules, setExpandedSidebarModules] = useState(() => {
@@ -644,6 +646,14 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
                     />
                   ))}
                 </SidebarModule>
+
+                {/* Files */}
+                <FileManagerModule
+                  entityType="client"
+                  entityId={clientId}
+                  isExpanded={expandedSidebarModules.files}
+                  onToggle={() => toggleSidebarModule('files')}
+                />
               </>
             )}
           </div>

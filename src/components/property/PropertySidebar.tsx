@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { Database } from '../../../database-schema';
 import SiteSubmitFormModal from '../SiteSubmitFormModal';
 import ContactFormModal from '../ContactFormModal';
+import FileManagerModule from '../sidebar/FileManagerModule';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type Deal = Database['public']['Tables']['deal']['Row'];
@@ -293,7 +294,8 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
   const getSmartDefaults = () => ({
     contacts: contacts.length > 0,
     deals: deals.length > 0,
-    siteSubmits: siteSubmits.length > 0
+    siteSubmits: siteSubmits.length > 0,
+    files: true  // Files expanded by default
   });
 
   const [expandedSidebarModules, setExpandedSidebarModules] = useState(() => {
@@ -559,9 +561,9 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
               isEmpty={siteSubmits.length === 0}
             >
               {siteSubmits.map(siteSubmit => (
-                <SiteSubmitItem 
-                  key={siteSubmit.id} 
-                  siteSubmit={siteSubmit} 
+                <SiteSubmitItem
+                  key={siteSubmit.id}
+                  siteSubmit={siteSubmit}
                   onClick={(id) => {
                     setEditingSiteSubmitId(id);
                     setShowSiteSubmitModal(true);
@@ -570,6 +572,14 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
                 />
               ))}
             </SidebarModule>
+
+            {/* Files */}
+            <FileManagerModule
+              entityType="property"
+              entityId={propertyId}
+              isExpanded={expandedSidebarModules.files}
+              onToggle={() => toggleSidebarModule('files')}
+            />
           </>
         )}
           </div>

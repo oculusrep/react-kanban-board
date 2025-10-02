@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import RichTextNote from './RichTextNote';
+import FileManagerModule from './sidebar/FileManagerModule';
 
 type Note = Database['public']['Tables']['note']['Row'];
 type Property = Database['public']['Tables']['property']['Row'];
@@ -232,7 +233,8 @@ const ContactSidebar: React.FC<ContactSidebarProps> = ({
   const getSmartDefaults = () => ({
     notes: notes.length > 0,
     properties: properties.length > 0,
-    deals: deals.length > 0
+    deals: deals.length > 0,
+    files: true  // Files expanded by default
   });
 
   const [expandedSidebarModules, setExpandedSidebarModules] = useState(() => {
@@ -458,6 +460,14 @@ const ContactSidebar: React.FC<ContactSidebarProps> = ({
                   />
                 ))}
               </SidebarModule>
+
+              {/* Files */}
+              <FileManagerModule
+                entityType="contact"
+                entityId={contactId}
+                isExpanded={expandedSidebarModules.files}
+                onToggle={() => toggleSidebarModule('files')}
+              />
             </>
           )}
         </div>
