@@ -16,13 +16,15 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
 }) => {
   console.log('🗂️ FileManagerModule rendered:', { entityType, entityId, isExpanded });
 
-  const { files, folderPath, loading, error, uploadFiles, deleteItem, getSharedLink, refreshFiles } = useDropboxFiles(
+  const { files, folderPath, loading, error, uploadFiles, deleteItem, getSharedLink, refreshFiles, createFolder } = useDropboxFiles(
     entityType,
     entityId
   );
   const [uploading, setUploading] = useState(false);
   const [currentPath, setCurrentPath] = useState<string>('');
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: any } | null>(null);
+  const [showCreateFolder, setShowCreateFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
 
   // Get breadcrumbs from current path
   const getBreadcrumbs = () => {
@@ -130,6 +132,24 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
     }
   };
 
+  // Handle folder creation
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) {
+      alert('Please enter a folder name');
+      return;
+    }
+
+    try {
+      await createFolder(newFolderName);
+      setShowCreateFolder(false);
+      setNewFolderName('');
+      await refreshFiles();
+    } catch (err) {
+      console.error('Error creating folder:', err);
+      alert('Failed to create folder. Please try again.');
+    }
+  };
+
   // Close context menu when clicking outside
   React.useEffect(() => {
     const handleClickOutside = () => setContextMenu(null);
@@ -227,19 +247,34 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
             <span className="text-xs text-gray-500 italic">(Empty)</span>
           )}
         </button>
-        <label className="flex items-center px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors ml-2 cursor-pointer">
-          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-          </svg>
-          Upload
-          <input
-            type="file"
-            multiple
-            onChange={handleFileUpload}
-            className="hidden"
+        <div className="flex items-center gap-1 ml-2">
+          <button
+            onClick={() => setShowCreateFolder(true)}
+            className="flex items-center px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
             disabled={uploading}
-          />
-        </label>
+            title="New Folder"
+          >
+            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+            </svg>
+          </button>
+          <label className="flex items-center px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors cursor-pointer">
+            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Upload
+            <input
+              type="file"
+              multiple
+              onChange={handleFileUpload}
+              className="hidden"
+              disabled={uploading}
+            />
+          </label>
+        </div>
       </div>
       {isExpanded && (
         <>
@@ -270,6 +305,44 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
                     </button>
                   </React.Fragment>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Create Folder Modal */}
+          {showCreateFolder && (
+            <div className="px-3 py-2 bg-blue-50 border-b border-blue-200">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  placeholder="Folder name"
+                  className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCreateFolder();
+                    if (e.key === 'Escape') {
+                      setShowCreateFolder(false);
+                      setNewFolderName('');
+                    }
+                  }}
+                  autoFocus
+                />
+                <button
+                  onClick={handleCreateFolder}
+                  className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+                >
+                  Create
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCreateFolder(false);
+                    setNewFolderName('');
+                  }}
+                  className="px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           )}
