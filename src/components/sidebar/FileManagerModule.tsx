@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useDropzone } from 'react-dropzone';
 import { useDropboxFiles } from '../../hooks/useDropboxFiles';
 
 interface FileManagerModuleProps {
@@ -65,18 +66,24 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
     currentFilesLength: currentFiles.length
   });
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUploadFromInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
+      await handleFileUpload(e.target.files);
+      e.target.value = '';
+    }
+  };
+
+  const handleFileUpload = async (fileList: FileList) => {
+    if (fileList && fileList.length > 0) {
       try {
         setUploading(true);
-        await uploadFiles(e.target.files);
+        await uploadFiles(fileList);
         await refreshFiles();
       } catch (err) {
         console.error('Error uploading files:', err);
         alert('Failed to upload files. Please try again.');
       } finally {
         setUploading(false);
-        e.target.value = '';
       }
     }
   };
@@ -161,6 +168,22 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
       return () => document.removeEventListener('click', handleClickOutside);
     }
   }, [contextMenu]);
+
+  // Setup react-dropzone
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop: async (acceptedFiles) => {
+      // Convert accepted files to FileList format
+      const fileList = {
+        ...acceptedFiles,
+        length: acceptedFiles.length,
+        item: (index: number) => acceptedFiles[index]
+      } as unknown as FileList;
+
+      await handleFileUpload(fileList);
+    },
+    noClick: true,  // Don't open file picker on click (we have upload button for that)
+    noKeyboard: false
+  });
 
   const getFileIcon = (name: string) => {
     const ext = name.split('.').pop()?.toLowerCase() || '';
@@ -272,7 +295,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
             <input
               type="file"
               multiple
-              onChange={handleFileUpload}
+              onChange={handleFileUploadFromInput}
               className="hidden"
               disabled={uploading}
             />
@@ -350,7 +373,22 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
             </div>
           )}
 
-          <div className="max-h-64 overflow-y-auto">
+          <div {...getRootProps()} className={`max-h-64 overflow-y-auto relative ${isDragActive ? 'border-4 border-blue-500 border-dashed bg-blue-50' : ''}`}>
+          <input {...getInputProps()} />
+
+          {/* Drag overlay */}
+          {isDragActive && (
+            <div className="absolute inset-0 bg-blue-100/80 flex items-center justify-center z-10 pointer-events-none">
+              <div className="text-center">
+                <svg className="w-12 h-12 text-blue-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                <p className="text-sm font-semibold text-blue-900">Drop files here</p>
+                <p className="text-xs text-blue-700 mt-1">Files will be uploaded to the current folder</p>
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <div className="p-4 text-center">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
