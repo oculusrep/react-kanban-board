@@ -215,7 +215,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
               {/* Show folders first */}
               {folders.map((folder: any) => (
                 <div
-                  key={folder.path_display}
+                  key={folder.path}
                   className="p-2 hover:bg-gray-50 group transition-colors"
                 >
                   <div className="flex items-center justify-between">
@@ -239,12 +239,12 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
               {/* Then show files */}
               {actualFiles.map((file: any) => (
                   <div
-                    key={file.path_display}
+                    key={file.path}
                     className="p-2 hover:bg-gray-50 group transition-colors"
                   >
                     <div className="flex items-center justify-between">
                       <button
-                        onClick={() => handleFileClick(file.path_display)}
+                        onClick={() => handleFileClick(file.path)}
                         className="flex items-center space-x-2 flex-1 min-w-0 text-left"
                       >
                         {getFileIcon(file.name)}
@@ -258,7 +258,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
                         </div>
                       </button>
                       <button
-                        onClick={() => handleDelete(file.path_display, file.name)}
+                        onClick={() => handleDelete(file.path, file.name)}
                         className="flex-shrink-0 p-1 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
                         title="Delete file"
                       >
