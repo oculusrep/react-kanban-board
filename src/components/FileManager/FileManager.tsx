@@ -45,6 +45,7 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: DropboxFile } | null>(null);
+  const [showToast, setShowToast] = useState(false);
 
   // Auto-refresh every 30 seconds to catch external Dropbox changes
   useEffect(() => {
@@ -239,7 +240,10 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
       const url = await getSharedLink(file.path);
       await navigator.clipboard.writeText(url);
       setContextMenu(null);
-      alert('Dropbox link copied to clipboard!');
+
+      // Show toast notification
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
     } catch (err) {
       console.error('Error copying link:', err);
       alert('Failed to copy link. Please try again.');
@@ -582,6 +586,16 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
             </svg>
             <span>Copy Dropbox Link</span>
           </button>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {showToast && (
+        <div className="fixed bottom-4 right-4 bg-green-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center space-x-2 z-50 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <span className="font-medium">Dropbox link copied to clipboard!</span>
         </div>
       )}
     </div>
