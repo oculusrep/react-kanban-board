@@ -134,6 +134,45 @@ class DropboxService {
   }
 
   /**
+   * Get the latest cursor for a folder (for change detection)
+   * @param folderPath - Full path to the folder
+   * @returns Cursor string
+   */
+  async getLatestCursor(folderPath: string): Promise<string> {
+    this.validatePath(folderPath);
+
+    return this.executeWithTokenRefresh(async () => {
+      const response = await this.dbx.filesListFolderGetLatestCursor({
+        path: folderPath,
+        recursive: true,
+        include_deleted: false
+      });
+
+      return response.result.cursor;
+    });
+  }
+
+  /**
+   * Long poll for changes in a folder
+   * @param cursor - The cursor from getLatestCursor or previous longpoll
+   * @param timeout - Timeout in seconds (default 30, max 480)
+   * @returns Object indicating if there are changes
+   */
+  async longpollForChanges(cursor: string, timeout: number = 30): Promise<{ changes: boolean; backoff?: number }> {
+    // Note: Longpoll doesn't need token refresh because it uses a different endpoint
+    // and the cursor contains the authentication info
+    const response = await this.dbx.filesListFolderLongpoll({
+      cursor,
+      timeout
+    });
+
+    return {
+      changes: response.result.changes,
+      backoff: response.result.backoff
+    };
+  }
+
+  /**
    * Get or create a shared link for a file/folder
    * @param path - Full path to the file/folder
    * @returns Public shared link URL

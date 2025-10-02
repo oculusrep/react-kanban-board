@@ -17,7 +17,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
 }) => {
   console.log('🗂️ FileManagerModule rendered:', { entityType, entityId, isExpanded });
 
-  const { files, folderPath, loading, error, uploadFiles, deleteItem, getSharedLink, refreshFiles, createFolder } = useDropboxFiles(
+  const { files, folderPath, loading, error, uploadFiles, deleteItem, getSharedLink, refreshFiles, createFolder, getLatestCursor, longpollForChanges } = useDropboxFiles(
     entityType,
     entityId
   );
@@ -168,6 +168,65 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
       return () => document.removeEventListener('click', handleClickOutside);
     }
   }, [contextMenu]);
+
+  // Longpoll for changes to automatically refresh when Dropbox folder changes
+  React.useEffect(() => {
+    if (!folderPath) return;
+
+    let isActive = true;
+    let currentCursor: string | null = null;
+
+    const startLongpolling = async () => {
+      // Get initial cursor
+      const cursor = await getLatestCursor();
+      if (!cursor || !isActive) return;
+      currentCursor = cursor;
+
+      // Start longpolling loop
+      const poll = async () => {
+        if (!isActive || !currentCursor) return;
+
+        try {
+          const result = await longpollForChanges(currentCursor, 30);
+
+          if (!isActive) return;
+
+          if (result?.changes) {
+            // Changes detected - refresh files silently
+            await refreshFiles();
+            // Get new cursor after refresh
+            const newCursor = await getLatestCursor();
+            if (newCursor && isActive) {
+              currentCursor = newCursor;
+            }
+          } else if (result?.backoff) {
+            // Server requested backoff
+            await new Promise(resolve => setTimeout(resolve, result.backoff * 1000));
+          }
+
+          // Continue polling
+          if (isActive) {
+            poll();
+          }
+        } catch (err) {
+          console.error('Longpoll error:', err);
+          // Wait a bit before retrying on error
+          if (isActive) {
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            poll();
+          }
+        }
+      };
+
+      poll();
+    };
+
+    startLongpolling();
+
+    return () => {
+      isActive = false;
+    };
+  }, [folderPath, refreshFiles, getLatestCursor, longpollForChanges]);
 
   // Setup react-dropzone
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

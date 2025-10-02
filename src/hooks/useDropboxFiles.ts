@@ -50,7 +50,10 @@ export function useDropboxFiles(
    * Fetch files from Dropbox for the current entity
    */
   const fetchFiles = useCallback(async () => {
+    console.log('🔍 useDropboxFiles.fetchFiles called:', { entityId, entityType, hasDropboxService: !!dropboxService });
+
     if (!entityId) {
+      console.log('🔍 No entityId, returning empty');
       setFiles([]);
       setFolderPath(null);
       return;
@@ -58,6 +61,7 @@ export function useDropboxFiles(
 
     // Check if Dropbox service is initialized
     if (!dropboxService) {
+      console.log('🔍 No dropboxService, setting error');
       setError('Dropbox access token is required. Please set VITE_DROPBOX_ACCESS_TOKEN in your .env file.');
       setFiles([]);
       setFolderPath(null);
@@ -70,6 +74,7 @@ export function useDropboxFiles(
 
     try {
       // Query dropbox_folder_mapping table to get the folder path
+      console.log('🔍 Querying dropbox_folder_mapping for:', { entityType, entityId });
       const { data: mapping, error: mappingError } = await supabase
         .from('dropbox_folder_mapping')
         .select('dropbox_folder_path')
@@ -77,7 +82,10 @@ export function useDropboxFiles(
         .eq('entity_id', entityId)
         .single();
 
+      console.log('🔍 Mapping result:', { mapping, mappingError });
+
       if (mappingError || !mapping) {
+        console.log('🔍 No mapping found, setting error');
         setError('No Dropbox folder linked to this record');
         setFiles([]);
         setFolderPath(null);
@@ -87,12 +95,14 @@ export function useDropboxFiles(
 
       const path = mapping.dropbox_folder_path;
       setFolderPath(path);
+      console.log('🔍 Fetching files from path:', path);
 
       // List folder contents from Dropbox
       const fileList = await dropboxService.listFolderContents(path);
+      console.log('🔍 Files fetched:', fileList.length, fileList);
       setFiles(fileList);
     } catch (err: any) {
-      console.error('Error fetching Dropbox files:', err);
+      console.error('🔍 Error fetching Dropbox files:', err);
       setError(err.message || 'Failed to load Dropbox files');
       setFiles([]);
     } finally {
@@ -229,6 +239,36 @@ export function useDropboxFiles(
     fetchFiles();
   }, [fetchFiles]);
 
+  /**
+   * Get the latest cursor for change detection
+   */
+  const getLatestCursor = useCallback(async (): Promise<string | null> => {
+    if (!dropboxService || !folderPath) return null;
+
+    try {
+      const cursor = await dropboxService.getLatestCursor(folderPath);
+      return cursor;
+    } catch (err: any) {
+      console.error('Error getting latest cursor:', err);
+      return null;
+    }
+  }, [folderPath]);
+
+  /**
+   * Longpoll for changes
+   */
+  const longpollForChanges = useCallback(async (cursor: string, timeout: number = 30): Promise<{ changes: boolean; backoff?: number } | null> => {
+    if (!dropboxService) return null;
+
+    try {
+      const result = await dropboxService.longpollForChanges(cursor, timeout);
+      return result;
+    } catch (err: any) {
+      console.error('Error during longpoll:', err);
+      return null;
+    }
+  }, []);
+
   return {
     files,
     folderPath,
@@ -239,6 +279,8 @@ export function useDropboxFiles(
     uploadFiles,
     createFolder,
     deleteItem,
-    getSharedLink
+    getSharedLink,
+    getLatestCursor,
+    longpollForChanges
   };
 }

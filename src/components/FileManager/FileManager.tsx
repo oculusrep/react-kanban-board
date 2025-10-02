@@ -35,7 +35,9 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
     uploadFiles,
     createFolder,
     deleteItem,
-    getSharedLink
+    getSharedLink,
+    getLatestCursor,
+    longpollForChanges
   } = useDropboxFiles(entityType, entityId);
 
   const [currentPath, setCurrentPath] = useState<string>('');
@@ -47,17 +49,64 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: DropboxFile } | null>(null);
   const [showToast, setShowToast] = useState(false);
 
-  // Auto-refresh every 30 seconds to catch external Dropbox changes
+  // Longpoll for changes to automatically refresh when Dropbox folder changes
   useEffect(() => {
     if (!folderPath) return;
 
-    const interval = setInterval(() => {
-      // Silent refresh (no loading indicator)
-      refreshFiles();
-    }, 30000); // 30 seconds
+    let isActive = true;
+    let currentCursor: string | null = null;
 
-    return () => clearInterval(interval);
-  }, [folderPath, refreshFiles]);
+    const startLongpolling = async () => {
+      // Get initial cursor
+      const cursor = await getLatestCursor();
+      if (!cursor || !isActive) return;
+      currentCursor = cursor;
+
+      // Start longpolling loop
+      const poll = async () => {
+        if (!isActive || !currentCursor) return;
+
+        try {
+          const result = await longpollForChanges(currentCursor, 30);
+
+          if (!isActive) return;
+
+          if (result?.changes) {
+            // Changes detected - refresh files silently
+            await refreshFiles();
+            // Get new cursor after refresh
+            const newCursor = await getLatestCursor();
+            if (newCursor && isActive) {
+              currentCursor = newCursor;
+            }
+          } else if (result?.backoff) {
+            // Server requested backoff
+            await new Promise(resolve => setTimeout(resolve, result.backoff * 1000));
+          }
+
+          // Continue polling
+          if (isActive) {
+            poll();
+          }
+        } catch (err) {
+          console.error('Longpoll error:', err);
+          // Wait a bit before retrying on error
+          if (isActive) {
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            poll();
+          }
+        }
+      };
+
+      poll();
+    };
+
+    startLongpolling();
+
+    return () => {
+      isActive = false;
+    };
+  }, [folderPath, refreshFiles, getLatestCursor, longpollForChanges]);
 
   // Get file icon based on file extension
   const getFileIcon = (file: DropboxFile) => {
