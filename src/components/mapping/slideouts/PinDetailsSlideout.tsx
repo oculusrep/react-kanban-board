@@ -8,6 +8,7 @@ import PropertyPSFField from '../../property/PropertyPSFField';
 import PropertyCurrencyField from '../../property/PropertyCurrencyField';
 import { FileText, DollarSign, Building2, Activity, MapPin, Edit3 } from 'lucide-react';
 import { Database } from '../../../database-schema';
+import { getDropboxPropertySyncService } from '../../../services/dropboxPropertySync';
 
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
@@ -101,6 +102,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   const [localPropertyData, setLocalPropertyData] = useState<Property | null>(null);
   const [hasPropertyChanges, setHasPropertyChanges] = useState(false);
   const [isSavingProperty, setIsSavingProperty] = useState(false);
+  const [dropboxSyncError, setDropboxSyncError] = useState<string | null>(null);
+  const [originalPropertyName, setOriginalPropertyName] = useState<string | null>(null);
 
   // Use shared hooks
   const { propertyRecordTypes, isLoading: isLoadingRecordTypes } = usePropertyRecordTypes();
@@ -110,8 +113,10 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   useEffect(() => {
     console.log('🔄 Syncing localPropertyData:', { data, type, hasData: !!data });
     if (data && type === 'property') {
-      setLocalPropertyData(data as Property);
-      console.log('✅ Set localPropertyData:', (data as Property).id, (data as Property).property_name);
+      const property = data as Property;
+      setLocalPropertyData(property);
+      setOriginalPropertyName(property.property_name || null);
+      console.log('✅ Set localPropertyData:', property.id, property.property_name);
     }
   }, [data, type]);
 
@@ -297,12 +302,47 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     setHasPropertyChanges(true);
   };
 
+  // Retry Dropbox sync
+  const handleRetryDropboxSync = async () => {
+    if (!localPropertyData || !localPropertyData.id || !localPropertyData.property_name) return;
+
+    try {
+      setDropboxSyncError(null);
+
+      // Get the current Dropbox folder name to use as "old name"
+      const syncService = getDropboxPropertySyncService();
+      const { currentFolderName } = await syncService.checkSyncStatus(
+        localPropertyData.id,
+        localPropertyData.property_name
+      );
+
+      if (currentFolderName) {
+        const result = await syncService.syncPropertyName(
+          localPropertyData.id,
+          currentFolderName,
+          localPropertyData.property_name
+        );
+
+        if (!result.success) {
+          setDropboxSyncError(result.error || 'Failed to sync folder name to Dropbox');
+        } else {
+          setOriginalPropertyName(localPropertyData.property_name);
+          console.log('✅ Retry: Property name synced to Dropbox successfully');
+        }
+      }
+    } catch (err) {
+      console.error('Retry Dropbox sync error:', err);
+      setDropboxSyncError('Unexpected error syncing to Dropbox');
+    }
+  };
+
   // Save property changes to database
   const handleSavePropertyChanges = async () => {
     if (!localPropertyData) return;
 
     try {
       setIsSavingProperty(true);
+      setDropboxSyncError(null);
       console.log('💾 Saving property changes:', localPropertyData);
 
       // Extract only the fields that should be updated (exclude id, created_at, updated_at)
@@ -312,6 +352,26 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       await updateProperty(propertyUpdates);
 
       console.log('✅ Property saved successfully');
+
+      // If property_name changed, sync to Dropbox
+      const nameChanged = originalPropertyName !== localPropertyData.property_name;
+      if (nameChanged && originalPropertyName && localPropertyData.property_name) {
+        const syncService = getDropboxPropertySyncService();
+        const result = await syncService.syncPropertyName(
+          id,
+          originalPropertyName,
+          localPropertyData.property_name
+        );
+
+        if (!result.success) {
+          setDropboxSyncError(result.error || 'Failed to sync folder name to Dropbox');
+          console.warn('Dropbox sync failed:', result.error);
+        } else {
+          // Update original name if sync was successful
+          setOriginalPropertyName(localPropertyData.property_name);
+          console.log('✅ Property name synced to Dropbox successfully');
+        }
+      }
 
       // Notify parent of the update so it can update its state
       if (onDataUpdate) {
@@ -554,6 +614,26 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                     placeholder="Enter property name..."
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                   />
+                  {/* Show Dropbox sync error with retry button */}
+                  {dropboxSyncError && (
+                    <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+                      <div className="flex items-start gap-2">
+                        <svg className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <div className="flex-1">
+                          <p className="text-xs text-yellow-800 font-medium">Dropbox Sync Warning</p>
+                          <p className="text-xs text-yellow-700 mt-1">{dropboxSyncError}</p>
+                          <button
+                            onClick={handleRetryDropboxSync}
+                            className="mt-2 text-xs font-medium text-yellow-800 hover:text-yellow-900 underline"
+                          >
+                            Retry Sync
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Address */}

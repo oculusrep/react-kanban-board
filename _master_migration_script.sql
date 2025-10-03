@@ -377,6 +377,10 @@ INSERT INTO deal (
   referral_payee_client_id,
   referral_fee_percent,
   referral_fee_usd,
+  house_percent,
+  origination_percent,
+  site_percent,
+  deal_percent,
   sf_id
 )
 SELECT
@@ -397,6 +401,10 @@ SELECT
   c_ref.id AS referral_payee_client_id,
   o."Referral_Fee_p__c" AS referral_fee_percent,
   o."Referral_Fee__c" AS referral_fee_usd,
+  o."House_Percent__c" AS house_percent,
+  o."Origination_Percent__c" AS origination_percent,
+  o."Site_Percent__c" AS site_percent,
+  o."Deal_Percent__c" AS deal_percent,
   o."Id" AS sf_id
 FROM opp o
 LEFT JOIN client     c     ON c.sf_id   = o."AccountId"
@@ -420,7 +428,11 @@ ON CONFLICT (sf_id) DO UPDATE SET
   deal_team_id = EXCLUDED.deal_team_id,
   referral_payee_client_id = EXCLUDED.referral_payee_client_id,
   referral_fee_percent = EXCLUDED.referral_fee_percent,
-  referral_fee_usd = EXCLUDED.referral_fee_usd;
+  referral_fee_usd = EXCLUDED.referral_fee_usd,
+  house_percent = EXCLUDED.house_percent,
+  origination_percent = EXCLUDED.origination_percent,
+  site_percent = EXCLUDED.site_percent,
+  deal_percent = EXCLUDED.deal_percent;
   -- NOTE: kanban_position is intentionally NOT updated here
   -- This preserves the CRM-specific positioning when deals are re-migrated
 
@@ -1129,6 +1141,22 @@ ON CONFLICT (sf_id) DO UPDATE SET
     sf_origination_usd = EXCLUDED.sf_origination_usd,
     sf_site_usd = EXCLUDED.sf_site_usd,
     sf_deal_usd = EXCLUDED.sf_deal_usd;
+
+-- ==============================================================================
+-- Deal-Level Commission Percentages (Now from Salesforce Opportunity)
+-- ==============================================================================
+-- UPDATED: These percentages now come directly from Salesforce Opportunity fields
+-- (House_Percent__c, Origination_Percent__c, Site_Percent__c, Deal_Percent__c)
+-- The old logic that calculated them from commission_split has been removed.
+
+-- Add columns if they don't exist (for backwards compatibility)
+ALTER TABLE deal ADD COLUMN IF NOT EXISTS house_percent NUMERIC(5,2);
+ALTER TABLE deal ADD COLUMN IF NOT EXISTS origination_percent NUMERIC(5,2);
+ALTER TABLE deal ADD COLUMN IF NOT EXISTS site_percent NUMERIC(5,2);
+ALTER TABLE deal ADD COLUMN IF NOT EXISTS deal_percent NUMERIC(5,2);
+
+-- NOTE: The percentages are now populated directly in the deal INSERT above (lines 404-407)
+-- No additional UPDATE needed since they come from Salesforce Opportunity
 
 -- ==============================================================================
 -- Payment Table (Individual payment records)
@@ -2312,7 +2340,7 @@ CREATE TABLE IF NOT EXISTS note (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
 
     -- Salesforce ContentNote System Fields
-    sf_content_note_id TEXT UNIQUE NOT NULL,
+    sf_content_note_id TEXT UNIQUE,
     sf_content_document_id TEXT,
     sf_content_version_id TEXT,
 
@@ -2345,7 +2373,7 @@ CREATE TABLE IF NOT EXISTS note_object_link (
     note_id UUID NOT NULL,
 
     -- Salesforce relationship identifier
-    sf_content_document_link_id TEXT UNIQUE NOT NULL,
+    sf_content_document_link_id TEXT UNIQUE,
 
     -- Object type and ID (polymorphic relationship)
     object_type TEXT NOT NULL,
@@ -2826,6 +2854,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trigger_update_dropbox_folder_mapping_updated_at ON dropbox_folder_mapping;
 CREATE TRIGGER trigger_update_dropbox_folder_mapping_updated_at
   BEFORE UPDATE ON dropbox_folder_mapping
   FOR EACH ROW

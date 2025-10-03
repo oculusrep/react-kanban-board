@@ -3,15 +3,12 @@ import { useParams, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import DealDetailsForm from "../components/DealDetailsForm";
-import { FloatingPanelManager } from "../components/FloatingPanelManager";
-import { FloatingPanelContainer } from "../components/FloatingPanelContainer";
-import { FloatingContactPanel } from "../components/FloatingContactPanel";
-import { FloatingFilePanel } from "../components/FloatingFilePanel";
-import { useDealContacts } from "../hooks/useDealContacts";
 import CommissionTab from '../components/CommissionTab';
 import PaymentTab from '../components/PaymentTab';
 import ActivityTab from '../components/ActivityTab';
 import DealHeaderBar from '../components/DealHeaderBar';
+import DealSidebar from '../components/DealSidebar';
+import FileManager from '../components/FileManager/FileManager';
 import { useTrackPageView } from '../hooks/useRecentlyViewed';
 
 export default function DealDetailsPage() {
@@ -20,15 +17,13 @@ export default function DealDetailsPage() {
   const [deal, setDeal] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [isNewDeal, setIsNewDeal] = useState(false);
+  const [sidebarMinimized, setSidebarMinimized] = useState(false);
   const { trackView } = useTrackPageView();
-  
+
   console.log('DealDetailsPage - location:', location.pathname, 'dealId from params:', dealId);
-  
+
   // Fallback: if dealId is undefined but pathname is /deal/new, treat as new deal
   const actualDealId = dealId || (location.pathname === '/deal/new' ? 'new' : undefined);
-  
-  // Get contact count for the floating button badge (only for existing deals)
-  const { contacts } = useDealContacts(actualDealId && actualDealId !== 'new' ? actualDealId : null);
 
   useEffect(() => {
     const fetchDeal = async () => {
@@ -131,135 +126,168 @@ export default function DealDetailsPage() {
   }
 
   return (
-    <FloatingPanelManager>
-      <FloatingPanelContainer 
-        contactCount={contacts.length}
-        notesCount={0}        // TODO: Add notes count when notes are implemented
-        filesCount={0}        // TODO: Add files count when files are implemented
-        activityCount={0}     // TODO: Add activity count when activity is implemented
-        paymentsCount={0}     // TODO: Add payments count when payments are implemented
-      >
-        {/* Deal Header Bar - Always visible at top */}
-        <DealHeaderBar deal={deal} />
-        
-        <div className="p-4 max-w-4xl mx-auto">
-          {/* Tab Navigation */}
-          <div className="border-b border-gray-200 mb-6">
-            <nav className="-mb-px flex space-x-8">
-              <button
-                onClick={() => setActiveTab('overview')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'overview'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Details
-              </button>
-              <button
-                onClick={() => setActiveTab('commission')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'commission'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Commission
-              </button>
-              <button
-                onClick={() => setActiveTab('payments')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'payments'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Payments
-              </button>
-              <button
-                onClick={() => setActiveTab('activity')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'activity'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Activity
-              </button>
-            </nav>
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Deal Header Bar - Full Width */}
+      <DealHeaderBar deal={deal} />
+
+      {/* Main Content Area with Static Sidebar */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Main Content */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-4xl mx-auto p-4 pb-8">
+            {/* Tab Navigation */}
+            <div className="border-b border-gray-200 mb-6">
+              <nav className="-mb-px flex space-x-8">
+                <button
+                  onClick={() => setActiveTab('overview')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'overview'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Details
+                </button>
+                <button
+                  onClick={() => setActiveTab('commission')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'commission'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Commission
+                </button>
+                <button
+                  onClick={() => setActiveTab('payments')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'payments'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Payments
+                </button>
+                <button
+                  onClick={() => setActiveTab('activity')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'activity'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Activity
+                </button>
+                <button
+                  onClick={() => setActiveTab('files')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'files'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Files
+                </button>
+              </nav>
+            </div>
+
+            {/* Tab Content */}
+            {activeTab === 'overview' && (
+              <DealDetailsForm deal={deal} onSave={handleDealUpdate} />
+            )}
+
+            {activeTab === 'commission' && (
+              <>
+                {isNewDeal || !deal.id ? (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                    <div className="flex">
+                      <div className="ml-3">
+                        <h3 className="text-sm font-medium text-yellow-800">Save Deal First</h3>
+                        <div className="mt-2 text-sm text-yellow-700">
+                          <p>Please save the deal in the Details tab before managing commission details.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <CommissionTab dealId={deal.id} deal={deal} onDealUpdate={handleAsyncDealUpdate} onSwitchToPayments={() => setActiveTab('payments')} />
+                )}
+              </>
+            )}
+
+            {activeTab === 'payments' && (
+              <>
+                {isNewDeal || !deal.id ? (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                    <div className="flex">
+                      <div className="ml-3">
+                        <h3 className="text-sm font-medium text-yellow-800">Save Deal First</h3>
+                        <div className="mt-2 text-sm text-yellow-700">
+                          <p>Please save the deal in the Details tab before managing payments.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <PaymentTab deal={deal} onDealUpdate={handleAsyncDealUpdate} />
+                )}
+              </>
+            )}
+
+            {activeTab === 'activity' && (
+              <>
+                {isNewDeal || !deal.id ? (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                    <div className="flex">
+                      <div className="ml-3">
+                        <h3 className="text-sm font-medium text-yellow-800">Save Deal First</h3>
+                        <div className="mt-2 text-sm text-yellow-700">
+                          <p>Please save the deal in the Details tab before viewing activities.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <ActivityTab dealId={deal.id} />
+                )}
+              </>
+            )}
+
+            {activeTab === 'files' && (
+              <>
+                {isNewDeal || !deal.id ? (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                    <div className="flex">
+                      <div className="ml-3">
+                        <h3 className="text-sm font-medium text-yellow-800">Save Deal First</h3>
+                        <div className="mt-2 text-sm text-yellow-700">
+                          <p>Please save the deal in the Details tab before managing files.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mb-6">
+                    <FileManager
+                      entityType="deal"
+                      entityId={deal.id}
+                    />
+                  </div>
+                )}
+              </>
+            )}
           </div>
-
-          {/* Tab Content */}
-          {activeTab === 'overview' && (
-            <DealDetailsForm deal={deal} onSave={handleDealUpdate} />
-          )}
-
-          {activeTab === 'commission' && (
-            <>
-              {isNewDeal || !deal.id ? (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-                  <div className="flex">
-                    <div className="ml-3">
-                      <h3 className="text-sm font-medium text-yellow-800">Save Deal First</h3>
-                      <div className="mt-2 text-sm text-yellow-700">
-                        <p>Please save the deal in the Details tab before managing commission details.</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <CommissionTab dealId={deal.id} deal={deal} onDealUpdate={handleAsyncDealUpdate} onSwitchToPayments={() => setActiveTab('payments')} />
-              )}
-            </>
-          )}
-
-          {activeTab === 'payments' && (
-            <>
-              {isNewDeal || !deal.id ? (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-                  <div className="flex">
-                    <div className="ml-3">
-                      <h3 className="text-sm font-medium text-yellow-800">Save Deal First</h3>
-                      <div className="mt-2 text-sm text-yellow-700">
-                        <p>Please save the deal in the Details tab before managing payments.</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <PaymentTab deal={deal} onDealUpdate={handleAsyncDealUpdate} />
-              )}
-            </>
-          )}
-
-          {activeTab === 'activity' && (
-            <>
-              {isNewDeal || !deal.id ? (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-                  <div className="flex">
-                    <div className="ml-3">
-                      <h3 className="text-sm font-medium text-yellow-800">Save Deal First</h3>
-                      <div className="mt-2 text-sm text-yellow-700">
-                        <p>Please save the deal in the Details tab before viewing activities.</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <ActivityTab dealId={deal.id} />
-              )}
-            </>
-          )}
         </div>
-      </FloatingPanelContainer>
 
-      {/* Floating Panels - only for existing deals */}
-      {dealId && dealId !== 'new' && (
-        <>
-          <FloatingContactPanel dealId={dealId} />
-          <FloatingFilePanel dealId={dealId} />
-        </>
-      )}
-    </FloatingPanelManager>
+        {/* Deal Sidebar - Static right sidebar */}
+        {actualDealId && actualDealId !== 'new' && (
+          <DealSidebar
+            dealId={actualDealId}
+            isMinimized={sidebarMinimized}
+            onMinimize={() => setSidebarMinimized(!sidebarMinimized)}
+          />
+        )}
+      </div>
+    </div>
   );
 }

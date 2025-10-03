@@ -10,6 +10,7 @@ import { parseISO, format as formatDateFn } from "date-fns";
 import SiteSubmitSelector from "./SiteSubmitSelector";
 import PropertyUnitSelector from "./PropertyUnitSelector";
 import PropertySelector from "./PropertySelector";
+import { getDropboxPropertySyncService } from "../services/dropboxPropertySync";
 
 // 🔹 Stage → Default Probability map (integer percent 0..100)
 const STAGE_PROBABILITY: Record<string, number> = {
@@ -69,6 +70,8 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
   const [stageOptions, setStageOptions] = useState<{ id: string; label: string }[]>([]);
   const [teamOptions, setTeamOptions] = useState<{ id: string; label: string }[]>([]);
   const [updatedByName, setUpdatedByName] = useState<string>("");
+  const [dropboxSyncError, setDropboxSyncError] = useState<string | null>(null);
+  const [originalDealName, setOriginalDealName] = useState<string>(deal.deal_name);
 
   const [clientSearch, setClientSearch] = useState("");
   const [clientSuggestions, setClientSuggestions] = useState<{ id: string; label: string }[]>([]);
@@ -264,6 +267,32 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
     return out;
   };
 
+  const handleRetryDropboxSync = async () => {
+    if (!form.id || !form.deal_name) return;
+
+    const syncService = getDropboxPropertySyncService();
+    const { currentFolderName } = await syncService.checkSyncStatus(
+      form.id,
+      'deal',
+      form.deal_name
+    );
+
+    if (currentFolderName) {
+      const result = await syncService.syncDealName(
+        form.id,
+        currentFolderName,
+        form.deal_name
+      );
+
+      if (!result.success) {
+        setDropboxSyncError(result.error || 'Failed to sync folder name');
+      } else {
+        setOriginalDealName(form.deal_name);
+        setDropboxSyncError(null);
+      }
+    }
+  };
+
   const handleSave = async () => {
     const v = validateAll(form);
     setErrors(v);
@@ -319,8 +348,35 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
     }
     
     setSaving(false);
-    if (error) alert("Error saving: " + error.message);
-    else if (data) onSave(data);
+
+    if (error) {
+      alert("Error saving: " + error.message);
+      return;
+    }
+
+    if (data) {
+      // If deal_name changed, sync to Dropbox
+      const nameChanged = originalDealName !== form.deal_name;
+      if (nameChanged && originalDealName && form.deal_name && data.id) {
+        const syncService = getDropboxPropertySyncService();
+        const result = await syncService.syncDealName(
+          data.id,
+          originalDealName,
+          form.deal_name
+        );
+
+        if (!result.success) {
+          setDropboxSyncError(result.error || 'Failed to sync folder name to Dropbox');
+          console.warn('Dropbox sync failed:', result.error);
+        } else {
+          setOriginalDealName(form.deal_name);
+          setDropboxSyncError(null);
+          console.log('✅ Deal name synced to Dropbox successfully');
+        }
+      }
+
+      onSave(data);
+    }
   };
 
   // 🔹 Conditional enablement
@@ -333,11 +389,33 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
       <Section title="Deal Context" help="Name the opportunity, choose the client, property, and deal team.">
         <div className="grid grid-cols-2 gap-4">
           {/* Row 1: Opportunity (left) + Client (right) */}
-          <Input
-            label="Deal Name"
-            value={form.deal_name}
-            onChange={(v) => updateField("deal_name", v)}
-          />
+          <div>
+            <Input
+              label="Deal Name"
+              value={form.deal_name}
+              onChange={(v) => updateField("deal_name", v)}
+            />
+            {/* Show Dropbox sync error with retry button */}
+            {dropboxSyncError && (
+              <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+                <div className="flex items-start gap-2">
+                  <svg className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div className="flex-1">
+                    <p className="text-xs text-yellow-800 font-medium">Dropbox Sync Warning</p>
+                    <p className="text-xs text-yellow-700 mt-1">{dropboxSyncError}</p>
+                    <button
+                      onClick={handleRetryDropboxSync}
+                      className="mt-2 text-xs font-medium text-yellow-800 hover:text-yellow-900 underline"
+                    >
+                      Retry Sync
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
           <AlwaysEditableAutocomplete
             label="Client"
             search={clientSearch}

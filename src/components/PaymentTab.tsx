@@ -180,18 +180,29 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
       setGeneratingPayments(true);
       setError(null);
 
+      console.log('🔵 Generating payments for deal:', deal.id);
+      console.log('🔵 Deal data:', { fee: deal.fee, number_of_payments: deal.number_of_payments });
+
       // Call the database function to generate payments
       const { data, error } = await supabase.rpc('generate_payments_for_deal', {
         deal_uuid: deal.id
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Database error:', error);
+        throw error;
+      }
+
+      console.log('✅ Payment generation response:', data);
+
+      // Clear cache for this deal to force fresh data
+      paymentDataCache.delete(deal.id);
 
       // Refresh payment data after generation
       await fetchPaymentData();
 
     } catch (err) {
-      console.error('Error generating payments:', err);
+      console.error('❌ Error generating payments:', err);
       setError(err instanceof Error ? err.message : 'Failed to generate payments');
     } finally {
       setGeneratingPayments(false);

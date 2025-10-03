@@ -284,6 +284,80 @@ class DropboxService {
       await this.dbx.filesDeleteV2({ path });
     });
   }
+
+  /**
+   * Rename/move a folder in Dropbox
+   * @param oldPath - Current full path to the folder
+   * @param newPath - New full path for the folder
+   * @returns Updated folder info
+   */
+  async renameFolder(oldPath: string, newPath: string): Promise<DropboxFile> {
+    this.validatePath(oldPath);
+    this.validatePath(newPath);
+
+    return this.executeWithTokenRefresh(async () => {
+      const response = await this.dbx.filesMoveV2({
+        from_path: oldPath,
+        to_path: newPath,
+        autorename: false, // Don't auto-rename if conflict exists
+        allow_ownership_transfer: false
+      });
+
+      const result = response.result.metadata;
+
+      console.log('✅ Dropbox folder renamed successfully:', {
+        from: oldPath,
+        to: newPath
+      });
+
+      return {
+        id: result.id,
+        name: result.name,
+        path: result.path_display || result.path_lower,
+        type: 'folder',
+        size: null,
+        modified: null,
+        shared_link: null
+      };
+    });
+  }
+
+  /**
+   * Check if a folder exists in Dropbox
+   * @param path - Full path to check
+   * @returns True if folder exists, false otherwise
+   */
+  async folderExists(path: string): Promise<boolean> {
+    this.validatePath(path);
+
+    try {
+      return await this.executeWithTokenRefresh(async () => {
+        await this.dbx.filesGetMetadata({ path });
+        return true;
+      });
+    } catch (error: any) {
+      if (error.status === 409 || error.error?.error?.['.tag'] === 'path' || error.error?.error?.path?.['.tag'] === 'not_found') {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Build folder path for an entity (property, client, deal)
+   * @param entityName - Name of the entity
+   * @param basePath - Base path (defaults to /Salesforce Documents)
+   * @returns Clean folder path
+   */
+  buildFolderPath(entityName: string, basePath: string = this.ALLOWED_BASE_PATH): string {
+    // Clean the entity name for use as folder name
+    const cleanName = entityName
+      .replace(/[<>:"/\\|?*]/g, '') // Remove invalid characters
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .trim();
+
+    return `${basePath}/${cleanName}`;
+  }
 }
 
 export default DropboxService;

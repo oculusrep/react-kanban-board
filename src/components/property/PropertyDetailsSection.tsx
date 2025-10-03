@@ -13,13 +13,17 @@ interface PropertyDetailsSectionProps {
   isEditing: boolean;
   onFieldUpdate: (field: keyof Property, value: any) => void;
   propertyRecordTypes?: PropertyRecordType[];
+  dropboxSyncError?: string | null;
+  onRetryDropboxSync?: () => void;
 }
 
 const PropertyDetailsSection: React.FC<PropertyDetailsSectionProps> = ({
   property,
   isEditing,
   onFieldUpdate,
-  propertyRecordTypes = []
+  propertyRecordTypes = [],
+  dropboxSyncError,
+  onRetryDropboxSync
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [legacyRecordType, setLegacyRecordType] = useState<string | null>(null);
@@ -83,13 +87,37 @@ const PropertyDetailsSection: React.FC<PropertyDetailsSectionProps> = ({
               )}
             </div>
 
-            <PropertyInputField
-              label="Property Name"
-              value={property.property_name}
-              onChange={(value) => onFieldUpdate('property_name', value)}
-              placeholder="Property name or identifier"
-              tabIndex={21}
-            />
+            <div>
+              <PropertyInputField
+                label="Property Name"
+                value={property.property_name}
+                onChange={(value) => onFieldUpdate('property_name', value)}
+                placeholder="Property name or identifier"
+                tabIndex={21}
+              />
+              {/* Show Dropbox sync error with retry button */}
+              {dropboxSyncError && (
+                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <div className="flex-1">
+                      <p className="text-sm text-yellow-800 font-medium">Dropbox Sync Warning</p>
+                      <p className="text-sm text-yellow-700 mt-1">{dropboxSyncError}</p>
+                      {onRetryDropboxSync && (
+                        <button
+                          onClick={onRetryDropboxSync}
+                          className="mt-2 text-sm font-medium text-yellow-800 hover:text-yellow-900 underline"
+                        >
+                          Retry Sync
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <PropertyInputField

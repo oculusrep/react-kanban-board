@@ -4,6 +4,7 @@ import { useProperty } from '../../hooks/useProperty';
 import { usePropertyForm } from '../../hooks/usePropertyForm';
 import { supabase } from '../../lib/supabaseClient';
 import { Database } from '../../../database-schema';
+import { getDropboxPropertySyncService } from '../../services/dropboxPropertySync';
 
 import PropertyHeader from './PropertyHeader';
 import LocationSection from './LocationSection';
@@ -48,6 +49,7 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
   const [siteSubmitModalOpen, setSiteSubmitModalOpen] = useState(false);
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('details');
+  const [dropboxSyncError, setDropboxSyncError] = useState<string | null>(null);
 
   const { 
     property, 
@@ -155,21 +157,68 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
   };
 
   const handleFieldUpdate = async (field: keyof Property, value: any) => {
+    const oldValue = property?.[field];
     updateField(field, value);
-    
+
     // Auto-save immediately on field change (inline editing pattern)
     if (propertyId && mode !== 'create') {
       try {
         setAutoSaveStatus('saving');
+        setDropboxSyncError(null);
+
         await updateProperty({ [field]: value });
         setAutoSaveStatus('saved');
-        
+
+        // If property_name changed, sync to Dropbox
+        if (field === 'property_name' && oldValue !== value && property?.property_name) {
+          await syncPropertyNameToDropbox(property.property_name, value as string);
+        }
+
         // Clear saved status after 2 seconds
         setTimeout(() => setAutoSaveStatus('idle'), 2000);
       } catch (err) {
         console.error('Auto-save failed:', err);
         setAutoSaveStatus('error');
       }
+    }
+  };
+
+  const syncPropertyNameToDropbox = async (oldName: string, newName: string) => {
+    if (!propertyId) return;
+
+    try {
+      const syncService = getDropboxPropertySyncService();
+      const result = await syncService.syncPropertyName(
+        propertyId,
+        oldName,
+        newName
+      );
+
+      if (!result.success) {
+        setDropboxSyncError(result.error || 'Failed to sync folder name to Dropbox');
+        console.warn('Dropbox sync failed:', result.error);
+      } else {
+        setDropboxSyncError(null);
+        console.log('✅ Property name synced to Dropbox successfully');
+      }
+    } catch (err) {
+      console.error('Dropbox sync error:', err);
+      setDropboxSyncError('Unexpected error syncing to Dropbox');
+    }
+  };
+
+  const handleRetryDropboxSync = async () => {
+    if (!property || !propertyId) return;
+
+    // Get the current Dropbox folder name to use as "old name"
+    const syncService = getDropboxPropertySyncService();
+    const { currentFolderName } = await syncService.checkSyncStatus(
+      propertyId,
+      property.property_name || ''
+    );
+
+    if (currentFolderName) {
+      await syncPropertyNameToDropbox(currentFolderName, property.property_name || '');
     }
   };
 
@@ -369,6 +418,8 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
                   isEditing={isEditing}
                   onFieldUpdate={handleFieldUpdate}
                   propertyRecordTypes={propertyRecordTypes}
+                  dropboxSyncError={dropboxSyncError}
+                  onRetryDropboxSync={handleRetryDropboxSync}
                 />
 
                 <LocationSection
