@@ -10,6 +10,7 @@ interface PropertyUnitsSectionProps {
   onUnitsChange?: (units: PropertyUnit[]) => void;
   isExpanded?: boolean;
   onToggle?: () => void;
+  highlightedUnitId?: string | null;
 }
 
 // Input component for consistency
@@ -111,7 +112,8 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
   isEditing = false,
   onUnitsChange,
   isExpanded = false,
-  onToggle
+  onToggle,
+  highlightedUnitId = null
 }) => {
   const [units, setUnits] = useState<PropertyUnit[]>([]);
   const [loading, setLoading] = useState(false);
@@ -359,7 +361,14 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
       ) : (
         <div className="space-y-4">
           {units.map((unit, index) => (
-            <div key={unit.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+            <div
+              key={unit.id}
+              className={`border rounded-lg p-4 transition-all ${
+                highlightedUnitId === unit.id
+                  ? 'border-blue-500 bg-blue-50 shadow-lg'
+                  : 'border-gray-200 bg-gray-50'
+              }`}
+            >
               <div className="flex items-center justify-between mb-4">
                 <span className="text-sm font-medium text-gray-700">Unit {index + 1}</span>
                 <button

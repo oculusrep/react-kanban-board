@@ -1,5 +1,6 @@
 // components/PropertyUnitSelector.tsx
 import React, { useEffect, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 
 interface PropertyUnit {
@@ -21,12 +22,13 @@ interface Props {
   label?: string;
 }
 
-export default function PropertyUnitSelector({ 
-  value, 
-  onChange, 
+export default function PropertyUnitSelector({
+  value,
+  onChange,
   propertyId,
-  label = "Property Unit" 
+  label = "Property Unit"
 }: Props) {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [suggestions, setSuggestions] = useState<PropertyUnit[]>([]);
   const [selectedUnit, setSelectedUnit] = useState<PropertyUnit | null>(null);
@@ -194,14 +196,14 @@ export default function PropertyUnitSelector({
       </div>
       
       {/* Optional: Show a link to view details when selected */}
-      {selectedUnit && (
+      {selectedUnit && selectedUnit.property_id && (
         <div className="mt-1">
           <button
             type="button"
-            className="text-xs text-blue-600 hover:text-blue-800"
+            className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
             onClick={() => {
-              // TODO: Implement navigation to property unit details
-              console.log("View property unit:", selectedUnit.id);
+              // Navigate to property details with units section expanded and unit highlighted
+              navigate(`/property/${selectedUnit.property_id}?section=units&unitId=${selectedUnit.id}`);
             }}
           >
             View Property Unit Details →

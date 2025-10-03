@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useProperty } from '../../hooks/useProperty';
 import { usePropertyForm } from '../../hooks/usePropertyForm';
 import { supabase } from '../../lib/supabaseClient';
@@ -39,6 +39,7 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
   onBack = () => window.history.back()
 }) => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [isEditing, setIsEditing] = useState(false); // Always false - we use inline editing
   const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
   const [propertyStages, setPropertyStages] = useState<PropertyStage[]>([]);
@@ -46,6 +47,7 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [sidebarMinimized, setSidebarMinimized] = useState(false);
   const [unitsExpanded, setUnitsExpanded] = useState(false);
+  const [highlightedUnitId, setHighlightedUnitId] = useState<string | null>(null);
   const [siteSubmitModalOpen, setSiteSubmitModalOpen] = useState(false);
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('details');
@@ -60,13 +62,33 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
     refreshProperty 
   } = useProperty(propertyId);
 
-  const { 
-    formData, 
-    updateField, 
-    validation, 
-    isDirty, 
-    resetForm 
+  const {
+    formData,
+    updateField,
+    validation,
+    isDirty,
+    resetForm
   } = usePropertyForm(property || undefined);
+
+  // Check URL parameters for section expansion and unit highlighting
+  useEffect(() => {
+    const section = searchParams.get('section');
+    const unitId = searchParams.get('unitId');
+
+    if (section === 'units') {
+      setUnitsExpanded(true);
+      if (unitId) {
+        setHighlightedUnitId(unitId);
+        // Scroll to units section after a brief delay to ensure it's expanded
+        setTimeout(() => {
+          const unitsSection = document.getElementById('property-units-section');
+          if (unitsSection) {
+            unitsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 300);
+      }
+    }
+  }, [searchParams]);
 
   // Load property types and stages
   useEffect(() => {
@@ -430,15 +452,18 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
 
                 {/* Property Units Section */}
                 {propertyId && (
-                  <PropertyUnitsSection
-                    propertyId={propertyId}
-                    isEditing={isEditing}
-                    isExpanded={unitsExpanded}
-                    onToggle={() => setUnitsExpanded(!unitsExpanded)}
-                    onUnitsChange={(units) => {
-                      console.log('Units updated:', units);
-                    }}
-                  />
+                  <div id="property-units-section">
+                    <PropertyUnitsSection
+                      propertyId={propertyId}
+                      isEditing={isEditing}
+                      isExpanded={unitsExpanded}
+                      onToggle={() => setUnitsExpanded(!unitsExpanded)}
+                      onUnitsChange={(units) => {
+                        console.log('Units updated:', units);
+                      }}
+                      highlightedUnitId={highlightedUnitId}
+                    />
+                  </div>
                 )}
 
                 <FinancialSection

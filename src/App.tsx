@@ -15,6 +15,9 @@ import SearchDebugPage from "./components/SearchDebugPage";
 import NotesDebugPage from "./pages/NotesDebugPage";
 import MappingPage from "./pages/MappingPage";
 import MappingPageNew from "./pages/MappingPageNew";
+import ReportsPage from "./pages/ReportsPage";
+import DealCompareReportPage from "./pages/DealCompareReportPage";
+import DealCompareToSalesforceReportPage from "./pages/DealCompareToSalesforceReportPage";
 
 function App() {
   return (
@@ -41,6 +44,9 @@ function App() {
             <Route path="/notes-debug" element={<NotesDebugPage />} />
             <Route path="/mapping" element={<MappingPageNew />} />
             <Route path="/mapping-old" element={<MappingPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/reports/deal-compare" element={<DealCompareReportPage />} />
+            <Route path="/reports/deal-compare-salesforce" element={<DealCompareToSalesforceReportPage />} />
           </Routes>
         </div>
       </ProtectedRoute>
