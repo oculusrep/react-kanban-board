@@ -18,15 +18,22 @@ import MappingPageNew from "./pages/MappingPageNew";
 import ReportsPage from "./pages/ReportsPage";
 import DealCompareReportPage from "./pages/DealCompareReportPage";
 import DealCompareToSalesforceReportPage from "./pages/DealCompareToSalesforceReportPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 
 function App() {
   return (
     <AuthProvider>
-      <ProtectedRoute>
-        <div className="min-h-screen bg-gray-100">
-          <Navbar />
-          <Routes>
-            <Route path="/" element={<Navigate to="/master-pipeline" replace />} />
+      <Routes>
+        {/* Public route for password reset */}
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+        {/* Protected routes */}
+        <Route path="/*" element={
+          <ProtectedRoute>
+            <div className="min-h-screen bg-gray-100">
+              <Navbar />
+              <Routes>
+                <Route path="/" element={<Navigate to="/master-pipeline" replace />} />
             <Route path="/master-pipeline" element={<KanbanBoard />} />
             <Route path="/deal/new" element={<DealDetailsPage />} />
             <Route path="/deal/:dealId" element={<DealDetailsPage />} />
@@ -47,9 +54,11 @@ function App() {
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/reports/deal-compare" element={<DealCompareReportPage />} />
             <Route path="/reports/deal-compare-salesforce" element={<DealCompareToSalesforceReportPage />} />
-          </Routes>
-        </div>
-      </ProtectedRoute>
+              </Routes>
+            </div>
+          </ProtectedRoute>
+        } />
+      </Routes>
     </AuthProvider>
   );
 }
