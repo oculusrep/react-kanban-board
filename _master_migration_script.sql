@@ -1176,9 +1176,36 @@ WHERE number_of_payments IS NULL;
 -- Default to 1 if still null (safety fallback)
 UPDATE deal SET number_of_payments = 1 WHERE number_of_payments IS NULL OR number_of_payments = 0;
 
--- Clear existing payment data (Salesforce is source of truth)
-DELETE FROM payment_split WHERE sf_id IS NOT NULL;
-DELETE FROM payment WHERE sf_id IS NOT NULL;
+-- Drop any existing unique constraints on payment sequence (will recreate after migration)
+DROP INDEX IF EXISTS idx_payment_sequence_unique;
+DROP INDEX IF EXISTS payment_deal_sequence_unique;
+DROP INDEX IF EXISTS idx_payment_deal_sequence_unique;
+
+-- Clear ALL payment data for deals that have Salesforce data (Salesforce is source of truth)
+-- This includes both Salesforce-sourced payments AND manually-created payments
+WITH sf_deals AS (
+    SELECT DISTINCT (SELECT id FROM deal WHERE sf_id = p."Opportunity__c" LIMIT 1) AS deal_id
+    FROM "salesforce_Payment__c" p
+    WHERE p."Id" IS NOT NULL
+      AND p."Payment_Amount__c" IS NOT NULL
+      AND p."Opportunity__c" IS NOT NULL
+)
+DELETE FROM payment_split
+WHERE payment_id IN (
+    SELECT p.id FROM payment p
+    WHERE p.deal_id IN (SELECT deal_id FROM sf_deals WHERE deal_id IS NOT NULL)
+);
+
+-- Now delete ALL payments (Salesforce and manual) for deals with Salesforce payment data
+WITH sf_deals AS (
+    SELECT DISTINCT (SELECT id FROM deal WHERE sf_id = p."Opportunity__c" LIMIT 1) AS deal_id
+    FROM "salesforce_Payment__c" p
+    WHERE p."Id" IS NOT NULL
+      AND p."Payment_Amount__c" IS NOT NULL
+      AND p."Opportunity__c" IS NOT NULL
+)
+DELETE FROM payment
+WHERE deal_id IN (SELECT deal_id FROM sf_deals WHERE deal_id IS NOT NULL);
 
 CREATE TABLE IF NOT EXISTS payment (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -1229,6 +1256,49 @@ ALTER TABLE payment ADD COLUMN IF NOT EXISTS orep_invoice TEXT;
 ALTER TABLE payment ADD COLUMN IF NOT EXISTS referral_fee_paid BOOLEAN DEFAULT FALSE;
 
 -- UPSERT payment data from Salesforce
+-- Two-step CTE: assign sequences, then deduplicate by (deal_id, payment_sequence)
+WITH payment_with_sequence AS (
+    SELECT
+        p."Id" AS sf_id,
+        p."Name" AS payment_name,
+        (SELECT id FROM deal WHERE sf_id = p."Opportunity__c" LIMIT 1) AS deal_id,
+        ROW_NUMBER() OVER (PARTITION BY p."Opportunity__c" ORDER BY p."CreatedDate", p."Id") AS payment_sequence,
+        p."Payment_Amount__c" AS payment_amount,
+        p."CreatedById" AS sf_created_by_id,
+        (SELECT id FROM "user" WHERE sf_id = p."CreatedById" LIMIT 1) AS created_by_id,
+        p."CreatedDate" AS created_at,
+        p."LastModifiedById" AS sf_updated_by_id,
+        (SELECT id FROM "user" WHERE sf_id = p."LastModifiedById" LIMIT 1) AS updated_by_id,
+        p."LastModifiedDate" AS updated_at,
+        p."PMT_Received_Date__c" AS sf_received_date,
+        CASE
+            WHEN p."Payment_Received__c" = true THEN 'Received'
+            WHEN p."Invoice_Sent__c" = true THEN 'Invoice Sent'
+            ELSE 'Pending'
+        END AS sf_payment_status,
+        p."Payment_Invoice_Date__c" AS sf_invoice_sent_date,
+        p."Payment_Date_Est__c" AS sf_payment_date_est,
+        p."Payment_Date_Est__c" AS payment_date_estimated,
+        p."PMT_Received_Date__c" AS sf_payment_date_received,
+        p."PMT_Received_Date__c" AS payment_received_date,
+        p."Payment_Received__c" AS payment_received,
+        p."Payment_Date_Actual__c" AS sf_payment_date_actual,
+        p."Payment_Invoice_Date__c" AS sf_payment_invoice_date,
+        p."Payment_Invoice_Date__c" AS payment_invoice_date,
+        p."OREP_Invoice__c" AS orep_invoice,
+        COALESCE(p."Referral_Fee_Paid__c", FALSE) AS referral_fee_paid
+    FROM "salesforce_Payment__c" p
+    WHERE p."Id" IS NOT NULL
+      AND p."Payment_Amount__c" IS NOT NULL
+      AND p."Opportunity__c" IS NOT NULL
+),
+payment_data AS (
+    SELECT DISTINCT ON (deal_id, payment_sequence)
+        *
+    FROM payment_with_sequence
+    WHERE deal_id IS NOT NULL
+    ORDER BY deal_id, payment_sequence, updated_at DESC NULLS LAST
+)
 INSERT INTO payment (
     sf_id,
     payment_name,
@@ -1255,39 +1325,7 @@ INSERT INTO payment (
     orep_invoice,
     referral_fee_paid
 )
-SELECT
-    p."Id" AS sf_id,
-    p."Name" AS payment_name,
-    (SELECT id FROM deal WHERE sf_id = p."Opportunity__c" LIMIT 1) AS deal_id,
-    ROW_NUMBER() OVER (PARTITION BY p."Opportunity__c" ORDER BY p."CreatedDate", p."Id") AS payment_sequence,
-    p."Payment_Amount__c" AS payment_amount,
-    p."CreatedById" AS sf_created_by_id,
-    (SELECT id FROM "user" WHERE sf_id = p."CreatedById" LIMIT 1) AS created_by_id,
-    p."CreatedDate" AS created_at,
-    p."LastModifiedById" AS sf_updated_by_id,
-    (SELECT id FROM "user" WHERE sf_id = p."LastModifiedById" LIMIT 1) AS updated_by_id,
-    p."LastModifiedDate" AS updated_at,
-    p."PMT_Received_Date__c" AS sf_received_date,
-    CASE 
-        WHEN p."Payment_Received__c" = true THEN 'Received'
-        WHEN p."Invoice_Sent__c" = true THEN 'Invoice Sent'
-        ELSE 'Pending'
-    END AS sf_payment_status,
-    p."Payment_Invoice_Date__c" AS sf_invoice_sent_date,
-    p."Payment_Date_Est__c" AS sf_payment_date_est,
-    p."Payment_Date_Est__c" AS payment_date_estimated,
-    p."PMT_Received_Date__c" AS sf_payment_date_received,
-    p."PMT_Received_Date__c" AS payment_received_date,
-    p."Payment_Received__c" AS payment_received,
-    p."Payment_Date_Actual__c" AS sf_payment_date_actual,
-    p."Payment_Invoice_Date__c" AS sf_payment_invoice_date,
-    p."Payment_Invoice_Date__c" AS payment_invoice_date,
-    p."OREP_Invoice__c" AS orep_invoice,
-    COALESCE(p."Referral_Fee_Paid__c", FALSE) AS referral_fee_paid
-FROM "salesforce_Payment__c" p
-WHERE p."Id" IS NOT NULL
-  AND p."Payment_Amount__c" IS NOT NULL
-  AND p."Opportunity__c" IS NOT NULL
+SELECT * FROM payment_data
 ON CONFLICT (sf_id) DO UPDATE SET
     payment_name = EXCLUDED.payment_name,
     deal_id = EXCLUDED.deal_id,
@@ -1491,6 +1529,12 @@ ON CONFLICT (sf_id) DO UPDATE SET
     sf_origination_usd = EXCLUDED.sf_origination_usd,
     sf_site_usd = EXCLUDED.sf_site_usd,
     sf_deal_usd = EXCLUDED.sf_deal_usd;
+
+-- Create unique index on payment sequence AFTER all payment data is inserted
+-- This prevents duplicate payment sequences per deal while allowing manual payments without sequences
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_deal_sequence_unique
+    ON payment(deal_id, payment_sequence)
+    WHERE payment_sequence IS NOT NULL;
 
 -- ==============================================================================
 -- Payment System Triggers and Functions
