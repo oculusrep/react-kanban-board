@@ -358,6 +358,70 @@ class DropboxService {
 
     return `${basePath}/${cleanName}`;
   }
+
+  /**
+   * Build folder path for an entity based on entity type
+   * @param entityType - Type of entity ('property', 'client', 'deal', 'contact')
+   * @param entityName - Name of the entity
+   * @returns Clean folder path in proper subfolder
+   */
+  buildEntityFolderPath(
+    entityType: 'property' | 'client' | 'deal' | 'contact',
+    entityName: string
+  ): string {
+    // Map entity types to their subfolder names
+    const subfolderMap = {
+      property: 'Properties',
+      client: 'Clients',
+      deal: 'Opportunities',  // Deals go in Opportunities folder
+      contact: 'Contacts'
+    };
+
+    const subfolder = subfolderMap[entityType];
+    const basePath = `${this.ALLOWED_BASE_PATH}/${subfolder}`;
+
+    // Clean the entity name for use as folder name
+    const cleanName = entityName
+      .replace(/[<>:"/\\|?*]/g, '') // Remove invalid characters
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .trim();
+
+    return `${basePath}/${cleanName}`;
+  }
+
+  /**
+   * Create a folder for an entity if it doesn't exist
+   * @param entityType - Type of entity
+   * @param entityName - Name of the entity
+   * @returns Created or existing folder info
+   */
+  async createFolderForEntity(
+    entityType: 'property' | 'client' | 'deal' | 'contact',
+    entityName: string
+  ): Promise<DropboxFile> {
+    const folderPath = this.buildEntityFolderPath(entityType, entityName);
+
+    // Check if folder already exists
+    const exists = await this.folderExists(folderPath);
+
+    if (exists) {
+      console.log(`✅ Folder already exists: ${folderPath}`);
+      // Return folder info even if it already exists
+      return {
+        id: '',
+        name: entityName,
+        path: folderPath,
+        type: 'folder',
+        size: null,
+        modified: null,
+        shared_link: null
+      };
+    }
+
+    // Create the folder
+    console.log(`📁 Creating new folder: ${folderPath}`);
+    return await this.createFolder(folderPath);
+  }
 }
 
 export default DropboxService;

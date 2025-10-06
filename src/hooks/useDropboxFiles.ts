@@ -14,6 +14,7 @@ interface UseDropboxFilesReturn {
   createFolder: (folderName: string) => Promise<void>;
   deleteItem: (path: string) => Promise<void>;
   getSharedLink: (path: string) => Promise<string>;
+  folderCreatedMessage: string | null;  // New: message when folder is auto-created
 }
 
 /**
@@ -23,7 +24,7 @@ interface UseDropboxFilesReturn {
  * @returns Object containing files, loading states, and file management functions
  */
 export function useDropboxFiles(
-  entityType: 'client' | 'property' | 'deal',
+  entityType: 'client' | 'property' | 'deal' | 'contact',
   entityId: string | null
 ): UseDropboxFilesReturn {
   const [files, setFiles] = useState<DropboxFile[]>([]);
@@ -31,6 +32,7 @@ export function useDropboxFiles(
   const [loading, setLoading] = useState<boolean>(false);
   const [uploading, setUploading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [folderCreatedMessage, setFolderCreatedMessage] = useState<string | null>(null);
 
   // Initialize Dropbox service with access token and refresh credentials from environment
   let dropboxService: DropboxService | null = null;
@@ -97,6 +99,19 @@ export function useDropboxFiles(
       setFolderPath(path);
       console.log('🔍 Fetching files from path:', path);
 
+      // Check if folder exists in Dropbox
+      const folderExists = await dropboxService.folderExists(path);
+
+      if (!folderExists) {
+        console.log('⚠️ Folder exists in database but not in Dropbox:', path);
+        setError('Dropbox folder was deleted. Upload a file to recreate it.');
+        setFiles([]);
+        // Clear the folder path so upload will recreate
+        setFolderPath(null);
+        setLoading(false);
+        return;
+      }
+
       // List folder contents from Dropbox
       const fileList = await dropboxService.listFolderContents(path);
       console.log('🔍 Files fetched:', fileList.length, fileList);
@@ -117,8 +132,163 @@ export function useDropboxFiles(
     await fetchFiles();
   }, [fetchFiles]);
 
+  // Fetch files on mount and when entity changes
+  useEffect(() => {
+    fetchFiles();
+  }, [entityId, entityType]); // Re-fetch when entity changes
+
+  // Poll for folder creation when there's an error (no folder exists)
+  // This helps detect when a folder is created in another component instance
+  useEffect(() => {
+    if (!error || !entityId || folderPath) return;
+
+    // Poll every 3 seconds to check if a folder was created
+    const intervalId = setInterval(() => {
+      console.log('🔄 Polling for folder creation...');
+      fetchFiles();
+    }, 3000);
+
+    return () => clearInterval(intervalId);
+  }, [error, entityId, folderPath, fetchFiles]);
+
+  /**
+   * Get entity name from database
+   */
+  const getEntityName = useCallback(async (): Promise<string | null> => {
+    if (!entityId) return null;
+
+    try {
+      let tableName: string;
+      let nameField: string;
+
+      // Determine table and name field based on entity type
+      switch (entityType) {
+        case 'property':
+          tableName = 'property';
+          nameField = 'property_name';
+          break;
+        case 'client':
+          tableName = 'client';
+          nameField = 'client_name';
+          break;
+        case 'deal':
+          tableName = 'deal';
+          nameField = 'deal_name';
+          break;
+        case 'contact':
+          tableName = 'contact';
+          nameField = 'first_name,last_name';
+          break;
+        default:
+          return null;
+      }
+
+      // Fetch entity data
+      const { data, error } = await supabase
+        .from(tableName)
+        .select(nameField)
+        .eq('id', entityId)
+        .single();
+
+      if (error || !data) {
+        console.error('Error fetching entity name:', error);
+        return null;
+      }
+
+      // Build name based on entity type
+      if (entityType === 'contact') {
+        const firstName = data.first_name || '';
+        const lastName = data.last_name || '';
+        return `${firstName} ${lastName}`.trim() || 'Unnamed Contact';
+      } else {
+        return data[nameField] || `Unnamed ${entityType}`;
+      }
+    } catch (err) {
+      console.error('Error in getEntityName:', err);
+      return null;
+    }
+  }, [entityId, entityType]);
+
+  /**
+   * Create Dropbox folder and database mapping for entity
+   */
+  const createFolderAndMapping = useCallback(async (): Promise<string | null> => {
+    if (!dropboxService || !entityId) return null;
+
+    try {
+      // Get entity name
+      const entityName = await getEntityName();
+      if (!entityName) {
+        throw new Error('Could not fetch entity name');
+      }
+
+      console.log(`📁 Creating Dropbox folder for ${entityType}: ${entityName}`);
+
+      // Create folder in Dropbox
+      const folder = await dropboxService.createFolderForEntity(entityType, entityName);
+      const newFolderPath = folder.path;
+
+      console.log(`✅ Created Dropbox folder: ${newFolderPath}`);
+
+      // Check if mapping already exists
+      const { data: existingMapping } = await supabase
+        .from('dropbox_folder_mapping')
+        .select('id')
+        .eq('entity_type', entityType)
+        .eq('entity_id', entityId)
+        .single();
+
+      if (existingMapping) {
+        // Update existing mapping
+        const { error: updateError } = await supabase
+          .from('dropbox_folder_mapping')
+          .update({
+            dropbox_folder_path: newFolderPath,
+            last_verified_at: new Date().toISOString()
+          })
+          .eq('entity_type', entityType)
+          .eq('entity_id', entityId);
+
+        if (updateError) {
+          console.error('Error updating folder mapping:', updateError);
+          throw new Error('Failed to update folder mapping');
+        }
+
+        console.log(`✅ Updated folder mapping in database`);
+      } else {
+        // Insert new mapping
+        const { error: insertError } = await supabase
+          .from('dropbox_folder_mapping')
+          .insert({
+            entity_type: entityType,
+            entity_id: entityId,
+            dropbox_folder_path: newFolderPath,
+            sf_id: '', // No Salesforce ID for new folders
+            sfdb_file_found: false,
+            last_verified_at: new Date().toISOString()
+          });
+
+        if (insertError) {
+          console.error('Error inserting folder mapping:', insertError);
+          throw new Error('Failed to save folder mapping');
+        }
+
+        console.log(`✅ Saved folder mapping to database`);
+      }
+
+      // Set the folder path state
+      setFolderPath(newFolderPath);
+
+      return newFolderPath;
+    } catch (err: any) {
+      console.error('Error creating folder and mapping:', err);
+      throw err;
+    }
+  }, [dropboxService, entityId, entityType, getEntityName]);
+
   /**
    * Upload multiple files to the current folder
+   * If no folder exists, auto-create one first
    * @param fileList - FileList from input or drag-drop event
    */
   const uploadFiles = useCallback(
@@ -127,17 +297,34 @@ export function useDropboxFiles(
         throw new Error('Dropbox service not initialized');
       }
 
-      if (!folderPath) {
-        throw new Error('No folder path available');
+      if (!entityId) {
+        throw new Error('No entity ID available');
       }
 
       setUploading(true);
       setError(null);
+      setFolderCreatedMessage(null);
 
       try {
+        let targetFolderPath = folderPath;
+
+        // If no folder path, create one
+        if (!targetFolderPath) {
+          console.log('📁 No folder exists, auto-creating...');
+          targetFolderPath = await createFolderAndMapping();
+
+          if (!targetFolderPath) {
+            throw new Error('Failed to create folder');
+          }
+
+          // Get entity name for message
+          const entityName = await getEntityName();
+          setFolderCreatedMessage(`Created Dropbox folder: ${entityName}`);
+        }
+
         // Upload all files in parallel
         const uploadPromises = Array.from(fileList).map(file =>
-          dropboxService!.uploadFile(file, folderPath)
+          dropboxService!.uploadFile(file, targetFolderPath!)
         );
 
         await Promise.all(uploadPromises);
@@ -152,7 +339,7 @@ export function useDropboxFiles(
         setUploading(false);
       }
     },
-    [folderPath, refreshFiles]
+    [folderPath, entityId, dropboxService, refreshFiles, createFolderAndMapping, getEntityName]
   );
 
   /**
@@ -281,6 +468,7 @@ export function useDropboxFiles(
     deleteItem,
     getSharedLink,
     getLatestCursor,
-    longpollForChanges
+    longpollForChanges,
+    folderCreatedMessage
   };
 }

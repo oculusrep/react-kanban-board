@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 interface FileManagerProps {
-  entityType: 'client' | 'property' | 'deal';
+  entityType: 'client' | 'property' | 'deal' | 'contact';
   entityId: string;
 }
 
@@ -37,7 +37,8 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
     deleteItem,
     getSharedLink,
     getLatestCursor,
-    longpollForChanges
+    longpollForChanges,
+    folderCreatedMessage
   } = useDropboxFiles(entityType, entityId);
 
   const [currentPath, setCurrentPath] = useState<string>('');
@@ -48,6 +49,7 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
   const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: DropboxFile } | null>(null);
   const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string>('');
 
   // Longpoll for changes to automatically refresh when Dropbox folder changes
   useEffect(() => {
@@ -291,6 +293,7 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
       setContextMenu(null);
 
       // Show toast notification
+      setToastMessage('Dropbox link copied to clipboard!');
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3000);
     } catch (err) {
@@ -298,6 +301,15 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
       alert('Failed to copy link. Please try again.');
     }
   };
+
+  // Watch for folder creation message and show toast
+  useEffect(() => {
+    if (folderCreatedMessage) {
+      setToastMessage(folderCreatedMessage);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    }
+  }, [folderCreatedMessage]);
 
   // Close context menu when clicking outside
   useEffect(() => {
@@ -348,37 +360,22 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
     );
   }
 
-  // Error state
-  if (error) {
+  // Dropbox token not configured - no file upload allowed (return early)
+  if (error && error.includes('VITE_DROPBOX_ACCESS_TOKEN')) {
     return (
       <div className="bg-white rounded-lg border border-gray-200 p-8">
         <div className="text-center">
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Unable to Load Files</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Dropbox Not Configured</h3>
           <p className="text-sm text-red-600 mb-4">{error}</p>
-          {error.includes('VITE_DROPBOX_ACCESS_TOKEN') && (
-            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md text-left">
-              <p className="text-xs text-gray-700 font-semibold mb-2">Setup Instructions:</p>
-              <ol className="text-xs text-gray-600 space-y-1 list-decimal list-inside">
-                <li>Add <code className="bg-gray-100 px-1 rounded">VITE_DROPBOX_ACCESS_TOKEN</code> to your .env file</li>
-                <li>Get a token by running: <code className="bg-gray-100 px-1 rounded">npm run dropbox:auth</code></li>
-                <li>Restart the development server</li>
-              </ol>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // No folder linked state
-  if (!folderPath) {
-    return (
-      <div className="bg-white rounded-lg border border-gray-200 p-8">
-        <div className="text-center text-gray-500">
-          <Folder className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-          <p className="text-lg font-medium mb-2">No Dropbox folder linked</p>
-          <p className="text-sm">This record doesn't have a Dropbox folder associated with it.</p>
+          <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md text-left">
+            <p className="text-xs text-gray-700 font-semibold mb-2">Setup Instructions:</p>
+            <ol className="text-xs text-gray-600 space-y-1 list-decimal list-inside">
+              <li>Add <code className="bg-gray-100 px-1 rounded">VITE_DROPBOX_ACCESS_TOKEN</code> to your .env file</li>
+              <li>Get a token by running: <code className="bg-gray-100 px-1 rounded">npm run dropbox:auth</code></li>
+              <li>Restart the development server</li>
+            </ol>
+          </div>
         </div>
       </div>
     );
@@ -533,9 +530,13 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
         )}
         {currentFiles.length === 0 ? (
           <div className="px-6 py-12 text-center text-gray-500">
-            <Folder className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-            <p className="text-sm">No files yet</p>
-            <p className="text-xs text-gray-400 mt-1">Drag and drop files here or click Upload to get started</p>
+            <Folder className="w-12 h-12 mx-auto mb-3 text-blue-400" />
+            <p className="text-sm font-medium text-gray-700">No files yet</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {error && !folderPath
+                ? 'Upload files to automatically create a folder'
+                : 'Drag and drop files here or click Upload to get started'}
+            </p>
           </div>
         ) : (
           currentFiles.map((file) => (
@@ -644,7 +645,7 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
-          <span className="font-medium">Dropbox link copied to clipboard!</span>
+          <span className="font-medium">{toastMessage}</span>
         </div>
       )}
     </div>

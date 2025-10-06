@@ -3,7 +3,7 @@ import { useDropzone } from 'react-dropzone';
 import { useDropboxFiles } from '../../hooks/useDropboxFiles';
 
 interface FileManagerModuleProps {
-  entityType: 'property' | 'client' | 'deal';
+  entityType: 'property' | 'client' | 'deal' | 'contact';
   entityId: string;
   isExpanded?: boolean;
   onToggle?: () => void;
@@ -17,7 +17,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
 }) => {
   console.log('🗂️ FileManagerModule rendered:', { entityType, entityId, isExpanded });
 
-  const { files, folderPath, loading, error, uploadFiles, deleteItem, getSharedLink, refreshFiles, createFolder, getLatestCursor, longpollForChanges } = useDropboxFiles(
+  const { files, folderPath, loading, error, uploadFiles, deleteItem, getSharedLink, refreshFiles, createFolder, getLatestCursor, longpollForChanges, folderCreatedMessage } = useDropboxFiles(
     entityType,
     entityId
   );
@@ -27,6 +27,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
   const [showCreateFolder, setShowCreateFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string>('');
 
   // Get breadcrumbs from current path
   const getBreadcrumbs = () => {
@@ -134,6 +135,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
       setContextMenu(null);
 
       // Show toast notification
+      setToastMessage('Dropbox link copied to clipboard!');
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3000);
     } catch (err) {
@@ -141,6 +143,15 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
       alert('Failed to copy link. Please try again.');
     }
   };
+
+  // Watch for folder creation message and show toast
+  React.useEffect(() => {
+    if (folderCreatedMessage) {
+      setToastMessage(folderCreatedMessage);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    }
+  }, [folderCreatedMessage]);
 
   // Handle folder creation
   const handleCreateFolder = async () => {
@@ -454,12 +465,13 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
               <p className="text-xs text-gray-500 mt-2">Loading files...</p>
             </div>
           ) : error ? (
-            <div className="p-4 text-center text-red-600 text-sm">
-              <svg className="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <p className="font-medium">No Dropbox folder</p>
-              <p className="text-xs text-gray-500 mt-1">Configure in .env</p>
+            <div className="p-4 text-center text-gray-500 text-sm">
+              <div className="w-12 h-12 mx-auto mb-2 bg-blue-50 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+              </div>
+              <p className="text-xs">Drop files to create folder</p>
             </div>
           ) : uploading ? (
             <div className="p-4 text-center text-blue-600 text-sm">
@@ -573,7 +585,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
-          <span className="font-medium">Dropbox link copied to clipboard!</span>
+          <span className="font-medium">{toastMessage}</span>
         </div>
       )}
     </div>
