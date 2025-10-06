@@ -25,3 +25,9 @@ design-references/*.gif
 design-references/*.pdf
 design-references/*.webp
 !design-references/README.md
+
+# Database backups (contain sensitive data, too large for git)
+backups/
+*.sql
+*.sql.gz
+*.dump

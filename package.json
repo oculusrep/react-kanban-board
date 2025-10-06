@@ -10,7 +10,9 @@
     "dropbox:auth": "node scripts/getDropboxRefreshToken.js",
     "dropbox:refresh": "node scripts/refreshDropboxToken.js",
     "dropbox:test": "node scripts/testDropbox.js",
-    "migrate:dropbox": "node scripts/migrateDropboxMappings.js"
+    "migrate:dropbox": "node scripts/migrateDropboxMappings.js",
+    "backup:db": "./scripts/backup-database.sh",
+    "restore:db": "./scripts/restore-database.sh"
   },
   "dependencies": {
     "@googlemaps/js-api-loader": "^1.16.10",
