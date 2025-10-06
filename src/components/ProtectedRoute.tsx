@@ -1,9 +1,10 @@
 import { ReactNode } from 'react';
+import { Outlet } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import LoginForm from './LoginForm';
 
 interface ProtectedRouteProps {
-  children: ReactNode;
+  children?: ReactNode;
 }
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
@@ -21,5 +22,10 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <LoginForm />;
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <Outlet />
+    </>
+  );
 }

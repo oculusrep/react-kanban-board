@@ -27,37 +27,36 @@ function App() {
         {/* Public route for password reset */}
         <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-        {/* Protected routes */}
-        <Route path="/*" element={
+        {/* All other routes are protected */}
+        <Route path="/" element={
           <ProtectedRoute>
             <div className="min-h-screen bg-gray-100">
               <Navbar />
-              <Routes>
-                <Route path="/" element={<Navigate to="/master-pipeline" replace />} />
-            <Route path="/master-pipeline" element={<KanbanBoard />} />
-            <Route path="/deal/new" element={<DealDetailsPage />} />
-            <Route path="/deal/:dealId" element={<DealDetailsPage />} />
-            <Route path="/assignment/new" element={<AssignmentDetailsPage />} />
-            <Route path="/assignment/:assignmentId" element={<AssignmentDetailsPage />} />
-            <Route path="/property/new" element={<NewPropertyPage />} />
-            <Route path="/property/:propertyId" element={<PropertyDetailsPage />} />
-            <Route path="/contact/new" element={<ContactDetailsPage />} />
-            <Route path="/contact/:contactId" element={<ContactDetailsPage />} />
-            <Route path="/client/new" element={<ClientDetailsPage />} />
-            <Route path="/client/:clientId" element={<ClientDetailsPage />} />
-            <Route path="/site-submit/:siteSubmitId" element={<SiteSubmitDetailsPage />} />
-            <Route path="/search-test" element={<SearchTestPage />} />
-            <Route path="/search-debug" element={<SearchDebugPage />} />
-            <Route path="/notes-debug" element={<NotesDebugPage />} />
-            <Route path="/mapping" element={<MappingPageNew />} />
-            <Route path="/mapping-old" element={<MappingPage />} />
-            <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/reports/deal-compare" element={<DealCompareReportPage />} />
-            <Route path="/reports/deal-compare-salesforce" element={<DealCompareToSalesforceReportPage />} />
-              </Routes>
             </div>
           </ProtectedRoute>
-        } />
+        }>
+          <Route index element={<Navigate to="/master-pipeline" replace />} />
+          <Route path="master-pipeline" element={<KanbanBoard />} />
+          <Route path="deal/new" element={<DealDetailsPage />} />
+          <Route path="deal/:dealId" element={<DealDetailsPage />} />
+          <Route path="assignment/new" element={<AssignmentDetailsPage />} />
+          <Route path="assignment/:assignmentId" element={<AssignmentDetailsPage />} />
+          <Route path="property/new" element={<NewPropertyPage />} />
+          <Route path="property/:propertyId" element={<PropertyDetailsPage />} />
+          <Route path="contact/new" element={<ContactDetailsPage />} />
+          <Route path="contact/:contactId" element={<ContactDetailsPage />} />
+          <Route path="client/new" element={<ClientDetailsPage />} />
+          <Route path="client/:clientId" element={<ClientDetailsPage />} />
+          <Route path="site-submit/:siteSubmitId" element={<SiteSubmitDetailsPage />} />
+          <Route path="search-test" element={<SearchTestPage />} />
+          <Route path="search-debug" element={<SearchDebugPage />} />
+          <Route path="notes-debug" element={<NotesDebugPage />} />
+          <Route path="mapping" element={<MappingPageNew />} />
+          <Route path="mapping-old" element={<MappingPage />} />
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="reports/deal-compare" element={<DealCompareReportPage />} />
+          <Route path="reports/deal-compare-salesforce" element={<DealCompareToSalesforceReportPage />} />
+        </Route>
       </Routes>
     </AuthProvider>
   );
