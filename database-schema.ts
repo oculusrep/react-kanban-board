@@ -2005,6 +2005,42 @@ export type Database = {
         }
         Relationships: []
       }
+      dropbox_folder_mapping: {
+        Row: {
+          created_at: string | null
+          dropbox_folder_path: string
+          entity_id: string
+          entity_type: string
+          id: string
+          last_verified_at: string | null
+          sf_id: string
+          sfdb_file_found: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          dropbox_folder_path: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          last_verified_at?: string | null
+          sf_id: string
+          sfdb_file_found?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          dropbox_folder_path?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          last_verified_at?: string | null
+          sf_id?: string
+          sfdb_file_found?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       lead_list: {
         Row: {
           id: string
@@ -2067,7 +2103,7 @@ export type Database = {
           created_by: string | null
           id: string
           sf_content_document_id: string | null
-          sf_content_note_id: string
+          sf_content_note_id: string | null
           sf_content_version_id: string | null
           sf_created_by_id: string | null
           sf_updated_by_id: string | null
@@ -2084,7 +2120,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           sf_content_document_id?: string | null
-          sf_content_note_id: string
+          sf_content_note_id?: string | null
           sf_content_version_id?: string | null
           sf_created_by_id?: string | null
           sf_updated_by_id?: string | null
@@ -2101,7 +2137,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           sf_content_document_id?: string | null
-          sf_content_note_id?: string
+          sf_content_note_id?: string | null
           sf_content_version_id?: string | null
           sf_created_by_id?: string | null
           sf_updated_by_id?: string | null
@@ -2270,7 +2306,7 @@ export type Database = {
           property_id: string | null
           related_object_id: string | null
           related_object_type: string | null
-          sf_content_document_link_id: string
+          sf_content_document_link_id: string | null
           site_submit_id: string | null
           updated_at: string | null
           user_id: string | null
@@ -2288,7 +2324,7 @@ export type Database = {
           property_id?: string | null
           related_object_id?: string | null
           related_object_type?: string | null
-          sf_content_document_link_id: string
+          sf_content_document_link_id?: string | null
           site_submit_id?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -2306,7 +2342,7 @@ export type Database = {
           property_id?: string | null
           related_object_id?: string | null
           related_object_type?: string | null
-          sf_content_document_link_id?: string
+          sf_content_document_link_id?: string | null
           site_submit_id?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -4373,6 +4409,48 @@ export type Database = {
         Relationships: []
       }
       salesforce_ContentDocumentLink: {
+        Row: {
+          _airbyte_extracted_at: string
+          _airbyte_generation_id: number | null
+          _airbyte_meta: Json
+          _airbyte_raw_id: string
+          ContentDocumentId: string | null
+          Id: string | null
+          IsDeleted: boolean | null
+          LinkedEntityId: string | null
+          ShareType: string | null
+          SystemModstamp: string | null
+          Visibility: string | null
+        }
+        Insert: {
+          _airbyte_extracted_at: string
+          _airbyte_generation_id?: number | null
+          _airbyte_meta: Json
+          _airbyte_raw_id: string
+          ContentDocumentId?: string | null
+          Id?: string | null
+          IsDeleted?: boolean | null
+          LinkedEntityId?: string | null
+          ShareType?: string | null
+          SystemModstamp?: string | null
+          Visibility?: string | null
+        }
+        Update: {
+          _airbyte_extracted_at?: string
+          _airbyte_generation_id?: number | null
+          _airbyte_meta?: Json
+          _airbyte_raw_id?: string
+          ContentDocumentId?: string | null
+          Id?: string | null
+          IsDeleted?: boolean | null
+          LinkedEntityId?: string | null
+          ShareType?: string | null
+          SystemModstamp?: string | null
+          Visibility?: string | null
+        }
+        Relationships: []
+      }
+      salesforce_ContentDocumentLink_airbyte_tmp: {
         Row: {
           _airbyte_extracted_at: string
           _airbyte_generation_id: number | null
