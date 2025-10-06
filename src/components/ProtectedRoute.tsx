@@ -23,9 +23,9 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   return (
-    <>
+    <div className="min-h-screen bg-gray-100">
       {children}
       <Outlet />
-    </>
+    </div>
   );
 }

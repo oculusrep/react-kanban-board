@@ -30,9 +30,7 @@ function App() {
         {/* All other routes are protected */}
         <Route path="/" element={
           <ProtectedRoute>
-            <div className="min-h-screen bg-gray-100">
-              <Navbar />
-            </div>
+            <Navbar />
           </ProtectedRoute>
         }>
           <Route index element={<Navigate to="/master-pipeline" replace />} />
