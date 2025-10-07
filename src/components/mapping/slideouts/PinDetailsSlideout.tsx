@@ -7,9 +7,10 @@ import PropertyInputField from '../../property/PropertyInputField';
 import PropertyPSFField from '../../property/PropertyPSFField';
 import PropertyCurrencyField from '../../property/PropertyCurrencyField';
 import PropertySquareFootageField from '../../property/PropertySquareFootageField';
-import { FileText, DollarSign, Building2, Activity, MapPin, Edit3 } from 'lucide-react';
+import { FileText, DollarSign, Building2, Activity, MapPin, Edit3, FolderOpen } from 'lucide-react';
 import { Database } from '../../../../database-schema';
 import { getDropboxPropertySyncService } from '../../../services/dropboxPropertySync';
+import FileManager from '../../FileManager/FileManager';
 
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
@@ -75,7 +76,7 @@ interface PinDetailsSlideoutProps {
   onDataUpdate?: (updatedData: Property | SiteSubmit) => void; // Callback when data is updated
 }
 
-type TabType = 'property' | 'submit' | 'location';
+type TabType = 'property' | 'submit' | 'location' | 'files';
 
 const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   isOpen,
@@ -472,6 +473,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     if (isProperty) {
       return [
         { id: 'property' as TabType, label: 'PROPERTY', icon: <Building2 size={16} /> },
+        { id: 'files' as TabType, label: 'FILES', icon: <FolderOpen size={16} /> },
       ];
     } else {
       return [
@@ -901,6 +903,21 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           </div>
         );
 
+      case 'files':
+        return (
+          <div className="h-full">
+            {localPropertyData?.id ? (
+              <FileManager
+                entityType="property"
+                entityId={localPropertyData.id}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-32 text-gray-500">
+                <p>No property selected</p>
+              </div>
+            )}
+          </div>
+        );
 
       default:
         return <div>Content for {activeTab}</div>;
