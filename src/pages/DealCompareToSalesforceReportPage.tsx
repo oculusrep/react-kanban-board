@@ -54,6 +54,11 @@ export default function DealCompareToSalesforceReportPage() {
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
 
+  // Set page title
+  useEffect(() => {
+    document.title = "Deal Compare to Salesforce | OVIS";
+  }, []);
+
   useEffect(() => {
     fetchReportData();
     fetchFilterOptions();

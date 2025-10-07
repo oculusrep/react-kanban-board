@@ -4,6 +4,9 @@ import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import PropertySelector from '../components/PropertySelector';
 import PropertyUnitSelector from '../components/PropertyUnitSelector';
+import Toast from '../components/Toast';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useToast } from '../hooks/useToast';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type SiteSubmitInsert = Database['public']['Tables']['site_submit']['Insert'];
@@ -36,6 +39,8 @@ const SiteSubmitDetailsPage: React.FC = () => {
   const { siteSubmitId } = useParams<{ siteSubmitId: string }>();
   const navigate = useNavigate();
   const isNewSiteSubmit = siteSubmitId === 'new';
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const { toast, showToast } = useToast();
 
   const [formData, setFormData] = useState<FormData>({
     site_submit_name: '',
@@ -66,6 +71,17 @@ const SiteSubmitDetailsPage: React.FC = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [propertyName, setPropertyName] = useState<string>('');
   const [userEditedName, setUserEditedName] = useState(false);
+
+  // Set page title
+  useEffect(() => {
+    if (isNewSiteSubmit) {
+      document.title = "New Site Submit | OVIS";
+    } else if (formData.site_submit_name) {
+      document.title = `${formData.site_submit_name} | OVIS`;
+    } else {
+      document.title = "Site Submit | OVIS";
+    }
+  }, [formData.site_submit_name, isNewSiteSubmit]);
 
   // Load dropdown data and existing site submit if editing
   useEffect(() => {
@@ -245,22 +261,23 @@ const SiteSubmitDetailsPage: React.FC = () => {
       }
 
       // Show success message
-      alert('Site submit saved successfully!');
+      showToast('Site submit saved successfully!', { type: 'success' });
 
     } catch (error) {
       console.error('Error saving site submit:', error);
-      alert(`Error saving site submit: ${error instanceof Error ? error.message : 'Unknown error'}. Please check the console for details.`);
+      showToast(`Error saving site submit: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!siteSubmitId || isNewSiteSubmit) return;
+    setShowDeleteConfirm(true);
+  };
 
-    if (!confirm('Are you sure you want to delete this site submit? This action cannot be undone.')) {
-      return;
-    }
+  const confirmDelete = async () => {
+    setShowDeleteConfirm(false);
 
     try {
       const { error } = await supabase
@@ -270,11 +287,15 @@ const SiteSubmitDetailsPage: React.FC = () => {
 
       if (error) throw error;
 
-      alert('Site submit deleted successfully!');
-      navigate('/master-pipeline');
+      showToast('Site submit deleted successfully!', { type: 'success' });
+
+      // Navigate after a brief delay to show the toast
+      setTimeout(() => {
+        navigate('/master-pipeline');
+      }, 1000);
     } catch (error) {
       console.error('Error deleting site submit:', error);
-      alert(`Error deleting site submit: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      showToast(`Error deleting site submit: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });
     }
   };
 
@@ -608,6 +629,24 @@ const SiteSubmitDetailsPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Toast Notification */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Site Submit"
+        message="Are you sure you want to delete this site submit? This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={confirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 };

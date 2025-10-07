@@ -35,6 +35,11 @@ const MappingPage: React.FC = () => {
     console.log('Map loaded successfully:', map);
   };
 
+  // Set page title
+  useEffect(() => {
+    document.title = "Map | OVIS";
+  }, []);
+
   // Load clients for filtering
   useEffect(() => {
     const loadClients = async () => {

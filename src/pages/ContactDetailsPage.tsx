@@ -7,6 +7,9 @@ import GenericActivityTab from '../components/GenericActivityTab';
 import ContactSidebar from '../components/ContactSidebar';
 import FileManager from '../components/FileManager/FileManager';
 import { useTrackPageView } from '../hooks/useRecentlyViewed';
+import Toast from '../components/Toast';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useToast } from '../hooks/useToast';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 
@@ -18,9 +21,23 @@ const ContactDetailsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { trackView } = useTrackPageView();
+  const { toast, showToast } = useToast();
 
   const isNewContact = contactId === 'new';
+
+  // Set page title
+  useEffect(() => {
+    if (isNewContact) {
+      document.title = "New Contact | OVIS";
+    } else if (contact) {
+      const name = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+      document.title = name ? `${name} | OVIS` : "Contact | OVIS";
+    } else {
+      document.title = "Contact | OVIS";
+    }
+  }, [contact, isNewContact]);
 
   useEffect(() => {
     const fetchContact = async () => {
@@ -77,12 +94,13 @@ const ContactDetailsPage: React.FC = () => {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!contactId || isNewContact) return;
+    setShowDeleteConfirm(true);
+  };
 
-    if (!confirm('Are you sure you want to delete this contact? This action cannot be undone.')) {
-      return;
-    }
+  const confirmDelete = async () => {
+    setShowDeleteConfirm(false);
 
     try {
       const { error } = await supabase
@@ -92,11 +110,15 @@ const ContactDetailsPage: React.FC = () => {
 
       if (error) throw error;
 
-      alert('Contact deleted successfully!');
-      navigate('/master-pipeline');
+      showToast('Contact deleted successfully!', { type: 'success' });
+
+      // Navigate after a brief delay to show the toast
+      setTimeout(() => {
+        navigate('/master-pipeline');
+      }, 1000);
     } catch (error) {
       console.error('Error deleting contact:', error);
-      alert(`Error deleting contact: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      showToast(`Error deleting contact: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });
     }
   };
 
@@ -156,22 +178,18 @@ const ContactDetailsPage: React.FC = () => {
               </div>
 
               <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setIsSidebarMinimized(!isSidebarMinimized)}
-                  className="inline-flex items-center px-3 py-2 border border-blue-300 rounded-md shadow-sm text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                  title={isSidebarMinimized ? "Show Contact Sidebar" : "Hide Contact Sidebar"}
-                >
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                  {isSidebarMinimized ? 'Show' : 'Hide'} Info
-                </button>
-                <button
-                  onClick={() => navigate('/master-pipeline')}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                >
-                  Back to Pipeline
-                </button>
+                {!isNewContact && contactId && (
+                  <button
+                    onClick={handleDelete}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md transition-colors"
+                    title="Delete Contact"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete
+                  </button>
+                )}
                 {contact?.source_type && (
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                     contact.source_type === 'Lead'
@@ -231,7 +249,6 @@ const ContactDetailsPage: React.FC = () => {
             contact={contact}
             isNewContact={isNewContact}
             onSave={handleContactUpdate}
-            onDelete={handleDelete}
           />
         )}
 
@@ -301,6 +318,24 @@ const ContactDetailsPage: React.FC = () => {
           onDealClick={(dealId) => navigate(`/deal/${dealId}`)}
         />
       )}
+
+      {/* Toast Notification */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Contact"
+        message="Are you sure you want to delete this contact? This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={confirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </>
   );
 };

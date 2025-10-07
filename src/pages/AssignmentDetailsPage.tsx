@@ -6,6 +6,9 @@ import AssignmentOverviewTab from "../components/AssignmentOverviewTab";
 import AssignmentSidebar from "../components/AssignmentSidebar";
 import GenericActivityTab from "../components/GenericActivityTab";
 import { useTrackPageView } from "../hooks/useRecentlyViewed";
+import Toast from '../components/Toast';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useToast } from '../hooks/useToast';
 
 export default function AssignmentDetailsPage() {
   const { assignmentId } = useParams<{ assignmentId: string }>();
@@ -18,10 +21,23 @@ export default function AssignmentDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [sidebarMinimized, setSidebarMinimized] = useState(false);
   const [siteSubmitModalOpen, setSiteSubmitModalOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { trackView } = useTrackPageView();
+  const { toast, showToast } = useToast();
 
   // Fallback: if assignmentId is undefined but pathname is /assignment/new, treat as new assignment
   const actualAssignmentId = assignmentId || (location.pathname === '/assignment/new' ? 'new' : undefined);
+
+  // Set page title
+  useEffect(() => {
+    if (isNewAssignment) {
+      document.title = "New Assignment | OVIS";
+    } else if (assignment?.assignment_name) {
+      document.title = `${assignment.assignment_name} | OVIS`;
+    } else {
+      document.title = "Assignment | OVIS";
+    }
+  }, [assignment, isNewAssignment]);
 
   useEffect(() => {
     const fetchAssignment = async () => {
@@ -143,6 +159,35 @@ export default function AssignmentDetailsPage() {
     }
   };
 
+  // Handle assignment deletion
+  const handleDelete = () => {
+    if (!actualAssignmentId || isNewAssignment || actualAssignmentId === 'new') return;
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    setShowDeleteConfirm(false);
+
+    try {
+      const { error } = await supabase
+        .from('assignment')
+        .delete()
+        .eq('id', actualAssignmentId);
+
+      if (error) throw error;
+
+      showToast('Assignment deleted successfully!', { type: 'success' });
+
+      // Navigate after a brief delay to show the toast
+      setTimeout(() => {
+        navigate('/master-pipeline');
+      }, 1000);
+    } catch (error) {
+      console.error('Error deleting assignment:', error);
+      showToast(`Error deleting assignment: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -209,6 +254,18 @@ export default function AssignmentDetailsPage() {
               >
                 Back to Pipeline
               </button>
+              {!isNewAssignment && actualAssignmentId && actualAssignmentId !== 'new' && (
+                <button
+                  onClick={handleDelete}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md transition-colors"
+                  title="Delete Assignment"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete
+                </button>
+              )}
               {!isNewAssignment && assignment.progress && typeof assignment.progress === 'string' && !assignment.progress.includes('<') && (
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                   assignment.progress === 'Completed'
@@ -307,6 +364,24 @@ export default function AssignmentDetailsPage() {
           onSiteSubmitModalChange={setSiteSubmitModalOpen}
         />
       </div>
+
+      {/* Toast Notification */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Assignment"
+        message="Are you sure you want to delete this assignment? This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={confirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 }

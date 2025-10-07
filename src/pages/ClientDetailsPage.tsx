@@ -7,6 +7,9 @@ import GenericActivityTab from '../components/GenericActivityTab';
 import ClientSidebar from '../components/ClientSidebar';
 import FileManager from '../components/FileManager/FileManager';
 import { useTrackPageView } from '../hooks/useRecentlyViewed';
+import Toast from '../components/Toast';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useToast } from '../hooks/useToast';
 
 type Client = Database['public']['Tables']['client']['Row'];
 
@@ -20,9 +23,22 @@ const ClientDetailsPage: React.FC = () => {
   const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [isSiteSubmitModalOpen, setIsSiteSubmitModalOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { trackView } = useTrackPageView();
+  const { toast, showToast } = useToast();
 
   const isNewClient = clientId === 'new';
+
+  // Set page title
+  useEffect(() => {
+    if (isNewClient) {
+      document.title = "New Client | OVIS";
+    } else if (client?.client_name) {
+      document.title = `${client.client_name} | OVIS`;
+    } else {
+      document.title = "Client | OVIS";
+    }
+  }, [client, isNewClient]);
 
   useEffect(() => {
     const fetchClient = async () => {
@@ -78,7 +94,31 @@ const ClientDetailsPage: React.FC = () => {
   };
 
   const handleDelete = () => {
-    navigate('/');
+    if (!clientId || isNewClient) return;
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    setShowDeleteConfirm(false);
+
+    try {
+      const { error } = await supabase
+        .from('client')
+        .delete()
+        .eq('id', clientId);
+
+      if (error) throw error;
+
+      showToast('Client deleted successfully!', { type: 'success' });
+
+      // Navigate after a brief delay to show the toast
+      setTimeout(() => {
+        navigate('/master-pipeline');
+      }, 1000);
+    } catch (error) {
+      console.error('Error deleting client:', error);
+      showToast(`Error deleting client: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });
+    }
   };
 
   if (loading) {
@@ -149,6 +189,18 @@ const ClientDetailsPage: React.FC = () => {
               >
                 Back to Dashboard
               </button>
+              {!isNewClient && clientId && (
+                <button
+                  onClick={handleDelete}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md transition-colors"
+                  title="Delete Client"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -244,6 +296,24 @@ const ClientDetailsPage: React.FC = () => {
           onSiteSubmitModalChange={setIsSiteSubmitModalOpen}
         />
       )}
+
+      {/* Toast Notification */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Client"
+        message="Are you sure you want to delete this client? This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={confirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </>
   );
 };

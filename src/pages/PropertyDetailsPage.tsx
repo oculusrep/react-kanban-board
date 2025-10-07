@@ -4,6 +4,9 @@ import { supabase } from "../lib/supabaseClient";
 import PropertyDetailScreen from "../components/property/PropertyDetailScreen";
 import { Database } from "../../database-schema";
 import { useTrackPageView } from "../hooks/useRecentlyViewed";
+import Toast from '../components/Toast';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useToast } from '../hooks/useToast';
 
 type Property = Database['public']['Tables']['property']['Row'];
 
@@ -13,9 +16,22 @@ export default function PropertyDetailsPage() {
   const [property, setProperty] = useState<Property | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { trackView } = useTrackPageView();
+  const { toast, showToast } = useToast();
 
   const isCreateMode = propertyId === 'create';
+
+  // Set page title
+  useEffect(() => {
+    if (isCreateMode) {
+      document.title = "New Property | OVIS";
+    } else if (property?.property_name) {
+      document.title = `${property.property_name} | OVIS`;
+    } else {
+      document.title = "Property | OVIS";
+    }
+  }, [property, isCreateMode]);
 
   useEffect(() => {
     const fetchProperty = async () => {
@@ -64,6 +80,34 @@ export default function PropertyDetailsPage() {
     }
   };
 
+  const handleDelete = () => {
+    if (!propertyId || isCreateMode) return;
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    setShowDeleteConfirm(false);
+
+    try {
+      const { error } = await supabase
+        .from('property')
+        .delete()
+        .eq('id', propertyId);
+
+      if (error) throw error;
+
+      showToast('Property deleted successfully!', { type: 'success' });
+
+      // Navigate after a brief delay to show the toast
+      setTimeout(() => {
+        navigate('/master-pipeline');
+      }, 1000);
+    } catch (error) {
+      console.error('Error deleting property:', error);
+      showToast(`Error deleting property: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -98,11 +142,32 @@ export default function PropertyDetailsPage() {
   }
 
   return (
-    <PropertyDetailScreen
-      propertyId={isCreateMode ? undefined : propertyId}
-      mode={isCreateMode ? "create" : "view"}
-      onSave={handleSave}
-      onBack={handleBack}
-    />
+    <>
+      <PropertyDetailScreen
+        propertyId={isCreateMode ? undefined : propertyId}
+        mode={isCreateMode ? "create" : "view"}
+        onSave={handleSave}
+        onBack={handleBack}
+        onDelete={handleDelete}
+      />
+
+      {/* Toast Notification */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Property"
+        message="Are you sure you want to delete this property? This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={confirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
+    </>
   );
 }

@@ -45,6 +45,11 @@ export default function DealCompareReportPage() {
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
 
+  // Set page title
+  useEffect(() => {
+    document.title = "Deal Compare Report | OVIS";
+  }, []);
+
   useEffect(() => {
     fetchReportData();
     fetchFilterOptions();

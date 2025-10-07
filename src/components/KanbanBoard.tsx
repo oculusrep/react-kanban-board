@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   DragDropContext,
   DropResult,
@@ -9,17 +9,36 @@ import { Link } from "react-router-dom";
 import useKanbanData from "../hooks/useKanbanData";
 import { supabase } from "../lib/supabaseClient";
 import { DealCard } from "../lib/types"; // Import from central types
+import ConfirmDialog from "./ConfirmDialog";
+import Toast from "./Toast";
+import { useToast } from "../hooks/useToast";
 
 export default function KanbanBoard() {
   const { columns, cards, loading } = useKanbanData();
   const [localCards, setLocalCards] = useState<DealCard[]>([]);
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const [dealToDelete, setDealToDelete] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const { toast, showToast, hideToast } = useToast();
 
   useEffect(() => {
     setLocalCards(cards);
   }, [cards]);
 
   useEffect(() => {
-    document.title = "Master Pipeline";
+    document.title = "Master Pipeline | OVIS";
+  }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setOpenDropdownId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const handleDragEnd = async (result: DropResult) => {
@@ -72,11 +91,129 @@ export default function KanbanBoard() {
 
   const currentYear = new Date().getFullYear();
 
+  const handleDeleteClick = (dealId: string) => {
+    setDealToDelete(dealId);
+    setOpenDropdownId(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!dealToDelete) return;
+
+    try {
+      // Delete in correct order to handle foreign key constraints
+
+      // Step 1: Get all commission splits for this deal
+      const { data: commissionSplits } = await supabase
+        .from("commission_split")
+        .select("id")
+        .eq("deal_id", dealToDelete);
+
+      // Step 2: Delete payment_splits that reference those commission splits
+      if (commissionSplits && commissionSplits.length > 0) {
+        const commissionSplitIds = commissionSplits.map(cs => cs.id);
+
+        const { error: paymentSplitError } = await supabase
+          .from("payment_split")
+          .delete()
+          .in("commission_split_id", commissionSplitIds);
+
+        if (paymentSplitError) {
+          console.error("Error deleting payment splits:", paymentSplitError);
+          throw new Error("Failed to delete related payment splits");
+        }
+      }
+
+      // Step 3: Delete commission splits
+      const { error: commissionError } = await supabase
+        .from("commission_split")
+        .delete()
+        .eq("deal_id", dealToDelete);
+
+      if (commissionError) {
+        console.error("Error deleting commission splits:", commissionError);
+        throw new Error("Failed to delete related commission splits");
+      }
+
+      // Step 4: Delete payments
+      const { error: paymentError } = await supabase
+        .from("payment")
+        .delete()
+        .eq("deal_id", dealToDelete);
+
+      if (paymentError) {
+        console.error("Error deleting payments:", paymentError);
+        throw new Error("Failed to delete related payments");
+      }
+
+      // Step 5: Delete activities
+      const { error: activityError } = await supabase
+        .from("activity")
+        .delete()
+        .eq("deal_id", dealToDelete);
+
+      if (activityError) {
+        console.error("Error deleting activities:", activityError);
+        throw new Error("Failed to delete related activities");
+      }
+
+      // Step 6: Finally, delete the deal
+      const { error: dealError } = await supabase
+        .from("deal")
+        .delete()
+        .eq("id", dealToDelete);
+
+      if (dealError) {
+        console.error("Supabase delete error:", dealError);
+        throw new Error(dealError.message || "Failed to delete deal");
+      }
+
+      // Remove from local state
+      setLocalCards(localCards.filter(card => card.id !== dealToDelete));
+      setDealToDelete(null);
+      showToast("Deal deleted successfully", { type: "success" });
+    } catch (error: any) {
+      console.error("Error deleting deal:", error);
+      const errorMessage = error?.message || "Failed to delete deal. Please try again.";
+      showToast(errorMessage, { type: "error" });
+      setDealToDelete(null);
+    }
+  };
+
+  const cancelDelete = () => {
+    setDealToDelete(null);
+  };
+
+  const toggleDropdown = (cardId: string, event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setOpenDropdownId(openDropdownId === cardId ? null : cardId);
+  };
+
   if (loading) return <div className="p-4">Loading...</div>;
 
   return (
     <div className="p-4 overflow-x-auto bg-gray-100 min-h-screen">
       <h1 className="text-2xl font-bold mb-4">Master Pipeline</h1>
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={!!dealToDelete}
+        title="Delete Deal"
+        message="Are you sure you want to delete this deal? This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
+
+      {/* Toast Notification */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onClose={hideToast}
+      />
+
       <div className="flex min-w-max gap-[2px]">
         <DragDropContext onDragEnd={handleDragEnd}>
           {columns.map((column, index) => {
@@ -131,11 +268,51 @@ export default function KanbanBoard() {
                               ref={provided.innerRef}
                               {...provided.draggableProps}
                               {...provided.dragHandleProps}
-                              className={`bg-white p-2 rounded shadow mb-2 border text-sm ${
+                              className={`bg-white p-2 rounded shadow mb-2 border text-sm relative ${
                                 snapshot.isDragging ? "bg-yellow-100" : ""
                               }`}
                             >
-                              <div className="font-semibold">
+                              {/* Dropdown Menu Button */}
+                              <div className="absolute top-2 right-2">
+                                <button
+                                  onClick={(e) => toggleDropdown(card.id, e)}
+                                  className="text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100"
+                                  title="Options"
+                                >
+                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
+                                    <circle cx="8" cy="3" r="1.5"/>
+                                    <circle cx="8" cy="8" r="1.5"/>
+                                    <circle cx="8" cy="13" r="1.5"/>
+                                  </svg>
+                                </button>
+
+                                {/* Dropdown Menu */}
+                                {openDropdownId === card.id && (
+                                  <div
+                                    ref={dropdownRef}
+                                    className="absolute right-0 mt-1 w-32 bg-white rounded-md shadow-lg z-50 border border-gray-200"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <div className="py-1">
+                                      <Link
+                                        to={`/deal/${card.id}`}
+                                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                        onClick={() => setOpenDropdownId(null)}
+                                      >
+                                        Edit
+                                      </Link>
+                                      <button
+                                        onClick={() => handleDeleteClick(card.id)}
+                                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="font-semibold pr-6">
                                 <Link
                                   to={`/deal/${card.id}`}
                                   className="text-blue-600 hover:underline"

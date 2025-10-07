@@ -1,5 +1,5 @@
 // src/pages/DealDetailsPage.tsx
-import { useParams, useLocation } from "react-router-dom";
+import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import DealDetailsForm from "../components/DealDetailsForm";
@@ -9,21 +9,38 @@ import ActivityTab from '../components/ActivityTab';
 import DealHeaderBar from '../components/DealHeaderBar';
 import DealSidebar from '../components/DealSidebar';
 import FileManager from '../components/FileManager/FileManager';
+import Toast from '../components/Toast';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useToast } from '../hooks/useToast';
 import { useTrackPageView } from '../hooks/useRecentlyViewed';
 
 export default function DealDetailsPage() {
   const { dealId } = useParams<{ dealId: string }>();
   const location = useLocation();
+  const navigate = useNavigate();
   const [deal, setDeal] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [isNewDeal, setIsNewDeal] = useState(false);
   const [sidebarMinimized, setSidebarMinimized] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const { toast, showToast } = useToast();
   const { trackView } = useTrackPageView();
 
   console.log('DealDetailsPage - location:', location.pathname, 'dealId from params:', dealId);
 
   // Fallback: if dealId is undefined but pathname is /deal/new, treat as new deal
   const actualDealId = dealId || (location.pathname === '/deal/new' ? 'new' : undefined);
+
+  // Set page title
+  useEffect(() => {
+    if (isNewDeal) {
+      document.title = "New Deal | OVIS";
+    } else if (deal?.deal_name) {
+      document.title = `${deal.deal_name} | OVIS`;
+    } else {
+      document.title = "Deal | OVIS";
+    }
+  }, [deal, isNewDeal]);
 
   useEffect(() => {
     const fetchDeal = async () => {
@@ -119,6 +136,35 @@ export default function DealDetailsPage() {
     return Promise.resolve();
   };
 
+  // Handle deal deletion
+  const handleDelete = () => {
+    if (!deal.id || isNewDeal) return;
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    setShowDeleteConfirm(false);
+
+    try {
+      const { error } = await supabase
+        .from('deal')
+        .delete()
+        .eq('id', deal.id);
+
+      if (error) throw error;
+
+      showToast('Deal deleted successfully!', { type: 'success' });
+
+      // Navigate after a brief delay to show the toast
+      setTimeout(() => {
+        navigate('/master-pipeline');
+      }, 1000);
+    } catch (error) {
+      console.error('Error deleting deal:', error);
+      showToast(`Error deleting deal: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });
+    }
+  };
+
   console.log('DealDetailsPage render - deal:', deal, 'dealId:', dealId, 'actualDealId:', actualDealId, 'isNewDeal:', isNewDeal);
   
   if (!deal) {
@@ -128,7 +174,7 @@ export default function DealDetailsPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Deal Header Bar - Full Width */}
-      <DealHeaderBar deal={deal} />
+      <DealHeaderBar deal={deal} onDelete={handleDelete} />
 
       {/* Main Content Area with Static Sidebar */}
       <div className="flex flex-1 overflow-hidden">
@@ -288,6 +334,24 @@ export default function DealDetailsPage() {
           />
         )}
       </div>
+
+      {/* Toast Notification */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Deal"
+        message="Are you sure you want to delete this deal? This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={confirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 
 interface ReportCard {
   id: string;
@@ -10,6 +11,11 @@ interface ReportCard {
 
 export default function ReportsPage() {
   const navigate = useNavigate();
+
+  // Set page title
+  useEffect(() => {
+    document.title = "Reports | OVIS";
+  }, []);
 
   const reports: ReportCard[] = [
     {
