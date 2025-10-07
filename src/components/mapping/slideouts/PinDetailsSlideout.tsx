@@ -6,33 +6,34 @@ import { useProperty } from '../../../hooks/useProperty';
 import PropertyInputField from '../../property/PropertyInputField';
 import PropertyPSFField from '../../property/PropertyPSFField';
 import PropertyCurrencyField from '../../property/PropertyCurrencyField';
+import PropertySquareFootageField from '../../property/PropertySquareFootageField';
 import { FileText, DollarSign, Building2, Activity, MapPin, Edit3 } from 'lucide-react';
-import { Database } from '../../../database-schema';
+import { Database } from '../../../../database-schema';
 import { getDropboxPropertySyncService } from '../../../services/dropboxPropertySync';
 
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
 interface Property {
   id: string;
-  property_name?: string;
-  address: string;
-  city?: string;
-  state?: string;
-  zip?: string;
-  property_notes?: string;
-  latitude: number;
-  longitude: number;
-  verified_latitude?: number;
-  verified_longitude?: number;
-  rent_psf?: number;
-  nnn_psf?: number;
-  acres?: number;
-  building_sqft?: number;
-  available_sqft?: number;
-  property_record_type_id?: string;
-  asking_purchase_price?: number;
-  asking_lease_price?: number;
-  lease_expiration_date?: string;
+  property_name?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  property_notes?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  verified_latitude?: number | null;
+  verified_longitude?: number | null;
+  rent_psf?: number | null;
+  nnn_psf?: number | null;
+  acres?: number | null;
+  building_sqft?: number | null;
+  available_sqft?: number | null;
+  property_record_type_id?: string | null;
+  asking_purchase_price?: number | null;
+  asking_lease_price?: number | null;
+  lease_expiration_date?: string | null;
 }
 
 interface SiteSubmit {
@@ -313,6 +314,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       const syncService = getDropboxPropertySyncService();
       const { currentFolderName } = await syncService.checkSyncStatus(
         localPropertyData.id,
+        'property',
         localPropertyData.property_name
       );
 
@@ -345,8 +347,28 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       setDropboxSyncError(null);
       console.log('💾 Saving property changes:', localPropertyData);
 
-      // Extract only the fields that should be updated (exclude id, created_at, updated_at)
-      const { id, ...propertyUpdates } = localPropertyData;
+      // Extract only the editable fields (exclude system fields and id)
+      const propertyUpdates: Partial<Database['public']['Tables']['property']['Update']> = {
+        property_name: localPropertyData.property_name,
+        address: localPropertyData.address,
+        city: localPropertyData.city,
+        state: localPropertyData.state,
+        zip: localPropertyData.zip,
+        property_notes: localPropertyData.property_notes,
+        latitude: localPropertyData.latitude,
+        longitude: localPropertyData.longitude,
+        verified_latitude: localPropertyData.verified_latitude,
+        verified_longitude: localPropertyData.verified_longitude,
+        rent_psf: localPropertyData.rent_psf,
+        nnn_psf: localPropertyData.nnn_psf,
+        acres: localPropertyData.acres,
+        building_sqft: localPropertyData.building_sqft,
+        available_sqft: localPropertyData.available_sqft,
+        property_record_type_id: localPropertyData.property_record_type_id,
+        asking_purchase_price: localPropertyData.asking_purchase_price,
+        asking_lease_price: localPropertyData.asking_lease_price,
+        lease_expiration_date: localPropertyData.lease_expiration_date,
+      };
 
       // Save all changes to database
       await updateProperty(propertyUpdates);
@@ -358,7 +380,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       if (nameChanged && originalPropertyName && localPropertyData.property_name) {
         const syncService = getDropboxPropertySyncService();
         const result = await syncService.syncPropertyName(
-          id,
+          localPropertyData.id,
           originalPropertyName,
           localPropertyData.property_name
         );
@@ -687,64 +709,30 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                   <>
                     {/* Available Sqft */}
                     <div className="pt-2 border-t border-gray-200">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Available Sqft</label>
-                      <input
-                        type="number"
-                        value={property?.available_sqft || ''}
-                        onChange={(e) => handlePropertyFieldUpdate('available_sqft', e.target.value ? parseFloat(e.target.value) : null)}
-                        placeholder="0"
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      <PropertySquareFootageField
+                        label="Available Sqft"
+                        value={property?.available_sqft || null}
+                        onChange={(value) => handlePropertyFieldUpdate('available_sqft', value)}
+                        compact={true}
                       />
                     </div>
 
                     {/* Rent PSF and NNN PSF */}
                     <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Rent PSF</label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
-                          <input
-                            type="text"
-                            value={property?.rent_psf != null ? property.rent_psf.toFixed(2) : ''}
-                            onChange={(e) => {
-                              const value = e.target.value.replace(/[^0-9.]/g, '');
-                              handlePropertyFieldUpdate('rent_psf', value ? parseFloat(value) : null);
-                            }}
-                            onBlur={(e) => {
-                              // Format to 2 decimals on blur
-                              const value = parseFloat(e.target.value.replace(/[^0-9.]/g, ''));
-                              if (!isNaN(value)) {
-                                handlePropertyFieldUpdate('rent_psf', value);
-                              }
-                            }}
-                            placeholder="0.00"
-                            className="w-full pl-7 pr-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">NNN PSF</label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
-                          <input
-                            type="text"
-                            value={property?.nnn_psf != null ? property.nnn_psf.toFixed(2) : ''}
-                            onChange={(e) => {
-                              const value = e.target.value.replace(/[^0-9.]/g, '');
-                              handlePropertyFieldUpdate('nnn_psf', value ? parseFloat(value) : null);
-                            }}
-                            onBlur={(e) => {
-                              // Format to 2 decimals on blur
-                              const value = parseFloat(e.target.value.replace(/[^0-9.]/g, ''));
-                              if (!isNaN(value)) {
-                                handlePropertyFieldUpdate('nnn_psf', value);
-                              }
-                            }}
-                            placeholder="0.00"
-                            className="w-full pl-7 pr-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        </div>
-                      </div>
+                      <PropertyPSFField
+                        label="Rent PSF"
+                        value={property?.rent_psf || null}
+                        onChange={(value) => handlePropertyFieldUpdate('rent_psf', value)}
+                        helpText="Base rent per square foot"
+                        compact={true}
+                      />
+                      <PropertyPSFField
+                        label="NNN PSF"
+                        value={property?.nnn_psf || null}
+                        onChange={(value) => handlePropertyFieldUpdate('nnn_psf', value)}
+                        helpText="Triple net charges per square foot"
+                        compact={true}
+                      />
                     </div>
 
                     {/* All-In Rent Calculation */}

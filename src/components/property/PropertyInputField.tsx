@@ -13,6 +13,7 @@ interface PropertyInputFieldProps {
   tabIndex?: number;
   required?: boolean;
   defaultText?: string;
+  compact?: boolean;
 }
 
 const PropertyInputField: React.FC<PropertyInputFieldProps> = ({
@@ -27,7 +28,8 @@ const PropertyInputField: React.FC<PropertyInputFieldProps> = ({
   inputMode,
   tabIndex,
   required = false,
-  defaultText = 'Click to add'
+  defaultText = 'Click to add',
+  compact = false
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -76,10 +78,10 @@ const PropertyInputField: React.FC<PropertyInputFieldProps> = ({
 
   if (isEditing) {
     const InputComponent = multiline ? 'textarea' : 'input';
-    
+
     return (
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+        <label className={`block font-medium text-gray-700 mb-1 ${compact ? 'text-xs' : 'text-sm'}`}>{label}</label>
         <InputComponent
           type={multiline ? undefined : type}
           inputMode={inputMode}
@@ -89,7 +91,7 @@ const PropertyInputField: React.FC<PropertyInputFieldProps> = ({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           rows={multiline ? rows : undefined}
-          className={`w-full px-3 py-2 rounded-md shadow-sm text-base min-h-[44px] resize-none ${
+          className={`w-full px-3 py-2 rounded-md shadow-sm resize-none ${compact ? 'text-sm' : 'text-base min-h-[44px]'} ${
             showRequiredStyling
               ? 'border-red-300 bg-red-50 focus:ring-red-500 focus:border-red-500'
               : 'border-gray-300 bg-white focus:ring-blue-500 focus:border-blue-500'
@@ -103,7 +105,7 @@ const PropertyInputField: React.FC<PropertyInputFieldProps> = ({
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      <label className={`block font-medium text-gray-700 ${compact ? 'text-xs' : 'text-sm'}`}>{label}</label>
       <div
         onClick={handleStartEdit}
         onKeyDown={(e) => {
@@ -119,9 +121,9 @@ const PropertyInputField: React.FC<PropertyInputFieldProps> = ({
         }}
         onFocus={handleFocus}
         tabIndex={tabIndex || 0}
-        className={`mt-1 px-3 py-2 rounded-md shadow-sm border text-base min-h-[44px] flex items-start transition-colors focus:outline-none focus:ring-2 ${
-          disabled 
-            ? 'bg-gray-100 cursor-not-allowed border-gray-200' 
+        className={`mt-1 px-3 py-2 rounded-md shadow-sm border flex items-start transition-colors focus:outline-none focus:ring-2 ${compact ? 'text-sm' : 'text-base min-h-[44px]'} ${
+          disabled
+            ? 'bg-gray-100 cursor-not-allowed border-gray-200'
             : showRequiredStyling
             ? 'cursor-pointer bg-red-50 border-red-300 hover:bg-red-100 hover:border-red-400 focus:ring-red-500 focus:border-red-500'
             : 'cursor-pointer hover:bg-blue-50 border-transparent hover:border-blue-200 bg-white focus:ring-blue-500 focus:border-blue-500'
@@ -131,8 +133,8 @@ const PropertyInputField: React.FC<PropertyInputFieldProps> = ({
         aria-label={`Click to edit ${label}`}
       >
         <span className={
-          value 
-            ? 'text-gray-900' 
+          value
+            ? 'text-gray-900'
             : showRequiredStyling
             ? 'text-red-600 font-medium'
             : 'text-gray-500'

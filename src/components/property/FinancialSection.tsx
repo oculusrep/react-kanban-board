@@ -3,6 +3,7 @@ import { Database } from '../../../database-schema';
 import PropertyInputField from './PropertyInputField';
 import PropertyCurrencyField from './PropertyCurrencyField';
 import PropertyPSFField from './PropertyPSFField';
+import PropertySquareFootageField from './PropertySquareFootageField';
 
 type Property = Database['public']['Tables']['property']['Row'];
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
@@ -100,12 +101,10 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
           {isShoppingCenterType ? (
             // Shopping Centers - Just Available Sqft
             <div className="grid grid-cols-1 gap-4">
-              <PropertyInputField
+              <PropertySquareFootageField
                 label="Available Sqft"
                 value={property.available_sqft}
                 onChange={(value) => onFieldUpdate('available_sqft', value)}
-                type="number"
-                placeholder="0"
                 tabIndex={17}
               />
             </div>
@@ -113,21 +112,17 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
             // Other building types - Full square footage details
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <PropertyInputField
+                <PropertySquareFootageField
                   label="Building Size"
                   value={property.building_sqft}
                   onChange={(value) => onFieldUpdate('building_sqft', value)}
-                  type="number"
-                  placeholder="0"
                   tabIndex={17}
                 />
 
-                <PropertyInputField
+                <PropertySquareFootageField
                   label="Available Size"
                   value={property.available_sqft}
                   onChange={(value) => onFieldUpdate('available_sqft', value)}
-                  type="number"
-                  placeholder="0"
                   tabIndex={18}
                 />
               </div>
