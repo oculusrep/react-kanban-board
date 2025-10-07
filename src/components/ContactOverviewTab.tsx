@@ -1,78 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
+import { useContactForm } from '../hooks/useContactForm';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type ContactInsert = Database['public']['Tables']['contact']['Insert'];
 type Client = Database['public']['Tables']['client']['Row'];
 
-interface FormData {
-  first_name: string;
-  last_name: string;
-  email: string | null;
-  phone: string | null;
-  mobile_phone: string | null;
-  title: string | null;
-  company: string | null;
-  client_id: string | null;
-  source_type: string;
-  mailing_street: string | null;
-  mailing_city: string | null;
-  mailing_state: string | null;
-  mailing_zip: string | null;
-  mailing_country: string | null;
-  website: string | null;
-  linked_in_profile_link: string | null;
-  icsc_profile_link: string | null;
-  linked_in_connection: boolean;
-  is_site_selector: boolean;
-  tenant_repped: boolean;
-  tenant_rep_contact_id: string | null;
-  contact_tags: string | null;
-}
-
 interface ContactOverviewTabProps {
   contact: Contact | null;
   isNewContact: boolean;
   onSave: (contact: Contact) => void;
-  onDelete?: () => void;
 }
 
 const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
   contact,
   isNewContact,
-  onSave,
-  onDelete
+  onSave
 }) => {
-  const [formData, setFormData] = useState<FormData>({
-    first_name: '',
-    last_name: '',
-    email: null,
-    phone: null,
-    mobile_phone: null,
-    title: null,
-    company: null,
-    client_id: null,
-    source_type: 'Contact',
-    mailing_street: null,
-    mailing_city: null,
-    mailing_state: null,
-    mailing_zip: null,
-    mailing_country: null,
-    website: null,
-    linked_in_profile_link: null,
-    icsc_profile_link: null,
-    linked_in_connection: false,
-    is_site_selector: false,
-    tenant_repped: false,
-    tenant_rep_contact_id: null,
-    contact_tags: null,
-  });
-
   const [clients, setClients] = useState<Client[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [saving, setSaving] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  // Use the custom hook for form state and validation
+  const {
+    formData,
+    updateField,
+    validation,
+    resetForm
+  } = useContactForm(contact || undefined);
 
   // Source type options (Contact vs Lead)
   const sourceTypes = [
@@ -89,11 +45,10 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
     'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'
   ];
 
-  // Load dropdown data and populate form with existing contact data
+  // Load dropdown data (clients and contacts for lookups)
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Load clients and contacts for lookups
         const [clientsResult, contactsResult] = await Promise.all([
           supabase.from('client').select('*').order('client_name'),
           supabase.from('contact').select('id, first_name, last_name, company').order('last_name, first_name')
@@ -101,78 +56,25 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
 
         if (clientsResult.data) setClients(clientsResult.data);
         if (contactsResult.data) setContacts(contactsResult.data);
-
-        // Populate form data if editing existing contact
-        if (contact && !isNewContact) {
-          setFormData({
-            first_name: contact.first_name || '',
-            last_name: contact.last_name || '',
-            email: contact.email,
-            phone: contact.phone,
-            mobile_phone: contact.mobile_phone,
-            title: contact.title,
-            company: contact.company,
-            client_id: contact.client_id,
-            source_type: contact.source_type,
-            mailing_street: contact.mailing_street,
-            mailing_city: contact.mailing_city,
-            mailing_state: contact.mailing_state,
-            mailing_zip: contact.mailing_zip,
-            mailing_country: contact.mailing_country,
-            website: contact.website,
-            linked_in_profile_link: contact.linked_in_profile_link,
-            icsc_profile_link: contact.icsc_profile_link,
-            linked_in_connection: contact.linked_in_connection || false,
-            is_site_selector: contact.is_site_selector || false,
-            tenant_repped: contact.tenant_repped || false,
-            tenant_rep_contact_id: contact.tenant_rep_contact_id,
-            contact_tags: contact.contact_tags,
-          });
-        }
       } catch (error) {
         console.error('Error loading form data:', error);
       }
     };
 
     loadData();
-  }, [contact, isNewContact]);
+  }, []);
 
-  const updateFormData = (field: keyof FormData, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
-    }
-  };
+  // Handle field updates with auto-save (following PropertyDetailScreen pattern)
+  const handleFieldUpdate = async (field: keyof Contact, value: any) => {
+    updateField(field, value);
 
-  const validateForm = (): boolean => {
-    const newErrors: Record<string, string> = {};
+    // Auto-save immediately on field change (inline editing pattern)
+    if (!isNewContact && contact?.id) {
+      try {
+        setAutoSaveStatus('saving');
 
-    if (!formData.first_name?.trim()) {
-      newErrors.first_name = 'First name is required';
-    }
-    if (!formData.last_name?.trim()) {
-      newErrors.last_name = 'Last name is required';
-    }
-    if (!formData.source_type?.trim()) {
-      newErrors.source_type = 'Source type is required';
-    }
-    if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSave = async () => {
-    if (!validateForm()) return;
-
-    setSaving(true);
-    try {
-      if (contact && !isNewContact) {
-        // Update existing contact
         const updateData = {
-          ...formData,
+          [field]: value,
           updated_at: new Date().toISOString(),
         };
 
@@ -184,52 +86,92 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
           .single();
 
         if (error) throw error;
-        onSave(data);
-      } else {
-        // Create new contact
-        const contactData: ContactInsert = {
-          ...formData,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
 
-        const { data, error } = await supabase
-          .from('contact')
-          .insert(contactData)
-          .select()
-          .single();
-
-        if (error) throw error;
+        setAutoSaveStatus('saved');
         onSave(data);
+
+        // Clear saved status after 2 seconds
+        setTimeout(() => setAutoSaveStatus('idle'), 2000);
+      } catch (err) {
+        console.error('Auto-save failed:', err);
+        setAutoSaveStatus('error');
       }
-    } catch (error) {
-      console.error('Error saving contact:', error);
-      alert(`Error saving contact: ${error instanceof Error ? error.message : 'Unknown error'}. Please check the console for details.`);
-    } finally {
-      setSaving(false);
     }
   };
 
+  // Handle manual save for new contacts
+  const handleCreateContact = async () => {
+    // Validate using hook's validation
+    if (!validation.isValid) {
+      return;
+    }
+
+    setAutoSaveStatus('saving');
+    try {
+      const contactData: ContactInsert = {
+        ...formData,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('contact')
+        .insert(contactData)
+        .select()
+        .single();
+
+      if (error) throw error;
+      setAutoSaveStatus('saved');
+      onSave(data);
+
+      // Clear saved status after 2 seconds
+      setTimeout(() => setAutoSaveStatus('idle'), 2000);
+    } catch (error) {
+      console.error('Error creating contact:', error);
+      setAutoSaveStatus('error');
+    }
+  };
+
+
   return (
     <div className="space-y-8">
-      {/* Action Buttons */}
-      <div className="flex justify-end space-x-3">
-        {!isNewContact && onDelete && (
+      {/* Create Contact Button for New Contacts */}
+      {isNewContact && (
+        <div className="flex justify-end mb-4">
           <button
-            onClick={onDelete}
-            className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700"
+            onClick={handleCreateContact}
+            disabled={autoSaveStatus === 'saving' || !validation.isValid}
+            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"
           >
-            Delete
+            {autoSaveStatus === 'saving' ? 'Creating...' : 'Create Contact'}
           </button>
-        )}
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"
-        >
-          {saving ? 'Saving...' : 'Save Contact'}
-        </button>
-      </div>
+        </div>
+      )}
+
+      {/* Auto-save Status Indicator */}
+      {!isNewContact && (
+        <div className="flex justify-end mb-4">
+          <div className="flex items-center space-x-2 text-sm">
+            {autoSaveStatus === 'saving' && (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                <span className="text-gray-600">Saving...</span>
+              </>
+            )}
+            {autoSaveStatus === 'saved' && (
+              <>
+                <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <span className="text-green-600">Saved</span>
+              </>
+            )}
+            {autoSaveStatus === 'error' && (
+              <span className="text-red-600">Error saving</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Basic Information Section */}
       <div className="bg-white shadow rounded-lg p-6 space-y-4">
@@ -244,15 +186,15 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             </label>
             <input
               type="text"
-              value={formData.first_name}
-              onChange={(e) => updateFormData('first_name', e.target.value)}
+              value={formData.first_name || ''}
+              onChange={(e) => handleFieldUpdate('first_name', e.target.value)}
               className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm ${
-                errors.first_name ? 'border-red-300' : ''
+                validation.errors.first_name ? 'border-red-300' : ''
               }`}
               placeholder="Enter first name"
             />
-            {errors.first_name && (
-              <p className="mt-1 text-sm text-red-600">{errors.first_name}</p>
+            {validation.errors.first_name && (
+              <p className="mt-1 text-sm text-red-600">{validation.errors.first_name}</p>
             )}
           </div>
 
@@ -262,15 +204,15 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             </label>
             <input
               type="text"
-              value={formData.last_name}
-              onChange={(e) => updateFormData('last_name', e.target.value)}
+              value={formData.last_name || ''}
+              onChange={(e) => handleFieldUpdate('last_name', e.target.value)}
               className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm ${
-                errors.last_name ? 'border-red-300' : ''
+                validation.errors.last_name ? 'border-red-300' : ''
               }`}
               placeholder="Enter last name"
             />
-            {errors.last_name && (
-              <p className="mt-1 text-sm text-red-600">{errors.last_name}</p>
+            {validation.errors.last_name && (
+              <p className="mt-1 text-sm text-red-600">{validation.errors.last_name}</p>
             )}
           </div>
         </div>
@@ -283,7 +225,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             <input
               type="text"
               value={formData.title || ''}
-              onChange={(e) => updateFormData('title', e.target.value || null)}
+              onChange={(e) => handleFieldUpdate('title', e.target.value || null)}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
               placeholder="Job title"
             />
@@ -296,7 +238,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             <input
               type="text"
               value={formData.company || ''}
-              onChange={(e) => updateFormData('company', e.target.value || null)}
+              onChange={(e) => handleFieldUpdate('company', e.target.value || null)}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
               placeholder="Company name"
             />
@@ -310,7 +252,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             </label>
             <select
               value={formData.client_id || ''}
-              onChange={(e) => updateFormData('client_id', e.target.value || null)}
+              onChange={(e) => handleFieldUpdate('client_id', e.target.value || null)}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
             >
               <option value="">Select a client...</option>
@@ -328,9 +270,9 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             </label>
             <select
               value={formData.source_type}
-              onChange={(e) => updateFormData('source_type', e.target.value)}
+              onChange={(e) => handleFieldUpdate('source_type', e.target.value)}
               className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm ${
-                errors.source_type ? 'border-red-300' : ''
+                validation.errors.source_type ? 'border-red-300' : ''
               }`}
             >
               <option value="">Select source...</option>
@@ -340,8 +282,8 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
                 </option>
               ))}
             </select>
-            {errors.source_type && (
-              <p className="mt-1 text-sm text-red-600">{errors.source_type}</p>
+            {validation.errors.source_type && (
+              <p className="mt-1 text-sm text-red-600">{validation.errors.source_type}</p>
             )}
           </div>
         </div>
@@ -360,14 +302,14 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
           <input
             type="email"
             value={formData.email || ''}
-            onChange={(e) => updateFormData('email', e.target.value || null)}
+            onChange={(e) => handleFieldUpdate('email', e.target.value || null)}
             className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm ${
-              errors.email ? 'border-red-300' : ''
+              validation.errors.email ? 'border-red-300' : ''
             }`}
             placeholder="Enter email address"
           />
-          {errors.email && (
-            <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+          {validation.errors.email && (
+            <p className="mt-1 text-sm text-red-600">{validation.errors.email}</p>
           )}
         </div>
 
@@ -379,7 +321,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             <input
               type="tel"
               value={formData.phone || ''}
-              onChange={(e) => updateFormData('phone', e.target.value || null)}
+              onChange={(e) => handleFieldUpdate('phone', e.target.value || null)}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
               placeholder="(555) 123-4567"
             />
@@ -392,7 +334,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             <input
               type="tel"
               value={formData.mobile_phone || ''}
-              onChange={(e) => updateFormData('mobile_phone', e.target.value || null)}
+              onChange={(e) => handleFieldUpdate('mobile_phone', e.target.value || null)}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
               placeholder="(555) 123-4567"
             />
@@ -406,7 +348,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
           <input
             type="url"
             value={formData.website || ''}
-            onChange={(e) => updateFormData('website', e.target.value || null)}
+            onChange={(e) => handleFieldUpdate('website', e.target.value || null)}
             className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
             placeholder="https://example.com"
           />
@@ -426,7 +368,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
           <input
             type="text"
             value={formData.mailing_street || ''}
-            onChange={(e) => updateFormData('mailing_street', e.target.value || null)}
+            onChange={(e) => handleFieldUpdate('mailing_street', e.target.value || null)}
             className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
             placeholder="123 Main St"
           />
@@ -440,7 +382,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             <input
               type="text"
               value={formData.mailing_city || ''}
-              onChange={(e) => updateFormData('mailing_city', e.target.value || null)}
+              onChange={(e) => handleFieldUpdate('mailing_city', e.target.value || null)}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
               placeholder="City"
             />
@@ -452,7 +394,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             </label>
             <select
               value={formData.mailing_state || ''}
-              onChange={(e) => updateFormData('mailing_state', e.target.value || null)}
+              onChange={(e) => handleFieldUpdate('mailing_state', e.target.value || null)}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
             >
               <option value="">Select state...</option>
@@ -471,7 +413,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             <input
               type="text"
               value={formData.mailing_zip || ''}
-              onChange={(e) => updateFormData('mailing_zip', e.target.value || null)}
+              onChange={(e) => handleFieldUpdate('mailing_zip', e.target.value || null)}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
               placeholder="12345"
             />
@@ -485,7 +427,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
           <input
             type="text"
             value={formData.mailing_country || ''}
-            onChange={(e) => updateFormData('mailing_country', e.target.value || null)}
+            onChange={(e) => handleFieldUpdate('mailing_country', e.target.value || null)}
             className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
             placeholder="United States"
           />
@@ -506,7 +448,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             <input
               type="url"
               value={formData.linked_in_profile_link || ''}
-              onChange={(e) => updateFormData('linked_in_profile_link', e.target.value || null)}
+              onChange={(e) => handleFieldUpdate('linked_in_profile_link', e.target.value || null)}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
               placeholder="https://linkedin.com/in/profile"
             />
@@ -519,7 +461,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             <input
               type="url"
               value={formData.icsc_profile_link || ''}
-              onChange={(e) => updateFormData('icsc_profile_link', e.target.value || null)}
+              onChange={(e) => handleFieldUpdate('icsc_profile_link', e.target.value || null)}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
               placeholder="https://icsc.com/profile"
             />
@@ -532,7 +474,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
           </label>
           <select
             value={formData.tenant_rep_contact_id || ''}
-            onChange={(e) => updateFormData('tenant_rep_contact_id', e.target.value || null)}
+            onChange={(e) => handleFieldUpdate('tenant_rep_contact_id', e.target.value || null)}
             className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
           >
             <option value="">Select contact...</option>
@@ -553,7 +495,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
                 type="checkbox"
                 id="linked_in_connection"
                 checked={formData.linked_in_connection}
-                onChange={(e) => updateFormData('linked_in_connection', e.target.checked)}
+                onChange={(e) => handleFieldUpdate('linked_in_connection', e.target.checked)}
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />
               <label htmlFor="linked_in_connection" className="text-sm text-gray-700">
@@ -566,7 +508,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
                 type="checkbox"
                 id="is_site_selector"
                 checked={formData.is_site_selector}
-                onChange={(e) => updateFormData('is_site_selector', e.target.checked)}
+                onChange={(e) => handleFieldUpdate('is_site_selector', e.target.checked)}
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />
               <label htmlFor="is_site_selector" className="text-sm text-gray-700">
@@ -579,7 +521,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
                 type="checkbox"
                 id="tenant_repped"
                 checked={formData.tenant_repped}
-                onChange={(e) => updateFormData('tenant_repped', e.target.checked)}
+                onChange={(e) => handleFieldUpdate('tenant_repped', e.target.checked)}
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />
               <label htmlFor="tenant_repped" className="text-sm text-gray-700">
@@ -603,7 +545,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
           <textarea
             rows={2}
             value={formData.contact_tags || ''}
-            onChange={(e) => updateFormData('contact_tags', e.target.value || null)}
+            onChange={(e) => handleFieldUpdate('contact_tags', e.target.value || null)}
             className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
             placeholder="Tags separated by commas (e.g., VIP, Decision Maker, Cold Lead)"
           />

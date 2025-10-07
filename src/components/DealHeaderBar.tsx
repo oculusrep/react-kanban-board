@@ -13,6 +13,7 @@ interface DealHeaderBarProps {
     target_close_date: string | null;
     client_id: string | null;
   };
+  onDelete?: () => void;
 }
 
 interface Client {
@@ -25,7 +26,7 @@ interface DealStage {
   label: string;
 }
 
-const DealHeaderBar: React.FC<DealHeaderBarProps> = ({ deal }) => {
+const DealHeaderBar: React.FC<DealHeaderBarProps> = ({ deal, onDelete }) => {
   const [client, setClient] = useState<Client | null>(null);
   const [stage, setStage] = useState<DealStage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -131,14 +132,28 @@ const DealHeaderBar: React.FC<DealHeaderBarProps> = ({ deal }) => {
     <div className="bg-gradient-to-r from-slate-800 to-slate-700 border-b border-slate-600 text-white px-6 py-4">
       <div className="max-w-7xl mx-auto">
         {/* Top Row - Deal Label and Name */}
-        <div className="flex items-center space-x-3 mb-3">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-600 rounded-lg">
-            <DealIcon />
-            <span className="text-white text-sm font-medium">Deal</span>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-600 rounded-lg">
+              <DealIcon />
+              <span className="text-white text-sm font-medium">Deal</span>
+            </div>
+            <h1 className="text-xl font-bold leading-tight">
+              {deal.deal_name || 'Unnamed Deal'}
+            </h1>
           </div>
-          <h1 className="text-xl font-bold leading-tight">
-            {deal.deal_name || 'Unnamed Deal'}
-          </h1>
+          {onDelete && deal.id && (
+            <button
+              onClick={onDelete}
+              className="flex items-center gap-2 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md transition-colors"
+              title="Delete Deal"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Delete
+            </button>
+          )}
         </div>
 
         {/* Bottom Row - Deal Details */}

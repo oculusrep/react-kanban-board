@@ -29,6 +29,7 @@ interface PropertyDetailScreenProps {
   initialLocation?: { lat: number; lng: number };
   onSave?: (property: Property) => void;
   onBack?: () => void;
+  onDelete?: () => void;
 }
 
 const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
@@ -36,7 +37,8 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
   mode = 'view',
   initialLocation,
   onSave,
-  onBack = () => window.history.back()
+  onBack = () => window.history.back(),
+  onDelete
 }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -350,6 +352,7 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
           handleFieldUpdate('longitude', coords.lng);
         })}
         onCallContact={handleCallContact}
+        onDelete={onDelete}
       />
 
 
