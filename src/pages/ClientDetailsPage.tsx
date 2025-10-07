@@ -5,6 +5,7 @@ import { Database } from '../../database-schema';
 import ClientOverviewTab from '../components/ClientOverviewTab';
 import GenericActivityTab from '../components/GenericActivityTab';
 import ClientSidebar from '../components/ClientSidebar';
+import FileManager from '../components/FileManager/FileManager';
 import { useTrackPageView } from '../hooks/useRecentlyViewed';
 
 type Client = Database['public']['Tables']['client']['Row'];
@@ -109,6 +110,7 @@ const ClientDetailsPage: React.FC = () => {
   const tabs = [
     { id: 'overview', name: 'Overview' },
     { id: 'activities', name: 'Activities' },
+    { id: 'files', name: 'Files' },
     { id: 'notes', name: 'Notes' }
   ];
 
@@ -189,6 +191,29 @@ const ClientDetailsPage: React.FC = () => {
               allowAdd: true
             }}
           />
+        )}
+        {activeTab === 'files' && (
+          <>
+            {isNewClient || !client?.id ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                <div className="flex">
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-yellow-800">Save Client First</h3>
+                    <div className="mt-2 text-sm text-yellow-700">
+                      <p>Please save the client in the Overview tab before viewing files.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mb-6">
+                <FileManager
+                  entityType="client"
+                  entityId={client.id}
+                />
+              </div>
+            )}
+          </>
         )}
         {activeTab === 'notes' && (
           <div className="text-gray-600">

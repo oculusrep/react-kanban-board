@@ -74,8 +74,8 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
           if (!isActive) return;
 
           if (result?.changes) {
-            // Changes detected - refresh files silently
-            await refreshFiles();
+            // Changes detected - refresh files silently (no loading spinner)
+            await refreshFiles(true);
             // Get new cursor after refresh
             const newCursor = await getLatestCursor();
             if (newCursor && isActive) {
@@ -533,9 +533,7 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
             <Folder className="w-12 h-12 mx-auto mb-3 text-blue-400" />
             <p className="text-sm font-medium text-gray-700">No files yet</p>
             <p className="text-xs text-gray-500 mt-1">
-              {error && !folderPath
-                ? 'Upload files to automatically create a folder'
-                : 'Drag and drop files here or click Upload to get started'}
+              Upload files to automatically create a folder
             </p>
           </div>
         ) : (

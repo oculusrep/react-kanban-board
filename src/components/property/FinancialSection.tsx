@@ -22,11 +22,11 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
 }) => {
   // Get current property record type info
   const propertyRecordTypeLabel = property.property_record_type?.label?.toLowerCase() || '';
-  
+
   // Determine which fields to show based on property record type
   const isLandType = propertyRecordTypeLabel.includes('land');
   const isShoppingCenterType = propertyRecordTypeLabel.includes('shopping') || propertyRecordTypeLabel.includes('retail');
-  
+
   // For now, show different field sets based on type
   const showLeaseFields = !isLandType && !isShoppingCenterType; // Show lease fields for non-land, non-shopping center properties
   const showPSFFields = !isLandType; // Show PSF for all building types (including shopping centers)
@@ -51,7 +51,7 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
             helpText="Annual lease amount"
             showLarge={true}
             colorScheme="green"
-            tabIndex={10}
+            tabIndex={14}
           />
         </div>
       )}
@@ -66,7 +66,7 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
               value={property.rent_psf}
               onChange={(value) => onFieldUpdate('rent_psf', value)}
               helpText="Base rent per square foot"
-              tabIndex={12}
+              tabIndex={15}
             />
 
             <PropertyPSFField
@@ -74,7 +74,7 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
               value={property.nnn_psf}
               onChange={(value) => onFieldUpdate('nnn_psf', value)}
               helpText="Triple net charges per square foot"
-              tabIndex={13}
+              tabIndex={16}
             />
           </div>
 
@@ -106,7 +106,7 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
                 onChange={(value) => onFieldUpdate('available_sqft', value)}
                 type="number"
                 placeholder="0"
-                tabIndex={14}
+                tabIndex={17}
               />
             </div>
           ) : (
@@ -119,7 +119,7 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
                   onChange={(value) => onFieldUpdate('building_sqft', value)}
                   type="number"
                   placeholder="0"
-                  tabIndex={14}
+                  tabIndex={17}
                 />
 
                 <PropertyInputField
@@ -128,7 +128,7 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
                   onChange={(value) => onFieldUpdate('available_sqft', value)}
                   type="number"
                   placeholder="0"
-                  tabIndex={15}
+                  tabIndex={18}
                 />
               </div>
 
@@ -136,7 +136,7 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
               {property.building_sqft && property.available_sqft && (
                 <div className="mt-3 p-2 bg-gray-50 rounded-md">
                   <div className="text-sm text-gray-600">
-                    Occupancy: {(((property.building_sqft - property.available_sqft) / property.building_sqft) * 100).toFixed(1)}% 
+                    Occupancy: {(((property.building_sqft - property.available_sqft) / property.building_sqft) * 100).toFixed(1)}%
                     ({(property.building_sqft - property.available_sqft).toLocaleString()} SF occupied)
                   </div>
                 </div>
@@ -150,7 +150,7 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
       {isLandType && (
         <div className="border-t border-gray-200 pt-4 mt-4">
           <h4 className="text-sm font-medium text-gray-900 mb-3">Land Information</h4>
-          
+
           {/* Row 1: Asking Purchase Price, Asking Ground Lease Price */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             <PropertyCurrencyField
@@ -159,16 +159,16 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
               onChange={(value) => onFieldUpdate('asking_purchase_price', value)}
               showLarge={true}
               colorScheme="blue"
-              tabIndex={16}
+              tabIndex={19}
             />
-            
+
             <PropertyCurrencyField
               label="Asking Ground Lease Price"
               value={property.asking_lease_price}
               onChange={(value) => onFieldUpdate('asking_lease_price', value)}
               showLarge={true}
               colorScheme="green"
-              tabIndex={17}
+              tabIndex={20}
             />
           </div>
 
@@ -180,16 +180,16 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
               onChange={(value) => onFieldUpdate('nnn_psf', value)}
               type="number"
               placeholder="0"
-              tabIndex={18}
+              tabIndex={21}
             />
-            
+
             <PropertyInputField
               label="Acres"
               value={property.acres}
               onChange={(value) => onFieldUpdate('acres', value)}
               type="number"
               placeholder="0"
-              tabIndex={19}
+              tabIndex={22}
             />
           </div>
 
@@ -201,16 +201,16 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
               onChange={(value) => onFieldUpdate('building_sqft', value)}
               type="number"
               placeholder="0"
-              tabIndex={20}
+              tabIndex={23}
             />
-            
+
             <PropertyInputField
               label="Lease Expiration Date"
               value={property.lease_expiration_date}
               onChange={(value) => onFieldUpdate('lease_expiration_date', value)}
               type="text"
               placeholder="MM/DD/YYYY"
-              tabIndex={21}
+              tabIndex={24}
             />
           </div>
         </div>

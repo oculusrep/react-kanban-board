@@ -372,7 +372,7 @@ class DropboxService {
     // Map entity types to their subfolder names
     const subfolderMap = {
       property: 'Properties',
-      client: 'Clients',
+      client: 'Accounts',  // Clients go in Accounts folder
       deal: 'Opportunities',  // Deals go in Opportunities folder
       contact: 'Contacts'
     };

@@ -133,7 +133,7 @@ const LocationSection: React.FC<LocationSectionProps> = ({
             value={property.address}
             onChange={(value) => onFieldUpdate('address', value)}
             placeholder="123 Main Street"
-            tabIndex={1}
+            tabIndex={5}
           />
         </div>
 
@@ -143,7 +143,7 @@ const LocationSection: React.FC<LocationSectionProps> = ({
           onChange={(value) => onFieldUpdate('city', value)}
           field="city"
           placeholder="San Francisco"
-          tabIndex={2}
+          tabIndex={6}
         />
 
         <PropertyAutocompleteField
@@ -152,7 +152,7 @@ const LocationSection: React.FC<LocationSectionProps> = ({
           onChange={(value) => onFieldUpdate('state', value)}
           field="state"
           placeholder="CA"
-          tabIndex={3}
+          tabIndex={7}
         />
 
         <div className="relative">
@@ -174,7 +174,7 @@ const LocationSection: React.FC<LocationSectionProps> = ({
             value={property.zip}
             onChange={(value) => onFieldUpdate('zip', value)}
             placeholder="94105"
-            tabIndex={4}
+            tabIndex={8}
           />
           
           {/* ZIP Tooltip */}
@@ -215,7 +215,7 @@ const LocationSection: React.FC<LocationSectionProps> = ({
             onChange={(value) => onFieldUpdate('county', value)}
             field="county"
             placeholder="San Francisco County"
-            tabIndex={5}
+            tabIndex={9}
           />
           
           {/* County Tooltip */}
@@ -281,9 +281,9 @@ const LocationSection: React.FC<LocationSectionProps> = ({
             type="number"
             placeholder="37.7749"
             inputMode="decimal"
-            tabIndex={6}
+            tabIndex={10}
           />
-          
+
           <PropertyInputField
             label="Longitude"
             value={property.longitude}
@@ -291,7 +291,7 @@ const LocationSection: React.FC<LocationSectionProps> = ({
             type="number"
             placeholder="-122.4194"
             inputMode="decimal"
-            tabIndex={7}
+            tabIndex={11}
           />
 
           <PropertyInputField
@@ -301,9 +301,9 @@ const LocationSection: React.FC<LocationSectionProps> = ({
             type="number"
             placeholder="37.7749"
             inputMode="decimal"
-            tabIndex={8}
+            tabIndex={12}
           />
-          
+
           <PropertyInputField
             label="Verified Longitude"
             value={property.verified_longitude}
@@ -311,7 +311,7 @@ const LocationSection: React.FC<LocationSectionProps> = ({
             type="number"
             placeholder="-122.4194"
             inputMode="decimal"
-            tabIndex={9}
+            tabIndex={13}
           />
         </div>
       </div>

@@ -77,7 +77,7 @@ const PropertyDetailsSection: React.FC<PropertyDetailsSectionProps> = ({
                 options={propertyRecordTypes.map(type => ({ id: type.id, label: type.label }))}
                 placeholder={propertyRecordTypes.length === 0 ? "No record types available" : "Select record type..."}
                 disabled={propertyRecordTypes.length === 0}
-                tabIndex={20}
+                tabIndex={1}
               />
               {/* Show legacy data if it exists */}
               {legacyRecordType && !property.property_record_type_id && (
@@ -93,7 +93,7 @@ const PropertyDetailsSection: React.FC<PropertyDetailsSectionProps> = ({
                 value={property.property_name}
                 onChange={(value) => onFieldUpdate('property_name', value)}
                 placeholder="Property name or identifier"
-                tabIndex={21}
+                tabIndex={2}
               />
               {/* Show Dropbox sync error with retry button */}
               {dropboxSyncError && (
@@ -127,6 +127,7 @@ const PropertyDetailsSection: React.FC<PropertyDetailsSectionProps> = ({
             placeholder="Brief description of the property..."
             multiline={true}
             rows={3}
+            tabIndex={3}
           />
 
           {/* Basic Market Information */}
@@ -138,6 +139,7 @@ const PropertyDetailsSection: React.FC<PropertyDetailsSectionProps> = ({
               onChange={(value) => onFieldUpdate('trade_area', value)}
               field="trade_area"
               placeholder="Downtown, Suburb, etc."
+              tabIndex={4}
             />
           </div>
 

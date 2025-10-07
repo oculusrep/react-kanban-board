@@ -5,6 +5,7 @@ import { Database } from '../../database-schema';
 import ContactOverviewTab from '../components/ContactOverviewTab';
 import GenericActivityTab from '../components/GenericActivityTab';
 import ContactSidebar from '../components/ContactSidebar';
+import FileManager from '../components/FileManager/FileManager';
 import { useTrackPageView } from '../hooks/useRecentlyViewed';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
@@ -211,6 +212,16 @@ const ContactDetailsPage: React.FC = () => {
             >
               Activity
             </button>
+            <button
+              onClick={() => setActiveTab('files')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'files'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Files
+            </button>
           </nav>
         </div>
 
@@ -250,6 +261,30 @@ const ContactDetailsPage: React.FC = () => {
                   allowAdd: true
                 }}
               />
+            )}
+          </>
+        )}
+
+        {activeTab === 'files' && (
+          <>
+            {isNewContact || !contact?.id ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                <div className="flex">
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-yellow-800">Save Contact First</h3>
+                    <div className="mt-2 text-sm text-yellow-700">
+                      <p>Please save the contact in the Details tab before viewing files.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mb-6">
+                <FileManager
+                  entityType="contact"
+                  entityId={contact.id}
+                />
+              </div>
             )}
           </>
         )}

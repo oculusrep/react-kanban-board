@@ -50,9 +50,10 @@ export function useDropboxFiles(
 
   /**
    * Fetch files from Dropbox for the current entity
+   * @param silent - If true, don't show loading spinner (for background refreshes)
    */
-  const fetchFiles = useCallback(async () => {
-    console.log('🔍 useDropboxFiles.fetchFiles called:', { entityId, entityType, hasDropboxService: !!dropboxService });
+  const fetchFiles = useCallback(async (silent: boolean = false) => {
+    console.log('🔍 useDropboxFiles.fetchFiles called:', { entityId, entityType, hasDropboxService: !!dropboxService, silent });
 
     if (!entityId) {
       console.log('🔍 No entityId, returning empty');
@@ -71,8 +72,11 @@ export function useDropboxFiles(
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    // Only show loading spinner and clear error for non-silent refreshes
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
 
     try {
       // Query dropbox_folder_mapping table to get the folder path
@@ -88,7 +92,10 @@ export function useDropboxFiles(
 
       if (mappingError || !mapping) {
         console.log('🔍 No mapping found, setting error');
-        setError('No Dropbox folder linked to this record');
+        // Only update error state if not a silent refresh or if transitioning from no-error to error
+        if (!silent) {
+          setError('No Dropbox folder linked to this record');
+        }
         setFiles([]);
         setFolderPath(null);
         setLoading(false);
@@ -104,7 +111,10 @@ export function useDropboxFiles(
 
       if (!folderExists) {
         console.log('⚠️ Folder exists in database but not in Dropbox:', path);
-        setError('Dropbox folder was deleted. Upload a file to recreate it.');
+        // Only update error state if not a silent refresh
+        if (!silent) {
+          setError('Dropbox folder was deleted. Upload a file to recreate it.');
+        }
         setFiles([]);
         // Clear the folder path so upload will recreate
         setFolderPath(null);
@@ -116,9 +126,14 @@ export function useDropboxFiles(
       const fileList = await dropboxService.listFolderContents(path);
       console.log('🔍 Files fetched:', fileList.length, fileList);
       setFiles(fileList);
+      // Clear error on successful fetch (folder found and files loaded)
+      setError(null);
     } catch (err: any) {
       console.error('🔍 Error fetching Dropbox files:', err);
-      setError(err.message || 'Failed to load Dropbox files');
+      // Only update error state if not a silent refresh
+      if (!silent) {
+        setError(err.message || 'Failed to load Dropbox files');
+      }
       setFiles([]);
     } finally {
       setLoading(false);
@@ -127,9 +142,10 @@ export function useDropboxFiles(
 
   /**
    * Refresh the file list
+   * @param silent - If true, don't show loading spinner (for background refreshes)
    */
-  const refreshFiles = useCallback(async () => {
-    await fetchFiles();
+  const refreshFiles = useCallback(async (silent: boolean = false) => {
+    await fetchFiles(silent);
   }, [fetchFiles]);
 
   // Fetch files on mount and when entity changes
@@ -142,10 +158,10 @@ export function useDropboxFiles(
   useEffect(() => {
     if (!error || !entityId || folderPath) return;
 
-    // Poll every 3 seconds to check if a folder was created
+    // Poll every 3 seconds to check if a folder was created (silently, no loading spinner)
     const intervalId = setInterval(() => {
       console.log('🔄 Polling for folder creation...');
-      fetchFiles();
+      fetchFiles(true); // Silent refresh
     }, 3000);
 
     return () => clearInterval(intervalId);
@@ -257,13 +273,17 @@ export function useDropboxFiles(
         console.log(`✅ Updated folder mapping in database`);
       } else {
         // Insert new mapping
+        // Use a unique placeholder for sf_id since table has UNIQUE constraint
+        // Format: AUTO-{first 13 chars of entity_id} to match sf_id VARCHAR(18) length
+        const placeholderSfId = `AUTO-${entityId.substring(0, 13)}`;
+
         const { error: insertError } = await supabase
           .from('dropbox_folder_mapping')
           .insert({
             entity_type: entityType,
             entity_id: entityId,
             dropbox_folder_path: newFolderPath,
-            sf_id: '', // No Salesforce ID for new folders
+            sf_id: placeholderSfId, // Unique placeholder for auto-created folders
             sfdb_file_found: false,
             last_verified_at: new Date().toISOString()
           });
