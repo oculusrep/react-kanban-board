@@ -122,6 +122,9 @@ const MappingPageContent: React.FC = () => {
   // Flag to prevent property context menu when site submit was just clicked
   const [suppressPropertyContextMenu, setSuppressPropertyContextMenu] = useState<boolean>(false);
 
+  // Flag to prevent map context menu when a marker was just right-clicked
+  const [suppressMapContextMenu, setSuppressMapContextMenu] = useState<boolean>(false);
+
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -181,33 +184,23 @@ const MappingPageContent: React.FC = () => {
 
     // Add right-click listener for desktop context menu
     if (supportsRightClick()) {
-      const mapDiv = map.getDiv();
+      map.addListener('rightclick', (event: google.maps.MapMouseEvent) => {
+        // Don't show map context menu if a marker was just right-clicked
+        if (suppressMapContextMenu) {
+          console.log('🚫 Marker was right-clicked, skipping map context menu');
+          return;
+        }
 
-      mapDiv.addEventListener('contextmenu', (e: MouseEvent) => {
-        e.preventDefault(); // Prevent browser context menu
+        if (event.latLng && event.domEvent) {
+          const lat = event.latLng.lat();
+          const lng = event.latLng.lng();
 
-        // Get coordinates from the click position
-        const bounds = mapDiv.getBoundingClientRect();
-        const x = e.clientX - bounds.left;
-        const y = e.clientY - bounds.top;
-
-        // Convert pixel position to lat/lng
-        const projection = map.getProjection();
-        if (projection) {
-          const ne = map.getBounds()?.getNorthEast();
-          const sw = map.getBounds()?.getSouthWest();
-
-          if (ne && sw) {
-            const lat = sw.lat() + (ne.lat() - sw.lat()) * (1 - y / bounds.height);
-            const lng = sw.lng() + (ne.lng() - sw.lng()) * (x / bounds.width);
-
-            setContextMenu({
-              isVisible: true,
-              x: e.clientX,
-              y: e.clientY,
-              coordinates: { lat, lng },
-            });
-          }
+          setContextMenu({
+            isVisible: true,
+            x: event.domEvent.clientX,
+            y: event.domEvent.clientY,
+            coordinates: { lat, lng },
+          });
         }
       });
     }
@@ -369,6 +362,10 @@ const MappingPageContent: React.FC = () => {
       return;
     }
 
+    // Set flag to suppress map context menu
+    setSuppressMapContextMenu(true);
+    setTimeout(() => setSuppressMapContextMenu(false), 100);
+
     setPropertyContextMenu({
       isVisible: true,
       x,
@@ -391,11 +388,11 @@ const MappingPageContent: React.FC = () => {
 
     // Set flag to suppress property context menu
     setSuppressPropertyContextMenu(true);
+    setTimeout(() => setSuppressPropertyContextMenu(false), 200);
 
-    // Clear the suppression flag after a longer delay
-    setTimeout(() => {
-      setSuppressPropertyContextMenu(false);
-    }, 200);
+    // Set flag to suppress map context menu
+    setSuppressMapContextMenu(true);
+    setTimeout(() => setSuppressMapContextMenu(false), 100);
 
     setSiteSubmitContextMenu({
       isVisible: true,

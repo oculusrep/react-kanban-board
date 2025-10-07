@@ -26,13 +26,13 @@ design-references/*.pdf
 design-references/*.webp
 !design-references/README.md
 
+# Screenshots folder (should not be committed)
+Screen Shots/
+screenshots/
+
 # Database backups (contain sensitive data, too large for git)
 backups/
 *.sql
 *.sql.gz
 *.dump
 .vercel
-Screen Shots/SCR-20251007-jfcc.png
-SCR-20250928-jkyf.png
-design-references/README.md
-SCR-20250928-jkyf.png
