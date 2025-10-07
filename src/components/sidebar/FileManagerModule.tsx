@@ -536,6 +536,16 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
                           </p>
                           <p className="text-xs text-gray-500">
                             {formatFileSize(file.size)}
+                            {file.modified && (
+                              <> • {new Date(file.modified).toLocaleString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true
+                              })}</>
+                            )}
                           </p>
                         </div>
                       </button>
