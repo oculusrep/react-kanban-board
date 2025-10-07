@@ -152,7 +152,7 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({
           {/* Selected client indicator */}
           {selectedClient && (
             <div className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">
-              {selectedClient.deal_count} deals
+              {selectedClient.site_submit_count} submits
             </div>
           )}
         </div>
@@ -185,7 +185,7 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({
                     </div>
                   </div>
                   <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                    {client.deal_count} deals
+                    {client.site_submit_count} submits
                   </div>
                 </div>
               </div>

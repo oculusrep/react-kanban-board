@@ -35,7 +35,7 @@ interface FormData {
   clean_status: string | null;
   customer_priority: string | null;
   upsell_opportunity: string | null;
-  active: boolean;
+  is_active_client: boolean;
 }
 
 interface ClientOverviewTabProps {
@@ -81,12 +81,14 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
     clean_status: null,
     customer_priority: null,
     upsell_opportunity: null,
-    active: true
+    is_active_client: true
   });
 
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [originalFormData, setOriginalFormData] = useState<FormData | null>(null);
 
   // Client type options
   const clientTypes = [
@@ -125,9 +127,9 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
   // Load client data when component mounts or client changes
   useEffect(() => {
     if (client) {
-      setFormData({
+      const newFormData = {
         client_name: client.client_name || '',
-        type: client.type,
+        type: client.sf_client_type,
         phone: client.phone,
         email: client.email,
         website: client.website,
@@ -155,16 +157,32 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
         clean_status: client.clean_status,
         customer_priority: client.customer_priority,
         upsell_opportunity: client.upsell_opportunity,
-        active: client.active ?? true
-      });
+        is_active_client: client.is_active_client ?? true
+      };
+      setFormData(newFormData);
+      setOriginalFormData(newFormData);
+      setHasChanges(false);
     }
   }, [client]);
 
   const handleInputChange = (field: keyof FormData, value: string | number | boolean | null) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setFormData(prev => {
+      const updated = {
+        ...prev,
+        [field]: value
+      };
+
+      // Check if there are changes compared to original
+      if (originalFormData) {
+        const changed = JSON.stringify(updated) !== JSON.stringify(originalFormData);
+        setHasChanges(changed);
+      } else {
+        // For new clients, always show changes
+        setHasChanges(true);
+      }
+
+      return updated;
+    });
 
     // Clear error when user starts typing
     if (errors[field]) {
@@ -213,26 +231,66 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
           .single();
 
         if (error) throw error;
+        setHasChanges(false);
         onSave(data);
       } else {
-        // Update existing client
+        // Update existing client - only send fields that exist in the database
+        const updateData = {
+          client_name: formData.client_name.trim(),
+          phone: formData.phone,
+          website: formData.website,
+          description: formData.description,
+          billing_street: formData.billing_street,
+          billing_city: formData.billing_city,
+          billing_state: formData.billing_state,
+          billing_zip: formData.billing_zip,
+          billing_country: formData.billing_country,
+          shipping_street: formData.shipping_street,
+          shipping_city: formData.shipping_city,
+          shipping_state: formData.shipping_state,
+          shipping_zip: formData.shipping_zip,
+          shipping_country: formData.shipping_country,
+          is_active_client: formData.is_active_client,
+          sf_client_type: formData.type,
+          updated_at: new Date().toISOString()
+        };
+
+        console.log('💾 Saving client with data:', updateData);
+
         const { data, error } = await supabase
           .from('client')
-          .update({
-            ...formData,
-            client_name: formData.client_name.trim(),
-            updated_at: new Date().toISOString()
-          })
+          .update(updateData)
           .eq('id', client!.id)
           .select()
           .single();
 
-        if (error) throw error;
+        if (error) {
+          console.error('❌ Save error:', error);
+          throw error;
+        }
+
+        console.log('✅ Client saved successfully:', data);
+        setHasChanges(false);
         onSave(data);
       }
     } catch (error) {
       console.error('Error saving client:', error);
-      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+      console.error('Error details:', JSON.stringify(error, null, 2));
+
+      // Extract detailed error message from Supabase error
+      let errorMessage = 'An unexpected error occurred';
+      if (error && typeof error === 'object') {
+        if ('message' in error) {
+          errorMessage = (error as any).message;
+        }
+        if ('details' in error) {
+          console.error('Error details:', (error as any).details);
+        }
+        if ('hint' in error) {
+          console.error('Error hint:', (error as any).hint);
+        }
+      }
+
       setErrors({ submit: `Failed to save client: ${errorMessage}` });
     } finally {
       setLoading(false);
@@ -461,12 +519,12 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
           <div className="flex items-center">
             <input
               type="checkbox"
-              id="active"
-              checked={formData.active}
-              onChange={(e) => handleInputChange('active', e.target.checked)}
+              id="is_active_client"
+              checked={formData.is_active_client}
+              onChange={(e) => handleInputChange('is_active_client', e.target.checked)}
               className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
             />
-            <label htmlFor="active" className="ml-2 block text-sm text-gray-900">
+            <label htmlFor="is_active_client" className="ml-2 block text-sm text-gray-900">
               Active Client
             </label>
           </div>
@@ -633,28 +691,19 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
 
       {/* Action Buttons */}
       <div className="flex items-center justify-between pt-6 border-t border-gray-200">
-        <div>
-          {!isNewClient && onDelete && (
+        {/* Only show save button when there are changes */}
+        {(hasChanges || isNewClient) && (
+          <div className="flex items-center justify-center">
             <button
               type="button"
-              onClick={() => setShowDeleteConfirm(true)}
+              onClick={handleSave}
               disabled={loading}
-              className="inline-flex items-center px-4 py-2 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+              className="inline-flex items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 transition-colors"
             >
-              Delete Client
+              {loading ? 'Saving...' : isNewClient ? 'Create Client' : 'Save Changes'}
             </button>
-          )}
-        </div>
-        <div className="flex items-center space-x-3">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={loading}
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-          >
-            {loading ? 'Saving...' : isNewClient ? 'Create Client' : 'Save Changes'}
-          </button>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Delete Confirmation Modal */}
