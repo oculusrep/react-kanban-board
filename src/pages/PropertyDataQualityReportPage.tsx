@@ -33,6 +33,9 @@ export default function PropertyDataQualityReportPage() {
   const [error, setError] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<FilterType>("missing_location");
   const [viewMode, setViewMode] = useState<ViewMode>("issues");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const PAGE_SIZE = 100;
 
   // Set page title
   useEffect(() => {
@@ -40,18 +43,46 @@ export default function PropertyDataQualityReportPage() {
   }, []);
 
   useEffect(() => {
-    fetchReportData();
+    setCurrentPage(1); // Reset to page 1 when filter or view changes
   }, [filterType, viewMode]);
+
+  useEffect(() => {
+    fetchReportData();
+  }, [filterType, viewMode, currentPage]);
 
   const fetchReportData = async () => {
     setLoading(true);
     setError(null);
 
     try {
+      // First, get the total count
+      let countQuery = supabase
+        .from("property")
+        .select("id", { count: 'exact', head: true });
+
+      // Apply same filters to count query
+      if (filterType === "missing_location") {
+        countQuery = countQuery.or("latitude.is.null,longitude.is.null");
+      } else if (filterType === "missing_address") {
+        countQuery = countQuery.is("address", null);
+      } else if (filterType === "missing_verified") {
+        countQuery = countQuery
+          .is("latitude", null)
+          .is("longitude", null)
+          .is("verified_latitude", null)
+          .is("verified_longitude", null);
+      }
+
+      const { count, error: countError } = await countQuery;
+      if (countError) throw countError;
+      setTotalCount(count || 0);
+
+      // Now fetch the data with pagination
       let query = supabase
         .from("property")
         .select("id, property_name, address, city, state, zip, latitude, longitude, verified_latitude, verified_longitude, sf_id")
-        .order("property_name");
+        .order("property_name")
+        .range((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE - 1);
 
       // Apply filters based on selected filter type
       if (filterType === "missing_location") {
@@ -413,7 +444,7 @@ export default function PropertyDataQualityReportPage() {
           </div>
         </div>
 
-        {/* Summary */}
+        {/* Summary and Pagination */}
         <div className="bg-white rounded-lg shadow p-4 mb-6">
           <div className="flex items-center justify-between">
             <div>
@@ -422,8 +453,44 @@ export default function PropertyDataQualityReportPage() {
                 {viewMode === "comparison" && <span className="ml-2 text-blue-600">(with Salesforce comparison)</span>}
               </p>
               <p className="text-2xl font-bold text-gray-900 mt-1">
-                {data.length} {data.length === 1 ? "Property" : "Properties"}
+                {totalCount.toLocaleString()} Total {totalCount === 1 ? "Property" : "Properties"}
               </p>
+              <p className="text-sm text-gray-500 mt-1">
+                Page {currentPage} of {Math.ceil(totalCount / PAGE_SIZE)} (showing {((currentPage - 1) * PAGE_SIZE) + 1}-{Math.min(currentPage * PAGE_SIZE, totalCount)})
+              </p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                First
+              </button>
+              <button
+                onClick={() => setCurrentPage(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-gray-600">
+                Page {currentPage} of {Math.ceil(totalCount / PAGE_SIZE)}
+              </span>
+              <button
+                onClick={() => setCurrentPage(currentPage + 1)}
+                disabled={currentPage >= Math.ceil(totalCount / PAGE_SIZE)}
+                className="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+              <button
+                onClick={() => setCurrentPage(Math.ceil(totalCount / PAGE_SIZE))}
+                disabled={currentPage >= Math.ceil(totalCount / PAGE_SIZE)}
+                className="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Last
+              </button>
             </div>
           </div>
         </div>
