@@ -31,6 +31,13 @@ export default function ReportsPage() {
       description: "Compare CRM deals with Salesforce data side-by-side, highlighting discrepancies",
       route: "/reports/deal-compare-salesforce",
       icon: "🔍"
+    },
+    {
+      id: "property-data-quality",
+      name: "Property Data Quality",
+      description: "Review properties with missing location (lat/long) or address data",
+      route: "/reports/property-data-quality",
+      icon: "🏢"
     }
   ];
 

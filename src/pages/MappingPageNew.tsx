@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import GoogleMapContainer from '../components/mapping/GoogleMapContainer';
 import BatchGeocodingPanel from '../components/mapping/BatchGeocodingPanel';
+import BatchReverseGeocodingPanel from '../components/mapping/BatchReverseGeocodingPanel';
 import PropertyLayer, { PropertyLoadingConfig } from '../components/mapping/layers/PropertyLayer';
 import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/layers/SiteSubmitLayer';
 import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
@@ -756,8 +757,9 @@ const MappingPageContent: React.FC = () => {
             </div>
 
             {/* Batch Processing Panel */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto space-y-4">
               <BatchGeocodingPanel className="compact" />
+              <BatchReverseGeocodingPanel className="compact" />
             </div>
           </div>
         )}
