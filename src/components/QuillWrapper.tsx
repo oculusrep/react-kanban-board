@@ -8,6 +8,7 @@ interface QuillWrapperProps {
   formats?: string[];
   placeholder?: string;
   className?: string;
+  tabIndex?: number;
 }
 
 // Only suppress findDOMNode warnings in development
@@ -31,7 +32,8 @@ const QuillWrapper: React.FC<QuillWrapperProps> = ({
   modules,
   formats,
   placeholder,
-  className
+  className,
+  tabIndex
 }) => {
   const quillRef = useRef<ReactQuill>(null);
 
@@ -39,6 +41,15 @@ const QuillWrapper: React.FC<QuillWrapperProps> = ({
   const editorStyle = useMemo(() => ({
     minHeight: '200px',
   }), []);
+
+  // Apply tabIndex to the editor after it mounts
+  React.useEffect(() => {
+    if (quillRef.current && tabIndex !== undefined) {
+      const editor = quillRef.current.getEditor();
+      const editorElement = editor.root;
+      editorElement.setAttribute('tabindex', String(tabIndex));
+    }
+  }, [tabIndex]);
 
   return (
     <ReactQuill

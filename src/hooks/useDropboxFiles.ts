@@ -79,10 +79,10 @@ export function useDropboxFiles(
     }
 
     try {
-      // Query dropbox_folder_mapping table to get the folder path
-      console.log('🔍 Querying dropbox_folder_mapping for:', { entityType, entityId });
+      // Query dropbox_mapping table to get the folder path
+      console.log('🔍 Querying dropbox_mapping for:', { entityType, entityId });
       const { data: mapping, error: mappingError } = await supabase
-        .from('dropbox_folder_mapping')
+        .from('dropbox_mapping')
         .select('dropbox_folder_path')
         .eq('entity_type', entityType)
         .eq('entity_id', entityId)
@@ -91,7 +91,10 @@ export function useDropboxFiles(
       console.log('🔍 Mapping result:', { mapping, mappingError });
 
       if (mappingError || !mapping) {
-        console.log('🔍 No mapping found, setting error');
+        // Suppress 406 errors (known Supabase API issue with this table)
+        if (mappingError && mappingError.code !== 'PGRST116') {
+          console.log('🔍 No mapping found, setting error');
+        }
         // Only update error state if not a silent refresh or if transitioning from no-error to error
         if (!silent) {
           setError('No Dropbox folder linked to this record');
@@ -248,7 +251,7 @@ export function useDropboxFiles(
 
       // Check if mapping already exists
       const { data: existingMapping } = await supabase
-        .from('dropbox_folder_mapping')
+        .from('dropbox_mapping')
         .select('id')
         .eq('entity_type', entityType)
         .eq('entity_id', entityId)
@@ -257,7 +260,7 @@ export function useDropboxFiles(
       if (existingMapping) {
         // Update existing mapping
         const { error: updateError } = await supabase
-          .from('dropbox_folder_mapping')
+          .from('dropbox_mapping')
           .update({
             dropbox_folder_path: newFolderPath,
             last_verified_at: new Date().toISOString()
@@ -278,7 +281,7 @@ export function useDropboxFiles(
         const placeholderSfId = `AUTO-${entityId.substring(0, 13)}`;
 
         const { error: insertError } = await supabase
-          .from('dropbox_folder_mapping')
+          .from('dropbox_mapping')
           .insert({
             entity_type: entityType,
             entity_id: entityId,

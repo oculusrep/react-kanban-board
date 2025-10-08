@@ -1335,6 +1335,80 @@ export type Database = {
           },
         ]
       }
+      contact_client_relation: {
+        Row: {
+          id: string
+          contact_id: string
+          client_id: string
+          role: string | null
+          is_primary: boolean
+          is_active: boolean
+          sf_relation_id: string | null
+          synced_from_salesforce: boolean
+          created_at: string
+          created_by_id: string | null
+          updated_at: string
+          updated_by_id: string | null
+        }
+        Insert: {
+          id?: string
+          contact_id: string
+          client_id: string
+          role?: string | null
+          is_primary?: boolean
+          is_active?: boolean
+          sf_relation_id?: string | null
+          synced_from_salesforce?: boolean
+          created_at?: string
+          created_by_id?: string | null
+          updated_at?: string
+          updated_by_id?: string | null
+        }
+        Update: {
+          id?: string
+          contact_id?: string
+          client_id?: string
+          role?: string | null
+          is_primary?: boolean
+          is_active?: boolean
+          sf_relation_id?: string | null
+          synced_from_salesforce?: boolean
+          created_at?: string
+          created_by_id?: string | null
+          updated_at?: string
+          updated_by_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_client_relation_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_client_relation_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_client_relation_created_by_id_fkey"
+            columns: ["created_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_client_relation_updated_by_id_fkey"
+            columns: ["updated_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contact_contact_type: {
         Row: {
           contact_id: string | null

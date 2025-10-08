@@ -7,11 +7,16 @@ import SiteSubmitFormModal from './SiteSubmitFormModal';
 import NoteFormModal from './NoteFormModal';
 import SidebarModule from './sidebar/SidebarModule';
 import FileManagerModule from './sidebar/FileManagerModule';
+import { useClientContacts } from '../hooks/useClientContacts';
+import AddContactRelationModal from './AddContactRelationModal';
+import RoleSelector from './RoleSelector';
+import ParentAccountSelector from './ParentAccountSelector';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type Note = Database['public']['Tables']['note']['Row'];
 type Deal = Database['public']['Tables']['deal']['Row'];
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
+type Client = Database['public']['Tables']['client']['Row'];
 
 interface ClientSidebarProps {
   clientId: string;
@@ -247,7 +252,19 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
   onContactModalChange,
   onSiteSubmitModalChange
 }) => {
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  // Use the client contacts hook for many-to-many relationships
+  const {
+    relations: contactRelations,
+    loading: contactsLoading,
+    error: contactsError,
+    addContactRelation,
+    removeContactRelation,
+    setPrimaryContact,
+    updateRelationRole
+  } = useClientContacts(clientId);
+
+  const [client, setClient] = useState<Client | null>(null);
+  const [childAccounts, setChildAccounts] = useState<Client[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
@@ -259,22 +276,32 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
   const [editingSiteSubmitId, setEditingSiteSubmitId] = useState<string | null>(null);
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [showAddContactModal, setShowAddContactModal] = useState(false);
 
-  // Expansion states
-  const getSmartDefaults = () => ({
-    contacts: contacts.length > 0,
-    notes: notes.length > 0,
-    deals: deals.length > 0,
-    siteSubmits: siteSubmits.length > 0,
-    files: true  // Files expanded by default
-  });
-
-  const [expandedSidebarModules, setExpandedSidebarModules] = useState(() => {
-    const saved = localStorage.getItem(`expandedClientSidebarModules_${clientId}`);
-    return saved ? JSON.parse(saved) : getSmartDefaults();
+  // Expansion states - all collapsed by default
+  const [expandedSidebarModules, setExpandedSidebarModules] = useState({
+    contacts: false,
+    childAccounts: false,
+    notes: false,
+    deals: false,
+    siteSubmits: false,
+    files: false
   });
 
   const [expandedContacts, setExpandedContacts] = useState<Record<string, boolean>>({});
+
+  // Reset expansion states when clientId changes
+  useEffect(() => {
+    setExpandedSidebarModules({
+      contacts: false,
+      childAccounts: false,
+      notes: false,
+      deals: false,
+      siteSubmits: false,
+      files: false
+    });
+    setExpandedContacts({});
+  }, [clientId]);
 
   // Load real data
   useEffect(() => {
@@ -285,15 +312,27 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
       setError(null);
 
       try {
-        // Load contacts associated with this client
-        const { data: contactsData, error: contactsError } = await supabase
-          .from('contact')
+        // Load client data
+        const { data: clientData, error: clientError } = await supabase
+          .from('client')
           .select('*')
-          .eq('client_id', clientId)
-          .order('created_at', { ascending: false });
+          .eq('id', clientId)
+          .single();
 
-        if (contactsError) throw contactsError;
-        setContacts(contactsData || []);
+        if (clientError) throw clientError;
+        setClient(clientData);
+
+        // Load child accounts (accounts where parent_id = this client)
+        const { data: childrenData, error: childrenError } = await supabase
+          .from('client')
+          .select('*')
+          .eq('parent_id', clientId)
+          .order('client_name');
+
+        if (childrenError) throw childrenError;
+        setChildAccounts(childrenData || []);
+
+        // Contacts are now loaded via useClientContacts hook
 
         // Load notes associated with this client
         const { data: noteAssociations, error: notesError } = await supabase
@@ -368,33 +407,39 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
     loadData();
   }, [clientId]);
 
-  // Update smart defaults when data changes
-  useEffect(() => {
-    if (!loading) {
-      setExpandedSidebarModules(prev => {
-        const defaults = getSmartDefaults();
-        const saved = localStorage.getItem(`expandedClientSidebarModules_${clientId}`);
-        return saved ? JSON.parse(saved) : defaults;
-      });
+  // Handle parent account change
+  const handleParentChange = async (parentId: string | null) => {
+    if (!client) return;
+
+    try {
+      const { error } = await supabase
+        .from('client')
+        .update({ parent_id: parentId })
+        .eq('id', clientId);
+
+      if (error) throw error;
+
+      // Update local state
+      setClient({ ...client, parent_id: parentId });
+    } catch (err) {
+      console.error('Error updating parent account:', err);
+      throw err;
     }
-  }, [contacts.length, notes.length, deals.length, siteSubmits.length, loading, clientId]);
+  };
+
 
   const toggleSidebarModule = (module: keyof typeof expandedSidebarModules) => {
-    const newState = {
+    setExpandedSidebarModules({
       ...expandedSidebarModules,
       [module]: !expandedSidebarModules[module]
-    };
-    setExpandedSidebarModules(newState);
-    localStorage.setItem(`expandedClientSidebarModules_${clientId}`, JSON.stringify(newState));
+    });
   };
 
   const toggleContact = (contactId: string) => {
-    const newState = {
+    setExpandedContacts({
       ...expandedContacts,
       [contactId]: !expandedContacts[contactId]
-    };
-    setExpandedContacts(newState);
-    localStorage.setItem(`expandedClientContacts_${clientId}`, JSON.stringify(newState));
+    });
   };
 
   return (
@@ -453,33 +498,109 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
               </div>
             ) : (
               <>
+                {/* Parent Account Selector */}
+                {client && (
+                  <div className="mb-4 pb-4 border-b border-gray-200">
+                    <ParentAccountSelector
+                      currentClient={client}
+                      onParentChange={handleParentChange}
+                    />
+                  </div>
+                )}
+
                 {/* Associated Contacts */}
                 <SidebarModule
                   title="Associated Contacts"
-                  count={contacts.length}
-                  onAddNew={() => {
-                    setEditingContactId(null);
-                    setShowContactModal(true);
-                    onContactModalChange?.(true);
-                  }}
+                  count={contactRelations.length}
+                  onAddNew={() => setShowAddContactModal(true)}
                   isExpanded={expandedSidebarModules.contacts}
                   onToggle={() => toggleSidebarModule('contacts')}
                   icon="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"
-                  isEmpty={contacts.length === 0}
+                  isEmpty={contactRelations.length === 0}
                 >
-                  {contacts.map(contact => (
-                    <ContactItem
-                      key={contact.id}
-                      contact={contact}
-                      isExpanded={expandedContacts[contact.id]}
-                      onToggle={() => toggleContact(contact.id)}
-                      onEdit={(contactId) => {
-                        setEditingContactId(contactId);
-                        setShowContactModal(true);
-                        onContactModalChange?.(true);
+                  {contactRelations.map(relation => {
+                    const contact = relation.contact;
+                    if (!contact) return null;
+
+                    return (
+                      <div key={relation.id} className="border-b border-gray-100 last:border-b-0">
+                        <ContactItem
+                          contact={contact}
+                          isExpanded={expandedContacts[contact.id]}
+                          onToggle={() => toggleContact(contact.id)}
+                          onEdit={(contactId) => {
+                            setEditingContactId(contactId);
+                            setShowContactModal(true);
+                            onContactModalChange?.(true);
+                          }}
+                          onClick={onContactClick}
+                        />
+                        <div className="px-2 pb-2 flex items-center gap-2 flex-wrap">
+                          {relation.is_primary && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                              Primary
+                            </span>
+                          )}
+                          <RoleSelector
+                            currentRole={relation.role}
+                            onRoleChange={async (newRole) => {
+                              try {
+                                await updateRelationRole(relation.id, newRole || '');
+                              } catch (err) {
+                                alert('Failed to update role');
+                                throw err;
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </SidebarModule>
+
+                {/* Child Accounts */}
+                <SidebarModule
+                  title="Child Accounts"
+                  count={childAccounts.length}
+                  isExpanded={expandedSidebarModules.childAccounts}
+                  onToggle={() => toggleSidebarModule('childAccounts')}
+                  icon="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                  isEmpty={childAccounts.length === 0}
+                  showAddButton={false}
+                >
+                  {childAccounts.map(childAccount => (
+                    <div
+                      key={childAccount.id}
+                      className="p-3 hover:bg-orange-50 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 group"
+                      onClick={() => {
+                        // Navigate to child account
+                        window.location.href = `/client/${childAccount.id}`;
                       }}
-                      onClick={onContactClick}
-                    />
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                            </svg>
+                            <p className="text-sm font-medium text-gray-900 truncate group-hover:text-orange-900">
+                              {childAccount.client_name || 'Unnamed Client'}
+                            </p>
+                            <svg className="w-3 h-3 text-gray-400 group-hover:text-orange-600 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                          </div>
+                          <div className="flex items-center space-x-2 text-xs text-gray-500">
+                            {childAccount.sf_client_type && (
+                              <span>{childAccount.sf_client_type}</span>
+                            )}
+                            {childAccount.billing_city && childAccount.billing_state && (
+                              <span>• {childAccount.billing_city}, {childAccount.billing_state}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   ))}
                 </SidebarModule>
 
@@ -636,6 +757,14 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
           );
           setShowNoteModal(false);
         }}
+      />
+
+      {/* Add Contact Relation Modal */}
+      <AddContactRelationModal
+        isOpen={showAddContactModal}
+        onClose={() => setShowAddContactModal(false)}
+        onAdd={addContactRelation}
+        existingContactIds={contactRelations.map(r => r.contact_id)}
       />
     </>
   );

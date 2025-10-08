@@ -3,10 +3,17 @@ import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import RichTextNote from './RichTextNote';
 import FileManagerModule from './sidebar/FileManagerModule';
+import { useContactClients } from '../hooks/useContactClients';
+import AddClientRelationModal from './AddClientRelationModal';
+import RoleSelector from './RoleSelector';
+import Toast from './Toast';
+import { useToast } from '../hooks/useToast';
+import NoteFormModal from './NoteFormModal';
 
 type Note = Database['public']['Tables']['note']['Row'];
 type Property = Database['public']['Tables']['property']['Row'];
 type Deal = Database['public']['Tables']['deal']['Row'];
+type Client = Database['public']['Tables']['client']['Row'];
 
 interface ContactSidebarProps {
   contactId: string;
@@ -14,6 +21,7 @@ interface ContactSidebarProps {
   onMinimize?: () => void;
   onPropertyClick?: (propertyId: string) => void;
   onDealClick?: (dealId: string) => void;
+  onClientClick?: (clientId: string) => void;
 }
 
 // Sidebar Module Component
@@ -112,15 +120,16 @@ const SidebarModule: React.FC<SidebarModuleProps> = ({
 interface NoteItemProps {
   note: Note;
   onClick?: (noteId: string) => void;
+  onDelete?: (noteId: string) => void;
 }
 
-const NoteItem: React.FC<NoteItemProps> = ({ note, onClick }) => (
-  <div
-    className="p-3 hover:bg-blue-50 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 group"
-    onClick={() => onClick?.(note.id)}
-  >
-    <div className="flex items-start space-x-3">
-      <div className="flex-1 min-w-0">
+const NoteItem: React.FC<NoteItemProps> = ({ note, onClick, onDelete }) => (
+  <div className="p-3 hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0 group">
+    <div className="flex items-start justify-between">
+      <div
+        className="flex-1 min-w-0 cursor-pointer"
+        onClick={() => onClick?.(note.id)}
+      >
         <div className="flex items-center space-x-2 mb-1">
           <p className="text-sm font-medium text-gray-900 truncate group-hover:text-blue-900">
             {note.title || 'Untitled Note'}
@@ -129,19 +138,24 @@ const NoteItem: React.FC<NoteItemProps> = ({ note, onClick }) => (
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
           </svg>
         </div>
-        <div className="text-xs text-gray-600 mb-2">
+        <div className="text-xs text-gray-500">
           {note.created_at && new Date(note.created_at).toLocaleDateString()}
         </div>
-        {note.body && (
-          <div className="max-h-16 overflow-hidden">
-            <RichTextNote
-              content={note.body}
-              className="text-xs text-gray-700"
-              maxHeight="max-h-16"
-            />
-          </div>
-        )}
       </div>
+      {onDelete && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(note.id);
+          }}
+          className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors opacity-0 group-hover:opacity-100"
+          title="Delete note"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
+      )}
     </div>
   </div>
 );
@@ -216,12 +230,94 @@ const DealItem: React.FC<DealItemProps> = ({ deal, onClick }) => (
   </div>
 );
 
+// Client Item Component
+interface ClientItemProps {
+  client: Client;
+  role?: string | null;
+  isPrimary: boolean;
+  onClick?: (clientId: string) => void;
+  onRemove?: () => void;
+  onSetPrimary?: () => void;
+  onRoleChange?: (role: string | null) => Promise<void>;
+}
+
+const ClientItem: React.FC<ClientItemProps> = ({ client, role, isPrimary, onClick, onRemove, onSetPrimary, onRoleChange }) => (
+  <div className="p-3 hover:bg-orange-50 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 group">
+    <div className="flex items-start justify-between">
+      <div
+        className="flex-1 min-w-0"
+        onClick={() => onClick?.(client.id)}
+      >
+        <div className="flex items-center space-x-2 mb-1">
+          <p className="text-sm font-medium text-gray-900 truncate group-hover:text-orange-900">
+            {client.client_name || 'Unnamed Client'}
+          </p>
+          {isPrimary && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+              Primary
+            </span>
+          )}
+          <svg className="w-3 h-3 text-gray-400 group-hover:text-orange-600 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+        </div>
+        <div className="mb-1" onClick={(e) => e.stopPropagation()}>
+          <RoleSelector
+            currentRole={role}
+            onRoleChange={onRoleChange || (async () => {})}
+            disabled={!onRoleChange}
+          />
+        </div>
+        <div className="flex items-center space-x-2 text-xs text-gray-500">
+          {client.sf_client_type && (
+            <span>{client.sf_client_type}</span>
+          )}
+          {client.industry && (
+            <span>• {client.industry}</span>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center space-x-1 ml-2">
+        {!isPrimary && onSetPrimary && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSetPrimary();
+            }}
+            className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+            title="Set as primary client"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+            </svg>
+          </button>
+        )}
+        {onRemove && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+            title="Remove association"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </div>
+    </div>
+  </div>
+);
+
 const ContactSidebar: React.FC<ContactSidebarProps> = ({
   contactId,
   isMinimized = false,
   onMinimize,
   onPropertyClick,
-  onDealClick
+  onDealClick,
+  onClientClick
 }) => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
@@ -229,18 +325,55 @@ const ContactSidebar: React.FC<ContactSidebarProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Expansion states
-  const getSmartDefaults = () => ({
-    notes: notes.length > 0,
-    properties: properties.length > 0,
-    deals: deals.length > 0,
-    files: true  // Files expanded by default
+  // Use the contact clients hook
+  const {
+    relations: clientRelations,
+    loading: clientsLoading,
+    error: clientsError,
+    addClientRelation,
+    removeClientRelation,
+    setPrimaryClient,
+    updateRelationRole
+  } = useContactClients(contactId);
+
+  // State for add client modal
+  const [showAddClientModal, setShowAddClientModal] = useState(false);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+
+  // Toast notifications
+  const { toast, showToast, hideToast } = useToast();
+
+  // Confirmation dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
   });
 
-  const [expandedSidebarModules, setExpandedSidebarModules] = useState(() => {
-    const saved = localStorage.getItem(`expandedContactSidebarModules_${contactId}`);
-    return saved ? JSON.parse(saved) : getSmartDefaults();
+  // Expansion states - all collapsed by default
+  const [expandedSidebarModules, setExpandedSidebarModules] = useState({
+    notes: false,
+    deals: false,
+    clients: false,
+    files: false
   });
+
+  // Reset expansion states when contactId changes
+  useEffect(() => {
+    setExpandedSidebarModules({
+      notes: false,
+      deals: false,
+      clients: false,
+      files: false
+    });
+  }, [contactId]);
 
   // Load real data
   useEffect(() => {
@@ -326,24 +459,38 @@ const ContactSidebar: React.FC<ContactSidebarProps> = ({
     loadData();
   }, [contactId]);
 
-  // Update smart defaults when data changes
-  useEffect(() => {
-    if (!loading) {
-      setExpandedSidebarModules(prev => {
-        const defaults = getSmartDefaults();
-        const saved = localStorage.getItem(`expandedContactSidebarModules_${contactId}`);
-        return saved ? JSON.parse(saved) : defaults;
-      });
-    }
-  }, [notes.length, properties.length, deals.length, loading, contactId]);
 
   const toggleSidebarModule = (module: keyof typeof expandedSidebarModules) => {
-    const newState = {
+    setExpandedSidebarModules({
       ...expandedSidebarModules,
       [module]: !expandedSidebarModules[module]
-    };
-    setExpandedSidebarModules(newState);
-    localStorage.setItem(`expandedContactSidebarModules_${contactId}`, JSON.stringify(newState));
+    });
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Note',
+      message: 'Are you sure you want to delete this note? This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          const { error } = await supabase
+            .from('note')
+            .delete()
+            .eq('id', noteId);
+
+          if (error) throw error;
+
+          setNotes(prev => prev.filter(note => note.id !== noteId));
+          showToast('Note deleted successfully', { type: 'success' });
+        } catch (err) {
+          console.error('Error deleting note:', err);
+          showToast('Failed to delete note', { type: 'error' });
+        } finally {
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        }
+      }
+    });
   };
 
   return (
@@ -401,49 +548,65 @@ const ContactSidebar: React.FC<ContactSidebarProps> = ({
             </div>
           ) : (
             <>
-              {/* Associated Notes */}
+              {/* Associated Clients */}
               <SidebarModule
-                title="Associated Notes"
-                count={notes.length}
-                onAddNew={() => console.log('Add new note')}
-                isExpanded={expandedSidebarModules.notes}
-                onToggle={() => toggleSidebarModule('notes')}
-                icon="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                isEmpty={notes.length === 0}
-                showAddButton={false}
-              >
-                {notes.map(note => (
-                  <NoteItem
-                    key={note.id}
-                    note={note}
-                    onClick={() => console.log('Navigate to note', note.id)}
-                  />
-                ))}
-              </SidebarModule>
-
-              {/* Associated Properties */}
-              <SidebarModule
-                title="Associated Properties"
-                count={properties.length}
-                onAddNew={() => console.log('Add new property association')}
-                isExpanded={expandedSidebarModules.properties}
-                onToggle={() => toggleSidebarModule('properties')}
+                title="Associated Clients"
+                count={clientRelations.length}
+                onAddNew={() => setShowAddClientModal(true)}
+                isExpanded={expandedSidebarModules.clients}
+                onToggle={() => toggleSidebarModule('clients')}
                 icon="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-                isEmpty={properties.length === 0}
-                showAddButton={false}
+                isEmpty={clientRelations.length === 0}
+                showAddButton={true}
               >
-                {properties.map(property => (
-                  <PropertyItem
-                    key={property.id}
-                    property={property}
-                    onClick={onPropertyClick}
+                {clientRelations.map(relation => (
+                  <ClientItem
+                    key={relation.id}
+                    client={relation.client!}
+                    role={relation.role}
+                    isPrimary={relation.is_primary}
+                    onClick={onClientClick}
+                    onRemove={async () => {
+                      setConfirmDialog({
+                        isOpen: true,
+                        title: 'Remove Client Association',
+                        message: `Are you sure you want to remove the association with ${relation.client?.client_name}?`,
+                        onConfirm: async () => {
+                          try {
+                            await removeClientRelation(relation.id);
+                            showToast('Client association removed successfully', { type: 'success' });
+                          } catch (err) {
+                            showToast('Failed to remove client association', { type: 'error' });
+                          } finally {
+                            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                          }
+                        }
+                      });
+                    }}
+                    onSetPrimary={async () => {
+                      try {
+                        await setPrimaryClient(relation.id);
+                        showToast('Primary client updated', { type: 'success' });
+                      } catch (err) {
+                        showToast('Failed to set primary client', { type: 'error' });
+                      }
+                    }}
+                    onRoleChange={async (newRole) => {
+                      try {
+                        await updateRelationRole(relation.id, newRole || '');
+                        showToast('Role updated successfully', { type: 'success' });
+                      } catch (err) {
+                        showToast('Failed to update role', { type: 'error' });
+                        throw err;
+                      }
+                    }}
                   />
                 ))}
               </SidebarModule>
 
-              {/* Associated Deals */}
+              {/* Deals */}
               <SidebarModule
-                title="Associated Deals"
+                title="Deals"
                 count={deals.length}
                 onAddNew={() => console.log('Add new deal')}
                 isExpanded={expandedSidebarModules.deals}
@@ -468,10 +631,102 @@ const ContactSidebar: React.FC<ContactSidebarProps> = ({
                 isExpanded={expandedSidebarModules.files}
                 onToggle={() => toggleSidebarModule('files')}
               />
+
+              {/* Notes */}
+              <SidebarModule
+                title="Notes"
+                count={notes.length}
+                onAddNew={() => {
+                  setEditingNoteId(null);
+                  setShowNoteModal(true);
+                }}
+                isExpanded={expandedSidebarModules.notes}
+                onToggle={() => toggleSidebarModule('notes')}
+                icon="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                isEmpty={notes.length === 0}
+                showAddButton={true}
+              >
+                {notes.map(note => (
+                  <NoteItem
+                    key={note.id}
+                    note={note}
+                    onClick={(noteId) => {
+                      setEditingNoteId(noteId);
+                      setShowNoteModal(true);
+                    }}
+                    onDelete={handleDeleteNote}
+                  />
+                ))}
+              </SidebarModule>
             </>
           )}
         </div>
       )}
+
+      {/* Add Client Relation Modal */}
+      <AddClientRelationModal
+        isOpen={showAddClientModal}
+        onClose={() => setShowAddClientModal(false)}
+        onAdd={addClientRelation}
+        existingClientIds={clientRelations.map(r => r.client_id)}
+      />
+
+      {/* Note Form Modal */}
+      <NoteFormModal
+        isOpen={showNoteModal}
+        onClose={() => {
+          setShowNoteModal(false);
+          setEditingNoteId(null);
+        }}
+        noteId={editingNoteId}
+        contactId={contactId}
+        onSave={(newNote) => {
+          setNotes(prev => [newNote, ...prev]);
+          setShowNoteModal(false);
+        }}
+        onUpdate={(updatedNote) => {
+          setNotes(prev =>
+            prev.map(note => note.id === updatedNote.id ? updatedNote : note)
+          );
+          setShowNoteModal(false);
+        }}
+      />
+
+      {/* Confirmation Dialog */}
+      {confirmDialog.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              {confirmDialog.title}
+            </h3>
+            <p className="text-sm text-gray-600 mb-6">
+              {confirmDialog.message}
+            </p>
+            <div className="flex items-center justify-end space-x-3">
+              <button
+                onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDialog.onConfirm}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onClose={hideToast}
+      />
     </div>
   );
 };

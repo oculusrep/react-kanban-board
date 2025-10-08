@@ -316,6 +316,7 @@ const ContactDetailsPage: React.FC = () => {
           onMinimize={() => setIsSidebarMinimized(!isSidebarMinimized)}
           onPropertyClick={(propertyId) => navigate(`/property/${propertyId}`)}
           onDealClick={(dealId) => navigate(`/deal/${dealId}`)}
+          onClientClick={(clientId) => navigate(`/client/${clientId}`)}
         />
       )}
 

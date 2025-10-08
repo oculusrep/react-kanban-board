@@ -2907,4 +2907,222 @@ CREATE TRIGGER trigger_update_dropbox_folder_mapping_updated_at
 -- Add comment
 COMMENT ON TABLE dropbox_folder_mapping IS 'Maps CRM records to Dropbox folders via Salesforce ID and .sfdb marker files';
 
+-- Enable RLS for dropbox_folder_mapping
+ALTER TABLE dropbox_folder_mapping ENABLE ROW LEVEL SECURITY;
+
+-- Allow authenticated users to read all dropbox folder mappings
+DROP POLICY IF EXISTS "Allow authenticated users to read dropbox mappings" ON dropbox_folder_mapping;
+CREATE POLICY "Allow authenticated users to read dropbox mappings"
+  ON dropbox_folder_mapping FOR SELECT
+  TO authenticated
+  USING (true);
+
+-- Allow authenticated users to insert dropbox folder mappings
+DROP POLICY IF EXISTS "Allow authenticated users to insert dropbox mappings" ON dropbox_folder_mapping;
+CREATE POLICY "Allow authenticated users to insert dropbox mappings"
+  ON dropbox_folder_mapping FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+-- Allow authenticated users to update dropbox folder mappings
+DROP POLICY IF EXISTS "Allow authenticated users to update dropbox mappings" ON dropbox_folder_mapping;
+CREATE POLICY "Allow authenticated users to update dropbox mappings"
+  ON dropbox_folder_mapping FOR UPDATE
+  TO authenticated
+  USING (true);
+
+-- Allow authenticated users to delete dropbox folder mappings
+DROP POLICY IF EXISTS "Allow authenticated users to delete dropbox mappings" ON dropbox_folder_mapping;
+CREATE POLICY "Allow authenticated users to delete dropbox mappings"
+  ON dropbox_folder_mapping FOR DELETE
+  TO authenticated
+  USING (true);
+
+-- =============================================================================
+-- CONTACT-CLIENT MANY-TO-MANY RELATIONSHIP
+-- =============================================================================
+-- Creates junction table for many-to-many relationship between contacts and clients
+-- Allows a single contact to be associated with multiple clients
+-- Replaces the single contact.client_id with a flexible relationship model
+
+-- Create the updated_at trigger function if it doesn't exist
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create contact_client_relation junction table
+CREATE TABLE IF NOT EXISTS contact_client_relation (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contact_id UUID NOT NULL REFERENCES contact(id) ON DELETE CASCADE,
+  client_id UUID NOT NULL REFERENCES client(id) ON DELETE CASCADE,
+
+  -- Relationship metadata
+  role TEXT,  -- Contact's role at this client (e.g., "Decision Maker", "Influencer")
+  is_primary BOOLEAN DEFAULT false,  -- Is this the primary client association?
+  is_active BOOLEAN DEFAULT true,  -- Is this relationship currently active?
+
+  -- Salesforce sync fields (optional - for tracking source)
+  sf_relation_id TEXT,  -- Maps to salesforce_AccountContactRelation.Id
+  synced_from_salesforce BOOLEAN DEFAULT false,
+
+  -- Audit fields
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  created_by_id UUID REFERENCES "user"(id),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_by_id UUID REFERENCES "user"(id),
+
+  -- Ensure unique contact-client pairs
+  UNIQUE(contact_id, client_id)
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_contact_client_relation_contact_id ON contact_client_relation(contact_id);
+CREATE INDEX IF NOT EXISTS idx_contact_client_relation_client_id ON contact_client_relation(client_id);
+CREATE INDEX IF NOT EXISTS idx_contact_client_relation_is_primary ON contact_client_relation(is_primary) WHERE is_primary = true;
+CREATE INDEX IF NOT EXISTS idx_contact_client_relation_sf_relation_id ON contact_client_relation(sf_relation_id) WHERE sf_relation_id IS NOT NULL;
+
+-- Updated at trigger
+DROP TRIGGER IF EXISTS update_contact_client_relation_updated_at ON contact_client_relation;
+CREATE TRIGGER update_contact_client_relation_updated_at
+  BEFORE UPDATE ON contact_client_relation
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- Add comment
+COMMENT ON TABLE contact_client_relation IS 'Many-to-many junction table linking contacts to multiple clients with role and priority information';
+
+-- =============================================================================
+-- MIGRATE EXISTING SALESFORCE ACCOUNTCONTACTRELATION DATA
+-- =============================================================================
+-- Migrates multi-client relationships from Salesforce if the table exists
+
+DO $$
+BEGIN
+  -- Check if salesforce_AccountContactRelation table exists
+  IF EXISTS (
+    SELECT FROM information_schema.tables
+    WHERE table_name = 'salesforce_AccountContactRelation'
+  ) THEN
+    -- Migrate existing Salesforce AccountContactRelation data
+    INSERT INTO contact_client_relation (
+      contact_id,
+      client_id,
+      role,
+      is_active,
+      sf_relation_id,
+      synced_from_salesforce,
+      created_at
+    )
+    SELECT DISTINCT
+      c.id AS contact_id,
+      cl.id AS client_id,
+      acr."Roles" AS role,
+      COALESCE(acr."IsActive", true) AS is_active,
+      acr."Id" AS sf_relation_id,
+      true AS synced_from_salesforce,
+      COALESCE(acr."CreatedDate"::timestamp, NOW()) AS created_at
+    FROM "salesforce_AccountContactRelation" acr
+    INNER JOIN contact c ON c.sf_id = acr."ContactId"
+    INNER JOIN client cl ON cl.sf_id = acr."AccountId"
+    WHERE
+      acr."IsDeleted" = false
+      AND acr."IsActive" = true
+    ON CONFLICT (contact_id, client_id) DO NOTHING;
+
+    RAISE NOTICE 'Migrated Salesforce AccountContactRelation data';
+
+    -- Set one relationship as primary for each contact (prefer IsDirect = true)
+    WITH ranked_relations AS (
+      SELECT
+        ccr.id,
+        ROW_NUMBER() OVER (
+          PARTITION BY ccr.contact_id
+          ORDER BY
+            CASE WHEN acr."IsDirect" = true THEN 0 ELSE 1 END,
+            acr."CreatedDate" ASC
+        ) as rn
+      FROM contact_client_relation ccr
+      LEFT JOIN "salesforce_AccountContactRelation" acr ON ccr.sf_relation_id = acr."Id"
+      WHERE ccr.synced_from_salesforce = true
+    )
+    UPDATE contact_client_relation
+    SET is_primary = true
+    WHERE id IN (SELECT id FROM ranked_relations WHERE rn = 1);
+
+    RAISE NOTICE 'Set primary relationships from Salesforce data';
+  ELSE
+    RAISE NOTICE 'Salesforce AccountContactRelation table not found, skipping Salesforce migration';
+  END IF;
+END $$;
+
+-- =============================================================================
+-- MIGRATE EXISTING OVIS-ONLY CONTACT-CLIENT LINKS
+-- =============================================================================
+-- Handle contacts that have client_id set but no Salesforce relationship
+
+INSERT INTO contact_client_relation (
+  contact_id,
+  client_id,
+  is_primary,
+  is_active,
+  synced_from_salesforce,
+  created_at
+)
+SELECT
+  c.id AS contact_id,
+  c.client_id,
+  true AS is_primary,  -- Existing single relationship becomes primary
+  true AS is_active,
+  false AS synced_from_salesforce,
+  c.created_at
+FROM contact c
+WHERE
+  c.client_id IS NOT NULL
+  AND NOT EXISTS (
+    -- Don't duplicate if already migrated from Salesforce
+    SELECT 1 FROM contact_client_relation ccr
+    WHERE ccr.contact_id = c.id AND ccr.client_id = c.client_id
+  )
+ON CONFLICT (contact_id, client_id) DO NOTHING;
+
+-- =============================================================================
+-- SYNC TRIGGER: KEEP contact.client_id IN SYNC WITH PRIMARY RELATION
+-- =============================================================================
+-- This trigger maintains backward compatibility by keeping contact.client_id
+-- pointing to the primary client relationship
+
+CREATE OR REPLACE FUNCTION sync_contact_primary_client()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- When a relationship is marked as primary, update contact.client_id
+  IF NEW.is_primary = true THEN
+    -- First, unset any other primary relationships for this contact
+    UPDATE contact_client_relation
+    SET is_primary = false
+    WHERE contact_id = NEW.contact_id AND id != NEW.id AND is_primary = true;
+
+    -- Update contact.client_id to point to the new primary client
+    UPDATE contact
+    SET client_id = NEW.client_id
+    WHERE id = NEW.contact_id;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS sync_contact_primary_client_trigger ON contact_client_relation;
+CREATE TRIGGER sync_contact_primary_client_trigger
+  AFTER INSERT OR UPDATE OF is_primary ON contact_client_relation
+  FOR EACH ROW
+  WHEN (NEW.is_primary = true)
+  EXECUTE FUNCTION sync_contact_primary_client();
+
+-- Add comment
+COMMENT ON FUNCTION sync_contact_primary_client() IS 'Maintains backward compatibility by syncing contact.client_id with the primary client relationship';
+
 COMMIT;

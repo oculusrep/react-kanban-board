@@ -417,16 +417,14 @@ const DealSidebar: React.FC<DealSidebarProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [newlyCreatedNoteId, setNewlyCreatedNoteId] = useState<string | null>(null);
 
-  // Expansion states
-  const getSmartDefaults = () => ({
-    notes: notes.length > 0,
-    contacts: contacts.length > 0,
-    files: true  // Files expanded by default
-  });
-
+  // Expansion states - all collapsed by default
   const [expandedSidebarModules, setExpandedSidebarModules] = useState(() => {
     const saved = localStorage.getItem(`expandedDealSidebarModules_${dealId}`);
-    return saved ? JSON.parse(saved) : getSmartDefaults();
+    return saved ? JSON.parse(saved) : {
+      notes: false,
+      contacts: false,
+      files: false
+    };
   });
 
   const [expandedContacts, setExpandedContacts] = useState<Record<string, boolean>>({});
@@ -496,16 +494,6 @@ const DealSidebar: React.FC<DealSidebarProps> = ({
     fetchContacts();
   }, [dealId]);
 
-  // Update smart defaults when data changes
-  useEffect(() => {
-    if (!loading) {
-      setExpandedSidebarModules(prev => {
-        const defaults = getSmartDefaults();
-        const saved = localStorage.getItem(`expandedDealSidebarModules_${dealId}`);
-        return saved ? JSON.parse(saved) : defaults;
-      });
-    }
-  }, [notes.length, contacts.length, loading, dealId]);
 
   const toggleSidebarModule = (module: keyof typeof expandedSidebarModules) => {
     const newState = {
