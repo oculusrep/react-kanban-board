@@ -489,6 +489,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
     };
 
     let emailHtml = `<p>${contactNames},</p>`;
+    emailHtml += `<br/>`;
     emailHtml += `<p>Please find below a new site submit for ${propertyName}. Your feedback on this site is appreciated.</p>`;
 
     // Line 3: Property Name
@@ -502,7 +503,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
     // Line 5: Map Link
     const mapLink = getMapLink();
     if (mapLink) {
-      emailHtml += `<strong>Map Link:</strong> <a href="${mapLink}">${mapLink}</a><br/>`;
+      emailHtml += `<strong>Map Link:</strong> <a href="${mapLink}">View Map</a><br/>`;
     }
 
     // Line 6: Address
@@ -558,6 +559,11 @@ const SiteSubmitDetailsPage: React.FC = () => {
     } else if (property?.nnn_psf) {
       const formatted = formatCurrency(property.nnn_psf);
       if (formatted) emailHtml += `<strong>NNN:</strong> ${formatted}<br/>`;
+    }
+
+    // Delivery Timeframe (if present)
+    if (siteSubmit.delivery_timeframe) {
+      emailHtml += `<strong>Delivery Timeframe:</strong> ${siteSubmit.delivery_timeframe}<br/>`;
     }
 
     emailHtml += `</p>`;
