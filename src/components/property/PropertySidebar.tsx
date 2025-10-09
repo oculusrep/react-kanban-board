@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { Database } from '../../../database-schema';
 import SiteSubmitFormModal from '../SiteSubmitFormModal';
 import ContactFormModal from '../ContactFormModal';
+import AddContactsModal from './AddContactsModal';
 import SidebarModule from '../sidebar/SidebarModule';
 import FileManagerModule from '../sidebar/FileManagerModule';
 
@@ -29,19 +30,19 @@ interface ContactItemProps {
   isExpanded?: boolean;
   onToggle?: () => void;
   onEdit?: (contactId: string) => void;
+  onRemove?: (contactId: string) => void;
 }
 
-const ContactItem: React.FC<ContactItemProps> = ({ contact, isExpanded = false, onToggle, onEdit }) => {
+const ContactItem: React.FC<ContactItemProps> = ({ contact, isExpanded = false, onToggle, onEdit, onRemove }) => {
   const displayPhone = contact.mobile_phone || contact.phone;
   const phoneLabel = contact.mobile_phone ? 'Mobile' : 'Phone';
   
   return (
-    <div className="border-b border-gray-100 last:border-b-0">
-      <div 
+    <div className="border-b border-gray-100 last:border-b-0 group">
+      <div
         className="p-2 hover:bg-gray-50 cursor-pointer transition-colors flex items-center justify-between"
-        onClick={onToggle}
       >
-        <div className="flex items-center space-x-3 flex-1 min-w-0">
+        <div className="flex items-center space-x-3 flex-1 min-w-0" onClick={onToggle}>
           <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
             <span className="text-white font-medium text-xs">
               {contact.first_name?.[0] || '?'}{contact.last_name?.[0] || ''}
@@ -58,16 +59,41 @@ const ContactItem: React.FC<ContactItemProps> = ({ contact, isExpanded = false, 
             </div>
           </div>
         </div>
-        <svg
-          className={`w-3 h-3 text-gray-400 transform transition-transform flex-shrink-0 ${
-            isExpanded ? 'rotate-90' : ''
-          }`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
+        <div className="flex items-center space-x-2">
+          {/* Trash icon - visible on hover */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (confirm('Remove this contact from the property? The contact will not be deleted, only the association.')) {
+                onRemove?.(contact.id);
+              }
+            }}
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-50 rounded"
+            title="Remove contact from property"
+          >
+            <svg
+              className="w-4 h-4 text-gray-400 hover:text-red-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+          {/* Chevron - always visible */}
+          <div onClick={onToggle}>
+            <svg
+              className={`w-3 h-3 text-gray-400 transform transition-transform flex-shrink-0 ${
+                isExpanded ? 'rotate-90' : ''
+              }`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+        </div>
       </div>
       {isExpanded && (
         <div className="px-2 pb-2 bg-blue-25">
@@ -83,6 +109,7 @@ const ContactItem: React.FC<ContactItemProps> = ({ contact, isExpanded = false, 
                   onEdit?.(contact.id);
                 }}
                 className="text-blue-600 hover:text-blue-800 font-medium"
+                title="Edit contact"
               >
                 Edit
               </button>
@@ -201,6 +228,7 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
   const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false);
   const [editingSiteSubmitId, setEditingSiteSubmitId] = useState<string | null>(null);
   const [showContactModal, setShowContactModal] = useState(false);
+  const [showAddContactsModal, setShowAddContactsModal] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
 
   // Expansion states
@@ -218,11 +246,9 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
 
   const [expandedContacts, setExpandedContacts] = useState<Record<string, boolean>>({});
 
-  // Load real data
-  useEffect(() => {
+  // Load real data function (extracted so it can be called from modal callbacks)
+  const loadData = async () => {
     if (!propertyId) return;
-
-    const loadData = async () => {
       setLoading(true);
       setError(null);
 
@@ -322,6 +348,8 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
       }
     };
 
+  // Load data on mount and when propertyId changes
+  useEffect(() => {
     loadData();
   }, [propertyId]);
 
@@ -352,6 +380,25 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
     };
     setExpandedContacts(newState);
     localStorage.setItem(`expandedContacts_${propertyId}`, JSON.stringify(newState));
+  };
+
+  const handleRemoveContact = async (contactId: string) => {
+    try {
+      // Delete the association from property_contact table (not the contact itself)
+      const { error } = await supabase
+        .from('property_contact')
+        .delete()
+        .eq('property_id', propertyId)
+        .eq('contact_id', contactId);
+
+      if (error) throw error;
+
+      // Update local state to remove the contact from the list
+      setContacts(prev => prev.filter(c => c.id !== contactId));
+    } catch (err) {
+      console.error('Error removing contact from property:', err);
+      alert('Failed to remove contact from property. Please try again.');
+    }
   };
 
   return (
@@ -415,8 +462,7 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
               title="Associated Contacts"
               count={contacts.length}
               onAddNew={() => {
-                setEditingContactId(null);
-                setShowContactModal(true);
+                setShowAddContactsModal(true);
                 onContactModalChange?.(true);
               }}
               isExpanded={expandedSidebarModules.contacts}
@@ -425,9 +471,9 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
               isEmpty={contacts.length === 0}
             >
               {contacts.map(contact => (
-                <ContactItem 
-                  key={contact.id} 
-                  contact={contact} 
+                <ContactItem
+                  key={contact.id}
+                  contact={contact}
                   isExpanded={expandedContacts[contact.id]}
                   onToggle={() => toggleContact(contact.id)}
                   onEdit={(contactId) => {
@@ -435,6 +481,7 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
                     setShowContactModal(true);
                     onContactModalChange?.(true);
                   }}
+                  onRemove={handleRemoveContact}
                 />
               ))}
             </SidebarModule>
@@ -534,16 +581,37 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
         contactId={editingContactId}
         propertyId={propertyId}
         onSave={(newContact) => {
-          setContacts(prev => [{ ...newContact, isPrimaryContact: false }, ...prev]);
+          // Contact is already associated via ContactFormModal when propertyId is provided
+          loadData();
           setShowContactModal(false);
           onContactModalChange?.(false);
         }}
         onUpdate={(updatedContact) => {
-          setContacts(prev => 
+          setContacts(prev =>
             prev.map(contact => contact.id === updatedContact.id ? { ...updatedContact, isPrimaryContact: contact.isPrimaryContact } : contact)
           );
           setShowContactModal(false);
           onContactModalChange?.(false);
+        }}
+      />
+
+      {/* Add Contacts Modal */}
+      <AddContactsModal
+        isOpen={showAddContactsModal}
+        onClose={() => {
+          setShowAddContactsModal(false);
+          onContactModalChange?.(false);
+        }}
+        propertyId={propertyId}
+        existingContactIds={contacts.map(c => c.id)}
+        onContactsAdded={() => {
+          loadData();
+          setShowAddContactsModal(false);
+          onContactModalChange?.(false);
+        }}
+        onCreateNew={() => {
+          setShowContactModal(true);
+          setEditingContactId(null);
         }}
       />
     </>

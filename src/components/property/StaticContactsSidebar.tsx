@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Database } from '../../../database-schema';
+import AddContactsModal from './AddContactsModal';
+import ContactFormModal from '../ContactFormModal';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type Client = Database['public']['Tables']['client']['Row'];
@@ -25,12 +27,12 @@ const StaticContactsSidebar: React.FC<StaticContactsSidebarProps> = ({
   const [contacts, setContacts] = useState<PropertyContactWithDetails[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showAddContactsModal, setShowAddContactsModal] = useState(false);
+  const [showContactFormModal, setShowContactFormModal] = useState(false);
 
   // Fetch contacts associated with the property
-  useEffect(() => {
+  const fetchPropertyContacts = async () => {
     if (!propertyId) return;
-
-    const fetchPropertyContacts = async () => {
       setLoading(true);
       setError(null);
 
@@ -101,6 +103,7 @@ const StaticContactsSidebar: React.FC<StaticContactsSidebarProps> = ({
       }
     };
 
+  useEffect(() => {
     fetchPropertyContacts();
   }, [propertyId]);
 
@@ -338,11 +341,44 @@ const StaticContactsSidebar: React.FC<StaticContactsSidebarProps> = ({
 
       {/* Footer */}
       <div className="p-3 border-t border-gray-100 bg-gray-50 shrink-0">
-        <button className="w-full flex items-center justify-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
+        <button
+          onClick={() => setShowAddContactsModal(true)}
+          className="w-full flex items-center justify-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+        >
           <span className="mr-2">+</span>
-          Add Contact
+          Add
         </button>
       </div>
+
+      {/* Add Contacts Modal */}
+      <AddContactsModal
+        isOpen={showAddContactsModal}
+        onClose={() => setShowAddContactsModal(false)}
+        propertyId={propertyId}
+        existingContactIds={contacts.map(c => c.id)}
+        onContactsAdded={() => {
+          fetchPropertyContacts();
+          setShowAddContactsModal(false);
+        }}
+        onCreateNew={() => {
+          setShowContactFormModal(true);
+        }}
+      />
+
+      {/* Contact Form Modal for creating new contacts */}
+      <ContactFormModal
+        isOpen={showContactFormModal}
+        onClose={() => setShowContactFormModal(false)}
+        propertyId={propertyId}
+        onSave={(newContact) => {
+          fetchPropertyContacts();
+          setShowContactFormModal(false);
+        }}
+        onUpdate={() => {
+          fetchPropertyContacts();
+          setShowContactFormModal(false);
+        }}
+      />
     </div>
   );
 };

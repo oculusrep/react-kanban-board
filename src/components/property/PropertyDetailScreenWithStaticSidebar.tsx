@@ -39,6 +39,7 @@ const PropertyDetailScreenWithStaticSidebar: React.FC<PropertyDetailScreenWithSt
   const [propertyRecordTypes, setPropertyRecordTypes] = useState<PropertyRecordType[]>([]);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [activeTab, setActiveTab] = useState<'details' | 'contacts'>('details');
 
   const { 
     property, 
@@ -271,7 +272,36 @@ const PropertyDetailScreenWithStaticSidebar: React.FC<PropertyDetailScreenWithSt
         {/* Main Content */}
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-4xl mx-auto p-4 pb-8">
-            {/* Validation Warnings */}
+            {/* Tabs */}
+            <div className="mb-4 border-b border-gray-200">
+              <nav className="flex space-x-8">
+                <button
+                  onClick={() => setActiveTab('details')}
+                  className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                    activeTab === 'details'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Details
+                </button>
+                <button
+                  onClick={() => setActiveTab('contacts')}
+                  className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                    activeTab === 'contacts'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Contacts
+                </button>
+              </nav>
+            </div>
+
+            {/* Tab Content */}
+            {activeTab === 'details' && (
+              <>
+                {/* Validation Warnings */}
             {isEditing && validation.warnings.length > 0 && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
                 <div className="flex">
@@ -363,17 +393,21 @@ const PropertyDetailScreenWithStaticSidebar: React.FC<PropertyDetailScreenWithSt
                 </div>
               </div>
             )}
+              </>
+            )}
+
+            {/* Contacts Tab Content */}
+            {activeTab === 'contacts' && propertyId && (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <StaticContactsSidebar
+                  propertyId={propertyId}
+                  isCollapsed={false}
+                  onToggleCollapse={() => {}}
+                />
+              </div>
+            )}
           </div>
         </div>
-
-        {/* Static Contacts Sidebar */}
-        {propertyId && (
-          <StaticContactsSidebar
-            propertyId={propertyId}
-            isCollapsed={sidebarCollapsed}
-            onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-          />
-        )}
       </div>
     </div>
   );

@@ -7,10 +7,12 @@ import PropertyInputField from '../../property/PropertyInputField';
 import PropertyPSFField from '../../property/PropertyPSFField';
 import PropertyCurrencyField from '../../property/PropertyCurrencyField';
 import PropertySquareFootageField from '../../property/PropertySquareFootageField';
-import { FileText, DollarSign, Building2, Activity, MapPin, Edit3, FolderOpen } from 'lucide-react';
+import { FileText, DollarSign, Building2, Activity, MapPin, Edit3, FolderOpen, Users } from 'lucide-react';
 import { Database } from '../../../../database-schema';
 import { getDropboxPropertySyncService } from '../../../services/dropboxPropertySync';
 import FileManager from '../../FileManager/FileManager';
+import AddContactsModal from '../../property/AddContactsModal';
+import ContactFormModal from '../../ContactFormModal';
 
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
@@ -74,9 +76,269 @@ interface PinDetailsSlideoutProps {
   rightOffset?: number; // Offset from right edge in pixels
   onCenterOnPin?: (lat: number, lng: number) => void; // Function to center map on pin
   onDataUpdate?: (updatedData: Property | SiteSubmit) => void; // Callback when data is updated
+  onEditContact?: (contactId: string | null, propertyId: string) => void; // Callback to open contact form sidebar
 }
 
-type TabType = 'property' | 'submit' | 'location' | 'files';
+type TabType = 'property' | 'submit' | 'location' | 'files' | 'contacts';
+
+// Contacts Tab Component
+const ContactsTabContent: React.FC<{
+  propertyId: string;
+  onEditContact?: (contactId: string | null, propertyId: string) => void;
+}> = ({ propertyId, onEditContact }) => {
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showContactForm, setShowContactForm] = useState(false);
+  const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
+  const [editingContactId, setEditingContactId] = useState<string | null>(null);
+
+  const loadContacts = async () => {
+    if (!propertyId) return;
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('property_contact')
+        .select(`
+          *,
+          contact!fk_property_contact_contact_id (*)
+        `)
+        .eq('property_id', propertyId);
+
+      if (error) throw error;
+
+      const contactsData = (data || [])
+        .map((pc: any) => pc.contact)
+        .filter(Boolean);
+
+      setContacts(contactsData);
+    } catch (err) {
+      console.error('Error loading contacts:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadContacts();
+  }, [propertyId]);
+
+  const handleRemoveContact = async (contactId: string) => {
+    if (!confirm('Remove this contact from the property?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('property_contact')
+        .delete()
+        .eq('property_id', propertyId)
+        .eq('contact_id', contactId);
+
+      if (error) throw error;
+
+      setContacts(prev => prev.filter(c => c.id !== contactId));
+    } catch (err) {
+      console.error('Error removing contact:', err);
+      alert('Failed to remove contact');
+    }
+  };
+
+  if (!propertyId) {
+    return (
+      <div className="flex items-center justify-center h-32 text-gray-500">
+        <p>No property selected</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="space-y-3">
+        {/* Add Contact Button */}
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="w-full px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+        >
+          <Users size={16} />
+          Add Contacts
+        </button>
+
+        {/* Contacts List */}
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+          </div>
+        ) : contacts.length === 0 ? (
+          <div className="text-center py-8 text-gray-500 text-sm">
+            <Users size={32} className="mx-auto mb-2 text-gray-300" />
+            <p>No contacts associated</p>
+            <p className="text-xs mt-1">Click "Add Contacts" to get started</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {contacts.map((contact) => {
+              const isExpanded = expandedContactId === contact.id;
+              const displayPhone = contact.mobile_phone || contact.phone;
+              const phoneLabel = contact.mobile_phone ? 'Mobile' : 'Phone';
+
+              return (
+                <div key={contact.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="group flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <div
+                      className="flex items-center space-x-3 flex-1 min-w-0 cursor-pointer"
+                      onClick={() => setExpandedContactId(isExpanded ? null : contact.id)}
+                    >
+                      <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+                        <span className="text-white font-medium text-xs">
+                          {(contact.first_name?.charAt(0) || '').toUpperCase()}
+                          {(contact.last_name?.charAt(0) || '').toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm font-medium text-gray-900 truncate">
+                            {contact.first_name} {contact.last_name}
+                          </span>
+                          {displayPhone && (
+                            <span className="text-xs text-gray-500 truncate">{phoneLabel}: {displayPhone}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveContact(contact.id);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 rounded transition-all"
+                        title="Remove contact"
+                      >
+                        <svg className="w-4 h-4 text-gray-400 hover:text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                      <div
+                        className="cursor-pointer"
+                        onClick={() => setExpandedContactId(isExpanded ? null : contact.id)}
+                      >
+                        <svg
+                          className={`w-3 h-3 text-gray-400 transform transition-transform ${
+                            isExpanded ? 'rotate-90' : ''
+                          }`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Expanded Contact Details */}
+                  {isExpanded && (
+                    <div className="px-3 pb-3 bg-blue-25">
+                      <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <span className="w-2 h-2 bg-blue-400 rounded-full"></span>
+                            <span className="font-medium text-blue-900">Contact Details</span>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onEditContact) {
+                                onEditContact(contact.id, propertyId);
+                              } else {
+                                setEditingContactId(contact.id);
+                                setShowContactForm(true);
+                              }
+                            }}
+                            className="text-blue-600 hover:text-blue-800 font-medium"
+                            title="Edit contact"
+                          >
+                            Edit
+                          </button>
+                        </div>
+                        <div className="space-y-1 ml-4">
+                          {contact.title && (
+                            <div><span className="font-medium text-blue-800">Title:</span> <span className="text-blue-700">{contact.title}</span></div>
+                          )}
+                          {contact.company && (
+                            <div><span className="font-medium text-blue-800">Company:</span> <span className="text-blue-700">{contact.company}</span></div>
+                          )}
+                          {contact.email && (
+                            <div><span className="font-medium text-blue-800">Email:</span> <span className="text-blue-700">{contact.email}</span></div>
+                          )}
+                          {contact.phone && (
+                            <div><span className="font-medium text-blue-800">Phone:</span> <span className="text-blue-700">{contact.phone}</span></div>
+                          )}
+                          {contact.mobile_phone && (
+                            <div><span className="font-medium text-blue-800">Mobile:</span> <span className="text-blue-700">{contact.mobile_phone}</span></div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Add Contacts Modal */}
+      {showAddModal && (
+        <div>
+          <AddContactsModal
+            isOpen={showAddModal}
+            onClose={() => setShowAddModal(false)}
+            propertyId={propertyId}
+            existingContactIds={contacts.map(c => c.id)}
+            onContactsAdded={() => {
+              loadContacts();
+              setShowAddModal(false);
+            }}
+            onCreateNew={() => {
+              if (onEditContact) {
+                setShowAddModal(false);
+                onEditContact(null, propertyId);
+              } else {
+                setShowContactForm(true);
+              }
+            }}
+          />
+        </div>
+      )}
+
+      {/* Contact Form Modal */}
+      {showContactForm && (
+        <div>
+          <ContactFormModal
+            isOpen={showContactForm}
+            onClose={() => {
+              setShowContactForm(false);
+              setEditingContactId(null);
+            }}
+            propertyId={propertyId}
+            contactId={editingContactId || undefined}
+            onSave={() => {
+              loadContacts();
+              setShowContactForm(false);
+              setEditingContactId(null);
+            }}
+            onUpdate={() => {
+              loadContacts();
+              setShowContactForm(false);
+              setEditingContactId(null);
+            }}
+          />
+        </div>
+      )}
+    </>
+  );
+};
 
 const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   isOpen,
@@ -89,9 +351,10 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   onViewPropertyDetails,
   rightOffset = 0,
   onCenterOnPin,
-  onDataUpdate
+  onDataUpdate,
+  onEditContact
 }) => {
-  console.log('PinDetailsSlideout rendering with:', { isOpen, data, type });
+  console.log('PinDetailsSlideout rendering with:', { isOpen, data, type, rightOffset });
   const [activeTab, setActiveTab] = useState<TabType>(type === 'site_submit' ? 'submit' : 'property');
   const [submitStages, setSubmitStages] = useState<{ id: string; name: string }[]>([]);
   const [currentStageId, setCurrentStageId] = useState<string>('');
@@ -473,6 +736,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     if (isProperty) {
       return [
         { id: 'property' as TabType, label: 'PROPERTY', icon: <Building2 size={16} /> },
+        { id: 'contacts' as TabType, label: 'CONTACTS', icon: <Users size={16} /> },
         { id: 'files' as TabType, label: 'FILES', icon: <FolderOpen size={16} /> },
       ];
     } else {
@@ -937,6 +1201,9 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
             )}
           </div>
         );
+
+      case 'contacts':
+        return <ContactsTabContent propertyId={localPropertyData?.id || ''} onEditContact={onEditContact} />;
 
       default:
         return <div>Content for {activeTab}</div>;

@@ -16,6 +16,7 @@ import { geocodingService } from '../services/geocodingService';
 import SiteSubmitFormModal from '../components/SiteSubmitFormModal';
 import InlinePropertyCreationModal from '../components/mapping/InlinePropertyCreationModal';
 import SiteSubmitLegend from '../components/mapping/SiteSubmitLegend';
+import ContactFormModal from '../components/ContactFormModal';
 import { STAGE_CATEGORIES } from '../components/mapping/SiteSubmitPin';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supportsRightClick } from '../utils/deviceDetection';
@@ -46,6 +47,11 @@ const MappingPageContent: React.FC = () => {
   // Property details slideout (for "View Full Details" from site submit)
   const [isPropertyDetailsOpen, setIsPropertyDetailsOpen] = useState(false);
   const [selectedPropertyData, setSelectedPropertyData] = useState<any>(null);
+
+  // Contact form slideout (for editing contacts from property slideout)
+  const [isContactFormOpen, setIsContactFormOpen] = useState(false);
+  const [editingContactId, setEditingContactId] = useState<string | null>(null);
+  const [contactPropertyId, setContactPropertyId] = useState<string | null>(null);
 
   // Center on location function
   const [centerOnLocation, setCenterOnLocation] = useState<(() => void) | null>(null);
@@ -471,6 +477,20 @@ const MappingPageContent: React.FC = () => {
   const handlePropertyDetailsClose = () => {
     setIsPropertyDetailsOpen(false);
     setSelectedPropertyData(null);
+  };
+
+  // Handle contact form editing
+  const handleEditContact = (contactId: string | null, propertyId: string) => {
+    console.log('📝 Opening contact form:', { contactId, propertyId });
+    setEditingContactId(contactId);
+    setContactPropertyId(propertyId);
+    setIsContactFormOpen(true);
+  };
+
+  const handleContactFormClose = () => {
+    setIsContactFormOpen(false);
+    setEditingContactId(null);
+    setContactPropertyId(null);
   };
 
   // Handle location verification
@@ -1028,7 +1048,8 @@ const MappingPageContent: React.FC = () => {
               onViewPropertyDetails={handleViewPropertyDetails}
               onCenterOnPin={handleCenterOnPin}
               onDataUpdate={handlePinDataUpdate}
-              rightOffset={isPropertyDetailsOpen ? 500 : 0} // Shift left when property details is open
+              rightOffset={isPropertyDetailsOpen ? 500 : isContactFormOpen ? 450 : 0} // Shift left when property details or contact form is open
+              onEditContact={handleEditContact}
             />
 
             {/* Property Details Slideout (for "View Full Details" from site submit) */}
@@ -1042,7 +1063,24 @@ const MappingPageContent: React.FC = () => {
               isVerifyingLocation={!!verifyingPropertyId}
               onCenterOnPin={handleCenterOnPin}
               onDataUpdate={handlePropertyDataUpdate}
-              rightOffset={0} // Always positioned at the far right
+              rightOffset={isContactFormOpen ? 450 : 0} // Shift left when contact form is open (450px = contact form width)
+              onEditContact={handleEditContact}
+            />
+
+            {/* Contact Form Slideout (for editing contacts from property slideout) */}
+            <ContactFormModal
+              isOpen={isContactFormOpen}
+              onClose={handleContactFormClose}
+              propertyId={contactPropertyId || undefined}
+              contactId={editingContactId || undefined}
+              rightOffset={0} // Always at the far right edge
+              showBackdrop={false} // No backdrop so property slideout remains visible
+              onSave={() => {
+                handleContactFormClose();
+              }}
+              onUpdate={() => {
+                handleContactFormClose();
+              }}
             />
 
             {/* Property Creation Modal */}

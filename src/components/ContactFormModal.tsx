@@ -13,6 +13,8 @@ interface ContactFormModalProps {
   onUpdate?: (contact: Contact) => void;
   contactId?: string;
   propertyId?: string;
+  rightOffset?: number; // Offset from right edge in pixels
+  showBackdrop?: boolean; // Whether to show the backdrop (default true)
 }
 
 interface FormData {
@@ -46,7 +48,9 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
   onSave,
   onUpdate,
   contactId,
-  propertyId
+  propertyId,
+  rightOffset = 0,
+  showBackdrop = true
 }) => {
   const [formData, setFormData] = useState<FormData>({
     first_name: '',
@@ -277,33 +281,44 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
 
   if (!isOpen) return null;
 
+  console.log('🎨 ContactFormModal rendering:', { isOpen, rightOffset, showBackdrop, contactId, propertyId });
+
   return (
     <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-[60]" onClick={onClose} />
-      
+      {/* Backdrop - Only show if showBackdrop is true */}
+      {showBackdrop && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60]" onClick={onClose} />
+      )}
+
       {/* Modal */}
-      <div className={`fixed inset-0 lg:inset-y-0 lg:right-0 lg:left-auto w-full lg:w-[800px] bg-white shadow-xl transform transition-transform duration-300 z-[60] ${
-        isOpen ? 'translate-x-0' : 'translate-x-full'
-      } flex flex-col`}>
+      <div
+        className={`fixed bottom-0 left-0 lg:left-auto w-full lg:w-[450px] bg-white shadow-xl transform transition-transform duration-300 z-[60] ${
+          isOpen ? 'translate-x-0' : 'translate-x-full'
+        } flex flex-col`}
+        style={{
+          right: `${rightOffset}px`,
+          top: '67px', // Align with navbar height, same as property slideout
+          height: 'calc(100vh - 67px)' // Full height minus navbar
+        }}
+      >
         
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white">
-          <h2 className="text-xl font-semibold text-gray-900">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 bg-white">
+          <h2 className="text-lg font-semibold text-gray-900">
             {contactId ? 'Edit Contact' : 'New Contact'}
           </h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            className="p-1 hover:bg-gray-100 rounded-full transition-colors"
           >
-            <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
         {/* Form Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        <div className="flex-1 overflow-y-auto p-3 space-y-4">
           {loading ? (
             <div className="flex items-center justify-center h-32">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -311,14 +326,14 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
           ) : (
             <>
               {/* Basic Information Section */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900 border-b border-gray-200 pb-2">
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-1">
                   Basic Information
                 </h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
                       First Name *
                     </label>
                     <input
@@ -336,7 +351,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
                       Last Name *
                     </label>
                     <input
@@ -354,9 +369,9 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
                       Title
                     </label>
                     <input
@@ -369,7 +384,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
                       Company
                     </label>
                     <input
@@ -382,9 +397,9 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
                       Client
                     </label>
                     <select
@@ -402,7 +417,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
                       Source Type *
                     </label>
                     <select
@@ -427,13 +442,13 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
               </div>
 
               {/* Contact Information Section */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900 border-b border-gray-200 pb-2">
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-1">
                   Contact Information
                 </h3>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-0.5">
                     Email
                   </label>
                   <input
@@ -450,9 +465,9 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
                       Phone
                     </label>
                     <input
@@ -465,7 +480,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
                       Mobile Phone
                     </label>
                     <input
@@ -479,7 +494,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-0.5">
                     Website
                   </label>
                   <input
@@ -493,13 +508,13 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
               </div>
 
               {/* Mailing Address Section */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900 border-b border-gray-200 pb-2">
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-1">
                   Mailing Address
                 </h3>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-0.5">
                     Street Address
                   </label>
                   <input
@@ -511,9 +526,9 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
                       City
                     </label>
                     <input
@@ -526,7 +541,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
                       State
                     </label>
                     <select
@@ -544,7 +559,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
                       ZIP Code
                     </label>
                     <input
@@ -558,7 +573,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-0.5">
                     Country
                   </label>
                   <input
@@ -572,14 +587,14 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
               </div>
 
               {/* Professional Information Section */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900 border-b border-gray-200 pb-2">
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-1">
                   Professional Information
                 </h3>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
                       LinkedIn Profile
                     </label>
                     <input
@@ -592,7 +607,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
                       ICSC Profile Link
                     </label>
                     <input
@@ -606,7 +621,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-0.5">
                     Tenant Rep Contact
                   </label>
                   <select
@@ -670,13 +685,13 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
               </div>
 
               {/* Tags and Tracking Section */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900 border-b border-gray-200 pb-2">
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-1">
                   Tags & Tracking
                 </h3>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-0.5">
                     Contact Tags
                   </label>
                   <textarea
