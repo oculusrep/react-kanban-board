@@ -8,6 +8,7 @@ import Toast from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EmailComposerModal, { EmailData } from '../components/EmailComposerModal';
 import { useToast } from '../hooks/useToast';
+import { useRecentlyViewed } from '../hooks/useRecentlyViewed';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type SiteSubmitInsert = Database['public']['Tables']['site_submit']['Insert'];
@@ -42,6 +43,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
   const isNewSiteSubmit = siteSubmitId === 'new';
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { toast, showToast } = useToast();
+  const { addRecentItem } = useRecentlyViewed();
 
   const [formData, setFormData] = useState<FormData>({
     site_submit_name: '',
@@ -139,6 +141,14 @@ const SiteSubmitDetailsPage: React.FC = () => {
             });
             // Mark as user edited since we're loading an existing name
             setUserEditedName(true);
+
+            // Track recently viewed
+            addRecentItem({
+              id: siteSubmitData.id,
+              name: siteSubmitData.site_submit_name || 'Untitled Site Submit',
+              type: 'site_submit',
+              path: `/site-submit/${siteSubmitData.id}`
+            });
           }
         }
       } catch (error) {
