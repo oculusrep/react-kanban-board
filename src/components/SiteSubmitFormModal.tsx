@@ -4,6 +4,8 @@ import { Database } from '../../database-schema';
 import PropertySelector from './PropertySelector';
 import PropertyUnitSelector from './PropertyUnitSelector';
 import EmailComposerModal, { EmailData } from './EmailComposerModal';
+import Toast from './Toast';
+import { useToast } from '../hooks/useToast';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type SiteSubmitInsert = Database['public']['Tables']['site_submit']['Insert'];
@@ -90,6 +92,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
   const [showEmailComposer, setShowEmailComposer] = useState(false);
   const [emailDefaultData, setEmailDefaultData] = useState<any>(null);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const { toast, showToast, hideToast } = useToast();
 
   // Load dropdown data and existing site submit if editing
   useEffect(() => {
@@ -423,7 +426,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
       if (session?.user?.id) {
         const { data } = await supabase
           .from('user')
-          .select('first_name, last_name, email')
+          .select('first_name, last_name, email, mobile_phone')
           .eq('id', session.user.id)
           .single();
         userData = data;
@@ -588,7 +591,11 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
     emailHtml += `<br/><br/>`;
     emailHtml += `<p>Thanks!<br/><br/>`;
     emailHtml += `${userData?.first_name || ''} ${userData?.last_name || ''}<br/>`;
-    emailHtml += `${userData?.email || ''}</p>`;
+    emailHtml += `${userData?.email || ''}`;
+    if (userData?.mobile_phone) {
+      emailHtml += `<br/>M: ${userData.mobile_phone}`;
+    }
+    emailHtml += `</p>`;
 
     return emailHtml;
   };
@@ -630,11 +637,11 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
         throw new Error(result.error || result.message || 'Failed to send email');
       }
 
-      alert(`Successfully sent ${result.emailsSent} email(s)`);
+      showToast(`Successfully sent ${result.emailsSent} email(s)`, { type: 'success' });
       setShowEmailComposer(false);
     } catch (error) {
       console.error('Error sending email:', error);
-      alert(`Error sending email: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      showToast(`Error sending email: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });
       throw error;
     } finally {
       setSendingEmail(false);
@@ -1010,6 +1017,14 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
           siteSubmitName={formData.site_submit_name || 'Untitled'}
         />
       )}
+
+      {/* Toast Notification */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onClose={hideToast}
+      />
     </>
   );
 };
