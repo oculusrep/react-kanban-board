@@ -672,12 +672,6 @@ const SiteSubmitDetailsPage: React.FC = () => {
                 </p>
               </div>
               <div className="flex space-x-3">
-                <button
-                  onClick={() => navigate('/master-pipeline')}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                >
-                  Back to Pipeline
-                </button>
                 {!isNewSiteSubmit && (
                   <>
                     <button
