@@ -417,12 +417,17 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
       }
 
       // Fetch user data for signature
-      const { data: { user } } = await supabase.auth.getSession();
-      const { data: userData } = await supabase
-        .from('user')
-        .select('first_name, last_name, email')
-        .eq('id', user?.id)
-        .single();
+      const { data: { session } } = await supabase.auth.getSession();
+      let userData = null;
+
+      if (session?.user?.id) {
+        const { data } = await supabase
+          .from('user')
+          .select('first_name, last_name, email')
+          .eq('id', session.user.id)
+          .single();
+        userData = data;
+      }
 
       // Generate email template
       const defaultSubject = `New site for Review – ${siteSubmitData.property?.property_name || 'Untitled'} – ${siteSubmitData.client?.client_name || 'N/A'}`;
