@@ -449,7 +449,9 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
     const property = siteSubmit.property;
     const propertyUnit = siteSubmit.property_unit;
 
-    const contactNames = contacts.map(c => c.first_name).filter(Boolean).join(', ');
+    const contactNames = contacts && Array.isArray(contacts)
+      ? contacts.map(c => c.first_name).filter(Boolean).join(', ')
+      : 'Site Selectors';
     const propertyName = property?.property_name || 'N/A';
 
     const formatCurrency = (value: number | null | undefined) => {
