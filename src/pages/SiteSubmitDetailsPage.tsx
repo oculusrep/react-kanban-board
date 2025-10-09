@@ -347,7 +347,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
             site_plan,
             demographics,
             traffic_count,
-            traffic_count_2,
+            traffic_count_2nd,
             total_traffic,
             1_mile_pop,
             3_mile_pop,
@@ -590,14 +590,14 @@ const SiteSubmitDetailsPage: React.FC = () => {
     }
 
     // Property Location Details Section
-    const hasTraffic = property?.traffic_count || property?.traffic_count_2 || property?.total_traffic;
+    const hasTraffic = property?.traffic_count || property?.traffic_count_2nd || property?.total_traffic;
     if (hasTraffic) {
       emailHtml += `<p><strong>Property Location Details</strong><br/>`;
       if (property?.traffic_count) {
         emailHtml += `<strong>Traffic Count:</strong> ${property.traffic_count.toLocaleString()}<br/>`;
       }
-      if (property?.traffic_count_2) {
-        emailHtml += `<strong>Traffic Count 2nd:</strong> ${property.traffic_count_2.toLocaleString()}<br/>`;
+      if (property?.traffic_count_2nd) {
+        emailHtml += `<strong>Traffic Count 2nd:</strong> ${property.traffic_count_2nd.toLocaleString()}<br/>`;
       }
       if (property?.total_traffic) {
         emailHtml += `<strong>Total Traffic Count:</strong> ${property.total_traffic.toLocaleString()}<br/>`;
