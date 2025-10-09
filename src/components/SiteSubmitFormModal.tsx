@@ -583,7 +583,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
       emailHtml += `${siteSubmit.competitor_data.replace(/\n/g, '<br/>')}</p>`;
     }
 
-    emailHtml += `<br/>`;
+    emailHtml += `<br/><br/>`;
     emailHtml += `<p>If this property is a pass, please just respond back to this email with a brief reason as to why it's a pass. If you need more information or want to discuss further, let me know that as well please.</p>`;
     emailHtml += `<br/><br/>`;
     emailHtml += `<p>Thanks!<br/><br/>`;
