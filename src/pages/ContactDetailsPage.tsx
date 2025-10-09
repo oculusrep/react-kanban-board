@@ -27,6 +27,13 @@ const ContactDetailsPage: React.FC = () => {
 
   const isNewContact = contactId === 'new';
 
+  // Clear error state when navigating to new contact
+  useEffect(() => {
+    if (isNewContact) {
+      setError(null);
+    }
+  }, [isNewContact]);
+
   // Set page title
   useEffect(() => {
     if (isNewContact) {

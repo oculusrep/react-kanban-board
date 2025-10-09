@@ -29,6 +29,13 @@ const ClientDetailsPage: React.FC = () => {
 
   const isNewClient = clientId === 'new';
 
+  // Clear error state when navigating to new client
+  useEffect(() => {
+    if (isNewClient) {
+      setError(null);
+    }
+  }, [isNewClient]);
+
   // Set page title
   useEffect(() => {
     if (isNewClient) {
