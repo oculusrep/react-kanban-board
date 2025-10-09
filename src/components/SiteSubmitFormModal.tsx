@@ -469,6 +469,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
     let emailHtml = `<p>${contactNames},</p>`;
     emailHtml += `<br/>`;
     emailHtml += `<p>Please find below a new site submit for ${propertyName}. Your feedback on this site is appreciated.</p>`;
+    emailHtml += `<br/>`;
     emailHtml += `<p><strong>Property Name:</strong> ${propertyName}<br/>`;
 
     if (property?.trade_area) {
@@ -526,6 +527,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
 
     const hasFiles = property?.marketing_materials || property?.site_plan || property?.demographics;
     if (hasFiles) {
+      emailHtml += `<br/>`;
       emailHtml += `<p><strong>Supporting Files:</strong><br/>`;
       if (property?.marketing_materials) {
         emailHtml += `<a href="${property.marketing_materials}">Marketing Materials</a><br/>`;
@@ -571,6 +573,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
     }
 
     if (siteSubmit.notes) {
+      emailHtml += `<br/>`;
       emailHtml += `<p><strong>Site Notes:</strong><br/>`;
       emailHtml += `${siteSubmit.notes.replace(/\n/g, '<br/>')}</p>`;
     }
