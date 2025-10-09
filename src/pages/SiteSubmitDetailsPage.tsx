@@ -468,6 +468,11 @@ const SiteSubmitDetailsPage: React.FC = () => {
     const property = siteSubmit.property;
     const propertyUnit = siteSubmit.property_unit;
 
+    // Debug: Log the data to console
+    console.log('Site Submit Data:', siteSubmit);
+    console.log('Property Unit:', propertyUnit);
+    console.log('Property:', property);
+
     // Line 1: All Site Selector first names
     const contactNames = contacts.map(c => c.first_name).filter(Boolean).join(', ');
 
