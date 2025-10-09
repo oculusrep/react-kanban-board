@@ -613,6 +613,25 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent "
               />
             </div>
+
+            {/* Submit Site Button */}
+            {siteSubmit?.id && (
+              <div className="pt-3 border-t border-gray-200">
+                <button
+                  onClick={() => {
+                    // Navigate to the site submit details page where the email function exists
+                    window.location.href = `/site-submit/${siteSubmit.id}`;
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+                    <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+                  </svg>
+                  Submit Site
+                </button>
+              </div>
+            )}
           </div>
         );
 
