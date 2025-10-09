@@ -42,8 +42,10 @@ const ClientDetailsPage: React.FC = () => {
 
   useEffect(() => {
     const fetchClient = async () => {
-      if (isNewClient) {
+      // Handle new client creation
+      if (isNewClient || clientId === 'new') {
         setLoading(false);
+        setError(null); // Clear any previous errors
         return;
       }
 

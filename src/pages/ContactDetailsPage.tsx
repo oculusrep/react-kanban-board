@@ -41,8 +41,10 @@ const ContactDetailsPage: React.FC = () => {
 
   useEffect(() => {
     const fetchContact = async () => {
-      if (isNewContact) {
+      // Handle new contact creation
+      if (isNewContact || contactId === 'new') {
         setLoading(false);
+        setError(null); // Clear any previous errors
         return;
       }
 
