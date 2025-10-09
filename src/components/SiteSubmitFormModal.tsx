@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import PropertySelector from './PropertySelector';
 import PropertyUnitSelector from './PropertyUnitSelector';
+import EmailComposerModal, { EmailData } from './EmailComposerModal';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type SiteSubmitInsert = Database['public']['Tables']['site_submit']['Insert'];
@@ -86,6 +87,9 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [propertyName, setPropertyName] = useState<string>('');
   const [userEditedName, setUserEditedName] = useState(false);
+  const [showEmailComposer, setShowEmailComposer] = useState(false);
+  const [emailDefaultData, setEmailDefaultData] = useState<any>(null);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   // Load dropdown data and existing site submit if editing
   useEffect(() => {
@@ -361,6 +365,268 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
       alert(`Error saving site submit: ${error instanceof Error ? error.message : 'Unknown error'}. Please check the console for details.`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSubmitSite = async () => {
+    if (!siteSubmitId) {
+      alert('Please save the site submit before sending emails');
+      return;
+    }
+
+    try {
+      // Fetch site submit data with all required fields for email template
+      const { data: siteSubmitData, error: siteSubmitError } = await supabase
+        .from('site_submit')
+        .select(`
+          *,
+          client:client_id (id, client_name),
+          property:property_id (
+            id, property_name, address, city, state, zip,
+            trade_area, map_link, latitude, longitude,
+            verified_latitude, verified_longitude,
+            available_sqft, acres, building_sqft,
+            rent_psf, asking_lease_price, asking_purchase_price, nnn_psf,
+            marketing_materials, site_plan, demographics,
+            traffic_count, traffic_count_2nd, total_traffic,
+            1_mile_pop, 3_mile_pop, hh_income_median_3_mile
+          ),
+          property_unit:property_unit_id (
+            id, property_unit_name, sqft, rent, nnn
+          )
+        `)
+        .eq('id', siteSubmitId)
+        .single();
+
+      if (siteSubmitError) throw siteSubmitError;
+      if (!siteSubmitData) throw new Error('Site submit not found');
+
+      // Fetch Site Selector contacts
+      const { data: contacts, error: contactsError } = await supabase
+        .from('contact')
+        .select('id, first_name, last_name, email')
+        .eq('client_id', siteSubmitData.client_id)
+        .eq('is_site_selector', true)
+        .not('email', 'is', null);
+
+      if (contactsError) throw contactsError;
+
+      if (!contacts || contacts.length === 0) {
+        alert('No Site Selector contacts found for this client with email addresses');
+        return;
+      }
+
+      // Fetch user data for signature
+      const { data: { user } } = await supabase.auth.getSession();
+      const { data: userData } = await supabase
+        .from('user')
+        .select('first_name, last_name, email')
+        .eq('id', user?.id)
+        .single();
+
+      // Generate email template
+      const defaultSubject = `New site for Review – ${siteSubmitData.property?.property_name || 'Untitled'} – ${siteSubmitData.client?.client_name || 'N/A'}`;
+      const defaultBody = generateEmailTemplate(siteSubmitData, contacts, userData);
+
+      setEmailDefaultData({
+        subject: defaultSubject,
+        body: defaultBody,
+        recipients: contacts,
+      });
+      setShowEmailComposer(true);
+    } catch (error) {
+      console.error('Error preparing email:', error);
+      alert(`Error preparing email: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const generateEmailTemplate = (siteSubmit: any, contacts: any[], userData: any): string => {
+    const property = siteSubmit.property;
+    const propertyUnit = siteSubmit.property_unit;
+
+    const contactNames = contacts.map(c => c.first_name).filter(Boolean).join(', ');
+    const propertyName = property?.property_name || 'N/A';
+
+    const formatCurrency = (value: number | null | undefined) => {
+      if (!value) return null;
+      return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    };
+
+    const getMapLink = () => {
+      if (property?.map_link) return property.map_link;
+      const lat = property?.verified_latitude || property?.latitude;
+      const lng = property?.verified_longitude || property?.longitude;
+      return (lat && lng) ? `https://www.google.com/maps?q=${lat},${lng}` : null;
+    };
+
+    let emailHtml = `<p>${contactNames},</p>`;
+    emailHtml += `<br/>`;
+    emailHtml += `<p>Please find below a new site submit for ${propertyName}. Your feedback on this site is appreciated.</p>`;
+    emailHtml += `<p><strong>Property Name:</strong> ${propertyName}<br/>`;
+
+    if (property?.trade_area) {
+      emailHtml += `<strong>Trade Area:</strong> ${property.trade_area}<br/>`;
+    }
+
+    const mapLink = getMapLink();
+    if (mapLink) {
+      emailHtml += `<strong>Map Link:</strong> <a href="${mapLink}">View Map</a><br/>`;
+    }
+
+    const address = [property?.address, property?.city, property?.state].filter(Boolean).join(', ');
+    if (address) {
+      emailHtml += `<strong>Address:</strong> ${address}<br/>`;
+    }
+
+    if (propertyUnit?.sqft) {
+      emailHtml += `<strong>Available Sqft:</strong> ${propertyUnit.sqft.toLocaleString()}<br/>`;
+    } else if (property?.available_sqft) {
+      emailHtml += `<strong>Available Sqft:</strong> ${property.available_sqft.toLocaleString()}<br/>`;
+    } else if (property?.acres) {
+      emailHtml += `<strong>Acres:</strong> ${property.acres}<br/>`;
+      if (property?.building_sqft) {
+        emailHtml += `<strong>Building Sqft:</strong> ${property.building_sqft.toLocaleString()}<br/>`;
+      }
+    }
+
+    if (propertyUnit?.rent) {
+      const formatted = formatCurrency(propertyUnit.rent);
+      if (formatted) emailHtml += `<strong>Base Rent:</strong> ${formatted}<br/>`;
+    } else if (property?.rent_psf) {
+      const formatted = formatCurrency(property.rent_psf);
+      if (formatted) emailHtml += `<strong>Base Rent:</strong> ${formatted}<br/>`;
+    } else if (property?.asking_lease_price) {
+      const formatted = formatCurrency(property.asking_lease_price);
+      if (formatted) emailHtml += `<strong>Ground Lease Rent:</strong> ${formatted}<br/>`;
+    } else if (property?.asking_purchase_price) {
+      const formatted = formatCurrency(property.asking_purchase_price);
+      if (formatted) emailHtml += `<strong>Purchase Price:</strong> ${formatted}<br/>`;
+    }
+
+    if (propertyUnit?.nnn) {
+      const formatted = formatCurrency(propertyUnit.nnn);
+      if (formatted) emailHtml += `<strong>NNN:</strong> ${formatted}<br/>`;
+    } else if (property?.nnn_psf) {
+      const formatted = formatCurrency(property.nnn_psf);
+      if (formatted) emailHtml += `<strong>NNN:</strong> ${formatted}<br/>`;
+    }
+
+    if (siteSubmit.delivery_timeframe) {
+      emailHtml += `<strong>Delivery Timeframe:</strong> ${siteSubmit.delivery_timeframe}<br/>`;
+    }
+
+    emailHtml += `</p>`;
+
+    const hasFiles = property?.marketing_materials || property?.site_plan || property?.demographics;
+    if (hasFiles) {
+      emailHtml += `<p><strong>Supporting Files:</strong><br/>`;
+      if (property?.marketing_materials) {
+        emailHtml += `<a href="${property.marketing_materials}">Marketing Materials</a><br/>`;
+      }
+      if (property?.site_plan) {
+        emailHtml += `<a href="${property.site_plan}">Site Plan</a><br/>`;
+      }
+      if (property?.demographics) {
+        emailHtml += `<a href="${property.demographics}">Demographics</a><br/>`;
+      }
+      emailHtml += `</p>`;
+    }
+
+    const hasTraffic = property?.traffic_count || property?.traffic_count_2nd || property?.total_traffic;
+    if (hasTraffic) {
+      emailHtml += `<p><strong>Property Location Details</strong><br/>`;
+      if (property?.traffic_count) {
+        emailHtml += `<strong>Traffic Count:</strong> ${property.traffic_count.toLocaleString()}<br/>`;
+      }
+      if (property?.traffic_count_2nd) {
+        emailHtml += `<strong>Traffic Count 2nd:</strong> ${property.traffic_count_2nd.toLocaleString()}<br/>`;
+      }
+      if (property?.total_traffic) {
+        emailHtml += `<strong>Total Traffic Count:</strong> ${property.total_traffic.toLocaleString()}<br/>`;
+      }
+      emailHtml += `</p>`;
+    }
+
+    const hasDemographics = property?.['1_mile_pop'] || property?.['3_mile_pop'] || property?.hh_income_median_3_mile;
+    if (hasDemographics) {
+      emailHtml += `<p><strong>Site Demographics:</strong><br/>`;
+      if (property?.['1_mile_pop']) {
+        emailHtml += `<strong>1 Mile Population:</strong> ${property['1_mile_pop'].toLocaleString()}<br/>`;
+      }
+      if (property?.['3_mile_pop']) {
+        emailHtml += `<strong>3 Mile Population:</strong> ${property['3_mile_pop'].toLocaleString()}<br/>`;
+      }
+      if (property?.hh_income_median_3_mile) {
+        const formatted = formatCurrency(property.hh_income_median_3_mile);
+        if (formatted) emailHtml += `<strong>Median HH Income (3 miles):</strong> ${formatted}<br/>`;
+      }
+      emailHtml += `</p>`;
+    }
+
+    if (siteSubmit.notes) {
+      emailHtml += `<p><strong>Site Notes:</strong><br/>`;
+      emailHtml += `${siteSubmit.notes.replace(/\n/g, '<br/>')}</p>`;
+    }
+
+    if (siteSubmit.competitor_data) {
+      emailHtml += `<p><strong>Competitor Sales</strong><br/>`;
+      emailHtml += `${siteSubmit.competitor_data.replace(/\n/g, '<br/>')}</p>`;
+    }
+
+    emailHtml += `<p>If this property is a pass, please just respond back to this email with a brief reason as to why it's a pass. If you need more information or want to discuss further, let me know that as well please.</p>`;
+    emailHtml += `<br/><br/>`;
+    emailHtml += `<p>Thanks!<br/><br/>`;
+    emailHtml += `${userData?.first_name || ''} ${userData?.last_name || ''}<br/>`;
+    emailHtml += `${userData?.email || ''}</p>`;
+
+    return emailHtml;
+  };
+
+  const handleSendEmailFromComposer = async (emailData: EmailData) => {
+    setSendingEmail(true);
+    try {
+      const { data: { session, user } } = await supabase.auth.getSession();
+
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      const { data: userData } = await supabase
+        .from('user')
+        .select('email')
+        .eq('id', user?.id)
+        .single();
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-site-submit-email`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            siteSubmitId,
+            customEmail: emailData,
+            submitterEmail: userData?.email || user?.email
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || result.message || 'Failed to send email');
+      }
+
+      alert(`Successfully sent ${result.emailsSent} email(s)`);
+      setShowEmailComposer(false);
+    } catch (error) {
+      console.error('Error sending email:', error);
+      alert(`Error sending email: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw error;
+    } finally {
+      setSendingEmail(false);
     }
   };
 
@@ -679,26 +945,60 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
 
         {/* Footer Actions */}
         <div className="border-t border-gray-200 p-4 bg-gray-50">
-          <div className="flex justify-end space-x-3">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={saving}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || loading}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : 'Save Site Submit'}
-            </button>
+          <div className="flex justify-between items-center">
+            {/* Submit Site button on the left (only for existing site submits) */}
+            <div>
+              {siteSubmitId && (
+                <button
+                  type="button"
+                  onClick={handleSubmitSite}
+                  disabled={saving || loading}
+                  className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 flex items-center gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+                    <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+                  </svg>
+                  Submit Site
+                </button>
+              )}
+            </div>
+
+            {/* Cancel and Save buttons on the right */}
+            <div className="flex space-x-3">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={saving}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving || loading}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Save Site Submit'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Email Composer Modal */}
+      {showEmailComposer && emailDefaultData && (
+        <EmailComposerModal
+          isOpen={showEmailComposer}
+          onClose={() => setShowEmailComposer(false)}
+          onSend={handleSendEmailFromComposer}
+          defaultSubject={emailDefaultData.subject}
+          defaultBody={emailDefaultData.body}
+          recipients={emailDefaultData.recipients}
+          isSending={sendingEmail}
+        />
+      )}
     </>
   );
 };
