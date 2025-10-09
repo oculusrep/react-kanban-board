@@ -635,11 +635,9 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
         throw new Error(result.error || result.message || 'Failed to send email');
       }
 
+      // Close email composer immediately but keep parent modal open for toast
+      setShowEmailComposer(false);
       showToast(`Successfully sent ${result.emailsSent} email(s)`, { type: 'success' });
-      // Delay closing modal to allow toast to be visible
-      setTimeout(() => {
-        setShowEmailComposer(false);
-      }, 500);
     } catch (error) {
       console.error('Error sending email:', error);
       showToast(`Error sending email: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });
