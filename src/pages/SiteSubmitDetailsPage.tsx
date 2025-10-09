@@ -329,11 +329,36 @@ const SiteSubmitDetailsPage: React.FC = () => {
             address,
             city,
             state,
-            zip
+            zip,
+            trade_area,
+            map_link,
+            latitude,
+            longitude,
+            verified_latitude,
+            verified_longitude,
+            available_sqft,
+            acres,
+            building_sqft,
+            rent_psf,
+            asking_lease_price,
+            asking_purchase_price,
+            nnn_psf,
+            marketing_materials,
+            site_plan,
+            demographics,
+            traffic_count,
+            traffic_count_2,
+            total_traffic,
+            1_mile_pop,
+            3_mile_pop,
+            hh_income_median_3_mile
           ),
           property_unit:property_unit_id (
             id,
-            property_unit_name
+            property_unit_name,
+            sqft,
+            rent,
+            nnn
           )
         `)
         .eq('id', siteSubmitId)
@@ -357,9 +382,17 @@ const SiteSubmitDetailsPage: React.FC = () => {
         return;
       }
 
+      // Fetch logged-in user data for email signature
+      const { data: { user } } = await supabase.auth.getSession();
+      const { data: userData } = await supabase
+        .from('user')
+        .select('first_name, last_name, email')
+        .eq('id', user?.id)
+        .single();
+
       // Generate default email template
       const defaultSubject = `New site for Review – ${siteSubmitData.property?.property_name || 'Untitled'} – ${siteSubmitData.client?.client_name || 'N/A'}`;
-      const defaultBody = generateEmailTemplate(siteSubmitData, contacts[0]);
+      const defaultBody = generateEmailTemplate(siteSubmitData, contacts, userData);
 
       // Set email default data and show composer modal
       setEmailDefaultData({
@@ -431,38 +464,175 @@ const SiteSubmitDetailsPage: React.FC = () => {
     }
   };
 
-  const generateEmailTemplate = (siteSubmit: any, contact: any): string => {
-    const clientName = siteSubmit.client?.client_name || 'N/A';
-    const propertyName = siteSubmit.property?.property_name || 'N/A';
-    const propertyAddress = siteSubmit.property
-      ? `${siteSubmit.property.address || ''}, ${siteSubmit.property.city || ''}, ${siteSubmit.property.state || ''} ${siteSubmit.property.zip || ''}`.trim()
-      : 'N/A';
-    const dateSubmitted = siteSubmit.date_submitted
-      ? new Date(siteSubmit.date_submitted).toLocaleDateString()
-      : 'N/A';
+  const generateEmailTemplate = (siteSubmit: any, contacts: any[], userData: any): string => {
+    const property = siteSubmit.property;
+    const propertyUnit = siteSubmit.property_unit;
 
-    return `
-      <p>${contact.first_name || 'Hi there'},</p>
-      <p>Please find below a new site submit for <strong>${siteSubmit.site_submit_name || 'New Whole Foods Coming Soon – Cumming'}</strong>. Your feedback on this site is appreciated.</p>
-      <p><strong>Property Name:</strong> ${propertyName}<br/>
-      <strong>Trade Area:</strong> ${siteSubmit.property?.city || 'N/A'}<br/>
-      <strong>Map Link:</strong> <a href="#">View Map</a><br/>
-      <strong>Address:</strong> ${propertyAddress}<br/>
-      <strong>Base Rent:</strong> ${siteSubmit.year_1_rent ? `$${siteSubmit.year_1_rent.toLocaleString()}` : 'N/A'}<br/>
-      <strong>NNN:</strong> ${siteSubmit.ti ? `$${siteSubmit.ti.toLocaleString()}` : 'N/A'}</p>
+    // Line 1: All Site Selector first names
+    const contactNames = contacts.map(c => c.first_name).filter(Boolean).join(', ');
 
-      ${siteSubmit.property_unit?.property_unit_name ? `<p><strong>Unit:</strong> ${siteSubmit.property_unit.property_unit_name}</p>` : ''}
+    // Line 2: Boilerplate intro
+    const propertyName = property?.property_name || 'N/A';
 
-      ${siteSubmit.delivery_timeframe ? `<p><strong>Delivery Timeframe:</strong> ${siteSubmit.delivery_timeframe}</p>` : ''}
+    // Helper: Format currency
+    const formatCurrency = (value: number | null | undefined) => {
+      if (!value) return null;
+      return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    };
 
-      ${siteSubmit.notes ? `<p><strong>Site Notes:</strong><br/>${siteSubmit.notes}</p>` : ''}
+    // Helper: Generate map link
+    const getMapLink = () => {
+      if (property?.map_link) return property.map_link;
+      const lat = property?.verified_latitude || property?.latitude;
+      const lng = property?.verified_longitude || property?.longitude;
+      return (lat && lng) ? `https://www.google.com/maps?q=${lat},${lng}` : null;
+    };
 
-      ${siteSubmit.customer_comments ? `<p><strong>Customer Comments:</strong><br/>${siteSubmit.customer_comments}</p>` : ''}
+    let emailHtml = `<p>${contactNames},</p>`;
+    emailHtml += `<p>Please find below a new site submit for ${propertyName}. Your feedback on this site is appreciated.</p>`;
 
-      <p>If this property is a pass, please just respond back to this email with a brief reason as to why it's a pass. If you need more information or want to discuss further, let me know that as well.</p>
+    // Line 3: Property Name
+    emailHtml += `<p><strong>Property Name:</strong> ${propertyName}<br/>`;
 
-      <p>Best,</p>
-    `;
+    // Line 4: Trade Area (conditional)
+    if (property?.trade_area) {
+      emailHtml += `<strong>Trade Area:</strong> ${property.trade_area}<br/>`;
+    }
+
+    // Line 5: Map Link
+    const mapLink = getMapLink();
+    if (mapLink) {
+      emailHtml += `<strong>Map Link:</strong> <a href="${mapLink}">${mapLink}</a><br/>`;
+    }
+
+    // Line 6: Address
+    const address = [property?.address, property?.city, property?.state].filter(Boolean).join(', ');
+    if (address) {
+      emailHtml += `<strong>Address:</strong> ${address}<br/>`;
+    }
+
+    // Line 7: Available Sqft / Acres (complex conditional logic)
+    if (propertyUnit?.sqft) {
+      emailHtml += `<strong>Available Sqft:</strong> ${propertyUnit.sqft.toLocaleString()}<br/>`;
+    } else if (property?.available_sqft) {
+      emailHtml += `<strong>Available Sqft:</strong> ${property.available_sqft.toLocaleString()}<br/>`;
+    } else if (property?.acres) {
+      emailHtml += `<strong>Acres:</strong> ${property.acres}<br/>`;
+      if (property?.building_sqft) {
+        emailHtml += `<strong>Building Sqft:</strong> ${property.building_sqft.toLocaleString()}<br/>`;
+      }
+    }
+
+    // Line 8: Base Rent / Ground Lease / Purchase Price (complex conditional logic)
+    let rentAdded = false;
+    if (propertyUnit?.rent) {
+      const formatted = formatCurrency(propertyUnit.rent);
+      if (formatted) {
+        emailHtml += `<strong>Base Rent:</strong> ${formatted}<br/>`;
+        rentAdded = true;
+      }
+    } else if (property?.rent_psf) {
+      const formatted = formatCurrency(property.rent_psf);
+      if (formatted) {
+        emailHtml += `<strong>Base Rent:</strong> ${formatted}<br/>`;
+        rentAdded = true;
+      }
+    } else if (property?.asking_lease_price) {
+      const formatted = formatCurrency(property.asking_lease_price);
+      if (formatted) {
+        emailHtml += `<strong>Ground Lease Rent:</strong> ${formatted}<br/>`;
+        rentAdded = true;
+      }
+    } else if (property?.asking_purchase_price) {
+      const formatted = formatCurrency(property.asking_purchase_price);
+      if (formatted) {
+        emailHtml += `<strong>Purchase Price:</strong> ${formatted}<br/>`;
+        rentAdded = true;
+      }
+    }
+
+    // Line 9: NNN (conditional logic)
+    if (propertyUnit?.nnn) {
+      const formatted = formatCurrency(propertyUnit.nnn);
+      if (formatted) emailHtml += `<strong>NNN:</strong> ${formatted}<br/>`;
+    } else if (property?.nnn_psf) {
+      const formatted = formatCurrency(property.nnn_psf);
+      if (formatted) emailHtml += `<strong>NNN:</strong> ${formatted}<br/>`;
+    }
+
+    emailHtml += `</p>`;
+
+    // Supporting Files Section
+    const hasFiles = property?.marketing_materials || property?.site_plan || property?.demographics;
+    if (hasFiles) {
+      emailHtml += `<p><strong>Supporting Files:</strong><br/>`;
+      if (property?.marketing_materials) {
+        emailHtml += `<a href="${property.marketing_materials}">Marketing Materials</a><br/>`;
+      }
+      if (property?.site_plan) {
+        emailHtml += `<a href="${property.site_plan}">Site Plan</a><br/>`;
+      }
+      if (property?.demographics) {
+        emailHtml += `<a href="${property.demographics}">Demographics</a><br/>`;
+      }
+      emailHtml += `</p>`;
+    }
+
+    // Property Location Details Section
+    const hasTraffic = property?.traffic_count || property?.traffic_count_2 || property?.total_traffic;
+    if (hasTraffic) {
+      emailHtml += `<p><strong>Property Location Details</strong><br/>`;
+      if (property?.traffic_count) {
+        emailHtml += `<strong>Traffic Count:</strong> ${property.traffic_count.toLocaleString()}<br/>`;
+      }
+      if (property?.traffic_count_2) {
+        emailHtml += `<strong>Traffic Count 2nd:</strong> ${property.traffic_count_2.toLocaleString()}<br/>`;
+      }
+      if (property?.total_traffic) {
+        emailHtml += `<strong>Total Traffic Count:</strong> ${property.total_traffic.toLocaleString()}<br/>`;
+      }
+      emailHtml += `</p>`;
+    }
+
+    // Site Demographics Section
+    const hasDemographics = property?.['1_mile_pop'] || property?.['3_mile_pop'] || property?.hh_income_median_3_mile;
+    if (hasDemographics) {
+      emailHtml += `<p><strong>Site Demographics:</strong><br/>`;
+      if (property?.['1_mile_pop']) {
+        emailHtml += `<strong>1 Mile Population:</strong> ${property['1_mile_pop'].toLocaleString()}<br/>`;
+      }
+      if (property?.['3_mile_pop']) {
+        emailHtml += `<strong>3 Mile Population:</strong> ${property['3_mile_pop'].toLocaleString()}<br/>`;
+      }
+      if (property?.hh_income_median_3_mile) {
+        const formatted = formatCurrency(property.hh_income_median_3_mile);
+        if (formatted) emailHtml += `<strong>Median HH Income (3 miles):</strong> ${formatted}<br/>`;
+      }
+      emailHtml += `</p>`;
+    }
+
+    // Site Notes Section
+    if (siteSubmit.notes) {
+      emailHtml += `<p><strong>Site Notes:</strong><br/>`;
+      emailHtml += `${siteSubmit.notes.replace(/\n/g, '<br/>')}</p>`;
+    }
+
+    // Competitor Sales Section
+    if (siteSubmit.competitor_data) {
+      emailHtml += `<p><strong>Competitor Sales</strong><br/>`;
+      emailHtml += `${siteSubmit.competitor_data.replace(/\n/g, '<br/>')}</p>`;
+    }
+
+    // Closing boilerplate
+    emailHtml += `<p>If this property is a pass, please just respond back to this email with a brief reason as to why it's a pass. If you need more information or want to discuss further, let me know that as well please.</p>`;
+
+    // Signature
+    emailHtml += `<br/><br/>`;
+    emailHtml += `<p>Thanks!<br/><br/>`;
+    emailHtml += `${userData?.first_name || ''} ${userData?.last_name || ''}<br/>`;
+    emailHtml += `${userData?.email || ''}</p>`;
+
+    return emailHtml;
   };
 
   return (

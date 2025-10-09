@@ -190,7 +190,21 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
         setAutoSaveStatus('saving');
         setDropboxSyncError(null);
 
-        await updateProperty({ [field]: value });
+        const updates: Record<string, any> = { [field]: value };
+
+        // If coordinates changed, auto-generate and save map_link
+        if (field === 'latitude' || field === 'longitude' || field === 'verified_latitude' || field === 'verified_longitude') {
+          // Get the best coordinates (prioritize verified)
+          const newLat = field === 'verified_latitude' ? value : (property?.verified_latitude || (field === 'latitude' ? value : property?.latitude));
+          const newLng = field === 'verified_longitude' ? value : (property?.verified_longitude || (field === 'longitude' ? value : property?.longitude));
+
+          if (newLat && newLng) {
+            updates.map_link = `https://www.google.com/maps?q=${newLat},${newLng}`;
+            updateField('map_link', updates.map_link);
+          }
+        }
+
+        await updateProperty(updates);
         setAutoSaveStatus('saved');
 
         // If property_name changed, sync to Dropbox
