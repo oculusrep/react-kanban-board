@@ -142,7 +142,8 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
         subject,
         htmlBody: emailBody,
       });
-      onClose();
+      // Don't close immediately - let parent handle closing
+      // onClose();
     } catch (error) {
       console.error('Error sending email:', error);
     } finally {
