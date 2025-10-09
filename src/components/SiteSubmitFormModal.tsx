@@ -1002,8 +1002,8 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
           onSend={handleSendEmailFromComposer}
           defaultSubject={emailDefaultData.subject}
           defaultBody={emailDefaultData.body}
-          recipients={emailDefaultData.recipients}
-          isSending={sendingEmail}
+          defaultRecipients={emailDefaultData.recipients || []}
+          siteSubmitName={formData.site_submit_name || 'Untitled'}
         />
       )}
     </>

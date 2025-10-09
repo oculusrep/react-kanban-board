@@ -64,7 +64,7 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
-      setToRecipients(defaultRecipients.map(c => c.email));
+      setToRecipients(defaultRecipients && Array.isArray(defaultRecipients) ? defaultRecipients.map(c => c.email) : []);
       setCcRecipients(['mike@oculusrep.com', 'asantos@oculusrep.com']);
       setBccRecipients([]);
       setSubject(defaultSubject);
