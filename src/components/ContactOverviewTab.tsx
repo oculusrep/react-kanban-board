@@ -18,6 +18,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
   isNewContact,
   onSave
 }) => {
+  console.log('ContactOverviewTab - isNewContact:', isNewContact, 'contact:', contact);
   const [clients, setClients] = useState<Client[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -137,14 +138,27 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
     <div className="space-y-8">
       {/* Create Contact Button for New Contacts */}
       {isNewContact && (
-        <div className="flex justify-end mb-4">
-          <button
-            onClick={handleCreateContact}
-            disabled={autoSaveStatus === 'saving' || !validation.isValid}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"
-          >
-            {autoSaveStatus === 'saving' ? 'Creating...' : 'Create Contact'}
-          </button>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-sm font-medium text-blue-900">New Contact</h3>
+              <p className="text-xs text-blue-700 mt-1">
+                Fill in the required fields (First Name, Last Name, Source Type) to create the contact.
+              </p>
+            </div>
+            <button
+              onClick={handleCreateContact}
+              disabled={autoSaveStatus === 'saving' || !validation.isValid}
+              className="px-6 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {autoSaveStatus === 'saving' ? 'Creating...' : 'Create Contact'}
+            </button>
+          </div>
+          {!validation.isValid && (
+            <div className="mt-2 text-xs text-red-600">
+              Please fill in all required fields to enable the Create button.
+            </div>
+          )}
         </div>
       )}
 

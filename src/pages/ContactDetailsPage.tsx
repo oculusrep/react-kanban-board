@@ -25,7 +25,9 @@ const ContactDetailsPage: React.FC = () => {
   const { trackView } = useTrackPageView();
   const { toast, showToast } = useToast();
 
+  console.log('ContactDetailsPage - contactId from URL:', contactId);
   const isNewContact = contactId === 'new';
+  console.log('ContactDetailsPage - isNewContact:', isNewContact);
 
   // Clear error state when navigating to new contact
   useEffect(() => {
@@ -48,16 +50,11 @@ const ContactDetailsPage: React.FC = () => {
 
   useEffect(() => {
     const fetchContact = async () => {
-      // Handle new contact creation
-      if (isNewContact || contactId === 'new') {
+      // Handle new contact creation - check this FIRST
+      if (!contactId || isNewContact || contactId === 'new') {
         setLoading(false);
         setError(null); // Clear any previous errors
-        return;
-      }
-
-      if (!contactId) {
-        setError('Contact ID not provided');
-        setLoading(false);
+        setContact(null); // Clear any previous contact data
         return;
       }
 

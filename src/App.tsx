@@ -42,9 +42,7 @@ function App() {
           <Route path="assignment/:assignmentId" element={<AssignmentDetailsPage />} />
           <Route path="property/new" element={<NewPropertyPage />} />
           <Route path="property/:propertyId" element={<PropertyDetailsPage />} />
-          <Route path="contact/new" element={<ContactDetailsPage />} />
           <Route path="contact/:contactId" element={<ContactDetailsPage />} />
-          <Route path="client/new" element={<ClientDetailsPage />} />
           <Route path="client/:clientId" element={<ClientDetailsPage />} />
           <Route path="site-submit/:siteSubmitId" element={<SiteSubmitDetailsPage />} />
           <Route path="search-test" element={<SearchTestPage />} />

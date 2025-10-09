@@ -49,16 +49,11 @@ const ClientDetailsPage: React.FC = () => {
 
   useEffect(() => {
     const fetchClient = async () => {
-      // Handle new client creation
-      if (isNewClient || clientId === 'new') {
+      // Handle new client creation - check this FIRST
+      if (!clientId || isNewClient || clientId === 'new') {
         setLoading(false);
         setError(null); // Clear any previous errors
-        return;
-      }
-
-      if (!clientId) {
-        setError('Client ID not provided');
-        setLoading(false);
+        setClient(null); // Clear any previous client data
         return;
       }
 
