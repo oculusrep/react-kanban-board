@@ -6,7 +6,7 @@ interface DedicatedSearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
-  searchType: 'deal' | 'contact' | 'property' | 'assignment' | 'client';
+  searchType: 'deal' | 'contact' | 'property' | 'assignment' | 'client' | 'site_submit';
   onSelect: (result: SearchResult) => void;
 }
 
@@ -205,6 +205,39 @@ const DedicatedSearchModal: React.FC<DedicatedSearchModalProps> = ({
               };
             });
           }
+        } else if (searchType === 'site_submit') {
+          // Site Submit search
+          const { data: siteSubmits, error: siteSubmitsError } = await supabase
+            .from('site_submit')
+            .select(`
+              *,
+              client!client_id (client_name),
+              property (property_name, address, city, state),
+              property_unit (property_unit_name)
+            `)
+            .or(`site_submit_name.ilike.%${trimmedQuery}%,sf_account.ilike.%${trimmedQuery}%,notes.ilike.%${trimmedQuery}%`)
+            .limit(20);
+
+          if (siteSubmitsError) throw siteSubmitsError;
+
+          if (siteSubmits) {
+            searchResults = siteSubmits.map((siteSubmit: any) => {
+              const title = siteSubmit.site_submit_name || 'Unnamed Site Submit';
+              const propertyInfo = siteSubmit.property?.property_name ||
+                                 [siteSubmit.property?.address, siteSubmit.property?.city, siteSubmit.property?.state]
+                                 .filter(Boolean).join(', ');
+
+              return {
+                id: siteSubmit.id,
+                type: 'site_submit' as const,
+                title,
+                subtitle: siteSubmit.client?.client_name || 'No Client',
+                description: propertyInfo || '',
+                metadata: 'Site Submit',
+                url: `/site-submit/${siteSubmit.id}`
+              };
+            });
+          }
         }
 
         setResults(searchResults);
@@ -283,6 +316,12 @@ const DedicatedSearchModal: React.FC<DedicatedSearchModalProps> = ({
         return (
           <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+          </svg>
+        );
+      case 'site_submit':
+        return (
+          <svg className="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
           </svg>
         );
       default:

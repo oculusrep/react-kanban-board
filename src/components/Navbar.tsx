@@ -42,7 +42,8 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ title, items, recentItems, 
         'Contacts': 'contact',
         'Deals': 'deal',
         'Assignments': 'assignment',
-        'Clients': 'client'
+        'Clients': 'client',
+        'Site Submits': 'site_submit'
       };
 
       const type = titleToTypeMap[title];
@@ -150,6 +151,7 @@ export default function Navbar() {
     deals: false,
     assignments: false,
     clients: false,
+    siteSubmits: false,
   });
 
   const linkClass = (path: string) =>
@@ -244,6 +246,17 @@ export default function Navbar() {
     }
   ];
 
+  const siteSubmitsItems = [
+    {
+      label: "Add New Site Submit",
+      action: () => navigate('/site-submit/new')
+    },
+    {
+      label: "Search Site Submits",
+      action: () => setSearchModals(prev => ({ ...prev, siteSubmits: true }))
+    }
+  ];
+
   return (
     <nav className="bg-white shadow p-4">
       <div className="flex justify-between items-center">
@@ -333,6 +346,13 @@ export default function Navbar() {
             onRecentItemClick={handleRecentItemClick}
             key={`clients-${refreshTrigger}`}
           />
+          <DropdownMenu
+            title="Site Submits"
+            items={siteSubmitsItems}
+            recentItems={getRecentItems('site_submit')}
+            onRecentItemClick={handleRecentItemClick}
+            key={`siteSubmits-${refreshTrigger}`}
+          />
         </div>
         
         {/* Center search box */}
@@ -418,6 +438,19 @@ export default function Navbar() {
           onSelect={(result) => {
             navigate(result.url || '/');
             setSearchModals(prev => ({ ...prev, clients: false }));
+          }}
+        />
+      )}
+
+      {searchModals.siteSubmits && (
+        <DedicatedSearchModal
+          isOpen={searchModals.siteSubmits}
+          onClose={() => setSearchModals(prev => ({ ...prev, siteSubmits: false }))}
+          title="Search Site Submits"
+          searchType="site_submit"
+          onSelect={(result) => {
+            navigate(result.url || '/');
+            setSearchModals(prev => ({ ...prev, siteSubmits: false }));
           }}
         />
       )}

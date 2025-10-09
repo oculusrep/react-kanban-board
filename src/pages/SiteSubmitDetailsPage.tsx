@@ -71,6 +71,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [propertyName, setPropertyName] = useState<string>('');
   const [userEditedName, setUserEditedName] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   // Set page title
   useEffect(() => {
@@ -299,6 +300,56 @@ const SiteSubmitDetailsPage: React.FC = () => {
     }
   };
 
+  const handleSendEmail = async () => {
+    if (!siteSubmitId || isNewSiteSubmit) {
+      showToast('Please save the site submit before sending emails', { type: 'error' });
+      return;
+    }
+
+    setSendingEmail(true);
+    try {
+      const { data: { session, user } } = await supabase.auth.getSession();
+
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-site-submit-email`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            siteSubmitId,
+            submitterEmail: user?.email
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || result.message || 'Failed to send email');
+      }
+
+      showToast(
+        `Successfully sent ${result.emailsSent} email(s) to Site Selectors`,
+        { type: 'success' }
+      );
+    } catch (error) {
+      console.error('Error sending email:', error);
+      showToast(
+        `Error sending email: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { type: 'error' }
+      );
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
@@ -322,12 +373,37 @@ const SiteSubmitDetailsPage: React.FC = () => {
                   Back to Pipeline
                 </button>
                 {!isNewSiteSubmit && (
-                  <button
-                    onClick={handleDelete}
-                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700"
-                  >
-                    Delete
-                  </button>
+                  <>
+                    <button
+                      onClick={handleSendEmail}
+                      disabled={sendingEmail || loading}
+                      className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {sendingEmail ? (
+                        <>
+                          <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+                            <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+                          </svg>
+                          Submit Site
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={handleDelete}
+                      className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700"
+                    >
+                      Delete
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={handleSave}
