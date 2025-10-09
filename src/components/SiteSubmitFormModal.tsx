@@ -472,7 +472,6 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
     let emailHtml = `<p>${contactNames},</p>`;
     emailHtml += `<br/>`;
     emailHtml += `<p>Please find below a new site submit for ${propertyName}. Your feedback on this site is appreciated.</p>`;
-    emailHtml += `<br/>`;
     emailHtml += `<p><strong>Property Name:</strong> ${propertyName}<br/>`;
 
     if (property?.trade_area) {
@@ -576,7 +575,6 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
     }
 
     if (siteSubmit.notes) {
-      emailHtml += `<br/>`;
       emailHtml += `<p><strong>Site Notes:</strong><br/>`;
       emailHtml += `${siteSubmit.notes.replace(/\n/g, '<br/>')}</p>`;
     }
@@ -586,9 +584,9 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
       emailHtml += `${siteSubmit.competitor_data.replace(/\n/g, '<br/>')}</p>`;
     }
 
-    emailHtml += `<br/><br/>`;
+    emailHtml += `<br/>`;
     emailHtml += `<p>If this property is a pass, please just respond back to this email with a brief reason as to why it's a pass. If you need more information or want to discuss further, let me know that as well please.</p>`;
-    emailHtml += `<br/><br/>`;
+    emailHtml += `<br/>`;
     emailHtml += `<p>Thanks!<br/><br/>`;
     emailHtml += `${userData?.first_name || ''} ${userData?.last_name || ''}<br/>`;
     emailHtml += `${userData?.email || ''}`;
