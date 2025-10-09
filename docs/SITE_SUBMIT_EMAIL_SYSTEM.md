@@ -8,11 +8,14 @@ The Site Submit Email System allows users to send automated email notifications 
 
 ## Features
 
-✅ **One-Click Email Sending** - Green "Submit Site" button on Site Submit detail pages
-✅ **Targeted Recipients** - Automatically sends to contacts marked as `is_site_selector = true`
-✅ **CC Functionality** - CCs Mike and Arty on all emails, plus the submitter
-✅ **Professional HTML Template** - Responsive, branded email template
-✅ **Site Submit Navigation** - New "Site Submits" dropdown menu in navbar with search
+✅ **Email Composer Modal** - Salesforce-style email composer with preview and editing
+✅ **Rich Text Editor** - Full formatting capabilities (bold, italic, colors, lists, links)
+✅ **Editable Recipients** - Add/remove TO, CC, and BCC recipients before sending
+✅ **Editable Subject** - Customize subject line for each email
+✅ **Preview/Edit Toggle** - Switch between editing and previewing HTML
+✅ **Targeted Recipients** - Automatically loads contacts marked as `is_site_selector = true`
+✅ **Professional HTML Template** - Pre-populated responsive template
+✅ **Site Submit Navigation** - "Site Submits" dropdown menu in navbar with search
 ✅ **Test Mode** - Safe testing environment before going live
 
 ---
@@ -22,18 +25,25 @@ The Site Submit Email System allows users to send automated email notifications 
 ```
 User clicks "Submit Site" button
     ↓
-Frontend calls Supabase Edge Function
+Frontend queries database for Site Submit + Site Selector contacts
     ↓
-Edge Function queries database
-    ├─ Fetches Site Submit data (with client, property, unit info)
-    └─ Finds all contacts where:
-        - client_id matches site submit's client
-        - is_site_selector = true
-        - email is not null
+Email Composer Modal opens with:
+    ├─ Pre-populated TO: Site Selector contacts
+    ├─ Pre-populated CC: mike@oculusrep.com, asantos@oculusrep.com
+    ├─ Pre-populated Subject: "New site for Review – [Property] – [Client]"
+    └─ Pre-populated Body: HTML template with Site Submit details
     ↓
-Edge Function calls Resend API
-    ├─ Sends to: Site Selector contacts
-    └─ CC: mike@oculusrep.com, asantos@oculusrep.com, submitter
+User edits email (optional):
+    ├─ Modify recipients (add/remove TO, CC, BCC)
+    ├─ Edit subject line
+    ├─ Edit body with rich text editor
+    └─ Preview HTML output
+    ↓
+User clicks "Send"
+    ↓
+Frontend calls Supabase Edge Function with custom email data
+    ↓
+Edge Function calls Resend API with user's custom content
     ↓
 Returns success/failure to frontend
 ```
@@ -54,16 +64,37 @@ Returns success/failure to frontend
 
 **Current Status:** TEST MODE (sends only to mike@oculusrep.com)
 
-### 2. Site Submit Details Page
+### 2. Email Composer Modal
+**Location:** `/src/components/EmailComposerModal.tsx`
+
+**Purpose:** Salesforce-style email composer that:
+- Displays editable TO/CC/BCC recipient fields
+- Provides rich text editor (React Quill) with formatting toolbar
+- Allows toggling between Edit and Preview modes
+- Validates email addresses
+- Supports keyboard shortcuts (Enter, comma, space) for adding recipients
+- Shows recipient count and loading states
+
+**Features:**
+- Bold, italic, underline, strike-through
+- Text and background colors
+- Headers (H1, H2, H3)
+- Ordered and bulleted lists
+- Text alignment
+- Links
+- Clean formatting
+
+### 3. Site Submit Details Page
 **Location:** `/src/pages/SiteSubmitDetailsPage.tsx`
 
 **Changes:**
-- Added `sendingEmail` state
-- Added `handleSendEmail()` function
-- Added green "Submit Site" button in header
+- Opens Email Composer Modal when "Submit Site" is clicked
+- Fetches Site Submit data and Site Selector contacts
+- Generates default email template
+- Passes custom email data to Edge Function
 - Includes loading spinner and success/error toasts
 
-### 3. Navbar
+### 4. Navbar
 **Location:** `/src/components/Navbar.tsx`
 
 **Changes:**
@@ -72,7 +103,7 @@ Returns success/failure to frontend
 - Added "Search Site Submits" option
 - Added recently viewed Site Submits
 
-### 4. Search Modal
+### 5. Search Modal
 **Location:** `/src/components/DedicatedSearchModal.tsx`
 
 **Changes:**
@@ -80,7 +111,7 @@ Returns success/failure to frontend
 - Added database query for site submits
 - Added teal icon for site submit results
 
-### 5. Environment Variables
+### 6. Environment Variables
 **Location:** `.env.example`
 
 **Added:**
@@ -183,22 +214,43 @@ Replace the Edge Function code with the production version (removing TEST MODE s
 2. **Click "Submit Site" button:**
    - Green button in top right of page
    - Appears only on existing (saved) site submits
+   - Email Composer Modal will open
 
-3. **Wait for confirmation:**
-   - Success: "Successfully sent X email(s)..."
-   - Error: Check that client has Site Selector contacts
+3. **Review and Edit Email (Optional):**
+   - **TO Recipients:** Pre-populated with Site Selector contacts - add/remove as needed
+   - **CC Recipients:** Pre-populated with mike@oculusrep.com and asantos@oculusrep.com - modify if needed
+   - **BCC Recipients:** Empty by default - add if needed
+   - **Subject:** Edit the subject line as desired
+   - **Email Body:**
+     - Use rich text editor to format and customize content
+     - Add your own notes, remove sections, change formatting
+     - Click "Preview" to see how the email looks
+     - Click "Edit" to continue editing
 
-### Who Receives the Email?
+4. **Send the Email:**
+   - Click "Send" button
+   - Wait for confirmation: "Successfully sent X email(s)..."
+   - Or if error: Check that contacts have valid email addresses
 
-**TO:** All contacts where:
+### Keyboard Shortcuts in Recipient Fields
+
+- **Enter, Comma, or Space:** Add email to recipient list
+- Click the **×** button on any email tag to remove it
+
+### Default Recipients (Can be Modified Before Sending)
+
+**TO:** Pre-populated with all contacts where:
 - `client_id` matches the site submit's client
 - `is_site_selector = true`
 - `email` is not null
 
-**CC:** (Production mode only)
+**CC:** Pre-populated with:
 - mike@oculusrep.com
 - asantos@oculusrep.com
-- The email of the user who clicked "Submit Site"
+
+**BCC:** Empty by default
+
+**Note:** All recipients can be added, removed, or modified in the Email Composer before sending.
 
 ---
 

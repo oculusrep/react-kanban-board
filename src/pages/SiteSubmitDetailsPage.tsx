@@ -6,6 +6,7 @@ import PropertySelector from '../components/PropertySelector';
 import PropertyUnitSelector from '../components/PropertyUnitSelector';
 import Toast from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
+import EmailComposerModal, { EmailData } from '../components/EmailComposerModal';
 import { useToast } from '../hooks/useToast';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
@@ -72,6 +73,12 @@ const SiteSubmitDetailsPage: React.FC = () => {
   const [propertyName, setPropertyName] = useState<string>('');
   const [userEditedName, setUserEditedName] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [showEmailComposer, setShowEmailComposer] = useState(false);
+  const [emailDefaultData, setEmailDefaultData] = useState<{
+    subject: string;
+    body: string;
+    recipients: any[];
+  }>({ subject: '', body: '', recipients: [] });
 
   // Set page title
   useEffect(() => {
@@ -306,6 +313,71 @@ const SiteSubmitDetailsPage: React.FC = () => {
       return;
     }
 
+    try {
+      // Fetch site submit data with related information to generate email template
+      const { data: siteSubmitData, error: siteSubmitError } = await supabase
+        .from('site_submit')
+        .select(`
+          *,
+          client:client_id (
+            id,
+            client_name
+          ),
+          property:property_id (
+            id,
+            property_name,
+            address,
+            city,
+            state,
+            zip
+          ),
+          property_unit:property_unit_id (
+            id,
+            property_unit_name
+          )
+        `)
+        .eq('id', siteSubmitId)
+        .single();
+
+      if (siteSubmitError) throw siteSubmitError;
+      if (!siteSubmitData) throw new Error('Site submit not found');
+
+      // Fetch Site Selector contacts for this client
+      const { data: contacts, error: contactsError } = await supabase
+        .from('contact')
+        .select('id, first_name, last_name, email')
+        .eq('client_id', siteSubmitData.client_id)
+        .eq('is_site_selector', true)
+        .not('email', 'is', null);
+
+      if (contactsError) throw contactsError;
+
+      if (!contacts || contacts.length === 0) {
+        showToast('No Site Selector contacts found for this client with email addresses', { type: 'error' });
+        return;
+      }
+
+      // Generate default email template
+      const defaultSubject = `New site for Review – ${siteSubmitData.property?.property_name || 'Untitled'} – ${siteSubmitData.client?.client_name || 'N/A'}`;
+      const defaultBody = generateEmailTemplate(siteSubmitData, contacts[0]);
+
+      // Set email default data and show composer modal
+      setEmailDefaultData({
+        subject: defaultSubject,
+        body: defaultBody,
+        recipients: contacts,
+      });
+      setShowEmailComposer(true);
+    } catch (error) {
+      console.error('Error preparing email:', error);
+      showToast(
+        `Error preparing email: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { type: 'error' }
+      );
+    }
+  };
+
+  const handleSendEmailFromComposer = async (emailData: EmailData) => {
     setSendingEmail(true);
     try {
       const { data: { session, user } } = await supabase.auth.getSession();
@@ -313,6 +385,13 @@ const SiteSubmitDetailsPage: React.FC = () => {
       if (!session) {
         throw new Error('Not authenticated');
       }
+
+      // Fetch user email from the user table
+      const { data: userData } = await supabase
+        .from('user')
+        .select('email')
+        .eq('id', user?.id)
+        .single();
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-site-submit-email`,
@@ -324,7 +403,8 @@ const SiteSubmitDetailsPage: React.FC = () => {
           },
           body: JSON.stringify({
             siteSubmitId,
-            submitterEmail: user?.email
+            customEmail: emailData,
+            submitterEmail: userData?.email || user?.email
           }),
         }
       );
@@ -336,7 +416,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
       }
 
       showToast(
-        `Successfully sent ${result.emailsSent} email(s) to Site Selectors`,
+        `Successfully sent ${result.emailsSent} email(s)`,
         { type: 'success' }
       );
     } catch (error) {
@@ -345,9 +425,44 @@ const SiteSubmitDetailsPage: React.FC = () => {
         `Error sending email: ${error instanceof Error ? error.message : 'Unknown error'}`,
         { type: 'error' }
       );
+      throw error; // Re-throw to keep modal open on error
     } finally {
       setSendingEmail(false);
     }
+  };
+
+  const generateEmailTemplate = (siteSubmit: any, contact: any): string => {
+    const clientName = siteSubmit.client?.client_name || 'N/A';
+    const propertyName = siteSubmit.property?.property_name || 'N/A';
+    const propertyAddress = siteSubmit.property
+      ? `${siteSubmit.property.address || ''}, ${siteSubmit.property.city || ''}, ${siteSubmit.property.state || ''} ${siteSubmit.property.zip || ''}`.trim()
+      : 'N/A';
+    const dateSubmitted = siteSubmit.date_submitted
+      ? new Date(siteSubmit.date_submitted).toLocaleDateString()
+      : 'N/A';
+
+    return `
+      <p>${contact.first_name || 'Hi there'},</p>
+      <p>Please find below a new site submit for <strong>${siteSubmit.site_submit_name || 'New Whole Foods Coming Soon – Cumming'}</strong>. Your feedback on this site is appreciated.</p>
+      <p><strong>Property Name:</strong> ${propertyName}<br/>
+      <strong>Trade Area:</strong> ${siteSubmit.property?.city || 'N/A'}<br/>
+      <strong>Map Link:</strong> <a href="#">View Map</a><br/>
+      <strong>Address:</strong> ${propertyAddress}<br/>
+      <strong>Base Rent:</strong> ${siteSubmit.year_1_rent ? `$${siteSubmit.year_1_rent.toLocaleString()}` : 'N/A'}<br/>
+      <strong>NNN:</strong> ${siteSubmit.ti ? `$${siteSubmit.ti.toLocaleString()}` : 'N/A'}</p>
+
+      ${siteSubmit.property_unit?.property_unit_name ? `<p><strong>Unit:</strong> ${siteSubmit.property_unit.property_unit_name}</p>` : ''}
+
+      ${siteSubmit.delivery_timeframe ? `<p><strong>Delivery Timeframe:</strong> ${siteSubmit.delivery_timeframe}</p>` : ''}
+
+      ${siteSubmit.notes ? `<p><strong>Site Notes:</strong><br/>${siteSubmit.notes}</p>` : ''}
+
+      ${siteSubmit.customer_comments ? `<p><strong>Customer Comments:</strong><br/>${siteSubmit.customer_comments}</p>` : ''}
+
+      <p>If this property is a pass, please just respond back to this email with a brief reason as to why it's a pass. If you need more information or want to discuss further, let me know that as well.</p>
+
+      <p>Best,</p>
+    `;
   };
 
   return (
@@ -722,6 +837,17 @@ const SiteSubmitDetailsPage: React.FC = () => {
         cancelLabel="Cancel"
         onConfirm={confirmDelete}
         onCancel={() => setShowDeleteConfirm(false)}
+      />
+
+      {/* Email Composer Modal */}
+      <EmailComposerModal
+        isOpen={showEmailComposer}
+        onClose={() => setShowEmailComposer(false)}
+        onSend={handleSendEmailFromComposer}
+        defaultSubject={emailDefaultData.subject}
+        defaultBody={emailDefaultData.body}
+        defaultRecipients={emailDefaultData.recipients}
+        siteSubmitName={formData.site_submit_name}
       />
     </div>
   );

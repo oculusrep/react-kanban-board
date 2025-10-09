@@ -4,24 +4,32 @@ This guide explains how to set up and configure the automated email system for S
 
 ## Overview
 
-The email system allows you to send templated email notifications to "Site Selector" contacts when a Site Submit is created or updated. The system uses:
+The email system allows you to send customizable email notifications to "Site Selector" contacts when a Site Submit is created or updated. The system uses:
 
 - **Supabase Edge Functions** - Serverless backend for email logic
 - **Resend** - Transactional email service (free tier: 3,000 emails/month, 100/day)
-- **Email Templates** - Pre-formatted HTML emails with Site Submit data
+- **Email Composer Modal** - Salesforce-style interface for editing emails before sending
+- **Rich Text Editor** - React Quill for formatting email content
+- **Email Templates** - Pre-populated HTML emails with Site Submit data (fully editable)
 
 ## Architecture
 
 ```
 Site Submit Page (Frontend)
-    ↓ [Button Click]
+    ↓ [Button Click: "Submit Site"]
+Email Composer Modal Opens
+    ↓ [Pre-populated with template and recipients]
+User Reviews/Edits Email
+    ├─ Edit recipients (TO, CC, BCC)
+    ├─ Edit subject line
+    ├─ Edit body with rich text editor
+    └─ Toggle Preview/Edit mode
+    ↓ [User clicks "Send"]
 Supabase Edge Function
-    ↓ [Queries Database]
-Contact Table (filtered by is_site_selector = true)
-    ↓ [Sends via API]
+    ↓ [Receives custom email data]
 Resend Email Service
     ↓ [Delivers]
-Site Selector Recipients
+Recipients (as configured by user)
 ```
 
 ## Setup Steps

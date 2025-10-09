@@ -9,6 +9,13 @@ const corsHeaders = {
 interface SiteSubmitEmailRequest {
   siteSubmitId: string
   submitterEmail?: string
+  customEmail?: {
+    to: string[]
+    cc: string[]
+    bcc: string[]
+    subject: string
+    htmlBody: string
+  }
 }
 
 serve(async (req) => {
@@ -18,7 +25,7 @@ serve(async (req) => {
   }
 
   try {
-    const { siteSubmitId, submitterEmail } = await req.json() as SiteSubmitEmailRequest
+    const { siteSubmitId, submitterEmail, customEmail } = await req.json() as SiteSubmitEmailRequest
 
     if (!siteSubmitId) {
       throw new Error('siteSubmitId is required')
@@ -30,6 +37,87 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
 
+    // Get the authenticated user's ID from the JWT token
+    const authHeader = req.headers.get('Authorization')
+    let userEmail = submitterEmail
+
+    // If submitter email is not provided, fetch it from the user table
+    if (!userEmail && authHeader) {
+      try {
+        const token = authHeader.replace('Bearer ', '')
+        const { data: { user } } = await supabaseClient.auth.getUser(token)
+
+        if (user?.id) {
+          const { data: userData } = await supabaseClient
+            .from('user')
+            .select('email')
+            .eq('id', user.id)
+            .single()
+
+          userEmail = userData?.email || user.email
+        }
+      } catch (error) {
+        console.error('Error fetching user email:', error)
+      }
+    }
+
+    // Send emails via Resend
+    const resendApiKey = Deno.env.get('RESEND_API_KEY')
+    if (!resendApiKey) {
+      throw new Error('RESEND_API_KEY not configured')
+    }
+
+    // If custom email is provided, use it directly
+    if (customEmail) {
+      // Determine the "From" address - use user email if available and has oculusrep.com domain
+      let fromAddress = Deno.env.get('RESEND_FROM_EMAIL') ?? 'onboarding@resend.dev'
+
+      if (userEmail && userEmail.endsWith('@oculusrep.com')) {
+        // Use user's actual email as From address
+        fromAddress = userEmail
+      } else if (userEmail) {
+        // If user has different domain, use default From with Reply-To
+        fromAddress = Deno.env.get('RESEND_FROM_EMAIL') ?? 'onboarding@resend.dev'
+      }
+
+      // Send email to actual recipients
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${resendApiKey}`,
+        },
+        body: JSON.stringify({
+          from: fromAddress,
+          reply_to: userEmail || undefined,
+          to: customEmail.to,
+          cc: customEmail.cc.length > 0 ? customEmail.cc : undefined,
+          bcc: customEmail.bcc.length > 0 ? customEmail.bcc : undefined,
+          subject: customEmail.subject,
+          html: customEmail.htmlBody,
+        }),
+      })
+
+      if (!res.ok) {
+        const error = await res.text()
+        console.error(`Failed to send email:`, error)
+        throw new Error(`Failed to send email`)
+      }
+
+      await res.json()
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: `Successfully sent email to ${customEmail.to.length} recipient(s)`,
+          emailsSent: 1,
+          recipients: customEmail.to
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Original logic for non-custom emails (kept for backward compatibility)
     // Fetch site submit data with related information
     const { data: siteSubmit, error: siteSubmitError } = await supabaseClient
       .from('site_submit')
@@ -78,60 +166,18 @@ serve(async (req) => {
       )
     }
 
-    // Send emails via Resend
-    const resendApiKey = Deno.env.get('RESEND_API_KEY')
-    if (!resendApiKey) {
-      throw new Error('RESEND_API_KEY not configured')
+    // Determine the "From" address - use user email if available and has oculusrep.com domain
+    let fromAddress = Deno.env.get('RESEND_FROM_EMAIL') ?? 'onboarding@resend.dev'
+
+    if (userEmail && userEmail.endsWith('@oculusrep.com')) {
+      // Use user's actual email as From address
+      fromAddress = userEmail
     }
 
-    // TEMPORARY TEST MODE: Send only to mike@oculusrep.com
-    // Once domain is verified, we'll send to actual Site Selectors with CC
-    const emailHtml = generateEmailTemplate(siteSubmit, contacts[0] || { first_name: 'there' })
-
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${resendApiKey}`,
-      },
-      body: JSON.stringify({
-        from: Deno.env.get('RESEND_FROM_EMAIL') ?? 'onboarding@resend.dev',
-        to: ['mike@oculusrep.com'], // Test mode: only verified email
-        subject: `[TEST] New Site Submit: ${siteSubmit.site_submit_name || 'Untitled'}`,
-        html: `
-          <p><strong>TEST MODE:</strong> This email would normally be sent to ${contacts.length} Site Selector(s) with CC to Mike and Arty.</p>
-          <p><strong>Would be sent to:</strong> ${contacts.map(c => c.email).join(', ')}</p>
-          <hr/>
-          ${emailHtml}
-        `,
-      }),
-    })
-
-    if (!res.ok) {
-      const error = await res.text()
-      console.error(`Failed to send test email:`, error)
-      throw new Error(`Failed to send test email`)
-    }
-
-    await res.json()
-
-    // Return modified response for test mode
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: `[TEST MODE] Email sent to mike@oculusrep.com. In production, would send to ${contacts.length} Site Selector(s).`,
-        emailsSent: 1,
-        recipients: ['mike@oculusrep.com (test)'],
-        wouldSendTo: contacts.map(c => c.email)
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
-
-    /* ORIGINAL CODE - RESTORE AFTER DOMAIN VERIFICATION
     // Build CC list
     const ccList = ['mike@oculusrep.com', 'asantos@oculusrep.com']
-    if (submitterEmail && !ccList.includes(submitterEmail)) {
-      ccList.push(submitterEmail)
+    if (userEmail && !ccList.includes(userEmail)) {
+      ccList.push(userEmail)
     }
 
     const emailPromises = contacts.map(async (contact) => {
@@ -144,7 +190,8 @@ serve(async (req) => {
           'Authorization': `Bearer ${resendApiKey}`,
         },
         body: JSON.stringify({
-          from: Deno.env.get('RESEND_FROM_EMAIL') ?? 'notifications@yourdomain.com',
+          from: fromAddress,
+          reply_to: userEmail || undefined,
           to: [contact.email],
           cc: ccList,
           subject: `New Site Submit: ${siteSubmit.site_submit_name || 'Untitled'}`,
@@ -172,7 +219,6 @@ serve(async (req) => {
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
-    END OF ORIGINAL CODE TO RESTORE */
 
   } catch (error) {
     console.error('Error sending emails:', error)

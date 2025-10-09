@@ -45,18 +45,21 @@ WHERE email = 'recipient@example.com';
 ### 5. Test It! (30 sec)
 
 1. Open any Site Submit page
-2. Click "Email Site Selectors" button
-3. Check recipient inbox ✅
+2. Click "Submit Site" button
+3. Email Composer opens - review and edit as needed
+4. Click "Send"
+5. Check recipient inbox ✅
 
 ---
 
 ## 📋 What You Get
 
-✅ Automated email notifications to Site Selectors
-✅ Professionally formatted HTML emails
-✅ Includes all Site Submit details
+✅ Salesforce-style email composer with preview
+✅ Rich text editor for customizing email content
+✅ Edit recipients, subject, and body before sending
+✅ Pre-populated templates with Site Submit details
+✅ Toggle between Edit and Preview modes
 ✅ 3,000 free emails/month with Resend
-✅ One-click sending from UI
 
 ---
 
