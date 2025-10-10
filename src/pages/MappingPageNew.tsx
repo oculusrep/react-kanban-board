@@ -46,6 +46,7 @@ const MappingPageContent: React.FC = () => {
   const [isPinDetailsOpen, setIsPinDetailsOpen] = useState(false);
   const [selectedPinData, setSelectedPinData] = useState<any>(null);
   const [selectedPinType, setSelectedPinType] = useState<'property' | 'site_submit' | null>(null);
+  const [pinDetailsInitialTab, setPinDetailsInitialTab] = useState<'property' | 'submit' | 'location' | 'files' | 'contacts' | 'submits' | undefined>(undefined);
 
   // Property details slideout (for "View Full Details" from site submit)
   const [isPropertyDetailsOpen, setIsPropertyDetailsOpen] = useState(false);
@@ -371,6 +372,40 @@ const MappingPageContent: React.FC = () => {
     }
   };
 
+  // Handle creating site submit from property context menu (right-click)
+  const handleCreateSiteSubmitFromContextMenu = async (propertyId: string) => {
+    console.log('📋 Creating new site submit from context menu for property:', propertyId);
+
+    // First, open the property slideout
+    try {
+      const { data: property, error } = await supabase
+        .from('property')
+        .select(`
+          *,
+          property_record_type (*)
+        `)
+        .eq('id', propertyId)
+        .single();
+
+      if (error) throw error;
+
+      // Set initial tab first (before opening slideout)
+      setPinDetailsInitialTab('submits');
+
+      // Then open property slideout
+      setSelectedPinData(property);
+      setSelectedPinType('property');
+      setIsPinDetailsOpen(true);
+
+      // Small delay to ensure slideout is open before triggering create
+      setTimeout(() => {
+        handleCreateSiteSubmitForProperty(propertyId);
+      }, 150);
+    } catch (err) {
+      console.error('Error opening property for site submit creation:', err);
+    }
+  };
+
   // Center map on property pin with appropriate zoom to avoid clusters
   const handleCenterOnPin = (lat: number, lng: number) => {
     if (mapInstance) {
@@ -490,6 +525,7 @@ const MappingPageContent: React.FC = () => {
     setIsPinDetailsOpen(false);
     setSelectedPinData(null);
     setSelectedPinType(null);
+    setPinDetailsInitialTab(undefined);
     // Cancel any ongoing verification
     setVerifyingPropertyId(null);
     // Also close property details slideout if it's open
@@ -537,6 +573,11 @@ const MappingPageContent: React.FC = () => {
   const handlePinDataUpdate = (updatedData: any) => {
     console.log('📝 Pin data updated:', updatedData);
     setSelectedPinData(updatedData);
+    // If this is a site submit update, trigger refresh of submits list
+    if (selectedPinType === 'site_submit' || updatedData.property_id) {
+      setSubmitsRefreshTrigger(prev => prev + 1);
+      console.log('🔄 Triggering submits list refresh after site submit update');
+    }
   };
 
   const handlePropertyDataUpdate = (updatedData: any) => {
@@ -1224,6 +1265,8 @@ const MappingPageContent: React.FC = () => {
               onDeleteProperty={handleDeleteProperty}
               onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
               onCreateSiteSubmit={handleCreateSiteSubmitForProperty}
+              submitsRefreshTrigger={submitsRefreshTrigger}
+              initialTab={pinDetailsInitialTab}
             />
 
             {/* Property Details Slideout (for "View Full Details" from site submit) */}
@@ -1313,6 +1356,7 @@ const MappingPageContent: React.FC = () => {
               property={propertyContextMenu.property}
               onVerifyLocation={handleVerifyLocation}
               onDeleteProperty={handleDeleteProperty}
+              onCreateSiteSubmit={handleCreateSiteSubmitFromContextMenu}
               onClose={handlePropertyContextMenuClose}
             />
 

@@ -89,6 +89,7 @@ interface PinDetailsSlideoutProps {
   onViewSiteSubmitDetails?: (siteSubmit: SiteSubmit) => void; // Callback to open site submit slideout from property
   onCreateSiteSubmit?: (propertyId: string) => void; // Callback to create new site submit for property
   submitsRefreshTrigger?: number; // Trigger to refresh submits list
+  initialTab?: TabType; // Initial tab to open
 }
 
 type TabType = 'property' | 'submit' | 'location' | 'files' | 'contacts' | 'submits';
@@ -530,10 +531,13 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   onDeleteProperty,
   onViewSiteSubmitDetails,
   onCreateSiteSubmit,
-  submitsRefreshTrigger
+  submitsRefreshTrigger,
+  initialTab
 }) => {
   console.log('PinDetailsSlideout rendering with:', { isOpen, data, type, rightOffset });
-  const [activeTab, setActiveTab] = useState<TabType>(type === 'site_submit' ? 'submit' : 'property');
+  const [activeTab, setActiveTab] = useState<TabType>(
+    initialTab || (type === 'site_submit' ? 'submit' : 'property')
+  );
   const [submitStages, setSubmitStages] = useState<{ id: string; name: string }[]>([]);
   const [currentStageId, setCurrentStageId] = useState<string>('');
   const [isMinimized, setIsMinimized] = useState(false);
@@ -552,6 +556,15 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   const { propertyRecordTypes, isLoading: isLoadingRecordTypes } = usePropertyRecordTypes();
   const { updateProperty } = useProperty(localPropertyData?.id || undefined);
   const { toast, showToast } = useToast();
+
+  // Sync activeTab with initialTab when it changes OR when slideout opens
+  useEffect(() => {
+    console.log('🔄 initialTab or isOpen changed:', { initialTab, isOpen });
+    if (initialTab && isOpen) {
+      console.log('✅ Setting activeTab to:', initialTab);
+      setActiveTab(initialTab);
+    }
+  }, [initialTab, isOpen]);
 
   // Sync local property data with incoming data prop
   useEffect(() => {
@@ -643,13 +656,28 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   }, [data, type, lastSavedData]);
 
 
+  // Track the last loaded site submit ID to prevent re-initialization on same submit
+  const [lastLoadedSiteSubmitId, setLastLoadedSiteSubmitId] = useState<string | null>(null);
+
   // Initialize current stage ID when data changes
   useEffect(() => {
     if (type === 'site_submit' && data) {
       const siteSubmitData = data as SiteSubmit;
       console.log('🔄 Initializing site submit form data:', siteSubmitData);
       console.log('🔄 Initializing site submit form with stage:', siteSubmitData.submit_stage_id);
-      setCurrentStageId(siteSubmitData.submit_stage_id || '');
+
+      // Only reinitialize if this is a DIFFERENT site submit (different ID or new)
+      const currentId = siteSubmitData.id || null;
+      const isNewSubmit = siteSubmitData._isNew;
+      const isDifferentSubmit = currentId !== lastLoadedSiteSubmitId;
+
+      if (isNewSubmit || isDifferentSubmit) {
+        console.log('✅ New or different site submit - initializing stage:', siteSubmitData.submit_stage_id);
+        setCurrentStageId(siteSubmitData.submit_stage_id || '');
+        setLastLoadedSiteSubmitId(currentId);
+      } else {
+        console.log('⏭️ Same site submit - keeping current stage:', currentStageId);
+      }
 
       // Initialize site submit name
       setSiteSubmitName(siteSubmitData.site_submit_name || '');
@@ -685,7 +713,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
             }
           });
       } else {
-        console.log('⚠️ No client_id found on site submit data');
+        console.log('⚠️ No client_id found on site submit data - clearing client');
+        setSelectedClient(null);
       }
 
       // Initialize property unit if present
@@ -704,6 +733,9 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
               setSelectedAssignment(assignmentData);
             }
           });
+      } else {
+        // Clear assignment if not present
+        setSelectedAssignment(null);
       }
     }
   }, [data, type]);
@@ -765,12 +797,21 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
   // Handle stage change with immediate database update
   const handleStageChange = async (newStageId: string) => {
-    if (!siteSubmit || !newStageId) return;
+    if (!newStageId) return;
 
+    console.log(`🔄 Changing stage to: ${newStageId}, site submit exists:`, !!siteSubmit?.id);
+
+    // For new site submits (no ID yet), just update the local state
+    if (!siteSubmit?.id || siteSubmit._isNew) {
+      console.log('✅ Setting stage for new site submit:', newStageId);
+      setCurrentStageId(newStageId);
+      return;
+    }
+
+    // For existing site submits, update the database immediately
     try {
-      console.log(`🔄 Updating stage for site submit ${siteSubmit.id} to stage ${newStageId}`);
+      console.log(`🔄 Updating stage in database for site submit ${siteSubmit.id} to stage ${newStageId}`);
 
-      // Update database immediately
       const { data: updatedData, error } = await supabase
         .from('site_submit')
         .update({
@@ -791,7 +832,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         console.error('Error updating stage:', error);
         // Could show error notification here
       } else {
-        console.log('✅ Stage updated successfully:', updatedData);
+        console.log('✅ Stage updated successfully in database:', updatedData);
         // Update local state immediately to show new stage in dropdown
         setCurrentStageId(newStageId);
         // Trigger refresh of site submit layer to show changes immediately
@@ -980,7 +1021,11 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         if (error) {
           console.error('❌ Error creating site submit:', error);
           console.error('Error details:', JSON.stringify(error, null, 2));
+          console.error('Error message:', error.message);
+          console.error('Error hint:', error.hint);
+          console.error('Error code:', error.code);
           alert(`Failed to create site submit: ${error.message}`);
+          return; // Stop execution on error
         } else {
           console.log('✅ Site submit created successfully:', newSiteSubmit);
           console.log('✅ Saved site submit property_id:', newSiteSubmit?.property_id);
@@ -990,10 +1035,10 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
             .from('site_submit')
             .select(`
               *,
-              client:client_id (client_name),
-              property:property_id (*, property_record_type (*)),
+              properties!site_submit_property_id_fkey(*),
+              clients!site_submit_client_id_fkey(client_name),
               property_unit:property_unit_id (property_unit_name),
-              submit_stage:submit_stage_id (id, name)
+              stages!site_submit_stage_id_fkey(id, name)
             `)
             .eq('id', newSiteSubmit.id)
             .single();
@@ -1004,8 +1049,17 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
             console.log('✅ Fetched complete site submit with property:', completeSiteSubmit);
           }
 
-          // Update the data to reflect the newly created submit with complete property data
-          const finalData = completeSiteSubmit || newSiteSubmit;
+          // Normalize the data structure (map new key names to old expected names)
+          let finalData = completeSiteSubmit || newSiteSubmit;
+          if (completeSiteSubmit) {
+            finalData = {
+              ...completeSiteSubmit,
+              property: completeSiteSubmit.properties,
+              client: completeSiteSubmit.clients,
+              submit_stage: completeSiteSubmit.stages
+            };
+          }
+
           if (onDataUpdate) {
             console.log('📤 Calling onDataUpdate with complete data');
             onDataUpdate(finalData);

@@ -7,6 +7,7 @@ interface PropertyContextMenuProps {
   property: any | null;
   onVerifyLocation: (propertyId: string) => void;
   onDeleteProperty?: (propertyId: string) => void;
+  onCreateSiteSubmit?: (propertyId: string) => void;
   onClose: () => void;
 }
 
@@ -17,6 +18,7 @@ const PropertyContextMenu: React.FC<PropertyContextMenuProps> = ({
   property,
   onVerifyLocation,
   onDeleteProperty,
+  onCreateSiteSubmit,
   onClose,
 }) => {
   if (!isVisible || !property) return null;
@@ -73,6 +75,21 @@ const PropertyContextMenu: React.FC<PropertyContextMenuProps> = ({
             <span>📋</span>
             <span>Copy Coordinates</span>
           </button>
+
+          {/* Create Site Submit */}
+          {onCreateSiteSubmit && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onCreateSiteSubmit(property.id);
+                onClose();
+              }}
+              className="w-full text-left px-3 py-2 text-sm text-blue-700 hover:bg-blue-50 hover:text-blue-800 flex items-center space-x-2 border-t border-gray-100"
+            >
+              <span>📝</span>
+              <span>Create Site Submit</span>
+            </button>
+          )}
 
           {/* Delete Property - Only show if handler provided */}
           {onDeleteProperty && (
