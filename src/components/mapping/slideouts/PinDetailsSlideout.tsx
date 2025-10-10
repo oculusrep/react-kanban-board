@@ -571,6 +571,12 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     console.log('🔄 Syncing localPropertyData:', { data, type, hasData: !!data });
     if (data && type === 'property') {
       const property = data as Property;
+      console.log('🔍 Property data received:', {
+        id: property.id,
+        property_name: property.property_name,
+        property_notes: property.property_notes,
+        hasPropertyNotes: property.property_notes !== undefined
+      });
       setLocalPropertyData(property);
       setOriginalPropertyName(property.property_name || null);
       console.log('✅ Set localPropertyData:', property.id, property.property_name);
@@ -905,6 +911,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       setIsSavingProperty(true);
       setDropboxSyncError(null);
       console.log('💾 Saving property changes:', localPropertyData);
+      console.log('🔍 Property notes value before save:', localPropertyData.property_notes);
 
       // Extract only the editable fields (exclude system fields and id)
       const propertyUpdates: Partial<Database['public']['Tables']['property']['Update']> = {
@@ -929,8 +936,13 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         lease_expiration_date: localPropertyData.lease_expiration_date,
       };
 
+      console.log('📤 Sending property updates to database:', propertyUpdates);
+      console.log('🔍 Property notes in updates object:', propertyUpdates.property_notes);
+
       // Save all changes to database
       await updateProperty(propertyUpdates);
+
+      console.log('✅ updateProperty completed successfully');
 
       console.log('✅ Property saved successfully');
 
@@ -1375,6 +1387,18 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
+                </div>
+
+                {/* Property Notes */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Property Notes</label>
+                  <textarea
+                    rows={3}
+                    value={property?.property_notes || ''}
+                    onChange={(e) => handlePropertyFieldUpdate('property_notes', e.target.value)}
+                    placeholder="Enter property notes..."
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                  />
                 </div>
 
                 {/* Financial Fields - For Shopping Centers */}

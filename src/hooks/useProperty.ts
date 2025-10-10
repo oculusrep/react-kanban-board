@@ -86,12 +86,17 @@ export const useProperty = (propertyId?: string): UsePropertyResult => {
 
     try {
       setError(null);
-      
+
       // Prepare update payload with timestamp
       const updatePayload = {
         ...updates,
         updated_at: new Date().toISOString()
       };
+
+      console.log('🔧 useProperty.updateProperty - propertyId:', propertyId);
+      console.log('🔧 useProperty.updateProperty - updates received:', updates);
+      console.log('🔧 useProperty.updateProperty - property_notes in updates:', updates.property_notes);
+      console.log('🔧 useProperty.updateProperty - updatePayload:', updatePayload);
 
       const { data, error } = await supabase
         .from('property')
@@ -100,8 +105,14 @@ export const useProperty = (propertyId?: string): UsePropertyResult => {
         .select('*')
         .single();
 
-      if (error) throw error;
-      
+      if (error) {
+        console.error('❌ Supabase update error:', error);
+        throw error;
+      }
+
+      console.log('✅ Supabase update successful, returned data:', data);
+      console.log('✅ property_notes in returned data:', data?.property_notes);
+
       setProperty(data);
     } catch (err) {
       console.error('Error updating property:', err);

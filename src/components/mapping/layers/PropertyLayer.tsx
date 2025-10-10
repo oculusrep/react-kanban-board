@@ -94,6 +94,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
           city,
           state,
           zip,
+          property_notes,
           latitude,
           longitude,
           verified_latitude,
@@ -104,6 +105,9 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
           building_sqft,
           available_sqft,
           property_record_type_id,
+          asking_purchase_price,
+          asking_lease_price,
+          lease_expiration_date,
           property_record_type (
             id,
             label
@@ -142,6 +146,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
                 city,
                 state,
                 zip,
+                property_notes,
                 latitude,
                 longitude,
                 verified_latitude,
@@ -152,6 +157,9 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
                 building_sqft,
                 available_sqft,
                 property_record_type_id,
+                asking_purchase_price,
+                asking_lease_price,
+                lease_expiration_date,
                 property_record_type (
                   id,
                   label
