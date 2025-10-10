@@ -23,6 +23,16 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Sync query with selectedClient when it changes from outside
+  useEffect(() => {
+    if (selectedClient) {
+      setQuery(selectedClient.client_name);
+    } else if (query && !selectedClient) {
+      // Clear query if selectedClient is cleared externally
+      setQuery('');
+    }
+  }, [selectedClient]);
+
   // Debounced search
   useEffect(() => {
     if (!query.trim()) {
@@ -116,44 +126,34 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({
   return (
     <div className={`relative ${className}`} ref={searchRef}>
       <div className="relative">
-        <div className="flex items-center space-x-2">
-          {/* Input */}
-          <div className="relative flex-1">
-            <input
-              ref={inputRef}
-              type="text"
-              value={query}
-              onChange={handleInputChange}
-              onFocus={handleInputFocus}
-              onKeyDown={handleKeyDown}
-              placeholder={placeholder}
-              className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
-            />
+        <div className="relative flex-1">
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={handleInputChange}
+            onFocus={handleInputFocus}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+          />
 
-            {/* Loading spinner */}
-            {loading && (
-              <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
-                <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-              </div>
-            )}
-
-            {/* Clear button */}
-            {selectedClient && (
-              <button
-                onClick={handleClearSelection}
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                title="Clear selection"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-
-          {/* Selected client indicator */}
-          {selectedClient && (
-            <div className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">
-              {selectedClient.site_submit_count} submits
+          {/* Loading spinner */}
+          {loading && (
+            <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+              <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
             </div>
+          )}
+
+          {/* Clear button */}
+          {selectedClient && (
+            <button
+              onClick={handleClearSelection}
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              title="Clear selection"
+            >
+              ✕
+            </button>
           )}
         </div>
 

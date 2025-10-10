@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from '../layers/LayerManager';
 import { usePropertyRecordTypes } from '../../../hooks/usePropertyRecordTypes';
 import { useProperty } from '../../../hooks/useProperty';
+import { useToast } from '../../../hooks/useToast';
 import PropertyInputField from '../../property/PropertyInputField';
 import PropertyPSFField from '../../property/PropertyPSFField';
 import PropertyCurrencyField from '../../property/PropertyCurrencyField';
@@ -13,6 +14,9 @@ import { getDropboxPropertySyncService } from '../../../services/dropboxProperty
 import FileManager from '../../FileManager/FileManager';
 import AddContactsModal from '../../property/AddContactsModal';
 import ContactFormModal from '../../ContactFormModal';
+import ClientSelector from '../ClientSelector';
+import PropertyUnitSelector from '../../PropertyUnitSelector';
+import Toast from '../../Toast';
 
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
@@ -34,6 +38,7 @@ interface Property {
   building_sqft?: number | null;
   available_sqft?: number | null;
   property_record_type_id?: string | null;
+  property_record_type?: PropertyRecordType | null;
   asking_purchase_price?: number | null;
   asking_lease_price?: number | null;
   lease_expiration_date?: string | null;
@@ -44,6 +49,8 @@ interface SiteSubmit {
   site_submit_name?: string;
   property_id: string;
   client_id?: string;
+  assignment_id?: string | null;
+  property_unit_id?: string | null;
   submit_stage_id?: string;
   year_1_rent?: number;
   ti?: number;
@@ -62,6 +69,7 @@ interface SiteSubmit {
   client?: { client_name: string };
   submit_stage?: { id: string; name: string };
   property_unit?: { property_unit_name: string };
+  _isNew?: boolean; // Flag for create mode
 }
 
 interface PinDetailsSlideoutProps {
@@ -78,9 +86,12 @@ interface PinDetailsSlideoutProps {
   onDataUpdate?: (updatedData: Property | SiteSubmit) => void; // Callback when data is updated
   onEditContact?: (contactId: string | null, propertyId: string) => void; // Callback to open contact form sidebar
   onDeleteProperty?: (propertyId: string) => void; // Callback to delete property
+  onViewSiteSubmitDetails?: (siteSubmit: SiteSubmit) => void; // Callback to open site submit slideout from property
+  onCreateSiteSubmit?: (propertyId: string) => void; // Callback to create new site submit for property
+  submitsRefreshTrigger?: number; // Trigger to refresh submits list
 }
 
-type TabType = 'property' | 'submit' | 'location' | 'files' | 'contacts';
+type TabType = 'property' | 'submit' | 'location' | 'files' | 'contacts' | 'submits';
 
 // Contacts Tab Component
 const ContactsTabContent: React.FC<{
@@ -341,6 +352,168 @@ const ContactsTabContent: React.FC<{
   );
 };
 
+// Submits Tab Component
+const SubmitsTabContent: React.FC<{
+  propertyId: string;
+  onViewSiteSubmitDetails?: (siteSubmit: SiteSubmit) => void;
+  onCreateSiteSubmit?: (propertyId: string) => void;
+  refreshTrigger?: number;
+}> = ({ propertyId, onViewSiteSubmitDetails, onCreateSiteSubmit, refreshTrigger }) => {
+  const [siteSubmits, setSiteSubmits] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const loadSiteSubmits = async () => {
+    if (!propertyId) return;
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('site_submit')
+        .select(`
+          *,
+          client!site_submit_client_id_fkey (
+            id,
+            client_name
+          ),
+          property_unit!site_submit_property_unit_id_fkey (
+            property_unit_name
+          ),
+          submit_stage!site_submit_submit_stage_id_fkey (
+            id,
+            name
+          )
+        `)
+        .eq('property_id', propertyId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error loading site submits:', error);
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error details:', error.details);
+        throw error;
+      }
+
+      console.log('📋 Loaded site submits for property:', propertyId, data);
+      setSiteSubmits(data || []);
+    } catch (err: any) {
+      console.error('❌ Exception loading site submits:', err);
+      console.error('❌ Exception message:', err?.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteSiteSubmit = async (e: React.MouseEvent, siteSubmitId: string, siteSubmitName: string) => {
+    e.stopPropagation(); // Prevent opening the site submit details
+
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete "${siteSubmitName || 'this site submit'}"?\n\nThis action cannot be undone.`
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      const { error } = await supabase
+        .from('site_submit')
+        .delete()
+        .eq('id', siteSubmitId);
+
+      if (error) throw error;
+
+      console.log('✅ Site submit deleted successfully:', siteSubmitId);
+
+      // Refresh the list
+      loadSiteSubmits();
+    } catch (err) {
+      console.error('❌ Error deleting site submit:', err);
+      alert('Failed to delete site submit. Please try again.');
+    }
+  };
+
+  useEffect(() => {
+    loadSiteSubmits();
+  }, [propertyId, refreshTrigger]);
+
+  if (!propertyId) {
+    return (
+      <div className="flex items-center justify-center h-32 text-gray-500">
+        <p>No property selected</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Add Site Submit Button */}
+      <button
+        onClick={() => onCreateSiteSubmit?.(propertyId)}
+        className="w-full px-3 py-2 bg-green-600 text-white text-sm font-medium rounded hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+      >
+        <FileText size={16} />
+        New Site Submit
+      </button>
+
+      {/* Site Submits List */}
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+        </div>
+      ) : siteSubmits.length === 0 ? (
+        <div className="text-center py-8 text-gray-500 text-sm">
+          <FileText size={32} className="mx-auto mb-2 text-gray-300" />
+          <p>No site submits associated</p>
+          <p className="text-xs mt-1">Create a site submit from the map</p>
+        </div>
+      ) : (
+        <div>
+          {siteSubmits.map((siteSubmit) => (
+            <div
+              key={siteSubmit.id}
+              className="p-3 hover:bg-green-50 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 group"
+              onClick={() => onViewSiteSubmitDetails?.(siteSubmit)}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center space-x-2">
+                    <p className="text-sm font-medium text-gray-900 truncate group-hover:text-green-900">
+                      {siteSubmit.site_submit_name || siteSubmit.sf_account || 'Unnamed Submit'}
+                    </p>
+                    <svg className="w-3 h-3 text-gray-400 group-hover:text-green-600 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-xs text-green-600 font-medium">
+                      {siteSubmit.submit_stage?.name || 'No Stage'}
+                    </p>
+                    {siteSubmit.property_unit?.property_unit_name && (
+                      <p className="text-xs text-gray-600 font-medium">
+                        {siteSubmit.property_unit.property_unit_name}
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-500 truncate ml-2">
+                      {siteSubmit.client?.client_name || 'No client'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Delete button */}
+                <button
+                  onClick={(e) => handleDeleteSiteSubmit(e, siteSubmit.id, siteSubmit.site_submit_name || siteSubmit.sf_account || 'Unnamed Submit')}
+                  className="ml-2 p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors opacity-0 group-hover:opacity-100"
+                  title="Delete site submit"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   isOpen,
   onClose,
@@ -354,7 +527,10 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   onCenterOnPin,
   onDataUpdate,
   onEditContact,
-  onDeleteProperty
+  onDeleteProperty,
+  onViewSiteSubmitDetails,
+  onCreateSiteSubmit,
+  submitsRefreshTrigger
 }) => {
   console.log('PinDetailsSlideout rendering with:', { isOpen, data, type, rightOffset });
   const [activeTab, setActiveTab] = useState<TabType>(type === 'site_submit' ? 'submit' : 'property');
@@ -375,6 +551,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   // Use shared hooks
   const { propertyRecordTypes, isLoading: isLoadingRecordTypes } = usePropertyRecordTypes();
   const { updateProperty } = useProperty(localPropertyData?.id || undefined);
+  const { toast, showToast } = useToast();
 
   // Sync local property data with incoming data prop
   useEffect(() => {
@@ -396,8 +573,26 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     notes: ''
   });
 
+  // Site submit relational data
+  const [selectedClient, setSelectedClient] = useState<any>(null);
+  const [selectedAssignment, setSelectedAssignment] = useState<any>(null);
+  const [selectedPropertyUnit, setSelectedPropertyUnit] = useState<string | null>(null);
+  const [siteSubmitName, setSiteSubmitName] = useState<string>('');
 
   const { refreshLayer } = useLayerManager();
+
+  // Auto-generate site submit name when client is selected
+  useEffect(() => {
+    if (selectedClient && type === 'site_submit' && data) {
+      const property = (data as SiteSubmit)?.property;
+      if (property?.property_name && selectedClient.client_name) {
+        const generatedName = `${property.property_name} - ${selectedClient.client_name}`;
+        setSiteSubmitName(generatedName);
+        setHasChanges(true); // Mark as having changes so save button appears
+        console.log('📝 Auto-generated site submit name:', generatedName);
+      }
+    }
+  }, [selectedClient, type, data]);
 
   // Reset to default tab when type changes
   useEffect(() => {
@@ -452,7 +647,64 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   useEffect(() => {
     if (type === 'site_submit' && data) {
       const siteSubmitData = data as SiteSubmit;
+      console.log('🔄 Initializing site submit form data:', siteSubmitData);
+      console.log('🔄 Initializing site submit form with stage:', siteSubmitData.submit_stage_id);
       setCurrentStageId(siteSubmitData.submit_stage_id || '');
+
+      // Initialize site submit name
+      setSiteSubmitName(siteSubmitData.site_submit_name || '');
+
+      // Initialize client if present
+      console.log('🔍 Client check - client_id:', siteSubmitData.client_id);
+      console.log('🔍 Client check - client object:', siteSubmitData.client);
+      if (siteSubmitData.client_id && siteSubmitData.client) {
+        console.log('✅ Initializing client with both ID and object:', siteSubmitData.client);
+        setSelectedClient({
+          id: siteSubmitData.client_id,
+          client_name: siteSubmitData.client.client_name,
+          site_submit_count: 0 // This is just for display
+        });
+      } else if (siteSubmitData.client_id) {
+        // If we have client_id but no client object, fetch it
+        console.log('🔍 Fetching client for ID:', siteSubmitData.client_id);
+        supabase
+          .from('client')
+          .select('id, client_name')
+          .eq('id', siteSubmitData.client_id)
+          .single()
+          .then(({ data: clientData, error }) => {
+            if (clientData && !error) {
+              console.log('✅ Fetched client from database:', clientData);
+              setSelectedClient({
+                id: clientData.id,
+                client_name: clientData.client_name,
+                site_submit_count: 0
+              });
+            } else {
+              console.error('❌ Error fetching client:', error);
+            }
+          });
+      } else {
+        console.log('⚠️ No client_id found on site submit data');
+      }
+
+      // Initialize property unit if present
+      setSelectedPropertyUnit(siteSubmitData.property_unit_id || null);
+
+      // Initialize assignment if present
+      if (siteSubmitData.assignment_id) {
+        // Load assignment data
+        supabase
+          .from('assignment')
+          .select('*, client(client_name)')
+          .eq('id', siteSubmitData.assignment_id)
+          .single()
+          .then(({ data: assignmentData }) => {
+            if (assignmentData) {
+              setSelectedAssignment(assignmentData);
+            }
+          });
+      }
     }
   }, [data, type]);
 
@@ -686,47 +938,139 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     if (!siteSubmit) return;
 
     try {
-      console.log(`💾 Saving changes for site submit ${siteSubmit.id}`);
-      console.log('📝 Form data being saved:', formData);
+      // Check if this is a new site submit (create mode)
+      const isNewSiteSubmit = siteSubmit._isNew || !siteSubmit.id;
 
-      // Update database with all form data
-      const { data: updatedData, error } = await supabase
-        .from('site_submit')
-        .update({
+      if (isNewSiteSubmit) {
+        console.log('💾 Creating new site submit for property:', siteSubmit.property_id);
+        console.log('📝 Form data for new site submit:', formData);
+        console.log('📝 Full siteSubmit object:', siteSubmit);
+
+        // Validation: require client
+        if (!selectedClient?.id) {
+          alert('Client is required');
+          return;
+        }
+
+        // Prepare insert data
+        const insertData = {
+          site_submit_name: siteSubmitName,
+          property_id: siteSubmit.property_id,
+          client_id: selectedClient.id,
+          assignment_id: selectedAssignment?.id || null,
+          property_unit_id: selectedPropertyUnit || null,
+          submit_stage_id: currentStageId || null,
           date_submitted: formData.dateSubmitted || null,
-          loi_date: formData.loiDate || null,
-          delivery_date: formData.deliveryDate || null,
           delivery_timeframe: formData.deliveryTimeframe || null,
           notes: formData.notes || null,
+          created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
-        })
-        .eq('id', siteSubmit.id)
-        .select()
-        .single();
-
-      if (error) {
-        console.error('❌ Error saving changes:', error);
-        // Could show error notification here
-      } else {
-        console.log('✅ Changes saved successfully:', updatedData);
-        console.log('📅 Updated date_submitted in DB:', updatedData.date_submitted);
-
-        // Update form data with fresh values from database to ensure consistency
-        const newFormData = {
-          dateSubmitted: updatedData.date_submitted ? updatedData.date_submitted.split('T')[0] : '',
-          loiDate: updatedData.loi_date ? updatedData.loi_date.split('T')[0] : '',
-          deliveryDate: updatedData.delivery_date ? updatedData.delivery_date.split('T')[0] : '',
-          deliveryTimeframe: updatedData.delivery_timeframe || '',
-          notes: updatedData.notes || ''
         };
 
-        console.log('🔄 Setting form data to:', newFormData);
-        setFormData(newFormData);
+        console.log('📝 Insert data being sent to Supabase:', insertData);
+        console.log('🎯 Current stage ID at save time:', currentStageId);
 
-        setHasChanges(false);
-        setLastSavedData(updatedData); // Store the saved data to use on reopen
-        // Trigger refresh of site submit layer to show changes immediately
-        refreshLayer('site_submits');
+        // Insert new site submit
+        const { data: newSiteSubmit, error} = await supabase
+          .from('site_submit')
+          .insert(insertData)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('❌ Error creating site submit:', error);
+          console.error('Error details:', JSON.stringify(error, null, 2));
+          alert(`Failed to create site submit: ${error.message}`);
+        } else {
+          console.log('✅ Site submit created successfully:', newSiteSubmit);
+          console.log('✅ Saved site submit property_id:', newSiteSubmit?.property_id);
+
+          // Fetch the complete site submit data including property relationship
+          const { data: completeSiteSubmit, error: fetchError } = await supabase
+            .from('site_submit')
+            .select(`
+              *,
+              client:client_id (client_name),
+              property:property_id (*, property_record_type (*)),
+              property_unit:property_unit_id (property_unit_name),
+              submit_stage:submit_stage_id (id, name)
+            `)
+            .eq('id', newSiteSubmit.id)
+            .single();
+
+          if (fetchError) {
+            console.error('❌ Error fetching complete site submit data:', fetchError);
+          } else {
+            console.log('✅ Fetched complete site submit with property:', completeSiteSubmit);
+          }
+
+          // Update the data to reflect the newly created submit with complete property data
+          const finalData = completeSiteSubmit || newSiteSubmit;
+          if (onDataUpdate) {
+            console.log('📤 Calling onDataUpdate with complete data');
+            onDataUpdate(finalData);
+          }
+
+          setHasChanges(false);
+          setLastSavedData(finalData);
+
+          // Trigger refresh of site submit layer to show new pin
+          console.log('🔄 Refreshing site_submits layer...');
+          refreshLayer('site_submits');
+
+          showToast('Site submit created successfully!', { type: 'success' });
+        }
+      } else {
+        console.log(`💾 Saving changes for site submit ${siteSubmit.id}`);
+        console.log('📝 Form data being saved:', formData);
+
+        // Validation: require client
+        if (!selectedClient?.id) {
+          alert('Client is required');
+          return;
+        }
+
+        // Update existing site submit
+        const { data: updatedData, error } = await supabase
+          .from('site_submit')
+          .update({
+            site_submit_name: siteSubmitName,
+            client_id: selectedClient.id,
+            assignment_id: selectedAssignment?.id || null,
+            property_unit_id: selectedPropertyUnit || null,
+            date_submitted: formData.dateSubmitted || null,
+            delivery_timeframe: formData.deliveryTimeframe || null,
+            notes: formData.notes || null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', siteSubmit.id)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('❌ Error saving changes:', error);
+        } else {
+          console.log('✅ Changes saved successfully:', updatedData);
+          console.log('📅 Updated date_submitted in DB:', updatedData.date_submitted);
+
+          // Update form data with fresh values from database to ensure consistency
+          const newFormData = {
+            dateSubmitted: updatedData.date_submitted ? updatedData.date_submitted.split('T')[0] : '',
+            loiDate: updatedData.loi_date ? updatedData.loi_date.split('T')[0] : '',
+            deliveryDate: updatedData.delivery_date ? updatedData.delivery_date.split('T')[0] : '',
+            deliveryTimeframe: updatedData.delivery_timeframe || '',
+            notes: updatedData.notes || ''
+          };
+
+          console.log('🔄 Setting form data to:', newFormData);
+          setFormData(newFormData);
+
+          setHasChanges(false);
+          setLastSavedData(updatedData);
+
+          // Trigger refresh of site submit layer to show changes immediately
+          refreshLayer('site_submits');
+        }
       }
     } catch (err) {
       console.error('💥 Failed to save changes:', err);
@@ -738,6 +1082,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     if (isProperty) {
       return [
         { id: 'property' as TabType, label: 'PROPERTY', icon: <Building2 size={16} /> },
+        { id: 'submits' as TabType, label: 'SUBMITS', icon: <FileText size={16} /> },
         { id: 'contacts' as TabType, label: 'CONTACTS', icon: <Users size={16} /> },
         { id: 'files' as TabType, label: 'FILES', icon: <FolderOpen size={16} /> },
       ];
@@ -754,8 +1099,55 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   const renderTabContent = () => {
     switch (activeTab) {
       case 'submit':
+        const submitProperty = siteSubmit?.property || (data as SiteSubmit)?.property;
+        const isShoppingCenter = submitProperty?.property_record_type?.property_type === 'Shopping Center';
+
         return (
           <div className="space-y-3">
+            {/* Client - Required, at top */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Client <span className="text-red-500">*</span>
+              </label>
+              <ClientSelector
+                selectedClient={selectedClient}
+                onClientSelect={(client) => {
+                  setSelectedClient(client);
+                  setHasChanges(true);
+                }}
+                placeholder="Search for client..."
+                className="text-sm"
+              />
+            </div>
+
+            {/* Assignment - Optional */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Assignment (Optional)</label>
+              <input
+                type="text"
+                value={selectedAssignment?.assignment_name || ''}
+                readOnly
+                placeholder="Not yet implemented - coming soon"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded bg-gray-50 text-gray-500"
+              />
+            </div>
+
+            {/* Property Unit - Conditional on Shopping Center */}
+            {isShoppingCenter && submitProperty?.id && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Property Unit (Optional)</label>
+                <PropertyUnitSelector
+                  value={selectedPropertyUnit}
+                  onChange={(value) => {
+                    setSelectedPropertyUnit(value);
+                    setHasChanges(true);
+                  }}
+                  propertyId={submitProperty.id}
+                  label=""
+                />
+              </div>
+            )}
+
             {/* Stage & Date Submitted in same row */}
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -790,80 +1182,20 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
               </div>
             </div>
 
-            {/* LOI Written Boolean */}
+            {/* Delivery Timeframe */}
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">LOI Written</label>
-              <div className="flex items-center space-x-3">
-                <label className="flex items-center text-sm">
-                  <input
-                    type="radio"
-                    name="loi_written"
-                    checked={siteSubmit?.loi_written === true}
-                    onChange={() => {}}
-                    readOnly
-                    className="mr-1 scale-90"
-                  />
-                  Yes
-                </label>
-                <label className="flex items-center text-sm">
-                  <input
-                    type="radio"
-                    name="loi_written"
-                    checked={siteSubmit?.loi_written === false}
-                    onChange={() => {}}
-                    readOnly
-                    className="mr-1 scale-90"
-                  />
-                  No
-                </label>
-              </div>
-            </div>
-
-            {/* LOI Date */}
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                LOI Date {!siteSubmit?.loi_written && <span className="text-gray-400">(if applicable)</span>}
-              </label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Delivery Timeframe</label>
               <input
-                type="date"
-                value={formData.loiDate}
+                type="text"
+                value={formData.deliveryTimeframe}
                 onChange={(e) => {
-                  setFormData(prev => ({ ...prev, loiDate: e.target.value }));
+                  setFormData(prev => ({ ...prev, deliveryTimeframe: e.target.value }));
                   setHasChanges(true);
                 }}
+                placeholder="e.g., 60-90 days..."
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent "
               />
             </div>
-
-            {/* Est Delivery Date & Delivery Timeframe in same row */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Est Delivery Date</label>
-                <input
-                  type="date"
-                  value={formData.deliveryDate}
-                  onChange={(e) => {
-                    setFormData(prev => ({ ...prev, deliveryDate: e.target.value }));
-                    setHasChanges(true);
-                  }}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent "
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Delivery Timeframe</label>
-                <input
-                  type="text"
-                  value={formData.deliveryTimeframe}
-                  onChange={(e) => {
-                    setFormData(prev => ({ ...prev, deliveryTimeframe: e.target.value }));
-                    setHasChanges(true);
-                  }}
-                  placeholder="e.g., 60-90 days..."
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent "
-                />
-              </div>
-            </div>
-
 
             {/* Notes */}
             <div>
@@ -1207,6 +1539,9 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       case 'contacts':
         return <ContactsTabContent propertyId={localPropertyData?.id || ''} onEditContact={onEditContact} />;
 
+      case 'submits':
+        return <SubmitsTabContent propertyId={localPropertyData?.id || ''} onViewSiteSubmitDetails={onViewSiteSubmitDetails} onCreateSiteSubmit={onCreateSiteSubmit} refreshTrigger={submitsRefreshTrigger} />;
+
       default:
         return <div>Content for {activeTab}</div>;
     }
@@ -1304,7 +1639,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                   <h1 className={`font-bold text-gray-900 mb-1 ${isProperty ? 'text-lg' : 'text-base'}`}>
                     {isProperty
                       ? (property?.property_name || property?.address || 'Unnamed Property')
-                      : (siteSubmit?.site_submit_name || siteSubmit?.property?.property_name || 'Site Submit')
+                      : (siteSubmitName || siteSubmit?.site_submit_name || siteSubmit?.property?.property_name || 'Site Submit')
                     }
                   </h1>
 
@@ -1459,7 +1794,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                   onClick={handleSaveChanges}
                   className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all duration-200 font-medium text-sm shadow-sm hover:shadow-md"
                 >
-                  UPDATE SITE SUBMIT
+                  {siteSubmit?._isNew || !siteSubmit?.id ? 'CREATE SITE SUBMIT' : 'UPDATE SITE SUBMIT'}
                 </button>
               </div>
             )}
@@ -1523,6 +1858,15 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
             </svg>
           </div>
         </div>
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => showToast(null)}
+        />
       )}
     </>
   );

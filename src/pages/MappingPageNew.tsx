@@ -51,6 +51,11 @@ const MappingPageContent: React.FC = () => {
   const [isPropertyDetailsOpen, setIsPropertyDetailsOpen] = useState(false);
   const [selectedPropertyData, setSelectedPropertyData] = useState<any>(null);
 
+  // Site submit details slideout (for viewing site submit from property)
+  const [isSiteSubmitDetailsOpen, setIsSiteSubmitDetailsOpen] = useState(false);
+  const [selectedSiteSubmitData, setSelectedSiteSubmitData] = useState<any>(null);
+  const [submitsRefreshTrigger, setSubmitsRefreshTrigger] = useState<number>(0);
+
   // Contact form slideout (for editing contacts from property slideout)
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
@@ -314,6 +319,58 @@ const MappingPageContent: React.FC = () => {
     setSelectedPropertyId(null);
   };
 
+  // Handle creating site submit from property
+  const handleCreateSiteSubmitForProperty = async (propertyId: string) => {
+    console.log('📋 Creating new site submit for property:', propertyId);
+
+    // Fetch property to get full property data including property_record_type
+    try {
+      const { data: property, error } = await supabase
+        .from('property')
+        .select(`
+          *,
+          property_record_type (*)
+        `)
+        .eq('id', propertyId)
+        .single();
+
+      if (error) throw error;
+
+      // Fetch the "Pursuing Ownership" stage
+      const { data: stage, error: stageError } = await supabase
+        .from('submit_stage')
+        .select('*')
+        .eq('name', 'Pursuing Ownership')
+        .single();
+
+      if (stageError) {
+        console.error('Error fetching default stage:', stageError);
+      }
+
+      // Create a blank site submit with property data and default stage
+      const newSiteSubmit: any = {
+        property_id: propertyId,
+        property: property,
+        submit_stage_id: stage?.id || null,
+        submit_stage: stage || null,
+        site_submit_name: '',
+        client_id: null,
+        year_1_rent: null,
+        ti: null,
+        notes: '',
+        date_submitted: new Date().toISOString().split('T')[0],
+        // This is a "create mode" indicator
+        _isNew: true
+      };
+
+      // Open site submit details slideout with the blank submit
+      setSelectedSiteSubmitData(newSiteSubmit);
+      setIsSiteSubmitDetailsOpen(true);
+    } catch (err) {
+      console.error('Error preparing site submit creation:', err);
+    }
+  };
+
   // Center map on property pin with appropriate zoom to avoid clusters
   const handleCenterOnPin = (lat: number, lng: number) => {
     if (mapInstance) {
@@ -440,6 +497,11 @@ const MappingPageContent: React.FC = () => {
       setIsPropertyDetailsOpen(false);
       setSelectedPropertyData(null);
     }
+    // Also close site submit details slideout if it's open
+    if (isSiteSubmitDetailsOpen) {
+      setIsSiteSubmitDetailsOpen(false);
+      setSelectedSiteSubmitData(null);
+    }
   };
 
   // Handle viewing property details from site submit
@@ -485,6 +547,58 @@ const MappingPageContent: React.FC = () => {
   const handlePropertyDetailsClose = () => {
     setIsPropertyDetailsOpen(false);
     setSelectedPropertyData(null);
+  };
+
+  // Handle viewing site submit details from property
+  const handleViewSiteSubmitDetails = async (siteSubmit: any) => {
+    console.log('📋 Opening site submit details slideout:', siteSubmit);
+
+    // Fetch fresh site submit data from database to ensure we have latest values
+    try {
+      const { data: freshSiteSubmitData, error } = await supabase
+        .from('site_submit')
+        .select(`
+          *,
+          client!site_submit_client_id_fkey (id, client_name),
+          submit_stage!site_submit_submit_stage_id_fkey (id, name),
+          property_unit!site_submit_property_unit_id_fkey (property_unit_name),
+          property!site_submit_property_id_fkey (*, property_record_type (*))
+        `)
+        .eq('id', siteSubmit.id)
+        .single();
+
+      if (error) {
+        console.error('❌ Error fetching fresh site submit data:', error);
+        console.error('❌ Error message:', error.message);
+        // Fall back to cached data if fetch fails
+        setSelectedSiteSubmitData(siteSubmit);
+      } else {
+        console.log('✅ Fetched fresh site submit data:', freshSiteSubmitData);
+        console.log('   - Property:', freshSiteSubmitData?.property?.property_name);
+        console.log('   - Client:', freshSiteSubmitData?.client?.client_name);
+        console.log('   - Stage:', freshSiteSubmitData?.submit_stage?.name);
+        setSelectedSiteSubmitData(freshSiteSubmitData);
+      }
+    } catch (err) {
+      console.error('❌ Exception fetching fresh site submit data:', err);
+      // Fall back to cached data if fetch fails
+      setSelectedSiteSubmitData(siteSubmit);
+    }
+
+    setIsSiteSubmitDetailsOpen(true);
+  };
+
+  const handleSiteSubmitDataUpdate = (updatedData: any) => {
+    console.log('📝 Site submit data updated:', updatedData);
+    setSelectedSiteSubmitData(updatedData);
+    // Trigger refresh of submits list in property slideout
+    setSubmitsRefreshTrigger(prev => prev + 1);
+    console.log('🔄 Triggering submits list refresh from parent, new trigger:', submitsRefreshTrigger + 1);
+  };
+
+  const handleSiteSubmitDetailsClose = () => {
+    setIsSiteSubmitDetailsOpen(false);
+    setSelectedSiteSubmitData(null);
   };
 
   // Handle contact form editing
@@ -1105,9 +1219,11 @@ const MappingPageContent: React.FC = () => {
               onViewPropertyDetails={handleViewPropertyDetails}
               onCenterOnPin={handleCenterOnPin}
               onDataUpdate={handlePinDataUpdate}
-              rightOffset={isPropertyDetailsOpen ? 500 : isContactFormOpen ? 450 : 0} // Shift left when property details or contact form is open
+              rightOffset={isPropertyDetailsOpen ? 500 : isSiteSubmitDetailsOpen ? 500 : isContactFormOpen ? 450 : 0} // Shift left when property/site submit details or contact form is open
               onEditContact={handleEditContact}
               onDeleteProperty={handleDeleteProperty}
+              onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
+              onCreateSiteSubmit={handleCreateSiteSubmitForProperty}
             />
 
             {/* Property Details Slideout (for "View Full Details" from site submit) */}
@@ -1124,6 +1240,22 @@ const MappingPageContent: React.FC = () => {
               rightOffset={isContactFormOpen ? 450 : 0} // Shift left when contact form is open (450px = contact form width)
               onEditContact={handleEditContact}
               onDeleteProperty={handleDeleteProperty}
+              onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
+              onCreateSiteSubmit={handleCreateSiteSubmitForProperty}
+              submitsRefreshTrigger={submitsRefreshTrigger}
+            />
+
+            {/* Site Submit Details Slideout (for viewing site submit from property) */}
+            <PinDetailsSlideout
+              isOpen={isSiteSubmitDetailsOpen}
+              onClose={handleSiteSubmitDetailsClose}
+              onOpen={() => setIsSiteSubmitDetailsOpen(true)}
+              data={selectedSiteSubmitData}
+              type="site_submit"
+              onViewPropertyDetails={handleViewPropertyDetails}
+              onCenterOnPin={handleCenterOnPin}
+              onDataUpdate={handleSiteSubmitDataUpdate}
+              rightOffset={0} // Always at the far right edge
             />
 
             {/* Contact Form Slideout (for editing contacts from property slideout) */}
