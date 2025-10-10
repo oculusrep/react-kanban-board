@@ -737,9 +737,18 @@ const MappingPageContent: React.FC = () => {
       refreshLayer('properties');
 
       console.log('✅ Property deleted successfully');
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error deleting property:', error);
-      showToast(`Error deleting property: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });
+
+      // Check if it's a foreign key constraint error (409 conflict)
+      if (error?.code === '23503' || error?.message?.includes('foreign key') || error?.status === 409) {
+        showToast(
+          'Cannot delete property: It has related records (site submits, contacts, or units). Please delete those first or contact support.',
+          { type: 'error' }
+        );
+      } else {
+        showToast(`Error deleting property: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });
+      }
     } finally {
       setPropertyToDelete(null);
     }
