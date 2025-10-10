@@ -6,6 +6,7 @@ interface PropertyContextMenuProps {
   isVisible: boolean;
   property: any | null;
   onVerifyLocation: (propertyId: string) => void;
+  onDeleteProperty?: (propertyId: string) => void;
   onClose: () => void;
 }
 
@@ -15,6 +16,7 @@ const PropertyContextMenu: React.FC<PropertyContextMenuProps> = ({
   isVisible,
   property,
   onVerifyLocation,
+  onDeleteProperty,
   onClose,
 }) => {
   if (!isVisible || !property) return null;
@@ -71,6 +73,21 @@ const PropertyContextMenu: React.FC<PropertyContextMenuProps> = ({
             <span>📋</span>
             <span>Copy Coordinates</span>
           </button>
+
+          {/* Delete Property - Only show if handler provided */}
+          {onDeleteProperty && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteProperty(property.id);
+                onClose();
+              }}
+              className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center space-x-2 border-t border-gray-100"
+            >
+              <span>🗑️</span>
+              <span>Delete Property</span>
+            </button>
+          )}
         </div>
       </div>
     </>

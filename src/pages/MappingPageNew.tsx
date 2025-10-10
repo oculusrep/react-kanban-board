@@ -21,6 +21,9 @@ import { STAGE_CATEGORIES } from '../components/mapping/SiteSubmitPin';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supportsRightClick } from '../utils/deviceDetection';
 import { supabase } from '../lib/supabaseClient';
+import ConfirmDialog from '../components/ConfirmDialog';
+import Toast from '../components/Toast';
+import { useToast } from '../hooks/useToast';
 
 // Inner component that uses the LayerManager context
 const MappingPageContent: React.FC = () => {
@@ -131,6 +134,11 @@ const MappingPageContent: React.FC = () => {
 
   // Flag to prevent map context menu when a marker was just right-clicked
   const [suppressMapContextMenu, setSuppressMapContextMenu] = useState<boolean>(false);
+
+  // Delete property state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [propertyToDelete, setPropertyToDelete] = useState<string | null>(null);
+  const { toast, showToast } = useToast();
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -530,6 +538,55 @@ const MappingPageContent: React.FC = () => {
     } catch (error) {
       console.error('❌ Failed to reset site submit location:', error);
       alert('Failed to reset location. Please try again.');
+    }
+  };
+
+  // Handle property deletion
+  const handleDeleteProperty = (propertyId: string) => {
+    console.log('🗑️ Delete property requested:', propertyId);
+    setPropertyToDelete(propertyId);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteProperty = async () => {
+    if (!propertyToDelete) return;
+
+    setShowDeleteConfirm(false);
+
+    try {
+      console.log('🗑️ Deleting property:', propertyToDelete);
+
+      const { error } = await supabase
+        .from('property')
+        .delete()
+        .eq('id', propertyToDelete);
+
+      if (error) throw error;
+
+      showToast('Property deleted successfully!', { type: 'success' });
+
+      // Close the slideout if the deleted property is currently selected
+      if (selectedPinData?.id === propertyToDelete) {
+        setIsPinDetailsOpen(false);
+        setSelectedPinData(null);
+        setSelectedPinType(null);
+      }
+
+      // Close property details slideout if open for deleted property
+      if (selectedPropertyData?.id === propertyToDelete) {
+        setIsPropertyDetailsOpen(false);
+        setSelectedPropertyData(null);
+      }
+
+      // Refresh the property layer to remove the deleted property from map
+      refreshLayer('properties');
+
+      console.log('✅ Property deleted successfully');
+    } catch (error) {
+      console.error('❌ Error deleting property:', error);
+      showToast(`Error deleting property: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });
+    } finally {
+      setPropertyToDelete(null);
     }
   };
 
@@ -1050,6 +1107,7 @@ const MappingPageContent: React.FC = () => {
               onDataUpdate={handlePinDataUpdate}
               rightOffset={isPropertyDetailsOpen ? 500 : isContactFormOpen ? 450 : 0} // Shift left when property details or contact form is open
               onEditContact={handleEditContact}
+              onDeleteProperty={handleDeleteProperty}
             />
 
             {/* Property Details Slideout (for "View Full Details" from site submit) */}
@@ -1065,6 +1123,7 @@ const MappingPageContent: React.FC = () => {
               onDataUpdate={handlePropertyDataUpdate}
               rightOffset={isContactFormOpen ? 450 : 0} // Shift left when contact form is open (450px = contact form width)
               onEditContact={handleEditContact}
+              onDeleteProperty={handleDeleteProperty}
             />
 
             {/* Contact Form Slideout (for editing contacts from property slideout) */}
@@ -1121,6 +1180,7 @@ const MappingPageContent: React.FC = () => {
               isVisible={propertyContextMenu.isVisible}
               property={propertyContextMenu.property}
               onVerifyLocation={handleVerifyLocation}
+              onDeleteProperty={handleDeleteProperty}
               onClose={handlePropertyContextMenuClose}
             />
 
@@ -1152,6 +1212,27 @@ const MappingPageContent: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Toast Notification */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Property"
+        message="Are you sure you want to delete this property? This action cannot be undone and will remove the property from the map."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={confirmDeleteProperty}
+        onCancel={() => {
+          setShowDeleteConfirm(false);
+          setPropertyToDelete(null);
+        }}
+      />
     </div>
   );
 };

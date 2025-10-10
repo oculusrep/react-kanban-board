@@ -7,7 +7,7 @@ import PropertyInputField from '../../property/PropertyInputField';
 import PropertyPSFField from '../../property/PropertyPSFField';
 import PropertyCurrencyField from '../../property/PropertyCurrencyField';
 import PropertySquareFootageField from '../../property/PropertySquareFootageField';
-import { FileText, DollarSign, Building2, Activity, MapPin, Edit3, FolderOpen, Users } from 'lucide-react';
+import { FileText, DollarSign, Building2, Activity, MapPin, Edit3, FolderOpen, Users, Trash2 } from 'lucide-react';
 import { Database } from '../../../../database-schema';
 import { getDropboxPropertySyncService } from '../../../services/dropboxPropertySync';
 import FileManager from '../../FileManager/FileManager';
@@ -77,6 +77,7 @@ interface PinDetailsSlideoutProps {
   onCenterOnPin?: (lat: number, lng: number) => void; // Function to center map on pin
   onDataUpdate?: (updatedData: Property | SiteSubmit) => void; // Callback when data is updated
   onEditContact?: (contactId: string | null, propertyId: string) => void; // Callback to open contact form sidebar
+  onDeleteProperty?: (propertyId: string) => void; // Callback to delete property
 }
 
 type TabType = 'property' | 'submit' | 'location' | 'files' | 'contacts';
@@ -352,7 +353,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   rightOffset = 0,
   onCenterOnPin,
   onDataUpdate,
-  onEditContact
+  onEditContact,
+  onDeleteProperty
 }) => {
   console.log('PinDetailsSlideout rendering with:', { isOpen, data, type, rightOffset });
   const [activeTab, setActiveTab] = useState<TabType>(type === 'site_submit' ? 'submit' : 'property');
@@ -1238,6 +1240,17 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
             {/* Header Controls */}
             <div className="absolute top-4 right-4 flex space-x-2">
+              {/* Delete Button - Only for properties */}
+              {isProperty && onDeleteProperty && localPropertyData?.id && (
+                <button
+                  onClick={() => onDeleteProperty(localPropertyData.id)}
+                  className="p-2 bg-red-500 bg-opacity-80 hover:bg-red-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
+                  title="Delete property"
+                >
+                  <Trash2 size={16} className="text-white" />
+                </button>
+              )}
+
               {/* Minimize/Expand Button */}
               <button
                 onClick={() => setIsMinimized(!isMinimized)}
