@@ -18,6 +18,17 @@
         overflow-x: hidden;
         width: 100%;
       }
+
+      /* Prevent iOS Safari double-tap zoom and pinch zoom on UI elements */
+      * {
+        touch-action: pan-x pan-y;
+      }
+
+      /* Allow pinch-to-zoom specifically on the map */
+      .gm-style,
+      .gm-style div {
+        touch-action: pinch-zoom pan-x pan-y !important;
+      }
     </style>
   </head>
   <body class="bg-gray-100">
