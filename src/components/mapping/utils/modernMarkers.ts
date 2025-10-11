@@ -280,6 +280,7 @@ export const MarkerColors = {
   VERIFIED: '#10B981',    // Green - for verified locations
   GEOCODED: '#3B82F6',    // Blue - for geocoded locations
   VERIFYING: '#F97316',   // Orange - for verification in progress
+  USER_LOCATION: '#3B82F6',  // Bright blue - for user's current location
 
   // Site submit colors (by status)
   SUBMITTED: '#8B5CF6',   // Purple

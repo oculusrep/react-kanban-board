@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
-import { createModernPinIcon, MarkerColors, createMutedPlacesStyle, createSatelliteMutedPlacesStyle } from './utils/modernMarkers';
+import { createModernPinIcon, createModernMarkerIcon, MarkerColors, createMutedPlacesStyle, createSatelliteMutedPlacesStyle } from './utils/modernMarkers';
 
 interface GoogleMapContainerProps {
   height?: string;
@@ -430,11 +430,14 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         });
 
         // Add a marker at the center location
+        // Use circular marker for user location to distinguish from green verified pins
         const marker = new (google.maps as any).Marker({
           position: mapCenter,
           map: map,
           title: location ? 'Your Location' : 'Atlanta, GA',
-          icon: createModernPinIcon(location ? MarkerColors.VERIFIED : MarkerColors.DEFAULT, 28)
+          icon: location
+            ? createModernMarkerIcon(MarkerColors.USER_LOCATION, 32)  // Blue circle for user location
+            : createModernPinIcon(MarkerColors.DEFAULT, 28)           // Gray pin for default
         });
 
         // Add info window
