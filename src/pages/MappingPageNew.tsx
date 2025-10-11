@@ -837,14 +837,25 @@ const MappingPageContent: React.FC = () => {
       // Refresh site submit layer to remove the deleted marker
       refreshLayer('site_submits');
 
+      // Refresh the submits list if viewing from property
+      setSubmitsRefreshTrigger(prev => prev + 1);
+
       // Close the slideout if the deleted site submit is currently selected
-      // Delay slightly to ensure toast is displayed and layer is refreshed
-      if (selectedPin?.type === 'site_submit' && selectedPin?.data?.id === siteSubmitId) {
-        setTimeout(() => {
-          setSelectedPin(null);
-          setSlideoutOpen(false);
-        }, 100);
-      }
+      // Check both the main pin details slideout and the site submit details slideout
+      setTimeout(() => {
+        // Close main pin details slideout if showing this site submit
+        if (selectedPinType === 'site_submit' && selectedPinData?.id === siteSubmitId) {
+          setSelectedPinData(null);
+          setSelectedPinType(null);
+          setIsPinDetailsOpen(false);
+        }
+
+        // Close site submit details slideout if showing this site submit
+        if (selectedSiteSubmitData?.id === siteSubmitId) {
+          setSelectedSiteSubmitData(null);
+          setIsSiteSubmitDetailsOpen(false);
+        }
+      }, 100);
 
       console.log('✅ Site submit deletion complete');
     } catch (error: any) {
