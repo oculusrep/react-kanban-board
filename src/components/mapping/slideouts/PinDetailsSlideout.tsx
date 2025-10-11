@@ -1007,6 +1007,13 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           return;
         }
 
+        // Get property coordinates for the site submit pin
+        const propertyCoords = siteSubmit.property?.verified_latitude && siteSubmit.property?.verified_longitude
+          ? { lat: siteSubmit.property.verified_latitude, lng: siteSubmit.property.verified_longitude }
+          : { lat: siteSubmit.property?.latitude, lng: siteSubmit.property?.longitude };
+
+        console.log('📍 Using property coordinates for site submit:', propertyCoords);
+
         // Prepare insert data
         const insertData = {
           site_submit_name: siteSubmitName,
@@ -1018,6 +1025,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           date_submitted: formData.dateSubmitted || null,
           delivery_timeframe: formData.deliveryTimeframe || null,
           notes: formData.notes || null,
+          sf_property_latitude: propertyCoords.lat,  // Required for map pin
+          sf_property_longitude: propertyCoords.lng, // Required for map pin
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
