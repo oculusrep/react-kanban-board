@@ -1606,6 +1606,19 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
               </div>
             </div>
 
+            {/* Button to open full property details */}
+            {!isProperty && property && onViewPropertyDetails && (
+              <div className="pt-4 border-t border-gray-200">
+                <button
+                  onClick={() => onViewPropertyDetails(property)}
+                  className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 font-medium text-sm shadow-sm hover:shadow-md flex items-center justify-center gap-2"
+                >
+                  <Building2 size={16} />
+                  View Full Property Details
+                </button>
+              </div>
+            )}
+
           </div>
         );
 
