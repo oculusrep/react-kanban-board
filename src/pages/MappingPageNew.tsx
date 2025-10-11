@@ -829,18 +829,24 @@ const MappingPageContent: React.FC = () => {
 
       if (error) throw error;
 
-      showToast('Site submit deleted successfully!', { type: 'success' });
+      console.log('✅ Site submit deleted successfully from database');
 
-      // Close the slideout if the deleted site submit is currently selected
-      if (selectedPin?.type === 'site_submit' && selectedPin?.data?.id === siteSubmitId) {
-        setSelectedPin(null);
-        setSlideoutOpen(false);
-      }
+      // Show success toast
+      showToast('Site submit deleted successfully!', { type: 'success' });
 
       // Refresh site submit layer to remove the deleted marker
       refreshLayer('site_submits');
 
-      console.log('✅ Site submit deleted successfully');
+      // Close the slideout if the deleted site submit is currently selected
+      // Delay slightly to ensure toast is displayed and layer is refreshed
+      if (selectedPin?.type === 'site_submit' && selectedPin?.data?.id === siteSubmitId) {
+        setTimeout(() => {
+          setSelectedPin(null);
+          setSlideoutOpen(false);
+        }, 100);
+      }
+
+      console.log('✅ Site submit deletion complete');
     } catch (error: any) {
       console.error('❌ Error deleting site submit:', error);
       showToast(`Error deleting site submit: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });

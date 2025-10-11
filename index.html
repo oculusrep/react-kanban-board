@@ -23,5 +23,15 @@
   <body class="bg-gray-100">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+
+    <!-- Eruda Mobile Console for iPad/Mobile Debugging -->
+    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+    <script>
+      // Only load Eruda in development mode
+      if (window.location.hostname === 'localhost' || window.location.hostname.includes('github') || window.location.hostname.includes('codespaces')) {
+        eruda.init();
+        console.log('📱 Eruda mobile console loaded - tap the green icon in bottom-right to open');
+      }
+    </script>
   </body>
 </html>
