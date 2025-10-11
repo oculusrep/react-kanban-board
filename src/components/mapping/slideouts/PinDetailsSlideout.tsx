@@ -86,6 +86,7 @@ interface PinDetailsSlideoutProps {
   onDataUpdate?: (updatedData: Property | SiteSubmit) => void; // Callback when data is updated
   onEditContact?: (contactId: string | null, propertyId: string) => void; // Callback to open contact form sidebar
   onDeleteProperty?: (propertyId: string) => void; // Callback to delete property
+  onDeleteSiteSubmit?: (siteSubmitId: string, siteSubmitName: string) => void; // Callback to delete site submit
   onViewSiteSubmitDetails?: (siteSubmit: SiteSubmit) => void; // Callback to open site submit slideout from property
   onCreateSiteSubmit?: (propertyId: string) => void; // Callback to create new site submit for property
   submitsRefreshTrigger?: number; // Trigger to refresh submits list
@@ -529,6 +530,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   onDataUpdate,
   onEditContact,
   onDeleteProperty,
+  onDeleteSiteSubmit,
   onViewSiteSubmitDetails,
   onCreateSiteSubmit,
   submitsRefreshTrigger,
@@ -1653,12 +1655,26 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
             {/* Header Controls */}
             <div className="absolute top-4 right-4 flex space-x-2">
-              {/* Delete Button - Only for properties */}
+              {/* Delete Button - For properties */}
               {isProperty && onDeleteProperty && localPropertyData?.id && (
                 <button
                   onClick={() => onDeleteProperty(localPropertyData.id)}
                   className="p-2 bg-red-500 bg-opacity-80 hover:bg-red-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
                   title="Delete property"
+                >
+                  <Trash2 size={16} className="text-white" />
+                </button>
+              )}
+
+              {/* Delete Button - For site submits */}
+              {!isProperty && onDeleteSiteSubmit && siteSubmit?.id && (
+                <button
+                  onClick={() => {
+                    const siteName = siteSubmit.site_submit_name || siteSubmit.client?.client_name || 'this site submit';
+                    onDeleteSiteSubmit(siteSubmit.id, siteName);
+                  }}
+                  className="p-2 bg-red-500 bg-opacity-80 hover:bg-red-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
+                  title="Delete site submit"
                 >
                   <Trash2 size={16} className="text-white" />
                 </button>

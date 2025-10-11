@@ -35,6 +35,7 @@ interface SiteSubmitContextMenuProps {
   siteSubmit: SiteSubmit | null;
   onVerifyLocation: (siteSubmitId: string) => void;
   onResetLocation?: (siteSubmitId: string) => void;
+  onDelete?: (siteSubmitId: string, siteSubmitName: string) => void;
   onClose: () => void;
 }
 
@@ -45,6 +46,7 @@ const SiteSubmitContextMenu: React.FC<SiteSubmitContextMenuProps> = ({
   siteSubmit,
   onVerifyLocation,
   onResetLocation,
+  onDelete,
   onClose,
 }) => {
   if (!isVisible || !siteSubmit) return null;
@@ -132,6 +134,25 @@ const SiteSubmitContextMenu: React.FC<SiteSubmitContextMenuProps> = ({
               <span>🔄</span>
               <span>Reset to Property Location</span>
             </button>
+          )}
+
+          {/* Delete option with divider */}
+          {onDelete && (
+            <>
+              <div className="border-t border-gray-200 my-1"></div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const siteName = siteSubmit.site_submit_name || siteSubmit.client?.client_name || 'this site submit';
+                  onDelete(siteSubmit.id, siteName);
+                  onClose();
+                }}
+                className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 font-medium flex items-center space-x-2"
+              >
+                <span>🗑️</span>
+                <span>Delete Site Submit</span>
+              </button>
+            </>
           )}
         </div>
       </div>

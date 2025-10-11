@@ -809,6 +809,44 @@ const MappingPageContent: React.FC = () => {
     }
   };
 
+  // Handle site submit deletion
+  const handleDeleteSiteSubmit = async (siteSubmitId: string, siteSubmitName: string) => {
+    console.log('🗑️ Delete site submit requested:', siteSubmitId, siteSubmitName);
+
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete "${siteSubmitName}"?\n\nThis action cannot be undone.`
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      console.log('🗑️ Deleting site submit:', siteSubmitId);
+
+      const { error } = await supabase
+        .from('site_submit')
+        .delete()
+        .eq('id', siteSubmitId);
+
+      if (error) throw error;
+
+      showToast('Site submit deleted successfully!', { type: 'success' });
+
+      // Close the slideout if the deleted site submit is currently selected
+      if (selectedPin?.type === 'site_submit' && selectedPin?.data?.id === siteSubmitId) {
+        setSelectedPin(null);
+        setSlideoutOpen(false);
+      }
+
+      // Refresh site submit layer to remove the deleted marker
+      refreshLayer('site_submits');
+
+      console.log('✅ Site submit deleted successfully');
+    } catch (error: any) {
+      console.error('❌ Error deleting site submit:', error);
+      showToast(`Error deleting site submit: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });
+    }
+  };
+
   // Handle property deletion
   const handleDeleteProperty = (propertyId: string) => {
     console.log('🗑️ Delete property requested:', propertyId);
@@ -1385,6 +1423,7 @@ const MappingPageContent: React.FC = () => {
               rightOffset={isPropertyDetailsOpen ? 500 : isSiteSubmitDetailsOpen ? 500 : isContactFormOpen ? 450 : 0} // Shift left when property/site submit details or contact form is open
               onEditContact={handleEditContact}
               onDeleteProperty={handleDeleteProperty}
+              onDeleteSiteSubmit={handleDeleteSiteSubmit}
               onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
               onCreateSiteSubmit={handleCreateSiteSubmitForProperty}
               submitsRefreshTrigger={submitsRefreshTrigger}
@@ -1420,6 +1459,7 @@ const MappingPageContent: React.FC = () => {
               onViewPropertyDetails={handleViewPropertyDetails}
               onCenterOnPin={handleCenterOnPin}
               onDataUpdate={handleSiteSubmitDataUpdate}
+              onDeleteSiteSubmit={handleDeleteSiteSubmit}
               rightOffset={0} // Always at the far right edge
             />
 
@@ -1490,6 +1530,7 @@ const MappingPageContent: React.FC = () => {
               siteSubmit={siteSubmitContextMenu.siteSubmit}
               onVerifyLocation={handleSiteSubmitVerifyLocation}
               onResetLocation={handleSiteSubmitResetLocation}
+              onDelete={handleDeleteSiteSubmit}
               onClose={handleSiteSubmitContextMenuClose}
             />
 
