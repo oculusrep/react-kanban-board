@@ -3,6 +3,7 @@ import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from './LayerManager';
 import { createStageMarkerIcon, createVerifiedStageMarkerIcon } from '../utils/stageMarkers';
+import { isTouchDevice, addLongPressListener } from '../../../utils/deviceDetection';
 
 interface SiteSubmit {
   id: string;
@@ -541,7 +542,17 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
         }
       });
 
+      // Long-press state for touch devices (defined here so click handler can access it)
+      let wasLongPress = false;
+
       marker.addListener('click', () => {
+        // Don't open slideout if this was a long-press
+        if (wasLongPress) {
+          console.log('🚫 Skipping click - was long press');
+          wasLongPress = false;
+          return;
+        }
+
         // Use modern slideout instead of info window
         if (onPinClick) {
           onPinClick(siteSubmit);
@@ -562,6 +573,63 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
             onSiteSubmitRightClick(siteSubmit, event.domEvent.clientX, event.domEvent.clientY);
           }
         });
+
+        // Add long-press support for touch devices
+        // Note: Standard markers don't have getElement(), so we handle long-press
+        // through a custom click event with timing
+        if (isTouchDevice()) {
+          let touchStartTime = 0;
+          let touchMoved = false;
+          let touchStartPos = { x: 0, y: 0 };
+
+          marker.addListener('mousedown', (event: google.maps.MapMouseEvent) => {
+            if (event.domEvent && event.domEvent instanceof TouchEvent) {
+              // Cancel long-press if multi-touch (pinch/zoom)
+              if (event.domEvent.touches.length > 1) {
+                touchStartTime = 0;
+                return;
+              }
+
+              touchStartTime = Date.now();
+              touchMoved = false;
+              wasLongPress = false;
+              const touch = event.domEvent.touches[0];
+              touchStartPos = { x: touch.clientX, y: touch.clientY };
+            }
+          });
+
+          marker.addListener('mousemove', (event: google.maps.MapMouseEvent) => {
+            if (touchStartTime && event.domEvent && event.domEvent instanceof TouchEvent) {
+              // Cancel long-press if multi-touch detected during move
+              if (event.domEvent.touches.length > 1) {
+                touchStartTime = 0;
+                return;
+              }
+
+              const touch = event.domEvent.touches[0];
+              const deltaX = Math.abs(touch.clientX - touchStartPos.x);
+              const deltaY = Math.abs(touch.clientY - touchStartPos.y);
+              if (deltaX > 10 || deltaY > 10) {
+                touchMoved = true;
+              }
+            }
+          });
+
+          marker.addListener('mouseup', (event: google.maps.MapMouseEvent) => {
+            if (touchStartTime && event.domEvent && event.domEvent instanceof TouchEvent) {
+              const touchDuration = Date.now() - touchStartTime;
+              if (touchDuration >= 500 && !touchMoved) {
+                console.log('📱 Long press on site submit marker:', siteSubmit.site_submit_name);
+                wasLongPress = true;
+                const touch = event.domEvent.changedTouches[0];
+                onSiteSubmitRightClick(siteSubmit, touch.clientX, touch.clientY);
+                event.domEvent.preventDefault();
+                event.domEvent.stopPropagation();
+              }
+              touchStartTime = 0;
+            }
+          });
+        }
       }
 
       return marker;

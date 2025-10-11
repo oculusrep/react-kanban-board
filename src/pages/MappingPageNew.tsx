@@ -19,7 +19,7 @@ import SiteSubmitLegend from '../components/mapping/SiteSubmitLegend';
 import ContactFormModal from '../components/ContactFormModal';
 import { STAGE_CATEGORIES } from '../components/mapping/SiteSubmitPin';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { supportsRightClick } from '../utils/deviceDetection';
+import { supportsRightClick, isTouchDevice, addLongPressListener } from '../utils/deviceDetection';
 import { supabase } from '../lib/supabaseClient';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Toast from '../components/Toast';
@@ -141,6 +141,9 @@ const MappingPageContent: React.FC = () => {
   // Flag to prevent map context menu when a marker was just right-clicked
   const [suppressMapContextMenu, setSuppressMapContextMenu] = useState<boolean>(false);
 
+  // Flag to prevent closing context menus after long-press
+  const [justLongPressed, setJustLongPressed] = useState<boolean>(false);
+
   // Delete property state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [propertyToDelete, setPropertyToDelete] = useState<string | null>(null);
@@ -181,7 +184,7 @@ const MappingPageContent: React.FC = () => {
 
     // Add click listener for pin dropping
     map.addListener('click', (event: google.maps.MapMouseEvent) => {
-      // Close context menus on any click
+      // Close context menus on any click (they handle their own click events to stay open)
       setContextMenu(prev => ({ ...prev, isVisible: false }));
       setPropertyContextMenu(prev => ({ ...prev, isVisible: false }));
       setSiteSubmitContextMenu(prev => ({ ...prev, isVisible: false }));
@@ -222,6 +225,89 @@ const MappingPageContent: React.FC = () => {
             y: event.domEvent.clientY,
             coordinates: { lat, lng },
           });
+        }
+      });
+    }
+
+    // Add long-press listener for touch devices (iPad, mobile)
+    if (isTouchDevice()) {
+      let touchStartTime = 0;
+      let touchMoved = false;
+      let touchStartPos = { x: 0, y: 0 };
+      let touchLatLng: google.maps.LatLng | null = null;
+
+      map.addListener('mousedown', (event: google.maps.MapMouseEvent) => {
+        if (event.domEvent && event.domEvent instanceof TouchEvent && event.latLng) {
+          // Cancel long-press if multi-touch (pinch/zoom)
+          if (event.domEvent.touches.length > 1) {
+            touchStartTime = 0;
+            console.log('🚫 Multi-touch detected, canceling long-press');
+            return;
+          }
+
+          touchStartTime = Date.now();
+          touchMoved = false;
+          touchLatLng = event.latLng;
+          const touch = event.domEvent.touches[0];
+          touchStartPos = { x: touch.clientX, y: touch.clientY };
+          console.log('📱 Touch start on map at:', touchLatLng.lat(), touchLatLng.lng());
+        }
+      });
+
+      map.addListener('mousemove', (event: google.maps.MapMouseEvent) => {
+        if (touchStartTime && event.domEvent && event.domEvent instanceof TouchEvent) {
+          // Cancel long-press if multi-touch detected during move
+          if (event.domEvent.touches.length > 1) {
+            touchStartTime = 0;
+            console.log('🚫 Multi-touch during move, canceling long-press');
+            return;
+          }
+
+          const touch = event.domEvent.touches[0];
+          const deltaX = Math.abs(touch.clientX - touchStartPos.x);
+          const deltaY = Math.abs(touch.clientY - touchStartPos.y);
+          if (deltaX > 10 || deltaY > 10) {
+            touchMoved = true;
+          }
+        }
+      });
+
+      map.addListener('mouseup', (event: google.maps.MapMouseEvent) => {
+        if (touchStartTime && event.domEvent && event.domEvent instanceof TouchEvent && touchLatLng) {
+          const touchDuration = Date.now() - touchStartTime;
+          if (touchDuration >= 500 && !touchMoved) {
+            // Don't show map context menu if a marker was just long-pressed
+            if (suppressMapContextMenu) {
+              console.log('🚫 Marker was long-pressed, skipping map context menu');
+              touchStartTime = 0;
+              return;
+            }
+
+            console.log('📱 Long press detected on map at:', touchLatLng.lat(), touchLatLng.lng());
+            const touch = event.domEvent.changedTouches[0];
+
+            setContextMenu({
+              isVisible: true,
+              x: touch.clientX,
+              y: touch.clientY,
+              coordinates: { lat: touchLatLng.lat(), lng: touchLatLng.lng() },
+            });
+
+            // Re-open after delay to ensure it stays visible
+            setTimeout(() => {
+              setContextMenu(prev => ({
+                ...prev,
+                isVisible: true,
+                x: touch.clientX,
+                y: touch.clientY,
+                coordinates: { lat: touchLatLng.lat(), lng: touchLatLng.lng() },
+              }));
+            }, 100);
+
+            event.domEvent.preventDefault();
+            event.domEvent.stopPropagation();
+          }
+          touchStartTime = 0;
         }
       });
     }
@@ -469,16 +555,31 @@ const MappingPageContent: React.FC = () => {
       return;
     }
 
+    // Close the map context menu if it's open
+    setContextMenu(prev => ({ ...prev, isVisible: false }));
+
     // Set flag to suppress map context menu
     setSuppressMapContextMenu(true);
-    setTimeout(() => setSuppressMapContextMenu(false), 100);
+    setTimeout(() => setSuppressMapContextMenu(false), 200);
 
+    // Open context menu first, THEN set the flag (so it opens before map click closes it)
     setPropertyContextMenu({
       isVisible: true,
       x,
       y,
       property,
     });
+
+    // Use a longer delay and re-open if needed
+    setTimeout(() => {
+      setPropertyContextMenu(prev => ({
+        ...prev,
+        isVisible: true,
+        x,
+        y,
+        property,
+      }));
+    }, 100);
   };
 
   const handlePropertyContextMenuClose = () => {
@@ -501,12 +602,24 @@ const MappingPageContent: React.FC = () => {
     setSuppressMapContextMenu(true);
     setTimeout(() => setSuppressMapContextMenu(false), 100);
 
+    // Open context menu first
     setSiteSubmitContextMenu({
       isVisible: true,
       x,
       y,
       siteSubmit,
     });
+
+    // Re-open after a delay to ensure it stays visible
+    setTimeout(() => {
+      setSiteSubmitContextMenu(prev => ({
+        ...prev,
+        isVisible: true,
+        x,
+        y,
+        siteSubmit,
+      }));
+    }, 100);
   };
 
   const handleSiteSubmitContextMenuClose = () => {

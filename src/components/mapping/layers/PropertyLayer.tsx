@@ -4,6 +4,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from './LayerManager';
 import { ModernMarkerStyles } from '../utils/modernMarkers';
 import { Database } from '../../../database-schema';
+import { isTouchDevice, addLongPressListener } from '../../../utils/deviceDetection';
 
 type Property = Database['public']['Tables']['property']['Row'] & {
   property_record_type?: {
@@ -283,8 +284,18 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
         draggable: isBeingVerified
       });
 
+      // Long-press state for touch devices (defined here so click handler and drag can access it)
+      let wasLongPress = false;
+      let touchStartTime = 0; // Declare here so drag handlers can access it
+
       // Add drag listener for verification
       if (isBeingVerified && onLocationVerified) {
+        // Reset long-press detection when drag starts
+        marker.addListener('dragstart', () => {
+          touchStartTime = 0; // Cancel any pending long-press
+          wasLongPress = false;
+        });
+
         marker.addListener('dragend', (event: google.maps.MapMouseEvent) => {
           if (event.latLng) {
             const newLat = event.latLng.lat();
@@ -322,6 +333,13 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       });
 
       marker.addListener('click', () => {
+        // Don't open slideout if this was a long-press
+        if (wasLongPress) {
+          console.log('🚫 Skipping click - was long press (session marker)');
+          wasLongPress = false;
+          return;
+        }
+
         // Use modern slideout for session markers too
         if (onPinClick) {
           onPinClick(property);
@@ -342,6 +360,62 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
             onPropertyRightClick(property, event.domEvent.clientX, event.domEvent.clientY);
           }
         });
+
+        // Add long-press support for touch devices
+        // Note: Standard markers don't have getElement(), so we handle long-press
+        // through a custom click event with timing
+        if (isTouchDevice()) {
+          let touchMoved = false;
+          let touchStartPos = { x: 0, y: 0 };
+
+          marker.addListener('mousedown', (event: google.maps.MapMouseEvent) => {
+            if (event.domEvent && event.domEvent instanceof TouchEvent) {
+              // Cancel long-press if multi-touch (pinch/zoom)
+              if (event.domEvent.touches.length > 1) {
+                touchStartTime = 0;
+                return;
+              }
+
+              touchStartTime = Date.now(); // Use outer scope variable
+              touchMoved = false;
+              wasLongPress = false;
+              const touch = event.domEvent.touches[0];
+              touchStartPos = { x: touch.clientX, y: touch.clientY };
+            }
+          });
+
+          marker.addListener('mousemove', (event: google.maps.MapMouseEvent) => {
+            if (touchStartTime && event.domEvent && event.domEvent instanceof TouchEvent) {
+              // Cancel long-press if multi-touch detected during move
+              if (event.domEvent.touches.length > 1) {
+                touchStartTime = 0;
+                return;
+              }
+
+              const touch = event.domEvent.touches[0];
+              const deltaX = Math.abs(touch.clientX - touchStartPos.x);
+              const deltaY = Math.abs(touch.clientY - touchStartPos.y);
+              if (deltaX > 10 || deltaY > 10) {
+                touchMoved = true;
+              }
+            }
+          });
+
+          marker.addListener('mouseup', (event: google.maps.MapMouseEvent) => {
+            if (touchStartTime && event.domEvent && event.domEvent instanceof TouchEvent) {
+              const touchDuration = Date.now() - touchStartTime;
+              if (touchDuration >= 500 && !touchMoved) {
+                console.log('📱 Long press on session property marker:', property.property_name);
+                wasLongPress = true;
+                const touch = event.domEvent.changedTouches[0];
+                onPropertyRightClick(property, touch.clientX, touch.clientY);
+                event.domEvent.preventDefault();
+                event.domEvent.stopPropagation();
+              }
+              touchStartTime = 0;
+            }
+          });
+        }
       }
 
       return marker;
@@ -460,8 +534,18 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
         zIndex: isSelected ? 3000 : (isBeingVerified ? 2000 : 100) // Highest z-index for selected
       });
 
+      // Long-press state for touch devices (defined here so click handler and drag can access it)
+      let wasLongPress = false;
+      let touchStartTime = 0; // Declare here so drag handlers can access it
+
       // Add drag listener for verification
       if (isBeingVerified && onLocationVerified) {
+        // Reset long-press detection when drag starts
+        marker.addListener('dragstart', () => {
+          touchStartTime = 0; // Cancel any pending long-press
+          wasLongPress = false;
+        });
+
         marker.addListener('dragend', (event: google.maps.MapMouseEvent) => {
           if (event.latLng) {
             const newLat = event.latLng.lat();
@@ -473,6 +557,13 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       }
 
       marker.addListener('click', () => {
+        // Don't open slideout if this was a long-press
+        if (wasLongPress) {
+          console.log('🚫 Skipping click - was long press');
+          wasLongPress = false;
+          return;
+        }
+
         // Use modern slideout instead of info window
         if (onPinClick) {
           onPinClick(property);
@@ -508,6 +599,66 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
             onPropertyRightClick(property, event.domEvent.clientX, event.domEvent.clientY);
           }
         });
+
+        // Add long-press support for touch devices
+        // Note: Standard markers don't have getElement(), so we handle long-press
+        // through a custom click event with timing
+        if (isTouchDevice()) {
+          let touchMoved = false;
+          let touchStartPos = { x: 0, y: 0 };
+
+          marker.addListener('mousedown', (event: google.maps.MapMouseEvent) => {
+            if (event.domEvent && event.domEvent instanceof TouchEvent) {
+              // Cancel long-press if multi-touch (pinch/zoom)
+              if (event.domEvent.touches.length > 1) {
+                touchStartTime = 0;
+                return;
+              }
+
+              touchStartTime = Date.now(); // Use outer scope variable
+              touchMoved = false;
+              wasLongPress = false;
+              const touch = event.domEvent.touches[0];
+              touchStartPos = { x: touch.clientX, y: touch.clientY };
+            }
+          });
+
+          marker.addListener('mousemove', (event: google.maps.MapMouseEvent) => {
+            if (touchStartTime && event.domEvent && event.domEvent instanceof TouchEvent) {
+              // Cancel long-press if multi-touch detected during move
+              if (event.domEvent.touches.length > 1) {
+                touchStartTime = 0;
+                return;
+              }
+
+              const touch = event.domEvent.touches[0];
+              const deltaX = Math.abs(touch.clientX - touchStartPos.x);
+              const deltaY = Math.abs(touch.clientY - touchStartPos.y);
+              if (deltaX > 10 || deltaY > 10) {
+                touchMoved = true;
+              }
+            }
+          });
+
+          marker.addListener('mouseup', (event: google.maps.MapMouseEvent) => {
+            if (touchStartTime && event.domEvent && event.domEvent instanceof TouchEvent) {
+              const touchDuration = Date.now() - touchStartTime;
+              if (touchDuration >= 500 && !touchMoved) {
+                console.log('📱 Long press on property marker:', property.property_name);
+                wasLongPress = true;
+                const touch = event.domEvent.changedTouches[0];
+                onPropertyRightClick(property, touch.clientX, touch.clientY);
+                event.domEvent.preventDefault();
+                event.domEvent.stopPropagation();
+                // Stop all event propagation including to map
+                if (event.stop) {
+                  event.stop();
+                }
+              }
+              touchStartTime = 0;
+            }
+          });
+        }
       }
 
       // Store reference to selected marker

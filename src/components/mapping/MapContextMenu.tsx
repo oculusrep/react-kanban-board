@@ -19,6 +19,12 @@ const MapContextMenu: React.FC<MapContextMenuProps> = ({
 }) => {
   if (!isVisible || !coordinates) return null;
 
+  // Constrain menu position to viewport to prevent horizontal scrolling
+  const menuWidth = 200;
+  const menuHeight = 200; // approximate
+  const constrainedX = Math.min(x, window.innerWidth - menuWidth - 10);
+  const constrainedY = Math.min(y, window.innerHeight - menuHeight - 10);
+
   return (
     <>
       {/* Backdrop to close menu */}
@@ -31,8 +37,8 @@ const MapContextMenu: React.FC<MapContextMenuProps> = ({
       <div
         className="fixed z-[40] bg-white rounded-lg shadow-xl border border-gray-200 py-2 min-w-[200px]"
         style={{
-          left: `${x}px`,
-          top: `${y}px`,
+          left: `${Math.max(10, constrainedX)}px`,
+          top: `${Math.max(10, constrainedY)}px`,
         }}
       >
         {/* Header with coordinates */}
