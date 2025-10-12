@@ -147,16 +147,41 @@ serve(async (req) => {
     if (!siteSubmit) throw new Error('Site submit not found')
 
     // Fetch Site Selector contacts for this client
+    // New query uses contact_client_role table to find all contacts with Site Selector role
+    // This includes contacts associated through contact_client_relation, not just contact.client_id
     const { data: contacts, error: contactsError } = await supabaseClient
-      .from('contact')
-      .select('id, first_name, last_name, email')
+      .from('contact_client_role')
+      .select(`
+        contact:contact_id (
+          id,
+          first_name,
+          last_name,
+          email
+        ),
+        role:role_id (
+          role_name
+        )
+      `)
       .eq('client_id', siteSubmit.client_id)
-      .eq('is_site_selector', true)
-      .not('email', 'is', null)
+      .eq('is_active', true)
 
     if (contactsError) throw contactsError
 
-    if (!contacts || contacts.length === 0) {
+    // Filter for Site Selector role and contacts with email addresses
+    const siteSelectors = contacts
+      ?.filter((item: any) =>
+        item.role?.role_name === 'Site Selector' &&
+        item.contact?.email
+      )
+      .map((item: any) => item.contact)
+      || []
+
+    // Deduplicate contacts by email (in case a contact has multiple associations)
+    const uniqueContacts = Array.from(
+      new Map(siteSelectors.map((c: any) => [c.email, c])).values()
+    )
+
+    if (uniqueContacts.length === 0) {
       return new Response(
         JSON.stringify({
           success: false,
@@ -180,7 +205,7 @@ serve(async (req) => {
       ccList.push(userEmail)
     }
 
-    const emailPromises = contacts.map(async (contact) => {
+    const emailPromises = uniqueContacts.map(async (contact: any) => {
       const emailHtml = generateEmailTemplate(siteSubmit, contact)
 
       const res = await fetch('https://api.resend.com/emails', {
@@ -215,7 +240,7 @@ serve(async (req) => {
         success: true,
         message: `Successfully sent ${results.length} email(s) to Site Selectors`,
         emailsSent: results.length,
-        recipients: contacts.map(c => c.email)
+        recipients: uniqueContacts.map((c: any) => c.email)
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

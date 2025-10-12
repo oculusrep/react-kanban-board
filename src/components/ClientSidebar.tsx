@@ -11,6 +11,7 @@ import { useClientContacts } from '../hooks/useClientContacts';
 import AddContactRelationModal from './AddContactRelationModal';
 import RoleSelector from './RoleSelector';
 import ParentAccountSelector from './ParentAccountSelector';
+import ContactRolesManager from './ContactRolesManager';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type Note = Database['public']['Tables']['note']['Row'];
@@ -535,22 +536,19 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
                           }}
                           onClick={onContactClick}
                         />
-                        <div className="px-2 pb-2 flex items-center gap-2 flex-wrap">
+                        <div className="px-2 pb-2 space-y-2">
                           {relation.is_primary && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
                               Primary
                             </span>
                           )}
-                          <RoleSelector
-                            currentRole={relation.role}
-                            onRoleChange={async (newRole) => {
-                              try {
-                                await updateRelationRole(relation.id, newRole || '');
-                              } catch (err) {
-                                alert('Failed to update role');
-                                throw err;
-                              }
-                            }}
+                          {/* Contact Roles Manager */}
+                          <ContactRolesManager
+                            contactId={contact.id}
+                            clientId={clientId}
+                            contactName={`${contact.first_name} ${contact.last_name}`}
+                            clientName={client?.client_name}
+                            compact={true}
                           />
                         </div>
                       </div>
@@ -701,14 +699,11 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
         contactId={editingContactId}
         clientId={clientId}
         onSave={(newContact) => {
-          setContacts(prev => [newContact, ...prev]);
-          setShowContactModal(false);
-          onContactModalChange?.(false);
+          // Refresh contact relations after adding new contact
+          window.location.reload(); // Temporary - you can improve this with better state management
         }}
         onUpdate={(updatedContact) => {
-          setContacts(prev =>
-            prev.map(contact => contact.id === updatedContact.id ? updatedContact : contact)
-          );
+          // Contact updated, sidebar will refresh automatically via useClientContacts
           setShowContactModal(false);
           onContactModalChange?.(false);
         }}
@@ -765,6 +760,7 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
         onClose={() => setShowAddContactModal(false)}
         onAdd={addContactRelation}
         existingContactIds={contactRelations.map(r => r.contact_id)}
+        clientId={clientId}
       />
     </>
   );

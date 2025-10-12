@@ -9,6 +9,7 @@ import RoleSelector from './RoleSelector';
 import Toast from './Toast';
 import { useToast } from '../hooks/useToast';
 import NoteFormModal from './NoteFormModal';
+import ContactRolesManager from './ContactRolesManager';
 
 type Note = Database['public']['Tables']['note']['Row'];
 type Property = Database['public']['Tables']['property']['Row'];
@@ -242,7 +243,7 @@ interface ClientItemProps {
 }
 
 const ClientItem: React.FC<ClientItemProps> = ({ client, role, isPrimary, onClick, onRemove, onSetPrimary, onRoleChange }) => (
-  <div className="p-3 hover:bg-orange-50 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 group">
+  <div className="p-3 hover:bg-orange-50 cursor-pointer transition-colors group">
     <div className="flex items-start justify-between">
       <div
         className="flex-1 min-w-0"
@@ -260,13 +261,6 @@ const ClientItem: React.FC<ClientItemProps> = ({ client, role, isPrimary, onClic
           <svg className="w-3 h-3 text-gray-400 group-hover:text-orange-600 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
           </svg>
-        </div>
-        <div className="mb-1" onClick={(e) => e.stopPropagation()}>
-          <RoleSelector
-            currentRole={role}
-            onRoleChange={onRoleChange || (async () => {})}
-            disabled={!onRoleChange}
-          />
         </div>
         <div className="flex items-center space-x-2 text-xs text-gray-500">
           {client.sf_client_type && (
@@ -560,47 +554,49 @@ const ContactSidebar: React.FC<ContactSidebarProps> = ({
                 showAddButton={true}
               >
                 {clientRelations.map(relation => (
-                  <ClientItem
-                    key={relation.id}
-                    client={relation.client!}
-                    role={relation.role}
-                    isPrimary={relation.is_primary}
-                    onClick={onClientClick}
-                    onRemove={async () => {
-                      setConfirmDialog({
-                        isOpen: true,
-                        title: 'Remove Client Association',
-                        message: `Are you sure you want to remove the association with ${relation.client?.client_name}?`,
-                        onConfirm: async () => {
-                          try {
-                            await removeClientRelation(relation.id);
-                            showToast('Client association removed successfully', { type: 'success' });
-                          } catch (err) {
-                            showToast('Failed to remove client association', { type: 'error' });
-                          } finally {
-                            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                  <div key={relation.id}>
+                    <ClientItem
+                      client={relation.client!}
+                      role={relation.role}
+                      isPrimary={relation.is_primary}
+                      onClick={onClientClick}
+                      onRemove={async () => {
+                        setConfirmDialog({
+                          isOpen: true,
+                          title: 'Remove Client Association',
+                          message: `Are you sure you want to remove the association with ${relation.client?.client_name}?`,
+                          onConfirm: async () => {
+                            try {
+                              await removeClientRelation(relation.id);
+                              showToast('Client association removed successfully', { type: 'success' });
+                            } catch (err) {
+                              showToast('Failed to remove client association', { type: 'error' });
+                            } finally {
+                              setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                            }
                           }
+                        });
+                      }}
+                      onSetPrimary={async () => {
+                        try {
+                          await setPrimaryClient(relation.id);
+                          showToast('Primary client updated', { type: 'success' });
+                        } catch (err) {
+                          showToast('Failed to set primary client', { type: 'error' });
                         }
-                      });
-                    }}
-                    onSetPrimary={async () => {
-                      try {
-                        await setPrimaryClient(relation.id);
-                        showToast('Primary client updated', { type: 'success' });
-                      } catch (err) {
-                        showToast('Failed to set primary client', { type: 'error' });
-                      }
-                    }}
-                    onRoleChange={async (newRole) => {
-                      try {
-                        await updateRelationRole(relation.id, newRole || '');
-                        showToast('Role updated successfully', { type: 'success' });
-                      } catch (err) {
-                        showToast('Failed to update role', { type: 'error' });
-                        throw err;
-                      }
-                    }}
-                  />
+                      }}
+                    />
+                    {/* New Contact Roles Manager */}
+                    <div className="px-3 pb-2">
+                      <ContactRolesManager
+                        contactId={contactId}
+                        clientId={relation.client!.id}
+                        contactName="" // Contact name not needed since we're in contact sidebar
+                        clientName={relation.client!.client_name || ''}
+                        compact={true}
+                      />
+                    </div>
+                  </div>
                 ))}
               </SidebarModule>
 
