@@ -3,6 +3,8 @@ import { supabase } from '../../lib/supabaseClient';
 import { Database } from '../../../database-schema';
 import PropertySquareFootageField from './PropertySquareFootageField';
 import PropertyCurrencyField from './PropertyCurrencyField';
+import { useToast } from '../../hooks/useToast';
+import Toast from '../Toast';
 
 type PropertyUnit = Database['public']['Tables']['property_unit']['Row'];
 
@@ -120,6 +122,11 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
   const [units, setUnits] = useState<PropertyUnit[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expandedUnitIds, setExpandedUnitIds] = useState<Set<string>>(new Set());
+  const [editingUnitName, setEditingUnitName] = useState<{[key: string]: string}>({});
+  const [editingUnitNotes, setEditingUnitNotes] = useState<{[key: string]: string}>({});
+  const [pendingDeleteUnitId, setPendingDeleteUnitId] = useState<string | null>(null);
+  const { toast, showToast } = useToast();
 
   // Load existing units
   useEffect(() => {
@@ -167,7 +174,7 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
   const addUnit = async () => {
     const newUnit: Partial<PropertyUnit> = {
       property_id: propertyId,
-      property_unit_name: `Unit ${units.length + 1}`,
+      property_unit_name: '', // Empty name - require user to name it
       sqft: null,
       rent: null,
       nnn: null,
@@ -188,9 +195,11 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
         .single();
 
       if (error) throw error;
-      
-      const updatedUnits = [...units, data];
+
+      // Add new unit at the TOP of the list and expand it
+      const updatedUnits = [data, ...units];
       setUnits(updatedUnits);
+      setExpandedUnitIds(new Set([data.id])); // Auto-expand the new unit
       onUnitsChange?.(updatedUnits);
     } catch (err) {
       console.error('Error creating unit:', err);
@@ -198,12 +207,22 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
     }
   };
 
+  const toggleUnitExpanded = (unitId: string) => {
+    const newExpanded = new Set(expandedUnitIds);
+    if (newExpanded.has(unitId)) {
+      newExpanded.delete(unitId);
+    } else {
+      newExpanded.add(unitId);
+    }
+    setExpandedUnitIds(newExpanded);
+  };
+
   const updateUnit = async (unitId: string, field: keyof PropertyUnit, value: any) => {
     console.log(`[updateUnit] Updating unit ${unitId}, field: ${field}, value:`, value, typeof value);
     try {
       const updateData = { [field]: value };
       console.log(`[updateUnit] Sending to database:`, updateData);
-      
+
       const { error } = await supabase
         .from('property_unit')
         .update(updateData)
@@ -211,7 +230,7 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
 
       if (error) throw error;
 
-      const updatedUnits = units.map(unit => 
+      const updatedUnits = units.map(unit =>
         unit.id === unitId ? { ...unit, [field]: value } : unit
       );
       console.log(`[updateUnit] Updated unit in array:`, updatedUnits.find(u => u.id === unitId));
@@ -223,24 +242,80 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
     }
   };
 
-  const deleteUnit = async (unitId: string) => {
-    if (!confirm('Are you sure you want to delete this unit?')) return;
+  const handleUnitNameChange = (unitId: string, value: string | null) => {
+    // Update local editing state immediately for responsive typing
+    setEditingUnitName(prev => ({ ...prev, [unitId]: value || '' }));
+  };
+
+  const handleUnitNameBlur = (unitId: string) => {
+    // Save to database when user leaves the field
+    const value = editingUnitName[unitId];
+    if (value !== undefined) {
+      updateUnit(unitId, 'property_unit_name', value);
+      // Clear editing state
+      setEditingUnitName(prev => {
+        const newState = { ...prev };
+        delete newState[unitId];
+        return newState;
+      });
+    }
+  };
+
+  const handleUnitNotesChange = (unitId: string, value: string | null) => {
+    // Update local editing state immediately for responsive typing
+    setEditingUnitNotes(prev => ({ ...prev, [unitId]: value || '' }));
+  };
+
+  const handleUnitNotesBlur = (unitId: string) => {
+    // Save to database when user leaves the field
+    const value = editingUnitNotes[unitId];
+    if (value !== undefined) {
+      updateUnit(unitId, 'unit_notes', value);
+      // Clear editing state
+      setEditingUnitNotes(prev => {
+        const newState = { ...prev };
+        delete newState[unitId];
+        return newState;
+      });
+    }
+  };
+
+  const promptDeleteUnit = (unitId: string) => {
+    setPendingDeleteUnitId(unitId);
+  };
+
+  const confirmDeleteUnit = async () => {
+    if (!pendingDeleteUnitId) return;
+
+    const unitToDelete = units.find(u => u.id === pendingDeleteUnitId);
+    const unitName = unitToDelete?.property_unit_name || 'this unit';
 
     try {
       const { error } = await supabase
         .from('property_unit')
         .delete()
-        .eq('id', unitId);
+        .eq('id', pendingDeleteUnitId);
 
       if (error) throw error;
 
-      const updatedUnits = units.filter(unit => unit.id !== unitId);
+      const updatedUnits = units.filter(unit => unit.id !== pendingDeleteUnitId);
       setUnits(updatedUnits);
       onUnitsChange?.(updatedUnits);
+
+      // Show success toast
+      showToast(`Unit "${unitName}" deleted successfully`, { type: 'success' });
     } catch (err) {
       console.error('Error deleting unit:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete unit');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to delete unit';
+      setError(errorMessage);
+      showToast(errorMessage, { type: 'error' });
+    } finally {
+      setPendingDeleteUnitId(null);
     }
+  };
+
+  const cancelDeleteUnit = () => {
+    setPendingDeleteUnitId(null);
   };
 
   if (loading) {
@@ -299,188 +374,258 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200">
+    <div className="space-y-3">
+      {/* Add Unit Button - Bar across top */}
       <button
-        onClick={onToggle}
-        className="w-full flex items-center justify-between p-6 hover:bg-gray-50 transition-colors"
+        onClick={addUnit}
+        className="w-full px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
       >
-        <div className="flex items-center space-x-3">
-          <svg
-            className={`w-5 h-5 text-gray-400 transform transition-transform ${
-              isExpanded ? 'rotate-180' : ''
-            }`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-          <div className="text-left">
-            <h3 className="text-lg font-medium text-gray-900">Property Units</h3>
-            <p className="text-sm text-gray-500">{getSummary()}</p>
-          </div>
-        </div>
-        <div className="flex items-center space-x-2">
-          {units.length > 0 && (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-              {units.length}
-            </span>
-          )}
-        </div>
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+        </svg>
+        Add Unit
       </button>
 
-      {isExpanded && (
-        <div className="px-6 pb-6 border-t border-gray-100">
-          <div className="flex items-center justify-between mb-4 pt-4">
-            <p className="text-sm text-gray-600">Manage individual units within this property</p>
-            <button
-              onClick={addUnit}
-              className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              Add Unit
-            </button>
-          </div>
-
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+      {/* Units List */}
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+        </div>
+      ) : error ? (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-md">
           <p className="text-red-600 text-sm">{error}</p>
         </div>
-      )}
-
-      {units.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
-          </div>
-          <p className="text-sm font-medium">No units yet</p>
-          <p className="text-xs mt-1">Click "Add Unit" to start adding units to this property</p>
+      ) : units.length === 0 ? (
+        <div className="text-center py-8 text-gray-500 text-sm">
+          <svg className="w-8 h-8 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+          </svg>
+          <p>No units yet</p>
+          <p className="text-xs mt-1">Click "Add Unit" to get started</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {units.map((unit, index) => (
-            <div
-              key={unit.id}
-              className={`border rounded-lg p-4 transition-all ${
-                highlightedUnitId === unit.id
-                  ? 'border-blue-500 bg-blue-50 shadow-lg'
-                  : 'border-gray-200 bg-gray-50'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm font-medium text-gray-700">Unit {index + 1}</span>
-                <button
-                  onClick={() => deleteUnit(unit.id)}
-                  className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
-                  title="Delete unit"
+        <div className="space-y-2">
+          {units.map((unit, index) => {
+            const isExpanded = expandedUnitIds.has(unit.id);
+            // Use editing state if available, otherwise use unit values
+            const currentName = editingUnitName[unit.id] !== undefined ? editingUnitName[unit.id] : unit.property_unit_name;
+            const currentNotes = editingUnitNotes[unit.id] !== undefined ? editingUnitNotes[unit.id] : unit.unit_notes;
+            const hasNoName = !currentName || currentName.trim() === '';
+
+            return (
+              <div
+                key={unit.id}
+                className={`border rounded-lg transition-all ${
+                  highlightedUnitId === unit.id
+                    ? 'border-blue-500 bg-blue-50 shadow-lg'
+                    : 'border-gray-200 bg-white'
+                }`}
+              >
+                {/* Summary Bar - Always Visible */}
+                <div
+                  className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-gray-50"
+                  onClick={() => toggleUnitExpanded(unit.id)}
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-              </div>
+                  <div className="flex items-center space-x-3 flex-1 min-w-0">
+                    <svg
+                      className={`w-4 h-4 text-gray-400 transform transition-transform flex-shrink-0 ${
+                        isExpanded ? 'rotate-180' : ''
+                      }`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                {/* Unit Name */}
-                <InputField
-                  label="Unit Name"
-                  value={unit.property_unit_name}
-                  onChange={(value) => updateUnit(unit.id, 'property_unit_name', value)}
-                  placeholder="e.g., Suite 101"
-                  required
-                />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center space-x-2">
+                        <span className={`text-sm font-medium truncate ${hasNoName ? 'text-red-600 italic' : 'text-gray-900'}`}>
+                          {hasNoName ? 'Name Required' : currentName}
+                        </span>
+                        {hasNoName && (
+                          <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Required</span>
+                        )}
+                      </div>
 
-                {/* Unit Notes */}
-                <InputField
-                  label="Unit Notes"
-                  value={unit.unit_notes}
-                  onChange={(value) => updateUnit(unit.id, 'unit_notes', value)}
-                  placeholder="Any special notes about this unit"
-                />
-              </div>
+                      {!isExpanded && !hasNoName && (
+                        <div className="flex items-center space-x-3 mt-0.5">
+                          {unit.sqft && (
+                            <span className="text-xs text-gray-600">
+                              {unit.sqft.toLocaleString()} SF
+                            </span>
+                          )}
+                          {unit.rent !== null && unit.rent !== undefined && (
+                            <span className="text-xs text-gray-600">
+                              Rent: ${unit.rent.toFixed(2)}
+                            </span>
+                          )}
+                          {unit.nnn !== null && unit.nnn !== undefined && (
+                            <span className="text-xs text-gray-600">
+                              NNN: ${unit.nnn.toFixed(2)}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                {/* Square Feet */}
-                <PropertySquareFootageField
-                  label="Square Feet"
-                  value={unit.sqft}
-                  onChange={(value) => updateUnit(unit.id, 'sqft', value)}
-                  compact={true}
-                />
-
-                {/* Rent */}
-                <PropertyCurrencyField
-                  label="Rent"
-                  value={unit.rent}
-                  onChange={(value) => updateUnit(unit.id, 'rent', value)}
-                  compact={true}
-                />
-
-                {/* NNN */}
-                <PropertyCurrencyField
-                  label="NNN"
-                  value={unit.nnn}
-                  onChange={(value) => updateUnit(unit.id, 'nnn', value)}
-                  compact={true}
-                />
-
-                {/* Lease Expiration */}
-                <InputField
-                  label="Lease Expiration"
-                  value={unit.lease_expiration_date ? new Date(unit.lease_expiration_date).toISOString().split('T')[0] : null}
-                  onChange={(value) => updateUnit(unit.id, 'lease_expiration_date', value ? new Date(value).toISOString() : null)}
-                  type="date"
-                />
-              </div>
-
-              {/* Unit Features */}
-              <div className="border-t border-gray-200 pt-4">
-                <div className="text-sm font-medium text-gray-700 mb-3">Unit Features</div>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                  <CheckboxField
-                    label="Patio"
-                    checked={unit.patio || false}
-                    onChange={(checked) => updateUnit(unit.id, 'patio', checked)}
-                  />
-                  <CheckboxField
-                    label="Inline"
-                    checked={unit.inline || false}
-                    onChange={(checked) => updateUnit(unit.id, 'inline', checked)}
-                  />
-                  <CheckboxField
-                    label="End Cap"
-                    checked={unit.end_cap || false}
-                    onChange={(checked) => updateUnit(unit.id, 'end_cap', checked)}
-                  />
-                  <CheckboxField
-                    label="End Cap Drive Thru"
-                    checked={unit.end_cap_drive_thru || false}
-                    onChange={(checked) => updateUnit(unit.id, 'end_cap_drive_thru', checked)}
-                  />
-                  <CheckboxField
-                    label="2nd Gen Restaurant"
-                    checked={unit.second_gen_restaurant || false}
-                    onChange={(checked) => updateUnit(unit.id, 'second_gen_restaurant', checked)}
-                  />
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      promptDeleteUnit(unit.id);
+                    }}
+                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors flex-shrink-0"
+                    title="Delete unit"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
                 </div>
+
+                {/* Expanded Details */}
+                {isExpanded && (
+                  <div className="px-3 pb-3 pt-2 border-t border-gray-100 space-y-3">
+                    {/* Unit Name - Required */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Unit Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={currentName || ''}
+                        onChange={(e) => handleUnitNameChange(unit.id, e.target.value || null)}
+                        onBlur={() => handleUnitNameBlur(unit.id)}
+                        placeholder="e.g., Suite 101"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                      />
+                    </div>
+
+                    {/* Financial Details */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <PropertySquareFootageField
+                        label="Square Feet"
+                        value={unit.sqft}
+                        onChange={(value) => updateUnit(unit.id, 'sqft', value)}
+                        compact={true}
+                      />
+                      <PropertyCurrencyField
+                        label="Rent"
+                        value={unit.rent}
+                        onChange={(value) => updateUnit(unit.id, 'rent', value)}
+                        compact={true}
+                      />
+                      <PropertyCurrencyField
+                        label="NNN"
+                        value={unit.nnn}
+                        onChange={(value) => updateUnit(unit.id, 'nnn', value)}
+                        compact={true}
+                      />
+                    </div>
+
+                    {/* Lease Expiration & Notes */}
+                    <div className="grid grid-cols-1 gap-2">
+                      <InputField
+                        label="Lease Expiration"
+                        value={unit.lease_expiration_date ? new Date(unit.lease_expiration_date).toISOString().split('T')[0] : null}
+                        onChange={(value) => updateUnit(unit.id, 'lease_expiration_date', value ? new Date(value).toISOString() : null)}
+                        type="date"
+                      />
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Unit Notes
+                        </label>
+                        <input
+                          type="text"
+                          value={currentNotes || ''}
+                          onChange={(e) => handleUnitNotesChange(unit.id, e.target.value || null)}
+                          onBlur={() => handleUnitNotesBlur(unit.id)}
+                          placeholder="Any special notes about this unit"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Unit Features */}
+                    <div className="pt-2 border-t border-gray-100">
+                      <div className="text-xs font-medium text-gray-700 mb-2">Unit Features</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <CheckboxField
+                          label="Patio"
+                          checked={unit.patio || false}
+                          onChange={(checked) => updateUnit(unit.id, 'patio', checked)}
+                        />
+                        <CheckboxField
+                          label="Inline"
+                          checked={unit.inline || false}
+                          onChange={(checked) => updateUnit(unit.id, 'inline', checked)}
+                        />
+                        <CheckboxField
+                          label="End Cap"
+                          checked={unit.end_cap || false}
+                          onChange={(checked) => updateUnit(unit.id, 'end_cap', checked)}
+                        />
+                        <CheckboxField
+                          label="End Cap Drive Thru"
+                          checked={unit.end_cap_drive_thru || false}
+                          onChange={(checked) => updateUnit(unit.id, 'end_cap_drive_thru', checked)}
+                        />
+                        <CheckboxField
+                          label="2nd Gen Restaurant"
+                          checked={unit.second_gen_restaurant || false}
+                          onChange={(checked) => updateUnit(unit.id, 'second_gen_restaurant', checked)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-          {units.length > 0 && (
-            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-              <p className="text-blue-800 text-sm">
-                ℹ️ Units are automatically saved as you make changes. You can add, edit, or remove units at any time.
-              </p>
+      {/* Delete Confirmation Toast */}
+      {pendingDeleteUnitId && (
+        <div className="fixed bottom-4 right-4 z-50 bg-white border-2 border-red-500 rounded-lg shadow-xl p-4 max-w-sm">
+          <div className="flex items-start space-x-3">
+            <div className="flex-shrink-0">
+              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
             </div>
-          )}
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-gray-900 mb-1">Delete Unit?</h3>
+              <p className="text-sm text-gray-700 mb-3">
+                Are you sure you want to delete "{units.find(u => u.id === pendingDeleteUnitId)?.property_unit_name || 'this unit'}"?
+              </p>
+              <div className="flex space-x-2">
+                <button
+                  onClick={confirmDeleteUnit}
+                  className="px-3 py-1.5 bg-red-600 text-white text-sm font-medium rounded hover:bg-red-700 transition-colors"
+                >
+                  Delete
+                </button>
+                <button
+                  onClick={cancelDeleteUnit}
+                  className="px-3 py-1.5 bg-gray-200 text-gray-700 text-sm font-medium rounded hover:bg-gray-300 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => showToast(null)}
+        />
       )}
     </div>
   );

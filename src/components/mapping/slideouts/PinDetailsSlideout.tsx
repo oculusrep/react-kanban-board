@@ -8,7 +8,7 @@ import PropertyInputField from '../../property/PropertyInputField';
 import PropertyPSFField from '../../property/PropertyPSFField';
 import PropertyCurrencyField from '../../property/PropertyCurrencyField';
 import PropertySquareFootageField from '../../property/PropertySquareFootageField';
-import { FileText, DollarSign, Building2, Activity, MapPin, Edit3, FolderOpen, Users, Trash2 } from 'lucide-react';
+import { FileText, DollarSign, Building2, Activity, MapPin, Edit3, FolderOpen, Users, Trash2, Grid3x3 } from 'lucide-react';
 import { Database } from '../../../../database-schema';
 import { getDropboxPropertySyncService } from '../../../services/dropboxPropertySync';
 import FileManager from '../../FileManager/FileManager';
@@ -16,6 +16,7 @@ import AddContactsModal from '../../property/AddContactsModal';
 import ContactFormModal from '../../ContactFormModal';
 import ClientSelector from '../ClientSelector';
 import PropertyUnitSelector from '../../PropertyUnitSelector';
+import PropertyUnitsSection from '../../property/PropertyUnitsSection';
 import Toast from '../../Toast';
 
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
@@ -93,7 +94,7 @@ interface PinDetailsSlideoutProps {
   initialTab?: TabType; // Initial tab to open
 }
 
-type TabType = 'property' | 'submit' | 'location' | 'files' | 'contacts' | 'submits';
+type TabType = 'property' | 'submit' | 'location' | 'files' | 'contacts' | 'submits' | 'units';
 
 // Contacts Tab Component
 const ContactsTabContent: React.FC<{
@@ -1159,6 +1160,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     if (isProperty) {
       return [
         { id: 'property' as TabType, label: 'PROPERTY', icon: <Building2 size={16} /> },
+        { id: 'units' as TabType, label: 'UNITS', icon: <Grid3x3 size={16} /> },
         { id: 'submits' as TabType, label: 'SUBMITS', icon: <FileText size={16} /> },
         { id: 'contacts' as TabType, label: 'CONTACTS', icon: <Users size={16} /> },
         { id: 'files' as TabType, label: 'FILES', icon: <FolderOpen size={16} /> },
@@ -1644,6 +1646,30 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       case 'submits':
         return <SubmitsTabContent propertyId={localPropertyData?.id || ''} onViewSiteSubmitDetails={onViewSiteSubmitDetails} onCreateSiteSubmit={onCreateSiteSubmit} refreshTrigger={submitsRefreshTrigger} />;
 
+      case 'units':
+        return (
+          <div className="h-full">
+            {localPropertyData?.id ? (
+              <div className="space-y-3">
+                <PropertyUnitsSection
+                  propertyId={localPropertyData.id}
+                  isEditing={true}
+                  isExpanded={true}
+                  onToggle={() => {}}
+                  onUnitsChange={(units) => {
+                    console.log('Units updated:', units);
+                    // Optionally refresh property data if needed
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-32 text-gray-500">
+                <p>No property selected</p>
+              </div>
+            )}
+          </div>
+        );
+
       default:
         return <div>Content for {activeTab}</div>;
     }
@@ -1840,15 +1866,15 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           )}
         </div>
 
-        {/* Tabs - Modern Compact Design */}
+        {/* Tabs - Compact Design with Horizontal Scroll */}
         {!isMinimized && (
-        <div className="border-b border-gray-200 bg-white">
-          <nav className="flex px-4 overflow-x-auto scrollbar-hide">
+        <div className="border-b border-gray-200 bg-white relative">
+          <nav className="flex px-2 overflow-x-auto scrollbar-hide scroll-smooth">
             {availableTabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`relative flex-shrink-0 flex items-center gap-2 px-4 py-3 text-xs font-medium transition-all duration-200 border-b-2 ${
+                className={`relative flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-medium transition-all duration-200 border-b-2 ${
                   activeTab === tab.id
                     ? 'border-blue-500 text-blue-600 bg-blue-50/50'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
@@ -1859,7 +1885,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                 }`}>
                   {tab.icon}
                 </span>
-                <span className="font-semibold tracking-wide whitespace-nowrap">
+                <span className="font-semibold tracking-tight whitespace-nowrap">
                   {tab.label}
                 </span>
 
@@ -1870,6 +1896,10 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
               </button>
             ))}
           </nav>
+
+          {/* Scroll indicator shadows */}
+          <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent pointer-events-none opacity-0 transition-opacity" id="scroll-left-indicator"></div>
+          <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none opacity-0 transition-opacity" id="scroll-right-indicator"></div>
         </div>
         )}
 
@@ -1915,21 +1945,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
               </div>
             )}
 
-            {/* Tertiary Actions */}
-            {!hasChanges && !hasPropertyChanges && (
-              <div className="flex items-center justify-center pt-1">
-                <button
-                  onClick={() => {
-                    if (!isProperty && property && onViewPropertyDetails) {
-                      onViewPropertyDetails(property);
-                    }
-                  }}
-                  className="text-xs text-gray-500 hover:text-gray-700 transition-colors font-medium"
-                >
-                  VIEW FULL DETAILS →
-                </button>
-              </div>
-            )}
+            {/* Tertiary Actions - removed VIEW FULL DETAILS button */}
           </div>
         </div>
         )}

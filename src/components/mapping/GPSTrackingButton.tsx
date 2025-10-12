@@ -91,11 +91,11 @@ export const GPSControls: React.FC<GPSControlsProps> = ({
       style={{
         position: 'absolute',
         top: '10px',
-        right: '10px',
+        left: '152px', // Position flush to the right of Map/Satellite buttons (container width + margin)
         zIndex: 10000,
         display: 'flex',
-        flexDirection: 'column',
-        gap: '8px',
+        flexDirection: 'row', // Horizontal layout
+        gap: '4px',
         pointerEvents: 'auto'
       }}
       data-gps-react-controls="true"
@@ -104,9 +104,9 @@ export const GPSControls: React.FC<GPSControlsProps> = ({
       <button
         onClick={onToggleTracking}
         style={{
-          width: '48px',
-          height: '48px',
-          borderRadius: '4px',
+          width: '40px',
+          height: '40px',
+          borderRadius: '3px',
           border: 'none',
           backgroundColor: '#fff',
           boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
@@ -115,7 +115,7 @@ export const GPSControls: React.FC<GPSControlsProps> = ({
           alignItems: 'center',
           justifyContent: 'center',
           transition: 'all 0.2s',
-          padding: '10px'
+          padding: '0'
         }}
         title={isTracking ? 'Stop GPS tracking' : 'Start GPS tracking'}
         onMouseEnter={(e) => {
@@ -148,9 +148,9 @@ export const GPSControls: React.FC<GPSControlsProps> = ({
         <button
           onClick={onToggleAutoCenter}
           style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '4px',
+            width: '40px',
+            height: '40px',
+            borderRadius: '3px',
             border: 'none',
             backgroundColor: '#fff',
             boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
@@ -159,7 +159,7 @@ export const GPSControls: React.FC<GPSControlsProps> = ({
             alignItems: 'center',
             justifyContent: 'center',
             transition: 'all 0.2s',
-            padding: '10px'
+            padding: '0'
           }}
           title={autoCenterEnabled ? 'Auto-center: ON (click to disable)' : 'Auto-center: OFF (click to enable)'}
           onMouseEnter={(e) => {

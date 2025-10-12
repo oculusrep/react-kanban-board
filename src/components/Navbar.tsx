@@ -360,7 +360,7 @@ export default function Navbar() {
             </button>
 
             {isReportsMenuOpen && (
-              <div className="absolute left-0 mt-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50">
+              <div className="absolute left-0 mt-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-[10001]">
                 <div className="py-1">
                   <button
                     onClick={() => {
@@ -460,20 +460,26 @@ export default function Navbar() {
           </div>
         )}
 
-        {/* Mobile: Simple logo or title */}
-        <div className="xl:hidden flex-1 text-center text-sm font-semibold text-gray-800">
-          OVIS
+        {/* Mobile: Master Search Bar */}
+        <div className="xl:hidden flex-1 px-2">
+          <MasterSearchBox />
         </div>
 
-        {/* Mobile: Placeholder for alignment */}
-        <div className="xl:hidden w-8"></div>
+        {/* Mobile: User Avatar */}
+        {user && (
+          <div className="xl:hidden flex items-center">
+            <div className="flex items-center justify-center w-7 h-7 rounded-full bg-blue-600 text-white font-semibold text-xs">
+              {getUserInitials(userProfile?.first_name, userProfile?.last_name)}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Mobile Menu Sidebar */}
       {isMobileMenuOpen && (
         <div
           ref={mobileMenuRef}
-          className="xl:hidden fixed inset-y-0 left-0 w-80 bg-white shadow-2xl z-50 overflow-y-auto"
+          className="xl:hidden fixed inset-y-0 left-0 w-80 bg-white shadow-2xl z-[10001] overflow-y-auto"
         >
           <div className="p-4">
             {/* Mobile Menu Header */}
@@ -846,7 +852,7 @@ export default function Navbar() {
       {/* Mobile Menu Backdrop */}
       {isMobileMenuOpen && (
         <div
-          className="xl:hidden fixed inset-0 bg-black bg-opacity-50 z-40"
+          className="xl:hidden fixed inset-0 bg-black bg-opacity-50 z-[10000]"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
