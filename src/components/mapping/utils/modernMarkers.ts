@@ -273,6 +273,45 @@ export const createSatelliteMutedPlacesStyle = () => {
   ];
 };
 
+// Google-style blue dot marker for live GPS tracking
+export const createGoogleBlueDotIcon = (size: number = 24): google.maps.Icon => {
+  const svg = `
+    <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Outer white ring -->
+      <circle cx="12" cy="12" r="11" fill="white" stroke="white" stroke-width="2"/>
+      <!-- Blue dot -->
+      <circle cx="12" cy="12" r="8" fill="#4285F4"/>
+      <!-- Inner white dot for 3D effect -->
+      <circle cx="12" cy="12" r="5" fill="white" fill-opacity="0.3"/>
+    </svg>
+  `;
+
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(size, size),
+    origin: new google.maps.Point(0, 0),
+    anchor: new google.maps.Point(size / 2, size / 2)
+  };
+};
+
+// Create accuracy circle options for Google Maps
+export const createAccuracyCircleOptions = (
+  center: google.maps.LatLng | google.maps.LatLngLiteral,
+  radiusMeters: number
+): google.maps.CircleOptions => {
+  return {
+    center,
+    radius: radiusMeters,
+    fillColor: '#4285F4',
+    fillOpacity: 0.15,
+    strokeColor: '#4285F4',
+    strokeOpacity: 0.4,
+    strokeWeight: 1,
+    clickable: false,
+    zIndex: 1
+  };
+};
+
 // Color palette for modern markers
 export const MarkerColors = {
   // Primary colors (vibrant but professional)
@@ -280,7 +319,8 @@ export const MarkerColors = {
   VERIFIED: '#10B981',    // Green - for verified locations
   GEOCODED: '#3B82F6',    // Blue - for geocoded locations
   VERIFYING: '#F97316',   // Orange - for verification in progress
-  USER_LOCATION: '#3B82F6',  // Bright blue - for user's current location
+  USER_LOCATION: '#8B5CF6',  // Purple - for user's static location (distinct from properties and GPS)
+  GPS_TRACKING: '#4285F4',   // Google blue - for live GPS tracking
 
   // Site submit colors (by status)
   SUBMITTED: '#8B5CF6',   // Purple

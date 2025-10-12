@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS Controls Debug</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        #info {
+            background: #f0f0f0;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+        #info h2 {
+            margin-top: 0;
+        }
+        .status {
+            margin: 8px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .warning { color: orange; }
+        button {
+            margin: 5px;
+            padding: 10px 20px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h2>🔍 GPS Controls Debug Page</h2>
+        <div class="status" id="page-status">Loading...</div>
+
+        <h3>Quick Tests:</h3>
+        <button onclick="checkControls()">Check GPS Controls</button>
+        <button onclick="checkMapControls()">Check Map Controls</button>
+        <button onclick="highlightControls()">Highlight All Controls</button>
+        <button onclick="window.location.reload()">Refresh Page</button>
+
+        <h3>Results:</h3>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.innerHTML = message;
+            results.appendChild(div);
+            console.log(message);
+        }
+
+        function checkControls() {
+            document.getElementById('results').innerHTML = '';
+
+            log('<strong>Checking GPS Controls...</strong>');
+
+            // Check for GPS control by data attribute
+            const gpsControl = document.querySelector('[data-gps-control]');
+            if (gpsControl) {
+                log('✅ GPS button found by data-gps-control attribute', 'success');
+                log(`- Display: ${window.getComputedStyle(gpsControl).display}`);
+                log(`- Visibility: ${window.getComputedStyle(gpsControl).visibility}`);
+                log(`- Opacity: ${window.getComputedStyle(gpsControl).opacity}`);
+                log(`- Position: ${window.getComputedStyle(gpsControl).position}`);
+                log(`- Z-index: ${window.getComputedStyle(gpsControl).zIndex}`);
+
+                const rect = gpsControl.getBoundingClientRect();
+                log(`- Bounding box: ${rect.width}x${rect.height} at (${rect.left}, ${rect.top})`);
+                log(`- In viewport: ${rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth}`);
+            } else {
+                log('❌ GPS button NOT found by data-gps-control', 'error');
+            }
+
+            // Check for GPS controls container
+            const gpsControls = document.querySelector('[data-gps-controls]');
+            if (gpsControls) {
+                log('✅ GPS controls container found', 'success');
+                log(`- Display: ${window.getComputedStyle(gpsControls).display}`);
+                log(`- Children: ${gpsControls.children.length}`);
+            } else {
+                log('❌ GPS controls container NOT found', 'error');
+            }
+
+            // Check all elements with data attributes
+            const allDataElements = document.querySelectorAll('[data-gps-control], [data-gps-controls], [data-center-control]');
+            log(`<br><strong>Total GPS-related elements: ${allDataElements.length}</strong>`);
+        }
+
+        function checkMapControls() {
+            document.getElementById('results').innerHTML = '';
+
+            log('<strong>Checking Google Maps Controls...</strong>');
+
+            // Check for map container
+            const mapContainer = document.querySelector('.gm-style');
+            if (mapContainer) {
+                log('✅ Google Maps container found', 'success');
+
+                // Check for control containers
+                const controlContainers = document.querySelectorAll('.gm-style > div');
+                log(`- Found ${controlContainers.length} direct child divs`);
+
+                // Look for our controls
+                controlContainers.forEach((container, i) => {
+                    const hasGpsControl = container.querySelector('[data-gps-control]');
+                    const hasGpsControls = container.querySelector('[data-gps-controls]');
+                    if (hasGpsControl || hasGpsControls) {
+                        log(`✅ Found GPS controls in container ${i}`, 'success');
+                        log(`- Container display: ${window.getComputedStyle(container).display}`);
+                        log(`- Container position: ${window.getComputedStyle(container).position}`);
+                    }
+                });
+            } else {
+                log('❌ Google Maps container NOT found', 'error');
+            }
+        }
+
+        function highlightControls() {
+            const allControls = document.querySelectorAll('[data-gps-control], [data-gps-controls], [data-center-control]');
+
+            if (allControls.length === 0) {
+                alert('No GPS controls found to highlight!');
+                return;
+            }
+
+            allControls.forEach(control => {
+                control.style.outline = '5px solid red';
+                control.style.backgroundColor = 'yellow';
+                control.style.zIndex = '99999';
+            });
+
+            alert(`Highlighted ${allControls.length} GPS control(s) with red outline and yellow background!`);
+        }
+
+        // Run checks on page load
+        window.addEventListener('load', () => {
+            document.getElementById('page-status').innerHTML = '✅ Page loaded. Click buttons above to run diagnostics.';
+
+            // Auto-run check after 3 seconds
+            setTimeout(() => {
+                log('<strong>Auto-running checks after 3 seconds...</strong>');
+                checkControls();
+            }, 3000);
+        });
+
+        // Listen for console logs
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            const message = args.join(' ');
+            if (message.includes('GPS') || message.includes('🎮') || message.includes('📍')) {
+                const results = document.getElementById('results');
+                if (results) {
+                    const div = document.createElement('div');
+                    div.className = 'status';
+                    div.textContent = message;
+                    results.appendChild(div);
+                }
+            }
+        };
+    </script>
+</body>
+</html>

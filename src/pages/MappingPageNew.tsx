@@ -266,7 +266,12 @@ const MappingPageContent: React.FC = () => {
           const touch = event.domEvent.touches[0];
           const deltaX = Math.abs(touch.clientX - touchStartPos.x);
           const deltaY = Math.abs(touch.clientY - touchStartPos.y);
-          if (deltaX > 10 || deltaY > 10) {
+
+          // Use a smaller threshold (5px) to be more sensitive to movement
+          if (deltaX > 5 || deltaY > 5) {
+            if (!touchMoved) {
+              console.log('👆 Movement detected, canceling long-press:', { deltaX, deltaY });
+            }
             touchMoved = true;
           }
         }
@@ -275,6 +280,14 @@ const MappingPageContent: React.FC = () => {
       map.addListener('mouseup', (event: google.maps.MapMouseEvent) => {
         if (touchStartTime && event.domEvent && event.domEvent instanceof TouchEvent && touchLatLng) {
           const touchDuration = Date.now() - touchStartTime;
+
+          // Log for debugging
+          if (touchMoved) {
+            console.log('👆 Touch ended with movement - no context menu');
+          } else if (touchDuration < 500) {
+            console.log('⚡ Touch too short for long-press:', touchDuration, 'ms');
+          }
+
           if (touchDuration >= 500 && !touchMoved) {
             // Don't show map context menu if a marker was just long-pressed
             if (suppressMapContextMenu) {
@@ -1260,14 +1273,14 @@ const MappingPageContent: React.FC = () => {
                 <div className="relative">
                   <button
                     onClick={() => setShowAdminMenu(!showAdminMenu)}
-                    className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded border flex items-center space-x-1"
+                    className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded border flex items-center"
+                    title="Admin Menu"
                   >
-                    <span>⚙️ Admin</span>
-                    <span className={`text-xs transition-transform ${showAdminMenu ? 'rotate-180' : ''}`}>▼</span>
+                    <span className="text-lg">⚙️</span>
                   </button>
 
                   {showAdminMenu && (
-                    <div className="absolute right-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
+                    <div className="absolute right-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-[10001]">
                       <div className="py-1">
                         <button
                           onClick={() => {
@@ -1358,7 +1371,7 @@ const MappingPageContent: React.FC = () => {
 
             {/* Create Mode Overlay */}
             {createMode && (
-              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-20">
+              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-[10001]">
                 <div className="flex items-center space-x-2">
                   <span>🎯</span>
                   <span className="font-medium">

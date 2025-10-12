@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
-import { createModernPinIcon, createModernMarkerIcon, MarkerColors, createMutedPlacesStyle, createSatelliteMutedPlacesStyle } from './utils/modernMarkers';
+import { createModernPinIcon, createModernMarkerIcon, MarkerColors, createMutedPlacesStyle, createSatelliteMutedPlacesStyle, createGoogleBlueDotIcon, createAccuracyCircleOptions } from './utils/modernMarkers';
+import { useGPSTracking } from '../../hooks/useGPSTracking';
+import { GPSControls } from './GPSTrackingButton';
 
 interface GoogleMapContainerProps {
   height?: string;
@@ -29,6 +31,33 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
     hideLabelsControl: () => void;
     updateLabelsState: (visible: boolean) => void;
   } | null>(null);
+
+  // GPS tracking state
+  const gpsMarkerRef = useRef<google.maps.Marker | null>(null);
+  const accuracyCircleRef = useRef<google.maps.Circle | null>(null);
+  const gpsControlRef = useRef<HTMLDivElement | null>(null);
+  const [autoCenterEnabled, setAutoCenterEnabled] = useState(true); // Auto-center by default
+
+  // Initialize GPS tracking hook with battery-optimized settings
+  const {
+    position: gpsPosition,
+    error: gpsError,
+    isTracking,
+    startTracking,
+    stopTracking,
+    toggleTracking
+  } = useGPSTracking({
+    enableHighAccuracy: false, // Low accuracy for battery savings
+    maximumAge: 30000, // Cache for 30 seconds
+    timeout: 10000, // 10 second timeout
+    distanceFilter: 10 // Update every 10 meters
+  });
+
+  // Use ref to store the latest toggle function so button click handler always has access
+  const toggleTrackingRef = useRef(toggleTracking);
+  useEffect(() => {
+    toggleTrackingRef.current = toggleTracking;
+  }, [toggleTracking]);
 
   // Atlanta, GA coordinates as fallback
   const ATLANTA_CENTER = { lat: 33.7490, lng: -84.3880 };
@@ -86,6 +115,153 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
       stylers: [{ visibility: "off" }]
     }
   ];
+
+  // Create GPS tracking toggle control with container for both buttons
+  const createGPSTrackingControls = (map: google.maps.Map) => {
+    const mainContainer = document.createElement('div');
+    mainContainer.style.margin = '10px';
+    mainContainer.style.display = 'flex';
+    mainContainer.style.flexDirection = 'column';
+    mainContainer.style.gap = '8px';
+    mainContainer.style.zIndex = '9999'; // Very high z-index to ensure visibility
+    mainContainer.setAttribute('data-gps-controls', 'true'); // For debugging
+
+    // GPS Tracking button
+    const gpsButtonContainer = document.createElement('div');
+    gpsButtonContainer.style.backgroundColor = '#fff';
+    gpsButtonContainer.style.borderRadius = '3px';
+    gpsButtonContainer.style.boxShadow = '0 2px 6px rgba(0,0,0,.3)';
+
+    const gpsButton = document.createElement('button');
+    gpsButton.style.backgroundColor = 'transparent';
+    gpsButton.style.border = 'none';
+    gpsButton.style.cursor = 'pointer';
+    gpsButton.style.padding = '10px';
+    gpsButton.style.width = '48px';
+    gpsButton.style.height = '48px';
+    gpsButton.style.display = 'flex';
+    gpsButton.style.alignItems = 'center';
+    gpsButton.style.justifyContent = 'center';
+    gpsButton.style.transition = 'all 0.2s';
+    gpsButton.style.touchAction = 'manipulation';
+    gpsButton.style.WebkitTapHighlightColor = 'transparent';
+    gpsButton.setAttribute('data-gps-control', 'true');
+    gpsButton.title = 'Start GPS tracking';
+
+    // GPS icon SVG
+    const gpsIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    gpsIcon.setAttribute('width', '24');
+    gpsIcon.setAttribute('height', '24');
+    gpsIcon.setAttribute('viewBox', '0 0 24 24');
+    gpsIcon.setAttribute('fill', 'none');
+
+    const gpsCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    gpsCircle.setAttribute('cx', '12');
+    gpsCircle.setAttribute('cy', '12');
+    gpsCircle.setAttribute('r', '8');
+    gpsCircle.setAttribute('stroke', '#666');
+    gpsCircle.setAttribute('stroke-width', '2');
+    gpsCircle.setAttribute('fill', 'none');
+
+    const gpsInnerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    gpsInnerCircle.setAttribute('cx', '12');
+    gpsInnerCircle.setAttribute('cy', '12');
+    gpsInnerCircle.setAttribute('r', '4');
+    gpsInnerCircle.setAttribute('fill', '#666');
+
+    gpsIcon.appendChild(gpsCircle);
+    gpsIcon.appendChild(gpsInnerCircle);
+    gpsButton.appendChild(gpsIcon);
+
+    // Auto-center button (shown when tracking is active)
+    const centerButtonContainer = document.createElement('div');
+    centerButtonContainer.style.backgroundColor = '#fff';
+    centerButtonContainer.style.borderRadius = '3px';
+    centerButtonContainer.style.boxShadow = '0 2px 6px rgba(0,0,0,.3)';
+    centerButtonContainer.style.display = 'none'; // Hidden initially
+
+    const centerButton = document.createElement('button');
+    centerButton.style.backgroundColor = 'transparent';
+    centerButton.style.border = 'none';
+    centerButton.style.cursor = 'pointer';
+    centerButton.style.padding = '10px';
+    centerButton.style.width = '48px';
+    centerButton.style.height = '48px';
+    centerButton.style.display = 'flex';
+    centerButton.style.alignItems = 'center';
+    centerButton.style.justifyContent = 'center';
+    centerButton.style.transition = 'all 0.2s';
+    centerButton.style.touchAction = 'manipulation';
+    centerButton.style.WebkitTapHighlightColor = 'transparent';
+    centerButton.setAttribute('data-center-control', 'true');
+    centerButton.title = 'Auto-center: ON';
+
+    // Center icon SVG (crosshair)
+    const centerIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    centerIcon.setAttribute('width', '24');
+    centerIcon.setAttribute('height', '24');
+    centerIcon.setAttribute('viewBox', '0 0 24 24');
+    centerIcon.setAttribute('fill', 'none');
+
+    const centerCircleOuter = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    centerCircleOuter.setAttribute('cx', '12');
+    centerCircleOuter.setAttribute('cy', '12');
+    centerCircleOuter.setAttribute('r', '9');
+    centerCircleOuter.setAttribute('stroke', '#4285F4');
+    centerCircleOuter.setAttribute('stroke-width', '2');
+    centerCircleOuter.setAttribute('fill', 'none');
+
+    const centerDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    centerDot.setAttribute('cx', '12');
+    centerDot.setAttribute('cy', '12');
+    centerDot.setAttribute('r', '3');
+    centerDot.setAttribute('fill', '#4285F4');
+
+    centerIcon.appendChild(centerCircleOuter);
+    centerIcon.appendChild(centerDot);
+    centerButton.appendChild(centerIcon);
+
+    // Hover effects
+    const addHoverEffect = (btn: HTMLButtonElement) => {
+      btn.addEventListener('mouseenter', () => {
+        btn.style.backgroundColor = '#f8f9fa';
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.backgroundColor = 'transparent';
+      });
+    };
+
+    addHoverEffect(gpsButton);
+    addHoverEffect(centerButton);
+
+    // Click handlers using refs
+    gpsButton.addEventListener('click', () => {
+      console.log('📍 GPS button clicked');
+      toggleTrackingRef.current();
+    });
+
+    centerButton.addEventListener('click', () => {
+      console.log('🎯 Center button clicked');
+      setAutoCenterEnabled(prev => !prev);
+    });
+
+    gpsButtonContainer.appendChild(gpsButton);
+    centerButtonContainer.appendChild(centerButton);
+    mainContainer.appendChild(gpsButtonContainer);
+    mainContainer.appendChild(centerButtonContainer);
+
+    console.log('🎮 GPS controls created');
+
+    return {
+      mainContainer,
+      gpsButton,
+      gpsCircle,
+      gpsInnerCircle,
+      centerButton,
+      centerButtonContainer,
+      centerCircleOuter
+    };
+  };
 
   // Create custom map type control with labels checkbox
   const createCustomMapTypeControl = (map: google.maps.Map, onToggleLabels: (newValue: boolean) => void) => {
@@ -413,10 +589,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           streetViewControlOptions: {
             position: google.maps.ControlPosition.LEFT_TOP,
           },
-          fullscreenControl: true,
-          fullscreenControlOptions: {
-            position: google.maps.ControlPosition.TOP_RIGHT,
-          },
+          fullscreenControl: false, // Disabled - GPS controls use this space
           zoomControl: true,
           zoomControlOptions: {
             position: google.maps.ControlPosition.LEFT_TOP,
@@ -430,14 +603,17 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         });
 
         // Add a marker at the center location
-        // Use circular marker for user location to distinguish from green verified pins
+        // Use large purple pin for static user location - distinct from:
+        // - Green pins (verified properties)
+        // - Red pins (recent properties)
+        // - Blue dot (live GPS tracking)
         const marker = new (google.maps as any).Marker({
           position: mapCenter,
           map: map,
-          title: location ? 'Your Location' : 'Atlanta, GA',
+          title: location ? 'Your Initial Location' : 'Atlanta, GA',
           icon: location
-            ? createModernMarkerIcon(MarkerColors.USER_LOCATION, 32)  // Blue circle for user location
-            : createModernPinIcon(MarkerColors.DEFAULT, 28)           // Gray pin for default
+            ? createModernPinIcon(MarkerColors.USER_LOCATION, 40)  // Large purple pin for user location
+            : createModernPinIcon(MarkerColors.DEFAULT, 28)        // Gray pin for default Atlanta
         });
 
         // Add info window
@@ -445,11 +621,12 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           content: `
             <div style="padding: 8px;">
               <h3 style="margin: 0 0 4px 0; font-size: 14px; color: #1f2937;">
-                ${location ? '📍 Your Current Location' : '🏙️ Atlanta, GA'}
+                ${location ? '📍 Your Initial Location' : '🏙️ Atlanta, GA'}
               </h3>
               <p style="margin: 0; font-size: 12px; color: #6b7280;">
-                ${location ? 'Detected via browser geolocation' : 'Default map center'}
+                ${location ? 'Starting position when map loaded' : 'Default map center'}
               </p>
+              ${location ? '<p style="margin: 4px 0 0 0; font-size: 11px; color: #8B5CF6; font-weight: 500;">💡 Use GPS button to track live location</p>' : ''}
               <p style="margin: 4px 0 0 0; font-size: 11px; color: #9ca3af;">
                 Lat: ${mapCenter.lat.toFixed(6)}, Lng: ${mapCenter.lng.toFixed(6)}
               </p>
@@ -471,6 +648,10 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         const mapTypeControl = createCustomMapTypeControl(map, setLabelsVisible);
         labelsControlRef.current = mapTypeControl;
         map.controls[google.maps.ControlPosition.TOP_LEFT].push(mapTypeControl.controlDiv);
+
+        // Note: GPS controls are now handled by React component in top-right corner
+        // Keeping Google Maps control creation for reference but not adding to map
+        console.log('✅ GPS tracking controls handled by React component');
 
         // Hide labels control when clicking on the map
         map.addListener('click', () => {
@@ -551,6 +732,100 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
     }
   }, [labelsVisible]);
 
+  // GPS controls are now handled by React component - no need to update Google Maps controls
+
+  // Update GPS marker and accuracy circle when position changes
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !gpsPosition) return;
+
+    console.log('📍 Updating GPS marker:', gpsPosition);
+
+    const position = { lat: gpsPosition.lat, lng: gpsPosition.lng };
+
+    // Create or update GPS marker
+    if (!gpsMarkerRef.current) {
+      // Create new marker with Google blue dot style
+      gpsMarkerRef.current = new google.maps.Marker({
+        position,
+        map,
+        icon: createGoogleBlueDotIcon(24),
+        title: 'Your Location (Live GPS)',
+        zIndex: 1000, // High z-index to appear on top
+        optimized: false // Better for animation/updates
+      });
+
+      // Add info window for GPS marker
+      const infoWindow = new google.maps.InfoWindow({
+        content: `
+          <div style="padding: 8px;">
+            <h3 style="margin: 0 0 4px 0; font-size: 14px; color: #1f2937;">
+              📡 Live GPS Tracking
+            </h3>
+            <p style="margin: 0; font-size: 12px; color: #6b7280;">
+              Accuracy: ±${gpsPosition.accuracy.toFixed(0)}m
+            </p>
+            ${gpsPosition.speed ? `<p style="margin: 4px 0 0 0; font-size: 11px; color: #9ca3af;">Speed: ${(gpsPosition.speed * 3.6).toFixed(1)} km/h</p>` : ''}
+            ${gpsPosition.heading ? `<p style="margin: 4px 0 0 0; font-size: 11px; color: #9ca3af;">Heading: ${gpsPosition.heading.toFixed(0)}°</p>` : ''}
+          </div>
+        `
+      });
+
+      gpsMarkerRef.current.addListener('click', () => {
+        infoWindow.open(map, gpsMarkerRef.current);
+      });
+
+      console.log('✅ GPS marker created');
+    } else {
+      // Update existing marker position
+      gpsMarkerRef.current.setPosition(position);
+    }
+
+    // Create or update accuracy circle
+    if (!accuracyCircleRef.current) {
+      accuracyCircleRef.current = new google.maps.Circle(
+        createAccuracyCircleOptions(position, gpsPosition.accuracy)
+      );
+      accuracyCircleRef.current.setMap(map);
+      console.log('✅ Accuracy circle created');
+    } else {
+      accuracyCircleRef.current.setCenter(position);
+      accuracyCircleRef.current.setRadius(gpsPosition.accuracy);
+    }
+
+    // Auto-center map on GPS location if enabled
+    if (autoCenterEnabled && isTracking) {
+      console.log('🎯 Auto-centering map on GPS location');
+      map.panTo(position);
+      // Optionally adjust zoom if accuracy is poor
+      if (gpsPosition.accuracy > 100 && map.getZoom() && map.getZoom()! > 15) {
+        map.setZoom(15);
+      }
+    }
+  }, [gpsPosition, autoCenterEnabled, isTracking]);
+
+  // Clean up GPS marker when tracking stops
+  useEffect(() => {
+    if (!isTracking && gpsMarkerRef.current) {
+      console.log('🧹 Removing GPS marker and accuracy circle');
+      gpsMarkerRef.current.setMap(null);
+      gpsMarkerRef.current = null;
+
+      if (accuracyCircleRef.current) {
+        accuracyCircleRef.current.setMap(null);
+        accuracyCircleRef.current = null;
+      }
+    }
+  }, [isTracking]);
+
+  // Log GPS errors
+  useEffect(() => {
+    if (gpsError) {
+      console.error('🚨 GPS Error:', gpsError.message);
+      // Could show a toast notification here
+    }
+  }, [gpsError]);
+
   // Handle onMapLoad callback changes without re-initializing the map
   useEffect(() => {
     if (mapInstanceRef.current && onMapLoad) {
@@ -617,6 +892,16 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         className="w-full h-full"
         style={{ minHeight: '200px' }}
       />
+
+      {/* React-based GPS controls - Fallback if map controls don't work */}
+      {!isLoading && mapInstanceRef.current && (
+        <GPSControls
+          isTracking={isTracking}
+          autoCenterEnabled={autoCenterEnabled}
+          onToggleTracking={toggleTracking}
+          onToggleAutoCenter={() => setAutoCenterEnabled(prev => !prev)}
+        />
+      )}
     </div>
   );
 };
