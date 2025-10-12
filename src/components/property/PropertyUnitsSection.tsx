@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Database } from '../../../database-schema';
+import PropertySquareFootageField from './PropertySquareFootageField';
+import PropertyCurrencyField from './PropertyCurrencyField';
 
 type PropertyUnit = Database['public']['Tables']['property_unit']['Row'];
 
@@ -403,28 +405,27 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 {/* Square Feet */}
-                <InputField
+                <PropertySquareFootageField
                   label="Square Feet"
-                  value={unit.sqft?.toString() || null}
-                  onChange={(value) => updateUnit(unit.id, 'sqft', value ? Number(value) : null)}
-                  type="number"
-                  placeholder="0"
+                  value={unit.sqft}
+                  onChange={(value) => updateUnit(unit.id, 'sqft', value)}
+                  compact={true}
                 />
 
                 {/* Rent */}
-                <CurrencyField
+                <PropertyCurrencyField
                   label="Rent"
                   value={unit.rent}
                   onChange={(value) => updateUnit(unit.id, 'rent', value)}
-                  helpText="Base rent amount"
+                  compact={true}
                 />
 
                 {/* NNN */}
-                <CurrencyField
+                <PropertyCurrencyField
                   label="NNN"
                   value={unit.nnn}
                   onChange={(value) => updateUnit(unit.id, 'nnn', value)}
-                  helpText="Net, Net, Net charges"
+                  compact={true}
                 />
 
                 {/* Lease Expiration */}

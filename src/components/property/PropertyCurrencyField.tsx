@@ -10,6 +10,7 @@ interface PropertyCurrencyFieldProps {
   helpText?: string;
   showLarge?: boolean; // For prominent display
   colorScheme?: 'green' | 'blue' | 'purple' | 'gray' | 'orange';
+  compact?: boolean; // For smaller text size
 }
 
 const PropertyCurrencyField: React.FC<PropertyCurrencyFieldProps> = ({
@@ -21,7 +22,8 @@ const PropertyCurrencyField: React.FC<PropertyCurrencyFieldProps> = ({
   tabIndex,
   helpText,
   showLarge = false,
-  colorScheme = 'gray'
+  colorScheme = 'gray',
+  compact = false
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -97,7 +99,7 @@ const PropertyCurrencyField: React.FC<PropertyCurrencyFieldProps> = ({
   if (isEditing) {
     return (
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+        <label className={`block font-medium text-gray-700 mb-1 ${compact ? 'text-xs' : 'text-sm'}`}>{label}</label>
         <input
           type="text"
           inputMode="decimal"
@@ -117,11 +119,11 @@ const PropertyCurrencyField: React.FC<PropertyCurrencyFieldProps> = ({
             setTimeout(() => e.target.select(), 0);
           }}
           placeholder={placeholder}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-base min-h-[44px]"
+          className={`w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${compact ? 'text-sm' : 'text-base min-h-[44px]'}`}
           tabIndex={tabIndex}
           autoFocus
         />
-        {helpText && (
+        {helpText && !compact && (
           <p className="text-xs text-gray-500 mt-1">{helpText}</p>
         )}
       </div>
@@ -130,7 +132,7 @@ const PropertyCurrencyField: React.FC<PropertyCurrencyFieldProps> = ({
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label className={`block font-medium text-gray-700 mb-1 ${compact ? 'text-xs' : 'text-sm'}`}>{label}</label>
       <div
         onClick={() => handleStartEdit()}
         onKeyDown={(e) => {
@@ -145,9 +147,11 @@ const PropertyCurrencyField: React.FC<PropertyCurrencyFieldProps> = ({
         }}
         onFocus={handleFocus}
         tabIndex={tabIndex || 0}
-        className={`mt-1 px-3 py-2 rounded-md shadow-sm border ${showLarge ? 'min-h-[48px]' : 'min-h-[44px]'} flex items-center transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-          disabled 
-            ? 'bg-gray-100 cursor-not-allowed border-gray-200' 
+        className={`mt-1 px-3 py-2 rounded-md shadow-sm border flex items-center transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+          compact ? 'text-sm' : showLarge ? 'min-h-[48px]' : 'text-base min-h-[44px]'
+        } ${
+          disabled
+            ? 'bg-gray-100 cursor-not-allowed border-gray-200'
             : 'cursor-pointer hover:bg-blue-50 border-transparent hover:border-blue-200 bg-white'
         }`}
         title={disabled ? 'Not editable' : 'Click to edit'}
@@ -158,7 +162,7 @@ const PropertyCurrencyField: React.FC<PropertyCurrencyFieldProps> = ({
           {displayValue}
         </span>
       </div>
-      {helpText && (
+      {helpText && !compact && (
         <p className="text-xs text-gray-500 mt-1">{helpText}</p>
       )}
     </div>
