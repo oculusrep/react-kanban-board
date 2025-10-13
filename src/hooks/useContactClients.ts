@@ -138,6 +138,21 @@ export const useContactClients = (contactId: string | null) => {
     }
   };
 
+  const unsetPrimaryClient = async (relationId: string) => {
+    try {
+      const { error: updateError } = await supabase
+        .from('contact_client_relation')
+        .update({ is_primary: false })
+        .eq('id', relationId);
+
+      if (updateError) throw updateError;
+      await fetchRelations();
+    } catch (err) {
+      console.error('Error unsetting primary client:', err);
+      throw err;
+    }
+  };
+
   const updateRelationRole = async (relationId: string, role: string) => {
     try {
       const { error: updateError } = await supabase
@@ -161,6 +176,7 @@ export const useContactClients = (contactId: string | null) => {
     addClientRelation,
     removeClientRelation,
     setPrimaryClient,
+    unsetPrimaryClient,
     updateRelationRole
   };
 };
