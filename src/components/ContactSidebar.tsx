@@ -561,21 +561,11 @@ const ContactSidebar: React.FC<ContactSidebarProps> = ({
                       isPrimary={relation.is_primary}
                       onClick={onClientClick}
                       onRemove={async () => {
-                        setConfirmDialog({
-                          isOpen: true,
-                          title: 'Remove Client Association',
-                          message: `Are you sure you want to remove the association with ${relation.client?.client_name}?`,
-                          onConfirm: async () => {
-                            try {
-                              await removeClientRelation(relation.id);
-                              showToast('Client association removed successfully', { type: 'success' });
-                            } catch (err) {
-                              showToast('Failed to remove client association', { type: 'error' });
-                            } finally {
-                              setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-                            }
-                          }
-                        });
+                        try {
+                          await removeClientRelation(relation.id);
+                        } catch (err) {
+                          console.error('Error removing client association:', err);
+                        }
                       }}
                       onTogglePrimary={async () => {
                         try {
