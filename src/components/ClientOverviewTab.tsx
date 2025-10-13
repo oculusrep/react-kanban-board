@@ -370,35 +370,6 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Phone
-            </label>
-            <input
-              type="tel"
-              value={formData.phone || ''}
-              onChange={(e) => handleInputChange('phone', e.target.value || null)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-              placeholder="(555) 123-4567"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email
-            </label>
-            <input
-              type="email"
-              value={formData.email || ''}
-              onChange={(e) => handleInputChange('email', e.target.value || null)}
-              className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm ${errors.email ? 'border-red-300' : ''}`}
-              placeholder="client@company.com"
-            />
-            {errors.email && (
-              <p className="mt-1 text-sm text-red-600">{errors.email}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
               Website
             </label>
             <input
@@ -413,20 +384,17 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
             )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Industry
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="is_active_client"
+              checked={formData.is_active_client}
+              onChange={(e) => handleInputChange('is_active_client', e.target.checked)}
+              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            />
+            <label htmlFor="is_active_client" className="ml-2 block text-sm text-gray-900">
+              Active Client
             </label>
-            <select
-              value={formData.industry || ''}
-              onChange={(e) => handleInputChange('industry', e.target.value || null)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-            >
-              <option value="">Select industry...</option>
-              {industries.map(industry => (
-                <option key={industry} value={industry}>{industry}</option>
-              ))}
-            </select>
           </div>
         </div>
 
@@ -441,93 +409,6 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
             className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
             placeholder="Additional information about the client..."
           />
-        </div>
-      </div>
-
-      {/* Company Details */}
-      <div className="bg-white shadow rounded-lg p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-6">Company Details</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Annual Revenue
-            </label>
-            <input
-              type="number"
-              value={formData.annual_revenue || ''}
-              onChange={(e) => handleInputChange('annual_revenue', e.target.value ? parseFloat(e.target.value) : null)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-              placeholder="1000000"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Number of Employees
-            </label>
-            <input
-              type="number"
-              value={formData.number_of_employees || ''}
-              onChange={(e) => handleInputChange('number_of_employees', e.target.value ? parseInt(e.target.value) : null)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-              placeholder="50"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Ownership
-            </label>
-            <input
-              type="text"
-              value={formData.ownership || ''}
-              onChange={(e) => handleInputChange('ownership', e.target.value || null)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-              placeholder="Private, Public, etc."
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Ticker Symbol
-            </label>
-            <input
-              type="text"
-              value={formData.ticker_symbol || ''}
-              onChange={(e) => handleInputChange('ticker_symbol', e.target.value || null)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-              placeholder="AAPL"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Rating
-            </label>
-            <select
-              value={formData.rating || ''}
-              onChange={(e) => handleInputChange('rating', e.target.value || null)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-            >
-              <option value="">Select rating...</option>
-              {ratings.map(rating => (
-                <option key={rating} value={rating}>{rating}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="is_active_client"
-              checked={formData.is_active_client}
-              onChange={(e) => handleInputChange('is_active_client', e.target.checked)}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-            />
-            <label htmlFor="is_active_client" className="ml-2 block text-sm text-gray-900">
-              Active Client
-            </label>
-          </div>
         </div>
       </div>
 
