@@ -554,7 +554,7 @@ const ContactSidebar: React.FC<ContactSidebarProps> = ({
                 showAddButton={true}
               >
                 {clientRelations.map(relation => (
-                  <div key={relation.id}>
+                  <div key={relation.id} className="border-b border-gray-100 last:border-b-0">
                     <ClientItem
                       client={relation.client!}
                       role={relation.role}
