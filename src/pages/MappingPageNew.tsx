@@ -456,6 +456,7 @@ const MappingPageContent: React.FC = () => {
       const newSiteSubmit: any = {
         property_id: propertyId,
         property: property,
+        property_unit_id: null,
         submit_stage_id: stage?.id || null,
         submit_stage: stage || null,
         site_submit_name: '',
@@ -467,6 +468,9 @@ const MappingPageContent: React.FC = () => {
         // This is a "create mode" indicator
         _isNew: true
       };
+
+      console.log('🆕 Creating new site submit with data:', newSiteSubmit);
+      console.log('🏢 property_unit_id explicitly set to:', newSiteSubmit.property_unit_id);
 
       // Open site submit details slideout with the blank submit
       setSelectedSiteSubmitData(newSiteSubmit);

@@ -751,8 +751,9 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         setSelectedClient(null);
       }
 
-      // Initialize property unit if present
-      setSelectedPropertyUnit(siteSubmitData.property_unit_id || null);
+      // Initialize property unit if present (explicitly check for undefined/null)
+      console.log('🏢 Setting property unit from data:', siteSubmitData.property_unit_id, 'isNew:', siteSubmitData._isNew);
+      setSelectedPropertyUnit(siteSubmitData.property_unit_id ?? null);
 
       // Initialize assignment if present
       if (siteSubmitData.assignment_id) {
@@ -1041,12 +1042,16 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         console.log('📍 Using property coordinates for site submit:', propertyCoords);
 
         // Prepare insert data
+        // For new site submits, use the property_unit_id from the data (which should be null for fresh creates)
+        // For existing, use the selectedPropertyUnit state
+        const propertyUnitForInsert = siteSubmit.property_unit_id ?? selectedPropertyUnit ?? null;
+
         const insertData = {
           site_submit_name: siteSubmitName,
           property_id: siteSubmit.property_id,
           client_id: selectedClient.id,
           assignment_id: selectedAssignment?.id || null,
-          property_unit_id: selectedPropertyUnit || null,
+          property_unit_id: propertyUnitForInsert,
           submit_stage_id: currentStageId || null,
           date_submitted: formData.dateSubmitted || null,
           delivery_timeframe: formData.deliveryTimeframe || null,
@@ -1234,6 +1239,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Property Unit (Optional)</label>
                 <PropertyUnitSelector
+                  key={`property-unit-${siteSubmit?.id || 'new'}-${selectedPropertyUnit}`}
                   value={selectedPropertyUnit}
                   onChange={(value) => {
                     setSelectedPropertyUnit(value);
