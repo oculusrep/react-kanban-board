@@ -9,6 +9,7 @@ import SidebarModule from './sidebar/SidebarModule';
 import FileManagerModule from './sidebar/FileManagerModule';
 import { useClientContacts } from '../hooks/useClientContacts';
 import AddContactRelationModal from './AddContactRelationModal';
+import AddChildAccountModal from './AddChildAccountModal';
 import RoleSelector from './RoleSelector';
 import ContactRolesManager from './ContactRolesManager';
 
@@ -298,6 +299,7 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
+  const [showAddChildAccountModal, setShowAddChildAccountModal] = useState(false);
 
   // Expansion states - all collapsed by default
   const [expandedSidebarModules, setExpandedSidebarModules] = useState({
@@ -438,6 +440,30 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
     }
   };
 
+  const handleAddChildAccount = async (childClientId: string) => {
+    try {
+      // Update the selected client's parent_id to be the current client
+      const { error } = await supabase
+        .from('client')
+        .update({ parent_id: clientId })
+        .eq('id', childClientId);
+
+      if (error) throw error;
+
+      // Refresh the child accounts list
+      const { data: childrenData, error: childrenError } = await supabase
+        .from('client')
+        .select('*')
+        .eq('parent_id', clientId)
+        .order('client_name');
+
+      if (childrenError) throw childrenError;
+      setChildAccounts(childrenData || []);
+    } catch (err) {
+      console.error('Error adding child account:', err);
+      throw err;
+    }
+  };
 
   const toggleSidebarModule = (module: keyof typeof expandedSidebarModules) => {
     setExpandedSidebarModules({
@@ -561,11 +587,12 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
                 <SidebarModule
                   title="Child Accounts"
                   count={childAccounts.length}
+                  onAddNew={() => setShowAddChildAccountModal(true)}
                   isExpanded={expandedSidebarModules.childAccounts}
                   onToggle={() => toggleSidebarModule('childAccounts')}
                   icon="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
                   isEmpty={childAccounts.length === 0}
-                  showAddButton={false}
+                  showAddButton={true}
                 >
                   {childAccounts.map(childAccount => (
                     <div
@@ -762,6 +789,15 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
         onAdd={addContactRelation}
         existingContactIds={contactRelations.map(r => r.contact_id)}
         clientId={clientId}
+      />
+
+      {/* Add Child Account Modal */}
+      <AddChildAccountModal
+        isOpen={showAddChildAccountModal}
+        onClose={() => setShowAddChildAccountModal(false)}
+        onAdd={handleAddChildAccount}
+        currentClientId={clientId}
+        existingChildIds={childAccounts.map(c => c.id)}
       />
     </>
   );
