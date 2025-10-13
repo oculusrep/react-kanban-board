@@ -156,7 +156,7 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({
 
       {/* Dropdown with suggestions */}
       {showDropdown && (
-        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto">
+        <div className="absolute z-[10001] mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto">
           {loading ? (
             <div className="p-2 text-sm text-gray-500">Loading...</div>
           ) : results.length > 0 ? (

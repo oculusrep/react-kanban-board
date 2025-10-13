@@ -163,9 +163,9 @@ const { data, error } = await supabase
         
         {/* Dropdown with suggestions */}
         {showDropdown && (
-          <div 
+          <div
             ref={dropdownRef}
-            className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto"
+            className="absolute z-[10001] mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto"
           >
             {isLoading ? (
               <div className="p-2 text-sm text-gray-500">Loading...</div>

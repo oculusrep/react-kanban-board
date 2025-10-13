@@ -168,9 +168,9 @@ export default function PropertyUnitSelector({
         
         {/* Dropdown with suggestions */}
         {showDropdown && suggestions.length > 0 && propertyId && (
-          <div 
+          <div
             ref={dropdownRef}
-            className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto"
+            className="absolute z-[10001] mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto"
           >
             {suggestions.map((unit) => (
               <div
@@ -189,7 +189,7 @@ export default function PropertyUnitSelector({
 
         {/* Show message if no units found */}
         {showDropdown && suggestions.length === 0 && propertyId && search.length > 0 && (
-          <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg p-2 text-sm text-gray-500">
+          <div className="absolute z-[10001] mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg p-2 text-sm text-gray-500">
             No units found for this property
           </div>
         )}

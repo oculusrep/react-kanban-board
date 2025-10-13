@@ -347,7 +347,7 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
 
       {/* Suggestions Dropdown */}
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[10001] max-h-64 overflow-y-auto">
           {suggestions.map((suggestion, index) => (
             <div
               key={suggestion.type === 'property' ? `property-${suggestion.propertyData?.id}` : `address-${suggestion.addressData?.place_id}`}
@@ -383,7 +383,7 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
 
       {/* No suggestions message */}
       {showSuggestions && !isLoadingSuggestions && value.trim().length >= 3 && suggestions.length === 0 && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 px-4 py-6 text-center text-gray-500">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[10001] px-4 py-6 text-center text-gray-500">
           <div className="text-sm">No address suggestions found</div>
           <div className="text-xs mt-1">Press Enter to search anyway</div>
         </div>

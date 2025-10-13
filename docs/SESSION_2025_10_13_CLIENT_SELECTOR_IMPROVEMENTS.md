@@ -8,12 +8,17 @@ October 13, 2025
 
 ## Issues Addressed
 
-### 1. Inconsistent Client Selector UI
+### 1. Dropdown Z-Index Issue
+**Problem**: Property search dropdown (and other selector dropdowns) appeared behind the "My Location" button and other UI elements on the map, making it impossible to click dropdown items.
+
+**Solution**: Increased z-index from `z-10` to `z-50` on all selector dropdowns (Client, Property, PropertyUnit) to ensure they appear above all other UI elements.
+
+### 2. Inconsistent Client Selector UI
 **Problem**: The client dropdown on the Site Submit Details Page used a different, more complex UI pattern compared to the Property and Property Unit selectors. It showed extra information like submit counts and had different styling, making the form feel inconsistent.
 
 **Solution**: Simplified the ClientSelector component to match the clean, consistent design pattern used by PropertySelector.
 
-### 2. Non-Functional Auto-Generation
+### 3. Non-Functional Auto-Generation
 **Problem**: When editing an existing site submit, changing the client or property would not auto-generate the site submit name because the `userEditedName` flag was set to `true` for existing records, permanently disabling auto-generation.
 
 **Solution**: Modified the auto-generation logic to always regenerate the name when client or property changes, and reset the `userEditedName` flag after auto-generation.
@@ -24,6 +29,16 @@ October 13, 2025
 **Purpose**: Simplified the client selector component to match PropertySelector styling.
 
 **Key Changes**:
+- **Fixed z-index for dropdown** (line 159):
+  ```tsx
+  // Before:
+  className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto"
+
+  // After:
+  className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto"
+  ```
+  **Why**: Ensures dropdown appears above map buttons and other UI elements
+
 - **Simplified dropdown styling** (lines 126-167):
   - Removed complex multi-section layout
   - Removed submit count badges
@@ -100,7 +115,43 @@ October 13, 2025
 - Click outside to close
 - Shows all active clients on focus with empty input
 
-### 2. `/src/pages/SiteSubmitDetailsPage.tsx`
+### 2. `/src/components/PropertySelector.tsx`
+**Purpose**: Fix z-index issue to ensure dropdown appears above other UI elements.
+
+**Key Changes**:
+- **Fixed z-index for dropdown** (line 168):
+  ```tsx
+  // Before:
+  className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto"
+
+  // After:
+  className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto"
+  ```
+  **Why**: Property dropdown was appearing behind "My Location" button on the map
+
+### 3. `/src/components/PropertyUnitSelector.tsx`
+**Purpose**: Fix z-index issue to ensure dropdown appears above other UI elements.
+
+**Key Changes**:
+- **Fixed z-index for dropdown** (line 173):
+  ```tsx
+  // Before:
+  className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto"
+
+  // After:
+  className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto"
+  ```
+
+- **Fixed z-index for "no units found" message** (line 192):
+  ```tsx
+  // Before:
+  className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg p-2 text-sm text-gray-500"
+
+  // After:
+  className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg p-2 text-sm text-gray-500"
+  ```
+
+### 4. `/src/pages/SiteSubmitDetailsPage.tsx`
 **Purpose**: Integrate the simplified ClientSelector and fix auto-generation logic.
 
 **Key Changes**:
