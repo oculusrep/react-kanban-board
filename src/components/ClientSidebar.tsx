@@ -10,7 +10,6 @@ import FileManagerModule from './sidebar/FileManagerModule';
 import { useClientContacts } from '../hooks/useClientContacts';
 import AddContactRelationModal from './AddContactRelationModal';
 import RoleSelector from './RoleSelector';
-import ParentAccountSelector from './ParentAccountSelector';
 import ContactRolesManager from './ContactRolesManager';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
@@ -429,26 +428,6 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
     loadData();
   }, [clientId]);
 
-  // Handle parent account change
-  const handleParentChange = async (parentId: string | null) => {
-    if (!client) return;
-
-    try {
-      const { error } = await supabase
-        .from('client')
-        .update({ parent_id: parentId })
-        .eq('id', clientId);
-
-      if (error) throw error;
-
-      // Update local state
-      setClient({ ...client, parent_id: parentId });
-    } catch (err) {
-      console.error('Error updating parent account:', err);
-      throw err;
-    }
-  };
-
   const handleRemoveContact = async (contactId: string) => {
     try {
       await removeContactRelation(contactId);
@@ -530,16 +509,6 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
               </div>
             ) : (
               <>
-                {/* Parent Account Selector */}
-                {client && (
-                  <div className="mb-4 pb-4 border-b border-gray-200">
-                    <ParentAccountSelector
-                      currentClient={client}
-                      onParentChange={handleParentChange}
-                    />
-                  </div>
-                )}
-
                 {/* Associated Contacts */}
                 <SidebarModule
                   title="Associated Contacts"
