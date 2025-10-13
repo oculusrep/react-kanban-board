@@ -665,6 +665,7 @@ const ContactSidebar: React.FC<ContactSidebarProps> = ({
         onClose={() => setShowAddClientModal(false)}
         onAdd={addClientRelation}
         existingClientIds={clientRelations.map(r => r.client_id)}
+        contactId={contactId}
       />
 
       {/* Note Form Modal */}

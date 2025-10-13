@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
+import { useContactClientRoles } from '../hooks/useContactClientRoles';
 
 type Client = Database['public']['Tables']['client']['Row'];
 
@@ -29,13 +30,15 @@ interface AddClientRelationModalProps {
   onClose: () => void;
   onAdd: (clientId: string, role?: string, isPrimary?: boolean) => Promise<void>;
   existingClientIds?: string[];
+  contactId?: string; // Optional: for adding roles at the same time
 }
 
 const AddClientRelationModal: React.FC<AddClientRelationModalProps> = ({
   isOpen,
   onClose,
   onAdd,
-  existingClientIds = []
+  existingClientIds = [],
+  contactId
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [clients, setClients] = useState<ClientSearchResult[]>([]);
@@ -49,6 +52,10 @@ const AddClientRelationModal: React.FC<AddClientRelationModalProps> = ({
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
   const [customRole, setCustomRole] = useState('');
   const roleDropdownRef = useRef<HTMLDivElement>(null);
+
+  // New: Multi-select role selection
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
+  const { availableRoleTypes, addRole } = useContactClientRoles();
 
   // Load clients when search term changes
   useEffect(() => {
@@ -163,6 +170,19 @@ const AddClientRelationModal: React.FC<AddClientRelationModalProps> = ({
 
     try {
       await onAdd(selectedClient.id, role || undefined, isPrimary);
+
+      // If contactId is provided and roles are selected, add them
+      if (contactId && selectedRoleIds.length > 0) {
+        for (const roleId of selectedRoleIds) {
+          try {
+            await addRole(contactId, selectedClient.id, roleId);
+          } catch (roleErr) {
+            console.error('Error adding role:', roleErr);
+            // Continue adding other roles even if one fails
+          }
+        }
+      }
+
       handleClose();
     } catch (err) {
       console.error('Error adding client relation:', err);
@@ -198,6 +218,7 @@ const AddClientRelationModal: React.FC<AddClientRelationModalProps> = ({
     setSelectedClient(null);
     setRole('');
     setIsPrimary(false);
+    setSelectedRoleIds([]);
     setError(null);
     setIsRoleDropdownOpen(false);
     setCustomRole('');
@@ -399,6 +420,43 @@ const AddClientRelationModal: React.FC<AddClientRelationModalProps> = ({
               Describe this contact's role at this client
             </p>
           </div>
+
+          {/* Role Types (New Multi-Select) */}
+          {contactId && availableRoleTypes.length > 0 && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Assign Roles
+              </label>
+              <div className="border border-gray-200 rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
+                {availableRoleTypes.map((roleType) => (
+                  <label key={roleType.id} className="flex items-start space-x-3 hover:bg-gray-50 p-2 rounded cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedRoleIds.includes(roleType.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedRoleIds([...selectedRoleIds, roleType.id]);
+                        } else {
+                          setSelectedRoleIds(selectedRoleIds.filter(id => id !== roleType.id));
+                        }
+                      }}
+                      className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      disabled={saving}
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">{roleType.role_name}</p>
+                      {roleType.description && (
+                        <p className="text-xs text-gray-500">{roleType.description}</p>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Select one or more roles for this contact at this client
+              </p>
+            </div>
+          )}
 
           {/* Primary Checkbox */}
           <div className="mb-6">
