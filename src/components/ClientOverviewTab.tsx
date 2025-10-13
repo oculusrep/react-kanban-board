@@ -319,17 +319,6 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
     }
   };
 
-  const copyBillingToShipping = () => {
-    setFormData(prev => ({
-      ...prev,
-      shipping_street: prev.billing_street,
-      shipping_city: prev.billing_city,
-      shipping_state: prev.billing_state,
-      shipping_zip: prev.billing_zip,
-      shipping_country: prev.billing_country
-    }));
-  };
-
   return (
     <div className="space-y-8">
       {/* Basic Information */}
@@ -476,86 +465,6 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
               type="text"
               value={formData.billing_country || ''}
               onChange={(e) => handleInputChange('billing_country', e.target.value || null)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-              placeholder="United States"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Shipping Address */}
-      <div className="bg-white shadow rounded-lg p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-medium text-gray-900">Shipping Address</h3>
-          <button
-            type="button"
-            onClick={copyBillingToShipping}
-            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-          >
-            Copy from Billing
-          </button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Street Address
-            </label>
-            <input
-              type="text"
-              value={formData.shipping_street || ''}
-              onChange={(e) => handleInputChange('shipping_street', e.target.value || null)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-              placeholder="123 Main St"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              City
-            </label>
-            <input
-              type="text"
-              value={formData.shipping_city || ''}
-              onChange={(e) => handleInputChange('shipping_city', e.target.value || null)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-              placeholder="New York"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              State
-            </label>
-            <input
-              type="text"
-              value={formData.shipping_state || ''}
-              onChange={(e) => handleInputChange('shipping_state', e.target.value || null)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-              placeholder="NY"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              ZIP Code
-            </label>
-            <input
-              type="text"
-              value={formData.shipping_zip || ''}
-              onChange={(e) => handleInputChange('shipping_zip', e.target.value || null)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-              placeholder="10001"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Country
-            </label>
-            <input
-              type="text"
-              value={formData.shipping_country || ''}
-              onChange={(e) => handleInputChange('shipping_country', e.target.value || null)}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
               placeholder="United States"
             />
