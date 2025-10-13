@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
+import ParentAccountSelector from './ParentAccountSelector';
 
 type Client = Database['public']['Tables']['client']['Row'];
 type ClientInsert = Database['public']['Tables']['client']['Insert'];
@@ -319,6 +320,25 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
     }
   };
 
+  const handleParentChange = async (parentId: string | null) => {
+    if (!client?.id) return;
+
+    try {
+      const { error } = await supabase
+        .from('client')
+        .update({ parent_id: parentId })
+        .eq('id', client.id);
+
+      if (error) throw error;
+
+      // Update the client state with new parent_id
+      onSave({ ...client, parent_id: parentId });
+    } catch (err) {
+      console.error('Error updating parent account:', err);
+      throw err;
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Basic Information */}
@@ -340,6 +360,19 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
               <p className="mt-1 text-sm text-red-600">{errors.client_name}</p>
             )}
           </div>
+
+          {/* Parent Account */}
+          {client && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Parent Account
+              </label>
+              <ParentAccountSelector
+                currentClient={client}
+                onParentChange={handleParentChange}
+              />
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
