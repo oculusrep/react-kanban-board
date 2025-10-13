@@ -52,7 +52,7 @@ const ContactItem: React.FC<ContactItemProps> = ({
   const isLead = contact.source_type === 'Lead';
 
   return (
-    <div className="border-b border-gray-100 last:border-b-0 group">
+    <div className="group">
       <div
         className="p-2 hover:bg-gray-50 cursor-pointer transition-colors flex items-center justify-between"
       >
