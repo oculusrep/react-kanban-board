@@ -658,19 +658,6 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                     <div className="flex items-center space-x-3">
                       <input
                         type="checkbox"
-                        id="is_site_selector"
-                        checked={formData.is_site_selector}
-                        onChange={(e) => updateFormData('is_site_selector', e.target.checked)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="is_site_selector" className="text-sm text-gray-700">
-                        Site Selector
-                      </label>
-                    </div>
-
-                    <div className="flex items-center space-x-3">
-                      <input
-                        type="checkbox"
                         id="tenant_repped"
                         checked={formData.tenant_repped}
                         onChange={(e) => updateFormData('tenant_repped', e.target.checked)}
