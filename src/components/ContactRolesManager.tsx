@@ -35,7 +35,7 @@ export const ContactRolesManager: React.FC<ContactRolesManagerProps> = ({
   } = useContactClientRoles(contactId, clientId)
 
   const [showAddModal, setShowAddModal] = useState(false)
-  const [selectedRoleId, setSelectedRoleId] = useState<string>('')
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
 
   // Filter out already assigned roles
@@ -44,15 +44,18 @@ export const ContactRolesManager: React.FC<ContactRolesManagerProps> = ({
   )
 
   const handleAddRole = async () => {
-    if (!selectedRoleId) return
+    if (selectedRoleIds.length === 0) return
 
     setSaving(true)
     try {
-      await addRole(contactId, clientId, selectedRoleId)
+      // Add all selected roles
+      for (const roleId of selectedRoleIds) {
+        await addRole(contactId, clientId, roleId)
+      }
       setShowAddModal(false)
-      setSelectedRoleId('')
+      setSelectedRoleIds([])
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to add role')
+      alert(err instanceof Error ? err.message : 'Failed to add roles')
     } finally {
       setSaving(false)
     }
@@ -187,31 +190,37 @@ export const ContactRolesManager: React.FC<ContactRolesManagerProps> = ({
                   {availableToAdd.map((roleType) => (
                     <label
                       key={roleType.id}
-                      className={`flex items-center p-2 border rounded cursor-pointer transition-colors ${
-                        selectedRoleId === roleType.id
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                      }`}
+                      className="flex items-start p-2 border rounded cursor-pointer transition-colors hover:border-gray-300 hover:bg-gray-50"
                     >
                       <input
-                        type="radio"
-                        name="role"
-                        value={roleType.id}
-                        checked={selectedRoleId === roleType.id}
-                        onChange={(e) => setSelectedRoleId(e.target.value)}
-                        className="h-3 w-3 text-blue-600 focus:ring-blue-500 border-gray-300"
+                        type="checkbox"
+                        checked={selectedRoleIds.includes(roleType.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedRoleIds([...selectedRoleIds, roleType.id])
+                          } else {
+                            setSelectedRoleIds(selectedRoleIds.filter(id => id !== roleType.id))
+                          }
+                        }}
+                        className="mt-0.5 h-3 w-3 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                         disabled={saving}
                       />
-                      <span className="ml-2 text-xs font-medium text-gray-900">
-                        {roleType.role_name}
-                      </span>
+                      <div className="ml-2 flex-1">
+                        <p className="text-xs font-medium text-gray-900">{roleType.role_name}</p>
+                        {roleType.description && (
+                          <p className="text-xs text-gray-500">{roleType.description}</p>
+                        )}
+                      </div>
                     </label>
                   ))}
               </div>
 
               <div className="flex justify-end gap-2 pt-4">
                 <button
-                  onClick={() => setShowAddModal(false)}
+                  onClick={() => {
+                    setShowAddModal(false)
+                    setSelectedRoleIds([])
+                  }}
                   disabled={saving}
                   className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
                 >
@@ -219,10 +228,10 @@ export const ContactRolesManager: React.FC<ContactRolesManagerProps> = ({
                 </button>
                 <button
                   onClick={handleAddRole}
-                  disabled={!selectedRoleId || saving}
+                  disabled={selectedRoleIds.length === 0 || saving}
                   className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {saving ? 'Adding...' : 'Add Role'}
+                  {saving ? 'Adding...' : selectedRoleIds.length > 1 ? `Add ${selectedRoleIds.length} Roles` : 'Add Role'}
                 </button>
               </div>
             </div>
