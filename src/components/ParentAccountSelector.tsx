@@ -135,22 +135,17 @@ export const ParentAccountSelector: React.FC<ParentAccountSelectorProps> = ({
             onClick={() => !disabled && setIsOpen(!isOpen)}
             disabled={disabled || isLoading}
             className={`
-              w-full text-left px-3 py-2 rounded border text-sm
-              transition-colors
-              ${parentAccount
-                ? 'bg-white border-gray-300 text-gray-900 hover:border-gray-400'
-                : 'bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300'
-              }
+              block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm px-0 py-2 text-left border-0 border-b bg-transparent hover:border-gray-400 transition-colors
               ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
               ${isLoading ? 'opacity-50' : ''}
             `}
           >
             <div className="flex items-center justify-between">
-              <span className="truncate">
+              <span className={`truncate ${parentAccount ? 'text-gray-900' : 'text-gray-400'}`}>
                 {parentAccount ? parentAccount.client_name : 'No parent account'}
               </span>
               <svg
-                className="w-4 h-4 ml-2 flex-shrink-0"
+                className="w-4 h-4 ml-2 flex-shrink-0 text-gray-400"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
