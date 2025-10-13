@@ -394,6 +394,22 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
             </div>
           )}
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Website
+            </label>
+            <input
+              type="url"
+              value={formData.website || ''}
+              onChange={(e) => handleInputChange('website', e.target.value || null)}
+              className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm ${errors.website ? 'border-red-300' : ''}`}
+              placeholder="https://www.company.com"
+            />
+            {errors.website && (
+              <p className="mt-1 text-sm text-red-600">{errors.website}</p>
+            )}
+          </div>
+
           <div className="relative" ref={clientTypeDropdownRef}>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Client Type
@@ -459,22 +475,6 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
                   </>
                 )}
               </div>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Website
-            </label>
-            <input
-              type="url"
-              value={formData.website || ''}
-              onChange={(e) => handleInputChange('website', e.target.value || null)}
-              className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm ${errors.website ? 'border-red-300' : ''}`}
-              placeholder="https://www.company.com"
-            />
-            {errors.website && (
-              <p className="mt-1 text-sm text-red-600">{errors.website}</p>
             )}
           </div>
 
