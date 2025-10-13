@@ -538,6 +538,46 @@ new file:   docs/SESSION_2025_10_13_CLIENT_SELECTOR_IMPROVEMENTS.md
 - Professional autocomplete behavior
 - Auto-generation works reliably for all cases
 
+## Additional Changes - Site Selector Checkbox Removal
+
+### Removed is_site_selector Checkbox
+**Date:** October 13, 2025 (end of session)
+
+**Problem:** The contact form had a legacy `is_site_selector` checkbox that was replaced by the new contact roles system.
+
+**Solution:** Removed the checkbox from the UI while keeping the database column for safety.
+
+**Files Modified:**
+- `src/components/ContactFormModal.tsx` - Removed Site Selector checkbox (line 658-669)
+- `src/components/ContactOverviewTab.tsx` - Removed Site Selector checkbox (line 520-531)
+- Created `check_site_selector_migration.sql` - Verification query
+
+**Migration Status:**
+- Migration script (`migrations/contact_roles_many_to_many_fixed.sql`) already migrates all contacts with `is_site_selector = true` to have the "Site Selector" role
+- Database column kept temporarily for rollback capability
+- Verification query available in root: `check_site_selector_migration.sql`
+
+**User Impact:**
+- Users can no longer check/uncheck "Site Selector" on contact forms
+- Instead, use the **"+ Add Role"** button in contact details to assign the "Site Selector" role
+- More flexible: contacts can have multiple roles per client
+
+**Verification Steps:**
+1. Run `check_site_selector_migration.sql` in Supabase SQL Editor
+2. Verify all contacts with `is_site_selector = true` have the "Site Selector" role assigned
+3. If any are missing, manually assign the role via the UI
+
+**Future Cleanup:** After 1-2 weeks of verification in production, optionally drop the column:
+```sql
+-- Run this after confirming all data migrated correctly
+ALTER TABLE contact DROP COLUMN is_site_selector;
+```
+
+**Git Commits:**
+- `77cdede` - Remove Site Selector checkbox from contact forms
+
+---
+
 ## Contributors
 - Session Date: October 13, 2025
 - Changes implemented via Claude Code assistant

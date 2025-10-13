@@ -24,6 +24,7 @@ import { supabase } from '../lib/supabaseClient';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Toast from '../components/Toast';
 import { useToast } from '../hooks/useToast';
+import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 
 // Inner component that uses the LayerManager context
 const MappingPageContent: React.FC = () => {
@@ -61,6 +62,10 @@ const MappingPageContent: React.FC = () => {
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
   const [contactPropertyId, setContactPropertyId] = useState<string | null>(null);
+
+  // Delete confirmation modal state
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [siteSubmitToDelete, setSiteSubmitToDelete] = useState<{ id: string; name: string } | null>(null);
 
   // Center on location function
   const [centerOnLocation, setCenterOnLocation] = useState<(() => void) | null>(null);
@@ -458,7 +463,7 @@ const MappingPageContent: React.FC = () => {
         year_1_rent: null,
         ti: null,
         notes: '',
-        date_submitted: new Date().toISOString().split('T')[0],
+        date_submitted: null,
         // This is a "create mode" indicator
         _isNew: true
       };
@@ -825,14 +830,15 @@ const MappingPageContent: React.FC = () => {
   // Handle site submit deletion
   const handleDeleteSiteSubmit = async (siteSubmitId: string, siteSubmitName: string) => {
     console.log('🗑️ Delete site submit requested:', siteSubmitId, siteSubmitName);
+    setSiteSubmitToDelete({ id: siteSubmitId, name: siteSubmitName });
+    setDeleteModalOpen(true);
+  };
 
-    const confirmDelete = window.confirm(
-      `Are you sure you want to delete "${siteSubmitName}"?\n\nThis action cannot be undone.`
-    );
-
-    if (!confirmDelete) return;
+  const confirmDeleteSiteSubmit = async () => {
+    if (!siteSubmitToDelete) return;
 
     try {
+      const siteSubmitId = siteSubmitToDelete.id;
       console.log('🗑️ Deleting site submit:', siteSubmitId);
 
       const { error } = await supabase
@@ -871,6 +877,10 @@ const MappingPageContent: React.FC = () => {
       }, 100);
 
       console.log('✅ Site submit deletion complete');
+
+      // Close the modal
+      setDeleteModalOpen(false);
+      setSiteSubmitToDelete(null);
     } catch (error: any) {
       console.error('❌ Error deleting site submit:', error);
       showToast(`Error deleting site submit: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });
@@ -1601,6 +1611,19 @@ const MappingPageContent: React.FC = () => {
           setShowDeleteConfirm(false);
           setPropertyToDelete(null);
         }}
+      />
+
+      {/* Delete Site Submit Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setSiteSubmitToDelete(null);
+        }}
+        onConfirm={confirmDeleteSiteSubmit}
+        title="Delete Site Submit"
+        itemName={siteSubmitToDelete?.name || 'this site submit'}
+        message="This action cannot be undone."
       />
     </div>
   );

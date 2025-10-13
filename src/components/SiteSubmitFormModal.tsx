@@ -791,15 +791,6 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
                   )}
                 </div>
 
-                <PropertySelector
-                  value={formData.property_id}
-                  onChange={(value) => updateFormData('property_id', value)}
-                  label="Property *"
-                />
-                {errors.property_id && (
-                  <p className="mt-1 text-sm text-red-600">{errors.property_id}</p>
-                )}
-
                 {formData.property_id && (
                   <PropertyUnitSelector
                     propertyId={formData.property_id}
@@ -807,6 +798,15 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
                     onChange={(value) => updateFormData('property_unit_id', value)}
                     label="Property Unit (Optional)"
                   />
+                )}
+
+                <PropertySelector
+                  value={formData.property_id}
+                  onChange={(value) => updateFormData('property_id', value)}
+                  label="Property *"
+                />
+                {errors.property_id && (
+                  <p className="mt-1 text-sm text-red-600">{errors.property_id}</p>
                 )}
               </div>
 

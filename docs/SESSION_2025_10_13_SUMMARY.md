@@ -14,6 +14,10 @@
 **Problem**: Name wouldn't auto-generate when editing existing site submits or after changing client/property
 **Solution**: Modified logic to always regenerate name when client or property changes
 
+### 4. Site Selector Checkbox Removal
+**Problem**: Legacy `is_site_selector` checkbox duplicated functionality of new contact roles system
+**Solution**: Removed checkbox from UI, keeping database column for safety
+
 ## Changes Made
 
 ### Files Modified
@@ -35,6 +39,15 @@
    - Fixed auto-generation logic (removed `userEditedName` blocking)
    - Added property name loading for existing site submits
    - Reset `userEditedName` flag after auto-generation
+
+5. **`src/components/ContactFormModal.tsx`** (Removed Site Selector checkbox)
+   - Users now use "Add Role" button for Site Selector assignments
+
+6. **`src/components/ContactOverviewTab.tsx`** (Removed Site Selector checkbox)
+   - Consistent with new contact roles system
+
+7. **`check_site_selector_migration.sql`** (New verification script)
+   - Query to verify migration of is_site_selector data
 
 ## User Impact
 

@@ -18,6 +18,7 @@ import ClientSelector from '../ClientSelector';
 import PropertyUnitSelector from '../../PropertyUnitSelector';
 import PropertyUnitsSection from '../../property/PropertyUnitsSection';
 import Toast from '../../Toast';
+import DeleteConfirmationModal from '../../DeleteConfirmationModal';
 
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
@@ -364,6 +365,9 @@ const SubmitsTabContent: React.FC<{
 }> = ({ propertyId, onViewSiteSubmitDetails, onCreateSiteSubmit, refreshTrigger }) => {
   const [siteSubmits, setSiteSubmits] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [siteSubmitToDelete, setSiteSubmitToDelete] = useState<{ id: string; name: string } | null>(null);
+  const { showToast } = useToast();
 
   const loadSiteSubmits = async () => {
     if (!propertyId) return;
@@ -408,28 +412,34 @@ const SubmitsTabContent: React.FC<{
 
   const handleDeleteSiteSubmit = async (e: React.MouseEvent, siteSubmitId: string, siteSubmitName: string) => {
     e.stopPropagation(); // Prevent opening the site submit details
+    setSiteSubmitToDelete({ id: siteSubmitId, name: siteSubmitName });
+    setDeleteModalOpen(true);
+  };
 
-    const confirmDelete = window.confirm(
-      `Are you sure you want to delete "${siteSubmitName || 'this site submit'}"?\n\nThis action cannot be undone.`
-    );
-
-    if (!confirmDelete) return;
+  const confirmDeleteSiteSubmit = async () => {
+    if (!siteSubmitToDelete) return;
 
     try {
       const { error } = await supabase
         .from('site_submit')
         .delete()
-        .eq('id', siteSubmitId);
+        .eq('id', siteSubmitToDelete.id);
 
       if (error) throw error;
 
-      console.log('✅ Site submit deleted successfully:', siteSubmitId);
+      console.log('✅ Site submit deleted successfully:', siteSubmitToDelete.id);
+
+      showToast('Site submit deleted successfully', { type: 'success' });
 
       // Refresh the list
       loadSiteSubmits();
+
+      // Close the modal
+      setDeleteModalOpen(false);
+      setSiteSubmitToDelete(null);
     } catch (err) {
       console.error('❌ Error deleting site submit:', err);
-      alert('Failed to delete site submit. Please try again.');
+      showToast('Failed to delete site submit. Please try again.', { type: 'error' });
     }
   };
 
@@ -446,7 +456,8 @@ const SubmitsTabContent: React.FC<{
   }
 
   return (
-    <div className="space-y-3">
+    <>
+      <div className="space-y-3">
       {/* Add Site Submit Button */}
       <button
         onClick={() => onCreateSiteSubmit?.(propertyId)}
@@ -513,7 +524,21 @@ const SubmitsTabContent: React.FC<{
           ))}
         </div>
       )}
-    </div>
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setSiteSubmitToDelete(null);
+        }}
+        onConfirm={confirmDeleteSiteSubmit}
+        title="Delete Site Submit"
+        itemName={siteSubmitToDelete?.name || 'this site submit'}
+        message="This action cannot be undone."
+      />
+    </>
   );
 };
 
@@ -652,7 +677,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       } else {
         console.log('📥 Initializing form data with fresh siteSubmit:', siteSubmitData);
         setFormData({
-          dateSubmitted: siteSubmitData.date_submitted || (siteSubmitData.created_at ? siteSubmitData.created_at.split('T')[0] : ''),
+          dateSubmitted: siteSubmitData.date_submitted ? siteSubmitData.date_submitted.split('T')[0] : '',
           loiDate: siteSubmitData.loi_date ? siteSubmitData.loi_date.split('T')[0] : '',
           deliveryDate: siteSubmitData.delivery_date ? siteSubmitData.delivery_date.split('T')[0] : '',
           deliveryTimeframe: siteSubmitData.delivery_timeframe || '',
@@ -1080,7 +1105,9 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
               ...completeSiteSubmit,
               property: completeSiteSubmit.properties,
               client: completeSiteSubmit.clients,
-              submit_stage: completeSiteSubmit.stages
+              submit_stage: completeSiteSubmit.stages,
+              // Keep the property_unit_id as a flat field for form initialization
+              property_unit_id: completeSiteSubmit.property_unit_id
             };
           }
 
@@ -1097,6 +1124,9 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           refreshLayer('site_submits');
 
           showToast('Site submit created successfully!', { type: 'success' });
+
+          // Close the slideout after successful creation
+          onClose();
         }
       } else {
         console.log(`💾 Saving changes for site submit ${siteSubmit.id}`);
@@ -1199,20 +1229,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
               />
             </div>
 
-            {/* Assignment - Optional */}
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Assignment (Optional)</label>
-              <input
-                type="text"
-                value={selectedAssignment?.assignment_name || ''}
-                readOnly
-                placeholder="Not yet implemented - coming soon"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded bg-gray-50 text-gray-500"
-              />
-            </div>
-
-            {/* Property Unit - Conditional on Shopping Center */}
-            {isShoppingCenter && submitProperty?.id && (
+            {/* Property Unit - Optional */}
+            {submitProperty?.id && (
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Property Unit (Optional)</label>
                 <PropertyUnitSelector
@@ -1226,6 +1244,18 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                 />
               </div>
             )}
+
+            {/* Assignment - Optional */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Assignment (Optional)</label>
+              <input
+                type="text"
+                value={selectedAssignment?.assignment_name || ''}
+                readOnly
+                placeholder="Not yet implemented - coming soon"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded bg-gray-50 text-gray-500"
+              />
+            </div>
 
             {/* Stage & Date Submitted in same row */}
             <div className="grid grid-cols-2 gap-3">
@@ -1249,15 +1279,30 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Date Submitted</label>
-                <input
-                  type="date"
-                  value={formData.dateSubmitted}
-                  onChange={(e) => {
-                    setFormData(prev => ({ ...prev, dateSubmitted: e.target.value }));
-                    setHasChanges(true);
-                  }}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent "
-                />
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={formData.dateSubmitted}
+                    onChange={(e) => {
+                      setFormData(prev => ({ ...prev, dateSubmitted: e.target.value }));
+                      setHasChanges(true);
+                    }}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  {formData.dateSubmitted && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData(prev => ({ ...prev, dateSubmitted: '' }));
+                        setHasChanges(true);
+                      }}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      title="Clear date"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
