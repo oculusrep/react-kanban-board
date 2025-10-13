@@ -6,6 +6,8 @@ import PropertyUnitSelector from './PropertyUnitSelector';
 import EmailComposerModal, { EmailData } from './EmailComposerModal';
 import Toast from './Toast';
 import { useToast } from '../hooks/useToast';
+import ClientSelector from './mapping/ClientSelector';
+import { ClientSearchResult } from '../hooks/useClientSearch';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type SiteSubmitInsert = Database['public']['Tables']['site_submit']['Insert'];
@@ -82,7 +84,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
     ti: null,
   });
 
-  const [clients, setClients] = useState<Client[]>([]);
+  const [selectedClient, setSelectedClient] = useState<ClientSearchResult | null>(null);
   const [submitStages, setSubmitStages] = useState<SubmitStage[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -99,14 +101,13 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
     const loadData = async () => {
       setLoading(true);
       try {
-        // Load clients and submit stages
-        const [clientsResult, stagesResult] = await Promise.all([
-          supabase.from('client').select('*').order('client_name'),
-          supabase.from('submit_stage').select('*').order('name')
-        ]);
+        // Load submit stages only (clients loaded via ClientSelector)
+        const { data: stagesData } = await supabase
+          .from('submit_stage')
+          .select('*')
+          .order('name');
 
-        if (clientsResult.data) setClients(clientsResult.data);
-        if (stagesResult.data) setSubmitStages(stagesResult.data);
+        if (stagesData) setSubmitStages(stagesData);
 
         // Load property name for auto-generation
         if (propertyId) {
@@ -125,16 +126,36 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
         if (assignmentId && !siteSubmitId) {
           const { data: assignmentData } = await supabase
             .from('assignment')
-            .select('client_id, deal_id')
+            .select(`
+              client_id,
+              deal_id,
+              client:client_id (
+                id,
+                client_name,
+                type,
+                phone
+              )
+            `)
             .eq('id', assignmentId)
             .single();
-          
+
           if (assignmentData) {
             setFormData(prev => ({
               ...prev,
               client_id: assignmentData.client_id,
               assignment_id: assignmentId,
             }));
+
+            // Set selected client for ClientSelector
+            if (assignmentData.client) {
+              setSelectedClient({
+                id: assignmentData.client.id,
+                client_name: assignmentData.client.client_name,
+                type: assignmentData.client.type,
+                phone: assignmentData.client.phone,
+                site_submit_count: 0
+              });
+            }
           }
         }
 
@@ -142,7 +163,15 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
         if (siteSubmitId) {
           const { data: siteSubmitData, error } = await supabase
             .from('site_submit')
-            .select('*')
+            .select(`
+              *,
+              client:client_id (
+                id,
+                client_name,
+                type,
+                phone
+              )
+            `)
             .eq('id', siteSubmitId)
             .single();
 
@@ -170,6 +199,18 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
               year_1_rent: siteSubmitData.year_1_rent,
               ti: siteSubmitData.ti,
             });
+
+            // Set selected client for ClientSelector
+            if (siteSubmitData.client) {
+              setSelectedClient({
+                id: siteSubmitData.client.id,
+                client_name: siteSubmitData.client.client_name,
+                type: siteSubmitData.client.type,
+                phone: siteSubmitData.client.phone,
+                site_submit_count: 0 // Not needed for editing
+              });
+            }
+
             // Mark as user edited since we're loading an existing name
             setUserEditedName(true);
           }
@@ -214,17 +255,31 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
       setErrors({});
       setUserEditedName(false); // Reset name editing flag
       setPropertyName('');
+      setSelectedClient(null); // Reset selected client
     }
   }, [isOpen, propertyId, propertyUnitId, initialLatitude, initialLongitude]);
 
+  // Handler for client selection
+  const handleClientSelect = (client: ClientSearchResult | null) => {
+    setSelectedClient(client);
+    const clientId = client?.id || null;
+    setFormData(prev => ({ ...prev, client_id: clientId }));
+
+    if (errors.client_id) {
+      setErrors(prev => ({ ...prev, client_id: '' }));
+    }
+
+    // Auto-generate site submit name when client changes (only if user hasn't manually edited it)
+    if (!userEditedName && propertyName && client) {
+      const autoName = `${client.client_name} - ${propertyName}`;
+      setFormData(prev => ({ ...prev, site_submit_name: autoName }));
+    }
+  };
+
   // Auto-generate site submit name from client and property
-  const generateSiteSubmitName = (clientId: string | null, propName: string): string => {
-    if (!clientId || !propName) return '';
-    
-    const client = clients.find(c => c.id === clientId);
-    if (!client) return '';
-    
-    return `${client.client_name} - ${propName}`;
+  const generateSiteSubmitName = (clientName: string | null, propName: string): string => {
+    if (!clientName || !propName) return '';
+    return `${clientName} - ${propName}`;
   };
 
   const updateFormData = (field: keyof FormData, value: any) => {
@@ -233,16 +288,8 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
 
-    // Auto-generate site submit name when client changes (only if user hasn't manually edited it)
-    if (field === 'client_id' && !userEditedName && propertyName) {
-      const autoName = generateSiteSubmitName(value, propertyName);
-      if (autoName) {
-        setFormData(prev => ({ ...prev, site_submit_name: autoName }));
-      }
-    }
-
     // Auto-generate site submit name when property changes (only if user hasn't manually edited it)
-    if (field === 'property_id' && !userEditedName && formData.client_id) {
+    if (field === 'property_id' && !userEditedName && selectedClient) {
       // We need to fetch the new property name
       if (value) {
         supabase.from('property')
@@ -252,7 +299,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
           .then(({ data }) => {
             if (data?.property_name) {
               setPropertyName(data.property_name);
-              const autoName = generateSiteSubmitName(formData.client_id, data.property_name);
+              const autoName = generateSiteSubmitName(selectedClient.client_name, data.property_name);
               if (autoName) {
                 setFormData(prev => ({ ...prev, site_submit_name: autoName }));
               }
@@ -404,17 +451,40 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
       if (siteSubmitError) throw siteSubmitError;
       if (!siteSubmitData) throw new Error('Site submit not found');
 
-      // Fetch Site Selector contacts
-      const { data: contacts, error: contactsError } = await supabase
-        .from('contact')
-        .select('id, first_name, last_name, email')
+      // Fetch Site Selector contacts using new role system
+      const { data: contactRoles, error: contactsError } = await supabase
+        .from('contact_client_role')
+        .select(`
+          contact:contact_id (
+            id,
+            first_name,
+            last_name,
+            email
+          ),
+          role:role_id (
+            role_name
+          )
+        `)
         .eq('client_id', siteSubmitData.client_id)
-        .eq('is_site_selector', true)
-        .not('email', 'is', null);
+        .eq('is_active', true);
 
       if (contactsError) throw contactsError;
 
-      if (!contacts || contacts.length === 0) {
+      // Filter for Site Selector role and contacts with email addresses
+      const contacts = contactRoles
+        ?.filter((item: any) =>
+          item.role?.role_name === 'Site Selector' &&
+          item.contact?.email
+        )
+        .map((item: any) => item.contact)
+        || [];
+
+      // Deduplicate contacts by email (in case a contact has multiple associations)
+      const uniqueContacts = Array.from(
+        new Map(contacts.map((c: any) => [c.email, c])).values()
+      );
+
+      if (uniqueContacts.length === 0) {
         alert('No Site Selector contacts found for this client with email addresses');
         return;
       }
@@ -434,12 +504,12 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
 
       // Generate email template
       const defaultSubject = `New site for Review – ${siteSubmitData.property?.property_name || 'Untitled'} – ${siteSubmitData.client?.client_name || 'N/A'}`;
-      const defaultBody = generateEmailTemplate(siteSubmitData, contacts, userData);
+      const defaultBody = generateEmailTemplate(siteSubmitData, uniqueContacts, userData);
 
       setEmailDefaultData({
         subject: defaultSubject,
         body: defaultBody,
-        recipients: contacts,
+        recipients: uniqueContacts,
       });
       setShowEmailComposer(true);
     } catch (error) {
@@ -710,20 +780,12 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Client *
                   </label>
-                  <select
-                    value={formData.client_id || ''}
-                    onChange={(e) => updateFormData('client_id', e.target.value || null)}
-                    className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm ${
-                      errors.client_id ? 'border-red-300' : ''
-                    }`}
-                  >
-                    <option value="">Select a client...</option>
-                    {clients.map((client) => (
-                      <option key={client.id} value={client.id}>
-                        {client.client_name}
-                      </option>
-                    ))}
-                  </select>
+                  <ClientSelector
+                    selectedClient={selectedClient}
+                    onClientSelect={handleClientSelect}
+                    placeholder="Search for active clients..."
+                    className={errors.client_id ? 'border-red-300' : ''}
+                  />
                   {errors.client_id && (
                     <p className="mt-1 text-sm text-red-600">{errors.client_id}</p>
                   )}

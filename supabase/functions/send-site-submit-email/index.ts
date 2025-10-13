@@ -167,6 +167,8 @@ serve(async (req) => {
 
     if (contactsError) throw contactsError
 
+    console.log('DEBUG: Raw contacts data:', JSON.stringify(contacts, null, 2))
+
     // Filter for Site Selector role and contacts with email addresses
     const siteSelectors = contacts
       ?.filter((item: any) =>

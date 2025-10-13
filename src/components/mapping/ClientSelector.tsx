@@ -110,9 +110,15 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({
   };
 
   const handleInputFocus = () => {
+    if (inputRef.current) {
+      inputRef.current.select();
+    }
     setShowDropdown(true);
     if (!query.trim()) {
       getAllActiveClients().then(setResults);
+    } else if (results.length > 0) {
+      // Show dropdown if we have suggestions
+      setShowDropdown(true);
     }
   };
 
@@ -121,86 +127,61 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({
     setQuery(value);
     setShowDropdown(true);
     setSelectedIndex(-1);
+
+    // Clear selection if user is typing something different
+    if (selectedClient && value !== selectedClient.client_name) {
+      onClientSelect(null);
+    }
+
+    // Clear everything if input is empty
+    if (value === "") {
+      onClientSelect(null);
+      setResults([]);
+      setShowDropdown(false);
+    }
   };
 
   return (
     <div className={`relative ${className}`} ref={searchRef}>
-      <div className="relative">
-        <div className="relative flex-1">
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={handleInputChange}
-            onFocus={handleInputFocus}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
-          />
+      <input
+        ref={inputRef}
+        type="text"
+        value={query}
+        onChange={handleInputChange}
+        onFocus={handleInputFocus}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        className="block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+      />
 
-          {/* Loading spinner */}
-          {loading && (
-            <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
-              <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-            </div>
-          )}
-
-          {/* Clear button */}
-          {selectedClient && (
-            <button
-              onClick={handleClearSelection}
-              className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              title="Clear selection"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-
-        {/* Dropdown */}
-        {showDropdown && results.length > 0 && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
-            {results.map((client, index) => (
+      {/* Dropdown with suggestions */}
+      {showDropdown && (
+        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto">
+          {loading ? (
+            <div className="p-2 text-sm text-gray-500">Loading...</div>
+          ) : results.length > 0 ? (
+            results.map((client, index) => (
               <div
                 key={client.id}
                 onClick={() => handleSelectClient(client)}
-                className={`px-4 py-3 cursor-pointer border-b border-gray-100 last:border-b-0 ${
-                  index === selectedIndex
-                    ? 'bg-blue-50 text-blue-900'
-                    : 'hover:bg-gray-50'
+                className={`p-2 hover:bg-gray-100 cursor-pointer text-sm ${
+                  index === selectedIndex ? 'bg-gray-100' : ''
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium text-gray-900">
-                      {client.client_name}
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      {client.type && (
-                        <span className="inline-flex items-center space-x-1">
-                          <span>{client.type}</span>
-                          {client.phone && <span>• {client.phone}</span>}
-                        </span>
-                      )}
-                    </div>
+                <div className="font-medium">{client.client_name}</div>
+                {client.type && (
+                  <div className="text-xs text-gray-500">
+                    {client.type}
+                    {client.phone && ` • ${client.phone}`}
                   </div>
-                  <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                    {client.site_submit_count} submits
-                  </div>
-                </div>
+                )}
               </div>
-            ))}
-          </div>
-        )}
-
-        {/* No results message */}
-        {showDropdown && !loading && query.trim() && results.length === 0 && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 px-4 py-6 text-center text-gray-500">
-            <div className="text-sm">No active clients found for "{query}"</div>
-            <div className="text-xs mt-1">Try searching with different keywords</div>
-          </div>
-        )}
-      </div>
+            ))
+          ) : query.trim().length > 0 ? (
+            <div className="p-2 text-sm text-gray-500">No active clients found</div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 };
