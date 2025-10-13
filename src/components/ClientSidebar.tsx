@@ -603,32 +603,6 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
                   ))}
                 </SidebarModule>
 
-                {/* Notes */}
-                <SidebarModule
-                  title="Notes"
-                  count={notes.length}
-                  onAddNew={() => {
-                    setEditingNoteId(null);
-                    setShowNoteModal(true);
-                  }}
-                  isExpanded={expandedSidebarModules.notes}
-                  onToggle={() => toggleSidebarModule('notes')}
-                  icon="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                  isEmpty={notes.length === 0}
-                  showAddButton={true}
-                >
-                  {notes.map(note => (
-                    <NoteItem
-                      key={note.id}
-                      note={note}
-                      onClick={(noteId) => {
-                        setEditingNoteId(noteId);
-                        setShowNoteModal(true);
-                      }}
-                    />
-                  ))}
-                </SidebarModule>
-
                 {/* Deals */}
                 <SidebarModule
                   title="Deals"
@@ -683,6 +657,32 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
                   isExpanded={expandedSidebarModules.files}
                   onToggle={() => toggleSidebarModule('files')}
                 />
+
+                {/* Notes */}
+                <SidebarModule
+                  title="Notes"
+                  count={notes.length}
+                  onAddNew={() => {
+                    setEditingNoteId(null);
+                    setShowNoteModal(true);
+                  }}
+                  isExpanded={expandedSidebarModules.notes}
+                  onToggle={() => toggleSidebarModule('notes')}
+                  icon="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                  isEmpty={notes.length === 0}
+                  showAddButton={true}
+                >
+                  {notes.map(note => (
+                    <NoteItem
+                      key={note.id}
+                      note={note}
+                      onClick={(noteId) => {
+                        setEditingNoteId(noteId);
+                        setShowNoteModal(true);
+                      }}
+                    />
+                  ))}
+                </SidebarModule>
               </>
             )}
           </div>
