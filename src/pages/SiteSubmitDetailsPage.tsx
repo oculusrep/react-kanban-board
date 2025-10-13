@@ -114,13 +114,12 @@ const SiteSubmitDetailsPage: React.FC = () => {
             .from('site_submit')
             .select(`
               *,
-              client:client_id (
+              client!site_submit_client_id_fkey (
                 id,
                 client_name,
-                type,
                 phone
               ),
-              property:property_id (
+              property!site_submit_property_id_fkey (
                 id,
                 property_name
               )
@@ -131,6 +130,8 @@ const SiteSubmitDetailsPage: React.FC = () => {
           if (error) {
             console.error('Error loading site submit:', error);
           } else if (siteSubmitData) {
+            console.log('📥 Loaded site submit data:', siteSubmitData);
+            console.log('📅 date_submitted value:', siteSubmitData.date_submitted);
             setFormData({
               site_submit_name: siteSubmitData.site_submit_name || '',
               client_id: siteSubmitData.client_id,
@@ -158,7 +159,6 @@ const SiteSubmitDetailsPage: React.FC = () => {
               setSelectedClient({
                 id: siteSubmitData.client.id,
                 client_name: siteSubmitData.client.client_name,
-                type: siteSubmitData.client.type,
                 phone: siteSubmitData.client.phone,
                 site_submit_count: 0 // Not needed for editing
               });

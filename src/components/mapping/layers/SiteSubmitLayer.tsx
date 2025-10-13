@@ -181,6 +181,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
           year_1_rent,
           ti,
           sf_property_unit,
+          date_submitted,
           delivery_date,
           loi_written,
           loi_date,
