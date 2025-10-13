@@ -389,6 +389,7 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
               <ParentAccountSelector
                 currentClient={client}
                 onParentChange={handleParentChange}
+                hideLabel={true}
               />
             </div>
           )}

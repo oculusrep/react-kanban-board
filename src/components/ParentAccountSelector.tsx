@@ -8,12 +8,14 @@ interface ParentAccountSelectorProps {
   currentClient: Client;
   onParentChange: (parentId: string | null) => Promise<void>;
   disabled?: boolean;
+  hideLabel?: boolean;
 }
 
 export const ParentAccountSelector: React.FC<ParentAccountSelectorProps> = ({
   currentClient,
   onParentChange,
-  disabled = false
+  disabled = false,
+  hideLabel = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -124,9 +126,11 @@ export const ParentAccountSelector: React.FC<ParentAccountSelectorProps> = ({
       {/* Current Parent Display */}
       <div className="flex items-center justify-between">
         <div className="flex-1">
-          <div className="text-xs font-semibold text-gray-500 mb-1">
-            Parent Account
-          </div>
+          {!hideLabel && (
+            <div className="text-xs font-semibold text-gray-500 mb-1">
+              Parent Account
+            </div>
+          )}
           <button
             onClick={() => !disabled && setIsOpen(!isOpen)}
             disabled={disabled || isLoading}
