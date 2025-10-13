@@ -36,6 +36,7 @@ interface ContactItemProps {
   onToggle?: () => void;
   onEdit?: (contactId: string) => void;
   onClick?: (contactId: string) => void;
+  onRemove?: (contactId: string) => void;
 }
 
 const ContactItem: React.FC<ContactItemProps> = ({
@@ -43,19 +44,19 @@ const ContactItem: React.FC<ContactItemProps> = ({
   isExpanded = false,
   onToggle,
   onEdit,
-  onClick
+  onClick,
+  onRemove
 }) => {
   const displayPhone = contact.mobile_phone || contact.phone;
   const phoneLabel = contact.mobile_phone ? 'Mobile' : 'Phone';
   const isLead = contact.source_type === 'Lead';
 
   return (
-    <div className="border-b border-gray-100 last:border-b-0">
+    <div className="border-b border-gray-100 last:border-b-0 group">
       <div
         className="p-2 hover:bg-gray-50 cursor-pointer transition-colors flex items-center justify-between"
-        onClick={() => onClick?.(contact.id)}
       >
-        <div className="flex items-center space-x-3 flex-1 min-w-0">
+        <div className="flex items-center space-x-3 flex-1 min-w-0" onClick={() => onClick?.(contact.id)}>
           <div className={`w-6 h-6 ${isLead ? 'bg-orange-500' : 'bg-blue-500'} rounded-full flex items-center justify-center flex-shrink-0`}>
             <span className="text-white font-medium text-xs">
               {contact.first_name?.[0] || '?'}{contact.last_name?.[0] || ''}
@@ -73,23 +74,43 @@ const ContactItem: React.FC<ContactItemProps> = ({
             </div>
           </div>
         </div>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle?.();
-          }}
-        >
-          <svg
-            className={`w-3 h-3 text-gray-400 transform transition-transform flex-shrink-0 ${
-              isExpanded ? 'rotate-90' : ''
-            }`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
+        <div className="flex items-center space-x-2">
+          {/* Trash icon - visible on hover */}
+          {onRemove && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (confirm('Remove this contact from the client? The contact will not be deleted, only the association.')) {
+                  onRemove(contact.id);
+                }
+              }}
+              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-50 rounded"
+              title="Remove contact from client"
+            >
+              <svg
+                className="w-4 h-4 text-gray-400 hover:text-red-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          )}
+          {/* Chevron - always visible */}
+          <div onClick={onToggle}>
+            <svg
+              className={`w-3 h-3 text-gray-400 transform transition-transform flex-shrink-0 ${
+                isExpanded ? 'rotate-90' : ''
+              }`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+        </div>
       </div>
       {isExpanded && (
         <div className="px-2 pb-2 bg-blue-25">
@@ -428,6 +449,16 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
     }
   };
 
+  const handleRemoveContact = async (contactId: string) => {
+    try {
+      await removeContactRelation(contactId);
+      // The hook will automatically refresh the relations list
+    } catch (err) {
+      console.error('Error removing contact from client:', err);
+      alert('Failed to remove contact from client. Please try again.');
+    }
+  };
+
 
   const toggleSidebarModule = (module: keyof typeof expandedSidebarModules) => {
     setExpandedSidebarModules({
@@ -535,6 +566,7 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
                             onContactModalChange?.(true);
                           }}
                           onClick={onContactClick}
+                          onRemove={handleRemoveContact}
                         />
                         <div className="px-2 pb-2 space-y-2">
                           {relation.is_primary && (
