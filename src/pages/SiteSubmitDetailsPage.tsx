@@ -11,6 +11,9 @@ import { useToast } from '../hooks/useToast';
 import { useRecentlyViewed } from '../hooks/useRecentlyViewed';
 import ClientSelector from '../components/mapping/ClientSelector';
 import { ClientSearchResult } from '../hooks/useClientSearch';
+import AssignmentSelector from '../components/mapping/AssignmentSelector';
+import { AssignmentSearchResult } from '../hooks/useAssignmentSearch';
+import AddAssignmentModal from '../components/AddAssignmentModal';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type SiteSubmitInsert = Database['public']['Tables']['site_submit']['Insert'];
@@ -70,6 +73,8 @@ const SiteSubmitDetailsPage: React.FC = () => {
   });
 
   const [selectedClient, setSelectedClient] = useState<ClientSearchResult | null>(null);
+  const [selectedAssignment, setSelectedAssignment] = useState<AssignmentSearchResult | null>(null);
+  const [showAddAssignmentModal, setShowAddAssignmentModal] = useState(false);
   const [submitStages, setSubmitStages] = useState<SubmitStage[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -132,6 +137,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
           } else if (siteSubmitData) {
             console.log('📥 Loaded site submit data:', siteSubmitData);
             console.log('📅 date_submitted value:', siteSubmitData.date_submitted);
+            console.log('📋 assignment_id from database:', siteSubmitData.assignment_id);
             setFormData({
               site_submit_name: siteSubmitData.site_submit_name || '',
               client_id: siteSubmitData.client_id,
@@ -162,6 +168,36 @@ const SiteSubmitDetailsPage: React.FC = () => {
                 phone: siteSubmitData.client.phone,
                 site_submit_count: 0 // Not needed for editing
               });
+            }
+
+            // Load assignment if present
+            if (siteSubmitData.assignment_id) {
+              console.log('📋 Loading assignment for site submit:', siteSubmitData.assignment_id);
+              supabase
+                .from('assignment')
+                .select('id, assignment_name, client_id, assignment_value, due_date, progress')
+                .eq('id', siteSubmitData.assignment_id)
+                .single()
+                .then(({ data: assignmentData, error: assignmentError }) => {
+                  if (assignmentError) {
+                    console.error('❌ Error loading assignment:', assignmentError);
+                  } else if (assignmentData) {
+                    console.log('✅ Loaded assignment data:', assignmentData);
+                    setSelectedAssignment({
+                      id: assignmentData.id,
+                      assignment_name: assignmentData.assignment_name || 'Unnamed Assignment',
+                      client_id: assignmentData.client_id,
+                      client_name: null,
+                      assignment_value: assignmentData.assignment_value,
+                      due_date: assignmentData.due_date,
+                      progress: assignmentData.progress
+                    });
+                  } else {
+                    console.warn('⚠️ No assignment data found for ID:', siteSubmitData.assignment_id);
+                  }
+                });
+            } else {
+              console.log('ℹ️ No assignment_id in site submit data');
             }
 
             // Load property name for auto-generation
@@ -283,6 +319,8 @@ const SiteSubmitDetailsPage: React.FC = () => {
           updated_at: new Date().toISOString(),
         };
 
+        console.log('💾 Saving site submit with assignment_id:', updateData.assignment_id);
+
         const { data, error } = await supabase
           .from('site_submit')
           .update(updateData)
@@ -291,6 +329,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
           .single();
 
         if (error) throw error;
+        console.log('✅ Site submit saved successfully with assignment:', data?.assignment_id);
       } else {
         // Create new site submit - convert empty date strings to null
         const submitData: SiteSubmitInsert = {
@@ -303,6 +342,8 @@ const SiteSubmitDetailsPage: React.FC = () => {
           updated_at: new Date().toISOString(),
         };
 
+        console.log('💾 Creating new site submit with assignment_id:', submitData.assignment_id);
+
         const { data, error } = await supabase
           .from('site_submit')
           .insert(submitData)
@@ -310,7 +351,9 @@ const SiteSubmitDetailsPage: React.FC = () => {
           .single();
 
         if (error) throw error;
-        
+
+        console.log('✅ New site submit created successfully with assignment:', data?.assignment_id);
+
         // Navigate to the new site submit's detail page
         if (data) {
           navigate(`/site-submit/${data.id}`, { replace: true });
@@ -812,19 +855,41 @@ const SiteSubmitDetailsPage: React.FC = () => {
                     )}
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Client *
-                    </label>
-                    <ClientSelector
-                      selectedClient={selectedClient}
-                      onClientSelect={handleClientSelect}
-                      placeholder="Type to search clients..."
-                      className={errors.client_id ? 'border-red-300' : ''}
-                    />
-                    {errors.client_id && (
-                      <p className="mt-1 text-sm text-red-600">{errors.client_id}</p>
-                    )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Client *
+                      </label>
+                      <ClientSelector
+                        selectedClient={selectedClient}
+                        onClientSelect={handleClientSelect}
+                        placeholder="Type to search clients..."
+                        className={errors.client_id ? 'border-red-300' : ''}
+                      />
+                      {errors.client_id && (
+                        <p className="mt-1 text-sm text-red-600">{errors.client_id}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Assignment (Optional)
+                      </label>
+                      <AssignmentSelector
+                        selectedAssignment={selectedAssignment}
+                        onAssignmentSelect={(assignment) => {
+                          setSelectedAssignment(assignment);
+                          setFormData(prev => ({ ...prev, assignment_id: assignment?.id || null }));
+                        }}
+                        onCreateNew={() => setShowAddAssignmentModal(true)}
+                        placeholder="Search for assignment..."
+                        limit={5}
+                        clientId={selectedClient?.id || null}
+                      />
+                      {!selectedClient && (
+                        <p className="mt-1 text-xs text-gray-500">Select a client first</p>
+                      )}
+                    </div>
                   </div>
 
                   <PropertySelector
@@ -1087,6 +1152,28 @@ const SiteSubmitDetailsPage: React.FC = () => {
         defaultBody={emailDefaultData.body}
         defaultRecipients={emailDefaultData.recipients}
         siteSubmitName={formData.site_submit_name}
+      />
+
+      {/* Add Assignment Modal */}
+      <AddAssignmentModal
+        isOpen={showAddAssignmentModal}
+        onClose={() => setShowAddAssignmentModal(false)}
+        onSave={(newAssignment) => {
+          const assignmentResult: AssignmentSearchResult = {
+            id: newAssignment.id,
+            assignment_name: newAssignment.assignment_name || 'Unnamed Assignment',
+            client_id: newAssignment.client_id,
+            client_name: null,
+            assignment_value: newAssignment.assignment_value,
+            due_date: newAssignment.due_date,
+            progress: newAssignment.progress
+          };
+          setSelectedAssignment(assignmentResult);
+          setFormData(prev => ({ ...prev, assignment_id: assignmentResult.id }));
+          setShowAddAssignmentModal(false);
+          showToast('Assignment created successfully!', { type: 'success' });
+        }}
+        preselectedClientId={selectedClient?.id || null}
       />
     </div>
   );

@@ -38,6 +38,13 @@ export default function ReportsPage() {
       description: "Review properties with missing location (lat/long) or address data",
       route: "/reports/property-data-quality",
       icon: "🏢"
+    },
+    {
+      id: "assignments",
+      name: "Assignments Report",
+      description: "View and filter all assignments by client and trade area",
+      route: "/reports/assignments",
+      icon: "📋"
     }
   ];
 

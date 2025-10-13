@@ -19,6 +19,7 @@ import ReportsPage from "./pages/ReportsPage";
 import DealCompareReportPage from "./pages/DealCompareReportPage";
 import DealCompareToSalesforceReportPage from "./pages/DealCompareToSalesforceReportPage";
 import PropertyDataQualityReportPage from "./pages/PropertyDataQualityReportPage";
+import AssignmentsReportPage from "./pages/AssignmentsReportPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 
 function App() {
@@ -54,6 +55,7 @@ function App() {
           <Route path="reports/deal-compare" element={<DealCompareReportPage />} />
           <Route path="reports/deal-compare-salesforce" element={<DealCompareToSalesforceReportPage />} />
           <Route path="reports/property-data-quality" element={<PropertyDataQualityReportPage />} />
+          <Route path="reports/assignments" element={<AssignmentsReportPage />} />
         </Route>
       </Routes>
     </AuthProvider>

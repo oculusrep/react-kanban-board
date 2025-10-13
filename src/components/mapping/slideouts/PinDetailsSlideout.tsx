@@ -19,6 +19,9 @@ import PropertyUnitSelector from '../../PropertyUnitSelector';
 import PropertyUnitsSection from '../../property/PropertyUnitsSection';
 import Toast from '../../Toast';
 import DeleteConfirmationModal from '../../DeleteConfirmationModal';
+import AssignmentSelector from '../AssignmentSelector';
+import { AssignmentSearchResult } from '../../../hooks/useAssignmentSearch';
+import AddAssignmentModal from '../../AddAssignmentModal';
 
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
@@ -622,9 +625,10 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
   // Site submit relational data
   const [selectedClient, setSelectedClient] = useState<any>(null);
-  const [selectedAssignment, setSelectedAssignment] = useState<any>(null);
+  const [selectedAssignment, setSelectedAssignment] = useState<AssignmentSearchResult | null>(null);
   const [selectedPropertyUnit, setSelectedPropertyUnit] = useState<string | null>(null);
   const [siteSubmitName, setSiteSubmitName] = useState<string>('');
+  const [showAddAssignmentModal, setShowAddAssignmentModal] = useState(false);
 
   const { refreshLayer } = useLayerManager();
 
@@ -757,18 +761,47 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
       // Initialize assignment if present
       if (siteSubmitData.assignment_id) {
-        // Load assignment data
+        console.log('📋 Loading assignment for site submit:', siteSubmitData.assignment_id);
+        // Load assignment data without nested joins
         supabase
           .from('assignment')
-          .select('*, client(client_name)')
+          .select('id, assignment_name, client_id, assignment_value, due_date, progress')
           .eq('id', siteSubmitData.assignment_id)
           .single()
-          .then(({ data: assignmentData }) => {
-            if (assignmentData) {
-              setSelectedAssignment(assignmentData);
+          .then(async ({ data: assignmentData, error: assignmentError }) => {
+            if (assignmentError) {
+              console.error('❌ Error loading assignment:', assignmentError);
+              setSelectedAssignment(null);
+            } else if (assignmentData) {
+              console.log('✅ Loaded assignment data:', assignmentData);
+
+              // Fetch client name separately if needed
+              let clientName = null;
+              if (assignmentData.client_id) {
+                const { data: clientData } = await supabase
+                  .from('client')
+                  .select('client_name')
+                  .eq('id', assignmentData.client_id)
+                  .single();
+                clientName = clientData?.client_name || null;
+              }
+
+              setSelectedAssignment({
+                id: assignmentData.id,
+                assignment_name: assignmentData.assignment_name || 'Unnamed Assignment',
+                client_id: assignmentData.client_id,
+                client_name: clientName,
+                assignment_value: assignmentData.assignment_value,
+                due_date: assignmentData.due_date,
+                progress: assignmentData.progress
+              });
+            } else {
+              console.warn('⚠️ No assignment data found for ID:', siteSubmitData.assignment_id);
+              setSelectedAssignment(null);
             }
           });
       } else {
+        console.log('ℹ️ No assignment_id on site submit - clearing assignment');
         // Clear assignment if not present
         setSelectedAssignment(null);
       }
@@ -1062,6 +1095,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           updated_at: new Date().toISOString()
         };
 
+        console.log('📝 Assignment being saved:', selectedAssignment?.id, selectedAssignment?.assignment_name);
+
         console.log('📝 Insert data being sent to Supabase:', insertData);
         console.log('🎯 Current stage ID at save time:', currentStageId);
 
@@ -1254,13 +1289,20 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
             {/* Assignment - Optional */}
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Assignment (Optional)</label>
-              <input
-                type="text"
-                value={selectedAssignment?.assignment_name || ''}
-                readOnly
-                placeholder="Not yet implemented - coming soon"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded bg-gray-50 text-gray-500"
+              <AssignmentSelector
+                selectedAssignment={selectedAssignment}
+                onAssignmentSelect={(assignment) => {
+                  setSelectedAssignment(assignment);
+                  setHasChanges(true);
+                }}
+                onCreateNew={() => setShowAddAssignmentModal(true)}
+                placeholder="Search for assignment..."
+                limit={5}
+                clientId={selectedClient?.id || null}
               />
+              {!selectedClient && (
+                <p className="mt-1 text-xs text-gray-500">Select a client first to filter assignments</p>
+              )}
             </div>
 
             {/* Stage & Date Submitted in same row */}
@@ -1342,8 +1384,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
               />
             </div>
 
-            {/* Submit Site Button */}
-            {siteSubmit?.id && (
+            {/* Submit Site Button - Only show when there are no unsaved changes */}
+            {siteSubmit?.id && !hasChanges && (
               <div className="pt-3 border-t border-gray-200">
                 <button
                   onClick={() => {
@@ -2051,6 +2093,29 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           onClose={() => showToast(null)}
         />
       )}
+
+      {/* Add Assignment Modal */}
+      <AddAssignmentModal
+        isOpen={showAddAssignmentModal}
+        onClose={() => setShowAddAssignmentModal(false)}
+        onSave={(newAssignment) => {
+          // Convert Assignment to AssignmentSearchResult format
+          const assignmentResult: AssignmentSearchResult = {
+            id: newAssignment.id,
+            assignment_name: newAssignment.assignment_name || 'Unnamed Assignment',
+            client_id: newAssignment.client_id,
+            client_name: null, // Will be populated if needed
+            assignment_value: newAssignment.assignment_value,
+            due_date: newAssignment.due_date,
+            progress: newAssignment.progress
+          };
+          setSelectedAssignment(assignmentResult);
+          setHasChanges(true);
+          setShowAddAssignmentModal(false);
+          showToast('Assignment created successfully!', { type: 'success' });
+        }}
+        preselectedClientId={selectedClient?.id || null}
+      />
     </>
   );
 };
