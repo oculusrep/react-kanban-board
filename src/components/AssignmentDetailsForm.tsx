@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { Assignment, AssignmentPriority } from "../lib/types";
-import { formatCurrency, formatPercent } from "../utils/format";
-import FormattedInput from "./FormattedInput";
+import { formatCurrency } from "../utils/format";
 import ReferralPayeeAutocomplete from "./ReferralPayeeAutocomplete";
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
-import { parseISO, format as formatDateFn } from "date-fns";
+import AssignmentCurrencyField from "./AssignmentCurrencyField";
+import AssignmentPercentField from "./AssignmentPercentField";
+import ConvertToDealModal from "./ConvertToDealModal";
 
 interface Props {
   assignment: Assignment;
@@ -14,10 +14,11 @@ interface Props {
 }
 
 export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
+  const navigate = useNavigate();
   const [form, setForm] = useState<Assignment>(assignment);
   const [saving, setSaving] = useState(false);
-  const [editingField, setEditingField] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showConvertModal, setShowConvertModal] = useState(false);
   
   // Lookup options
   const [priorityOptions, setPriorityOptions] = useState<AssignmentPriority[]>([]);
@@ -273,15 +274,6 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
     }
   };
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return null;
-    try {
-      return parseISO(dateString);
-    } catch {
-      return null;
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Assignment Details Section */}
@@ -310,14 +302,12 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
           </div>
 
           {/* Assignment Value */}
-          <FormattedInput
+          <AssignmentCurrencyField
             label="Assignment Value"
             value={form.assignment_value}
-            onChange={(v) => updateField('assignment_value', v === "" ? null : parseFloat(v))}
-            format={(val) => formatCurrency(val, 2)}
-            editingField={editingField}
-            setEditingField={setEditingField}
-            fieldKey="assignment_value"
+            onChange={(v) => updateField('assignment_value', v)}
+            placeholder="0.00"
+            maxValue={1000000000}
             tabIndex={2}
           />
 
@@ -366,21 +356,6 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
             </select>
           </div>
 
-          {/* Due Date */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Due Date
-            </label>
-            <DatePicker
-              selected={formatDate(form.due_date)}
-              onChange={(date) => updateField('due_date', date ? date.toISOString().split('T')[0] : null)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholderText="Select due date"
-              dateFormat="yyyy-MM-dd"
-              tabIndex={5}
-            />
-          </div>
-
         </div>
       </div>
 
@@ -399,7 +374,7 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
               onFocus={(e) => e.target.select()}
               placeholder="Search clients..."
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              tabIndex={6}
+              tabIndex={5}
             />
             {clientSuggestions.filter((s) => s.label !== clientSearch).length > 0 && (
               <ul className="bg-white border border-gray-300 rounded mt-1 max-h-48 overflow-auto shadow-lg">
@@ -432,7 +407,7 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
               onFocus={(e) => e.target.select()}
               placeholder="Search deals..."
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              tabIndex={7}
+              tabIndex={6}
             />
             {dealSuggestions.filter((s) => s.label !== dealSearch).length > 0 && (
               <ul className="bg-white border border-gray-300 rounded mt-1 max-h-48 overflow-auto shadow-lg">
@@ -463,15 +438,13 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Row 1: Commission and Fee */}
-          <FormattedInput
+          <AssignmentPercentField
             label="Commission %"
             value={form.commission}
-            onChange={(v) => updateField('commission', v === "" ? null : parseFloat(v))}
-            format={(val) => formatPercent(val, 2)}
-            editingField={editingField}
-            setEditingField={setEditingField}
-            fieldKey="commission"
-            tabIndex={8}
+            onChange={(v) => updateField('commission', v)}
+            placeholder="0.00"
+            maxValue={100}
+            tabIndex={7}
           />
 
           <div>
@@ -482,22 +455,20 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
           </div>
 
           {/* Row 2: Referral Fee and Referral Payee */}
-          <FormattedInput
+          <AssignmentPercentField
             label="Referral Fee %"
             value={form.referral_fee}
-            onChange={(v) => updateField('referral_fee', v === "" ? null : parseFloat(v))}
-            format={(val) => formatPercent(val, 2)}
-            editingField={editingField}
-            setEditingField={setEditingField}
-            fieldKey="referral_fee"
-            tabIndex={9}
+            onChange={(v) => updateField('referral_fee', v)}
+            placeholder="0.00"
+            maxValue={100}
+            tabIndex={8}
           />
 
           <ReferralPayeeAutocomplete
             value={form.referral_payee_id}
             onChange={(clientId) => updateField('referral_payee_id', clientId)}
             label="Referral Payee"
-            tabIndex={10}
+            tabIndex={9}
           />
         </div>
       </div>
@@ -515,7 +486,7 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
               checked={form.scoped || false}
               onChange={(e) => updateField('scoped', e.target.checked)}
               className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              tabIndex={11}
+              tabIndex={10}
             />
             <label htmlFor="scoped" className="ml-2 block text-sm text-gray-900">
               Scoped Assignment
@@ -533,7 +504,7 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               rows={3}
               placeholder="Enter site criteria..."
-              tabIndex={12}
+              tabIndex={11}
             />
           </div>
         </div>
@@ -546,12 +517,44 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
             onClick={handleCreateNewAssignment}
             disabled={saving}
             className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            tabIndex={13}
+            tabIndex={12}
           >
             {saving ? 'Creating...' : 'Create Assignment'}
           </button>
         </div>
       )}
+
+      {/* Convert to Deal Button - Only for existing assignments */}
+      {form.id && form.id !== 'new' && (
+        <div className="flex justify-end mt-4">
+          <button
+            onClick={() => setShowConvertModal(true)}
+            className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 flex items-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Convert to Deal
+          </button>
+        </div>
+      )}
+
+      {/* Convert to Deal Modal */}
+      <ConvertToDealModal
+        isOpen={showConvertModal}
+        onClose={() => setShowConvertModal(false)}
+        assignmentId={form.id || ''}
+        assignmentName={form.assignment_name || ''}
+        assignmentValue={form.assignment_value}
+        clientId={form.client_id}
+        commission={form.commission}
+        referralFee={form.referral_fee}
+        referralPayeeId={form.referral_payee_id}
+        onSuccess={(dealId) => {
+          // Navigate to the newly created deal
+          navigate(`/deal/${dealId}`);
+        }}
+      />
 
     </div>
   );
