@@ -437,7 +437,7 @@ export default function Navbar() {
         </div>
 
         {/* Desktop: Center search box */}
-        <div className="hidden xl:flex flex-1 max-w-2xl mx-8">
+        <div className="hidden xl:flex flex-1 mx-8">
           <MasterSearchBox />
         </div>
 

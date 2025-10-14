@@ -192,7 +192,7 @@ const MasterSearchBox: React.FC<MasterSearchBoxProps> = ({
   };
 
   return (
-    <div ref={searchRef} className={`relative ${className}`}>
+    <div ref={searchRef} className={`relative w-full ${className}`}>
       <div className="relative">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
           <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -220,7 +220,7 @@ const MasterSearchBox: React.FC<MasterSearchBoxProps> = ({
 
       {/* Search Results Dropdown */}
       {showDropdown && results.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-96 overflow-y-auto">
+        <div className="absolute z-50 w-full min-w-[600px] mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-96 overflow-y-auto">
           {results.map((result, index) => (
             <div
               key={`${result.type}-${result.id}`}
@@ -284,7 +284,7 @@ const MasterSearchBox: React.FC<MasterSearchBoxProps> = ({
 
       {/* No Results Message */}
       {showDropdown && results.length === 0 && query.trim() && !loading && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg">
+        <div className="absolute z-50 w-full min-w-[600px] mt-1 bg-white border border-gray-200 rounded-md shadow-lg">
           <div className="px-4 py-3 text-sm text-gray-500 text-center">
             No results found for "{query}"
           </div>
