@@ -1000,40 +1000,12 @@ const SiteSubmitDetailsPage: React.FC = () => {
                       {errors.property_id && (
                         <p className="mt-1 text-sm text-red-600">{errors.property_id}</p>
                       )}
-                    </div>
-
-                    {formData.property_id && (
-                      <PropertyUnitSelector
-                        propertyId={formData.property_id}
-                        value={formData.property_unit_id}
-                        onChange={(value) => updateFormData('property_unit_id', value)}
-                        label="Property Unit (Optional)"
-                      />
-                    )}
-                  </div>
-
-                  {/* Display property or unit details inline */}
-                  {formData.property_id && (
-                    <div className="text-xs text-gray-600">
-                      {unitDetails ? (
-                        // Show unit details if unit is selected
-                        <div className="flex gap-3">
-                          {unitDetails.sqft && (
-                            <span>{unitDetails.sqft.toLocaleString()} sqft</span>
-                          )}
-                          {unitDetails.rent && (
-                            <span>Rent: ${unitDetails.rent.toLocaleString()}</span>
-                          )}
-                          {unitDetails.nnn && (
-                            <span>NNN: ${unitDetails.nnn.toLocaleString()}</span>
-                          )}
-                        </div>
-                      ) : (
-                        // Show property details if no unit selected
-                        propertyDetails && (
+                      {/* Display property details when no unit is selected */}
+                      {formData.property_id && !formData.property_unit_id && propertyDetails && (
+                        <div className="mt-2 text-xs text-gray-600">
                           <div className="flex gap-3">
                             {propertyDetails.available_sqft && (
-                              <span>Available: {propertyDetails.available_sqft.toLocaleString()} sqft</span>
+                              <span>{propertyDetails.available_sqft.toLocaleString()} sqft</span>
                             )}
                             {propertyDetails.rent_psf && (
                               <span>Rent: ${propertyDetails.rent_psf.toLocaleString()}/sqft</span>
@@ -1042,10 +1014,52 @@ const SiteSubmitDetailsPage: React.FC = () => {
                               <span>NNN: ${propertyDetails.nnn_psf.toLocaleString()}/sqft</span>
                             )}
                           </div>
-                        )
+                        </div>
                       )}
                     </div>
-                  )}
+
+                    {formData.property_id && (
+                      <div>
+                        <PropertyUnitSelector
+                          propertyId={formData.property_id}
+                          value={formData.property_unit_id}
+                          onChange={(value) => updateFormData('property_unit_id', value)}
+                          label="Property Unit (Optional)"
+                        />
+                        {/* Display unit details when unit is selected, fallback to property details */}
+                        {formData.property_unit_id && (
+                          <div className="mt-2 text-xs text-gray-600">
+                            <div className="flex gap-3">
+                              {/* Show sqft - prefer unit, fallback to property */}
+                              {(unitDetails?.sqft || propertyDetails?.available_sqft) && (
+                                <span>
+                                  {unitDetails?.sqft
+                                    ? `${unitDetails.sqft.toLocaleString()} sqft`
+                                    : `${propertyDetails.available_sqft!.toLocaleString()} sqft`}
+                                </span>
+                              )}
+                              {/* Show rent - prefer unit, fallback to property */}
+                              {(unitDetails?.rent || propertyDetails?.rent_psf) && (
+                                <span>
+                                  Rent: ${unitDetails?.rent
+                                    ? unitDetails.rent.toLocaleString()
+                                    : `${propertyDetails.rent_psf!.toLocaleString()}/sqft`}
+                                </span>
+                              )}
+                              {/* Show NNN - prefer unit, fallback to property */}
+                              {(unitDetails?.nnn || propertyDetails?.nnn_psf) && (
+                                <span>
+                                  NNN: ${unitDetails?.nnn
+                                    ? unitDetails.nnn.toLocaleString()
+                                    : `${propertyDetails.nnn_psf!.toLocaleString()}/sqft`}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Submission Details Section */}
