@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Database } from '../../../database-schema';
 import SiteSubmitFormModal from '../SiteSubmitFormModal';
+import SiteSubmitSidebar from '../SiteSubmitSidebar';
 import ContactFormModal from '../ContactFormModal';
 import AddContactsModal from './AddContactsModal';
 import SidebarModule from '../sidebar/SidebarModule';
@@ -225,8 +226,10 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false);
-  const [editingSiteSubmitId, setEditingSiteSubmitId] = useState<string | null>(null);
+  const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false); // For creating new
+  const [siteSubmitSidebarOpen, setSiteSubmitSidebarOpen] = useState(false); // For viewing existing
+  const [siteSubmitSidebarId, setSiteSubmitSidebarId] = useState<string | null>(null);
+  const [siteSubmitSidebarMinimized, setSiteSubmitSidebarMinimized] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
   const [showAddContactsModal, setShowAddContactsModal] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
@@ -511,7 +514,6 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
               title="Site Submits"
               count={siteSubmits.length}
               onAddNew={() => {
-                setEditingSiteSubmitId(null);
                 setShowSiteSubmitModal(true);
                 onSiteSubmitModalChange?.(true);
               }}
@@ -525,8 +527,9 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
                   key={siteSubmit.id}
                   siteSubmit={siteSubmit}
                   onClick={(id) => {
-                    setEditingSiteSubmitId(id);
-                    setShowSiteSubmitModal(true);
+                    setSiteSubmitSidebarId(id);
+                    setSiteSubmitSidebarOpen(true);
+                    setSiteSubmitSidebarMinimized(false);
                     onSiteSubmitModalChange?.(true);
                   }}
                 />
@@ -546,29 +549,34 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
         )}
       </div>
 
-      {/* Site Submit Form Modal - Outside sidebar container for proper z-index layering */}
+      {/* Site Submit Form Modal - For creating new site submits */}
       <SiteSubmitFormModal
         isOpen={showSiteSubmitModal}
         onClose={() => {
           setShowSiteSubmitModal(false);
-          setEditingSiteSubmitId(null);
           onSiteSubmitModalChange?.(false);
         }}
-        siteSubmitId={editingSiteSubmitId}
         propertyId={propertyId}
         onSave={(newSiteSubmit) => {
           setSiteSubmits(prev => [newSiteSubmit, ...prev]);
           setShowSiteSubmitModal(false);
           onSiteSubmitModalChange?.(false);
         }}
-        onUpdate={(updatedSiteSubmit) => {
-          setSiteSubmits(prev => 
-            prev.map(ss => ss.id === updatedSiteSubmit.id ? updatedSiteSubmit : ss)
-          );
-          setShowSiteSubmitModal(false);
-          onSiteSubmitModalChange?.(false);
-        }}
       />
+
+      {/* Site Submit Sidebar - For viewing existing site submits */}
+      {siteSubmitSidebarOpen && siteSubmitSidebarId && (
+        <SiteSubmitSidebar
+          siteSubmitId={siteSubmitSidebarId}
+          isMinimized={siteSubmitSidebarMinimized}
+          onMinimize={() => setSiteSubmitSidebarMinimized(!siteSubmitSidebarMinimized)}
+          onClose={() => {
+            setSiteSubmitSidebarOpen(false);
+            setSiteSubmitSidebarId(null);
+            onSiteSubmitModalChange?.(false);
+          }}
+        />
+      )}
 
       {/* Contact Form Modal - Outside sidebar container for proper z-index layering */}
       <ContactFormModal

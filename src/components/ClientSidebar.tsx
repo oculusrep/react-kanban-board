@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import RichTextNote from './RichTextNote';
 import ContactFormModal from './ContactFormModal';
-import SiteSubmitFormModal from './SiteSubmitFormModal';
+import SiteSubmitSidebar from './SiteSubmitSidebar';
 import NoteFormModal from './NoteFormModal';
 import SidebarModule from './sidebar/SidebarModule';
 import FileManagerModule from './sidebar/FileManagerModule';
@@ -294,8 +294,9 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showContactModal, setShowContactModal] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
-  const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false);
-  const [editingSiteSubmitId, setEditingSiteSubmitId] = useState<string | null>(null);
+  const [siteSubmitSidebarOpen, setSiteSubmitSidebarOpen] = useState(false);
+  const [siteSubmitSidebarId, setSiteSubmitSidebarId] = useState<string | null>(null);
+  const [siteSubmitSidebarMinimized, setSiteSubmitSidebarMinimized] = useState(false);
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
@@ -670,8 +671,9 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
                       siteSubmit={siteSubmit}
                       onClick={(id) => {
                         console.log('🖱️ ClientSidebar: Site submit clicked, ID:', id);
-                        setEditingSiteSubmitId(id);
-                        setShowSiteSubmitModal(true);
+                        setSiteSubmitSidebarId(id);
+                        setSiteSubmitSidebarOpen(true);
+                        setSiteSubmitSidebarMinimized(false);
                         onSiteSubmitModalChange?.(true);
                       }}
                     />
@@ -738,29 +740,19 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
         }}
       />
 
-      {/* Site Submit Form Modal */}
-      <SiteSubmitFormModal
-        isOpen={showSiteSubmitModal}
-        onClose={() => {
-          setShowSiteSubmitModal(false);
-          setEditingSiteSubmitId(null);
-          onSiteSubmitModalChange?.(false);
-        }}
-        siteSubmitId={editingSiteSubmitId}
-        clientId={clientId}
-        onSave={(newSiteSubmit) => {
-          setSiteSubmits(prev => [newSiteSubmit, ...prev]);
-          setShowSiteSubmitModal(false);
-          onSiteSubmitModalChange?.(false);
-        }}
-        onUpdate={(updatedSiteSubmit) => {
-          setSiteSubmits(prev =>
-            prev.map(ss => ss.id === updatedSiteSubmit.id ? updatedSiteSubmit : ss)
-          );
-          setShowSiteSubmitModal(false);
-          onSiteSubmitModalChange?.(false);
-        }}
-      />
+      {/* Site Submit Sidebar */}
+      {siteSubmitSidebarOpen && siteSubmitSidebarId && (
+        <SiteSubmitSidebar
+          siteSubmitId={siteSubmitSidebarId}
+          isMinimized={siteSubmitSidebarMinimized}
+          onMinimize={() => setSiteSubmitSidebarMinimized(!siteSubmitSidebarMinimized)}
+          onClose={() => {
+            setSiteSubmitSidebarOpen(false);
+            setSiteSubmitSidebarId(null);
+            onSiteSubmitModalChange?.(false);
+          }}
+        />
+      )}
 
       {/* Note Form Modal */}
       <NoteFormModal

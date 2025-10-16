@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import SiteSubmitFormModal from './SiteSubmitFormModal';
+import SiteSubmitSidebar from './SiteSubmitSidebar';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 
@@ -148,8 +149,10 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false);
-  const [editingSiteSubmitId, setEditingSiteSubmitId] = useState<string | null>(null);
+  const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false); // For creating new
+  const [siteSubmitSidebarOpen, setSiteSubmitSidebarOpen] = useState(false); // For viewing existing
+  const [siteSubmitSidebarId, setSiteSubmitSidebarId] = useState<string | null>(null);
+  const [siteSubmitSidebarMinimized, setSiteSubmitSidebarMinimized] = useState(false);
 
   // Expansion state for site submits
   const [expandedSidebarModules, setExpandedSidebarModules] = useState(() => {
@@ -287,7 +290,6 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
                       alert('Please save the assignment first before adding site submits.');
                       return;
                     }
-                    setEditingSiteSubmitId(null);
                     setShowSiteSubmitModal(true);
                     onSiteSubmitModalChange?.(true);
                   }}
@@ -297,12 +299,13 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
                   isEmpty={siteSubmits.length === 0}
                 >
                   {siteSubmits.map(siteSubmit => (
-                    <SiteSubmitItem 
-                      key={siteSubmit.id} 
-                      siteSubmit={siteSubmit} 
+                    <SiteSubmitItem
+                      key={siteSubmit.id}
+                      siteSubmit={siteSubmit}
                       onClick={(id) => {
-                        setEditingSiteSubmitId(id);
-                        setShowSiteSubmitModal(true);
+                        setSiteSubmitSidebarId(id);
+                        setSiteSubmitSidebarOpen(true);
+                        setSiteSubmitSidebarMinimized(false);
                         onSiteSubmitModalChange?.(true);
                       }}
                     />
@@ -314,27 +317,32 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
         )}
       </div>
 
-      {/* Site Submit Form Modal - Outside sidebar container for proper z-index layering */}
+      {/* Site Submit Form Modal - For creating new site submits */}
       {assignmentId !== 'new' && (
         <SiteSubmitFormModal
           isOpen={showSiteSubmitModal}
           onClose={() => {
             setShowSiteSubmitModal(false);
-            setEditingSiteSubmitId(null);
             onSiteSubmitModalChange?.(false);
           }}
-          siteSubmitId={editingSiteSubmitId}
           assignmentId={assignmentId}
           onSave={(newSiteSubmit) => {
             setSiteSubmits(prev => [newSiteSubmit, ...prev]);
             setShowSiteSubmitModal(false);
             onSiteSubmitModalChange?.(false);
           }}
-          onUpdate={(updatedSiteSubmit) => {
-            setSiteSubmits(prev => 
-              prev.map(ss => ss.id === updatedSiteSubmit.id ? updatedSiteSubmit : ss)
-            );
-            setShowSiteSubmitModal(false);
+        />
+      )}
+
+      {/* Site Submit Sidebar - For viewing existing site submits */}
+      {siteSubmitSidebarOpen && siteSubmitSidebarId && (
+        <SiteSubmitSidebar
+          siteSubmitId={siteSubmitSidebarId}
+          isMinimized={siteSubmitSidebarMinimized}
+          onMinimize={() => setSiteSubmitSidebarMinimized(!siteSubmitSidebarMinimized)}
+          onClose={() => {
+            setSiteSubmitSidebarOpen(false);
+            setSiteSubmitSidebarId(null);
             onSiteSubmitModalChange?.(false);
           }}
         />
