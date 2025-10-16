@@ -32,15 +32,21 @@ export default function SiteSubmitSelector({
   // Load the selected site submit details
   useEffect(() => {
     if (value) {
+      console.log('SiteSubmitSelector: Loading site submit with id:', value);
       supabase
         .from("site_submit")
         .select("*")
         .eq("id", value)
         .single()
-        .then(({ data }) => {
-          if (data) {
+        .then(({ data, error }) => {
+          if (error) {
+            console.error('SiteSubmitSelector: Error loading site submit:', error);
+          } else if (data) {
+            console.log('SiteSubmitSelector: Loaded site submit:', data);
             setSelectedSiteSubmit(data);
-            setSearch(data.code || "");
+            // Display site_submit_name if available, otherwise show code
+            const displayText = data.site_submit_name || data.code || "";
+            setSearch(displayText);
           }
         });
     } else {
@@ -93,7 +99,9 @@ useEffect(() => {
 
   const handleSelect = (siteSubmit: SiteSubmit) => {
     setSelectedSiteSubmit(siteSubmit);
-    setSearch(siteSubmit.code || "");  // Fill with CODE when selected
+    // Display site_submit_name if available, otherwise show code
+    const displayText = siteSubmit.site_submit_name || siteSubmit.code || "";
+    setSearch(displayText);
     onChange(siteSubmit.id);
     setShowDropdown(false);
     setSuggestions([]);

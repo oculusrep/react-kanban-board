@@ -10,6 +10,7 @@ interface SidebarModuleProps {
   icon?: string;
   isEmpty?: boolean;
   showAddButton?: boolean;
+  customAction?: React.ReactNode;
 }
 
 const SidebarModule: React.FC<SidebarModuleProps> = ({
@@ -21,7 +22,8 @@ const SidebarModule: React.FC<SidebarModuleProps> = ({
   onToggle,
   icon,
   isEmpty = false,
-  showAddButton = true
+  showAddButton = true,
+  customAction
 }) => (
   <div className={`bg-white border border-gray-200 rounded-lg mb-3 shadow-sm ${isEmpty ? 'opacity-60' : ''}`}>
     <div className={`flex items-center justify-between p-3 border-b border-gray-100 ${
@@ -58,6 +60,7 @@ const SidebarModule: React.FC<SidebarModuleProps> = ({
           <span className="text-xs text-gray-500 italic">(Empty)</span>
         )}
       </button>
+      {customAction}
       {showAddButton && onAddNew && (
         <button
           onClick={onAddNew}

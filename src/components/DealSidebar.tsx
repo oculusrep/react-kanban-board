@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import SidebarModule from './sidebar/SidebarModule';
 import FileManagerModule from './sidebar/FileManagerModule';
+import ContactFormModal from './ContactFormModal';
 
 type Note = Database['public']['Tables']['note']['Row'];
 type Contact = Database['public']['Tables']['contact']['Row'];
@@ -20,19 +21,21 @@ interface ContactItemProps {
   isExpanded?: boolean;
   onToggle?: () => void;
   onClick?: (contactId: string) => void;
+  onDelete?: (contactId: string) => void;
 }
 
 const ContactItem: React.FC<ContactItemProps> = ({
   contact,
   isExpanded = false,
   onToggle,
-  onClick
+  onClick,
+  onDelete
 }) => {
   const displayPhone = contact.mobile_phone || contact.phone;
   const phoneLabel = contact.mobile_phone ? 'Mobile' : 'Phone';
 
   return (
-    <div className="border-b border-gray-100 last:border-b-0">
+    <div className="border-b border-gray-100 last:border-b-0 group">
       <div
         className="p-2 hover:bg-gray-50 cursor-pointer transition-colors flex items-center justify-between"
         onClick={() => onClick?.(contact.id)}
@@ -54,23 +57,39 @@ const ContactItem: React.FC<ContactItemProps> = ({
             </div>
           </div>
         </div>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle?.();
-          }}
-        >
-          <svg
-            className={`w-3 h-3 text-gray-400 transform transition-transform flex-shrink-0 ${
-              isExpanded ? 'rotate-90' : ''
-            }`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+        <div className="flex items-center space-x-1">
+          {onDelete && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(contact.id);
+              }}
+              className="p-1 text-gray-500 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+              title="Remove from deal"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle?.();
+            }}
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
+            <svg
+              className={`w-3 h-3 text-gray-400 transform transition-transform flex-shrink-0 ${
+                isExpanded ? 'rotate-90' : ''
+              }`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
       </div>
       {isExpanded && (
         <div className="px-2 pb-2 bg-blue-25">
@@ -405,6 +424,282 @@ const NoteItem: React.FC<NoteItemProps> = ({ note, onUpdate, onDelete, initialEd
   );
 };
 
+// AddContactsModal adapted for deals
+interface AddContactsModalForDealsProps {
+  isOpen: boolean;
+  onClose: () => void;
+  dealId: string;
+  existingContactIds: string[];
+  onContactsAdded: () => void;
+  onCreateNew: () => void;
+}
+
+const AddContactsModalForDeals: React.FC<AddContactsModalForDealsProps> = ({
+  isOpen,
+  onClose,
+  dealId,
+  existingContactIds,
+  onContactsAdded,
+  onCreateNew
+}) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  // Focus input when modal opens
+  React.useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }, [isOpen]);
+
+  // Search contacts with debounce
+  React.useEffect(() => {
+    if (!searchTerm.trim()) {
+      setContacts([]);
+      return;
+    }
+
+    const searchContacts = async () => {
+      setLoading(true);
+      try {
+        // Handle "First Last" or "Last First" patterns
+        const trimmedSearch = searchTerm.trim();
+        const parts = trimmedSearch.split(/\s+/);
+
+        let query = supabase
+          .from('contact')
+          .select('id, first_name, last_name, email, phone, mobile_phone, title, company');
+
+        if (parts.length >= 2) {
+          // Multi-word search - try "First Last" AND "Last First"
+          const [part1, part2] = parts;
+          query = query.or(
+            `and(first_name.ilike.%${part1}%,last_name.ilike.%${part2}%),` +
+            `and(first_name.ilike.%${part2}%,last_name.ilike.%${part1}%),` +
+            `first_name.ilike.%${trimmedSearch}%,` +
+            `last_name.ilike.%${trimmedSearch}%,` +
+            `email.ilike.%${trimmedSearch}%,` +
+            `company.ilike.%${trimmedSearch}%`
+          );
+        } else {
+          // Single word search
+          query = query.or(
+            `first_name.ilike.%${trimmedSearch}%,` +
+            `last_name.ilike.%${trimmedSearch}%,` +
+            `email.ilike.%${trimmedSearch}%,` +
+            `company.ilike.%${trimmedSearch}%`
+          );
+        }
+
+        const { data, error } = await query
+          .order('first_name, last_name')
+          .limit(5);
+
+        if (error) throw error;
+
+        // Filter out contacts already associated with this deal
+        const filtered = (data || []).filter(
+          contact => !existingContactIds.includes(contact.id)
+        );
+
+        setContacts(filtered);
+      } catch (err) {
+        console.error('Error searching contacts:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const timeoutId = setTimeout(searchContacts, 300);
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm, existingContactIds]);
+
+  const getContactDisplayName = (contact: Contact) => {
+    const parts = [];
+    if (contact.first_name) parts.push(contact.first_name);
+    if (contact.last_name) parts.push(contact.last_name);
+    return parts.join(' ') || 'Unnamed Contact';
+  };
+
+  const handleToggleContact = (contactId: string) => {
+    setSelectedContactIds(prev => {
+      if (prev.includes(contactId)) {
+        return prev.filter(id => id !== contactId);
+      } else {
+        return [...prev, contactId];
+      }
+    });
+  };
+
+  const handleAddContacts = async () => {
+    if (selectedContactIds.length === 0) return;
+
+    setSaving(true);
+    try {
+      // Insert all selected contacts
+      const insertions = selectedContactIds.map(contactId => ({
+        deal_id: dealId,
+        contact_id: contactId,
+        primary_contact: false,
+        role_id: null,
+      }));
+
+      const { error } = await supabase
+        .from('deal_contact')
+        .insert(insertions);
+
+      if (error) throw error;
+
+      // Success - notify parent and close
+      onContactsAdded();
+      handleClose();
+    } catch (err) {
+      console.error('Error adding contacts:', err);
+      alert('Failed to add contacts. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleClose = () => {
+    setSearchTerm('');
+    setSelectedContactIds([]);
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50" onClick={handleClose} />
+
+      {/* Modal */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">Add Contacts to Deal</h2>
+            <button
+              onClick={handleClose}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Search */}
+          <div className="p-4 border-b border-gray-200">
+            <input
+              ref={inputRef}
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by name, email, or company..."
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Results */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {loading && (
+              <div className="text-center text-gray-500 py-8">
+                Searching...
+              </div>
+            )}
+
+            {!loading && searchTerm && contacts.length === 0 && (
+              <div className="text-center py-8">
+                <p className="text-gray-500 mb-4">No contacts found</p>
+                <button
+                  onClick={onCreateNew}
+                  className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Create New Contact
+                </button>
+              </div>
+            )}
+
+            {!loading && contacts.length > 0 && (
+              <div className="space-y-2">
+                {contacts.map((contact) => (
+                  <div
+                    key={contact.id}
+                    onClick={() => handleToggleContact(contact.id)}
+                    className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                      selectedContactIds.includes(contact.id)
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedContactIds.includes(contact.id)}
+                          onChange={() => {}}
+                          className="w-4 h-4 text-blue-600 rounded"
+                        />
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {getContactDisplayName(contact)}
+                          </div>
+                          {contact.email && (
+                            <div className="text-sm text-gray-500">{contact.email}</div>
+                          )}
+                          {(contact.company || contact.title) && (
+                            <div className="text-xs text-gray-400">
+                              {[contact.title, contact.company].filter(Boolean).join(' at ')}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between p-4 border-t border-gray-200">
+            <button
+              onClick={onCreateNew}
+              className="text-blue-600 hover:text-blue-700 font-medium"
+            >
+              + Create New Contact
+            </button>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={handleClose}
+                className="px-4 py-2 text-gray-700 hover:text-gray-900"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddContacts}
+                disabled={selectedContactIds.length === 0 || saving}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {saving ? 'Adding...' : `Add ${selectedContactIds.length} Contact${selectedContactIds.length === 1 ? '' : 's'}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
+
 const DealSidebar: React.FC<DealSidebarProps> = ({
   dealId,
   isMinimized = false,
@@ -416,6 +711,10 @@ const DealSidebar: React.FC<DealSidebarProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newlyCreatedNoteId, setNewlyCreatedNoteId] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [propertyId, setPropertyId] = useState<string | null>(null);
+  const [showAddContactModal, setShowAddContactModal] = useState(false);
+  const [showContactFormModal, setShowContactFormModal] = useState(false);
 
   // Expansion states - all collapsed by default
   const [expandedSidebarModules, setExpandedSidebarModules] = useState(() => {
@@ -473,6 +772,17 @@ const DealSidebar: React.FC<DealSidebarProps> = ({
       setError(null);
 
       try {
+        // Fetch property_id from deal
+        const { data: dealData } = await supabase
+          .from('deal')
+          .select('property_id')
+          .eq('id', dealId)
+          .single();
+
+        if (dealData?.property_id) {
+          setPropertyId(dealData.property_id);
+        }
+
         const { data, error } = await supabase
           .from('deal_contact')
           .select('contact:contact_id(*)')
@@ -494,6 +804,118 @@ const DealSidebar: React.FC<DealSidebarProps> = ({
     fetchContacts();
   }, [dealId]);
 
+  const handleSyncFromProperty = async () => {
+    if (!propertyId) return;
+
+    setSyncing(true);
+    try {
+      // Get property contacts
+      const { data: propertyContacts, error: propertyContactsError } = await supabase
+        .from('property_contact')
+        .select('contact_id')
+        .eq('property_id', propertyId);
+
+      if (propertyContactsError) throw propertyContactsError;
+      if (!propertyContacts || propertyContacts.length === 0) {
+        setSyncing(false);
+        return;
+      }
+
+      // Get existing deal contacts to avoid duplicates
+      const { data: existingDealContacts, error: existingError } = await supabase
+        .from('deal_contact')
+        .select('contact_id')
+        .eq('deal_id', dealId);
+
+      if (existingError) throw existingError;
+
+      const existingContactIds = new Set(existingDealContacts?.map(dc => dc.contact_id) || []);
+
+      // Filter out contacts that are already on the deal
+      const newContacts = propertyContacts
+        .filter(pc => pc.contact_id && !existingContactIds.has(pc.contact_id))
+        .map(pc => ({
+          deal_id: dealId,
+          contact_id: pc.contact_id,
+          primary_contact: false,
+          role_id: null,
+        }));
+
+      if (newContacts.length === 0) {
+        setSyncing(false);
+        return;
+      }
+
+      // Insert new contacts
+      const { error: insertError } = await supabase
+        .from('deal_contact')
+        .insert(newContacts);
+
+      if (insertError) throw insertError;
+
+      // Refresh the contacts list
+      const { data, error } = await supabase
+        .from('deal_contact')
+        .select('contact:contact_id(*)')
+        .eq('deal_id', dealId);
+
+      if (!error && data) {
+        setContacts(data.map((dc: any) => dc.contact).filter(Boolean));
+      }
+    } catch (err) {
+      console.error('Error syncing contacts from property:', err);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleRemoveContact = async (contactId: string) => {
+    try {
+      // Delete from deal_contact junction table (does NOT affect property_contact)
+      const { error } = await supabase
+        .from('deal_contact')
+        .delete()
+        .eq('deal_id', dealId)
+        .eq('contact_id', contactId);
+
+      if (error) throw error;
+
+      // Update local state to remove the contact
+      setContacts(prev => prev.filter(c => c.id !== contactId));
+    } catch (err) {
+      console.error('Error removing contact from deal:', err);
+      alert('Failed to remove contact from deal');
+    }
+  };
+
+  const handleAddContact = () => {
+    setShowAddContactModal(true);
+  };
+
+  const handleContactsAdded = async () => {
+    // Refresh the contacts list after adding
+    const { data, error } = await supabase
+      .from('deal_contact')
+      .select('contact:contact_id(*)')
+      .eq('deal_id', dealId);
+
+    if (!error && data) {
+      setContacts(data.map((dc: any) => dc.contact).filter(Boolean));
+    }
+
+    setShowAddContactModal(false);
+  };
+
+  const handleCreateNewContact = () => {
+    setShowAddContactModal(false);
+    setShowContactFormModal(true);
+  };
+
+  const handleContactCreated = async () => {
+    // Refresh contacts after creating a new one
+    await handleContactsAdded();
+    setShowContactFormModal(false);
+  };
 
   const toggleSidebarModule = (module: keyof typeof expandedSidebarModules) => {
     const newState = {
@@ -626,8 +1048,23 @@ const DealSidebar: React.FC<DealSidebarProps> = ({
                 isExpanded={expandedSidebarModules.contacts}
                 onToggle={() => toggleSidebarModule('contacts')}
                 isEmpty={contacts.length === 0}
-                showAddButton={false}
+                showAddButton={true}
+                onAddNew={handleAddContact}
                 icon="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                customAction={
+                  propertyId && (
+                    <button
+                      onClick={handleSyncFromProperty}
+                      disabled={syncing}
+                      title="Sync contacts from associated property"
+                      className="inline-flex items-center justify-center p-1 border border-blue-600 rounded text-blue-600 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400 ml-2"
+                    >
+                      <svg className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </button>
+                  )
+                }
               >
                 {contacts.map((contact) => (
                   <ContactItem
@@ -636,6 +1073,7 @@ const DealSidebar: React.FC<DealSidebarProps> = ({
                     isExpanded={expandedContacts[contact.id]}
                     onToggle={() => toggleContact(contact.id)}
                     onClick={onContactClick}
+                    onDelete={handleRemoveContact}
                   />
                 ))}
               </SidebarModule>
@@ -673,6 +1111,25 @@ const DealSidebar: React.FC<DealSidebarProps> = ({
             </>
           )}
         </div>
+      )}
+
+      {/* Add Contacts Modal - adapted for deals */}
+      <AddContactsModalForDeals
+        isOpen={showAddContactModal}
+        onClose={() => setShowAddContactModal(false)}
+        dealId={dealId}
+        existingContactIds={contacts.map(c => c.id)}
+        onContactsAdded={handleContactsAdded}
+        onCreateNew={handleCreateNewContact}
+      />
+
+      {/* Contact Form Modal for creating new contacts */}
+      {showContactFormModal && (
+        <ContactFormModal
+          isOpen={showContactFormModal}
+          onClose={() => setShowContactFormModal(false)}
+          onSave={handleContactCreated}
+        />
       )}
     </div>
   );

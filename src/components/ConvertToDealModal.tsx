@@ -145,12 +145,23 @@ export default function ConvertToDealModal({
 
       const loiStageId = stageData.id;
 
-      // Step 2: Get the selected site submit's property_id and property_unit_id
+      // Step 2: Fetch the assignment to get transaction_type_id and owner_id
+      const { data: assignmentData, error: assignmentFetchError } = await supabase
+        .from('assignment')
+        .select('transaction_type_id, owner_id')
+        .eq('id', assignmentId)
+        .single();
+
+      if (assignmentFetchError) {
+        console.warn('Could not fetch assignment details:', assignmentFetchError);
+      }
+
+      // Step 3: Get the selected site submit's property_id and property_unit_id
       const selectedSiteSubmit = siteSubmits.find(ss => ss.id === selectedSiteSubmitId);
       const propertyId = selectedSiteSubmit?.property_id || null;
       const propertyUnitId = selectedSiteSubmit?.property_unit_id || null;
 
-      // Step 3: Create the new deal
+      // Step 4: Create the new deal
       const dealPayload = {
         deal_name: dealName.trim(),
         deal_value: assignmentValue,
@@ -163,8 +174,16 @@ export default function ConvertToDealModal({
         property_unit_id: propertyUnitId,
         site_submit_id: selectedSiteSubmitId,
         assignment_id: assignmentId,
+        transaction_type_id: assignmentData?.transaction_type_id || null,
+        owner_id: assignmentData?.owner_id || null,
         target_close_date: targetCloseDate ? formatDateFn(targetCloseDate, 'yyyy-MM-dd') : null,
         probability: 50, // Default for "Negotiating LOI"
+        // Set default commission split percentages
+        house_percent: 40,
+        origination_percent: 50,
+        site_percent: 25,
+        deal_percent: 25,
+        number_of_payments: 1,
         // Don't set created_at/updated_at - let database defaults handle it
       };
 
@@ -177,7 +196,41 @@ export default function ConvertToDealModal({
       if (dealError) throw dealError;
       if (!newDeal) throw new Error('Failed to create deal');
 
-      // Step 4: Look up the "Converted" priority_id
+      // Step 5: Copy property contacts to deal_contact
+      if (propertyId) {
+        const { data: propertyContacts, error: propertyContactsError } = await supabase
+          .from('property_contact')
+          .select('contact_id')
+          .eq('property_id', propertyId);
+
+        if (propertyContactsError) {
+          console.warn('Could not fetch property contacts:', propertyContactsError);
+        } else if (propertyContacts && propertyContacts.length > 0) {
+          // Create deal_contact entries for each property contact
+          const dealContactPayloads = propertyContacts
+            .filter(pc => pc.contact_id) // Only include contacts with valid contact_id
+            .map((pc, index) => ({
+              deal_id: newDeal.id,
+              contact_id: pc.contact_id,
+              primary_contact: index === 0, // Make the first contact primary
+              role_id: null, // No role specified initially
+            }));
+
+          if (dealContactPayloads.length > 0) {
+            const { error: dealContactError } = await supabase
+              .from('deal_contact')
+              .insert(dealContactPayloads);
+
+            if (dealContactError) {
+              console.warn('Could not copy property contacts to deal:', dealContactError);
+            } else {
+              console.log(`Successfully copied ${dealContactPayloads.length} property contacts to deal`);
+            }
+          }
+        }
+      }
+
+      // Step 6: Look up the "Converted" priority_id
       const { data: priorityData, error: priorityError } = await supabase
         .from('assignment_priority')
         .select('id')
@@ -188,7 +241,7 @@ export default function ConvertToDealModal({
         console.warn('Could not find "Converted" priority, assignment priority will not be updated');
       }
 
-      // Step 5: Update the assignment to link to the new deal and update priority
+      // Step 7: Update the assignment to link to the new deal and update priority
       const assignmentUpdate: any = {
         deal_id: newDeal.id
       };
@@ -205,7 +258,7 @@ export default function ConvertToDealModal({
 
       if (assignmentError) throw assignmentError;
 
-      // Step 6: Look up the "LOI" submit stage_id and update the site submit
+      // Step 8: Look up the "LOI" submit stage_id and update the site submit
       const { data: submitStageData, error: submitStageError } = await supabase
         .from('submit_stage')
         .select('id')
@@ -216,7 +269,7 @@ export default function ConvertToDealModal({
         console.warn('Could not find "LOI" submit stage, skipping site submit stage update');
       }
 
-      // Step 7: Update the site submit to link to the deal and change stage
+      // Step 9: Update the site submit to link to the deal and change stage
       const siteSubmitUpdate: any = {
         deal_id: newDeal.id
       };
@@ -357,8 +410,9 @@ export default function ConvertToDealModal({
             <h3 className="text-sm font-semibold text-blue-900 mb-2">What will happen:</h3>
             <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
               <li>New deal will be created with stage "Negotiating LOI"</li>
-              <li>Deal value, commission, and referral fee will be copied from assignment</li>
+              <li>Deal value, commission, referral fee, transaction type, and owner will be copied from assignment</li>
               <li>Property and property unit from site submit will be linked to the deal</li>
+              <li>Property contacts will be copied to the deal (editable in Contacts tab)</li>
               <li>Assignment will be linked to the new deal and priority changed to "Converted"</li>
               <li>Site submit will be linked to the deal and stage changed to "LOI"</li>
             </ul>

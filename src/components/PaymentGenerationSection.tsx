@@ -9,7 +9,9 @@ interface PaymentGenerationSectionProps {
   commissionSplits?: CommissionSplit[];
   onGeneratePayments: () => Promise<void>;
   onUpdatePaymentAmounts?: () => Promise<void>; // New: Safe update option
+  onRegeneratePaymentSplits?: () => Promise<void>; // New: Regenerate splits when commission changes
   generatingPayments: boolean;
+  showRegenerateButton?: boolean; // New: Only show regenerate button when splits are out of sync
 }
 
 const PaymentGenerationSection: React.FC<PaymentGenerationSectionProps> = ({
@@ -19,7 +21,9 @@ const PaymentGenerationSection: React.FC<PaymentGenerationSectionProps> = ({
   commissionSplits = [],
   onGeneratePayments,
   onUpdatePaymentAmounts,
-  generatingPayments
+  onRegeneratePaymentSplits,
+  generatingPayments,
+  showRegenerateButton = false
 }) => {
   
   // Use centralized payment calculations hook
@@ -118,6 +122,23 @@ const PaymentGenerationSection: React.FC<PaymentGenerationSectionProps> = ({
               >
                 Update Payment Amounts
               </button>
+            )}
+
+            {/* Regenerate Payment Splits - Only show when splits are out of sync */}
+            {hasPayments && onRegeneratePaymentSplits && showRegenerateButton && (
+              <div className="space-y-2">
+                <button
+                  onClick={onRegeneratePaymentSplits}
+                  disabled={generatingPayments}
+                  className="w-full px-4 py-2 border border-orange-300 bg-orange-50 text-orange-700 rounded-md font-medium hover:bg-orange-100 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Regenerate payment splits when brokers are added or removed from commission splits"
+                >
+                  🔄 Regenerate Payment Splits
+                </button>
+                <div className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-md p-2">
+                  ⚠️ Payment splits are out of sync with commission splits. Click to regenerate.
+                </div>
+              </div>
             )}
 
             {!canGeneratePayments && (

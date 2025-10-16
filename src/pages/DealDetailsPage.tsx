@@ -146,6 +146,51 @@ export default function DealDetailsPage() {
     setShowDeleteConfirm(false);
 
     try {
+      // Step 1: Check if there are any assignments referencing this deal
+      const { data: assignments, error: assignmentError } = await supabase
+        .from('assignment')
+        .select('id')
+        .eq('deal_id', deal.id);
+
+      if (assignmentError) throw assignmentError;
+
+      // If there are assignments, we need to nullify the deal_id first
+      if (assignments && assignments.length > 0) {
+        const { error: updateError } = await supabase
+          .from('assignment')
+          .update({ deal_id: null })
+          .eq('deal_id', deal.id);
+
+        if (updateError) throw updateError;
+      }
+
+      // Step 2: Delete any deal_contact records
+      const { error: dealContactError } = await supabase
+        .from('deal_contact')
+        .delete()
+        .eq('deal_id', deal.id);
+
+      if (dealContactError) throw dealContactError;
+
+      // Step 3: Nullify site_submit references to this deal
+      const { error: siteSubmitError } = await supabase
+        .from('site_submit')
+        .update({ deal_id: null })
+        .eq('deal_id', deal.id);
+
+      if (siteSubmitError) throw siteSubmitError;
+
+      // Step 4: Delete any activity records linked to this deal
+      const { error: activityError } = await supabase
+        .from('activity')
+        .delete()
+        .eq('deal_id', deal.id);
+
+      if (activityError && activityError.code !== 'PGRST116') { // PGRST116 = no rows found
+        throw activityError;
+      }
+
+      // Step 5: Now delete the deal
       const { error } = await supabase
         .from('deal')
         .delete()
@@ -161,7 +206,8 @@ export default function DealDetailsPage() {
       }, 1000);
     } catch (error) {
       console.error('Error deleting deal:', error);
-      showToast(`Error deleting deal: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      showToast(`Error deleting deal: ${errorMessage}`, { type: 'error' });
     }
   };
 
@@ -346,7 +392,7 @@ export default function DealDetailsPage() {
       <ConfirmDialog
         isOpen={showDeleteConfirm}
         title="Delete Deal"
-        message="Are you sure you want to delete this deal? This action cannot be undone."
+        message="Are you sure you want to delete this deal? This action cannot be undone. All associated contacts, activities, and links to assignments/site submits will be removed. The original assignment and site submit records will remain."
         confirmLabel="Delete"
         cancelLabel="Cancel"
         onConfirm={confirmDelete}

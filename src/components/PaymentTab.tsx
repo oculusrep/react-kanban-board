@@ -7,6 +7,9 @@ import PaymentListSection from './payments/PaymentListSection';
 import PaymentStatusCard from './PaymentStatusCard';
 import CommissionBreakdownBar from './CommissionBreakdownBar';
 import { usePaymentStatus } from '../hooks/usePaymentStatus';
+import { useToast } from '../hooks/useToast';
+import Toast from './Toast';
+import ConfirmDialog from './ConfirmDialog';
 
 // Add caching for payment data
 const paymentDataCache = new Map<string, {
@@ -50,6 +53,9 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [generatingPayments, setGeneratingPayments] = useState(false);
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
+
+  const { toast, showToast, hideToast } = useToast();
 
   // Use centralized payment calculations
   const {
@@ -59,6 +65,44 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
     canGeneratePayments,
     validationMessages
   } = usePaymentCalculations(deal, payments, commissionSplits);
+
+  // Check if payment splits are out of sync with commission splits
+  const paymentSplitsOutOfSync = useMemo(() => {
+    if (payments.length === 0 || commissionSplits.length === 0) {
+      return false; // No payments or splits to check
+    }
+
+    // Get unique broker IDs from commission splits
+    const commissionBrokerIds = new Set(commissionSplits.map(cs => cs.broker_id));
+
+    // Get unique broker IDs from payment splits
+    const paymentSplitBrokerIds = new Set(paymentSplits.map(ps => ps.broker_id));
+
+    // Check if the broker lists match
+    if (commissionBrokerIds.size !== paymentSplitBrokerIds.size) {
+      console.log('🔍 Payment splits out of sync: different number of brokers');
+      return true;
+    }
+
+    // Check if all brokers in commission splits exist in payment splits
+    for (const brokerId of commissionBrokerIds) {
+      if (!paymentSplitBrokerIds.has(brokerId)) {
+        console.log('🔍 Payment splits out of sync: broker missing from payment splits', brokerId);
+        return true;
+      }
+    }
+
+    // Check if all brokers in payment splits exist in commission splits
+    for (const brokerId of paymentSplitBrokerIds) {
+      if (!commissionBrokerIds.has(brokerId)) {
+        console.log('🔍 Payment splits out of sync: broker in payment splits not in commission splits', brokerId);
+        return true;
+      }
+    }
+
+    console.log('✅ Payment splits are in sync with commission splits');
+    return false;
+  }, [payments, paymentSplits, commissionSplits]);
 
   // Optimized fetch with caching
   const fetchPaymentData = useCallback(async () => {
@@ -209,6 +253,142 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
     }
   };
 
+  const regeneratePaymentSplits = async () => {
+    if (!deal.id) return;
+
+    // Show confirmation dialog instead of window.confirm
+    setShowRegenerateConfirm(true);
+  };
+
+  const handleConfirmRegenerate = async () => {
+    setShowRegenerateConfirm(false);
+
+    if (!deal.id) return;
+
+    try {
+      setGeneratingPayments(true);
+      setError(null);
+
+      console.log('🔵 Regenerating payment splits for deal:', deal.id);
+
+      // Step 1: Delete all existing payment splits for this deal's payments
+      const paymentIds = payments.map(p => p.id);
+      if (paymentIds.length === 0) {
+        showToast('No payments found to regenerate splits for', { type: 'info' });
+        return;
+      }
+
+      const { error: deleteError } = await supabase
+        .from('payment_split')
+        .delete()
+        .in('payment_id', paymentIds);
+
+      if (deleteError) {
+        console.error('❌ Error deleting old payment splits:', deleteError);
+        throw deleteError;
+      }
+
+      console.log('✅ Deleted old payment splits');
+
+      // Step 2: Get all commission splits for this deal
+      if (commissionSplits.length === 0) {
+        showToast('No commission splits found. Please set up commission splits first.', { type: 'error' });
+        return;
+      }
+
+      console.log('🔵 Commission splits:', commissionSplits);
+
+      // Step 3: Create new payment splits for each payment based on commission splits
+      const newPaymentSplits: any[] = [];
+
+      // For each payment, create splits based on commission splits
+      for (const payment of payments) {
+        const paymentAmount = payment.payment_amount || 0;
+
+        // Calculate per-payment commission breakdown (matching usePaymentCalculations logic)
+        const totalReferralFee = deal.referral_fee_usd || 0;
+        const totalHouseFee = deal.house_usd || 0;
+        const numberOfPayments = deal.number_of_payments || 1;
+
+        const referralFeePerPayment = totalReferralFee / numberOfPayments;
+        const houseFeePerPayment = totalHouseFee / numberOfPayments;
+        const agci = paymentAmount - referralFeePerPayment - houseFeePerPayment;
+
+        // Commission split amounts (applied to AGCI)
+        const originationPercent = deal.origination_percent || 0;
+        const sitePercent = deal.site_percent || 0;
+        const dealPercent = deal.deal_percent || 0;
+
+        const originationUsd = (originationPercent / 100) * agci;
+        const siteUsd = (sitePercent / 100) * agci;
+        const dealUsd = (dealPercent / 100) * agci;
+
+        console.log(`🔵 Payment ${payment.payment_sequence}: amount=${paymentAmount}, agci=${agci}`);
+        console.log(`   Breakdown: origination=${originationUsd}, site=${siteUsd}, deal=${dealUsd}`);
+
+        // Create a payment split for each commission split (broker)
+        for (const commissionSplit of commissionSplits) {
+          // Calculate broker amounts based on their split percentages
+          const brokerOriginationAmount = ((commissionSplit.split_origination_percent || 0) / 100) * originationUsd;
+          const brokerSiteAmount = ((commissionSplit.split_site_percent || 0) / 100) * siteUsd;
+          const brokerDealAmount = ((commissionSplit.split_deal_percent || 0) / 100) * dealUsd;
+          const totalBrokerAmount = brokerOriginationAmount + brokerSiteAmount + brokerDealAmount;
+
+          newPaymentSplits.push({
+            payment_id: payment.id,
+            broker_id: commissionSplit.broker_id,
+            commission_split_id: commissionSplit.id,
+            split_origination_percent: commissionSplit.split_origination_percent,
+            split_site_percent: commissionSplit.split_site_percent,
+            split_deal_percent: commissionSplit.split_deal_percent,
+            split_origination_usd: brokerOriginationAmount,
+            split_site_usd: brokerSiteAmount,
+            split_deal_usd: brokerDealAmount,
+            split_broker_total: totalBrokerAmount,
+            paid: false
+          });
+
+          console.log(`  - Split for broker ${commissionSplit.broker_id}: $${totalBrokerAmount.toFixed(2)}`);
+          console.log(`    (orig: ${commissionSplit.split_origination_percent}% = $${brokerOriginationAmount.toFixed(2)}, ` +
+                     `site: ${commissionSplit.split_site_percent}% = $${brokerSiteAmount.toFixed(2)}, ` +
+                     `deal: ${commissionSplit.split_deal_percent}% = $${brokerDealAmount.toFixed(2)})`);
+        }
+      }
+
+      console.log('🔵 Creating payment splits:', newPaymentSplits);
+
+      // Step 4: Insert new payment splits
+      if (newPaymentSplits.length > 0) {
+        const { error: insertError } = await supabase
+          .from('payment_split')
+          .insert(newPaymentSplits);
+
+        if (insertError) {
+          console.error('❌ Error inserting new payment splits:', insertError);
+          throw insertError;
+        }
+      }
+
+      console.log('✅ Payment splits regenerated successfully');
+
+      // Clear cache for this deal to force fresh data
+      paymentDataCache.delete(deal.id);
+
+      // Refresh payment data after regeneration
+      await fetchPaymentData();
+
+      showToast('Payment splits have been successfully regenerated!', { type: 'success' });
+
+    } catch (err) {
+      console.error('❌ Error regenerating payment splits:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to regenerate payment splits';
+      setError(errorMessage);
+      showToast(errorMessage, { type: 'error', duration: 5000 });
+    } finally {
+      setGeneratingPayments(false);
+    }
+  };
+
   // Update payment in database
   const updatePayment = async (paymentId: string, updates: Partial<Payment>) => {
     try {
@@ -342,7 +522,9 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
         existingPayments={payments}
         commissionSplits={commissionSplits}
         onGeneratePayments={generatePayments}
+        onRegeneratePaymentSplits={regeneratePaymentSplits}
         generatingPayments={generatingPayments}
+        showRegenerateButton={paymentSplitsOutOfSync}
       />
 
       {/* Payment List Section */}
@@ -395,6 +577,26 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
           )}
         </div>
       )}
+
+      {/* Toast notifications */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onClose={hideToast}
+      />
+
+      {/* Regenerate confirmation dialog */}
+      <ConfirmDialog
+        isOpen={showRegenerateConfirm}
+        title="Regenerate Payment Splits"
+        message="This will delete all existing payment splits and regenerate them based on current commission splits. Any manual adjustments to payment splits will be lost. Continue?"
+        confirmLabel="Regenerate"
+        cancelLabel="Cancel"
+        confirmButtonClass="bg-orange-600 hover:bg-orange-700"
+        onConfirm={handleConfirmRegenerate}
+        onCancel={() => setShowRegenerateConfirm(false)}
+      />
 
       </div>
   );

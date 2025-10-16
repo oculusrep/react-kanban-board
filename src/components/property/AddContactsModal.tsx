@@ -45,12 +45,36 @@ const AddContactsModal: React.FC<AddContactsModalProps> = ({
     const searchContacts = async () => {
       setLoading(true);
       try {
-        const { data, error } = await supabase
+        // Handle "First Last" or "Last First" patterns
+        const trimmedSearch = searchTerm.trim();
+        const parts = trimmedSearch.split(/\s+/);
+
+        let query = supabase
           .from('contact')
-          .select('id, first_name, last_name, email, phone, mobile_phone, title, company')
-          .or(
-            `first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,company.ilike.%${searchTerm}%`
-          )
+          .select('id, first_name, last_name, email, phone, mobile_phone, title, company');
+
+        if (parts.length >= 2) {
+          // Multi-word search - try "First Last" AND "Last First"
+          const [part1, part2] = parts;
+          query = query.or(
+            `and(first_name.ilike.%${part1}%,last_name.ilike.%${part2}%),` +
+            `and(first_name.ilike.%${part2}%,last_name.ilike.%${part1}%),` +
+            `first_name.ilike.%${trimmedSearch}%,` +
+            `last_name.ilike.%${trimmedSearch}%,` +
+            `email.ilike.%${trimmedSearch}%,` +
+            `company.ilike.%${trimmedSearch}%`
+          );
+        } else {
+          // Single word search
+          query = query.or(
+            `first_name.ilike.%${trimmedSearch}%,` +
+            `last_name.ilike.%${trimmedSearch}%,` +
+            `email.ilike.%${trimmedSearch}%,` +
+            `company.ilike.%${trimmedSearch}%`
+          );
+        }
+
+        const { data, error } = await query
           .order('first_name, last_name')
           .limit(5);
 
