@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '../lib/supabaseClient';
 
 export interface RecentItem {
   id: string;
@@ -135,12 +136,67 @@ export function useRecentlyViewed() {
     });
   }, [saveToStorage]);
 
+  // Validate and clean up stale items for a specific type
+  const validateRecentItems = useCallback(async (type: RecentItem['type']) => {
+    const key = `${type}s` as keyof RecentItemsStorage;
+    const currentItems = recentItems[key] || [];
+
+    if (currentItems.length === 0) return;
+
+    console.log(`🔍 Validating ${currentItems.length} recent ${type}s...`);
+
+    // Map type to table name
+    const typeToTable: Record<RecentItem['type'], string> = {
+      'deal': 'deal',
+      'property': 'property',
+      'contact': 'contact',
+      'assignment': 'assignment',
+      'client': 'client',
+      'site_submit': 'site_submit'
+    };
+
+    const tableName = typeToTable[type];
+    const ids = currentItems.map(item => item.id);
+
+    try {
+      // Check which IDs still exist in the database
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('id')
+        .in('id', ids);
+
+      if (error) {
+        console.error(`Error validating ${type}s:`, error);
+        return;
+      }
+
+      const existingIds = new Set(data?.map(item => item.id) || []);
+      const validItems = currentItems.filter(item => existingIds.has(item.id));
+      const removedCount = currentItems.length - validItems.length;
+
+      if (removedCount > 0) {
+        console.log(`🧹 Removed ${removedCount} stale ${type}(s) from recently viewed`);
+        setRecentItems(prev => {
+          const newState = {
+            ...prev,
+            [key]: validItems
+          };
+          saveToStorage(newState);
+          return newState;
+        });
+      }
+    } catch (error) {
+      console.error(`Error validating ${type}s:`, error);
+    }
+  }, [recentItems, saveToStorage]);
+
   return {
     addRecentItem,
     getRecentItems,
     clearRecentItems,
     clearRecentItemsForType,
     removeRecentItem,
+    validateRecentItems,
     recentItems
   };
 }

@@ -21,7 +21,7 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ title, items, recentItems, 
   const [isOpen, setIsOpen] = useState(false);
   const [currentRecentItems, setCurrentRecentItems] = useState(recentItems || []);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { getRecentItems } = useRecentlyViewed();
+  const { getRecentItems, validateRecentItems } = useRecentlyViewed();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -49,11 +49,14 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ title, items, recentItems, 
 
       const type = titleToTypeMap[title];
       if (type) {
-        const fresh = getRecentItems(type);
-        setCurrentRecentItems(fresh);
+        // Validate and clean up stale items first
+        validateRecentItems(type).then(() => {
+          const fresh = getRecentItems(type);
+          setCurrentRecentItems(fresh);
+        });
       }
     }
-  }, [isOpen, title, getRecentItems]);
+  }, [isOpen, title, getRecentItems, validateRecentItems]);
 
   return (
     <div className="relative" ref={dropdownRef}>
