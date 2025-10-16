@@ -23,7 +23,7 @@ const SiteSubmitSidebar: React.FC<SiteSubmitSidebarProps> = ({
     <div
       className={`fixed top-0 h-full bg-white border-l border-gray-200 shadow-xl transition-all duration-300 ${
         isMinimized ? 'w-12' : 'w-[600px]'
-      } z-30 ${isMinimized ? 'overflow-hidden' : 'overflow-y-auto'}`}
+      } z-50 ${isMinimized ? 'overflow-hidden' : 'overflow-y-auto'}`}
       style={{
         top: '180px',
         height: 'calc(100vh - 180px)',
