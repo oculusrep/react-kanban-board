@@ -15,12 +15,14 @@ interface Props {
   value: string | null;
   onChange: (value: string | null) => void;
   label?: string;
+  onViewDetails?: (siteSubmitId: string) => void;
 }
 
-export default function SiteSubmitSelector({ 
-  value, 
-  onChange, 
-  label = "Site Submit" 
+export default function SiteSubmitSelector({
+  value,
+  onChange,
+  label = "Site Submit",
+  onViewDetails
 }: Props) {
   const [search, setSearch] = useState("");
   const [suggestions, setSuggestions] = useState<SiteSubmit[]>([]);
@@ -165,15 +167,12 @@ useEffect(() => {
       </div>
       
       {/* Optional: Show a link to view details when selected */}
-      {selectedSiteSubmit && (
+      {selectedSiteSubmit && onViewDetails && (
         <div className="mt-1">
           <button
             type="button"
             className="text-xs text-blue-600 hover:text-blue-800"
-            onClick={() => {
-              // TODO: Implement navigation to site submit details
-              console.log("View site submit:", selectedSiteSubmit.id);
-            }}
+            onClick={() => onViewDetails(selectedSiteSubmit.id)}
           >
             View Site Submit Details →
           </button>

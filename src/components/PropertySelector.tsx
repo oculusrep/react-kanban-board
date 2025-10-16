@@ -18,12 +18,14 @@ interface Props {
   value: string | null;
   onChange: (value: string | null) => void;
   label?: string;
+  onViewDetails?: (propertyId: string) => void;
 }
 
-export default function PropertySelector({ 
-  value, 
-  onChange, 
-  label = "Property" 
+export default function PropertySelector({
+  value,
+  onChange,
+  label = "Property",
+  onViewDetails
 }: Props) {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
@@ -200,7 +202,11 @@ const { data, error } = await supabase
             type="button"
             className="text-xs text-blue-600 hover:text-blue-800 transition-colors"
             onClick={() => {
-              navigate(`/property/${selectedProperty.id}`);
+              if (onViewDetails) {
+                onViewDetails(selectedProperty.id);
+              } else {
+                navigate(`/property/${selectedProperty.id}`);
+              }
             }}
           >
             View Property Details →

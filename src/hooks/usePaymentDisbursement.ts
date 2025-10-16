@@ -55,9 +55,20 @@ export const usePaymentDisbursement = () => {
     setError(null);
 
     try {
+      const updateData: { referral_fee_paid: boolean; referral_fee_paid_date?: string | null } = {
+        referral_fee_paid: paid
+      };
+
+      // If marking as paid, set referral_fee_paid_date to now; if unchecking, clear the date
+      if (paid) {
+        updateData.referral_fee_paid_date = new Date().toISOString();
+      } else {
+        updateData.referral_fee_paid_date = null;
+      }
+
       const { error } = await supabase
         .from('payment')
-        .update({ referral_fee_paid: paid })
+        .update(updateData)
         .eq('id', paymentId);
 
       if (error) throw error;
@@ -80,9 +91,18 @@ export const usePaymentDisbursement = () => {
     console.log('🔧 Updating payment split paid status:', { splitId, paid });
 
     try {
+      const updateData: { paid: boolean; paid_date?: string | null } = { paid };
+
+      // If marking as paid, set paid_date to now; if unchecking, clear the date
+      if (paid) {
+        updateData.paid_date = new Date().toISOString();
+      } else {
+        updateData.paid_date = null;
+      }
+
       const { error, data } = await supabase
         .from('payment_split')
-        .update({ paid })
+        .update(updateData)
         .eq('id', splitId)
         .select();
 
@@ -147,6 +167,56 @@ export const usePaymentDisbursement = () => {
     };
   }, []);
 
+  // Update payment split paid date only
+  const updatePaymentSplitPaidDate = useCallback(async (splitId: string, paidDate: string): Promise<void> => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { error } = await supabase
+        .from('payment_split')
+        .update({ paid_date: paidDate })
+        .eq('id', splitId);
+
+      if (error) throw error;
+
+      console.log('✅ Payment split paid date updated');
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update payment split date';
+      setError(errorMessage);
+      console.error('Error updating payment split paid date:', err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Update referral fee paid date only
+  const updateReferralPaidDate = useCallback(async (paymentId: string, paidDate: string): Promise<void> => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { error } = await supabase
+        .from('payment')
+        .update({ referral_fee_paid_date: paidDate })
+        .eq('id', paymentId);
+
+      if (error) throw error;
+
+      console.log('✅ Referral fee paid date updated');
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update referral paid date';
+      setError(errorMessage);
+      console.error('Error updating referral paid date:', err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   // Validate disbursement amounts
   const validateDisbursement = useCallback((
     paymentAmount: number,
@@ -173,7 +243,9 @@ export const usePaymentDisbursement = () => {
     error,
     loadDisbursementData,
     updateReferralPaid,
+    updateReferralPaidDate,
     updatePaymentSplitPaid,
+    updatePaymentSplitPaidDate,
     calculateDisbursementTotals,
     validateDisbursement,
     clearError

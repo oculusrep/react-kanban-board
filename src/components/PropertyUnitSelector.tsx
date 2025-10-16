@@ -195,21 +195,6 @@ export default function PropertyUnitSelector({
         )}
       </div>
       
-      {/* Optional: Show a link to view details when selected */}
-      {selectedUnit && selectedUnit.property_id && (
-        <div className="mt-1">
-          <button
-            type="button"
-            className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-            onClick={() => {
-              // Navigate to property details with units section expanded and unit highlighted
-              navigate(`/property/${selectedUnit.property_id}?section=units&unitId=${selectedUnit.id}`);
-            }}
-          >
-            View Property Unit Details →
-          </button>
-        </div>
-      )}
     </div>
   );
 }

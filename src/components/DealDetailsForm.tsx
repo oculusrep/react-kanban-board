@@ -60,9 +60,10 @@ interface Deal {
 interface Props {
   deal: Deal;
   onSave: (updatedDeal: Deal) => void;
+  onViewSiteSubmitDetails?: (siteSubmitId: string) => void;
 }
 
-export default function DealDetailsForm({ deal, onSave }: Props) {
+export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails }: Props) {
   const navigate = useNavigate();
   const [form, setForm] = useState<Deal>(deal);
   const [saving, setSaving] = useState(false);
@@ -448,6 +449,7 @@ export default function DealDetailsForm({ deal, onSave }: Props) {
             value={form.site_submit_id}
             onChange={(id) => updateField("site_submit_id", id)}
             label="Site Submit"
+            onViewDetails={onViewSiteSubmitDetails}
           />
           <Select
             label="Deal Team"

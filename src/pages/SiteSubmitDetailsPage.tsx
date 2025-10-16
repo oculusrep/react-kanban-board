@@ -26,6 +26,7 @@ interface FormData {
   property_id: string | null;
   property_unit_id: string | null;
   assignment_id: string | null;
+  deal_id: string | null;
   submit_stage_id: string | null;
   date_submitted: string;
   loi_written: boolean;
@@ -50,12 +51,16 @@ const SiteSubmitDetailsPage: React.FC = () => {
   const { toast, showToast } = useToast();
   const { addRecentItem } = useRecentlyViewed();
 
+  // Check if we're in an iframe (sidebar view)
+  const isInIframe = window.self !== window.top;
+
   const [formData, setFormData] = useState<FormData>({
     site_submit_name: '',
     client_id: null,
     property_id: null,
     property_unit_id: null,
     assignment_id: null,
+    deal_id: null,
     submit_stage_id: null,
     date_submitted: new Date().toISOString().split('T')[0],
     loi_written: false,
@@ -74,12 +79,23 @@ const SiteSubmitDetailsPage: React.FC = () => {
 
   const [selectedClient, setSelectedClient] = useState<ClientSearchResult | null>(null);
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentSearchResult | null>(null);
+  const [dealName, setDealName] = useState<string | null>(null);
   const [showAddAssignmentModal, setShowAddAssignmentModal] = useState(false);
   const [submitStages, setSubmitStages] = useState<SubmitStage[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [propertyName, setPropertyName] = useState<string>('');
+  const [propertyDetails, setPropertyDetails] = useState<{
+    available_sqft?: number | null;
+    rent_psf?: number | null;
+    nnn_psf?: number | null;
+  } | null>(null);
+  const [unitDetails, setUnitDetails] = useState<{
+    sqft?: number | null;
+    rent?: number | null;
+    nnn?: number | null;
+  } | null>(null);
   const [userEditedName, setUserEditedName] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [showEmailComposer, setShowEmailComposer] = useState(false);
@@ -88,6 +104,60 @@ const SiteSubmitDetailsPage: React.FC = () => {
     body: string;
     recipients: any[];
   }>({ subject: '', body: '', recipients: [] });
+
+  // Collapsible section states
+  const [isFinancialExpanded, setIsFinancialExpanded] = useState(false);
+  const [isLocationExpanded, setIsLocationExpanded] = useState(false);
+
+  // Handle viewing property details - post message to parent if in iframe
+  const handleViewPropertyDetails = (propertyId: string) => {
+    if (isInIframe) {
+      // Send message to parent window to open property slideout
+      window.parent.postMessage({
+        type: 'OPEN_PROPERTY_SLIDEOUT',
+        propertyId: propertyId
+      }, '*');
+    } else {
+      // Navigate normally
+      navigate(`/property/${propertyId}`);
+    }
+  };
+
+  // Fetch property details when property changes
+  useEffect(() => {
+    if (formData.property_id) {
+      supabase
+        .from('property')
+        .select('available_sqft, rent_psf, nnn_psf')
+        .eq('id', formData.property_id)
+        .single()
+        .then(({ data }) => {
+          if (data) {
+            setPropertyDetails(data);
+          }
+        });
+    } else {
+      setPropertyDetails(null);
+    }
+  }, [formData.property_id]);
+
+  // Fetch unit details when unit changes
+  useEffect(() => {
+    if (formData.property_unit_id) {
+      supabase
+        .from('property_unit')
+        .select('sqft, rent, nnn')
+        .eq('id', formData.property_unit_id)
+        .single()
+        .then(({ data }) => {
+          if (data) {
+            setUnitDetails(data);
+          }
+        });
+    } else {
+      setUnitDetails(null);
+    }
+  }, [formData.property_unit_id]);
 
   // Set page title
   useEffect(() => {
@@ -198,6 +268,24 @@ const SiteSubmitDetailsPage: React.FC = () => {
                 });
             } else {
               console.log('ℹ️ No assignment_id in site submit data');
+            }
+
+            // Load deal if present
+            if (siteSubmitData.deal_id) {
+              console.log('🤝 Loading deal for site submit:', siteSubmitData.deal_id);
+              supabase
+                .from('deal')
+                .select('id, deal_name')
+                .eq('id', siteSubmitData.deal_id)
+                .single()
+                .then(({ data: dealData, error: dealError }) => {
+                  if (dealError) {
+                    console.error('❌ Error loading deal:', dealError);
+                  } else if (dealData) {
+                    console.log('✅ Loaded deal data:', dealData);
+                    setDealName(dealData.deal_name);
+                  }
+                });
             }
 
             // Load property name for auto-generation
@@ -762,31 +850,28 @@ const SiteSubmitDetailsPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+    <div className={isInIframe ? "min-h-screen bg-white" : "min-h-screen bg-gray-50"}>
+      <div className={isInIframe ? "py-4 px-4" : "max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8"}>
         {/* Header */}
-        <div className="bg-white shadow rounded-lg mb-6">
-          <div className="px-6 py-4 border-b border-gray-200">
+        <div className={isInIframe ? "mb-4" : "bg-white shadow rounded-lg mb-6"}>
+          <div className={isInIframe ? "pb-3 border-b border-gray-200" : "px-6 py-4 border-b border-gray-200"}>
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">
+                <h1 className={isInIframe ? "text-lg font-bold text-gray-900" : "text-2xl font-bold text-gray-900"}>
                   {isNewSiteSubmit ? 'New Site Submit' : 'Edit Site Submit'}
                 </h1>
-                <p className="mt-1 text-sm text-gray-500">
-                  {isNewSiteSubmit ? 'Create a new site submit record' : 'Update site submit information'}
-                </p>
               </div>
-              <div className="flex space-x-3">
+              <div className="flex space-x-2">
                 {!isNewSiteSubmit && (
                   <>
                     <button
                       onClick={handleSendEmail}
                       disabled={sendingEmail || loading}
-                      className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                      className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 border border-transparent rounded hover:bg-green-700 disabled:opacity-50 flex items-center gap-1.5"
                     >
                       {sendingEmail ? (
                         <>
-                          <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
@@ -794,7 +879,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
                         </>
                       ) : (
                         <>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
                             <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
                             <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
                           </svg>
@@ -804,7 +889,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
                     </button>
                     <button
                       onClick={handleDelete}
-                      className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700"
+                      className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 border border-transparent rounded hover:bg-red-700"
                     >
                       Delete
                     </button>
@@ -813,7 +898,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
                 <button
                   onClick={handleSave}
                   disabled={saving || loading}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"
+                  className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 border border-transparent rounded hover:bg-blue-700 disabled:opacity-50"
                 >
                   {saving ? 'Saving...' : 'Save Site Submit'}
                 </button>
@@ -823,8 +908,8 @@ const SiteSubmitDetailsPage: React.FC = () => {
         </div>
 
         {/* Form Content */}
-        <div className="bg-white shadow rounded-lg">
-          <div className="p-6 space-y-8">
+        <div className={isInIframe ? "space-y-6" : "bg-white shadow rounded-lg"}>
+          <div className={isInIframe ? "space-y-6" : "p-6 space-y-8"}>
             {loading ? (
               <div className="flex items-center justify-center h-32">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -892,22 +977,74 @@ const SiteSubmitDetailsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <PropertySelector
-                    value={formData.property_id}
-                    onChange={(value) => updateFormData('property_id', value)}
-                    label="Property *"
-                  />
-                  {errors.property_id && (
-                    <p className="mt-1 text-sm text-red-600">{errors.property_id}</p>
+                  {/* Deal Name - Read Only */}
+                  {dealName && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Associated Deal
+                      </label>
+                      <div className="px-3 py-2 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-900">
+                        {dealName}
+                      </div>
+                    </div>
                   )}
 
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <PropertySelector
+                        value={formData.property_id}
+                        onChange={(value) => updateFormData('property_id', value)}
+                        label="Property *"
+                        onViewDetails={handleViewPropertyDetails}
+                      />
+                      {errors.property_id && (
+                        <p className="mt-1 text-sm text-red-600">{errors.property_id}</p>
+                      )}
+                    </div>
+
+                    {formData.property_id && (
+                      <PropertyUnitSelector
+                        propertyId={formData.property_id}
+                        value={formData.property_unit_id}
+                        onChange={(value) => updateFormData('property_unit_id', value)}
+                        label="Property Unit (Optional)"
+                      />
+                    )}
+                  </div>
+
+                  {/* Display property or unit details inline */}
                   {formData.property_id && (
-                    <PropertyUnitSelector
-                      propertyId={formData.property_id}
-                      value={formData.property_unit_id}
-                      onChange={(value) => updateFormData('property_unit_id', value)}
-                      label="Property Unit (Optional)"
-                    />
+                    <div className="text-xs text-gray-600">
+                      {unitDetails ? (
+                        // Show unit details if unit is selected
+                        <div className="flex gap-3">
+                          {unitDetails.sqft && (
+                            <span>{unitDetails.sqft.toLocaleString()} sqft</span>
+                          )}
+                          {unitDetails.rent && (
+                            <span>Rent: ${unitDetails.rent.toLocaleString()}</span>
+                          )}
+                          {unitDetails.nnn && (
+                            <span>NNN: ${unitDetails.nnn.toLocaleString()}</span>
+                          )}
+                        </div>
+                      ) : (
+                        // Show property details if no unit selected
+                        propertyDetails && (
+                          <div className="flex gap-3">
+                            {propertyDetails.available_sqft && (
+                              <span>Available: {propertyDetails.available_sqft.toLocaleString()} sqft</span>
+                            )}
+                            {propertyDetails.rent_psf && (
+                              <span>Rent: ${propertyDetails.rent_psf.toLocaleString()}/sqft</span>
+                            )}
+                            {propertyDetails.nnn_psf && (
+                              <span>NNN: ${propertyDetails.nnn_psf.toLocaleString()}/sqft</span>
+                            )}
+                          </div>
+                        )
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -917,47 +1054,64 @@ const SiteSubmitDetailsPage: React.FC = () => {
                     Submission Details
                   </h3>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Submit Stage
-                    </label>
-                    <select
-                      value={formData.submit_stage_id || ''}
-                      onChange={(e) => updateFormData('submit_stage_id', e.target.value || null)}
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                    >
-                      <option value="">Select stage...</option>
-                      {submitStages.map((stage) => (
-                        <option key={stage.id} value={stage.id}>
-                          {stage.name}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Submit Stage
+                      </label>
+                      <select
+                        value={formData.submit_stage_id || ''}
+                        onChange={(e) => updateFormData('submit_stage_id', e.target.value || null)}
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                      >
+                        <option value="">Select stage...</option>
+                        {submitStages.map((stage) => (
+                          <option key={stage.id} value={stage.id}>
+                            {stage.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Date Submitted
+                      </label>
+                      <input
+                        type="date"
+                        value={formData.date_submitted}
+                        onChange={(e) => updateFormData('date_submitted', e.target.value)}
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                      />
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Date Submitted
-                    </label>
-                    <input
-                      type="date"
-                      value={formData.date_submitted}
-                      onChange={(e) => updateFormData('date_submitted', e.target.value)}
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                    />
-                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="checkbox"
+                        id="loi_written"
+                        checked={formData.loi_written}
+                        onChange={(e) => updateFormData('loi_written', e.target.checked)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="loi_written" className="text-sm font-medium text-gray-700">
+                        LOI Written
+                      </label>
+                    </div>
 
-                  <div className="flex items-center space-x-3">
-                    <input
-                      type="checkbox"
-                      id="loi_written"
-                      checked={formData.loi_written}
-                      onChange={(e) => updateFormData('loi_written', e.target.checked)}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="loi_written" className="text-sm font-medium text-gray-700">
-                      LOI Written
-                    </label>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Delivery Timeframe
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.delivery_timeframe}
+                        onChange={(e) => updateFormData('delivery_timeframe', e.target.value)}
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                        placeholder="e.g., 30-60 days, Q1 2024"
+                      />
+                    </div>
                   </div>
 
                   {formData.loi_written && (
@@ -973,105 +1127,108 @@ const SiteSubmitDetailsPage: React.FC = () => {
                       />
                     </div>
                   )}
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Delivery Date
-                    </label>
-                    <input
-                      type="date"
-                      value={formData.delivery_date}
-                      onChange={(e) => updateFormData('delivery_date', e.target.value)}
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Delivery Timeframe
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.delivery_timeframe}
-                      onChange={(e) => updateFormData('delivery_timeframe', e.target.value)}
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                      placeholder="e.g., 30-60 days, Q1 2024"
-                    />
-                  </div>
                 </div>
 
                 {/* Financial Information Section */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-medium text-gray-900 border-b border-gray-200 pb-2">
-                    Financial Information
-                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setIsFinancialExpanded(!isFinancialExpanded)}
+                    className="w-full flex items-center justify-between text-lg font-medium text-gray-900 border-b border-gray-200 pb-2 hover:text-blue-600 transition-colors"
+                  >
+                    <span>Financial Information</span>
+                    <svg
+                      className={`w-5 h-5 transform transition-transform ${isFinancialExpanded ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Year 1 Rent ($)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.year_1_rent || ''}
-                        onChange={(e) => updateFormData('year_1_rent', e.target.value ? parseFloat(e.target.value) : null)}
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                        placeholder="0.00"
-                      />
-                    </div>
+                  {isFinancialExpanded && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Year 1 Rent ($)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.year_1_rent || ''}
+                          onChange={(e) => updateFormData('year_1_rent', e.target.value ? parseFloat(e.target.value) : null)}
+                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                          placeholder="0.00"
+                        />
+                      </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        TI ($)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.ti || ''}
-                        onChange={(e) => updateFormData('ti', e.target.value ? parseFloat(e.target.value) : null)}
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                        placeholder="0.00"
-                      />
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          TI ($)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.ti || ''}
+                          onChange={(e) => updateFormData('ti', e.target.value ? parseFloat(e.target.value) : null)}
+                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                          placeholder="0.00"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Location Information Section */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-medium text-gray-900 border-b border-gray-200 pb-2">
-                    Location Verification
-                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setIsLocationExpanded(!isLocationExpanded)}
+                    className="w-full flex items-center justify-between text-lg font-medium text-gray-900 border-b border-gray-200 pb-2 hover:text-blue-600 transition-colors"
+                  >
+                    <span>Location Verification</span>
+                    <svg
+                      className={`w-5 h-5 transform transition-transform ${isLocationExpanded ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Verified Latitude
-                      </label>
-                      <input
-                        type="number"
-                        step="any"
-                        value={formData.verified_latitude || ''}
-                        onChange={(e) => updateFormData('verified_latitude', e.target.value ? parseFloat(e.target.value) : null)}
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                        placeholder="e.g., 40.7128"
-                      />
-                    </div>
+                  {isLocationExpanded && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Verified Latitude
+                        </label>
+                        <input
+                          type="number"
+                          step="any"
+                          value={formData.verified_latitude || ''}
+                          onChange={(e) => updateFormData('verified_latitude', e.target.value ? parseFloat(e.target.value) : null)}
+                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                          placeholder="e.g., 40.7128"
+                        />
+                      </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Verified Longitude
-                      </label>
-                      <input
-                        type="number"
-                        step="any"
-                        value={formData.verified_longitude || ''}
-                        onChange={(e) => updateFormData('verified_longitude', e.target.value ? parseFloat(e.target.value) : null)}
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                        placeholder="e.g., -74.0060"
-                      />
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Verified Longitude
+                        </label>
+                        <input
+                          type="number"
+                          step="any"
+                          value={formData.verified_longitude || ''}
+                          onChange={(e) => updateFormData('verified_longitude', e.target.value ? parseFloat(e.target.value) : null)}
+                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                          placeholder="e.g., -74.0060"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Notes and Comments Section */}

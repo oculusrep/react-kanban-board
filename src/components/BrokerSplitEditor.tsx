@@ -9,6 +9,8 @@ interface BrokerSplitEditorProps {
   paymentAmount: number;
   onPercentageChange: (field: string, value: number | null) => void;
   validationTotals?: ValidationTotals;
+  onPaidChange?: (splitId: string, paid: boolean) => void;
+  onPaidDateChange?: (splitId: string, date: string) => void;
 }
 
 const BrokerSplitEditor: React.FC<BrokerSplitEditorProps> = ({
@@ -16,19 +18,47 @@ const BrokerSplitEditor: React.FC<BrokerSplitEditorProps> = ({
   brokerName,
   paymentAmount,
   onPercentageChange,
-  validationTotals
+  validationTotals,
+  onPaidChange,
+  onPaidDateChange
 }) => {
   return (
     <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-      <div className="flex justify-between items-start mb-4">
-        <div>
-          <h5 className="text-sm font-medium text-gray-900">{brokerName}</h5>
-        </div>
-        <div className="text-right">
-          <div className="text-sm font-semibold text-gray-900">
-            ${(split.split_broker_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+      <div className="space-y-2 mb-4">
+        <div className="flex justify-between items-start">
+          <div>
+            <h5 className="text-sm font-medium text-gray-900">{brokerName}</h5>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-sm font-semibold text-gray-900">
+              ${(split.split_broker_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </div>
+            {onPaidChange && (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={split.paid || false}
+                  onChange={(e) => onPaidChange(split.id, e.target.checked)}
+                  className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                />
+                <span className="text-xs text-gray-600">Paid</span>
+              </label>
+            )}
           </div>
         </div>
+
+        {/* Paid Date Input - shown when paid is checked */}
+        {split.paid && onPaidDateChange && (
+          <div className="flex items-center gap-2 justify-end">
+            <span className="text-xs text-gray-600">Paid on:</span>
+            <input
+              type="date"
+              value={split.paid_date ? new Date(split.paid_date).toISOString().split('T')[0] : ''}
+              onChange={(e) => onPaidDateChange(split.id, e.target.value)}
+              className="text-xs border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-green-500 focus:border-green-500"
+            />
+          </div>
+        )}
       </div>
       
       {/* Split Percentages Grid */}

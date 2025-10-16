@@ -17,7 +17,7 @@ interface PaymentDetailPanelProps {
   deal: Deal;
   onSplitPercentageChange: (splitId: string, field: string, value: number | null) => void;
   onUpdatePayment: (updates: Partial<Payment>) => Promise<void>;
-  onUpdatePaymentSplit?: (splitId: string, updates: Partial<PaymentSplit>) => Promise<void>;
+  onUpdatePaymentSplit?: (splitId: string, field: string, value: any) => Promise<void>;
 }
 
 const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
@@ -36,6 +36,12 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
   const getBrokerName = (brokerId: string) => {
     const broker = brokers.find(b => b.id === brokerId);
     return broker ? broker.name : 'Unknown Broker';
+  };
+
+  const getReferralPayeeName = () => {
+    if (!deal.referral_payee_client_id) return null;
+    const client = clients?.find(c => c.id === deal.referral_payee_client_id);
+    return client?.client_name || null;
   };
 
   // Calculate AGCI for this payment
@@ -61,11 +67,27 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
   const validationTotals = usePaymentSplitValidation(calculatedSplits);
 
   // Disbursement functionality
-  const { updateReferralPaid, updatePaymentSplitPaid } = usePaymentDisbursement();
+  const {
+    updateReferralPaid,
+    updateReferralPaidDate,
+    updatePaymentSplitPaid,
+    updatePaymentSplitPaidDate
+  } = usePaymentDisbursement();
 
   const handleUpdateReferralPaid = async (paymentId: string, paid: boolean) => {
     try {
       await updateReferralPaid(paymentId, paid);
+
+      // Update the parent's payment state to reflect the change
+      if (onUpdatePayment) {
+        const updates: Partial<Payment> = {
+          referral_fee_paid: paid,
+          referral_fee_paid_date: paid ? new Date().toISOString() : null
+        };
+        await onUpdatePayment(updates);
+        console.log('✅ Referral fee paid status updated, parent state refreshed');
+      }
+
     } catch (error) {
       console.error('Error updating referral payment status:', error);
       // TODO: Add user-friendly error handling
@@ -75,16 +97,49 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
   const handleUpdatePaymentSplitPaid = async (splitId: string, paid: boolean) => {
     try {
       await updatePaymentSplitPaid(splitId, paid);
-      
+
       // Update the parent's payment split state to reflect the change
       if (onUpdatePaymentSplit) {
-        await onUpdatePaymentSplit(splitId, { paid });
+        // Update paid status
+        await onUpdatePaymentSplit(splitId, 'paid', paid);
+        // Update paid_date (will be set to now or null)
+        await onUpdatePaymentSplit(splitId, 'paid_date', paid ? new Date().toISOString() : null);
         console.log('✅ Payment split paid status updated, parent state refreshed');
       }
-      
+
     } catch (error) {
       console.error('Error updating payment split status:', error);
       // TODO: Add user-friendly error handling
+    }
+  };
+
+  const handleUpdatePaymentSplitPaidDate = async (splitId: string, date: string) => {
+    try {
+      await updatePaymentSplitPaidDate(splitId, date);
+
+      // Update the parent's payment split state to reflect the change
+      if (onUpdatePaymentSplit) {
+        await onUpdatePaymentSplit(splitId, 'paid_date', date);
+        console.log('✅ Payment split paid date updated, parent state refreshed');
+      }
+
+    } catch (error) {
+      console.error('Error updating payment split paid date:', error);
+    }
+  };
+
+  const handleUpdateReferralPaidDate = async (date: string) => {
+    try {
+      await updateReferralPaidDate(payment.id, date);
+
+      // Update the parent's payment state
+      if (onUpdatePayment) {
+        await onUpdatePayment({ referral_fee_paid_date: date });
+        console.log('✅ Referral fee paid date updated, parent state refreshed');
+      }
+
+    } catch (error) {
+      console.error('Error updating referral paid date:', error);
     }
   };
 
@@ -110,8 +165,55 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
               paymentAmount={payment.payment_amount || 0}
               onPercentageChange={(field, value) => onSplitPercentageChange(split.id, field, value)}
               validationTotals={validationTotals}
+              onPaidChange={handleUpdatePaymentSplitPaid}
+              onPaidDateChange={handleUpdatePaymentSplitPaidDate}
             />
           ))}
+
+          {/* Referral Fee Row */}
+          {deal.referral_fee_usd && deal.referral_fee_usd > 0 && (
+            <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+              <div className="space-y-2">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h5 className="text-sm font-medium text-gray-900">
+                      Referral Fee {getReferralPayeeName() ? `- ${getReferralPayeeName()}` : ''}
+                    </h5>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {deal.referral_fee_percent ? `${deal.referral_fee_percent}%` : ''} of total commission
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-sm font-semibold text-purple-900">
+                      ${((deal.referral_fee_usd || 0) / (deal.number_of_payments || 1)).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={payment.referral_fee_paid || false}
+                        onChange={(e) => handleUpdateReferralPaid(payment.id, e.target.checked)}
+                        className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                      />
+                      <span className="text-xs text-gray-600">Paid</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Referral Paid Date Input */}
+                {payment.referral_fee_paid && (
+                  <div className="flex items-center gap-2 justify-end">
+                    <span className="text-xs text-gray-600">Paid on:</span>
+                    <input
+                      type="date"
+                      value={payment.referral_fee_paid_date ? new Date(payment.referral_fee_paid_date).toISOString().split('T')[0] : ''}
+                      onChange={(e) => handleUpdateReferralPaidDate(e.target.value)}
+                      className="text-xs border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
         
         {/* Validation Summary */}

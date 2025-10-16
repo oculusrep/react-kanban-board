@@ -8,6 +8,9 @@ import PaymentTab from '../components/PaymentTab';
 import ActivityTab from '../components/ActivityTab';
 import DealHeaderBar from '../components/DealHeaderBar';
 import DealSidebar from '../components/DealSidebar';
+import SiteSubmitSidebar from '../components/SiteSubmitSidebar';
+import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
+import { LayerManagerProvider } from '../components/mapping/layers/LayerManager';
 import FileManager from '../components/FileManager/FileManager';
 import Toast from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -23,6 +26,12 @@ export default function DealDetailsPage() {
   const [isNewDeal, setIsNewDeal] = useState(false);
   const [sidebarMinimized, setSidebarMinimized] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [siteSubmitSidebarOpen, setSiteSubmitSidebarOpen] = useState(false);
+  const [siteSubmitSidebarMinimized, setSiteSubmitSidebarMinimized] = useState(false);
+  const [selectedSiteSubmitId, setSelectedSiteSubmitId] = useState<string | null>(null);
+  const [propertySlideoutOpen, setPropertySlideoutOpen] = useState(false);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
+  const [propertyData, setPropertyData] = useState<any>(null);
   const { toast, showToast } = useToast();
   const { trackView } = useTrackPageView();
   const { removeRecentItem } = useRecentlyViewed();
@@ -31,6 +40,32 @@ export default function DealDetailsPage() {
 
   // Fallback: if dealId is undefined but pathname is /deal/new, treat as new deal
   const actualDealId = dealId || (location.pathname === '/deal/new' ? 'new' : undefined);
+
+  // Listen for messages from iframe (site submit sidebar)
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.data.type === 'OPEN_PROPERTY_SLIDEOUT') {
+        const propertyId = event.data.propertyId;
+        console.log('📨 Received message to open property slideout:', propertyId);
+
+        // Fetch property data
+        const { data, error } = await supabase
+          .from('property')
+          .select('*')
+          .eq('id', propertyId)
+          .single();
+
+        if (data && !error) {
+          setSelectedPropertyId(propertyId);
+          setPropertyData(data);
+          setPropertySlideoutOpen(true);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   // Set page title
   useEffect(() => {
@@ -153,6 +188,13 @@ export default function DealDetailsPage() {
   const handleDelete = () => {
     if (!deal.id || isNewDeal) return;
     setShowDeleteConfirm(true);
+  };
+
+  // Handle viewing site submit details in sidebar
+  const handleViewSiteSubmitDetails = (siteSubmitId: string) => {
+    setSelectedSiteSubmitId(siteSubmitId);
+    setSiteSubmitSidebarOpen(true);
+    setSiteSubmitSidebarMinimized(false);
   };
 
   const confirmDelete = async () => {
@@ -343,7 +385,11 @@ export default function DealDetailsPage() {
 
             {/* Tab Content */}
             {activeTab === 'overview' && (
-              <DealDetailsForm deal={deal} onSave={handleDealUpdate} />
+              <DealDetailsForm
+                deal={deal}
+                onSave={handleDealUpdate}
+                onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
+              />
             )}
 
             {activeTab === 'commission' && (
@@ -436,6 +482,34 @@ export default function DealDetailsPage() {
             isMinimized={sidebarMinimized}
             onMinimize={() => setSidebarMinimized(!sidebarMinimized)}
           />
+        )}
+
+        {/* Site Submit Sidebar - Shows on top of Deal Sidebar when opened */}
+        {siteSubmitSidebarOpen && selectedSiteSubmitId && (
+          <SiteSubmitSidebar
+            siteSubmitId={selectedSiteSubmitId}
+            isMinimized={siteSubmitSidebarMinimized}
+            onMinimize={() => setSiteSubmitSidebarMinimized(!siteSubmitSidebarMinimized)}
+            onClose={() => setSiteSubmitSidebarOpen(false)}
+            propertySlideoutOpen={propertySlideoutOpen}
+          />
+        )}
+
+        {/* Property Details Slideout - Shows to the right of Site Submit Sidebar */}
+        {propertySlideoutOpen && propertyData && (
+          <LayerManagerProvider>
+            <PinDetailsSlideout
+              isOpen={propertySlideoutOpen}
+              onClose={() => {
+                setPropertySlideoutOpen(false);
+                setPropertyData(null);
+                setSelectedPropertyId(null);
+              }}
+              data={propertyData}
+              type="property"
+              rightOffset={0}
+            />
+          </LayerManagerProvider>
         )}
       </div>
 

@@ -247,7 +247,8 @@ export interface Payment {
   
   // Disbursement tracking
   referral_fee_paid?: boolean | null;
-  
+  referral_fee_paid_date?: string | null;
+
   // Legacy compatibility fields
   status?: string;                    // Temporary for component compatibility
   payment_date?: string;              // Temporary for component compatibility
@@ -268,17 +269,18 @@ export interface PaymentSplit {
   commission_split_id: string | null;
   broker_id: string;
   split_broker_total: number | null;  // This exists in DB
-  
+
   split_origination_percent: number | null;
   split_site_percent: number | null;
   split_deal_percent: number | null;
   split_origination_usd: number | null;
   split_site_usd: number | null;
   split_deal_usd: number | null;
-  
+
   // Disbursement tracking
   paid?: boolean | null;
-  
+  paid_date?: string | null;
+
   created_at?: string;
   updated_at?: string;
 }

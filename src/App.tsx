@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import KanbanBoard from "./components/KanbanBoard";
@@ -22,6 +22,18 @@ import PropertyDataQualityReportPage from "./pages/PropertyDataQualityReportPage
 import AssignmentsReportPage from "./pages/AssignmentsReportPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 
+function ProtectedLayout() {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const isEmbedded = searchParams.get('embedded') === 'true';
+
+  return (
+    <ProtectedRoute>
+      {!isEmbedded && <Navbar />}
+    </ProtectedRoute>
+  );
+}
+
 function App() {
   return (
     <AuthProvider>
@@ -30,11 +42,7 @@ function App() {
         <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         {/* All other routes are protected */}
-        <Route path="/" element={
-          <ProtectedRoute>
-            <Navbar />
-          </ProtectedRoute>
-        }>
+        <Route path="/" element={<ProtectedLayout />}>
           <Route index element={<Navigate to="/master-pipeline" replace />} />
           <Route path="master-pipeline" element={<KanbanBoard />} />
           <Route path="deal/new" element={<DealDetailsPage />} />
