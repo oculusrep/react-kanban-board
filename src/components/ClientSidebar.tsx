@@ -669,6 +669,7 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
                       key={siteSubmit.id}
                       siteSubmit={siteSubmit}
                       onClick={(id) => {
+                        console.log('🖱️ ClientSidebar: Site submit clicked, ID:', id);
                         setEditingSiteSubmitId(id);
                         setShowSiteSubmitModal(true);
                         onSiteSubmitModalChange?.(true);

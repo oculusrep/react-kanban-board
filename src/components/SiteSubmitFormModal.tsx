@@ -99,6 +99,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
   // Load dropdown data and existing site submit if editing
   useEffect(() => {
     const loadData = async () => {
+      console.log('🔍 SiteSubmitFormModal loadData - isOpen:', isOpen, 'siteSubmitId:', siteSubmitId);
       setLoading(true);
       try {
         // Load submit stages only (clients loaded via ClientSelector)
@@ -116,7 +117,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
             .select('property_name')
             .eq('id', propertyId)
             .single();
-          
+
           if (propertyData?.property_name) {
             setPropertyName(propertyData.property_name);
           }
@@ -129,10 +130,9 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
             .select(`
               client_id,
               deal_id,
-              client:client_id (
+              client!assignment_client_id_fkey (
                 id,
                 client_name,
-                type,
                 phone
               )
             `)
@@ -151,7 +151,6 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
               setSelectedClient({
                 id: assignmentData.client.id,
                 client_name: assignmentData.client.client_name,
-                type: assignmentData.client.type,
                 phone: assignmentData.client.phone,
                 site_submit_count: 0
               });
@@ -161,14 +160,14 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
 
         // Load existing site submit if editing
         if (siteSubmitId) {
+          console.log('📥 Loading site submit data for ID:', siteSubmitId);
           const { data: siteSubmitData, error } = await supabase
             .from('site_submit')
             .select(`
               *,
-              client:client_id (
+              client!site_submit_client_id_fkey (
                 id,
                 client_name,
-                type,
                 phone
               )
             `)
@@ -176,8 +175,10 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
             .single();
 
           if (error) {
-            console.error('Error loading site submit:', error);
+            console.error('❌ Error loading site submit:', error);
           } else if (siteSubmitData) {
+            console.log('✅ Loaded site submit data:', siteSubmitData);
+            console.log('💬 customer_comments value:', siteSubmitData.customer_comments);
             setFormData({
               site_submit_name: siteSubmitData.site_submit_name || '',
               client_id: siteSubmitData.client_id,
@@ -205,7 +206,6 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
               setSelectedClient({
                 id: siteSubmitData.client.id,
                 client_name: siteSubmitData.client.client_name,
-                type: siteSubmitData.client.type,
                 phone: siteSubmitData.client.phone,
                 site_submit_count: 0 // Not needed for editing
               });
