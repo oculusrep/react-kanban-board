@@ -12,7 +12,7 @@ import FileManager from '../components/FileManager/FileManager';
 import Toast from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../hooks/useToast';
-import { useTrackPageView } from '../hooks/useRecentlyViewed';
+import { useTrackPageView, useRecentlyViewed } from '../hooks/useRecentlyViewed';
 
 export default function DealDetailsPage() {
   const { dealId } = useParams<{ dealId: string }>();
@@ -25,6 +25,7 @@ export default function DealDetailsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { toast, showToast } = useToast();
   const { trackView } = useTrackPageView();
+  const { removeRecentItem } = useRecentlyViewed();
 
   console.log('DealDetailsPage - location:', location.pathname, 'dealId from params:', dealId);
 
@@ -86,6 +87,12 @@ export default function DealDetailsPage() {
 
       if (error) {
         console.error('Error fetching deal:', error);
+        // Remove from recently viewed if it doesn't exist
+        if (error.code === 'PGRST116') { // No rows found
+          removeRecentItem(actualDealId, 'deal');
+          showToast('This deal no longer exists', { type: 'error' });
+          navigate('/master-pipeline');
+        }
       } else if (data) {
         console.log('Existing deal loaded:', data);
         setDeal(data);
@@ -97,6 +104,12 @@ export default function DealDetailsPage() {
           data.deal_name || 'Unnamed Deal',
           data.sf_address || data.client?.client_name || undefined
         );
+      } else {
+        // No data and no error means the deal doesn't exist
+        console.log('Deal not found - removing from recently viewed');
+        removeRecentItem(actualDealId, 'deal');
+        showToast('This deal no longer exists', { type: 'error' });
+        navigate('/master-pipeline');
       }
     };
 
@@ -190,13 +203,58 @@ export default function DealDetailsPage() {
         throw activityError;
       }
 
-      // Step 5: Now delete the deal
+      // Step 5: Delete payments and their related data
+      // First get all payments for this deal
+      const { data: payments, error: fetchPaymentError } = await supabase
+        .from('payment')
+        .select('id')
+        .eq('deal_id', deal.id);
+
+      if (fetchPaymentError) throw fetchPaymentError;
+
+      // If there are payments, delete their payment_splits
+      if (payments && payments.length > 0) {
+        const paymentIds = payments.map(p => p.id);
+        const { error: paymentSplitError } = await supabase
+          .from('payment_split')
+          .delete()
+          .in('payment_id', paymentIds);
+
+        if (paymentSplitError && paymentSplitError.code !== 'PGRST116') {
+          throw paymentSplitError;
+        }
+
+        // Now delete the payments themselves
+        const { error: paymentError } = await supabase
+          .from('payment')
+          .delete()
+          .eq('deal_id', deal.id);
+
+        if (paymentError && paymentError.code !== 'PGRST116') {
+          throw paymentError;
+        }
+      }
+
+      // Step 6: Delete commission splits linked to this deal
+      const { error: commissionSplitError } = await supabase
+        .from('commission_split')
+        .delete()
+        .eq('deal_id', deal.id);
+
+      if (commissionSplitError && commissionSplitError.code !== 'PGRST116') { // PGRST116 = no rows found
+        throw commissionSplitError;
+      }
+
+      // Step 7: Now delete the deal
       const { error } = await supabase
         .from('deal')
         .delete()
         .eq('id', deal.id);
 
       if (error) throw error;
+
+      // Remove from recently viewed
+      removeRecentItem(deal.id, 'deal');
 
       showToast('Deal deleted successfully!', { type: 'success' });
 

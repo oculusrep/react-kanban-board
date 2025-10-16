@@ -115,11 +115,32 @@ export function useRecentlyViewed() {
     });
   }, [saveToStorage]);
 
+  // Remove a specific item by ID and type
+  const removeRecentItem = useCallback((id: string, type: RecentItem['type']) => {
+    console.log('🗑️ Removing recent item:', { id, type });
+    setRecentItems(prev => {
+      const key = `${type}s` as keyof RecentItemsStorage;
+      const currentItems = prev[key] || [];
+      console.log('📋 Current items before removal:', currentItems);
+      const filteredItems = currentItems.filter(item => item.id !== id);
+      console.log('📋 Items after removal:', filteredItems);
+
+      const newState = {
+        ...prev,
+        [key]: filteredItems
+      };
+      saveToStorage(newState);
+      console.log('💾 Saved to localStorage');
+      return newState;
+    });
+  }, [saveToStorage]);
+
   return {
     addRecentItem,
     getRecentItems,
     clearRecentItems,
     clearRecentItemsForType,
+    removeRecentItem,
     recentItems
   };
 }
