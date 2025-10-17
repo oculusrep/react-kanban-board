@@ -767,7 +767,7 @@ export default function SiteSubmitDashboardPage() {
         <div className="flex justify-between items-center mb-4">
           <p className="text-sm text-gray-600">
             Showing {paginatedData.length} of {filteredData.length} site submits
-            {(selectedStageId || selectedClientId) && " (filtered)"}
+            {(selectedStageIds.length > 0 || selectedClientId || quickFilter !== 'all') && " (filtered)"}
           </p>
           <button
             onClick={exportToCSV}
