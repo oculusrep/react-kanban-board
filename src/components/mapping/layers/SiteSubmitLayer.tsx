@@ -9,6 +9,7 @@ interface SiteSubmit {
   id: string;
   site_submit_name?: string;
   client_id: string | null;
+  assignment_id?: string | null;
   property_id: string | null;
   submit_stage_id: string | null;
   sf_property_latitude: number;
@@ -171,6 +172,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
           id,
           site_submit_name,
           client_id,
+          assignment_id,
           property_id,
           submit_stage_id,
           sf_property_latitude,
@@ -260,6 +262,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
                 id,
                 site_submit_name,
                 client_id,
+                assignment_id,
                 property_id,
                 submit_stage_id,
                 sf_property_latitude,
