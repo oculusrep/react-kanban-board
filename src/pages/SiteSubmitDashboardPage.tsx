@@ -47,23 +47,23 @@ export default function SiteSubmitDashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Filters
-  const [selectedStageId, setSelectedStageId] = useState<string>("");
-  const [selectedStageName, setSelectedStageName] = useState<string>("");
+  const [selectedStageIds, setSelectedStageIds] = useState<string[]>([]); // Changed to array for multi-select
   const [selectedClientId, setSelectedClientId] = useState<string>("");
   const [selectedClientName, setSelectedClientName] = useState<string>("");
   const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
   const [clients, setClients] = useState<{ id: string; name: string }[]>([]);
+  const [quickFilter, setQuickFilter] = useState<string>("all"); // For button strip
 
-  // Auto-suggest state
-  const [stageQuery, setStageQuery] = useState("");
-  const [showStageDropdown, setShowStageDropdown] = useState(false);
+  // Auto-suggest state (client only)
   const [clientQuery, setClientQuery] = useState("");
   const [showClientDropdown, setShowClientDropdown] = useState(false);
 
-  const stageInputRef = useRef<HTMLInputElement>(null);
-  const stageDropdownRef = useRef<HTMLDivElement>(null);
   const clientInputRef = useRef<HTMLInputElement>(null);
   const clientDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Stage multi-select state
+  const [showStageMultiSelect, setShowStageMultiSelect] = useState(false);
+  const stageMultiSelectRef = useRef<HTMLDivElement>(null);
 
   // Sorting
   const [sortField, setSortField] = useState<SortField>("site_submit_name");
@@ -95,17 +95,16 @@ export default function SiteSubmitDashboardPage() {
   // Apply filters and sorting when data or filters change
   useEffect(() => {
     applyFiltersAndSort();
-  }, [data, selectedStageId, selectedClientId, sortField, sortDirection]);
+  }, [data, selectedStageIds, selectedClientId, sortField, sortDirection, quickFilter]);
 
   // Handle clicking outside dropdowns
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
-        stageDropdownRef.current &&
-        !stageDropdownRef.current.contains(event.target as Node) &&
-        !stageInputRef.current?.contains(event.target as Node)
+        stageMultiSelectRef.current &&
+        !stageMultiSelectRef.current.contains(event.target as Node)
       ) {
-        setShowStageDropdown(false);
+        setShowStageMultiSelect(false);
       }
       if (
         clientDropdownRef.current &&
@@ -268,9 +267,24 @@ export default function SiteSubmitDashboardPage() {
   const applyFiltersAndSort = () => {
     let result = [...data];
 
-    // Apply filters
-    if (selectedStageId) {
-      result = result.filter(row => row.submit_stage_id === selectedStageId);
+    // Apply quick filter first (button strip)
+    if (quickFilter !== 'all') {
+      // Map quick filter keys to actual stage names
+      const stageMap: Record<string, string> = {
+        'submitted-reviewing': 'Submitted Reviewing',
+        'pursuing': 'Pursuing',
+        'ownership': 'Ownership',
+        'pass': 'Pass',
+        'conflict': 'Conflict',
+        'not-available': 'Not Available'
+      };
+      const stageName = stageMap[quickFilter];
+      if (stageName) {
+        result = result.filter(row => row.submit_stage_name === stageName);
+      }
+    } else if (selectedStageIds.length > 0) {
+      // Apply multi-select filter only if no quick filter is active
+      result = result.filter(row => row.submit_stage_id && selectedStageIds.includes(row.submit_stage_id));
     }
 
     if (selectedClientId) {
@@ -316,29 +330,34 @@ export default function SiteSubmitDashboardPage() {
   };
 
   const clearFilters = () => {
-    setSelectedStageId("");
-    setSelectedStageName("");
-    setStageQuery("");
+    setSelectedStageIds([]);
+    setQuickFilter("all");
     setSelectedClientId("");
     setSelectedClientName("");
     setClientQuery("");
   };
-
-  // Filter stages based on query
-  const filteredStages = stages.filter(stage =>
-    stage.name.toLowerCase().includes(stageQuery.toLowerCase())
-  );
 
   // Filter clients based on query
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(clientQuery.toLowerCase())
   );
 
-  const handleSelectStage = (stage: { id: string; name: string }) => {
-    setSelectedStageId(stage.id);
-    setSelectedStageName(stage.name);
-    setStageQuery(stage.name);
-    setShowStageDropdown(false);
+  // Handle quick filter button clicks
+  const handleQuickFilter = (filter: string) => {
+    setQuickFilter(filter);
+    setSelectedStageIds([]); // Clear multi-select when using quick filter
+  };
+
+  // Handle multi-select stage toggle
+  const handleToggleStage = (stageId: string) => {
+    setQuickFilter("all"); // Clear quick filter when using multi-select
+    setSelectedStageIds(prev => {
+      if (prev.includes(stageId)) {
+        return prev.filter(id => id !== stageId);
+      } else {
+        return [...prev, stageId];
+      }
+    });
   };
 
   const handleSelectClient = (client: { id: string; name: string }) => {
@@ -534,12 +553,92 @@ export default function SiteSubmitDashboardPage() {
           </button>
         </div>
 
+        {/* Quick Filter Button Strip */}
+        <div className="bg-white rounded-lg shadow p-4 mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <Filter size={18} className="text-gray-600" />
+            <h2 className="text-lg font-semibold text-gray-900">Filter By</h2>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => handleQuickFilter("all")}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                quickFilter === "all"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              All Submits
+            </button>
+            <button
+              onClick={() => handleQuickFilter("submitted-reviewing")}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                quickFilter === "submitted-reviewing"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              Submitted Reviewing
+            </button>
+            <button
+              onClick={() => handleQuickFilter("pursuing")}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                quickFilter === "pursuing"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              Pursuing
+            </button>
+            <button
+              onClick={() => handleQuickFilter("ownership")}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                quickFilter === "ownership"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              Ownership
+            </button>
+            <button
+              onClick={() => handleQuickFilter("pass")}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                quickFilter === "pass"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              Pass
+            </button>
+            <button
+              onClick={() => handleQuickFilter("conflict")}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                quickFilter === "conflict"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              Conflict
+            </button>
+            <button
+              onClick={() => handleQuickFilter("not-available")}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                quickFilter === "not-available"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              Not Available
+            </button>
+          </div>
+        </div>
+
         {/* Filters */}
         <div className="bg-white rounded-lg shadow p-4 mb-6">
           <div className="flex items-center gap-2 mb-3">
             <Filter size={18} className="text-gray-600" />
             <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
-            {(selectedStageId || selectedClientId) && (
+            {(selectedStageIds.length > 0 || selectedClientId || quickFilter !== 'all') && (
               <button
                 onClick={clearFilters}
                 className="ml-auto text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
@@ -551,56 +650,55 @@ export default function SiteSubmitDashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Stage Filter */}
+            {/* Stage Multi-Select Filter */}
             <div className="relative">
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Filter by Stage
+                Filter by Stage (Multi-select)
               </label>
               <div className="relative">
-                <input
-                  ref={stageInputRef}
-                  type="text"
-                  value={stageQuery}
-                  onChange={(e) => {
-                    setStageQuery(e.target.value);
-                    setShowStageDropdown(true);
-                    if (!e.target.value) {
-                      setSelectedStageId("");
-                      setSelectedStageName("");
-                    }
-                  }}
-                  onFocus={() => setShowStageDropdown(true)}
-                  placeholder="Search stages..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
-                />
-                {selectedStageId && (
+                <button
+                  onClick={() => setShowStageMultiSelect(!showStageMultiSelect)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm text-left flex items-center justify-between bg-white hover:bg-gray-50"
+                >
+                  <span className={selectedStageIds.length === 0 ? "text-gray-400" : "text-gray-900"}>
+                    {selectedStageIds.length === 0
+                      ? "Select stages..."
+                      : `${selectedStageIds.length} stage${selectedStageIds.length > 1 ? 's' : ''} selected`}
+                  </span>
+                  <ChevronDown size={16} className="text-gray-400" />
+                </button>
+                {selectedStageIds.length > 0 && (
                   <button
-                    onClick={() => {
-                      setSelectedStageId("");
-                      setSelectedStageName("");
-                      setStageQuery("");
-                      stageInputRef.current?.focus();
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedStageIds([]);
                     }}
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-8 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
                     <X size={16} />
                   </button>
                 )}
               </div>
 
-              {/* Stage Dropdown */}
-              {showStageDropdown && filteredStages.length > 0 && (
+              {/* Multi-Select Dropdown */}
+              {showStageMultiSelect && (
                 <div
-                  ref={stageDropdownRef}
+                  ref={stageMultiSelectRef}
                   className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto"
                 >
-                  {filteredStages.map((stage) => (
+                  {stages.map((stage) => (
                     <div
                       key={stage.id}
-                      onClick={() => handleSelectStage(stage)}
-                      className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                      onClick={() => handleToggleStage(stage.id)}
+                      className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm flex items-center gap-2"
                     >
-                      {stage.name}
+                      <input
+                        type="checkbox"
+                        checked={selectedStageIds.includes(stage.id)}
+                        onChange={() => {}} // Handled by parent div onClick
+                        className="h-4 w-4 text-blue-600 rounded border-gray-300"
+                      />
+                      <span>{stage.name}</span>
                     </div>
                   ))}
                 </div>
