@@ -45,6 +45,13 @@ export default function ReportsPage() {
       description: "View and filter all assignments by client and trade area",
       route: "/reports/assignments",
       icon: "📋"
+    },
+    {
+      id: "site-submit-dashboard",
+      name: "Site Submit Dashboard",
+      description: "View and filter site submits with property details, SQFT, and NNN",
+      route: "/reports/site-submit-dashboard",
+      icon: "📍"
     }
   ];
 

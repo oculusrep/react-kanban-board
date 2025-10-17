@@ -20,6 +20,7 @@ import DealCompareReportPage from "./pages/DealCompareReportPage";
 import DealCompareToSalesforceReportPage from "./pages/DealCompareToSalesforceReportPage";
 import PropertyDataQualityReportPage from "./pages/PropertyDataQualityReportPage";
 import AssignmentsReportPage from "./pages/AssignmentsReportPage";
+import SiteSubmitDashboardPage from "./pages/SiteSubmitDashboardPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 
 function ProtectedLayout() {
@@ -64,6 +65,7 @@ function App() {
           <Route path="reports/deal-compare-salesforce" element={<DealCompareToSalesforceReportPage />} />
           <Route path="reports/property-data-quality" element={<PropertyDataQualityReportPage />} />
           <Route path="reports/assignments" element={<AssignmentsReportPage />} />
+          <Route path="reports/site-submit-dashboard" element={<SiteSubmitDashboardPage />} />
         </Route>
       </Routes>
     </AuthProvider>
