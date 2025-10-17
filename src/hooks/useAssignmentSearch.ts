@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { buildFuzzyOrQuery, sortByRelevance } from '../utils/searchUtils';
 
 export interface AssignmentSearchResult {
   id: string;
@@ -26,7 +27,8 @@ export const useAssignmentSearch = () => {
     try {
       console.log(`🔍 Searching assignments for: "${query}"${clientId ? ` (client: ${clientId})` : ''}`);
 
-      // Search assignments without nested joins
+      // Search assignments with fuzzy matching
+      const fuzzyQuery = buildFuzzyOrQuery(['assignment_name', 'site_criteria'], query);
       let queryBuilder = supabase
         .from('assignment')
         .select(`
@@ -35,9 +37,10 @@ export const useAssignmentSearch = () => {
           client_id,
           assignment_value,
           due_date,
-          progress
+          progress,
+          site_criteria
         `)
-        .ilike('assignment_name', `%${query}%`);
+        .or(fuzzyQuery);
 
       // Filter by client if provided
       if (clientId) {
@@ -45,8 +48,7 @@ export const useAssignmentSearch = () => {
       }
 
       const { data: assignments, error: searchError } = await queryBuilder
-        .order('assignment_name')
-        .limit(10);
+        .limit(30); // Fetch more for better fuzzy results
 
       if (searchError) {
         console.error('❌ Search error:', searchError);
@@ -87,7 +89,9 @@ export const useAssignmentSearch = () => {
         };
       });
 
-      return assignmentResults;
+      // Sort by relevance and limit to top 10 results
+      const sorted = sortByRelevance(assignmentResults, query, 'assignment_name');
+      return sorted.slice(0, 10);
 
     } catch (err) {
       console.error('❌ Assignment search error:', err);
