@@ -272,8 +272,8 @@ const MappingPageContent: React.FC = () => {
           const deltaX = Math.abs(touch.clientX - touchStartPos.x);
           const deltaY = Math.abs(touch.clientY - touchStartPos.y);
 
-          // Use a smaller threshold (5px) to be more sensitive to movement
-          if (deltaX > 5 || deltaY > 5) {
+          // Use 10px threshold to allow for small finger movements while panning
+          if (deltaX > 10 || deltaY > 10) {
             if (!touchMoved) {
               console.log('👆 Movement detected, canceling long-press:', { deltaX, deltaY });
             }
@@ -289,11 +289,11 @@ const MappingPageContent: React.FC = () => {
           // Log for debugging
           if (touchMoved) {
             console.log('👆 Touch ended with movement - no context menu');
-          } else if (touchDuration < 500) {
+          } else if (touchDuration < 750) {
             console.log('⚡ Touch too short for long-press:', touchDuration, 'ms');
           }
 
-          if (touchDuration >= 500 && !touchMoved) {
+          if (touchDuration >= 750 && !touchMoved) {
             // Don't show map context menu if a marker was just long-pressed
             if (suppressMapContextMenu) {
               console.log('🚫 Marker was long-pressed, skipping map context menu');
