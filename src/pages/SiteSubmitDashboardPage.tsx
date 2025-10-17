@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
-import { ChevronDown, ChevronUp, Download, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, X, Filter } from "lucide-react";
 import PinDetailsSlideout from "../components/mapping/slideouts/PinDetailsSlideout";
+import { LayerManagerProvider } from "../components/mapping/layers/LayerManager";
 
 interface SiteSubmitReportRow {
   id: string;
@@ -47,9 +48,22 @@ export default function SiteSubmitDashboardPage() {
 
   // Filters
   const [selectedStageId, setSelectedStageId] = useState<string>("");
+  const [selectedStageName, setSelectedStageName] = useState<string>("");
   const [selectedClientId, setSelectedClientId] = useState<string>("");
+  const [selectedClientName, setSelectedClientName] = useState<string>("");
   const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
   const [clients, setClients] = useState<{ id: string; name: string }[]>([]);
+
+  // Auto-suggest state
+  const [stageQuery, setStageQuery] = useState("");
+  const [showStageDropdown, setShowStageDropdown] = useState(false);
+  const [clientQuery, setClientQuery] = useState("");
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+
+  const stageInputRef = useRef<HTMLInputElement>(null);
+  const stageDropdownRef = useRef<HTMLDivElement>(null);
+  const clientInputRef = useRef<HTMLInputElement>(null);
+  const clientDropdownRef = useRef<HTMLDivElement>(null);
 
   // Sorting
   const [sortField, setSortField] = useState<SortField>("site_submit_name");
@@ -79,6 +93,29 @@ export default function SiteSubmitDashboardPage() {
     applyFiltersAndSort();
   }, [data, selectedStageId, selectedClientId, sortField, sortDirection]);
 
+  // Handle clicking outside dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        stageDropdownRef.current &&
+        !stageDropdownRef.current.contains(event.target as Node) &&
+        !stageInputRef.current?.contains(event.target as Node)
+      ) {
+        setShowStageDropdown(false);
+      }
+      if (
+        clientDropdownRef.current &&
+        !clientDropdownRef.current.contains(event.target as Node) &&
+        !clientInputRef.current?.contains(event.target as Node)
+      ) {
+        setShowClientDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const fetchReportData = async () => {
     setLoading(true);
     setError(null);
@@ -86,7 +123,7 @@ export default function SiteSubmitDashboardPage() {
     try {
       console.log('🔍 Fetching site submits data...');
 
-      // Fetch all site submits with related data
+      // Fetch all site submits with related data (excluding assignment to avoid potential FK issues)
       const { data: siteSubmitData, error: queryError } = await supabase
         .from("site_submit")
         .select(`
@@ -112,8 +149,8 @@ export default function SiteSubmitDashboardPage() {
           property_unit!site_submit_property_unit_id_fkey (
             id,
             property_unit_name,
-            square_feet,
-            nnn_psf
+            sqft,
+            nnn
           ),
           submit_stage!site_submit_submit_stage_id_fkey (
             id,
@@ -122,10 +159,6 @@ export default function SiteSubmitDashboardPage() {
           client!site_submit_client_id_fkey (
             id,
             client_name
-          ),
-          assignment!site_submit_assignment_id_fkey (
-            id,
-            assignment_name
           )
         `)
         .order("created_at", { ascending: false });
@@ -143,17 +176,30 @@ export default function SiteSubmitDashboardPage() {
 
       console.log(`✅ Fetched ${siteSubmitData.length} site submits`);
 
+      // Fetch assignments separately if needed
+      const assignmentIds = [...new Set(siteSubmitData.map(s => s.assignment_id).filter(Boolean))];
+      const assignmentsMap = new Map();
+
+      if (assignmentIds.length > 0) {
+        const { data: assignmentData } = await supabase
+          .from('assignment')
+          .select('id, assignment_name')
+          .in('id', assignmentIds);
+
+        assignmentData?.forEach(a => assignmentsMap.set(a.id, a));
+      }
+
       // Transform data with computed fields
       const transformedData: SiteSubmitReportRow[] = siteSubmitData.map(submit => {
         const property = submit.property as any;
         const unit = submit.property_unit as any;
         const stage = submit.submit_stage as any;
         const client = submit.client as any;
-        const assignment = submit.assignment as any;
+        const assignment = submit.assignment_id ? assignmentsMap.get(submit.assignment_id) : null;
 
         // Logic: Use unit data if available, otherwise use property data
-        const display_sqft = unit?.square_feet ?? property?.building_sqft ?? null;
-        const display_nnn = unit?.nnn_psf ?? property?.nnn_psf ?? null;
+        const display_sqft = unit?.sqft ?? property?.building_sqft ?? null;
+        const display_nnn = unit?.nnn ?? property?.nnn_psf ?? null;
 
         return {
           id: submit.id,
@@ -165,8 +211,8 @@ export default function SiteSubmitDashboardPage() {
           property_unit_name: unit?.property_unit_name ?? null,
           property_sqft: property?.building_sqft ?? null,
           property_nnn: property?.nnn_psf ?? null,
-          unit_sqft: unit?.square_feet ?? null,
-          unit_nnn: unit?.nnn_psf ?? null,
+          unit_sqft: unit?.sqft ?? null,
+          unit_nnn: unit?.nnn ?? null,
           display_sqft,
           display_nnn,
           submit_stage_id: submit.submit_stage_id,
@@ -267,7 +313,35 @@ export default function SiteSubmitDashboardPage() {
 
   const clearFilters = () => {
     setSelectedStageId("");
+    setSelectedStageName("");
+    setStageQuery("");
     setSelectedClientId("");
+    setSelectedClientName("");
+    setClientQuery("");
+  };
+
+  // Filter stages based on query
+  const filteredStages = stages.filter(stage =>
+    stage.name.toLowerCase().includes(stageQuery.toLowerCase())
+  );
+
+  // Filter clients based on query
+  const filteredClients = clients.filter(client =>
+    client.name.toLowerCase().includes(clientQuery.toLowerCase())
+  );
+
+  const handleSelectStage = (stage: { id: string; name: string }) => {
+    setSelectedStageId(stage.id);
+    setSelectedStageName(stage.name);
+    setStageQuery(stage.name);
+    setShowStageDropdown(false);
+  };
+
+  const handleSelectClient = (client: { id: string; name: string }) => {
+    setSelectedClientId(client.id);
+    setSelectedClientName(client.name);
+    setClientQuery(client.name);
+    setShowClientDropdown(false);
   };
 
   const exportToCSV = () => {
@@ -392,7 +466,8 @@ export default function SiteSubmitDashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <LayerManagerProvider>
+      <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6 flex justify-between items-center">
@@ -411,57 +486,132 @@ export default function SiteSubmitDashboardPage() {
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-white rounded-lg shadow p-4 mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <Filter size={18} className="text-gray-600" />
             <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
             {(selectedStageId || selectedClientId) && (
               <button
                 onClick={clearFilters}
-                className="flex items-center space-x-2 text-sm text-gray-600 hover:text-gray-900"
+                className="ml-auto text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
               >
-                <X className="h-4 w-4" />
-                <span>Clear Filters</span>
+                <X size={14} />
+                Clear Filters
               </button>
             )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Stage Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Stage
+            <div className="relative">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Filter by Stage
               </label>
-              <select
-                value={selectedStageId}
-                onChange={(e) => setSelectedStageId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Stages</option>
-                {stages.map(stage => (
-                  <option key={stage.id} value={stage.id}>
-                    {stage.name}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <input
+                  ref={stageInputRef}
+                  type="text"
+                  value={stageQuery}
+                  onChange={(e) => {
+                    setStageQuery(e.target.value);
+                    setShowStageDropdown(true);
+                    if (!e.target.value) {
+                      setSelectedStageId("");
+                      setSelectedStageName("");
+                    }
+                  }}
+                  onFocus={() => setShowStageDropdown(true)}
+                  placeholder="Search stages..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                />
+                {selectedStageId && (
+                  <button
+                    onClick={() => {
+                      setSelectedStageId("");
+                      setSelectedStageName("");
+                      setStageQuery("");
+                      stageInputRef.current?.focus();
+                    }}
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+
+              {/* Stage Dropdown */}
+              {showStageDropdown && filteredStages.length > 0 && (
+                <div
+                  ref={stageDropdownRef}
+                  className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto"
+                >
+                  {filteredStages.map((stage) => (
+                    <div
+                      key={stage.id}
+                      onClick={() => handleSelectStage(stage)}
+                      className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                    >
+                      {stage.name}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Client Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Client
+            <div className="relative">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Filter by Client
               </label>
-              <select
-                value={selectedClientId}
-                onChange={(e) => setSelectedClientId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Clients</option>
-                {clients.map(client => (
-                  <option key={client.id} value={client.id}>
-                    {client.name}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <input
+                  ref={clientInputRef}
+                  type="text"
+                  value={clientQuery}
+                  onChange={(e) => {
+                    setClientQuery(e.target.value);
+                    setShowClientDropdown(true);
+                    if (!e.target.value) {
+                      setSelectedClientId("");
+                      setSelectedClientName("");
+                    }
+                  }}
+                  onFocus={() => setShowClientDropdown(true)}
+                  placeholder="Search clients..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                />
+                {selectedClientId && (
+                  <button
+                    onClick={() => {
+                      setSelectedClientId("");
+                      setSelectedClientName("");
+                      setClientQuery("");
+                      clientInputRef.current?.focus();
+                    }}
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+
+              {/* Client Dropdown */}
+              {showClientDropdown && filteredClients.length > 0 && (
+                <div
+                  ref={clientDropdownRef}
+                  className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto"
+                >
+                  {filteredClients.map((client) => (
+                    <div
+                      key={client.id}
+                      onClick={() => handleSelectClient(client)}
+                      className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                    >
+                      {client.name}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -649,5 +799,6 @@ export default function SiteSubmitDashboardPage() {
         onDataUpdate={handleDataUpdate}
       />
     </div>
+    </LayerManagerProvider>
   );
 }
