@@ -147,7 +147,12 @@ export default function SiteSubmitDashboardPage() {
             latitude,
             longitude,
             verified_latitude,
-            verified_longitude
+            verified_longitude,
+            property_type_id,
+            property_type!fk_property_type_id (
+              id,
+              label
+            )
           ),
           property_unit!site_submit_property_unit_id_fkey (
             id,

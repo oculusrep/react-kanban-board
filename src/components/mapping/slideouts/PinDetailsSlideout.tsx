@@ -1940,49 +1940,6 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                   )}
                 </div>
 
-                {/* Property Type - For properties only */}
-                {isProperty && property && (
-                  <div className="mt-2">
-                    {!isEditingPropertyType ? (
-                      <div
-                        className="inline-flex items-center gap-2 px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium cursor-pointer hover:bg-green-200 transition-colors"
-                        onClick={() => setIsEditingPropertyType(true)}
-                      >
-                        <span>
-                          {property.property_record_type_id && propertyRecordTypes.length > 0
-                            ? propertyRecordTypes.find(type => type.id === property.property_record_type_id)?.label || 'Unknown Type'
-                            : 'Set Property Type'
-                          }
-                        </span>
-                        <Edit3 size={12} className="text-green-600" />
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={property.property_record_type_id || ''}
-                          onChange={(e) => {
-                            handlePropertyFieldUpdate('property_record_type_id', e.target.value);
-                            setIsEditingPropertyType(false);
-                          }}
-                          className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                          autoFocus
-                          onBlur={() => setIsEditingPropertyType(false)}
-                          disabled={isLoadingRecordTypes}
-                        >
-                          <option value="">
-                            {isLoadingRecordTypes ? 'Loading types...' : 'Select property type...'}
-                          </option>
-                          {propertyRecordTypes.map(type => (
-                            <option key={type.id} value={type.id}>
-                              {type.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {/* Property Type */}
                 {isProperty && property && (
                   <div className="flex items-center gap-2 mb-2">
