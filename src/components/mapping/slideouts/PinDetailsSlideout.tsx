@@ -60,6 +60,7 @@ interface SiteSubmit {
   year_1_rent?: number;
   ti?: number;
   notes?: string;
+  customer_comments?: string;
   // New fields for Submit tab
   sf_property_unit?: string; // Database field name
   date_submitted?: string;
@@ -620,7 +621,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     loiDate: '',
     deliveryDate: '',
     deliveryTimeframe: '',
-    notes: ''
+    notes: '',
+    customerComments: ''
   });
 
   // Site submit relational data
@@ -676,7 +678,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           loiDate: lastSavedData.loi_date ? lastSavedData.loi_date.split('T')[0] : '',
           deliveryDate: lastSavedData.delivery_date ? lastSavedData.delivery_date.split('T')[0] : '',
           deliveryTimeframe: lastSavedData.delivery_timeframe || '',
-          notes: lastSavedData.notes || ''
+          notes: lastSavedData.notes || '',
+          customerComments: lastSavedData.customer_comments || ''
         });
       } else {
         console.log('📥 Initializing form data with fresh siteSubmit:', siteSubmitData);
@@ -685,7 +688,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           loiDate: siteSubmitData.loi_date ? siteSubmitData.loi_date.split('T')[0] : '',
           deliveryDate: siteSubmitData.delivery_date ? siteSubmitData.delivery_date.split('T')[0] : '',
           deliveryTimeframe: siteSubmitData.delivery_timeframe || '',
-          notes: siteSubmitData.notes || ''
+          notes: siteSubmitData.notes || '',
+          customerComments: siteSubmitData.customer_comments || ''
         });
       }
 
@@ -1089,6 +1093,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           date_submitted: formData.dateSubmitted || null,
           delivery_timeframe: formData.deliveryTimeframe || null,
           notes: formData.notes || null,
+          customer_comments: formData.customerComments || null,
           sf_property_latitude: propertyCoords.lat,  // Required for map pin
           sf_property_longitude: propertyCoords.lng, // Required for map pin
           created_at: new Date().toISOString(),
@@ -1189,6 +1194,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
             date_submitted: formData.dateSubmitted || null,
             delivery_timeframe: formData.deliveryTimeframe || null,
             notes: formData.notes || null,
+            customer_comments: formData.customerComments || null,
             updated_at: new Date().toISOString()
           })
           .eq('id', siteSubmit.id)
@@ -1380,6 +1386,21 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                   setHasChanges(true);
                 }}
                 placeholder="Enter notes..."
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent "
+              />
+            </div>
+
+            {/* Customer Comments */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Customer Comments</label>
+              <textarea
+                rows={3}
+                value={formData.customerComments}
+                onChange={(e) => {
+                  setFormData(prev => ({ ...prev, customerComments: e.target.value }));
+                  setHasChanges(true);
+                }}
+                placeholder="Enter customer comments..."
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent "
               />
             </div>
