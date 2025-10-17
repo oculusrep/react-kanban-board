@@ -78,6 +78,10 @@ export default function SiteSubmitDashboardPage() {
   const [selectedPinData, setSelectedPinData] = useState<any>(null);
   const [selectedPinType, setSelectedPinType] = useState<'property' | 'site_submit' | null>(null);
 
+  // Site Submit Details slideout (for viewing site submit from property)
+  const [isSiteSubmitDetailsOpen, setIsSiteSubmitDetailsOpen] = useState(false);
+  const [selectedSiteSubmitData, setSelectedSiteSubmitData] = useState<any>(null);
+
   // Set page title
   useEffect(() => {
     document.title = "Site Submit Dashboard | OVIS";
@@ -434,6 +438,51 @@ export default function SiteSubmitDashboardPage() {
 
   const handleDataUpdate = async () => {
     // Refresh data after updates
+    await fetchReportData();
+  };
+
+  // Handle viewing site submit details from property slideout
+  const handleViewSiteSubmitDetails = async (siteSubmit: any) => {
+    console.log('📋 Opening site submit details slideout:', siteSubmit);
+
+    // Fetch fresh site submit data from database to ensure we have latest values
+    try {
+      const { data: freshSiteSubmitData, error } = await supabase
+        .from('site_submit')
+        .select(`
+          *,
+          client!site_submit_client_id_fkey (id, client_name),
+          submit_stage!site_submit_submit_stage_id_fkey (id, name),
+          property_unit!site_submit_property_unit_id_fkey (property_unit_name),
+          property!site_submit_property_id_fkey (*, property_record_type (*))
+        `)
+        .eq('id', siteSubmit.id)
+        .single();
+
+      if (error) {
+        console.error('❌ Error fetching fresh site submit data:', error);
+        // Fall back to cached data if fetch fails
+        setSelectedSiteSubmitData(siteSubmit);
+      } else {
+        console.log('✅ Fetched fresh site submit data:', freshSiteSubmitData);
+        setSelectedSiteSubmitData(freshSiteSubmitData);
+      }
+    } catch (err) {
+      console.error('❌ Exception fetching fresh site submit data:', err);
+      // Fall back to cached data if fetch fails
+      setSelectedSiteSubmitData(siteSubmit);
+    }
+
+    setIsSiteSubmitDetailsOpen(true);
+  };
+
+  const handleSiteSubmitDetailsClose = () => {
+    setIsSiteSubmitDetailsOpen(false);
+    setSelectedSiteSubmitData(null);
+  };
+
+  const handleSiteSubmitDataUpdate = async () => {
+    // Refresh data after site submit update
     await fetchReportData();
   };
 
@@ -797,6 +846,17 @@ export default function SiteSubmitDashboardPage() {
         data={selectedPinData}
         type={selectedPinType}
         onDataUpdate={handleDataUpdate}
+        onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
+        rightOffset={isSiteSubmitDetailsOpen ? 500 : 0} // Shift left when site submit details is open
+      />
+
+      {/* Site Submit Details Slideout (for viewing site submit from property) */}
+      <PinDetailsSlideout
+        isOpen={isSiteSubmitDetailsOpen}
+        onClose={handleSiteSubmitDetailsClose}
+        data={selectedSiteSubmitData}
+        type="site_submit"
+        onDataUpdate={handleSiteSubmitDataUpdate}
       />
     </div>
     </LayerManagerProvider>
