@@ -44,6 +44,8 @@ interface Property {
   available_sqft?: number | null;
   property_record_type_id?: string | null;
   property_record_type?: PropertyRecordType | null;
+  property_type_id?: string | null;
+  property_type?: { id: string; label: string } | null;
   asking_purchase_price?: number | null;
   asking_lease_price?: number | null;
   lease_expiration_date?: string | null;
@@ -576,6 +578,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   const [hasChanges, setHasChanges] = useState(false);
   const [lastSavedData, setLastSavedData] = useState<any>(null);
   const [isEditingPropertyType, setIsEditingPropertyType] = useState(false);
+  const [isEditingPropertyTypeSelector, setIsEditingPropertyTypeSelector] = useState(false);
 
   // Local state for property data (so we can update it immediately)
   const [localPropertyData, setLocalPropertyData] = useState<Property | null>(null);
@@ -588,6 +591,26 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   const { propertyRecordTypes, isLoading: isLoadingRecordTypes } = usePropertyRecordTypes();
   const { updateProperty } = useProperty(localPropertyData?.id || undefined);
   const { toast, showToast } = useToast();
+
+  // Property types list
+  const [propertyTypes, setPropertyTypes] = useState<{ id: string; label: string }[]>([]);
+
+  // Fetch property types on mount
+  useEffect(() => {
+    const fetchPropertyTypes = async () => {
+      const { data, error } = await supabase
+        .from('property_type')
+        .select('id, label')
+        .eq('active', true)
+        .order('sort_order');
+
+      if (!error && data) {
+        setPropertyTypes(data);
+      }
+    };
+
+    fetchPropertyTypes();
+  }, []);
 
   // Sync activeTab with initialTab when it changes OR when slideout opens
   useEffect(() => {
@@ -997,6 +1020,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         building_sqft: localPropertyData.building_sqft,
         available_sqft: localPropertyData.available_sqft,
         property_record_type_id: localPropertyData.property_record_type_id,
+        property_type_id: localPropertyData.property_type_id,
         asking_purchase_price: localPropertyData.asking_purchase_price,
         asking_lease_price: localPropertyData.asking_lease_price,
         lease_expiration_date: localPropertyData.lease_expiration_date,
@@ -1949,6 +1973,47 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                             {isLoadingRecordTypes ? 'Loading types...' : 'Select property type...'}
                           </option>
                           {propertyRecordTypes.map(type => (
+                            <option key={type.id} value={type.id}>
+                              {type.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Property Type */}
+                {isProperty && property && (
+                  <div className="flex items-center gap-2 mb-2">
+                    <Building2 size={14} className="text-gray-400 flex-shrink-0" />
+                    {!isEditingPropertyTypeSelector ? (
+                      <div
+                        className="inline-flex items-center gap-2 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium cursor-pointer hover:bg-blue-200 transition-colors"
+                        onClick={() => setIsEditingPropertyTypeSelector(true)}
+                      >
+                        <span>
+                          {property.property_type_id && propertyTypes.length > 0
+                            ? propertyTypes.find(type => type.id === property.property_type_id)?.label || 'Unknown Type'
+                            : 'Set Property Type'
+                          }
+                        </span>
+                        <Edit3 size={12} className="text-blue-600" />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={property.property_type_id || ''}
+                          onChange={(e) => {
+                            handlePropertyFieldUpdate('property_type_id', e.target.value);
+                            setIsEditingPropertyTypeSelector(false);
+                          }}
+                          className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                          autoFocus
+                          onBlur={() => setIsEditingPropertyTypeSelector(false)}
+                        >
+                          <option value="">Select property type...</option>
+                          {propertyTypes.map(type => (
                             <option key={type.id} value={type.id}>
                               {type.label}
                             </option>
