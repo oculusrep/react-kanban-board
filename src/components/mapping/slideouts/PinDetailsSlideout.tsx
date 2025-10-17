@@ -1987,9 +1987,9 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                     <p className="text-sm text-gray-600">
                       <span className="font-medium">Property:</span> {siteSubmit?.property?.property_name || 'Not specified'}
                     </p>
-                    {(siteSubmit?.property_unit?.property_unit_name || siteSubmit?.sf_property_unit) && (
+                    {siteSubmit?.property_unit?.property_unit_name && (
                       <p className="text-sm text-gray-600">
-                        <span className="font-medium">Unit:</span> {siteSubmit?.property_unit?.property_unit_name || siteSubmit?.sf_property_unit}
+                        <span className="font-medium">Unit:</span> {siteSubmit?.property_unit?.property_unit_name}
                       </p>
                     )}
                   </div>
