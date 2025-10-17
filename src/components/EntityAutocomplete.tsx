@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { buildFuzzyOrQuery, sortByRelevance } from '../utils/searchUtils';
 
 interface EntityAutocompleteProps {
   entityType: 'client' | 'deal' | 'contact' | 'property' | 'assignment' | 'user';
@@ -102,40 +103,48 @@ const EntityAutocomplete: React.FC<EntityAutocompleteProps> = ({
 
       let query = supabase.from(entityType);
       let nameField = '';
-      let searchField = '';
+      let searchFields: string[] = [];
+      let sortField = '';
 
       switch (entityType) {
         case 'client':
           nameField = 'client_name';
-          searchField = 'client_name';
+          searchFields = ['client_name'];
+          sortField = 'client_name';
           break;
         case 'deal':
           nameField = 'deal_name';
-          searchField = 'deal_name';
+          searchFields = ['deal_name'];
+          sortField = 'deal_name';
           break;
         case 'contact':
           nameField = 'first_name, last_name, source_type';
-          searchField = 'first_name';
+          searchFields = ['first_name', 'last_name', 'email', 'company'];
+          sortField = 'first_name';
           break;
         case 'property':
-          nameField = 'property_name, address';
-          searchField = 'property_name';
+          nameField = 'property_name, address, city';
+          searchFields = ['property_name', 'address', 'city'];
+          sortField = 'property_name';
           break;
         case 'assignment':
           nameField = 'assignment_name';
-          searchField = 'assignment_name';
+          searchFields = ['assignment_name'];
+          sortField = 'assignment_name';
           break;
         case 'user':
           nameField = 'first_name, last_name, email';
-          searchField = 'first_name';
+          searchFields = ['first_name', 'last_name', 'email'];
+          sortField = 'first_name';
           break;
       }
 
+      // Use fuzzy search with multiple patterns
+      const fuzzyQuery = buildFuzzyOrQuery(searchFields, term);
       const { data } = await query
         .select(`id, ${nameField}`)
-        .ilike(searchField, `%${term}%`)
-        .order(searchField, { ascending: true })
-        .limit(5);
+        .or(fuzzyQuery)
+        .limit(15); // Fetch more for better fuzzy results
 
       if (data) {
         const mappedSuggestions = data.map(item => {
@@ -165,7 +174,10 @@ const EntityAutocomplete: React.FC<EntityAutocompleteProps> = ({
           }
           return { id: item.id, label };
         });
-        setSuggestions(mappedSuggestions);
+
+        // Sort by relevance and limit to top 5 results
+        const sorted = sortByRelevance(mappedSuggestions, term, 'label');
+        setSuggestions(sorted.slice(0, 5));
       }
     };
 

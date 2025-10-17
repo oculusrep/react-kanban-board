@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Client } from '../lib/types';
+import { buildFuzzyOrQuery, sortByRelevance } from '../utils/searchUtils';
 
 export interface ClientSearchResult {
   id: string;
@@ -26,21 +27,8 @@ export const useClientSearch = () => {
     try {
       console.log(`🔍 Searching active clients for: "${query}"`);
 
-      // First, let's check if any clients match at all (regardless of active status) for debugging
-      const { data: allMatchingClients, error: debugError } = await supabase
-        .from('client')
-        .select('id, client_name, is_active_client')
-        .ilike('client_name', `%${query}%`)
-        .limit(5);
-
-      if (!debugError && allMatchingClients) {
-        console.log(`🔍 Debug: Found ${allMatchingClients.length} clients matching "${query}" (any active status):`);
-        allMatchingClients.forEach(c => {
-          console.log(`  - "${c.client_name}": is_active_client = ${c.is_active_client}`);
-        });
-      }
-
-      // Search active clients with deal counts
+      // Search active clients with fuzzy matching
+      const fuzzyQuery = buildFuzzyOrQuery(['client_name', 'sf_client_type'], query);
       const { data: clients, error: searchError } = await supabase
         .from('client')
         .select(`
@@ -50,9 +38,8 @@ export const useClientSearch = () => {
           phone
         `)
         .eq('is_active_client', true)
-        .ilike('client_name', `%${query}%`)
-        .order('client_name')
-        .limit(10);
+        .or(fuzzyQuery)
+        .limit(30); // Fetch more for better fuzzy results
 
       if (searchError) {
         console.error('❌ Search error:', searchError);
@@ -95,8 +82,12 @@ export const useClientSearch = () => {
         })
       );
 
-      console.log(`✅ Found ${clientResults.length} active clients`);
-      return clientResults;
+      // Sort by relevance and limit to top 10 results
+      const sorted = sortByRelevance(clientResults, query, 'client_name');
+      const topResults = sorted.slice(0, 10);
+
+      console.log(`✅ Found ${clientResults.length} active clients, returning top ${topResults.length}`);
+      return topResults;
 
     } catch (err) {
       console.error('❌ Client search error:', err);
