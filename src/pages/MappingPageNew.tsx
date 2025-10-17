@@ -514,18 +514,15 @@ const MappingPageContent: React.FC = () => {
     }
   };
 
-  // Center map on property pin with appropriate zoom to avoid clusters
+  // Center map on property pin without changing zoom level
   const handleCenterOnPin = (lat: number, lng: number) => {
     if (mapInstance) {
       console.log('🎯 Centering map on coordinates:', { lat, lng });
 
-      // Set zoom level to 15 which shows more context while still avoiding clusters
-      const targetZoom = 15;
-
+      // Only center the map, don't change zoom level
       mapInstance.setCenter({ lat, lng });
-      mapInstance.setZoom(targetZoom);
 
-      console.log('✅ Map centered and zoomed to level', targetZoom);
+      console.log('✅ Map centered without zoom change');
     } else {
       console.warn('⚠️ Cannot center map: mapInstance not available');
     }
