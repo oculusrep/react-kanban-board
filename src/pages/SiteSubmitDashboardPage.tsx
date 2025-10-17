@@ -98,7 +98,7 @@ export default function SiteSubmitDashboardPage() {
           client_id,
           assignment_id,
           created_at,
-          property:property_id (
+          property!site_submit_property_id_fkey (
             id,
             property_name,
             address,
@@ -109,21 +109,21 @@ export default function SiteSubmitDashboardPage() {
             verified_latitude,
             verified_longitude
           ),
-          property_unit:property_unit_id (
+          property_unit!site_submit_property_unit_id_fkey (
             id,
             property_unit_name,
             square_feet,
             nnn_psf
           ),
-          submit_stage:submit_stage_id (
+          submit_stage!site_submit_submit_stage_id_fkey (
             id,
             name
           ),
-          client:client_id (
+          client!site_submit_client_id_fkey (
             id,
             client_name
           ),
-          assignment:assignment_id (
+          assignment!site_submit_assignment_id_fkey (
             id,
             assignment_name
           )
