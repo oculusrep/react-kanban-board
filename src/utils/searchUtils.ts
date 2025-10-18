@@ -111,23 +111,29 @@ export function calculateRelevanceScore(
     return 100 + titleBonus;
   }
 
-  // 2. Starts with query
+  // 2. Starts with query (strong match)
   if (normalizedText.startsWith(normalizedQuery)) {
-    score += 50 + titleBonus;
+    score += 70 + titleBonus; // Increased from 50
   }
 
-  // 3. Contains query as whole word
+  // 3. Contains query as whole word at start
+  const startsWithQueryWordRegex = new RegExp(`^${escapeRegex(normalizedQuery)}\\b`);
+  if (startsWithQueryWordRegex.test(normalizedText)) {
+    score += 60 + titleBonus; // New: bonus for starting with query as whole word
+  }
+
+  // 4. Contains query as whole word (anywhere)
   const wordBoundaryRegex = new RegExp(`\\b${escapeRegex(normalizedQuery)}\\b`);
   if (wordBoundaryRegex.test(normalizedText)) {
-    score += 30 + titleBonus;
+    score += 40 + titleBonus; // Increased from 30
   }
 
-  // 4. Contains query as substring
+  // 5. Contains query as substring
   if (normalizedText.includes(normalizedQuery)) {
-    score += 20 + titleBonus;
+    score += 25 + titleBonus; // Increased from 20
   }
 
-  // 5. Word starts with query words
+  // 6. Word starts with query words
   const queryWords = normalizedQuery.split(/\s+/);
   const textWords = normalizedText.split(/\s+/);
 
@@ -139,7 +145,7 @@ export function calculateRelevanceScore(
     });
   });
 
-  // 6. Abbreviation match - first letters of words
+  // 7. Abbreviation match - first letters of words
   if (queryWords.length === 1 && textWords.length > 1) {
     const firstLetters = textWords.map(w => w[0]).join('');
     if (firstLetters.includes(normalizedQuery)) {
@@ -147,7 +153,7 @@ export function calculateRelevanceScore(
     }
   }
 
-  // 7. Character proximity bonus - how close together are the matching characters?
+  // 8. Character proximity bonus - how close together are the matching characters?
   const queryChars = normalizedQuery.replace(/\s/g, '');
   let lastIndex = -1;
   let proximityScore = 0;
