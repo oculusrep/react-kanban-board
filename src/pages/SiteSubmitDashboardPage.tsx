@@ -276,11 +276,10 @@ export default function SiteSubmitDashboardPage() {
     if (quickFilter !== 'all') {
       // Map quick filter keys to actual stage names
       const stageMap: Record<string, string> = {
-        'submitted-reviewing': 'Submitted Reviewing',
-        'pursuing': 'Pursuing',
-        'ownership': 'Ownership',
+        'submitted-reviewing': 'Submitted-Reviewing',
+        'pursuing': 'Pursuing Ownership',
         'pass': 'Pass',
-        'conflict': 'Conflict',
+        'conflict': 'Use Conflict',
         'not-available': 'Not Available'
       };
       const stageName = stageMap[quickFilter];
@@ -594,16 +593,6 @@ export default function SiteSubmitDashboardPage() {
               }`}
             >
               Pursuing
-            </button>
-            <button
-              onClick={() => handleQuickFilter("ownership")}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                quickFilter === "ownership"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              Ownership
             </button>
             <button
               onClick={() => handleQuickFilter("pass")}
