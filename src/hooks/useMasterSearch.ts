@@ -45,11 +45,35 @@ export const useMasterSearch = () => {
     const trimmedQuery = query.trim().toLowerCase();
 
     try {
-      // Search Deals
+      // Search Deals with multi-stage approach
       if (types.includes('deal')) {
         console.log('🔍 Searching deals...');
+
+        // Exact + prefix match on deal_name
+        const { data: exactDeals } = await supabase
+          .from('deal')
+          .select(`
+            *,
+            client!client_id (client_name),
+            deal_stage (label, sort_order),
+            property (property_name, address, city, state)
+          `)
+          .ilike('deal_name', trimmedQuery)
+          .limit(5);
+
+        const { data: prefixDeals } = await supabase
+          .from('deal')
+          .select(`
+            *,
+            client!client_id (client_name),
+            deal_stage (label, sort_order),
+            property (property_name, address, city, state)
+          `)
+          .ilike('deal_name', `${trimmedQuery}%`)
+          .limit(15);
+
         const fuzzyQuery = buildFuzzyOrQuery(['deal_name', 'sf_broker', 'sf_address'], trimmedQuery);
-        const { data: deals, error: dealsError } = await supabase
+        const { data: fuzzyDeals, error: dealsError } = await supabase
           .from('deal')
           .select(`
             *,
@@ -58,13 +82,23 @@ export const useMasterSearch = () => {
             property (property_name, address, city, state)
           `)
           .or(fuzzyQuery)
-          .limit(Math.ceil(limit / types.length) * 3); // Fetch more for better fuzzy results
+          .limit(30);
 
         if (dealsError) throw dealsError;
 
-        if (deals) {
-          console.log(`📊 Found ${deals.length} deals:`, deals);
-          deals.forEach((deal: any) => {
+        const seenIds = new Set<string>();
+        const allDeals = [];
+        for (const deal of [...(exactDeals || []), ...(prefixDeals || []), ...(fuzzyDeals || [])]) {
+          if (!seenIds.has(deal.id)) {
+            seenIds.add(deal.id);
+            allDeals.push(deal);
+          }
+        }
+
+        console.log(`📊 Found ${allDeals.length} deals (exact: ${exactDeals?.length || 0}, prefix: ${prefixDeals?.length || 0}, fuzzy: ${fuzzyDeals?.length || 0})`);
+
+        if (allDeals.length > 0) {
+          allDeals.forEach((deal: any) => {
             const title = deal.deal_name || 'Unnamed Deal';
 
             // Calculate relevance score using enhanced scoring
@@ -89,26 +123,47 @@ export const useMasterSearch = () => {
         }
       }
 
-      // Search Clients
+      // Search Clients with multi-stage approach
       if (types.includes('client')) {
+        const { data: exactClients } = await supabase
+          .from('client')
+          .select('*')
+          .ilike('client_name', trimmedQuery)
+          .limit(5);
+
+        const { data: prefixClients } = await supabase
+          .from('client')
+          .select('*')
+          .ilike('client_name', `${trimmedQuery}%`)
+          .limit(15);
+
         const fuzzyQuery = buildFuzzyOrQuery(['client_name', 'description', 'sf_client_type'], trimmedQuery);
-        const { data: clients, error: clientsError } = await supabase
+        const { data: fuzzyClients, error: clientsError } = await supabase
           .from('client')
           .select('*')
           .or(fuzzyQuery)
-          .limit(Math.ceil(limit / types.length) * 3);
+          .limit(30);
 
         if (clientsError) throw clientsError;
 
-        if (clients) {
-          clients.forEach((client) => {
+        const seenIds = new Set<string>();
+        const allClients = [];
+        for (const client of [...(exactClients || []), ...(prefixClients || []), ...(fuzzyClients || [])]) {
+          if (!seenIds.has(client.id)) {
+            seenIds.add(client.id);
+            allClients.push(client);
+          }
+        }
+
+        if (allClients.length > 0) {
+          allClients.forEach((client) => {
             const title = client.client_name;
 
             // Enhanced relevance scoring
             let score = calculateRelevanceScore(title, trimmedQuery, true);
             score += calculateRelevanceScore(client.description, trimmedQuery, false) * 0.7;
             score += calculateRelevanceScore(client.sf_client_type, trimmedQuery, false) * 0.5;
-            
+
             searchResults.push({
               id: client.id,
               type: 'client',
@@ -133,7 +188,7 @@ export const useMasterSearch = () => {
             client!client_id (client_name)
           `)
           .or(fuzzyQuery)
-          .limit(Math.ceil(limit / types.length) * 3);
+          .limit(Math.max(150, Math.ceil(limit / types.length) * 20));
 
         if (contactsError) throw contactsError;
 
@@ -171,11 +226,35 @@ export const useMasterSearch = () => {
         }
       }
 
-      // Search Properties
+      // Search Properties with multi-stage approach for better performance
       if (types.includes('property')) {
-        const fuzzyQuery = buildFuzzyOrQuery(['property_name', 'address', 'city', 'state', 'trade_area'], trimmedQuery);
         console.log('🏢 Searching properties with query:', trimmedQuery);
-        const { data: properties, error: propertiesError } = await supabase
+
+        // Stage 1: Try exact match first (fastest)
+        const { data: exactMatches } = await supabase
+          .from('property')
+          .select(`
+            *,
+            property_type (label),
+            property_stage (label)
+          `)
+          .ilike('property_name', trimmedQuery)
+          .limit(5);
+
+        // Stage 2: Try prefix match (starts with)
+        const { data: prefixMatches } = await supabase
+          .from('property')
+          .select(`
+            *,
+            property_type (label),
+            property_stage (label)
+          `)
+          .ilike('property_name', `${trimmedQuery}%`)
+          .limit(20);
+
+        // Stage 3: Try broader fuzzy match only if needed
+        const fuzzyQuery = buildFuzzyOrQuery(['property_name', 'address', 'city', 'state', 'trade_area'], trimmedQuery);
+        const { data: fuzzyMatches, error: propertiesError } = await supabase
           .from('property')
           .select(`
             *,
@@ -183,17 +262,25 @@ export const useMasterSearch = () => {
             property_stage (label)
           `)
           .or(fuzzyQuery)
-          .limit(Math.ceil(limit / types.length) * 3);
+          .limit(50); // Much smaller limit now
 
         if (propertiesError) throw propertiesError;
 
-        console.log(`🏢 Found ${properties?.length || 0} properties`);
-        if (properties && properties.length > 0) {
-          console.log('🏢 First 5 properties:', properties.slice(0, 5).map(p => p.property_name));
+        // Combine and deduplicate results
+        const seenIds = new Set<string>();
+        const allProperties = [];
+
+        for (const prop of [...(exactMatches || []), ...(prefixMatches || []), ...(fuzzyMatches || [])]) {
+          if (!seenIds.has(prop.id)) {
+            seenIds.add(prop.id);
+            allProperties.push(prop);
+          }
         }
 
-        if (properties) {
-          properties.forEach((property: any) => {
+        console.log(`🏢 Found ${allProperties.length} properties (exact: ${exactMatches?.length || 0}, prefix: ${prefixMatches?.length || 0}, fuzzy: ${fuzzyMatches?.length || 0})`);
+
+        if (allProperties.length > 0) {
+          allProperties.forEach((property: any) => {
             const title = property.property_name || 'Unnamed Property';
 
             // Enhanced relevance scoring
@@ -220,11 +307,34 @@ export const useMasterSearch = () => {
         }
       }
 
-      // Search Site Submits
+      // Search Site Submits with multi-stage approach
       if (types.includes('site_submit')) {
         console.log('🔍 Searching site submits...');
+
+        const { data: exactSubmits } = await supabase
+          .from('site_submit')
+          .select(`
+            *,
+            client!client_id (client_name),
+            property (property_name, address, city, state),
+            property_unit (property_unit_name)
+          `)
+          .ilike('site_submit_name', trimmedQuery)
+          .limit(5);
+
+        const { data: prefixSubmits } = await supabase
+          .from('site_submit')
+          .select(`
+            *,
+            client!client_id (client_name),
+            property (property_name, address, city, state),
+            property_unit (property_unit_name)
+          `)
+          .ilike('site_submit_name', `${trimmedQuery}%`)
+          .limit(15);
+
         const fuzzyQuery = buildFuzzyOrQuery(['site_submit_name', 'sf_account', 'notes'], trimmedQuery);
-        const { data: siteSubmits, error: siteSubmitsError } = await supabase
+        const { data: fuzzySubmits, error: siteSubmitsError } = await supabase
           .from('site_submit')
           .select(`
             *,
@@ -233,24 +343,34 @@ export const useMasterSearch = () => {
             property_unit (property_unit_name)
           `)
           .or(fuzzyQuery)
-          .limit(Math.ceil(limit / types.length) * 3);
+          .limit(30);
 
         if (siteSubmitsError) throw siteSubmitsError;
 
-        if (siteSubmits) {
-          console.log(`📋 Found ${siteSubmits.length} site submits:`, siteSubmits);
-          siteSubmits.forEach((siteSubmit: any) => {
+        const seenIds = new Set<string>();
+        const allSubmits = [];
+        for (const submit of [...(exactSubmits || []), ...(prefixSubmits || []), ...(fuzzySubmits || [])]) {
+          if (!seenIds.has(submit.id)) {
+            seenIds.add(submit.id);
+            allSubmits.push(submit);
+          }
+        }
+
+        console.log(`📋 Found ${allSubmits.length} site submits (exact: ${exactSubmits?.length || 0}, prefix: ${prefixSubmits?.length || 0}, fuzzy: ${fuzzySubmits?.length || 0})`);
+
+        if (allSubmits.length > 0) {
+          allSubmits.forEach((siteSubmit: any) => {
             const title = siteSubmit.site_submit_name || 'Unnamed Site Submit';
 
             // Enhanced relevance scoring
             let score = calculateRelevanceScore(title, trimmedQuery, true);
             score += calculateRelevanceScore(siteSubmit.sf_account, trimmedQuery, false) * 0.7;
             score += calculateRelevanceScore(siteSubmit.notes, trimmedQuery, false) * 0.4;
-            
-            const propertyInfo = siteSubmit.property?.property_name || 
+
+            const propertyInfo = siteSubmit.property?.property_name ||
                                [siteSubmit.property?.address, siteSubmit.property?.city, siteSubmit.property?.state]
                                .filter(Boolean).join(', ');
-            
+
             searchResults.push({
               id: siteSubmit.id,
               type: 'site_submit',
@@ -273,7 +393,7 @@ export const useMasterSearch = () => {
           .from('assignment')
           .select('*')
           .or(fuzzyQuery)
-          .limit(Math.ceil(limit / types.length) * 3);
+          .limit(Math.max(150, Math.ceil(limit / types.length) * 20));
 
         if (assignmentsError) throw assignmentsError;
 
@@ -300,16 +420,17 @@ export const useMasterSearch = () => {
       }
 
       // Sort results by score (highest first), then by type priority, then alphabetically
-      const typePriority = { deal: 1, property: 2, client: 3, contact: 4, site_submit: 5, assignment: 6 };
+      // Priority order: Contacts, Deals, Properties, Clients, Assignments, Site Submits
+      const typePriority = { contact: 1, deal: 2, property: 3, client: 4, assignment: 5, site_submit: 6 };
       searchResults.sort((a, b) => {
         // Primary sort by score
         const scoreDiff = (b.score || 0) - (a.score || 0);
         if (scoreDiff !== 0) return scoreDiff;
-        
+
         // Secondary sort by type priority
         const priorityDiff = typePriority[a.type] - typePriority[b.type];
         if (priorityDiff !== 0) return priorityDiff;
-        
+
         // Tertiary sort alphabetically
         return a.title.localeCompare(b.title);
       });

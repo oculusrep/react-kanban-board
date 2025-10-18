@@ -104,22 +104,22 @@ export function calculateRelevanceScore(
   const normalizedQuery = query.toLowerCase().trim();
 
   let score = 0;
-  const titleBonus = isTitle ? 5 : 0;
+  const titleBonus = isTitle ? 10 : 0; // Increased from 5 to 10
 
-  // 1. Exact match (highest score)
+  // 1. Exact match (highest score) - MASSIVELY boost this
   if (normalizedText === normalizedQuery) {
-    return 100 + titleBonus;
+    return 1000 + titleBonus; // Increased from 100 to 1000 to guarantee it's always first
   }
 
-  // 2. Starts with query (strong match)
-  if (normalizedText.startsWith(normalizedQuery)) {
-    score += 70 + titleBonus; // Increased from 50
-  }
-
-  // 3. Contains query as whole word at start
+  // 2. Starts with query followed by word boundary (e.g., "Village Walk - Something")
   const startsWithQueryWordRegex = new RegExp(`^${escapeRegex(normalizedQuery)}\\b`);
   if (startsWithQueryWordRegex.test(normalizedText)) {
-    score += 60 + titleBonus; // New: bonus for starting with query as whole word
+    score += 50 + titleBonus; // Good match but not as good as exact
+  }
+
+  // 3. Starts with query (might have no space after)
+  if (normalizedText.startsWith(normalizedQuery)) {
+    score += 40 + titleBonus;
   }
 
   // 4. Contains query as whole word (anywhere)

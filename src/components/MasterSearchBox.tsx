@@ -128,10 +128,12 @@ const MasterSearchBox: React.FC<MasterSearchBoxProps> = ({
   };
 
   const handleResultSelect = (result: SearchResult) => {
-    setQuery(result.title);
+    // Clear the search instead of setting it to the result title
+    setQuery('');
     setShowDropdown(false);
     setSelectedIndex(-1);
-    
+    setResults([]); // Clear results to prevent dropdown from reopening
+
     if (onSelect) {
       onSelect(result);
     } else if (result.url) {
@@ -208,14 +210,30 @@ const MasterSearchBox: React.FC<MasterSearchBoxProps> = ({
           onFocus={() => {
             if (results.length > 0) setShowDropdown(true);
           }}
-          className="block w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+          className="block w-full pl-9 pr-10 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
           placeholder={placeholder}
         />
-        {loading && (
-          <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+        <div className="absolute inset-y-0 right-0 pr-3 flex items-center gap-2">
+          {loading && (
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
-          </div>
-        )}
+          )}
+          {query && !loading && (
+            <button
+              onClick={() => {
+                setQuery('');
+                setResults([]);
+                setShowDropdown(false);
+                inputRef.current?.focus();
+              }}
+              className="text-gray-400 hover:text-gray-600 focus:outline-none"
+              aria-label="Clear search"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Search Results Dropdown */}
