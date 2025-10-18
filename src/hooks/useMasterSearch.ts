@@ -174,6 +174,7 @@ export const useMasterSearch = () => {
       // Search Properties
       if (types.includes('property')) {
         const fuzzyQuery = buildFuzzyOrQuery(['property_name', 'address', 'city', 'state', 'trade_area'], trimmedQuery);
+        console.log('🏢 Searching properties with query:', trimmedQuery);
         const { data: properties, error: propertiesError } = await supabase
           .from('property')
           .select(`
@@ -186,6 +187,11 @@ export const useMasterSearch = () => {
 
         if (propertiesError) throw propertiesError;
 
+        console.log(`🏢 Found ${properties?.length || 0} properties`);
+        if (properties && properties.length > 0) {
+          console.log('🏢 First 5 properties:', properties.slice(0, 5).map(p => p.property_name));
+        }
+
         if (properties) {
           properties.forEach((property: any) => {
             const title = property.property_name || 'Unnamed Property';
@@ -196,10 +202,10 @@ export const useMasterSearch = () => {
             score += calculateRelevanceScore(property.city, trimmedQuery, false) * 0.7;
             score += calculateRelevanceScore(property.state, trimmedQuery, false) * 0.6;
             score += calculateRelevanceScore(property.trade_area, trimmedQuery, false) * 0.5;
-            
+
             const address = [property.address, property.city, property.state]
               .filter(Boolean).join(', ');
-            
+
             searchResults.push({
               id: property.id,
               type: 'property',
@@ -310,7 +316,10 @@ export const useMasterSearch = () => {
 
       const finalResults = searchResults.slice(0, limit);
       console.log(`✅ Search completed. Found ${searchResults.length} total results, returning ${finalResults.length}`);
-      console.log('Final results:', finalResults);
+      console.log('📊 Top 10 results with scores:');
+      searchResults.slice(0, 10).forEach((r, i) => {
+        console.log(`  ${i+1}. [${r.type}] ${r.title} (score: ${r.score})`);
+      });
       return finalResults;
 
     } catch (err) {
