@@ -279,10 +279,10 @@ export default function KanbanBoard() {
 
     const { draggableId } = pendingDragResult;
 
-    // Update the deal with the booked_date and auto-check to_booked
+    // Update the deal with the booked_date and auto-check booked
     const { error } = await supabase
       .from("deal")
-      .update({ booked_date: bookedDate, to_booked: true })
+      .update({ booked_date: bookedDate, booked: true })
       .eq("id", draggableId);
 
     if (error) {

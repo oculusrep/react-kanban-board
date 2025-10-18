@@ -57,7 +57,7 @@ interface Deal {
   loi_signed_date: string | null;
   booked_date: string | null;
   closed_date: string | null;
-  to_booked: boolean | null;
+  booked: boolean | null;
   loss_reason: string | null;
   last_stage_change_at: string | null;
   updated_by_id?: string | null;
@@ -367,7 +367,7 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
       loi_signed_date: form.loi_signed_date,
       booked_date: form.booked_date,
       closed_date: form.closed_date,
-      to_booked: isMovingToBooked ? true : form.to_booked, // Auto-check when moving to Booked
+      booked: isMovingToBooked ? true : form.booked, // Auto-check when moving to Booked
       loss_reason: form.loss_reason,
       probability: form.probability,
       deal_team_id: form.deal_team_id,
@@ -620,13 +620,13 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
   };
 
   const handleBookedDateSave = async (bookedDate: string) => {
-    // Update form with booked date and auto-check to_booked
-    setForm(prev => ({ ...prev, booked_date: bookedDate, to_booked: true }));
+    // Update form with booked date and auto-check booked
+    setForm(prev => ({ ...prev, booked_date: bookedDate, booked: true }));
     setShowBookedDateModal(false);
     setPendingSave(false);
 
     // Perform the save with the updated booked date
-    const updatedForm = { ...form, booked_date: bookedDate, to_booked: true };
+    const updatedForm = { ...form, booked_date: bookedDate, booked: true };
 
     await performSaveWithBookedDate(updatedForm, bookedDate);
   };
@@ -652,7 +652,7 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
       loi_signed_date: updatedForm.loi_signed_date,
       booked_date: bookedDate,
       closed_date: updatedForm.closed_date,
-      to_booked: true, // Auto-check when moving to Booked
+      booked: true, // Auto-check when moving to Booked
       loss_reason: updatedForm.loss_reason,
       probability: updatedForm.probability,
       deal_team_id: updatedForm.deal_team_id,
