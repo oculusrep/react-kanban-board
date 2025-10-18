@@ -12,6 +12,8 @@ import { DealCard } from "../lib/types"; // Import from central types
 import ConfirmDialog from "./ConfirmDialog";
 import Toast from "./Toast";
 import { useToast } from "../hooks/useToast";
+import LossReasonModal from "./LossReasonModal";
+import ClosedDateModal from "./ClosedDateModal";
 
 export default function KanbanBoard() {
   const { columns, cards, loading } = useKanbanData();
@@ -20,6 +22,16 @@ export default function KanbanBoard() {
   const [dealToDelete, setDealToDelete] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { toast, showToast, hideToast } = useToast();
+
+  // Loss reason modal state
+  const [showLossReasonModal, setShowLossReasonModal] = useState(false);
+  const [pendingDragResult, setPendingDragResult] = useState<DropResult | null>(null);
+  const [currentLossReason, setCurrentLossReason] = useState<string | null>(null);
+  const [dealNameForModal, setDealNameForModal] = useState<string>('');
+
+  // Closed date modal state
+  const [showClosedDateModal, setShowClosedDateModal] = useState(false);
+  const [currentClosedDate, setCurrentClosedDate] = useState<string | null>(null);
 
   useEffect(() => {
     setLocalCards(cards);
@@ -47,18 +59,95 @@ export default function KanbanBoard() {
 
     const destColId = destination.droppableId;
 
+    // Find the destination stage label
+    const destStage = columns.find(col => col.id === destColId);
+    const destStageLabel = destStage?.label;
+
+    const draggedCard = localCards.find((card) => card.id === draggableId);
+    if (!draggedCard) return;
+
+    // If moving to "Lost" stage, check if loss_reason exists
+    if (destStageLabel === "Lost") {
+      // Fetch the full deal data to check for loss_reason
+      const { data: dealData, error } = await supabase
+        .from("deal")
+        .select("loss_reason, deal_name")
+        .eq("id", draggableId)
+        .single();
+
+      if (error) {
+        console.error("Error fetching deal:", error);
+        return;
+      }
+
+      // If no loss_reason, show modal
+      if (!dealData.loss_reason || dealData.loss_reason.trim() === "") {
+        setPendingDragResult(result);
+        setCurrentLossReason(dealData.loss_reason);
+        setDealNameForModal(dealData.deal_name || 'this deal');
+        setShowLossReasonModal(true);
+        return; // Don't proceed with drag until loss reason is provided
+      }
+    }
+
+    // If moving to "Closed Paid" stage, check if closed_date exists
+    if (destStageLabel === "Closed Paid") {
+      // Fetch the full deal data to check for closed_date
+      const { data: dealData, error } = await supabase
+        .from("deal")
+        .select("closed_date, deal_name")
+        .eq("id", draggableId)
+        .single();
+
+      if (error) {
+        console.error("Error fetching deal:", error);
+        return;
+      }
+
+      // If no closed_date, show modal
+      if (!dealData.closed_date) {
+        setPendingDragResult(result);
+        setCurrentClosedDate(dealData.closed_date);
+        setDealNameForModal(dealData.deal_name || 'this deal');
+        setShowClosedDateModal(true);
+        return; // Don't proceed with drag until closed date is provided
+      }
+    }
+
+    // Proceed with the drag operation
+    await performDragUpdate(result);
+  };
+
+  const performDragUpdate = async (result: DropResult) => {
+    const { destination, draggableId } = result;
+    if (!destination) return;
+
+    const destColId = destination.droppableId;
+
     const updatedCards = [...localCards];
     const draggedCard = updatedCards.find((card) => card.id === draggableId);
 
     if (!draggedCard) return;
 
+    // Track original stage for the dragged card
+    const originalStageId = draggedCard.stage_id;
+    const stageChanged = originalStageId !== destColId;
+
     draggedCard.stage_id = destColId;
+
+    // Find the destination stage label
+    const destStage = columns.find(col => col.id === destColId);
+    const isMovingToLost = destStage?.label === "Lost" && stageChanged;
+    const isMovingToClosedPaid = destStage?.label === "Closed Paid" && stageChanged;
 
     const cardsInDest = updatedCards
       .filter((card) => card.stage_id === destColId && card.id !== draggableId)
       .sort((a, b) => (a.kanban_position ?? 0) - (b.kanban_position ?? 0));
 
-    cardsInDest.splice(destination.index, 0, draggedCard);
+    // If moving to Lost or Closed Paid for the first time, force position at top (index 0)
+    // Otherwise, use the destination index from the drag
+    const insertIndex = (isMovingToLost || isMovingToClosedPaid) ? 0 : destination.index;
+    cardsInDest.splice(insertIndex, 0, draggedCard);
 
     cardsInDest.forEach((card, index) => {
       card.kanban_position = index;
@@ -66,17 +155,93 @@ export default function KanbanBoard() {
 
     setLocalCards(updatedCards);
 
-    const updates = cardsInDest.map((card) =>
-      supabase
+    const now = new Date().toISOString();
+
+    // Update cards in destination column
+    const updates = cardsInDest.map((card) => {
+      const updateData: any = {
+        stage_id: card.stage_id,
+        kanban_position: card.kanban_position,
+      };
+
+      // Only update last_stage_change_at for the dragged card if stage changed
+      if (card.id === draggableId && stageChanged) {
+        updateData.last_stage_change_at = now;
+      }
+
+      return supabase
         .from("deal")
-        .update({
-          stage_id: card.stage_id,
-          kanban_position: card.kanban_position,
-        })
-        .eq("id", card.id)
-    );
+        .update(updateData)
+        .eq("id", card.id);
+    });
 
     await Promise.all(updates);
+  };
+
+  const handleLossReasonSave = async (lossReason: string) => {
+    if (!pendingDragResult) return;
+
+    const { draggableId } = pendingDragResult;
+
+    // Update the deal with the loss_reason
+    const { error } = await supabase
+      .from("deal")
+      .update({ loss_reason: lossReason })
+      .eq("id", draggableId);
+
+    if (error) {
+      console.error("Error saving loss reason:", error);
+      showToast("Failed to save loss reason: " + error.message, { type: "error" });
+      setShowLossReasonModal(false);
+      setPendingDragResult(null);
+      return;
+    }
+
+    // Close modal and proceed with drag
+    setShowLossReasonModal(false);
+    await performDragUpdate(pendingDragResult);
+    setPendingDragResult(null);
+    showToast("Deal marked as Lost", { type: "success" });
+  };
+
+  const handleLossReasonCancel = () => {
+    setShowLossReasonModal(false);
+    setPendingDragResult(null);
+    // Optionally refresh the kanban board to reset any UI changes
+    setLocalCards([...cards]);
+  };
+
+  const handleClosedDateSave = async (closedDate: string) => {
+    if (!pendingDragResult) return;
+
+    const { draggableId } = pendingDragResult;
+
+    // Update the deal with the closed_date
+    const { error } = await supabase
+      .from("deal")
+      .update({ closed_date: closedDate })
+      .eq("id", draggableId);
+
+    if (error) {
+      console.error("Error saving closed date:", error);
+      showToast("Failed to save closed date: " + error.message, { type: "error" });
+      setShowClosedDateModal(false);
+      setPendingDragResult(null);
+      return;
+    }
+
+    // Close modal and proceed with drag
+    setShowClosedDateModal(false);
+    await performDragUpdate(pendingDragResult);
+    setPendingDragResult(null);
+    showToast("Deal marked as Closed Paid", { type: "success" });
+  };
+
+  const handleClosedDateCancel = () => {
+    setShowClosedDateModal(false);
+    setPendingDragResult(null);
+    // Optionally refresh the kanban board to reset any UI changes
+    setLocalCards([...cards]);
   };
 
   const formatCurrency = (value: number | null | undefined, decimals = 0) =>
@@ -212,6 +377,24 @@ export default function KanbanBoard() {
         type={toast.type}
         visible={toast.visible}
         onClose={hideToast}
+      />
+
+      {/* Loss Reason Modal */}
+      <LossReasonModal
+        isOpen={showLossReasonModal}
+        onClose={handleLossReasonCancel}
+        onSave={handleLossReasonSave}
+        dealName={dealNameForModal}
+        currentLossReason={currentLossReason}
+      />
+
+      {/* Closed Date Modal */}
+      <ClosedDateModal
+        isOpen={showClosedDateModal}
+        onClose={handleClosedDateCancel}
+        onSave={handleClosedDateSave}
+        dealName={dealNameForModal}
+        currentClosedDate={currentClosedDate}
       />
 
       <div className="flex min-w-max gap-[2px]">

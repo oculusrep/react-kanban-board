@@ -11,6 +11,8 @@ import SiteSubmitSelector from "./SiteSubmitSelector";
 import PropertyUnitSelector from "./PropertyUnitSelector";
 import PropertySelector from "./PropertySelector";
 import { getDropboxPropertySyncService } from "../services/dropboxPropertySync";
+import LossReasonModal from "./LossReasonModal";
+import ClosedDateModal from "./ClosedDateModal";
 
 // 🔹 Stage → Default Probability map (integer percent 0..100)
 const STAGE_PROBABILITY: Record<string, number> = {
@@ -53,6 +55,8 @@ interface Deal {
   target_close_date: string | null;
   loi_signed_date: string | null;
   closed_date: string | null;
+  loss_reason: string | null;
+  last_stage_change_at: string | null;
   updated_by_id?: string | null;
   updated_at?: string | null;
 }
@@ -73,6 +77,14 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
   const [updatedByName, setUpdatedByName] = useState<string>("");
   const [dropboxSyncError, setDropboxSyncError] = useState<string | null>(null);
   const [originalDealName, setOriginalDealName] = useState<string>(deal.deal_name);
+  const [originalStageId, setOriginalStageId] = useState<string>(deal.stage_id);
+
+  // Loss reason modal state
+  const [showLossReasonModal, setShowLossReasonModal] = useState(false);
+  const [pendingSave, setPendingSave] = useState(false);
+
+  // Closed date modal state
+  const [showClosedDateModal, setShowClosedDateModal] = useState(false);
 
   const [clientSearch, setClientSearch] = useState("");
   const [clientSuggestions, setClientSuggestions] = useState<{ id: string; label: string }[]>([]);
@@ -299,7 +311,31 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
     setErrors(v);
     if (Object.keys(v).length > 0) return; // stop save on validation errors
 
+    // Check if stage is "Lost" and loss_reason is empty
+    const stageLabel = getStageLabel();
+    if (stageLabel === "Lost" && (!form.loss_reason || form.loss_reason.trim() === "")) {
+      setShowLossReasonModal(true);
+      setPendingSave(true);
+      return;
+    }
+
+    // Check if stage is "Closed Paid" and closed_date is empty
+    if (stageLabel === "Closed Paid" && !form.closed_date) {
+      setShowClosedDateModal(true);
+      setPendingSave(true);
+      return;
+    }
+
+    await performSave();
+  };
+
+  const performSave = async () => {
     setSaving(true);
+
+    // Check if stage has changed
+    const stageChanged = form.stage_id !== originalStageId;
+    const now = new Date().toISOString();
+
     const dealPayload = {
       deal_name: form.deal_name,
       client_id: form.client_id,
@@ -313,15 +349,17 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
       target_close_date: form.target_close_date,
       loi_signed_date: form.loi_signed_date,
       closed_date: form.closed_date,
+      loss_reason: form.loss_reason,
       probability: form.probability,
       deal_team_id: form.deal_team_id,
       stage_id: form.stage_id,
+      last_stage_change_at: stageChanged ? now : form.last_stage_change_at,
       house_percent: form.house_percent,
       origination_percent: form.origination_percent,
       site_percent: form.site_percent,
       deal_percent: form.deal_percent,
       number_of_payments: form.number_of_payments,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     };
 
     let data, error;
@@ -376,8 +414,190 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
         }
       }
 
+      // Update original stage_id after successful save
+      if (stageChanged) {
+        setOriginalStageId(form.stage_id);
+      }
+
       onSave(data);
     }
+  };
+
+  const handleLossReasonSave = async (lossReason: string) => {
+    // Update form with loss reason
+    setForm(prev => ({ ...prev, loss_reason: lossReason }));
+    setShowLossReasonModal(false);
+    setPendingSave(false);
+
+    // Perform the save with the updated loss reason
+    // We need to update the form temporarily and then save
+    const updatedForm = { ...form, loss_reason: lossReason };
+
+    setSaving(true);
+
+    // Check if stage has changed (it should be Lost at this point)
+    const stageChanged = updatedForm.stage_id !== originalStageId;
+    const now = new Date().toISOString();
+
+    const dealPayload = {
+      deal_name: updatedForm.deal_name,
+      client_id: updatedForm.client_id,
+      property_id: updatedForm.property_id,
+      property_unit_id: updatedForm.property_unit_id,
+      site_submit_id: updatedForm.site_submit_id,
+      deal_value: updatedForm.deal_value,
+      commission_percent: updatedForm.commission_percent,
+      flat_fee_override: updatedForm.flat_fee_override,
+      fee: calculatedFee,
+      target_close_date: updatedForm.target_close_date,
+      loi_signed_date: updatedForm.loi_signed_date,
+      closed_date: updatedForm.closed_date,
+      loss_reason: lossReason,
+      probability: updatedForm.probability,
+      deal_team_id: updatedForm.deal_team_id,
+      stage_id: updatedForm.stage_id,
+      last_stage_change_at: stageChanged ? now : updatedForm.last_stage_change_at,
+      house_percent: updatedForm.house_percent,
+      origination_percent: updatedForm.origination_percent,
+      site_percent: updatedForm.site_percent,
+      deal_percent: updatedForm.deal_percent,
+      number_of_payments: updatedForm.number_of_payments,
+      updated_at: now,
+    };
+
+    let data, error;
+
+    if (updatedForm.id) {
+      // Update existing deal
+      const result = await supabase
+        .from("deal")
+        .update(dealPayload)
+        .eq("id", updatedForm.id)
+        .select()
+        .single();
+      data = result.data;
+      error = result.error;
+    } else {
+      // Insert new deal
+      dealPayload.created_at = new Date().toISOString();
+      const result = await supabase
+        .from("deal")
+        .insert([dealPayload])
+        .select()
+        .single();
+      data = result.data;
+      error = result.error;
+    }
+
+    setSaving(false);
+
+    if (error) {
+      alert("Error saving: " + error.message);
+      return;
+    }
+
+    if (data) {
+      // Update original stage_id after successful save
+      if (stageChanged) {
+        setOriginalStageId(updatedForm.stage_id);
+      }
+      onSave(data);
+    }
+  };
+
+  const handleLossReasonCancel = () => {
+    setShowLossReasonModal(false);
+    setPendingSave(false);
+  };
+
+  const handleClosedDateSave = async (closedDate: string) => {
+    // Update form with closed date
+    setForm(prev => ({ ...prev, closed_date: closedDate }));
+    setShowClosedDateModal(false);
+    setPendingSave(false);
+
+    // Perform the save with the updated closed date
+    const updatedForm = { ...form, closed_date: closedDate };
+
+    await performSaveWithClosedDate(updatedForm, closedDate);
+  };
+
+  const performSaveWithClosedDate = async (updatedForm: Deal, closedDate: string) => {
+    setSaving(true);
+
+    // Check if stage has changed
+    const stageChanged = updatedForm.stage_id !== originalStageId;
+    const now = new Date().toISOString();
+
+    const dealPayload = {
+      deal_name: updatedForm.deal_name,
+      client_id: updatedForm.client_id,
+      property_id: updatedForm.property_id,
+      property_unit_id: updatedForm.property_unit_id,
+      site_submit_id: updatedForm.site_submit_id,
+      deal_value: updatedForm.deal_value,
+      commission_percent: updatedForm.commission_percent,
+      flat_fee_override: updatedForm.flat_fee_override,
+      fee: calculatedFee,
+      target_close_date: updatedForm.target_close_date,
+      loi_signed_date: updatedForm.loi_signed_date,
+      closed_date: closedDate,
+      loss_reason: updatedForm.loss_reason,
+      probability: updatedForm.probability,
+      deal_team_id: updatedForm.deal_team_id,
+      stage_id: updatedForm.stage_id,
+      last_stage_change_at: stageChanged ? now : updatedForm.last_stage_change_at,
+      house_percent: updatedForm.house_percent,
+      origination_percent: updatedForm.origination_percent,
+      site_percent: updatedForm.site_percent,
+      deal_percent: updatedForm.deal_percent,
+      number_of_payments: updatedForm.number_of_payments,
+      updated_at: now,
+    };
+
+    let data, error;
+
+    if (updatedForm.id) {
+      // Update existing deal
+      const result = await supabase
+        .from("deal")
+        .update(dealPayload)
+        .eq("id", updatedForm.id)
+        .select()
+        .single();
+      data = result.data;
+      error = result.error;
+    } else {
+      // Insert new deal
+      dealPayload.created_at = new Date().toISOString();
+      const result = await supabase
+        .from("deal")
+        .insert([dealPayload])
+        .select()
+        .single();
+      data = result.data;
+      error = result.error;
+    }
+
+    setSaving(false);
+
+    if (error) {
+      alert("Error saving: " + error.message);
+      return;
+    }
+
+    if (data) {
+      // Update original stage_id after successful save
+      if (stageChanged) {
+        setOriginalStageId(updatedForm.stage_id);
+      }
+      onSave(data);
+    }
+  };
+
+  const handleClosedDateCancel = () => {
+    setShowClosedDateModal(false);
+    setPendingSave(false);
   };
 
   // 🔹 Conditional enablement
@@ -552,8 +772,18 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
             label="Closed Date"
             value={form.closed_date}
             onChange={(v) => updateField("closed_date", v)}
-            disabled={!closedEnabled}
-            tooltip={!closedEnabled ? "Set Stage to 'Closed Paid' to enable" : undefined}
+          />
+        </div>
+
+        {/* Loss Reason - Full width text area */}
+        <div className="mt-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Loss Reason</label>
+          <textarea
+            value={form.loss_reason ?? ""}
+            onChange={(e) => updateField("loss_reason", e.target.value)}
+            placeholder="Enter reason if deal was lost..."
+            rows={3}
+            className="block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
           />
         </div>
       </Section>
@@ -584,6 +814,24 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
           </button>
         </div>
       </div>
+
+      {/* Loss Reason Modal */}
+      <LossReasonModal
+        isOpen={showLossReasonModal}
+        onClose={handleLossReasonCancel}
+        onSave={handleLossReasonSave}
+        dealName={form.deal_name || 'this deal'}
+        currentLossReason={form.loss_reason}
+      />
+
+      {/* Closed Date Modal */}
+      <ClosedDateModal
+        isOpen={showClosedDateModal}
+        onClose={handleClosedDateCancel}
+        onSave={handleClosedDateSave}
+        dealName={form.deal_name || 'this deal'}
+        currentClosedDate={form.closed_date}
+      />
     </div>
   );
 }

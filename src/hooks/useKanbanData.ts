@@ -7,9 +7,9 @@ export default function useKanbanData() {
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
   const [cards, setCards] = useState<DealCard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  useEffect(() => {
-    const fetchData = async () => {
+  const fetchData = async () => {
       try {
         console.log('🔍 Fetching kanban data (safe version)...');
         
@@ -29,7 +29,7 @@ export default function useKanbanData() {
         // Fetch deals WITHOUT client join first
         const { data: dealData, error: dealError } = await supabase
           .from('deal')
-          .select('id, deal_name, fee, deal_value, closed_date, stage_id, kanban_position, client_id, created_at')
+          .select('id, deal_name, fee, deal_value, closed_date, stage_id, kanban_position, client_id, created_at, last_stage_change_at')
           .order('kanban_position', { ascending: true });
 
         console.log('💼 Deals:', dealData?.length || 0, 'deals fetched');
@@ -65,6 +65,7 @@ export default function useKanbanData() {
           kanban_position: deal.kanban_position,
           client_name: deal.client_id ? clientMap.get(deal.client_id) || null : null,
           created_at: deal.created_at,
+          last_stage_change_at: deal.last_stage_change_at,
         }));
 
         // Create a map of stage labels for filtering
@@ -87,10 +88,12 @@ export default function useKanbanData() {
           // Special filtering for "Lost" deals
           const stageLabel = stageMap.get(card.stage_id);
           if (stageLabel === 'Lost') {
-            // Only include Lost deals created within the last 2 years
-            if (!card.created_at) return false;
-            const createdDate = new Date(card.created_at);
-            return createdDate >= twoYearsAgo;
+            // Only include Lost deals moved to Lost stage within the last 2 years
+            // Use last_stage_change_at if available, otherwise fall back to created_at
+            const dateToCheck = card.last_stage_change_at || card.created_at;
+            if (!dateToCheck) return false;
+            const lostDate = new Date(dateToCheck);
+            return lostDate >= twoYearsAgo;
           }
 
           // All other stages: include all deals
@@ -107,10 +110,26 @@ export default function useKanbanData() {
       } finally {
         setLoading(false);
       }
+  };
+
+  useEffect(() => {
+    fetchData();
+
+    // Refetch when page becomes visible (user comes back to tab)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('🔄 Page visible, refreshing kanban data...');
+        fetchData();
+      }
     };
 
-    fetchData();
-  }, []);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [refreshTrigger]);
 
-  return { columns, cards, loading };
+  const refresh = () => {
+    setRefreshTrigger(prev => prev + 1);
+  };
+
+  return { columns, cards, loading, refresh };
 }

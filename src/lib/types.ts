@@ -57,7 +57,9 @@ export interface Deal {
   target_close_date?: string | null;
   loi_signed_date?: string | null;
   closed_date?: string | null;
-  
+  loss_reason?: string | null;
+  last_stage_change_at?: string | null;
+
   // Metadata
   created_at?: string;
   updated_at?: string;
