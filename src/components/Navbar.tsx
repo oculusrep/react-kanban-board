@@ -391,10 +391,13 @@ export default function Navbar() {
           <Link to="/master-pipeline" className={linkClass("/master-pipeline")}>
             Master Pipeline
           </Link>
+          <Link to="/tasks" className={linkClass("/tasks")}>
+            Tasks
+          </Link>
           <Link to="/mapping" className={linkClass("/mapping")}>
             🗺️ Map
           </Link>
-          
+
           <DropdownMenu
             title="Properties"
             items={propertiesItems}
@@ -507,6 +510,12 @@ export default function Navbar() {
                   className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                 >
                   Master Pipeline
+                </button>
+                <button
+                  onClick={() => navigate('/tasks')}
+                  className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                >
+                  Tasks
                 </button>
                 <button
                   onClick={() => navigate('/mapping')}

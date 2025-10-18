@@ -21,6 +21,7 @@ import DealCompareToSalesforceReportPage from "./pages/DealCompareToSalesforceRe
 import PropertyDataQualityReportPage from "./pages/PropertyDataQualityReportPage";
 import AssignmentsReportPage from "./pages/AssignmentsReportPage";
 import SiteSubmitDashboardPage from "./pages/SiteSubmitDashboardPage";
+import TaskDashboardPage from "./pages/TaskDashboardPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 
 function ProtectedLayout() {
@@ -46,6 +47,7 @@ function App() {
         <Route path="/" element={<ProtectedLayout />}>
           <Route index element={<Navigate to="/master-pipeline" replace />} />
           <Route path="master-pipeline" element={<KanbanBoard />} />
+          <Route path="tasks" element={<TaskDashboardPage />} />
           <Route path="deal/new" element={<DealDetailsPage />} />
           <Route path="deal/:dealId" element={<DealDetailsPage />} />
           <Route path="assignment/new" element={<AssignmentDetailsPage />} />
