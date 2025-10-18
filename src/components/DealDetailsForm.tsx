@@ -867,7 +867,7 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
       </Section>
 
       {/* SECTION: Dates / Timeline */}
-      <Section title="Timeline" help="Target and actual dates. Closed Date enabled only at Closed Paid.">
+      <Section title="Timeline" help="Target and actual dates for deal milestones.">
         <div className="grid grid-cols-2 gap-4">
           <DateInput
             label="Target Close Date"
@@ -880,10 +880,28 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
             onChange={(v) => updateField("loi_signed_date", v)}
           />
           <DateInput
+            label="Booked Date"
+            value={form.booked_date}
+            onChange={(v) => updateField("booked_date", v)}
+          />
+          <DateInput
             label="Closed Date"
             value={form.closed_date}
             onChange={(v) => updateField("closed_date", v)}
           />
+        </div>
+
+        {/* Booked Checkbox */}
+        <div className="mt-4">
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={form.booked ?? false}
+              onChange={(e) => updateField("booked", e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            />
+            <span className="ml-2 text-sm font-medium text-gray-700">Booked</span>
+          </label>
         </div>
 
         {/* Loss Reason - Full width text area */}
