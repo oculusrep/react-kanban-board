@@ -1817,14 +1817,16 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     <>
       {/* Slideout - Match PropertySidebar styling */}
       <div
-        className={`fixed top-0 h-full bg-white border-l border-gray-200 shadow-xl transition-all duration-300 z-40 ${
+        className={`fixed top-0 h-full bg-white border-l border-gray-200 shadow-xl transition-all duration-300 z-40 flex flex-col ${
           !isOpen ? 'translate-x-full' : isMinimized ? 'w-12' : 'w-[500px]'
-        } ${isMinimized ? 'overflow-hidden' : 'overflow-y-auto'}`}
+        } ${isMinimized ? 'overflow-hidden' : ''}`}
         style={{
           right: `${rightOffset}px`,
           top: '67px', // Match navbar height
-          height: 'calc(100vh - 67px)',
-          transform: !isOpen ? 'translateX(100%)' : 'translateX(0)'
+          height: 'calc(100vh - 67px - 20px)', // Add 20px bottom margin to prevent cutoff
+          transform: !isOpen ? 'translateX(100%)' : 'translateX(0)',
+          touchAction: 'pan-y', // Prevent map scrolling on touch devices
+          WebkitOverflowScrolling: 'touch' // Smooth scrolling on iOS
         }}
       >
         {/* Hero Section */}
@@ -2042,10 +2044,13 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         {/* Content */}
         {!isMinimized && (
         <div
-          className="flex-1 overflow-y-auto px-4 py-3"
+          className="flex-1 overflow-y-auto px-4 py-3 pb-6"
           style={{
             scrollBehavior: 'smooth',
-            minHeight: 0 // Ensures flex-1 works properly with overflow
+            minHeight: 0, // Ensures flex-1 works properly with overflow
+            touchAction: 'pan-y', // Prevent map scrolling when scrolling slideout on touch devices
+            WebkitOverflowScrolling: 'touch', // Smooth scrolling on iOS
+            overscrollBehavior: 'contain' // Prevent scroll chaining to map
           }}
         >
           {renderTabContent()}
