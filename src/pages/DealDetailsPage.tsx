@@ -103,6 +103,8 @@ export default function DealDetailsPage() {
           site_percent: 25,
           deal_percent: 25,
           number_of_payments: 2,
+          booked_date: null,
+          to_booked: null,
           loss_reason: null,
           is_active: true,
           created_at: new Date().toISOString(),

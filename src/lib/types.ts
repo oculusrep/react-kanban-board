@@ -56,7 +56,9 @@ export interface Deal {
   stage_id?: string | null;
   target_close_date?: string | null;
   loi_signed_date?: string | null;
+  booked_date?: string | null;
   closed_date?: string | null;
+  to_booked?: boolean | null;
   loss_reason?: string | null;
   last_stage_change_at?: string | null;
 

@@ -14,6 +14,7 @@ import Toast from "./Toast";
 import { useToast } from "../hooks/useToast";
 import LossReasonModal from "./LossReasonModal";
 import ClosedDateModal from "./ClosedDateModal";
+import BookedDateModal from "./BookedDateModal";
 
 export default function KanbanBoard() {
   const { columns, cards, loading } = useKanbanData();
@@ -32,6 +33,10 @@ export default function KanbanBoard() {
   // Closed date modal state
   const [showClosedDateModal, setShowClosedDateModal] = useState(false);
   const [currentClosedDate, setCurrentClosedDate] = useState<string | null>(null);
+
+  // Booked date modal state
+  const [showBookedDateModal, setShowBookedDateModal] = useState(false);
+  const [currentBookedDate, setCurrentBookedDate] = useState<string | null>(null);
 
   useEffect(() => {
     setLocalCards(cards);
@@ -114,6 +119,30 @@ export default function KanbanBoard() {
       }
     }
 
+    // If moving to "Booked" stage, check if booked_date exists
+    if (destStageLabel === "Booked") {
+      // Fetch the full deal data to check for booked_date
+      const { data: dealData, error } = await supabase
+        .from("deal")
+        .select("booked_date, deal_name")
+        .eq("id", draggableId)
+        .single();
+
+      if (error) {
+        console.error("Error fetching deal:", error);
+        return;
+      }
+
+      // If no booked_date, show modal
+      if (!dealData.booked_date) {
+        setPendingDragResult(result);
+        setCurrentBookedDate(dealData.booked_date);
+        setDealNameForModal(dealData.deal_name || 'this deal');
+        setShowBookedDateModal(true);
+        return; // Don't proceed with drag until booked date is provided
+      }
+    }
+
     // Proceed with the drag operation
     await performDragUpdate(result);
   };
@@ -139,14 +168,15 @@ export default function KanbanBoard() {
     const destStage = columns.find(col => col.id === destColId);
     const isMovingToLost = destStage?.label === "Lost" && stageChanged;
     const isMovingToClosedPaid = destStage?.label === "Closed Paid" && stageChanged;
+    const isMovingToBooked = destStage?.label === "Booked" && stageChanged;
 
     const cardsInDest = updatedCards
       .filter((card) => card.stage_id === destColId && card.id !== draggableId)
       .sort((a, b) => (a.kanban_position ?? 0) - (b.kanban_position ?? 0));
 
-    // If moving to Lost or Closed Paid for the first time, force position at top (index 0)
+    // If moving to Lost, Closed Paid, or Booked for the first time, force position at top (index 0)
     // Otherwise, use the destination index from the drag
-    const insertIndex = (isMovingToLost || isMovingToClosedPaid) ? 0 : destination.index;
+    const insertIndex = (isMovingToLost || isMovingToClosedPaid || isMovingToBooked) ? 0 : destination.index;
     cardsInDest.splice(insertIndex, 0, draggedCard);
 
     cardsInDest.forEach((card, index) => {
@@ -239,6 +269,39 @@ export default function KanbanBoard() {
 
   const handleClosedDateCancel = () => {
     setShowClosedDateModal(false);
+    setPendingDragResult(null);
+    // Optionally refresh the kanban board to reset any UI changes
+    setLocalCards([...cards]);
+  };
+
+  const handleBookedDateSave = async (bookedDate: string) => {
+    if (!pendingDragResult) return;
+
+    const { draggableId } = pendingDragResult;
+
+    // Update the deal with the booked_date and auto-check to_booked
+    const { error } = await supabase
+      .from("deal")
+      .update({ booked_date: bookedDate, to_booked: true })
+      .eq("id", draggableId);
+
+    if (error) {
+      console.error("Error saving booked date:", error);
+      showToast("Failed to save booked date: " + error.message, { type: "error" });
+      setShowBookedDateModal(false);
+      setPendingDragResult(null);
+      return;
+    }
+
+    // Close modal and proceed with drag
+    setShowBookedDateModal(false);
+    await performDragUpdate(pendingDragResult);
+    setPendingDragResult(null);
+    showToast("Deal marked as Booked", { type: "success" });
+  };
+
+  const handleBookedDateCancel = () => {
+    setShowBookedDateModal(false);
     setPendingDragResult(null);
     // Optionally refresh the kanban board to reset any UI changes
     setLocalCards([...cards]);
@@ -395,6 +458,15 @@ export default function KanbanBoard() {
         onSave={handleClosedDateSave}
         dealName={dealNameForModal}
         currentClosedDate={currentClosedDate}
+      />
+
+      {/* Booked Date Modal */}
+      <BookedDateModal
+        isOpen={showBookedDateModal}
+        onClose={handleBookedDateCancel}
+        onSave={handleBookedDateSave}
+        dealName={dealNameForModal}
+        currentBookedDate={currentBookedDate}
       />
 
       <div className="flex min-w-max gap-[2px]">

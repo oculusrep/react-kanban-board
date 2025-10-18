@@ -13,6 +13,7 @@ import PropertySelector from "./PropertySelector";
 import { getDropboxPropertySyncService } from "../services/dropboxPropertySync";
 import LossReasonModal from "./LossReasonModal";
 import ClosedDateModal from "./ClosedDateModal";
+import BookedDateModal from "./BookedDateModal";
 
 // 🔹 Stage → Default Probability map (integer percent 0..100)
 const STAGE_PROBABILITY: Record<string, number> = {
@@ -54,7 +55,9 @@ interface Deal {
   probability: number | null;
   target_close_date: string | null;
   loi_signed_date: string | null;
+  booked_date: string | null;
   closed_date: string | null;
+  to_booked: boolean | null;
   loss_reason: string | null;
   last_stage_change_at: string | null;
   updated_by_id?: string | null;
@@ -85,6 +88,9 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
 
   // Closed date modal state
   const [showClosedDateModal, setShowClosedDateModal] = useState(false);
+
+  // Booked date modal state
+  const [showBookedDateModal, setShowBookedDateModal] = useState(false);
 
   const [clientSearch, setClientSearch] = useState("");
   const [clientSuggestions, setClientSuggestions] = useState<{ id: string; label: string }[]>([]);
@@ -326,6 +332,13 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
       return;
     }
 
+    // Check if stage is "Booked" and booked_date is empty
+    if (stageLabel === "Booked" && !form.booked_date) {
+      setShowBookedDateModal(true);
+      setPendingSave(true);
+      return;
+    }
+
     await performSave();
   };
 
@@ -335,6 +348,10 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
     // Check if stage has changed
     const stageChanged = form.stage_id !== originalStageId;
     const now = new Date().toISOString();
+
+    // Get current stage label to check if moving to Booked
+    const stageLabel = getStageLabel();
+    const isMovingToBooked = stageLabel === "Booked" && stageChanged;
 
     const dealPayload = {
       deal_name: form.deal_name,
@@ -348,7 +365,9 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
       fee: calculatedFee,
       target_close_date: form.target_close_date,
       loi_signed_date: form.loi_signed_date,
+      booked_date: form.booked_date,
       closed_date: form.closed_date,
+      to_booked: isMovingToBooked ? true : form.to_booked, // Auto-check when moving to Booked
       loss_reason: form.loss_reason,
       probability: form.probability,
       deal_team_id: form.deal_team_id,
@@ -600,6 +619,98 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
     setPendingSave(false);
   };
 
+  const handleBookedDateSave = async (bookedDate: string) => {
+    // Update form with booked date and auto-check to_booked
+    setForm(prev => ({ ...prev, booked_date: bookedDate, to_booked: true }));
+    setShowBookedDateModal(false);
+    setPendingSave(false);
+
+    // Perform the save with the updated booked date
+    const updatedForm = { ...form, booked_date: bookedDate, to_booked: true };
+
+    await performSaveWithBookedDate(updatedForm, bookedDate);
+  };
+
+  const performSaveWithBookedDate = async (updatedForm: Deal, bookedDate: string) => {
+    setSaving(true);
+
+    // Check if stage has changed
+    const stageChanged = updatedForm.stage_id !== originalStageId;
+    const now = new Date().toISOString();
+
+    const dealPayload = {
+      deal_name: updatedForm.deal_name,
+      client_id: updatedForm.client_id,
+      property_id: updatedForm.property_id,
+      property_unit_id: updatedForm.property_unit_id,
+      site_submit_id: updatedForm.site_submit_id,
+      deal_value: updatedForm.deal_value,
+      commission_percent: updatedForm.commission_percent,
+      flat_fee_override: updatedForm.flat_fee_override,
+      fee: calculatedFee,
+      target_close_date: updatedForm.target_close_date,
+      loi_signed_date: updatedForm.loi_signed_date,
+      booked_date: bookedDate,
+      closed_date: updatedForm.closed_date,
+      to_booked: true, // Auto-check when moving to Booked
+      loss_reason: updatedForm.loss_reason,
+      probability: updatedForm.probability,
+      deal_team_id: updatedForm.deal_team_id,
+      stage_id: updatedForm.stage_id,
+      last_stage_change_at: stageChanged ? now : updatedForm.last_stage_change_at,
+      house_percent: updatedForm.house_percent,
+      origination_percent: updatedForm.origination_percent,
+      site_percent: updatedForm.site_percent,
+      deal_percent: updatedForm.deal_percent,
+      number_of_payments: updatedForm.number_of_payments,
+      updated_at: now,
+    };
+
+    let data, error;
+
+    if (updatedForm.id) {
+      // Update existing deal
+      const result = await supabase
+        .from("deal")
+        .update(dealPayload)
+        .eq("id", updatedForm.id)
+        .select()
+        .single();
+      data = result.data;
+      error = result.error;
+    } else {
+      // Insert new deal
+      dealPayload.created_at = new Date().toISOString();
+      const result = await supabase
+        .from("deal")
+        .insert([dealPayload])
+        .select()
+        .single();
+      data = result.data;
+      error = result.error;
+    }
+
+    setSaving(false);
+
+    if (error) {
+      alert("Error saving: " + error.message);
+      return;
+    }
+
+    if (data) {
+      // Update original stage_id after successful save
+      if (stageChanged) {
+        setOriginalStageId(updatedForm.stage_id);
+      }
+      onSave(data);
+    }
+  };
+
+  const handleBookedDateCancel = () => {
+    setShowBookedDateModal(false);
+    setPendingSave(false);
+  };
+
   // 🔹 Conditional enablement
   const stageLabel = getStageLabel();
   const closedEnabled = stageLabel === "Closed Paid"; // Only allow Closed Date when stage is Closed Paid
@@ -831,6 +942,15 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
         onSave={handleClosedDateSave}
         dealName={form.deal_name || 'this deal'}
         currentClosedDate={form.closed_date}
+      />
+
+      {/* Booked Date Modal */}
+      <BookedDateModal
+        isOpen={showBookedDateModal}
+        onClose={handleBookedDateCancel}
+        onSave={handleBookedDateSave}
+        dealName={form.deal_name || 'this deal'}
+        currentBookedDate={form.booked_date}
       />
     </div>
   );
