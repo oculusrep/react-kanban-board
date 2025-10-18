@@ -714,5 +714,138 @@ const LONG_PRESS_DURATION = parseInt(import.meta.env.VITE_LONG_PRESS_DURATION ||
 
 ---
 
-**Last Updated:** October 11, 2025
+---
+
+## Update: Slideout Scrolling Fix (January 18, 2025)
+
+### Problem
+On iPad, when scrolling within the property/site submit slideouts, the map behind the slideout would sometimes scroll instead of (or in addition to) the slideout content. Additionally, content at the bottom of the slideout was getting cut off, making it difficult to see buttons and the last few items.
+
+### Issues Addressed:
+1. ❌ **Scroll chaining** - Scrolling slideout would trigger map scroll
+2. ❌ **Bottom content cutoff** - Last items and buttons were hidden off-screen
+3. ❌ **Non-smooth scrolling** - iOS momentum scrolling wasn't working properly
+
+### Solution
+
+#### File Modified: `src/components/mapping/slideouts/PinDetailsSlideout.tsx`
+
+**Changes to Main Slideout Container (lines 1819-1830):**
+```typescript
+<div
+  className={`fixed top-0 h-full bg-white border-l border-gray-200 shadow-xl transition-all duration-300 z-40 flex flex-col ${
+    !isOpen ? 'translate-x-full' : isMinimized ? 'w-12' : 'w-[500px]'
+  } ${isMinimized ? 'overflow-hidden' : ''}`}
+  style={{
+    right: `${rightOffset}px`,
+    top: '67px',
+    height: 'calc(100vh - 67px - 20px)', // Added 20px bottom margin
+    transform: !isOpen ? 'translateX(100%)' : 'translateX(0)',
+    touchAction: 'pan-y', // Restrict touch to vertical panning only
+    WebkitOverflowScrolling: 'touch' // Smooth iOS scrolling
+  }}
+>
+```
+
+**Key Changes:**
+1. **Added `flex flex-col`** to className for proper flex layout
+2. **Reduced height:** `calc(100vh - 67px - 20px)` to add 20px bottom margin
+3. **Added `touchAction: 'pan-y'`** to restrict touch gestures to vertical panning
+4. **Added `WebkitOverflowScrolling: 'touch'`** for smooth iOS scrolling
+5. **Removed `overflow-y-auto`** from main container (moved to content area)
+
+**Changes to Content Area (lines 2046-2054):**
+```typescript
+<div
+  className="flex-1 overflow-y-auto px-4 py-3 pb-6"
+  style={{
+    scrollBehavior: 'smooth',
+    minHeight: 0,
+    touchAction: 'pan-y', // Prevent map scrolling when scrolling slideout
+    WebkitOverflowScrolling: 'touch', // Smooth scrolling on iOS
+    overscrollBehavior: 'contain' // Prevent scroll chaining to map
+  }}
+>
+```
+
+**Key Changes:**
+1. **Added `pb-6`** (24px bottom padding) to prevent bottom cutoff
+2. **Added `touchAction: 'pan-y'`** to content area for touch control
+3. **Added `WebkitOverflowScrolling: 'touch'`** for momentum scrolling
+4. **Added `overscrollBehavior: 'contain'`** to prevent scroll chaining
+
+### How It Works
+
+**Touch Action Control:**
+- `touchAction: 'pan-y'` restricts touch gestures to vertical panning only
+- Prevents horizontal swipes and diagonal gestures from affecting the map
+- Touch events stay isolated to the slideout
+
+**Overscroll Behavior:**
+- `overscrollBehavior: 'contain'` prevents "scroll chaining"
+- When user scrolls to the top/bottom of slideout, scrolling stops
+- Map behind slideout won't start scrolling when slideout hits limits
+
+**Smooth iOS Scrolling:**
+- `-webkit-overflow-scrolling: touch` enables native momentum scrolling
+- Gives natural, smooth iOS feel when scrolling
+- Improves overall scrolling performance
+
+**Bottom Spacing:**
+- 20px bottom margin on main container
+- 24px bottom padding on content area
+- Ensures all content and buttons are fully visible
+- Provides comfortable spacing from screen edge
+
+### User Experience Improvements
+
+**Before:**
+- ❌ Scrolling slideout sometimes scrolled map
+- ❌ Bottom content cut off on screen edge
+- ❌ Abrupt, non-smooth scrolling on iOS
+- ❌ Difficult to access buttons at bottom
+
+**After:**
+- ✅ Slideout scrolling isolated from map
+- ✅ Full content visible with proper spacing
+- ✅ Smooth, native iOS momentum scrolling
+- ✅ Easy access to all content and buttons
+- ✅ No accidental map movement when using slideout
+
+### Testing Checklist
+
+- [ ] Scroll slideout content - map stays still
+- [ ] Reach bottom of slideout - all buttons visible
+- [ ] Scroll past bottom - doesn't trigger map scroll
+- [ ] Scroll past top - doesn't trigger map scroll
+- [ ] Smooth momentum scrolling on iOS
+- [ ] Content has adequate spacing from bottom
+- [ ] Works in both portrait and landscape
+- [ ] Multiple stacked slideouts (property + site submit) work correctly
+
+### Technical Details
+
+**CSS Properties Used:**
+- `touch-action: pan-y` - Restricts touch to vertical panning
+- `-webkit-overflow-scrolling: touch` - iOS momentum scrolling
+- `overscroll-behavior: contain` - Prevents scroll chaining
+- `flex-col` - Proper flex layout for height calculations
+- `calc(100vh - 67px - 20px)` - Dynamic height with bottom spacing
+
+**Why This Approach:**
+- Modern CSS properties designed for mobile touch
+- No JavaScript event handling needed
+- Better performance than JS scroll prevention
+- Native browser behavior for smooth UX
+- Works across all modern mobile browsers
+
+### Commit Reference
+- **Commit:** `d883033`
+- **Date:** January 18, 2025
+- **Files Modified:** `src/components/mapping/slideouts/PinDetailsSlideout.tsx`
+
+---
+
+**Last Updated:** January 18, 2025
+**Original Implementation:** October 11, 2025
 **Debugging Guide Added By:** Claude Code Session
