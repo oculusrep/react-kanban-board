@@ -90,6 +90,36 @@ const GenericActivityTab: React.FC<GenericActivityTabProps> = ({ config }) => {
     return true;
   });
 
+  // Sort activities: Open tasks first (oldest/overdue at top), then completed tasks chronologically
+  const sortedActivities = [...filteredActivities].sort((a, b) => {
+    const isACompleted = a.activity_status?.is_closed || a.sf_is_closed || a.completed_call ||
+                         (a.sf_status && ['Completed', 'Complete', 'Closed'].includes(a.sf_status));
+    const isBCompleted = b.activity_status?.is_closed || b.sf_is_closed || b.completed_call ||
+                         (b.sf_status && ['Completed', 'Complete', 'Closed'].includes(b.sf_status));
+
+    // If one is open and one is completed, open comes first
+    if (!isACompleted && isBCompleted) return -1;
+    if (isACompleted && !isBCompleted) return 1;
+
+    // Both are open - sort by due date (oldest/overdue first)
+    if (!isACompleted && !isBCompleted) {
+      const dateA = a.activity_date ? new Date(a.activity_date).getTime() : Number.MAX_SAFE_INTEGER;
+      const dateB = b.activity_date ? new Date(b.activity_date).getTime() : Number.MAX_SAFE_INTEGER;
+      return dateA - dateB; // Ascending - oldest first
+    }
+
+    // Both are completed - sort by completion date (most recent first)
+    if (isACompleted && isBCompleted) {
+      const completedA = a.completed_at ? new Date(a.completed_at).getTime() :
+                        (a.created_at ? new Date(a.created_at).getTime() : 0);
+      const completedB = b.completed_at ? new Date(b.completed_at).getTime() :
+                        (b.created_at ? new Date(b.created_at).getTime() : 0);
+      return completedB - completedA; // Descending - most recent first
+    }
+
+    return 0;
+  });
+
   // Get unique activity types for filter dropdown
   const activityTypes = [...new Set(activities.map(a => a.activity_type?.name).filter(Boolean))];
 
@@ -196,7 +226,7 @@ const GenericActivityTab: React.FC<GenericActivityTabProps> = ({ config }) => {
 
       {/* Activity List Section */}
       <Section 
-        title={`Activity Timeline (${filteredActivities.length})`}
+        title={`Activity Timeline (${sortedActivities.length})`}
         help={`Chronological list of all activities for this ${parentObject.type}`}
       >
         {/* Filters and Search */}
@@ -251,7 +281,7 @@ const GenericActivityTab: React.FC<GenericActivityTabProps> = ({ config }) => {
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
             <span className="ml-2 text-sm text-gray-600">Loading activities...</span>
           </div>
-        ) : filteredActivities.length === 0 ? (
+        ) : sortedActivities.length === 0 ? (
           <div className="text-center py-8">
             {activities.length === 0 ? (
               <div>
@@ -292,7 +322,7 @@ const GenericActivityTab: React.FC<GenericActivityTabProps> = ({ config }) => {
           </div>
         ) : (
           <div className="space-y-0">
-            {filteredActivities.map((activity) => (
+            {sortedActivities.map((activity) => (
               <ActivityItem
                 key={activity.id}
                 activity={activity}

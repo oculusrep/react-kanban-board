@@ -125,7 +125,9 @@ const getOverdueBadge = (activity: ActivityWithRelations) => {
   // Check if activity_date (due date) is in the past (overdue)
   if (!activity.activity_date) return null;
 
-  const dueDate = new Date(activity.activity_date);
+  // Parse as local date to avoid timezone issues
+  const [year, month, day] = activity.activity_date.split('T')[0].split('-').map(Number);
+  const dueDate = new Date(year, month - 1, day);
   const today = startOfDay(new Date());
   const dueDateStart = startOfDay(dueDate);
 
@@ -370,7 +372,7 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
             )}
 
             {/* Due Date - only for tasks */}
-            {((activityType === 'Task' || !activityType) && activity.activity_date) && (
+            {((activityType === 'Task' || !activityType) && activityDate) && (
               <div className="flex items-center gap-1">
                 <ClockIcon className="w-5 h-5" />
                 <span className={`font-medium ${
@@ -378,15 +380,14 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
                     const isCompleted = activity.activity_status?.is_closed || activity.completed_call || activity.sf_is_closed;
                     if (isCompleted) return 'text-gray-500';
 
-                    const dueDate = new Date(activity.activity_date);
                     const today = startOfDay(new Date());
-                    const dueDateStart = startOfDay(dueDate);
+                    const dueDateStart = startOfDay(activityDate);
 
                     if (isAfter(today, dueDateStart)) return 'text-red-600'; // Overdue
                     return 'text-gray-500'; // Not overdue
                   })()
                 }`}>
-                  Due {format(new Date(activity.activity_date), 'MMM d, yyyy')}
+                  Due {format(activityDate, 'MMM d, yyyy')}
                 </span>
               </div>
             )}
