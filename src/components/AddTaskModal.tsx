@@ -21,6 +21,9 @@ interface AddTaskModalProps {
   parentObject?: ParentObject;
   // Legacy support
   dealId?: string;
+  // Edit mode
+  editMode?: boolean;
+  existingTask?: any; // ActivityWithRelations
 }
 
 interface FormData {
@@ -42,22 +45,38 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
   onClose,
   onSave,
   parentObject,
-  dealId // Legacy support
+  dealId, // Legacy support
+  editMode = false,
+  existingTask
 }) => {
   const { user } = useAuth();
   // Handle legacy dealId prop
   const effectiveParentObject = parentObject || (dealId ? { id: dealId, type: 'deal' as const, name: '' } : null);
+
+  const getRelatedObjectFromTask = (task: any) => {
+    if (task.deal_id) return { type: 'deal' as const, id: task.deal_id };
+    if (task.client_id) return { type: 'client' as const, id: task.client_id };
+    if (task.property_id) return { type: 'property' as const, id: task.property_id };
+    if (task.site_submit_id) return { type: 'site_submit' as const, id: task.site_submit_id };
+    if (task.contact_id) return { type: 'contact' as const, id: task.contact_id };
+    return null;
+  };
+
+  const relatedObj = editMode && existingTask ? getRelatedObjectFromTask(existingTask) : effectiveParentObject;
+
   const [formData, setFormData] = useState<FormData>({
-    subject: '',
-    owner_id: null,
-    activity_date: new Date().toISOString().split('T')[0],
-    activity_type_id: null,
-    activity_task_type_id: null,
-    activity_priority_id: null,
-    status_id: null,
-    related_object_type: effectiveParentObject?.type || 'deal',
-    related_object_id: effectiveParentObject?.id || null,
-    description: '',
+    subject: editMode && existingTask ? existingTask.subject || '' : '',
+    owner_id: editMode && existingTask ? existingTask.owner_id : null,
+    activity_date: editMode && existingTask && existingTask.activity_date
+      ? new Date(existingTask.activity_date).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0],
+    activity_type_id: editMode && existingTask ? existingTask.activity_type_id : null,
+    activity_task_type_id: editMode && existingTask ? existingTask.activity_task_type_id : null,
+    activity_priority_id: editMode && existingTask ? existingTask.activity_priority_id : null,
+    status_id: editMode && existingTask ? existingTask.status_id : null,
+    related_object_type: relatedObj?.type || 'deal',
+    related_object_id: relatedObj?.id || null,
+    description: editMode && existingTask ? existingTask.description || '' : '',
   });
 
   const [users, setUsers] = useState<User[]>([]);
@@ -460,13 +479,45 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
         }
       }
 
-      console.log('About to insert activity data:', JSON.stringify(activityData, null, 2));
-      
-      const { data, error } = await supabase
-        .from('activity')
-        .insert(activityData)
-        .select('*')
-        .single();
+      let data, error;
+
+      if (editMode && existingTask) {
+        // Update existing task
+        const updateData = {
+          ...activityData,
+          updated_at: new Date().toISOString()
+        };
+        console.log('🔄 UPDATING task:', existingTask.id);
+        console.log('📝 Update data:', JSON.stringify(updateData, null, 2));
+        console.log('📅 Due date being updated to:', updateData.activity_date);
+
+        const result = await supabase
+          .from('activity')
+          .update(updateData)
+          .eq('id', existingTask.id)
+          .select('*')
+          .single();
+
+        data = result.data;
+        error = result.error;
+
+        if (error) {
+          console.error('❌ Update error:', error);
+        } else {
+          console.log('✅ Update successful!');
+          console.log('📊 Updated task data:', JSON.stringify(data, null, 2));
+        }
+      } else {
+        // Insert new task
+        console.log('About to insert activity data:', JSON.stringify(activityData, null, 2));
+        const result = await supabase
+          .from('activity')
+          .insert(activityData)
+          .select('*')
+          .single();
+        data = result.data;
+        error = result.error;
+      }
 
       if (error) throw error;
 
@@ -510,7 +561,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
         
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white">
-          <h2 className="text-xl font-semibold text-gray-900">Add New Task</h2>
+          <h2 className="text-xl font-semibold text-gray-900">{editMode ? 'Edit Task' : 'Add New Task'}</h2>
           <button
             onClick={onClose}
             className="p-2 hover:bg-gray-100 rounded-full transition-colors"
@@ -668,7 +719,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
               disabled={saving || loading}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
             >
-              {saving ? 'Creating...' : 'Create Task'}
+              {saving ? (editMode ? 'Updating...' : 'Creating...') : (editMode ? 'Update Task' : 'Create Task')}
             </button>
           </div>
         </div>
