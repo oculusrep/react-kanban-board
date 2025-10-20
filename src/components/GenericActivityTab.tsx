@@ -179,14 +179,14 @@ const GenericActivityTab: React.FC<GenericActivityTabProps> = ({ config }) => {
                 className="inline-flex items-center gap-2 px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 onClick={() => setIsAddTaskModalOpen(true)}
               >
-                <PlusIcon className="w-4 h-4" />
+                <PlusIcon className="w-5 h-5" />
                 Add Activity
               </button>
               <button
                 className="inline-flex items-center gap-2 px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                 onClick={() => setIsLogCallModalOpen(true)}
               >
-                <PhoneIcon className="w-4 h-4" />
+                <PhoneIcon className="w-5 h-5" />
                 Log Call
               </button>
             </div>
