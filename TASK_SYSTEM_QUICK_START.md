@@ -4,6 +4,8 @@
 
 A complete task management system that lets you view, filter, sort, and manage all tasks in one place.
 
+**Current Data**: 400 open tasks, 7,700 total tasks (including ~7,300 completed)
+
 ## How to Access
 
 1. **Start the app**: `npm run dev`
