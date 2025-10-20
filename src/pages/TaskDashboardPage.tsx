@@ -130,46 +130,66 @@ const TaskDashboardPage: React.FC = () => {
       // Get all open/non-closed activity status IDs
       const { data: openStatuses } = await supabase
         .from('activity_status')
-        .select('*')
+        .select('id')
         .eq('is_closed', false);
 
-      console.log('Open statuses found:', openStatuses?.map(s => ({ name: s.name, id: s.id, is_closed: s.is_closed })));
-
       const openStatusIds = openStatuses?.map(s => s.id) || [];
-      console.log('Filtering by status IDs:', openStatusIds);
 
-      // Build query with all relations, filtering by activity_type_id
-      // Only load open tasks by default for better performance (user can change filter to see all)
-      const { data, error, count } = await supabase
-        .from('activity')
-        .select(`
-          *,
-          activity_status!activity_status_id_fkey (*),
-          activity_type!activity_activity_type_id_fkey (*),
-          activity_priority!activity_activity_priority_id_fkey (*),
-          activity_task_type!activity_activity_task_type_id_fkey (*),
-          owner:user!activity_owner_id_fkey (*),
-          contact!activity_contact_id_fkey (*),
-          deal!activity_deal_id_fkey (id, deal_name),
-          client!activity_client_id_fkey (id, client_name),
-          property!activity_property_id_fkey (id, property_name),
-          site_submit!activity_site_submit_id_fkey (id, site_submit_name)
-        `, { count: 'exact' })
-        .eq('activity_type_id', taskTypeData.id)
-        .in('status_id', openStatusIds)
-        .order('activity_date', { ascending: true })
-        .range(0, 1999);
+      // Load ALL open tasks using pagination
+      const PAGE_SIZE = 1000;
+      let allTasks: ActivityWithRelations[] = [];
+      let currentPage = 0;
+      let hasMore = true;
 
-      if (error) {
-        console.error('Error loading tasks:', error);
-        return;
+      console.log('Loading all open tasks with pagination...');
+
+      while (hasMore) {
+        const from = currentPage * PAGE_SIZE;
+        const to = from + PAGE_SIZE - 1;
+
+        const { data, error } = await supabase
+          .from('activity')
+          .select(`
+            *,
+            activity_status!activity_status_id_fkey (*),
+            activity_type!activity_activity_type_id_fkey (*),
+            activity_priority!activity_activity_priority_id_fkey (*),
+            activity_task_type!activity_activity_task_type_id_fkey (*),
+            owner:user!activity_owner_id_fkey (*),
+            contact!activity_contact_id_fkey (*),
+            deal!activity_deal_id_fkey (id, deal_name),
+            client!activity_client_id_fkey (id, client_name),
+            property!activity_property_id_fkey (id, property_name),
+            site_submit!activity_site_submit_id_fkey (id, site_submit_name)
+          `)
+          .eq('activity_type_id', taskTypeData.id)
+          .in('status_id', openStatusIds)
+          .order('activity_date', { ascending: true })
+          .range(from, to);
+
+        if (error) {
+          console.error('Error loading tasks page:', error);
+          break;
+        }
+
+        if (data && data.length > 0) {
+          allTasks = [...allTasks, ...data as ActivityWithRelations[]];
+          console.log(`Loaded page ${currentPage + 1}: ${data.length} tasks (total: ${allTasks.length})`);
+
+          // If we got less than PAGE_SIZE, we've reached the end
+          if (data.length < PAGE_SIZE) {
+            hasMore = false;
+          } else {
+            currentPage++;
+          }
+        } else {
+          hasMore = false;
+        }
       }
 
-      console.log(`Loaded ${data?.length || 0} open tasks out of ${count} total open tasks`);
+      console.log(`✅ Finished loading all ${allTasks.length} open tasks`);
 
-      if (data) {
-        setTasks(data as ActivityWithRelations[]);
-      }
+      setTasks(allTasks);
     } catch (error) {
       console.error('Error loading tasks:', error);
     }
