@@ -30,6 +30,7 @@ interface FormData {
   subject: string;
   owner_id: string | null;
   activity_date: string;
+  completed_at: string;
   activity_type_id: string | null;
   activity_task_type_id: string | null;
   activity_priority_id: string | null;
@@ -70,6 +71,9 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
     activity_date: editMode && existingTask && existingTask.activity_date
       ? new Date(existingTask.activity_date).toISOString().split('T')[0]
       : new Date().toISOString().split('T')[0],
+    completed_at: editMode && existingTask && existingTask.completed_at
+      ? new Date(existingTask.completed_at).toISOString().split('T')[0]
+      : '',
     activity_type_id: editMode && existingTask ? existingTask.activity_type_id : null,
     activity_task_type_id: editMode && existingTask ? existingTask.activity_task_type_id : null,
     activity_priority_id: editMode && existingTask ? existingTask.activity_priority_id : null,
@@ -155,7 +159,10 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
         if (typesResult.data) setActivityTypes(typesResult.data);
         if (taskTypesResult.data) setActivityTaskTypes(taskTypesResult.data);
         if (prioritiesResult.data) setActivityPriorities(prioritiesResult.data);
-        if (statusesResult.data) setActivityStatuses(statusesResult.data);
+        if (statusesResult.data) {
+          console.log('Loaded activity statuses:', statusesResult.data.map(s => ({ id: s.id, name: s.name })));
+          setActivityStatuses(statusesResult.data);
+        }
 
         // Set default task type to "Task" if available (always set when modal opens)
         if (typesResult.data) {
@@ -165,8 +172,8 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
           }
         }
 
-        // Set default status to "Open" if available
-        if (statusesResult.data && statusesResult.data.length > 0) {
+        // Set default status to "Open" if available (only when creating new task)
+        if (statusesResult.data && statusesResult.data.length > 0 && !editMode) {
           const openStatus = statusesResult.data.find(status => status.name?.toLowerCase() === 'open');
           const defaultStatus = openStatus || statusesResult.data[0];
           setFormData(prev => ({ ...prev, status_id: defaultStatus.id }));
@@ -447,6 +454,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
         subject: formData.subject,
         owner_id: formData.owner_id,
         activity_date: formData.activity_date,
+        completed_at: formData.completed_at || null,
         activity_type_id: formData.activity_type_id,
         activity_task_type_id: formData.activity_task_type_id,
         activity_priority_id: formData.activity_priority_id,
@@ -676,6 +684,39 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Status *
+                  </label>
+                  <select
+                    value={formData.status_id || ''}
+                    onChange={(e) => updateFormData('status_id', e.target.value || null)}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  >
+                    <option value="">Select status...</option>
+                    {activityStatuses.map((status) => (
+                      <option key={status.id} value={status.id}>
+                        {status.name}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.status_id && (
+                    <p className="mt-1 text-sm text-red-600">{errors.status_id}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Completed Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.completed_at}
+                    onChange={(e) => updateFormData('completed_at', e.target.value)}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  />
                 </div>
               </div>
 
