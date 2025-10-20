@@ -158,7 +158,15 @@ const formatCallDuration = (seconds: number | null) => {
 const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate, onTaskClick }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
-  const activityDate = activity.activity_date ? new Date(activity.activity_date) : null;
+
+  // Parse dates as local dates to avoid timezone issues
+  const activityDate = activity.activity_date
+    ? (() => {
+        const [year, month, day] = activity.activity_date.split('T')[0].split('-').map(Number);
+        return new Date(year, month - 1, day);
+      })()
+    : null;
+
   const createdDate = activity.created_at ? new Date(activity.created_at) : null;
   const displayDate = activityDate || createdDate;
   const activityType = activity.activity_type?.name || activity.sf_task_subtype;
