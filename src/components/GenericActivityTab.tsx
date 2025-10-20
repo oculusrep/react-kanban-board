@@ -50,6 +50,7 @@ const GenericActivityTab: React.FC<GenericActivityTabProps> = ({ config }) => {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
   const [isLogCallModalOpen, setIsLogCallModalOpen] = useState(false);
+  const [selectedTaskForEdit, setSelectedTaskForEdit] = useState<any>(null);
 
   // Filter activities based on search and filters
   const filteredActivities = activities.filter(activity => {
@@ -73,15 +74,15 @@ const GenericActivityTab: React.FC<GenericActivityTabProps> = ({ config }) => {
 
     // Status filter
     if (filterStatus !== 'all') {
-      const isCompleted = activity.activity_status?.is_closed || 
-                         activity.sf_is_closed || 
+      const isCompleted = activity.activity_status?.is_closed ||
+                         activity.sf_is_closed ||
                          activity.completed_call ||
                          (activity.sf_status && ['Completed', 'Complete', 'Closed'].includes(activity.sf_status));
-      
+
       if (filterStatus === 'completed' && !isCompleted) {
         return false;
       }
-      if (filterStatus === 'open' && !isCompleted) {
+      if (filterStatus === 'open' && isCompleted) {
         return false;
       }
     }
@@ -215,7 +216,7 @@ const GenericActivityTab: React.FC<GenericActivityTabProps> = ({ config }) => {
           {/* Filters */}
           <div className="flex gap-3">
             <div className="flex items-center gap-2">
-              <FunnelIcon className="w-4 h-4 text-gray-400" />
+              <FunnelIcon className="w-5 h-5 text-gray-400" />
               <label className="text-sm font-medium text-gray-700">Type:</label>
               <select
                 value={filterType}
@@ -292,9 +293,10 @@ const GenericActivityTab: React.FC<GenericActivityTabProps> = ({ config }) => {
         ) : (
           <div className="space-y-0">
             {filteredActivities.map((activity) => (
-              <ActivityItem 
-                key={activity.id} 
-                activity={activity} 
+              <ActivityItem
+                key={activity.id}
+                activity={activity}
+                onTaskClick={(task) => setSelectedTaskForEdit(task)}
                 onActivityUpdate={(updatedActivity) => {
                   console.log('Activity updated:', updatedActivity);
                   refetch();
@@ -329,6 +331,22 @@ const GenericActivityTab: React.FC<GenericActivityTabProps> = ({ config }) => {
             refetch();
             setIsLogCallModalOpen(false);
           }}
+          parentObject={parentObject}
+        />
+      )}
+
+      {/* Edit Task Modal */}
+      {selectedTaskForEdit && (
+        <AddTaskModal
+          isOpen={!!selectedTaskForEdit}
+          onClose={() => setSelectedTaskForEdit(null)}
+          onSave={() => {
+            console.log('Task updated successfully');
+            refetch();
+            setSelectedTaskForEdit(null);
+          }}
+          editMode={true}
+          existingTask={selectedTaskForEdit}
           parentObject={parentObject}
         />
       )}

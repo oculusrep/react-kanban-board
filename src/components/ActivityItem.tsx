@@ -23,6 +23,7 @@ import ActivityDetailView from './ActivityDetailView';
 interface ActivityItemProps {
   activity: ActivityWithRelations;
   onActivityUpdate?: (updatedActivity: ActivityWithRelations) => void;
+  onTaskClick?: (activity: ActivityWithRelations) => void;
 }
 
 const getActivityIcon = (activity: ActivityWithRelations, onToggleComplete?: () => void) => {
@@ -154,7 +155,7 @@ const formatCallDuration = (seconds: number | null) => {
   return `${seconds}s`;
 };
 
-const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate }) => {
+const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate, onTaskClick }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
   const activityDate = activity.activity_date ? new Date(activity.activity_date) : null;
@@ -163,7 +164,12 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate 
   const activityType = activity.activity_type?.name || activity.sf_task_subtype;
 
   const handleToggleExpand = () => {
-    setIsExpanded(!isExpanded);
+    // If onTaskClick is provided, use the edit slidebar instead of inline expansion
+    if (onTaskClick) {
+      onTaskClick(activity);
+    } else {
+      setIsExpanded(!isExpanded);
+    }
   };
 
   const handleToggleComplete = async () => {
@@ -269,17 +275,19 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate 
           {/* Subject and Badges */}
           <div className="flex items-start justify-between gap-2 mb-2">
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <button
-                onClick={handleToggleExpand}
-                className="flex-shrink-0 p-0.5 hover:bg-gray-100 rounded transition-colors"
-                aria-label={isExpanded ? 'Collapse activity' : 'Expand activity'}
-              >
-                {isExpanded ? (
-                  <ChevronDownIcon className="w-4 h-4 text-gray-500" />
-                ) : (
-                  <ChevronRightIcon className="w-4 h-4 text-gray-500" />
-                )}
-              </button>
+              {!onTaskClick && (
+                <button
+                  onClick={handleToggleExpand}
+                  className="flex-shrink-0 p-0.5 hover:bg-gray-100 rounded transition-colors"
+                  aria-label={isExpanded ? 'Collapse activity' : 'Expand activity'}
+                >
+                  {isExpanded ? (
+                    <ChevronDownIcon className="w-5 h-5 text-gray-500" />
+                  ) : (
+                    <ChevronRightIcon className="w-5 h-5 text-gray-500" />
+                  )}
+                </button>
+              )}
               <button
                 onClick={handleToggleExpand}
                 className="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors truncate text-left"
@@ -306,7 +314,7 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate 
             {/* Contact */}
             {activity.contact && (
               <div className="flex items-center gap-1">
-                <UserIcon className="w-4 h-4" />
+                <UserIcon className="w-5 h-5" />
                 <span>
                   Contact: {activity.contact.first_name} {activity.contact.last_name}
                 </span>
@@ -316,7 +324,7 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate 
             {/* Assigned User / Updated By */}
             {(activity.owner || activity.updated_by_user) && (
               <div className="flex items-center gap-1">
-                <UserIcon className="w-4 h-4 text-blue-500" />
+                <UserIcon className="w-5 h-5 text-blue-500" />
                 <span className="font-medium">
                   {(() => {
                     if (activityType === 'Call' && activity.updated_by_user) {
@@ -335,15 +343,15 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate 
                 </span>
               </div>
             )}
-            
+
             {/* Call Duration */}
             {activity.call_duration_seconds && (
               <div className="flex items-center gap-1">
-                <ClockIcon className="w-4 h-4" />
+                <ClockIcon className="w-5 h-5" />
                 <span>{formatCallDuration(activity.call_duration_seconds)}</span>
               </div>
             )}
-            
+
             {/* Task Type */}
             {(activity.activity_task_type?.name || activity.sf_task_type) && (
               <div className="flex items-center gap-1">
@@ -356,7 +364,7 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate 
             {/* Due Date - only for tasks */}
             {((activityType === 'Task' || !activityType) && activity.activity_date) && (
               <div className="flex items-center gap-1">
-                <ClockIcon className="w-4 h-4" />
+                <ClockIcon className="w-5 h-5" />
                 <span className={`font-medium ${
                   (() => {
                     const isCompleted = activity.activity_status?.is_closed || activity.completed_call || activity.sf_is_closed;
