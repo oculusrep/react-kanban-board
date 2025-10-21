@@ -655,6 +655,9 @@ const SiteSubmitDetailsPage: React.FC = () => {
         `Successfully sent ${result.emailsSent} email(s)`,
         { type: 'success' }
       );
+
+      // Close the email composer modal after successful send
+      setShowEmailComposer(false);
     } catch (error) {
       console.error('Error sending email:', error);
       showToast(
