@@ -70,13 +70,23 @@ export const useContactClients = (contactId: string | null) => {
 
       if (contactError) throw contactError;
 
+      console.log('[useContactClients] Contact data:', contactData);
+      console.log('[useContactClients] Contact client_id:', contactData?.client_id);
+      console.log('[useContactClients] Contact client object:', contactData?.client);
+
       // Combine all relations
       const allRelations: ContactClientRelationWithDetails[] = [...(relationsData || [])];
 
       // Add direct client_id if it exists and not already in relations
+      console.log('[useContactClients] Checking direct client_id...');
+      console.log('[useContactClients] contactData?.client_id:', contactData?.client_id);
+      console.log('[useContactClients] contactData.client:', contactData.client);
       if (contactData?.client_id && contactData.client) {
+        console.log('[useContactClients] Direct client_id exists, checking if already in relations...');
         const alreadyExists = allRelations.some(r => r.client_id === contactData.client_id);
+        console.log('[useContactClients] Already exists?', alreadyExists);
         if (!alreadyExists) {
+          console.log('[useContactClients] Adding direct client to relations');
           allRelations.unshift({
             id: `direct-${contactData.client_id}`,
             contact_id: contactId,
@@ -89,7 +99,11 @@ export const useContactClients = (contactId: string | null) => {
             client: contactData.client
           } as ContactClientRelationWithDetails);
         }
+      } else {
+        console.log('[useContactClients] No direct client_id or client object is null');
       }
+
+      console.log('[useContactClients] All relations after adding direct client:', allRelations);
 
       // Add parent clients if they exist
       const clientsToAddParentsFor = allRelations.filter(r => r.client?.parent_id);
