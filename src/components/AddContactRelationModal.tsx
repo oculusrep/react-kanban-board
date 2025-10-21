@@ -324,8 +324,6 @@ const AddContactRelationModal: React.FC<AddContactRelationModalProps> = ({
                 )}
               </div>
             )}
-          </div>
-
                 </div>
 
                 {/* Role Types (New Multi-Select) */}
