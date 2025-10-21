@@ -25,7 +25,8 @@ export const useContactClients = (contactId: string | null) => {
       setLoading(true);
       setError(null);
 
-      const { data, error: fetchError } = await supabase
+      // Fetch many-to-many relations
+      const { data: relationsData, error: relationsError } = await supabase
         .from('contact_client_relation')
         .select(`
           *,
@@ -37,15 +38,101 @@ export const useContactClients = (contactId: string | null) => {
             website,
             description,
             billing_city,
-            billing_state
+            billing_state,
+            parent_id
           )
         `)
         .eq('contact_id', contactId)
         .eq('is_active', true)
         .order('is_primary', { ascending: false });
 
-      if (fetchError) throw fetchError;
-      setRelations(data || []);
+      if (relationsError) throw relationsError;
+
+      // Fetch the contact's direct client_id
+      const { data: contactData, error: contactError } = await supabase
+        .from('contact')
+        .select(`
+          client_id,
+          client:client_id (
+            id,
+            client_name,
+            sf_client_type,
+            phone,
+            website,
+            description,
+            billing_city,
+            billing_state,
+            parent_id
+          )
+        `)
+        .eq('id', contactId)
+        .single();
+
+      if (contactError) throw contactError;
+
+      // Combine all relations
+      const allRelations: ContactClientRelationWithDetails[] = [...(relationsData || [])];
+
+      // Add direct client_id if it exists and not already in relations
+      if (contactData?.client_id && contactData.client) {
+        const alreadyExists = allRelations.some(r => r.client_id === contactData.client_id);
+        if (!alreadyExists) {
+          allRelations.unshift({
+            id: `direct-${contactData.client_id}`,
+            contact_id: contactId,
+            client_id: contactData.client_id,
+            role: null,
+            is_primary: true,
+            is_active: true,
+            created_at: null,
+            updated_at: null,
+            client: contactData.client
+          } as ContactClientRelationWithDetails);
+        }
+      }
+
+      // Add parent clients if they exist
+      const clientsToAddParentsFor = allRelations.filter(r => r.client?.parent_id);
+      for (const relation of clientsToAddParentsFor) {
+        if (relation.client?.parent_id) {
+          // Check if parent is already in the list
+          const parentAlreadyExists = allRelations.some(r => r.client_id === relation.client.parent_id);
+          if (!parentAlreadyExists) {
+            // Fetch parent client details
+            const { data: parentClient, error: parentError } = await supabase
+              .from('client')
+              .select(`
+                id,
+                client_name,
+                sf_client_type,
+                phone,
+                website,
+                description,
+                billing_city,
+                billing_state,
+                parent_id
+              `)
+              .eq('id', relation.client.parent_id)
+              .single();
+
+            if (!parentError && parentClient) {
+              allRelations.push({
+                id: `parent-${parentClient.id}`,
+                contact_id: contactId,
+                client_id: parentClient.id,
+                role: 'Parent Client',
+                is_primary: false,
+                is_active: true,
+                created_at: null,
+                updated_at: null,
+                client: parentClient
+              } as ContactClientRelationWithDetails);
+            }
+          }
+        }
+      }
+
+      setRelations(allRelations);
     } catch (err) {
       console.error('Error fetching contact clients:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch clients');
