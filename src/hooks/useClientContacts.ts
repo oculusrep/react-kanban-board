@@ -25,6 +25,7 @@ export const useClientContacts = (clientId: string | null) => {
       setLoading(true);
       setError(null);
 
+      // Fetch many-to-many relations from contact_client_relation table
       const { data, error: fetchError } = await supabase
         .from('contact_client_relation')
         .select(`
@@ -38,7 +39,8 @@ export const useClientContacts = (clientId: string | null) => {
             mobile_phone,
             title,
             company,
-            salutation
+            salutation,
+            client_id
           )
         `)
         .eq('client_id', clientId)
@@ -46,7 +48,49 @@ export const useClientContacts = (clientId: string | null) => {
         .order('is_primary', { ascending: false });
 
       if (fetchError) throw fetchError;
-      setRelations(data || []);
+
+      // Fetch contacts with direct client_id reference
+      const { data: directContacts, error: directError } = await supabase
+        .from('contact')
+        .select(`
+          id,
+          first_name,
+          last_name,
+          email,
+          phone,
+          mobile_phone,
+          title,
+          company,
+          salutation,
+          client_id
+        `)
+        .eq('client_id', clientId);
+
+      if (directError) throw directError;
+
+      const allRelations: ClientContactRelationWithDetails[] = [...(data || [])];
+
+      // Add direct client_id contacts if they're not already in the many-to-many relations
+      if (directContacts) {
+        for (const contact of directContacts) {
+          const alreadyExists = allRelations.some(r => r.contact_id === contact.id);
+          if (!alreadyExists) {
+            allRelations.unshift({
+              id: `direct-${contact.id}`,
+              contact_id: contact.id,
+              client_id: clientId,
+              role: null,
+              is_primary: true,
+              is_active: true,
+              created_at: null,
+              updated_at: null,
+              contact: contact
+            } as ClientContactRelationWithDetails);
+          }
+        }
+      }
+
+      setRelations(allRelations);
     } catch (err) {
       console.error('Error fetching client contacts:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch contacts');
