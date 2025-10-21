@@ -10,7 +10,6 @@ interface FormData {
   client_name: string;
   type: string | null;
   phone: string | null;
-  email: string | null;
   website: string | null;
   description: string | null;
   billing_street: string | null;
@@ -23,19 +22,6 @@ interface FormData {
   shipping_state: string | null;
   shipping_zip: string | null;
   shipping_country: string | null;
-  industry: string | null;
-  annual_revenue: number | null;
-  number_of_employees: number | null;
-  ownership: string | null;
-  ticker_symbol: string | null;
-  parent_account: string | null;
-  sf_account_source: string | null;
-  rating: string | null;
-  sic_code: string | null;
-  naics_code: string | null;
-  clean_status: string | null;
-  customer_priority: string | null;
-  upsell_opportunity: string | null;
   is_active_client: boolean;
 }
 
@@ -56,7 +42,6 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
     client_name: '',
     type: null,
     phone: null,
-    email: null,
     website: null,
     description: null,
     billing_street: null,
@@ -69,19 +54,6 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
     shipping_state: null,
     shipping_zip: null,
     shipping_country: null,
-    industry: null,
-    annual_revenue: null,
-    number_of_employees: null,
-    ownership: null,
-    ticker_symbol: null,
-    parent_account: null,
-    sf_account_source: null,
-    rating: null,
-    sic_code: null,
-    naics_code: null,
-    clean_status: null,
-    customer_priority: null,
-    upsell_opportunity: null,
     is_active_client: true
   });
 
@@ -106,28 +78,6 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
     'Other'
   ];
 
-  // Industry options
-  const industries = [
-    'Retail',
-    'Restaurant',
-    'Healthcare',
-    'Professional Services',
-    'Financial Services',
-    'Technology',
-    'Real Estate',
-    'Manufacturing',
-    'Education',
-    'Government',
-    'Non-Profit',
-    'Other'
-  ];
-
-  // Rating options
-  const ratings = [
-    'Hot',
-    'Warm',
-    'Cold'
-  ];
 
   // Close client type dropdown when clicking outside
   useEffect(() => {
@@ -180,7 +130,6 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
         client_name: client.client_name || '',
         type: client.sf_client_type,
         phone: client.phone,
-        email: client.email,
         website: client.website,
         description: client.description,
         billing_street: client.billing_street,
@@ -193,19 +142,6 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
         shipping_state: client.shipping_state,
         shipping_zip: client.shipping_zip,
         shipping_country: client.shipping_country,
-        industry: client.industry,
-        annual_revenue: client.annual_revenue,
-        number_of_employees: client.number_of_employees,
-        ownership: client.ownership,
-        ticker_symbol: client.ticker_symbol,
-        parent_account: client.parent_account,
-        sf_account_source: client.sf_account_source,
-        rating: client.rating,
-        sic_code: client.sic_code,
-        naics_code: client.naics_code,
-        clean_status: client.clean_status,
-        customer_priority: client.customer_priority,
-        upsell_opportunity: client.upsell_opportunity,
         is_active_client: client.is_active_client ?? true
       };
       setFormData(newFormData);
