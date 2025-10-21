@@ -92,6 +92,8 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
   const [originalFormData, setOriginalFormData] = useState<FormData | null>(null);
   const [isClientTypeDropdownOpen, setIsClientTypeDropdownOpen] = useState(false);
   const clientTypeDropdownRef = React.useRef<HTMLDivElement>(null);
+  const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
+  const [parentAccount, setParentAccount] = useState<Client | null>(null);
 
   // Client type options
   const clientTypes = [
@@ -144,9 +146,36 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
     };
   }, [isClientTypeDropdownOpen]);
 
+  // Load parent account when selectedParentId changes
+  useEffect(() => {
+    const fetchParent = async () => {
+      if (!selectedParentId) {
+        setParentAccount(null);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('client')
+          .select('*')
+          .eq('id', selectedParentId)
+          .single();
+
+        if (error) throw error;
+        setParentAccount(data);
+      } catch (err) {
+        console.error('Error fetching parent account:', err);
+        setParentAccount(null);
+      }
+    };
+
+    fetchParent();
+  }, [selectedParentId]);
+
   // Load client data when component mounts or client changes
   useEffect(() => {
     if (client) {
+      setSelectedParentId(client.parent_id);
       const newFormData = {
         client_name: client.client_name || '',
         type: client.sf_client_type,
@@ -262,6 +291,7 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
           ownership: formData.ownership,
           ticker_symbol: formData.ticker_symbol,
           parent_account: formData.parent_account,
+          parent_id: selectedParentId, // Add parent_id for hierarchy
           sf_account_source: formData.sf_account_source,
           rating: formData.rating,
           sic_code: formData.sic_code,
@@ -408,19 +438,28 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
             )}
           </div>
 
-          {/* Parent Account */}
-          {client && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Parent Account
-              </label>
+          {/* Parent Account - Show for both new and existing clients */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Parent Account
+            </label>
+            {client ? (
               <ParentAccountSelector
                 currentClient={client}
                 onParentChange={handleParentChange}
                 hideLabel={true}
               />
-            </div>
-          )}
+            ) : (
+              <ParentAccountSelector
+                currentClient={{ id: 'new-client-temp-id', client_name: '', parent_id: selectedParentId } as Client}
+                onParentChange={async (parentId) => {
+                  setSelectedParentId(parentId);
+                  setHasChanges(true);
+                }}
+                hideLabel={true}
+              />
+            )}
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
