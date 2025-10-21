@@ -29,7 +29,7 @@ interface FormData {
   ownership: string | null;
   ticker_symbol: string | null;
   parent_account: string | null;
-  account_source: string | null;
+  sf_account_source: string | null;
   rating: string | null;
   sic_code: string | null;
   naics_code: string | null;
@@ -75,7 +75,7 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
     ownership: null,
     ticker_symbol: null,
     parent_account: null,
-    account_source: null,
+    sf_account_source: null,
     rating: null,
     sic_code: null,
     naics_code: null,
@@ -170,7 +170,7 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
         ownership: client.ownership,
         ticker_symbol: client.ticker_symbol,
         parent_account: client.parent_account,
-        account_source: client.account_source,
+        sf_account_source: client.sf_account_source,
         rating: client.rating,
         sic_code: client.sic_code,
         naics_code: client.naics_code,
@@ -238,10 +238,38 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
     setLoading(true);
     try {
       if (isNewClient) {
-        // Create new client
+        // Create new client - map form fields to database columns
         const insertData: ClientInsert = {
-          ...formData,
-          client_name: formData.client_name.trim()
+          client_name: formData.client_name.trim(),
+          sf_client_type: formData.type,
+          phone: formData.phone,
+          email: formData.email,
+          website: formData.website,
+          description: formData.description,
+          billing_street: formData.billing_street,
+          billing_city: formData.billing_city,
+          billing_state: formData.billing_state,
+          billing_zip: formData.billing_zip,
+          billing_country: formData.billing_country,
+          shipping_street: formData.shipping_street,
+          shipping_city: formData.shipping_city,
+          shipping_state: formData.shipping_state,
+          shipping_zip: formData.shipping_zip,
+          shipping_country: formData.shipping_country,
+          industry: formData.industry,
+          annual_revenue: formData.annual_revenue,
+          number_of_employees: formData.number_of_employees,
+          ownership: formData.ownership,
+          ticker_symbol: formData.ticker_symbol,
+          parent_account: formData.parent_account,
+          sf_account_source: formData.sf_account_source,
+          rating: formData.rating,
+          sic_code: formData.sic_code,
+          naics_code: formData.naics_code,
+          clean_status: formData.clean_status,
+          customer_priority: formData.customer_priority,
+          upsell_opportunity: formData.upsell_opportunity,
+          is_active_client: formData.is_active_client
         };
 
         const { data, error } = await supabase
