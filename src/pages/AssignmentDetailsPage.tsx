@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabaseClient";
 import { Assignment } from "../lib/types";
 import AssignmentOverviewTab from "../components/AssignmentOverviewTab";
 import AssignmentSidebar from "../components/AssignmentSidebar";
+import AssignmentHeaderBar from "../components/AssignmentHeaderBar";
 import GenericActivityTab from "../components/GenericActivityTab";
 import { useTrackPageView } from "../hooks/useRecentlyViewed";
 import Toast from '../components/Toast';
@@ -237,50 +238,38 @@ export default function AssignmentDetailsPage() {
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
-      {/* Assignment Header Bar - Always visible at top */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6 md:justify-start md:space-x-10">
-            <div className="flex justify-start lg:w-0 lg:flex-1">
-              <h1 className="text-2xl font-bold text-gray-900">
-                {assignmentName}
-              </h1>
-            </div>
+      {/* Assignment Header Bar - Only show for existing assignments */}
+      {!isNewAssignment && assignment.id && assignment.id !== 'new' && (
+        <AssignmentHeaderBar
+          assignment={{
+            id: assignment.id,
+            assignment_name: assignment.assignment_name || 'Unnamed Assignment',
+            assignment_value: assignment.assignment_value,
+            fee: assignment.fee,
+            priority_id: assignment.priority_id,
+            due_date: assignment.due_date,
+            client_id: assignment.client_id,
+          }}
+          onDelete={handleDelete}
+        />
+      )}
 
-            <div className="flex items-center space-x-2">
+      {/* Simple header for new assignments */}
+      {isNewAssignment && (
+        <div className="bg-white border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center py-6">
+              <h1 className="text-2xl font-bold text-gray-900">New Assignment</h1>
               <button
                 onClick={() => navigate('/master-pipeline')}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
               >
                 Back to Pipeline
               </button>
-              {!isNewAssignment && actualAssignmentId && actualAssignmentId !== 'new' && (
-                <button
-                  onClick={handleDelete}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md transition-colors"
-                  title="Delete Assignment"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                  Delete
-                </button>
-              )}
-              {!isNewAssignment && assignment.progress && typeof assignment.progress === 'string' && !assignment.progress.includes('<') && (
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                  assignment.progress === 'Completed'
-                    ? 'bg-green-100 text-green-800'
-                    : assignment.progress === 'In Progress'
-                    ? 'bg-yellow-100 text-yellow-800'
-                    : 'bg-gray-100 text-gray-800'
-                }`}>
-                  {assignment.progress}
-                </span>
-              )}
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Main Content Area with Static Sidebar */}
       <div className="flex flex-1 overflow-hidden">

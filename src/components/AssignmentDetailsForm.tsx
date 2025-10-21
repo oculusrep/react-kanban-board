@@ -22,15 +22,10 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
   
   // Lookup options
   const [priorityOptions, setPriorityOptions] = useState<AssignmentPriority[]>([]);
-  const [clientOptions, setClientOptions] = useState<{ id: string; label: string }[]>([]);
-  const [dealOptions, setDealOptions] = useState<{ id: string; label: string }[]>([]);
-  const [userOptions, setUserOptions] = useState<{ id: string; label: string }[]>([]);
-  
+
   // Search states for autocomplete
   const [clientSearch, setClientSearch] = useState("");
   const [clientSuggestions, setClientSuggestions] = useState<{ id: string; label: string }[]>([]);
-  const [dealSearch, setDealSearch] = useState("");
-  const [dealSuggestions, setDealSuggestions] = useState<{ id: string; label: string }[]>([]);
 
   useEffect(() => {
     // Calculate fee on initial load
@@ -45,8 +40,7 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
     
     // Clear search suggestions when switching assignments
     setClientSuggestions([]);
-    setDealSuggestions([]);
-    
+
     // Set initial search values if assignment has related records, or clear if not
     if (assignment.client_id) {
       supabase
@@ -62,21 +56,6 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
     } else {
       setClientSearch('');
     }
-    
-    if (assignment.deal_id) {
-      supabase
-        .from('deal')
-        .select('deal_name')
-        .eq('id', assignment.deal_id)
-        .single()
-        .then(({ data }) => {
-          if (data) {
-            setDealSearch(data.deal_name || '');
-          }
-        });
-    } else {
-      setDealSearch('');
-    }
   }, [assignment]);
 
   // Fetch lookup options
@@ -88,18 +67,10 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
         .select('*')
         .eq('active', true)
         .order('sort_order');
-      
-      if (priorities) setPriorityOptions(priorities);
 
-      // Fetch users for owner selection
-      const { data: users } = await supabase
-        .from('user')
-        .select('id, name')
-        .order('name');
-      
-      if (users) setUserOptions(users.map(u => ({ id: u.id, label: u.name || 'Unknown User' })));
+      if (priorities) setPriorityOptions(priorities);
     };
-    
+
     fetchLookups();
   }, []);
 
@@ -112,11 +83,11 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
           .select('id, client_name')
           .ilike('client_name', `%${clientSearch}%`)
           .limit(5);
-        
+
         if (data) {
-          setClientSuggestions(data.map(c => ({ 
-            id: c.id, 
-            label: c.client_name || 'Unnamed Client' 
+          setClientSuggestions(data.map(c => ({
+            id: c.id,
+            label: c.client_name || 'Unnamed Client'
           })));
         }
       } else {
@@ -126,30 +97,6 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
 
     return () => clearTimeout(searchTimeout);
   }, [clientSearch]);
-
-  // Deal search functionality
-  useEffect(() => {
-    const searchTimeout = setTimeout(async () => {
-      if (dealSearch.trim().length > 0) {
-        const { data } = await supabase
-          .from('deal')
-          .select('id, deal_name')
-          .ilike('deal_name', `%${dealSearch}%`)
-          .limit(5);
-        
-        if (data) {
-          setDealSuggestions(data.map(d => ({ 
-            id: d.id, 
-            label: d.deal_name || 'Unnamed Deal' 
-          })));
-        }
-      } else {
-        setDealSuggestions([]);
-      }
-    }, 300);
-
-    return () => clearTimeout(searchTimeout);
-  }, [dealSearch]);
 
   const updateField = async (field: keyof Assignment, value: any) => {
     // Update form state immediately
@@ -181,8 +128,6 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
           assignment_name: updatedForm.assignment_name,
           assignment_value: updatedForm.assignment_value,
           client_id: updatedForm.client_id,
-          deal_id: updatedForm.deal_id,
-          owner_id: updatedForm.owner_id,
           priority_id: updatedForm.priority_id,
           transaction_type_id: updatedForm.transaction_type_id,
           due_date: updatedForm.due_date,
@@ -242,8 +187,6 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
       assignment_name: form.assignment_name,
       assignment_value: form.assignment_value,
       client_id: form.client_id,
-      deal_id: form.deal_id,
-      owner_id: form.owner_id,
       priority_id: form.priority_id,
       transaction_type_id: form.transaction_type_id,
       due_date: form.due_date,
@@ -336,33 +279,13 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
             )}
           </div>
 
-          {/* Owner */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Owner
-            </label>
-            <select
-              value={form.owner_id || ''}
-              onChange={(e) => updateField('owner_id', e.target.value || null)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              tabIndex={4}
-            >
-              <option value="">Select owner...</option>
-              {userOptions.map(user => (
-                <option key={user.id} value={user.id}>
-                  {user.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
         </div>
       </div>
 
       {/* Relationships Section */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
         <h3 className="text-lg font-medium text-gray-900 mb-4">Relationships</h3>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Client Search */}
           <div>
@@ -374,7 +297,7 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
               onFocus={(e) => e.target.select()}
               placeholder="Search clients..."
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              tabIndex={5}
+              tabIndex={4}
             />
             {clientSuggestions.filter((s) => s.label !== clientSearch).length > 0 && (
               <ul className="bg-white border border-gray-300 rounded mt-1 max-h-48 overflow-auto shadow-lg">
@@ -396,39 +319,6 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
               </ul>
             )}
           </div>
-
-          {/* Deal Search */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Deal</label>
-            <input
-              type="text"
-              value={dealSearch}
-              onChange={(e) => setDealSearch(e.target.value)}
-              onFocus={(e) => e.target.select()}
-              placeholder="Search deals..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              tabIndex={6}
-            />
-            {dealSuggestions.filter((s) => s.label !== dealSearch).length > 0 && (
-              <ul className="bg-white border border-gray-300 rounded mt-1 max-h-48 overflow-auto shadow-lg">
-                {dealSuggestions
-                  .filter((s) => s.label !== dealSearch)
-                  .map((deal) => (
-                    <li
-                      key={deal.id}
-                      onClick={() => {
-                        updateField('deal_id', deal.id);
-                        setDealSearch(deal.label);
-                        setDealSuggestions([]);
-                      }}
-                      className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
-                    >
-                      {deal.label}
-                    </li>
-                  ))}
-              </ul>
-            )}
-          </div>
         </div>
       </div>
 
@@ -444,7 +334,7 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
             onChange={(v) => updateField('commission', v)}
             placeholder="0.00"
             maxValue={100}
-            tabIndex={7}
+            tabIndex={5}
           />
 
           <div>
@@ -461,14 +351,14 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
             onChange={(v) => updateField('referral_fee', v)}
             placeholder="0.00"
             maxValue={100}
-            tabIndex={8}
+            tabIndex={6}
           />
 
           <ReferralPayeeAutocomplete
             value={form.referral_payee_id}
             onChange={(clientId) => updateField('referral_payee_id', clientId)}
             label="Referral Payee"
-            tabIndex={9}
+            tabIndex={7}
           />
         </div>
       </div>
@@ -486,7 +376,7 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
               checked={form.scoped || false}
               onChange={(e) => updateField('scoped', e.target.checked)}
               className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              tabIndex={10}
+              tabIndex={8}
             />
             <label htmlFor="scoped" className="ml-2 block text-sm text-gray-900">
               Scoped Assignment
@@ -504,7 +394,7 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               rows={3}
               placeholder="Enter site criteria..."
-              tabIndex={11}
+              tabIndex={9}
             />
           </div>
         </div>
@@ -517,7 +407,7 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
             onClick={handleCreateNewAssignment}
             disabled={saving}
             className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            tabIndex={12}
+            tabIndex={10}
           >
             {saving ? 'Creating...' : 'Create Assignment'}
           </button>
