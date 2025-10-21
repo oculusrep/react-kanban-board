@@ -287,6 +287,7 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
 
   const [client, setClient] = useState<Client | null>(null);
   const [childAccounts, setChildAccounts] = useState<Client[]>([]);
+  const [parentAccount, setParentAccount] = useState<Client | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
@@ -305,7 +306,7 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
   // Expansion states - all collapsed by default
   const [expandedSidebarModules, setExpandedSidebarModules] = useState({
     contacts: false,
-    childAccounts: false,
+    associatedAccounts: false,
     notes: false,
     deals: false,
     siteSubmits: false,
@@ -318,7 +319,7 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
   useEffect(() => {
     setExpandedSidebarModules({
       contacts: false,
-      childAccounts: false,
+      associatedAccounts: false,
       notes: false,
       deals: false,
       siteSubmits: false,
@@ -355,6 +356,21 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
 
         if (childrenError) throw childrenError;
         setChildAccounts(childrenData || []);
+
+        // Load parent account if this client has a parent_id
+        if (clientData?.parent_id) {
+          const { data: parentData, error: parentError } = await supabase
+            .from('client')
+            .select('*')
+            .eq('id', clientData.parent_id)
+            .single();
+
+          if (!parentError && parentData) {
+            setParentAccount(parentData);
+          }
+        } else {
+          setParentAccount(null);
+        }
 
         // Contacts are now loaded via useClientContacts hook
 
@@ -584,17 +600,57 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
                   })}
                 </SidebarModule>
 
-                {/* Child Accounts */}
+                {/* Associated Accounts */}
                 <SidebarModule
-                  title="Child Accounts"
-                  count={childAccounts.length}
+                  title="Associated Accounts"
+                  count={(parentAccount ? 1 : 0) + childAccounts.length}
                   onAddNew={() => setShowAddChildAccountModal(true)}
-                  isExpanded={expandedSidebarModules.childAccounts}
-                  onToggle={() => toggleSidebarModule('childAccounts')}
+                  isExpanded={expandedSidebarModules.associatedAccounts}
+                  onToggle={() => toggleSidebarModule('associatedAccounts')}
                   icon="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-                  isEmpty={childAccounts.length === 0}
+                  isEmpty={!parentAccount && childAccounts.length === 0}
                   showAddButton={true}
                 >
+                  {/* Parent Account */}
+                  {parentAccount && (
+                    <div
+                      key={parentAccount.id}
+                      className="p-3 hover:bg-blue-50 cursor-pointer transition-colors border-b border-gray-100 group"
+                      onClick={() => {
+                        // Navigate to parent account
+                        window.location.href = `/client/${parentAccount.id}`;
+                      }}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <svg className="w-4 h-4 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                            </svg>
+                            <p className="text-sm font-medium text-gray-900 truncate group-hover:text-blue-900">
+                              {parentAccount.client_name || 'Unnamed Client'}
+                            </p>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                              Parent
+                            </span>
+                            <svg className="w-3 h-3 text-gray-400 group-hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                          </div>
+                          <div className="flex items-center space-x-2 text-xs text-gray-500">
+                            {parentAccount.sf_client_type && (
+                              <span>{parentAccount.sf_client_type}</span>
+                            )}
+                            {parentAccount.billing_city && parentAccount.billing_state && (
+                              <span>• {parentAccount.billing_city}, {parentAccount.billing_state}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Child Accounts */}
                   {childAccounts.map(childAccount => (
                     <div
                       key={childAccount.id}
@@ -607,12 +663,15 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center space-x-2 mb-1">
-                            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                            <svg className="w-4 h-4 text-orange-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
                             </svg>
                             <p className="text-sm font-medium text-gray-900 truncate group-hover:text-orange-900">
                               {childAccount.client_name || 'Unnamed Client'}
                             </p>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                              Child
+                            </span>
                             <svg className="w-3 h-3 text-gray-400 group-hover:text-orange-600 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                             </svg>
