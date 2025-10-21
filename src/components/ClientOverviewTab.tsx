@@ -267,12 +267,11 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
     setLoading(true);
     try {
       if (isNewClient) {
-        // Create new client - map form fields to database columns
+        // Create new client - only include fields that exist in database
         const insertData: ClientInsert = {
           client_name: formData.client_name.trim(),
           sf_client_type: formData.type,
           phone: formData.phone,
-          email: formData.email,
           website: formData.website,
           description: formData.description,
           billing_street: formData.billing_street,
@@ -285,20 +284,7 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
           shipping_state: formData.shipping_state,
           shipping_zip: formData.shipping_zip,
           shipping_country: formData.shipping_country,
-          industry: formData.industry,
-          annual_revenue: formData.annual_revenue,
-          number_of_employees: formData.number_of_employees,
-          ownership: formData.ownership,
-          ticker_symbol: formData.ticker_symbol,
-          parent_account: formData.parent_account,
-          parent_id: selectedParentId, // Add parent_id for hierarchy
-          sf_account_source: formData.sf_account_source,
-          rating: formData.rating,
-          sic_code: formData.sic_code,
-          naics_code: formData.naics_code,
-          clean_status: formData.clean_status,
-          customer_priority: formData.customer_priority,
-          upsell_opportunity: formData.upsell_opportunity,
+          parent_id: selectedParentId,
           is_active_client: formData.is_active_client
         };
 
