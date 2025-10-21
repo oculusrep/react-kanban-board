@@ -128,7 +128,7 @@ export const ParentAccountSelector: React.FC<ParentAccountSelectorProps> = ({
         <div className="flex-1">
           {!hideLabel && (
             <div className="text-xs font-semibold text-gray-500 mb-1">
-              Parent Account
+              Parent Client
             </div>
           )}
           <button
@@ -142,7 +142,7 @@ export const ParentAccountSelector: React.FC<ParentAccountSelectorProps> = ({
           >
             <div className="flex items-center justify-between">
               <span className={`truncate ${parentAccount ? 'text-gray-900' : 'text-gray-400'}`}>
-                {parentAccount ? parentAccount.client_name : 'No parent account'}
+                {parentAccount ? parentAccount.client_name : 'No parent client'}
               </span>
               <svg
                 className="w-4 h-4 ml-2 flex-shrink-0 text-gray-400"
@@ -166,7 +166,7 @@ export const ParentAccountSelector: React.FC<ParentAccountSelectorProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search accounts..."
+              placeholder="Search clients..."
               autoFocus
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
@@ -182,7 +182,7 @@ export const ParentAccountSelector: React.FC<ParentAccountSelectorProps> = ({
 
             {!isSearching && searchQuery && searchResults.length === 0 && (
               <div className="px-3 py-2 text-sm text-gray-500">
-                No accounts found
+                No clients found
               </div>
             )}
 
@@ -222,7 +222,7 @@ export const ParentAccountSelector: React.FC<ParentAccountSelectorProps> = ({
                 disabled={isLoading}
                 className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
               >
-                Remove parent account
+                Remove parent client
               </button>
             </>
           )}

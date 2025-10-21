@@ -438,10 +438,10 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
             )}
           </div>
 
-          {/* Parent Account - Show for both new and existing clients */}
+          {/* Parent Client - Show for both new and existing clients */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Parent Account
+              Parent Client
             </label>
             {client ? (
               <ParentAccountSelector
