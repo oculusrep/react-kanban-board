@@ -97,17 +97,16 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
   }, []);
 
   const fetchDealStages = async () => {
-    // Fetch distinct stages from deals that have payments
+    // Fetch active deal stages
     const { data } = await supabase
-      .from('deal')
-      .select('stage')
-      .not('stage', 'is', null)
-      .order('stage');
+      .from('deal_stage')
+      .select('label')
+      .eq('active', true)
+      .order('sort_order', { ascending: true });
 
     if (data) {
-      // Get unique stages
-      const uniqueStages = Array.from(new Set(data.map(d => d.stage).filter(Boolean)));
-      setDealStages(uniqueStages);
+      const stageLabels = data.map(d => d.label).filter(Boolean);
+      setDealStages(stageLabels);
     }
   };
 
