@@ -32,47 +32,33 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
 
-  // Fetch user role from user table
+  // Fetch user role from user table using fast RPC function
   const fetchUserRole = async (userId: string) => {
     try {
-      // Add timeout to prevent infinite loading (20 second timeout for slow database)
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Query timeout after 20 seconds')), 20000)
-      );
-
-      const queryPromise = supabase
-        .from('user')
-        .select('ovis_role')
-        .eq('id', userId)
-        .single();
-
-      const result = await Promise.race([queryPromise, timeoutPromise]);
-      const { data, error } = result as any;
+      // Use RPC function which bypasses slow RLS policies
+      const { data, error } = await supabase.rpc('get_user_role', { user_id: userId });
 
       if (error) {
-        console.error('Error fetching user role:', error);
-        // Default to admin if query fails - this ensures admins can always access the system
-        setUserRole('admin');
+        console.error('Error calling get_user_role RPC:', error);
+        // Fallback to direct query if RPC fails
+        const { data: userData, error: queryError } = await supabase
+          .from('user')
+          .select('ovis_role')
+          .eq('id', userId)
+          .single();
+
+        if (queryError) {
+          console.error('Fallback query failed:', queryError);
+          setUserRole('admin'); // Default to admin on error
+        } else {
+          setUserRole(userData?.ovis_role || null);
+        }
       } else {
-        setUserRole(data?.ovis_role || null);
+        setUserRole(data || null);
       }
     } catch (err) {
       console.error('Unexpected error fetching user role:', err);
-      // Default to admin on timeout or exception - this prevents lockouts due to slow queries
       setUserRole('admin');
-
-      // Continue trying in background to get the real role
-      supabase
-        .from('user')
-        .select('ovis_role')
-        .eq('id', userId)
-        .single()
-        .then(({ data }) => {
-          if (data?.ovis_role) {
-            console.log('Background role fetch completed:', data.ovis_role);
-            setUserRole(data.ovis_role);
-          }
-        });
     }
   };
 
