@@ -66,9 +66,6 @@ const PaymentDashboardPage: React.FC = () => {
             referral_payee_client_id,
             client!deal_referral_payee_client_id_fkey (
               client_name
-            ),
-            deal_stage!deal_stage_id_fkey (
-              label
             )
           )
         `)
@@ -76,6 +73,19 @@ const PaymentDashboardPage: React.FC = () => {
         .order('payment_date_estimated', { ascending: false, nullsFirst: false });
 
       if (paymentsError) throw paymentsError;
+
+      // Fetch deal stages separately
+      const { data: stagesData, error: stagesError } = await supabase
+        .from('deal_stage')
+        .select('id, label');
+
+      if (stagesError) throw stagesError;
+
+      // Create stage lookup map
+      const stageMap = new Map<string, string>();
+      stagesData?.forEach(stage => {
+        stageMap.set(stage.id, stage.label);
+      });
 
       // Fetch all payment splits with broker info
       const { data: splitsData, error: splitsError } = await supabase
@@ -132,7 +142,7 @@ const PaymentDashboardPage: React.FC = () => {
           payment_sf_id: payment.sf_id,
           deal_id: payment.deal_id,
           deal_name: payment.deal?.deal_name || 'Unknown Deal',
-          deal_stage: payment.deal?.deal_stage?.label || null,
+          deal_stage: payment.deal?.stage_id ? stageMap.get(payment.deal.stage_id) || null : null,
           payment_sequence: payment.payment_sequence || 0,
           total_payments: dealTotalPayments,
           payment_amount: payment.payment_amount || 0,
