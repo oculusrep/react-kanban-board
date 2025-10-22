@@ -32,12 +32,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
 
-  // Fetch user role - simplified to just set admin instantly
+  // Fetch user role from user table
   const fetchUserRole = async (userId: string) => {
-    // TEMPORARY: Just set everyone as admin to avoid slow database query
-    // The database query takes 10+ seconds due to RLS policy issues
-    // TODO: Fix RLS policies, then restore proper role checking
-    setUserRole('admin');
+    try {
+      const { data, error } = await supabase
+        .from('user')
+        .select('ovis_role')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching user role:', error);
+        setUserRole(null);
+      } else {
+        setUserRole(data?.ovis_role || null);
+      }
+    } catch (err) {
+      console.error('Unexpected error fetching user role:', err);
+      setUserRole(null);
+    }
   };
 
   useEffect(() => {
