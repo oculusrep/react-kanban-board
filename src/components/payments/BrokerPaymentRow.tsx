@@ -23,7 +23,7 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, onUpdate }) 
 
   const formatPercent = (percent: number | null) => {
     if (percent === null) return '';
-    return `${percent.toFixed(2)}%`;
+    return `${Math.round(percent)}%`;
   };
 
   const formatDate = (dateString: string | null) => {
