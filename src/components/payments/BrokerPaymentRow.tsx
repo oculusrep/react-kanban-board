@@ -1,7 +1,7 @@
 // Broker Payment Row with Paid Checkbox
 // src/components/payments/BrokerPaymentRow.tsx
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { BrokerPaymentSplit } from '../../types/payment-dashboard';
 
@@ -38,24 +38,43 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, onUpdate }) 
     return `${year}-${month}-${day}`;
   };
 
+  const [localPaid, setLocalPaid] = useState(split.paid);
+  const [localPaidDate, setLocalPaidDate] = useState(split.paid_date);
+
+  // Sync with props when they change
+  useEffect(() => {
+    setLocalPaid(split.paid);
+    setLocalPaidDate(split.paid_date);
+  }, [split.paid, split.paid_date]);
+
   const handleTogglePaid = async (paid: boolean) => {
+    const newDate = paid ? getLocalDateString() : null;
+
+    // Optimistic update
+    setLocalPaid(paid);
+    setLocalPaidDate(newDate);
+
     const { error } = await supabase
       .from('payment_split')
       .update({
         paid: paid,
-        paid_date: paid ? getLocalDateString() : null,
+        paid_date: newDate,
       })
       .eq('id', split.payment_split_id);
 
     if (error) {
       console.error('Error updating payment split:', error);
       alert('Failed to update broker payment status');
-    } else {
-      onUpdate();
+      // Revert on error
+      setLocalPaid(split.paid);
+      setLocalPaidDate(split.paid_date);
     }
   };
 
   const handleUpdatePaidDate = async (date: string) => {
+    // Optimistic update
+    setLocalPaidDate(date);
+
     const { error } = await supabase
       .from('payment_split')
       .update({ paid_date: date })
@@ -64,8 +83,8 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, onUpdate }) 
     if (error) {
       console.error('Error updating paid date:', error);
       alert('Failed to update paid date');
-    } else {
-      onUpdate();
+      // Revert on error
+      setLocalPaidDate(split.paid_date);
     }
   };
 
@@ -88,14 +107,14 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, onUpdate }) 
         <div className="flex items-center space-x-2">
           <input
             type="checkbox"
-            checked={split.paid}
+            checked={localPaid}
             onChange={(e) => handleTogglePaid(e.target.checked)}
             className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
           />
-          {split.paid && split.paid_date && (
+          {localPaid && localPaidDate && (
             <input
               type="date"
-              value={split.paid_date}
+              value={localPaidDate}
               onChange={(e) => handleUpdatePaidDate(e.target.value)}
               className="text-gray-500 text-xs border-0 p-0 focus:ring-0 cursor-pointer hover:text-gray-700"
               style={{ width: '90px' }}

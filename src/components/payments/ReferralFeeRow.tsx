@@ -1,7 +1,7 @@
 // Referral Fee Row with Paid Checkbox
 // src/components/payments/ReferralFeeRow.tsx
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 
 interface ReferralFeeRowProps {
@@ -47,24 +47,43 @@ const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
     return `${year}-${month}-${day}`;
   };
 
+  const [localPaid, setLocalPaid] = useState(paid);
+  const [localPaidDate, setLocalPaidDate] = useState(paidDate);
+
+  // Sync with props when they change
+  useEffect(() => {
+    setLocalPaid(paid);
+    setLocalPaidDate(paidDate);
+  }, [paid, paidDate]);
+
   const handleTogglePaid = async (isPaid: boolean) => {
+    const newDate = isPaid ? getLocalDateString() : null;
+
+    // Optimistic update
+    setLocalPaid(isPaid);
+    setLocalPaidDate(newDate);
+
     const { error } = await supabase
       .from('payment')
       .update({
         referral_fee_paid: isPaid,
-        referral_fee_paid_date: isPaid ? getLocalDateString() : null,
+        referral_fee_paid_date: newDate,
       })
       .eq('id', paymentId);
 
     if (error) {
       console.error('Error updating referral fee payment:', error);
       alert('Failed to update referral fee payment status');
-    } else {
-      onUpdate();
+      // Revert on error
+      setLocalPaid(paid);
+      setLocalPaidDate(paidDate);
     }
   };
 
   const handleUpdatePaidDate = async (date: string) => {
+    // Optimistic update
+    setLocalPaidDate(date);
+
     const { error } = await supabase
       .from('payment')
       .update({ referral_fee_paid_date: date })
@@ -73,8 +92,8 @@ const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
     if (error) {
       console.error('Error updating referral fee paid date:', error);
       alert('Failed to update paid date');
-    } else {
-      onUpdate();
+      // Revert on error
+      setLocalPaidDate(paidDate);
     }
   };
 
@@ -95,21 +114,21 @@ const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
         <div className="ml-6 flex items-center space-x-2">
           <input
             type="checkbox"
-            checked={paid}
+            checked={localPaid}
             onChange={(e) => handleTogglePaid(e.target.checked)}
             className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
           />
-          {paid && paidDate ? (
+          {localPaid && localPaidDate ? (
             <input
               type="date"
-              value={paidDate}
+              value={localPaidDate}
               onChange={(e) => handleUpdatePaidDate(e.target.value)}
               className="text-gray-500 text-xs border-0 p-0 focus:ring-0 cursor-pointer hover:text-gray-700"
               style={{ width: '90px' }}
             />
           ) : (
             <span className="text-sm text-gray-500">
-              {paid ? 'Paid' : 'Mark as Paid'}
+              {localPaid ? 'Paid' : 'Mark as Paid'}
             </span>
           )}
         </div>

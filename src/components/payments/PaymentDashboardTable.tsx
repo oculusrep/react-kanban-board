@@ -18,6 +18,7 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
   onPaymentUpdate,
 }) => {
   const navigate = useNavigate();
+  const [localPayments, setLocalPayments] = useState<PaymentDashboardRow[]>(payments);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [selectedPayment, setSelectedPayment] = useState<PaymentDashboardRow | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -25,6 +26,11 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [paymentToDelete, setPaymentToDelete] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Sync local payments with parent when parent data changes
+  useEffect(() => {
+    setLocalPayments(payments);
+  }, [payments]);
 
   const toggleRow = (paymentId: string) => {
     const newExpanded = new Set(expandedRows);
@@ -73,6 +79,16 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
   };
 
   const handleUpdatePaymentField = async (paymentId: string, field: string, value: any) => {
+    // Optimistic update - update local state immediately
+    setLocalPayments(prevPayments =>
+      prevPayments.map(payment =>
+        payment.payment_id === paymentId
+          ? { ...payment, [field]: value }
+          : payment
+      )
+    );
+
+    // Update database in background
     const { error } = await supabase
       .from('payment')
       .update({ [field]: value })
@@ -81,7 +97,7 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
     if (error) {
       console.error(`Error updating payment ${field}:`, error);
       alert(`Failed to update payment ${field}`);
-    } else {
+      // Revert on error by refetching
       onPaymentUpdate();
     }
   };
@@ -188,7 +204,7 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
     );
   }
 
-  if (payments.length === 0) {
+  if (localPayments.length === 0) {
     return (
       <div className="bg-white shadow rounded-lg p-12 text-center">
         <p className="text-gray-500">No payments found matching your filters.</p>
@@ -230,7 +246,7 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {payments.map((payment) => {
+            {localPayments.map((payment) => {
               const isExpanded = expandedRows.has(payment.payment_id);
               return (
                 <React.Fragment key={payment.payment_id}>
