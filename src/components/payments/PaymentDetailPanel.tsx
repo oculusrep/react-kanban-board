@@ -3,6 +3,7 @@ import { Payment, PaymentSplit, Broker, Deal, Client, CommissionSplit } from '..
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import BrokerSplitEditor from '../BrokerSplitEditor';
 import PaymentDetails from './PaymentDetails';
+import PaymentCheckProcessing from './PaymentCheckProcessing';
 import { usePaymentSplitValidation } from '../../hooks/usePaymentSplitValidation';
 import { usePaymentSplitCalculations } from '../../hooks/usePaymentSplitCalculations';
 import { usePaymentDisbursement } from '../../hooks/usePaymentDisbursement';
@@ -161,7 +162,18 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
             Payment #{payment.payment_sequence} • AGCI: ${paymentAGCI.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
         </div>
-        
+
+        {/* Payment Check Processing */}
+        <PaymentCheckProcessing
+          paymentReceived={payment.payment_received || false}
+          paymentReceivedDate={payment.payment_received_date || null}
+          invoiceSent={payment.invoice_sent || false}
+          invoiceDate={payment.payment_invoice_date || null}
+          onUpdateField={(field, value) => {
+            onUpdatePayment({ [field]: value });
+          }}
+        />
+
         {/* Broker Split Cards */}
         <div className="space-y-4">
           {calculatedSplits.map((split) => (

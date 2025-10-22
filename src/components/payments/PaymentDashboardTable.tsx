@@ -5,6 +5,7 @@ import { PaymentDashboardRow } from '../../types/payment-dashboard';
 import BrokerPaymentRow from './BrokerPaymentRow';
 import ReferralFeeRow from './ReferralFeeRow';
 import PaymentDetailSidebar from './PaymentDetailSidebar';
+import PaymentCheckProcessing from './PaymentCheckProcessing';
 
 interface PaymentDashboardTableProps {
   payments: PaymentDashboardRow[];
@@ -385,108 +386,13 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                       <td colSpan={9} className="px-0 py-0 bg-gray-50">
                         <div className="px-12 py-4">
                           {/* Payment Check Processing Section */}
-                          <div className="mb-4">
-                            <h4 className="text-xs font-semibold text-gray-700 mb-2">
-                              Payment Check Processing
-                            </h4>
-                            <div className="bg-white rounded-lg border border-gray-200 px-4 py-2">
-                              <div className="flex items-center space-x-6 text-xs">
-                                {/* Payment Received */}
-                                <div className="flex items-center space-x-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={payment.payment_received}
-                                    onChange={(e) => {
-                                      const checked = e.target.checked;
-                                      handleUpdatePaymentField(
-                                        payment.payment_id,
-                                        'payment_received',
-                                        checked
-                                      );
-                                      // Auto-set date if checked and no date exists
-                                      if (checked && !payment.payment_received_date) {
-                                        handleUpdatePaymentField(
-                                          payment.payment_id,
-                                          'payment_received_date',
-                                          getLocalDateString()
-                                        );
-                                      } else if (!checked) {
-                                        handleUpdatePaymentField(
-                                          payment.payment_id,
-                                          'payment_received_date',
-                                          null
-                                        );
-                                      }
-                                    }}
-                                    className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-                                  />
-                                  <span className="text-gray-700 font-medium">Payment Received</span>
-                                  {payment.payment_received && payment.payment_received_date && (
-                                    <input
-                                      type="date"
-                                      value={payment.payment_received_date}
-                                      onChange={(e) => {
-                                        handleUpdatePaymentField(
-                                          payment.payment_id,
-                                          'payment_received_date',
-                                          e.target.value
-                                        );
-                                      }}
-                                      className="text-gray-500 text-xs border-0 p-0 focus:ring-0 cursor-pointer hover:text-gray-700"
-                                      style={{ width: '90px' }}
-                                    />
-                                  )}
-                                </div>
-
-                                {/* Invoice Sent */}
-                                <div className="flex items-center space-x-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={payment.invoice_sent}
-                                    onChange={(e) => {
-                                      const checked = e.target.checked;
-                                      handleUpdatePaymentField(
-                                        payment.payment_id,
-                                        'invoice_sent',
-                                        checked
-                                      );
-                                      // Auto-set date if checked and no date exists
-                                      if (checked && !payment.payment_invoice_date) {
-                                        handleUpdatePaymentField(
-                                          payment.payment_id,
-                                          'payment_invoice_date',
-                                          getLocalDateString()
-                                        );
-                                      } else if (!checked) {
-                                        handleUpdatePaymentField(
-                                          payment.payment_id,
-                                          'payment_invoice_date',
-                                          null
-                                        );
-                                      }
-                                    }}
-                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                  />
-                                  <span className="text-gray-700 font-medium">Invoice Sent</span>
-                                  {payment.invoice_sent && payment.payment_invoice_date && (
-                                    <input
-                                      type="date"
-                                      value={payment.payment_invoice_date}
-                                      onChange={(e) => {
-                                        handleUpdatePaymentField(
-                                          payment.payment_id,
-                                          'payment_invoice_date',
-                                          e.target.value
-                                        );
-                                      }}
-                                      className="text-gray-500 text-xs border-0 p-0 focus:ring-0 cursor-pointer hover:text-gray-700"
-                                      style={{ width: '90px' }}
-                                    />
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
+                          <PaymentCheckProcessing
+                            paymentReceived={payment.payment_received}
+                            paymentReceivedDate={payment.payment_received_date}
+                            invoiceSent={payment.invoice_sent}
+                            invoiceDate={payment.payment_invoice_date}
+                            onUpdateField={(field, value) => handleUpdatePaymentField(payment.payment_id, field, value)}
+                          />
 
                           {/* Broker Splits */}
                           {payment.broker_splits.length > 0 && (
