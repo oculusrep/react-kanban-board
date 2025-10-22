@@ -14,6 +14,7 @@ import { getDropboxPropertySyncService } from "../services/dropboxPropertySync";
 import LossReasonModal from "./LossReasonModal";
 import ClosedDateModal from "./ClosedDateModal";
 import BookedDateModal from "./BookedDateModal";
+import { usePaymentLifecycle } from "../hooks/usePaymentLifecycle";
 
 // 🔹 Stage → Default Probability map (integer percent 0..100)
 const STAGE_PROBABILITY: Record<string, number> = {
@@ -92,8 +93,15 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
   // Booked date modal state
   const [showBookedDateModal, setShowBookedDateModal] = useState(false);
 
+  // Archive payments modal state (when moving to Lost)
+  const [showArchivePaymentsModal, setShowArchivePaymentsModal] = useState(false);
+  const [unpaidPaymentCount, setUnpaidPaymentCount] = useState(0);
+
   const [clientSearch, setClientSearch] = useState("");
   const [clientSuggestions, setClientSuggestions] = useState<{ id: string; label: string }[]>([]);
+
+  // Payment lifecycle management hook
+  const { archiveUnpaidPayments, restoreArchivedPayments, regeneratePayments, getUnpaidPaymentCount } = usePaymentLifecycle();
 
   // 🔹 UX: validation + change-highlighting states
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -319,10 +327,23 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
 
     // Check if stage is "Lost" and loss_reason is empty
     const stageLabel = getStageLabel();
+    const stageChanged = form.stage_id !== originalStageId;
+
     if (stageLabel === "Lost" && (!form.loss_reason || form.loss_reason.trim() === "")) {
       setShowLossReasonModal(true);
       setPendingSave(true);
       return;
+    }
+
+    // Check if moving to "Lost" stage - warn about archiving unpaid payments
+    if (stageLabel === "Lost" && stageChanged && form.id) {
+      const count = await getUnpaidPaymentCount(form.id);
+      if (count > 0) {
+        setUnpaidPaymentCount(count);
+        setShowArchivePaymentsModal(true);
+        setPendingSave(true);
+        return;
+      }
     }
 
     // Check if stage is "Closed Paid" and closed_date is empty
@@ -436,6 +457,33 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
       // Update original stage_id after successful save
       if (stageChanged) {
         setOriginalStageId(form.stage_id);
+
+        // Handle payment lifecycle based on stage change
+        const newStageLabel = stageOptions.find(s => s.id === form.stage_id)?.label;
+        const oldStageLabel = stageOptions.find(s => s.id === originalStageId)?.label;
+
+        // Moving TO "Lost" stage - archive unpaid payments
+        if (newStageLabel === "Lost" && data.id) {
+          console.log('🗄️ Deal moved to Lost - archiving unpaid payments...');
+          const result = await archiveUnpaidPayments(data.id);
+          if (result.success) {
+            console.log(`✅ Archived ${result.archivedCount} unpaid payment(s)`);
+          } else {
+            console.error('❌ Failed to archive payments:', result.error);
+          }
+        }
+
+        // Moving FROM "Lost" TO active stage - restore or regenerate payments
+        const activeStages = ["Negotiating LOI", "At Lease/PSA", "Under Contract / Contingent", "Booked", "Executed Payable", "Closed Paid"];
+        if (oldStageLabel === "Lost" && newStageLabel && activeStages.includes(newStageLabel) && data.id) {
+          console.log('📦 Deal moved from Lost to active stage - regenerating payments...');
+          const result = await regeneratePayments(data.id);
+          if (result.success) {
+            console.log('✅ Payments regenerated successfully');
+          } else {
+            console.error('❌ Failed to regenerate payments:', result.error);
+          }
+        }
       }
 
       onSave(data);
@@ -711,6 +759,18 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
     setPendingSave(false);
   };
 
+  const handleArchivePaymentsConfirm = async () => {
+    setShowArchivePaymentsModal(false);
+    setPendingSave(false);
+    // Proceed with the save - payments will be archived in performSave after the stage is updated
+    await performSave();
+  };
+
+  const handleArchivePaymentsCancel = () => {
+    setShowArchivePaymentsModal(false);
+    setPendingSave(false);
+  };
+
   // 🔹 Conditional enablement
   const stageLabel = getStageLabel();
   const closedEnabled = stageLabel === "Closed Paid"; // Only allow Closed Date when stage is Closed Paid
@@ -970,6 +1030,37 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
         dealName={form.deal_name || 'this deal'}
         currentBookedDate={form.booked_date}
       />
+
+      {/* Archive Payments Modal */}
+      {showArchivePaymentsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Archive Unpaid Payments?
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Moving <span className="font-medium">{form.deal_name || 'this deal'}</span> to "Lost" will archive <span className="font-semibold text-orange-600">{unpaidPaymentCount} unpaid payment(s)</span>.
+            </p>
+            <p className="text-sm text-gray-600 mb-6">
+              <strong>Note:</strong> Paid payments will remain in the system. Unpaid payments will be hidden but can be restored if the deal becomes active again.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={handleArchivePaymentsCancel}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleArchivePaymentsConfirm}
+                className="px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-md hover:bg-orange-700"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

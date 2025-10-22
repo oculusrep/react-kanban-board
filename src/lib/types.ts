@@ -257,7 +257,11 @@ export interface Payment {
   status?: string;                    // Temporary for component compatibility
   payment_date?: string;              // Temporary for component compatibility
   invoice_sent?: boolean | null;      // Temporary for component compatibility
-  
+
+  // Soft delete fields (for payment lifecycle management)
+  is_active?: boolean;                // False when payment is archived (deal moved to Lost)
+  deleted_at?: string | null;         // Timestamp when payment was archived
+
   // Audit fields
   sf_created_by_id?: string | null;
   created_by_id?: string | null;
