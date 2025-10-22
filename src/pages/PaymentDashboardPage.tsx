@@ -60,6 +60,7 @@ const PaymentDashboardPage: React.FC = () => {
           referral_fee_paid_date,
           deal!inner (
             deal_name,
+            stage,
             number_of_payments,
             referral_fee_usd,
             referral_payee_client_id,
@@ -128,6 +129,7 @@ const PaymentDashboardPage: React.FC = () => {
           payment_sf_id: payment.sf_id,
           deal_id: payment.deal_id,
           deal_name: payment.deal?.deal_name || 'Unknown Deal',
+          deal_stage: payment.deal?.stage || null,
           payment_sequence: payment.payment_sequence || 0,
           total_payments: dealTotalPayments,
           payment_amount: payment.payment_amount || 0,

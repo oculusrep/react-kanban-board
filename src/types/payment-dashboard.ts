@@ -7,6 +7,7 @@ export interface PaymentDashboardRow {
   payment_sf_id: string | null;
   deal_id: string;
   deal_name: string;
+  deal_stage: string | null;
   payment_sequence: number;
   total_payments: number;
   payment_amount: number;

@@ -374,18 +374,25 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                       </button>
                     </td>
                     <td
-                      className="px-3 py-3 whitespace-nowrap"
+                      className="px-3 py-3"
                       onClick={() => toggleRow(payment.payment_id)}
                     >
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/deal/${payment.deal_id}`);
-                        }}
-                        className="text-sm font-medium text-blue-600 hover:text-blue-900 hover:underline"
-                      >
-                        {payment.deal_name}
-                      </button>
+                      <div className="flex flex-col">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/deal/${payment.deal_id}`);
+                          }}
+                          className="text-sm font-medium text-blue-600 hover:text-blue-900 hover:underline text-left"
+                        >
+                          {payment.deal_name}
+                        </button>
+                        {payment.deal_stage && (
+                          <span className="text-xs text-gray-500 mt-0.5">
+                            {payment.deal_stage}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td
                       className="px-3 py-3 whitespace-nowrap text-sm text-gray-900"
