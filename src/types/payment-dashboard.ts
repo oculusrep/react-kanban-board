@@ -65,7 +65,7 @@ export interface PaymentDashboardFilters {
     start: string | null;
     end: string | null;
   };
-  brokerId: string | null;
+  dealStage: string | null;
   dealId: string | null;
 }
 

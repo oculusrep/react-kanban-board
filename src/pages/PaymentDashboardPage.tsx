@@ -24,7 +24,7 @@ const PaymentDashboardPage: React.FC = () => {
     paymentStatus: 'all',
     payoutStatus: 'all',
     dateRange: { start: null, end: null },
-    brokerId: null,
+    dealStage: null,
     dealId: null,
   });
 
@@ -241,11 +241,9 @@ const PaymentDashboardPage: React.FC = () => {
       });
     }
 
-    // Broker filter
-    if (filters.brokerId) {
-      filtered = filtered.filter(p =>
-        p.broker_splits.some(b => b.broker_id === filters.brokerId)
-      );
+    // Deal stage filter
+    if (filters.dealStage) {
+      filtered = filtered.filter(p => p.deal_stage === filters.dealStage);
     }
 
     // Deal filter

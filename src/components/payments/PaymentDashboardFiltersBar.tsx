@@ -90,20 +90,25 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
   filters,
   onFilterChange,
 }) => {
-  const [brokers, setBrokers] = useState<{ id: string; name: string }[]>([]);
+  const [dealStages, setDealStages] = useState<string[]>([]);
 
   useEffect(() => {
-    fetchBrokers();
+    fetchDealStages();
   }, []);
 
-  const fetchBrokers = async () => {
+  const fetchDealStages = async () => {
+    // Fetch distinct stages from deals that have payments
     const { data } = await supabase
-      .from('broker')
-      .select('id, name')
-      .eq('active', true)
-      .order('name');
+      .from('deal')
+      .select('stage')
+      .not('stage', 'is', null)
+      .order('stage');
 
-    if (data) setBrokers(data);
+    if (data) {
+      // Get unique stages
+      const uniqueStages = Array.from(new Set(data.map(d => d.stage).filter(Boolean)));
+      setDealStages(uniqueStages);
+    }
   };
 
   const handleClearFilters = () => {
@@ -112,7 +117,7 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
       paymentStatus: 'all',
       payoutStatus: 'all',
       dateRange: { start: null, end: null },
-      brokerId: null,
+      dealStage: null,
       dealId: null,
     });
   };
@@ -123,7 +128,7 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
     filters.payoutStatus !== 'all' ||
     filters.dateRange.start ||
     filters.dateRange.end ||
-    filters.brokerId ||
+    filters.dealStage ||
     filters.dealId;
 
   const paymentStatusOptions: DropdownOption[] = [
@@ -139,9 +144,9 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
     { value: 'partial', label: 'Partially Paid' },
   ];
 
-  const brokerOptions: DropdownOption[] = [
-    { value: '', label: 'All Brokers' },
-    ...brokers.map(broker => ({ value: broker.id, label: broker.name })),
+  const dealStageOptions: DropdownOption[] = [
+    { value: '', label: 'All Stages' },
+    ...dealStages.map(stage => ({ value: stage, label: stage })),
   ];
 
   return (
@@ -177,12 +182,12 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
           onChange={(value) => onFilterChange({ payoutStatus: value as any })}
         />
 
-        {/* Broker Filter */}
+        {/* Deal Stage Filter */}
         <CustomDropdown
-          label="Broker"
-          value={filters.brokerId || ''}
-          options={brokerOptions}
-          onChange={(value) => onFilterChange({ brokerId: value || null })}
+          label="Deal Stage"
+          value={filters.dealStage || ''}
+          options={dealStageOptions}
+          onChange={(value) => onFilterChange({ dealStage: value || null })}
         />
       </div>
 
