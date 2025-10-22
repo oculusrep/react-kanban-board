@@ -13,7 +13,7 @@ interface PaymentDashboardTableProps {
   onPaymentUpdate: () => void;
 }
 
-type SortField = 'deal_name' | 'payment_date_estimated' | 'payment_received' | 'disbursement';
+type SortField = 'deal_name' | 'payment_date_estimated' | 'payment_received' | 'disbursement' | 'orep_invoice';
 type SortDirection = 'asc' | 'desc';
 
 const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
@@ -70,6 +70,10 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
 
           aValue = aAllPaid ? 2 : (aSomePaid ? 1 : 0);
           bValue = bAllPaid ? 2 : (bSomePaid ? 1 : 0);
+          break;
+        case 'orep_invoice':
+          aValue = (a.orep_invoice || '').toLowerCase();
+          bValue = (b.orep_invoice || '').toLowerCase();
           break;
         default:
           return 0;
@@ -307,14 +311,20 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                   {renderSortIcon('deal_name')}
                 </div>
               </th>
+              <th
+                className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('orep_invoice')}
+              >
+                <div className="flex items-center justify-center">
+                  Invoice #
+                  {renderSortIcon('orep_invoice')}
+                </div>
+              </th>
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                 Payment
               </th>
               <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">
                 Amount
-              </th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                Invoice #
               </th>
               <th
                 className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
@@ -338,10 +348,10 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                 Brokers
               </th>
               <th
-                className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                className="px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('disbursement')}
               >
-                <div className="flex items-center">
+                <div className="flex items-center justify-center">
                   Disbursement
                   {renderSortIcon('disbursement')}
                 </div>
@@ -397,6 +407,15 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                         )}
                       </div>
                     </td>
+                    <td className="px-3 py-3 whitespace-nowrap text-sm text-center" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="text"
+                        value={payment.orep_invoice || ''}
+                        onChange={(e) => handleUpdatePaymentField(payment.payment_id, 'orep_invoice', e.target.value || null)}
+                        placeholder="-"
+                        className="w-full border-0 bg-transparent px-0 py-0 text-sm text-gray-900 text-center focus:outline-none focus:ring-0 placeholder-gray-400 cursor-text"
+                      />
+                    </td>
                     <td
                       className="px-3 py-3 whitespace-nowrap text-sm text-gray-900"
                       onClick={() => toggleRow(payment.payment_id)}
@@ -408,15 +427,6 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                       onClick={() => toggleRow(payment.payment_id)}
                     >
                       {formatCurrency(payment.payment_amount)}
-                    </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-sm" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="text"
-                        value={payment.orep_invoice || ''}
-                        onChange={(e) => handleUpdatePaymentField(payment.payment_id, 'orep_invoice', e.target.value || null)}
-                        placeholder="-"
-                        className="w-full border-0 bg-transparent px-0 py-0 text-sm text-gray-900 focus:outline-none focus:ring-0 placeholder-gray-400 cursor-text"
-                      />
                     </td>
                     <td
                       className="px-3 py-3 whitespace-nowrap text-sm text-gray-500"
@@ -444,7 +454,7 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                       </span>
                     </td>
                     <td
-                      className="px-3 py-3 whitespace-nowrap"
+                      className="px-2 py-3 whitespace-nowrap text-center"
                       onClick={() => toggleRow(payment.payment_id)}
                     >
                       {getPayoutStatusBadge(payment)}
