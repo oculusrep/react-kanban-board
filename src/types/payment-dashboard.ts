@@ -46,6 +46,11 @@ export interface BrokerPaymentSplit {
   split_deal_usd: number | null;
   split_broker_total: number | null;
 
+  // Split percentages
+  split_origination_percent: number | null;
+  split_site_percent: number | null;
+  split_deal_percent: number | null;
+
   // Payment tracking
   paid: boolean;
   paid_date: string | null;

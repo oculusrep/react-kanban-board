@@ -16,9 +16,14 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, onUpdate }) 
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(amount);
+  };
+
+  const formatPercent = (percent: number | null) => {
+    if (percent === null) return '';
+    return `${percent.toFixed(2)}%`;
   };
 
   const formatDate = (dateString: string | null) => {
@@ -91,14 +96,23 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, onUpdate }) 
   return (
     <tr className="hover:bg-gray-50">
       <td className="px-4 py-3 text-sm text-gray-900">{split.broker_name}</td>
-      <td className="px-4 py-3 text-sm text-right text-gray-600">
-        {formatCurrency(split.split_origination_usd)}
+      <td className="px-4 py-3 text-sm text-right">
+        <div className="flex flex-col items-end">
+          <span className="text-gray-900">{formatCurrency(split.split_origination_usd)}</span>
+          <span className="text-xs text-gray-500">{formatPercent(split.split_origination_percent)}</span>
+        </div>
       </td>
-      <td className="px-4 py-3 text-sm text-right text-gray-600">
-        {formatCurrency(split.split_site_usd)}
+      <td className="px-4 py-3 text-sm text-right">
+        <div className="flex flex-col items-end">
+          <span className="text-gray-900">{formatCurrency(split.split_site_usd)}</span>
+          <span className="text-xs text-gray-500">{formatPercent(split.split_site_percent)}</span>
+        </div>
       </td>
-      <td className="px-4 py-3 text-sm text-right text-gray-600">
-        {formatCurrency(split.split_deal_usd)}
+      <td className="px-4 py-3 text-sm text-right">
+        <div className="flex flex-col items-end">
+          <span className="text-gray-900">{formatCurrency(split.split_deal_usd)}</span>
+          <span className="text-xs text-gray-500">{formatPercent(split.split_deal_percent)}</span>
+        </div>
       </td>
       <td className="px-4 py-3 text-sm text-right font-medium text-gray-900">
         {formatCurrency(split.split_broker_total)}

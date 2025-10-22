@@ -84,6 +84,9 @@ const PaymentDashboardPage: React.FC = () => {
           split_site_usd,
           split_deal_usd,
           split_broker_total,
+          split_origination_percent,
+          split_site_percent,
+          split_deal_percent,
           paid,
           paid_date,
           broker!inner (
@@ -105,6 +108,9 @@ const PaymentDashboardPage: React.FC = () => {
             split_site_usd: split.split_site_usd,
             split_deal_usd: split.split_deal_usd,
             split_broker_total: split.split_broker_total,
+            split_origination_percent: split.split_origination_percent,
+            split_site_percent: split.split_site_percent,
+            split_deal_percent: split.split_deal_percent,
             paid: split.paid || false,
             paid_date: split.paid_date,
           }));
