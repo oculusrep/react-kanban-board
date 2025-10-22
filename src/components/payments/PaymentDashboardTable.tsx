@@ -30,7 +30,7 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [paymentToDelete, setPaymentToDelete] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('payment_date_estimated');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Sync local payments with parent when parent data changes and apply sorting
