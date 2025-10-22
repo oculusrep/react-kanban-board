@@ -1,6 +1,6 @@
 // src/components/payments/PaymentDashboardFiltersBar.tsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { PaymentDashboardFilters } from '../../types/payment-dashboard';
 
@@ -8,6 +8,83 @@ interface PaymentDashboardFiltersBarProps {
   filters: PaymentDashboardFilters;
   onFilterChange: (filters: Partial<PaymentDashboardFilters>) => void;
 }
+
+interface DropdownOption {
+  value: string;
+  label: string;
+}
+
+const CustomDropdown: React.FC<{
+  label: string;
+  value: string;
+  options: DropdownOption[];
+  onChange: (value: string) => void;
+}> = ({ label, value, options, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const selectedOption = options.find(opt => opt.value === value);
+  const displayLabel = selectedOption?.label || options[0]?.label || 'Select...';
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <label className="block text-xs font-medium text-gray-700 mb-1">
+        {label}
+      </label>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm bg-white text-left focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:bg-gray-50 transition-colors flex items-center justify-between"
+      >
+        <span className="truncate">{displayLabel}</span>
+        <svg
+          className={`ml-2 h-4 w-4 text-gray-400 transition-transform ${isOpen ? 'transform rotate-180' : ''}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => {
+                onChange(option.value);
+                setIsOpen(false);
+              }}
+              className={`w-full px-3 py-2 text-sm text-left hover:bg-blue-50 transition-colors ${
+                value === option.value ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
   filters,
@@ -62,6 +139,29 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
     filters.brokerId ||
     filters.dealId;
 
+  const paymentStatusOptions: DropdownOption[] = [
+    { value: 'all', label: 'All Payments' },
+    { value: 'received', label: 'Received' },
+    { value: 'pending', label: 'Pending' },
+  ];
+
+  const disbursementStatusOptions: DropdownOption[] = [
+    { value: 'all', label: 'All Disbursements' },
+    { value: 'paid', label: 'Fully Paid' },
+    { value: 'unpaid', label: 'Unpaid' },
+    { value: 'partial', label: 'Partially Paid' },
+  ];
+
+  const brokerOptions: DropdownOption[] = [
+    { value: '', label: 'All Brokers' },
+    ...brokers.map(broker => ({ value: broker.id, label: broker.name })),
+  ];
+
+  const dealOptions: DropdownOption[] = [
+    { value: '', label: 'All Deals' },
+    ...deals.map(deal => ({ value: deal.id, label: deal.deal_name })),
+  ];
+
   return (
     <div className="bg-white shadow rounded-lg p-4 mb-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -80,75 +180,36 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
         </div>
 
         {/* Payment Status */}
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">
-            Payment Status
-          </label>
-          <select
-            value={filters.paymentStatus}
-            onChange={(e) => onFilterChange({ paymentStatus: e.target.value as any })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="all">All</option>
-            <option value="received">Received</option>
-            <option value="pending">Pending</option>
-          </select>
-        </div>
+        <CustomDropdown
+          label="Payment Status"
+          value={filters.paymentStatus}
+          options={paymentStatusOptions}
+          onChange={(value) => onFilterChange({ paymentStatus: value as any })}
+        />
 
-        {/* Payout Status */}
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">
-            Payout Status
-          </label>
-          <select
-            value={filters.payoutStatus}
-            onChange={(e) => onFilterChange({ payoutStatus: e.target.value as any })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="all">All</option>
-            <option value="paid">Fully Paid</option>
-            <option value="unpaid">Unpaid</option>
-            <option value="partial">Partially Paid</option>
-          </select>
-        </div>
+        {/* Disbursement Status (formerly Payout Status) */}
+        <CustomDropdown
+          label="Disbursement Status"
+          value={filters.payoutStatus}
+          options={disbursementStatusOptions}
+          onChange={(value) => onFilterChange({ payoutStatus: value as any })}
+        />
 
         {/* Broker Filter */}
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">
-            Broker
-          </label>
-          <select
-            value={filters.brokerId || ''}
-            onChange={(e) => onFilterChange({ brokerId: e.target.value || null })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="">All Brokers</option>
-            {brokers.map((broker) => (
-              <option key={broker.id} value={broker.id}>
-                {broker.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        <CustomDropdown
+          label="Broker"
+          value={filters.brokerId || ''}
+          options={brokerOptions}
+          onChange={(value) => onFilterChange({ brokerId: value || null })}
+        />
 
         {/* Deal Filter */}
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">
-            Deal
-          </label>
-          <select
-            value={filters.dealId || ''}
-            onChange={(e) => onFilterChange({ dealId: e.target.value || null })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="">All Deals</option>
-            {deals.map((deal) => (
-              <option key={deal.id} value={deal.id}>
-                {deal.deal_name}
-              </option>
-            ))}
-          </select>
-        </div>
+        <CustomDropdown
+          label="Deal"
+          value={filters.dealId || ''}
+          options={dealOptions}
+          onChange={(value) => onFilterChange({ dealId: value || null })}
+        />
       </div>
 
       {/* Date Range - Second Row */}
