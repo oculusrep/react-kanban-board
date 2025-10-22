@@ -406,7 +406,19 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                                   />
                                   <span className="text-gray-700 font-medium">Payment Received</span>
                                   {payment.payment_received && payment.payment_received_date && (
-                                    <span className="text-gray-500">{formatDate(payment.payment_received_date)}</span>
+                                    <input
+                                      type="date"
+                                      value={payment.payment_received_date}
+                                      onChange={(e) => {
+                                        handleUpdatePaymentField(
+                                          payment.payment_id,
+                                          'payment_received_date',
+                                          e.target.value
+                                        );
+                                      }}
+                                      className="text-gray-500 text-xs border-0 p-0 focus:ring-0 cursor-pointer hover:text-gray-700"
+                                      style={{ width: '90px' }}
+                                    />
                                   )}
                                 </div>
 
@@ -441,7 +453,19 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                                   />
                                   <span className="text-gray-700 font-medium">Invoice Sent</span>
                                   {payment.invoice_sent && payment.payment_invoice_date && (
-                                    <span className="text-gray-500">{formatDate(payment.payment_invoice_date)}</span>
+                                    <input
+                                      type="date"
+                                      value={payment.payment_invoice_date}
+                                      onChange={(e) => {
+                                        handleUpdatePaymentField(
+                                          payment.payment_id,
+                                          'payment_invoice_date',
+                                          e.target.value
+                                        );
+                                      }}
+                                      className="text-gray-500 text-xs border-0 p-0 focus:ring-0 cursor-pointer hover:text-gray-700"
+                                      style={{ width: '90px' }}
+                                    />
                                   )}
                                 </div>
                               </div>

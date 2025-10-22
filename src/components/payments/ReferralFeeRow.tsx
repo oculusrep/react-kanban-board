@@ -39,18 +39,40 @@ const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
     });
   };
 
+  const getLocalDateString = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const handleTogglePaid = async (isPaid: boolean) => {
     const { error } = await supabase
       .from('payment')
       .update({
         referral_fee_paid: isPaid,
-        referral_fee_paid_date: isPaid ? new Date().toISOString().split('T')[0] : null,
+        referral_fee_paid_date: isPaid ? getLocalDateString() : null,
       })
       .eq('id', paymentId);
 
     if (error) {
       console.error('Error updating referral fee payment:', error);
       alert('Failed to update referral fee payment status');
+    } else {
+      onUpdate();
+    }
+  };
+
+  const handleUpdatePaidDate = async (date: string) => {
+    const { error } = await supabase
+      .from('payment')
+      .update({ referral_fee_paid_date: date })
+      .eq('id', paymentId);
+
+    if (error) {
+      console.error('Error updating referral fee paid date:', error);
+      alert('Failed to update paid date');
     } else {
       onUpdate();
     }
@@ -77,9 +99,19 @@ const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
             onChange={(e) => handleTogglePaid(e.target.checked)}
             className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
           />
-          <span className="text-sm text-gray-500">
-            {paid ? (paidDate ? `Paid ${formatDate(paidDate)}` : 'Paid') : 'Mark as Paid'}
-          </span>
+          {paid && paidDate ? (
+            <input
+              type="date"
+              value={paidDate}
+              onChange={(e) => handleUpdatePaidDate(e.target.value)}
+              className="text-gray-500 text-xs border-0 p-0 focus:ring-0 cursor-pointer hover:text-gray-700"
+              style={{ width: '90px' }}
+            />
+          ) : (
+            <span className="text-sm text-gray-500">
+              {paid ? 'Paid' : 'Mark as Paid'}
+            </span>
+          )}
         </div>
       </div>
     </div>

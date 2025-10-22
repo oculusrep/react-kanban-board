@@ -30,18 +30,40 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, onUpdate }) 
     });
   };
 
+  const getLocalDateString = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const handleTogglePaid = async (paid: boolean) => {
     const { error } = await supabase
       .from('payment_split')
       .update({
         paid: paid,
-        paid_date: paid ? new Date().toISOString().split('T')[0] : null,
+        paid_date: paid ? getLocalDateString() : null,
       })
       .eq('id', split.payment_split_id);
 
     if (error) {
       console.error('Error updating payment split:', error);
       alert('Failed to update broker payment status');
+    } else {
+      onUpdate();
+    }
+  };
+
+  const handleUpdatePaidDate = async (date: string) => {
+    const { error } = await supabase
+      .from('payment_split')
+      .update({ paid_date: date })
+      .eq('id', split.payment_split_id);
+
+    if (error) {
+      console.error('Error updating paid date:', error);
+      alert('Failed to update paid date');
     } else {
       onUpdate();
     }
@@ -71,7 +93,13 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, onUpdate }) 
             className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
           />
           {split.paid && split.paid_date && (
-            <span className="text-xs text-gray-500">{formatDate(split.paid_date)}</span>
+            <input
+              type="date"
+              value={split.paid_date}
+              onChange={(e) => handleUpdatePaidDate(e.target.value)}
+              className="text-gray-500 text-xs border-0 p-0 focus:ring-0 cursor-pointer hover:text-gray-700"
+              style={{ width: '90px' }}
+            />
           )}
         </div>
       </td>
