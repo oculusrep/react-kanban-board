@@ -116,6 +116,7 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
               {/* Main Payment Row */}
               <PaymentSummaryRow
                 payment={payment}
+                deal={deal}
                 totalPayments={payments.length}
                 isExpanded={isExpanded}
                 onToggleExpansion={() => togglePaymentExpansion(payment.id)}

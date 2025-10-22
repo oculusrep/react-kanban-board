@@ -1,10 +1,11 @@
 import React from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-import { Payment } from '../../lib/types';
+import { Payment, Deal } from '../../lib/types';
 import { formatDateString } from '../../utils/dateUtils';
 
 interface PaymentSummaryRowProps {
   payment: Payment;
+  deal: Deal;
   totalPayments: number;
   isExpanded: boolean;
   onToggleExpansion: () => void;
@@ -14,6 +15,7 @@ interface PaymentSummaryRowProps {
 
 const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
   payment,
+  deal,
   totalPayments,
   isExpanded,
   onToggleExpansion,
@@ -27,6 +29,9 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
     payment_date_estimated: payment.payment_date_estimated,
     payment_received_date: payment.payment_received_date
   });
+
+  // Calculate the correct payment amount based on deal commission
+  const calculatedPaymentAmount = (deal.fee || 0) / (deal.number_of_payments || 1);
 
   return (
     <div className="p-4 grid grid-cols-12 items-center gap-4">
@@ -48,7 +53,7 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
             Payment {payment.payment_sequence} of {totalPayments}
           </div>
           <div className="text-xs text-gray-500">
-            ${(payment.payment_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            ${calculatedPaymentAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </div>
         </div>
       </div>
