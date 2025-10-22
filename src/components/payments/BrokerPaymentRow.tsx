@@ -97,19 +97,19 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, onUpdate }) 
     <tr className="hover:bg-gray-50">
       <td className="px-4 py-3 text-sm text-gray-900">{split.broker_name}</td>
       <td className="px-4 py-3 text-sm text-right">
-        <div className="flex flex-col items-end">
+        <div className="flex flex-col items-center">
           <span className="text-gray-900">{formatCurrency(split.split_origination_usd)}</span>
           <span className="text-xs text-gray-500">{formatPercent(split.split_origination_percent)}</span>
         </div>
       </td>
       <td className="px-4 py-3 text-sm text-right">
-        <div className="flex flex-col items-end">
+        <div className="flex flex-col items-center">
           <span className="text-gray-900">{formatCurrency(split.split_site_usd)}</span>
           <span className="text-xs text-gray-500">{formatPercent(split.split_site_percent)}</span>
         </div>
       </td>
       <td className="px-4 py-3 text-sm text-right">
-        <div className="flex flex-col items-end">
+        <div className="flex flex-col items-center">
           <span className="text-gray-900">{formatCurrency(split.split_deal_usd)}</span>
           <span className="text-xs text-gray-500">{formatPercent(split.split_deal_percent)}</span>
         </div>
