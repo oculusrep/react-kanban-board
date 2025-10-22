@@ -1,32 +1,42 @@
 import React, { useState } from 'react';
-import { PaymentDashboardRow } from '../../types/payment-dashboard';
-import { ChevronDownIcon, ChevronRightIcon, CheckCircleIcon, ClockIcon } from '@heroicons/react/24/outline';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../../lib/supabaseClient';
+import { PaymentDashboardRow } from '../../types/payment-dashboard';
+import BrokerPaymentRow from './BrokerPaymentRow';
+import ReferralFeeRow from './ReferralFeeRow';
 
 interface PaymentDashboardTableProps {
-  rows: PaymentDashboardRow[];
-  onUpdatePaymentSplitPaid: (splitId: string, paid: boolean) => Promise<void>;
-  onUpdateReferralPaid: (paymentId: string, paid: boolean) => Promise<void>;
+  payments: PaymentDashboardRow[];
+  loading: boolean;
+  onPaymentUpdate: () => void;
 }
 
 const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
-  rows,
-  onUpdatePaymentSplitPaid,
-  onUpdateReferralPaid
+  payments,
+  loading,
+  onPaymentUpdate,
 }) => {
   const navigate = useNavigate();
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
-  const toggleRowExpansion = (paymentId: string) => {
-    setExpandedRows(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(paymentId)) {
-        newSet.delete(paymentId);
-      } else {
-        newSet.add(paymentId);
-      }
-      return newSet;
-    });
+  const toggleRow = (paymentId: string) => {
+    const newExpanded = new Set(expandedRows);
+    if (newExpanded.has(paymentId)) {
+      newExpanded.delete(paymentId);
+    } else {
+      newExpanded.add(paymentId);
+    }
+    setExpandedRows(newExpanded);
+  };
+
+  const formatCurrency = (amount: number | null) => {
+    if (amount === null) return '-';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
   };
 
   const formatDate = (dateString: string | null) => {
@@ -34,208 +44,246 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
     return new Date(dateString).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
-      year: 'numeric'
+      year: 'numeric',
     });
   };
 
-  const formatCurrency = (amount: number) => {
-    return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const handleMarkPaymentReceived = async (paymentId: string, received: boolean) => {
+    const { error } = await supabase
+      .from('payment')
+      .update({
+        payment_received: received,
+        payment_received_date: received ? new Date().toISOString().split('T')[0] : null,
+      })
+      .eq('id', paymentId);
+
+    if (error) {
+      console.error('Error updating payment:', error);
+      alert('Failed to update payment status');
+    } else {
+      onPaymentUpdate();
+    }
   };
 
-  if (rows.length === 0) {
+  const getPayoutStatusBadge = (payment: PaymentDashboardRow) => {
+    const hasReferralFee = payment.referral_fee_usd && payment.referral_fee_usd > 0;
+    const allBrokersPaid = payment.all_brokers_paid;
+    const referralPaid = payment.referral_fee_paid;
+
+    if (allBrokersPaid && (!hasReferralFee || referralPaid)) {
+      return <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Fully Paid</span>;
+    } else if (payment.broker_splits.some(b => b.paid) || referralPaid) {
+      return <span className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">Partial</span>;
+    } else {
+      return <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">Unpaid</span>;
+    }
+  };
+
+  if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow p-8 text-center">
-        <p className="text-gray-600">No payments found matching your filters</p>
+      <div className="flex justify-center items-center py-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  if (payments.length === 0) {
+    return (
+      <div className="bg-white shadow rounded-lg p-12 text-center">
+        <p className="text-gray-500">No payments found matching your filters.</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
+    <div className="bg-white shadow rounded-lg overflow-hidden">
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-8"></th>
+              <th className="w-8 px-3 py-3"></th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Deal
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Payment #
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Received Date
+                Payment
               </th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Amount
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Disbursed
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Est. Date
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Pending
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Received
               </th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Brokers
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Payout Status
               </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {rows.map((row) => {
-              const isExpanded = expandedRows.has(row.payment.id);
-
+            {payments.map((payment) => {
+              const isExpanded = expandedRows.has(payment.payment_id);
               return (
-                <React.Fragment key={row.payment.id}>
+                <React.Fragment key={payment.payment_id}>
                   {/* Main Payment Row */}
-                  <tr className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
+                  <tr className="hover:bg-gray-50 cursor-pointer">
+                    <td className="px-3 py-4">
                       <button
-                        onClick={() => toggleRowExpansion(row.payment.id)}
+                        onClick={() => toggleRow(payment.payment_id)}
                         className="text-gray-400 hover:text-gray-600"
                       >
-                        {isExpanded ? (
-                          <ChevronDownIcon className="h-5 w-5" />
-                        ) : (
-                          <ChevronRightIcon className="h-5 w-5" />
-                        )}
+                        <svg
+                          className={`h-5 w-5 transform transition-transform ${
+                            isExpanded ? 'rotate-90' : ''
+                          }`}
+                          fill="currentColor"
+                          viewBox="0 0 20 20"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
                       </button>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td
+                      className="px-6 py-4 whitespace-nowrap"
+                      onClick={() => toggleRow(payment.payment_id)}
+                    >
                       <button
-                        onClick={() => navigate(`/deals/${row.deal.id}`)}
-                        className="text-sm font-medium text-blue-600 hover:text-blue-800"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/deal/${payment.deal_id}`);
+                        }}
+                        className="text-sm font-medium text-blue-600 hover:text-blue-900 hover:underline"
                       >
-                        {row.deal.deal_name || 'Untitled Deal'}
+                        {payment.deal_name}
                       </button>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {row.payment.payment_sequence || '-'} of {row.deal.number_of_payments || 1}
+                    <td
+                      className="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+                      onClick={() => toggleRow(payment.payment_id)}
+                    >
+                      Payment {payment.payment_sequence} of {payment.total_payments}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatDate(row.payment.payment_received_date)}
+                    <td
+                      className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900"
+                      onClick={() => toggleRow(payment.payment_id)}
+                    >
+                      {formatCurrency(payment.payment_amount)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">
-                      {formatCurrency(row.payment.payment_amount || 0)}
+                    <td
+                      className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
+                      onClick={() => toggleRow(payment.payment_id)}
+                    >
+                      {formatDate(payment.payment_date_estimated)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 text-right font-medium">
-                      {formatCurrency(row.totalPaidOut)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-orange-600 text-right font-medium">
-                      {formatCurrency(row.totalUnpaid)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      {row.fullyDisbursed ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          <CheckCircleIcon className="h-4 w-4 mr-1" />
-                          Paid
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={payment.payment_received}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleMarkPaymentReceived(payment.payment_id, e.target.checked);
+                          }}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <span className="text-gray-500">
+                          {payment.payment_received_date
+                            ? formatDate(payment.payment_received_date)
+                            : '-'}
                         </span>
-                      ) : row.totalPaidOut > 0 ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                          <ClockIcon className="h-4 w-4 mr-1" />
-                          Partial
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                          <ClockIcon className="h-4 w-4 mr-1" />
-                          Unpaid
-                        </span>
-                      )}
+                      </div>
+                    </td>
+                    <td
+                      className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
+                      onClick={() => toggleRow(payment.payment_id)}
+                    >
+                      {payment.broker_splits.length} broker(s)
+                      <br />
+                      <span className="text-xs text-gray-400">
+                        {formatCurrency(payment.total_broker_amount)}
+                      </span>
+                    </td>
+                    <td
+                      className="px-6 py-4 whitespace-nowrap"
+                      onClick={() => toggleRow(payment.payment_id)}
+                    >
+                      {getPayoutStatusBadge(payment)}
                     </td>
                   </tr>
 
-                  {/* Expanded Broker Split Details */}
+                  {/* Expanded Details */}
                   {isExpanded && (
                     <tr>
-                      <td colSpan={8} className="px-6 py-4 bg-gray-50">
-                        <div className="space-y-3">
-                          <h4 className="text-sm font-medium text-gray-900">Broker Commission Splits</h4>
-
-                          {/* Broker Splits Table */}
-                          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                            <table className="min-w-full divide-y divide-gray-200">
-                              <thead className="bg-gray-50">
-                                <tr>
-                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Broker</th>
-                                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Origination</th>
-                                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Site</th>
-                                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Deal</th>
-                                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Total</th>
-                                  <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Paid</th>
-                                  <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Paid Date</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-200">
-                                {row.brokerSplits.map((split) => (
-                                  <tr key={split.splitId} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                                      {split.brokerName}
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-gray-900 text-right">
-                                      {formatCurrency(split.originationAmount)}
-                                      <span className="text-xs text-gray-500 ml-1">({split.originationPercent}%)</span>
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-gray-900 text-right">
-                                      {formatCurrency(split.siteAmount)}
-                                      <span className="text-xs text-gray-500 ml-1">({split.sitePercent}%)</span>
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-gray-900 text-right">
-                                      {formatCurrency(split.dealAmount)}
-                                      <span className="text-xs text-gray-500 ml-1">({split.dealPercent}%)</span>
-                                    </td>
-                                    <td className="px-4 py-3 text-sm font-medium text-gray-900 text-right">
-                                      {formatCurrency(split.totalAmount)}
-                                    </td>
-                                    <td className="px-4 py-3 text-center">
-                                      <input
-                                        type="checkbox"
-                                        checked={split.paid}
-                                        onChange={(e) => onUpdatePaymentSplitPaid(split.splitId, e.target.checked)}
-                                        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      <td colSpan={8} className="px-0 py-0 bg-gray-50">
+                        <div className="px-12 py-4">
+                          {/* Broker Splits */}
+                          {payment.broker_splits.length > 0 && (
+                            <div className="mb-4">
+                              <h4 className="text-sm font-semibold text-gray-700 mb-2">
+                                Broker Commission Breakdown
+                              </h4>
+                              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                  <thead className="bg-gray-50">
+                                    <tr>
+                                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                                        Broker
+                                      </th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">
+                                        Origination
+                                      </th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">
+                                        Site
+                                      </th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">
+                                        Deal
+                                      </th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">
+                                        Total
+                                      </th>
+                                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                                        Paid
+                                      </th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="bg-white divide-y divide-gray-200">
+                                    {payment.broker_splits.map((split) => (
+                                      <BrokerPaymentRow
+                                        key={split.payment_split_id}
+                                        split={split}
+                                        onUpdate={onPaymentUpdate}
                                       />
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-gray-600 text-center">
-                                      {formatDate(split.paidDate)}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
 
-                          {/* Referral Fee (if applicable) */}
-                          {row.referralFee && (
-                            <div className="mt-3">
-                              <h4 className="text-sm font-medium text-gray-900 mb-2">Referral Fee</h4>
-                              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <p className="text-sm font-medium text-gray-900">
-                                      {row.referralFee.payeeName}
-                                    </p>
-                                    <p className="text-xs text-gray-600">
-                                      {row.referralFee.percent ? `${row.referralFee.percent}% of total commission` : 'Referral fee'}
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center gap-4">
-                                    <p className="text-sm font-semibold text-purple-900">
-                                      {formatCurrency(row.referralFee.amount)}
-                                    </p>
-                                    <div className="flex items-center gap-2">
-                                      <label className="flex items-center gap-2 cursor-pointer">
-                                        <input
-                                          type="checkbox"
-                                          checked={row.referralFee.paid}
-                                          onChange={(e) => onUpdateReferralPaid(row.payment.id, e.target.checked)}
-                                          className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-                                        />
-                                        <span className="text-xs text-gray-600">Paid</span>
-                                      </label>
-                                    </div>
-                                    <p className="text-xs text-gray-600 min-w-[100px] text-right">
-                                      {formatDate(row.referralFee.paidDate)}
-                                    </p>
-                                  </div>
-                                </div>
+                          {/* Referral Fee */}
+                          {payment.referral_fee_usd && payment.referral_fee_usd > 0 && (
+                            <div>
+                              <h4 className="text-sm font-semibold text-gray-700 mb-2">
+                                Referral Fee
+                              </h4>
+                              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                                <ReferralFeeRow
+                                  paymentId={payment.payment_id}
+                                  payeeName={payment.referral_payee_name || 'Unknown'}
+                                  amount={payment.referral_fee_usd}
+                                  paid={payment.referral_fee_paid}
+                                  paidDate={payment.referral_fee_paid_date}
+                                  onUpdate={onPaymentUpdate}
+                                />
                               </div>
                             </div>
                           )}

@@ -1,177 +1,123 @@
-import { Payment, PaymentSplit, Broker, Deal, Client } from '../lib/types';
+// Types for Payment Dashboard
+// src/types/payment-dashboard.ts
 
-/**
- * Extended payment row for dashboard display
- * Includes all payment details plus calculated broker splits and referral info
- */
 export interface PaymentDashboardRow {
-  // Core payment data
-  payment: Payment;
-  deal: Deal;
+  // Payment info
+  payment_id: string;
+  payment_sf_id: string | null;
+  deal_id: string;
+  deal_name: string;
+  payment_sequence: number;
+  total_payments: number;
+  payment_amount: number;
+
+  // Payment dates
+  payment_date_estimated: string | null;
+  payment_received_date: string | null;
+  payment_received: boolean;
+
+  // Referral fee info
+  referral_fee_usd: number | null;
+  referral_payee_name: string | null;
+  referral_payee_client_id: string | null;
+  referral_fee_paid: boolean;
+  referral_fee_paid_date: string | null;
 
   // Broker splits for this payment
-  brokerSplits: BrokerPaymentSplit[];
+  broker_splits: BrokerPaymentSplit[];
 
-  // Referral fee info (if applicable)
-  referralFee?: ReferralFeeInfo;
-
-  // Calculated totals
-  totalBrokerCommission: number;
-  totalPaidOut: number;
-  totalUnpaid: number;
-
-  // Payment status flags
-  allBrokersPaid: boolean;
-  referralPaid: boolean;
-  fullyDisbursed: boolean;
+  // Status indicators
+  all_brokers_paid: boolean;
+  total_broker_amount: number;
 }
 
-/**
- * Individual broker commission split for a payment
- */
 export interface BrokerPaymentSplit {
-  splitId: string;
-  brokerId: string;
-  brokerName: string;
+  payment_split_id: string;
+  broker_id: string;
+  broker_name: string;
 
-  // Commission amounts
-  originationAmount: number;
-  siteAmount: number;
-  dealAmount: number;
-  totalAmount: number;
+  // Split amounts
+  split_origination_usd: number | null;
+  split_site_usd: number | null;
+  split_deal_usd: number | null;
+  split_broker_total: number | null;
 
-  // Split percentages
-  originationPercent: number;
-  sitePercent: number;
-  dealPercent: number;
-
-  // Payment status
+  // Payment tracking
   paid: boolean;
-  paidDate: string | null;
-
-  // Reference to payment_split record
-  paymentSplit: PaymentSplit;
+  paid_date: string | null;
 }
 
-/**
- * Referral fee information for a payment
- */
-export interface ReferralFeeInfo {
-  payeeClientId: string;
-  payeeName: string;
-  amount: number;
-  percent: number | null;
-  paid: boolean;
-  paidDate: string | null;
-}
-
-/**
- * Filter state for payment dashboard
- */
 export interface PaymentDashboardFilters {
-  // Date range
-  dateFrom: string | null;
-  dateTo: string | null;
-
-  // Status filters
-  showPaidOnly: boolean;
-  showUnpaidOnly: boolean;
-  showPartiallyPaid: boolean;
-
-  // Entity filters
+  searchQuery: string;
+  paymentStatus: 'all' | 'received' | 'pending';
+  payoutStatus: 'all' | 'paid' | 'unpaid' | 'partial';
+  dateRange: {
+    start: string | null;
+    end: string | null;
+  };
   brokerId: string | null;
   dealId: string | null;
-  clientId: string | null;
-
-  // Search
-  searchTerm: string;
 }
 
-/**
- * Summary statistics for payment dashboard
- */
 export interface PaymentSummaryStats {
-  // Counts
-  totalPayments: number;
-  fullyPaidPayments: number;
-  partiallyPaidPayments: number;
-  unpaidPayments: number;
-
-  // Amounts
-  totalCommissionReceived: number;
-  totalDisbursed: number;
-  totalPendingDisbursement: number;
-
-  // Broker-specific
-  totalBrokersAwaitingPayment: number;
-  totalReferralFeesUnpaid: number;
+  total_payments: number;
+  total_payment_amount: number;
+  payments_received: number;
+  payments_received_amount: number;
+  total_broker_payouts: number;
+  broker_payouts_paid: number;
+  broker_payouts_paid_amount: number;
+  total_referral_fees: number;
+  referral_fees_paid: number;
+  referral_fees_paid_amount: number;
 }
 
-/**
- * Comparison row between Salesforce and OVIS (Supabase) data
- */
+// Salesforce vs OVIS comparison types
 export interface PaymentComparison {
-  dealId: string;
-  dealName: string;
+  deal_id: string;
+  deal_name: string;
+  payment_sequence: number;
 
   // Salesforce data
-  salesforcePaymentCount: number;
-  salesforceTotalCommission: number;
+  sf_payment_id: string | null;
+  sf_payment_amount: number | null;
+  sf_payment_date: string | null;
+  sf_payment_status: string | null;
 
   // OVIS data
-  ovisPaymentCount: number;
-  ovisTotalCommission: number;
+  ovis_payment_id: string | null;
+  ovis_payment_amount: number | null;
+  ovis_payment_received_date: string | null;
+  ovis_payment_received: boolean | null;
 
-  // Comparison flags
-  paymentCountMatch: boolean;
-  commissionAmountMatch: boolean;
-  hasDiscrepancy: boolean;
-
-  // Discrepancy details
-  paymentCountDifference: number;
-  commissionDifference: number;
+  // Comparison results
+  amount_matches: boolean;
+  date_matches: boolean;
+  status_matches: boolean;
+  discrepancy_notes: string[];
 }
 
-/**
- * Commission split comparison between Salesforce and OVIS
- */
 export interface CommissionComparison {
-  dealId: string;
-  dealName: string;
-  brokerId: string;
-  brokerName: string;
+  deal_id: string;
+  deal_name: string;
+  broker_name: string;
 
-  // Salesforce commission splits
-  salesforceOrigination: number;
-  salesforceSite: number;
-  salesforceDeal: number;
-  salesforceTotal: number;
+  // Salesforce data
+  sf_commission_split_id: string | null;
+  sf_origination_usd: number | null;
+  sf_site_usd: number | null;
+  sf_deal_usd: number | null;
+  sf_total: number | null;
 
-  // OVIS commission splits
-  ovisOrigination: number;
-  ovisSite: number;
-  ovisDeal: number;
-  ovisTotal: number;
+  // OVIS data
+  ovis_commission_split_id: string | null;
+  ovis_origination_usd: number | null;
+  ovis_site_usd: number | null;
+  ovis_deal_usd: number | null;
+  ovis_total: number | null;
 
-  // Comparison flags
-  originationMatch: boolean;
-  siteMatch: boolean;
-  dealMatch: boolean;
-  totalMatch: boolean;
-  hasDiscrepancy: boolean;
-}
-
-/**
- * Comparison report data structure
- */
-export interface ComparisonReport {
-  payments: PaymentComparison[];
-  commissions: CommissionComparison[];
-
-  summary: {
-    totalDealsCompared: number;
-    dealsWithDiscrepancies: number;
-    totalCommissionDifference: number;
-    totalPaymentCountDifference: number;
-  };
+  // Comparison results
+  amounts_match: boolean;
+  discrepancy_amount: number;
+  discrepancy_notes: string[];
 }
