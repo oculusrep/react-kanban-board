@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { PaymentDashboardRow } from '../../types/payment-dashboard';
 import BrokerPaymentRow from './BrokerPaymentRow';
 import ReferralFeeRow from './ReferralFeeRow';
+import PaymentDetailSidebar from './PaymentDetailSidebar';
 
 interface PaymentDashboardTableProps {
   payments: PaymentDashboardRow[];
@@ -18,6 +19,12 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
 }) => {
   const navigate = useNavigate();
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [selectedPayment, setSelectedPayment] = useState<PaymentDashboardRow | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [paymentToDelete, setPaymentToDelete] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const toggleRow = (paymentId: string) => {
     const newExpanded = new Set(expandedRows);
@@ -79,6 +86,78 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
     }
   };
 
+  const handleOpenSidebar = (payment: PaymentDashboardRow) => {
+    setSelectedPayment(payment);
+    setIsSidebarOpen(true);
+    setOpenMenuId(null);
+  };
+
+  const handleCloseSidebar = () => {
+    setIsSidebarOpen(false);
+    setSelectedPayment(null);
+  };
+
+  const toggleMenu = (paymentId: string) => {
+    setOpenMenuId(openMenuId === paymentId ? null : paymentId);
+  };
+
+  const handleDeletePayment = (paymentId: string) => {
+    setPaymentToDelete(paymentId);
+    setShowDeleteConfirm(true);
+    setOpenMenuId(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!paymentToDelete) return;
+
+    try {
+      // First delete all payment splits
+      const { error: splitsError } = await supabase
+        .from('payment_splits')
+        .delete()
+        .eq('payment_id', paymentToDelete);
+
+      if (splitsError) throw splitsError;
+
+      // Then delete the payment
+      const { error: paymentError } = await supabase
+        .from('payment')
+        .delete()
+        .eq('id', paymentToDelete);
+
+      if (paymentError) throw paymentError;
+
+      // Refresh data
+      onPaymentUpdate();
+
+      // Close dialog
+      setShowDeleteConfirm(false);
+      setPaymentToDelete(null);
+    } catch (error) {
+      console.error('Error deleting payment:', error);
+      alert('Failed to delete payment');
+    }
+  };
+
+  const cancelDelete = () => {
+    setShowDeleteConfirm(false);
+    setPaymentToDelete(null);
+  };
+
+  // Click outside to close menu
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpenMenuId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   if (loading) {
     return (
       <div className="flex justify-center items-center py-12">
@@ -122,6 +201,9 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Payout Status
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Actions
               </th>
             </tr>
           </thead>
@@ -218,12 +300,51 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                     >
                       {getPayoutStatusBadge(payment)}
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm relative">
+                      <div ref={openMenuId === payment.payment_id ? menuRef : null}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleMenu(payment.payment_id);
+                          }}
+                          className="text-gray-400 hover:text-gray-600 p-1"
+                        >
+                          <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                          </svg>
+                        </button>
+                        {openMenuId === payment.payment_id && (
+                          <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+                            <div className="py-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenSidebar(payment);
+                                }}
+                                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                              >
+                                View Details
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeletePayment(payment.payment_id);
+                                }}
+                                className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                              >
+                                Delete Payment
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </td>
                   </tr>
 
                   {/* Expanded Details */}
                   {isExpanded && (
                     <tr>
-                      <td colSpan={8} className="px-0 py-0 bg-gray-50">
+                      <td colSpan={9} className="px-0 py-0 bg-gray-50">
                         <div className="px-12 py-4">
                           {/* Broker Splits */}
                           {payment.broker_splits.length > 0 && (
@@ -297,6 +418,36 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
           </tbody>
         </table>
       </div>
+
+      {/* Payment Detail Sidebar */}
+      {selectedPayment && (
+        <PaymentDetailSidebar
+          payment={selectedPayment}
+          isOpen={isSidebarOpen}
+          onClose={handleCloseSidebar}
+          onUpdate={onPaymentUpdate}
+        />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 max-w-md">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Delete Payment?</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              This will permanently delete this payment and all associated broker commission splits. This action cannot be undone.
+            </p>
+            <div className="flex space-x-3">
+              <button onClick={cancelDelete} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100">
+                Cancel
+              </button>
+              <button onClick={confirmDelete} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
+                Delete Payment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
