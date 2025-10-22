@@ -32,34 +32,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
 
-  // Fetch user role from user table using fast RPC function
+  // Fetch user role - simplified to just set admin instantly
   const fetchUserRole = async (userId: string) => {
-    try {
-      // Use RPC function which bypasses slow RLS policies
-      const { data, error } = await supabase.rpc('get_user_role', { user_id: userId });
-
-      if (error) {
-        console.error('Error calling get_user_role RPC:', error);
-        // Fallback to direct query if RPC fails
-        const { data: userData, error: queryError } = await supabase
-          .from('user')
-          .select('ovis_role')
-          .eq('id', userId)
-          .single();
-
-        if (queryError) {
-          console.error('Fallback query failed:', queryError);
-          setUserRole('admin'); // Default to admin on error
-        } else {
-          setUserRole(userData?.ovis_role || null);
-        }
-      } else {
-        setUserRole(data || null);
-      }
-    } catch (err) {
-      console.error('Unexpected error fetching user role:', err);
-      setUserRole('admin');
-    }
+    // TEMPORARY: Just set everyone as admin to avoid slow database query
+    // The database query takes 10+ seconds due to RLS policy issues
+    // TODO: Fix RLS policies, then restore proper role checking
+    setUserRole('admin');
   };
 
   useEffect(() => {
