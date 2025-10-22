@@ -27,8 +27,8 @@ const ComparisonReportTab: React.FC = () => {
 
       // Fetch Salesforce payment data
       const { data: sfPayments, error: sfError } = await supabase
-        .from('salesforce_Payment_Info__c')
-        .select('Id, Name, Payment_Amount__c, Payment_Date__c, Payment_Status__c, Opportunity__c');
+        .from('salesforce_Payment__c')
+        .select('Id, Name, Payment_Amount__c, Payment_Date_Actual__c, PMT_Received_Date__c, Payment_Received__c, Opportunity__c');
 
       if (sfError) throw sfError;
 
@@ -84,15 +84,15 @@ const ComparisonReportTab: React.FC = () => {
           payment_sequence: ovisPayment?.payment_sequence || 0,
           sf_payment_id: sfPayment.Id,
           sf_payment_amount: sfAmount,
-          sf_payment_date: sfPayment.Payment_Date__c,
-          sf_payment_status: sfPayment.Payment_Status__c,
+          sf_payment_date: sfPayment.PMT_Received_Date__c || sfPayment.Payment_Date_Actual__c,
+          sf_payment_status: sfPayment.Payment_Received__c ? 'Received' : 'Pending',
           ovis_payment_id: ovisPayment?.id || null,
           ovis_payment_amount: ovisAmount,
           ovis_payment_received_date: ovisPayment?.payment_received_date || null,
           ovis_payment_received: ovisPayment?.payment_received || null,
           amount_matches: amountMatches,
-          date_matches: sfPayment.Payment_Date__c === ovisPayment?.payment_received_date,
-          status_matches: true, // Could add more sophisticated status matching
+          date_matches: (sfPayment.PMT_Received_Date__c || sfPayment.Payment_Date_Actual__c) === ovisPayment?.payment_received_date,
+          status_matches: sfPayment.Payment_Received__c === ovisPayment?.payment_received,
           discrepancy_notes: discrepancyNotes,
         });
       });
@@ -139,9 +139,9 @@ const ComparisonReportTab: React.FC = () => {
           Id,
           Name,
           Broker__c,
-          Origination_USD__c,
-          Site_USD__c,
-          Deal_USD__c,
+          Origination_Dollars__c,
+          Site_Dollars__c,
+          Deal_Dollars__c,
           Broker_Total__c,
           Opportunity__c
         `);
@@ -199,9 +199,9 @@ const ComparisonReportTab: React.FC = () => {
           deal_name: ovisComm?.deal?.deal_name || sfComm.Name || 'Unknown',
           broker_name: ovisComm?.broker?.name || sfComm.Broker__c || 'Unknown',
           sf_commission_split_id: sfComm.Id,
-          sf_origination_usd: sfComm.Origination_USD__c,
-          sf_site_usd: sfComm.Site_USD__c,
-          sf_deal_usd: sfComm.Deal_USD__c,
+          sf_origination_usd: sfComm.Origination_Dollars__c,
+          sf_site_usd: sfComm.Site_Dollars__c,
+          sf_deal_usd: sfComm.Deal_Dollars__c,
           sf_total: sfTotal,
           ovis_commission_split_id: ovisComm?.id || null,
           ovis_origination_usd: ovisComm?.split_origination_usd || null,
