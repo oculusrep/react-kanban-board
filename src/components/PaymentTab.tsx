@@ -439,9 +439,91 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
     }
   };
 
+  // Clear cache and fetch data when component mounts to ensure fresh data
   useEffect(() => {
+    // Clear cache for this deal to ensure we get fresh data when switching to this tab
+    paymentDataCache.delete(deal.id);
     fetchPaymentData();
-  }, [fetchPaymentData]);
+  }, [fetchPaymentData, deal.id]);
+
+  // Real-time subscriptions for automatic updates
+  useEffect(() => {
+    if (!deal.id) return;
+
+    console.log('🔔 Setting up real-time subscriptions for PaymentTab, deal:', deal.id);
+
+    // Subscribe to payment table changes for this deal
+    const paymentSubscription = supabase
+      .channel(`payment-changes-${deal.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'payment',
+        filter: `deal_id=eq.${deal.id}`
+      }, (payload) => {
+        console.log('💰 Payment change detected:', payload.eventType);
+        // Clear cache and refetch
+        paymentDataCache.delete(deal.id);
+        fetchPaymentData();
+      })
+      .subscribe();
+
+    // Subscribe to payment_split table changes
+    const paymentSplitSubscription = supabase
+      .channel(`payment-split-changes-${deal.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'payment_split'
+      }, (payload) => {
+        console.log('📊 Payment split change detected:', payload.eventType);
+        // Clear cache and refetch
+        paymentDataCache.delete(deal.id);
+        fetchPaymentData();
+      })
+      .subscribe();
+
+    // Subscribe to commission_split changes for this deal
+    const commissionSplitSubscription = supabase
+      .channel(`commission-split-changes-${deal.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'commission_split',
+        filter: `deal_id=eq.${deal.id}`
+      }, (payload) => {
+        console.log('🎯 Commission split change detected');
+        // Clear cache and refetch
+        paymentDataCache.delete(deal.id);
+        fetchPaymentData();
+      })
+      .subscribe();
+
+    // Subscribe to deal changes
+    const dealSubscription = supabase
+      .channel(`deal-changes-${deal.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'deal',
+        filter: `id=eq.${deal.id}`
+      }, (payload) => {
+        console.log('💼 Deal change detected');
+        // Clear cache and refetch
+        paymentDataCache.delete(deal.id);
+        fetchPaymentData();
+      })
+      .subscribe();
+
+    // Cleanup subscriptions when component unmounts or deal changes
+    return () => {
+      console.log('🔕 Cleaning up real-time subscriptions for PaymentTab');
+      supabase.removeChannel(paymentSubscription);
+      supabase.removeChannel(paymentSplitSubscription);
+      supabase.removeChannel(commissionSplitSubscription);
+      supabase.removeChannel(dealSubscription);
+    };
+  }, [deal.id, fetchPaymentData]);
 
   if (loading) {
     return (

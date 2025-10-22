@@ -353,78 +353,75 @@ const InlinePercentageEdit: React.FC<InlinePercentageEditProps> = ({ value, onCh
             <thead>
               <tr className="border-b border-gray-200">
                 <th className="text-left py-3 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider w-48">Broker</th>
-                <th className="text-center py-3 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Origination %</th>
-                <th className="text-right py-3 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Origination $</th>
-                <th className="text-center py-3 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Site %</th>
-                <th className="text-right py-3 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Site $</th>
-                <th className="text-center py-3 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Deal %</th>
-                <th className="text-right py-3 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Deal $</th>
-                <th className="text-right py-3 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Total $</th>
+                <th className="text-center py-3 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Origination</th>
+                <th className="text-center py-3 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Site</th>
+                <th className="text-center py-3 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Deal</th>
+                <th className="text-center py-3 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
                 <th className="w-16 text-center py-3 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody>
               {commissionSplits.map((split) => (
                 <tr key={split.id} className="border-b border-gray-100">
-                  <td className="py-3 px-3 w-48 whitespace-nowrap">
+                  <td className="py-2 px-3 w-48 whitespace-nowrap">
                     <div className="text-xs text-gray-900 font-medium">
                       {getBrokerName(split.broker_id)}
                     </div>
                   </td>
-                  
-                  {/* Origination Percentage - EDITABLE */}
-                  <td className="py-3 px-3 text-center">
-                    <InlinePercentageEdit
-                      value={split.split_origination_percent}
-                      onChange={(value) => updateCommissionSplit(split.id, 'split_origination_percent', value)}
-                      label="Origination %"
-                    />
+
+                  {/* Origination - % editable, $ underneath */}
+                  <td className="py-2 px-3 text-center">
+                    <div className="flex flex-col items-center">
+                      <InlinePercentageEdit
+                        value={split.split_origination_percent}
+                        onChange={(value) => updateCommissionSplit(split.id, 'split_origination_percent', value)}
+                        label="Origination %"
+                      />
+                      <div className="text-xs text-gray-500 mt-1">
+                        {formatUSD((split.split_origination_percent || 0) / 100 * baseAmounts.originationUSD)}
+                      </div>
+                    </div>
                   </td>
-                  
-                  {/* Origination USD - Calculated */}
-                  <td className="py-3 px-3 text-right text-sm text-gray-900">
-                    {formatUSD((split.split_origination_percent || 0) / 100 * baseAmounts.originationUSD)}
+
+                  {/* Site - % editable, $ underneath */}
+                  <td className="py-2 px-3 text-center">
+                    <div className="flex flex-col items-center">
+                      <InlinePercentageEdit
+                        value={split.split_site_percent}
+                        onChange={(value) => updateCommissionSplit(split.id, 'split_site_percent', value)}
+                        label="Site %"
+                      />
+                      <div className="text-xs text-gray-500 mt-1">
+                        {formatUSD((split.split_site_percent || 0) / 100 * baseAmounts.siteUSD)}
+                      </div>
+                    </div>
                   </td>
-                  
-                  {/* Site Percentage - EDITABLE */}
-                  <td className="py-3 px-3 text-center">
-                    <InlinePercentageEdit
-                      value={split.split_site_percent}
-                      onChange={(value) => updateCommissionSplit(split.id, 'split_site_percent', value)}
-                      label="Site %"
-                    />
+
+                  {/* Deal - % editable, $ underneath */}
+                  <td className="py-2 px-3 text-center">
+                    <div className="flex flex-col items-center">
+                      <InlinePercentageEdit
+                        value={split.split_deal_percent}
+                        onChange={(value) => updateCommissionSplit(split.id, 'split_deal_percent', value)}
+                        label="Deal %"
+                      />
+                      <div className="text-xs text-gray-500 mt-1">
+                        {formatUSD((split.split_deal_percent || 0) / 100 * baseAmounts.dealUSD)}
+                      </div>
+                    </div>
                   </td>
-                  
-                  {/* Site USD - Calculated */}
-                  <td className="py-3 px-3 text-right text-sm text-gray-900">
-                    {formatUSD((split.split_site_percent || 0) / 100 * baseAmounts.siteUSD)}
-                  </td>
-                  
-                  {/* Deal Percentage - EDITABLE */}
-                  <td className="py-3 px-3 text-center">
-                    <InlinePercentageEdit
-                      value={split.split_deal_percent}
-                      onChange={(value) => updateCommissionSplit(split.id, 'split_deal_percent', value)}
-                      label="Deal %"
-                    />
-                  </td>
-                  
-                  {/* Deal USD - Calculated */}
-                  <td className="py-3 px-3 text-right text-sm text-gray-900">
-                    {formatUSD((split.split_deal_percent || 0) / 100 * baseAmounts.dealUSD)}
-                  </td>
-                  
-                  {/* Total USD - Calculated */}
-                  <td className="py-3 px-3 text-right text-sm font-medium text-gray-900">
+
+                  {/* Total - $ only */}
+                  <td className="py-2 px-3 text-center text-sm font-medium text-gray-900">
                     {formatUSD(
                       ((split.split_origination_percent || 0) / 100 * baseAmounts.originationUSD) +
                       ((split.split_site_percent || 0) / 100 * baseAmounts.siteUSD) +
                       ((split.split_deal_percent || 0) / 100 * baseAmounts.dealUSD)
                     )}
                   </td>
-                  
+
                   {/* Delete Button */}
-                  <td className="py-3 px-3 text-center">
+                  <td className="py-2 px-3 text-center">
                     <button
                       onClick={() => showDeleteConfirmation(split.id, getBrokerName(split.broker_id))}
                       className="text-red-500 hover:text-red-700 font-bold text-lg"
@@ -441,70 +438,75 @@ const InlinePercentageEdit: React.FC<InlinePercentageEditProps> = ({ value, onCh
             <tfoot>
               <tr className="border-t-2 border-gray-300 font-semibold bg-gray-50">
                 <td className="py-3 px-3 text-sm text-gray-900">TOTALS</td>
-                
-                {/* Origination % Total with validation */}
+
+                {/* Origination Total - % with $ underneath */}
                 <td className="py-3 px-3 text-center">
-                  {(() => {
-                    const total = commissionSplits.reduce((sum, split) => 
-                      sum + (Number(split.split_origination_percent) || 0), 0
-                    );
-                    const isValid = Math.abs(total - 100) < 0.1; // Allow small rounding differences
-                    return (
-                      <span className={`text-sm ${isValid ? 'text-blue-600' : 'text-red-600'}`}>
-                        {total.toFixed(1)}%
-                      </span>
-                    );
-                  })()}
+                  <div className="flex flex-col items-center">
+                    {(() => {
+                      const totalPercent = commissionSplits.reduce((sum, split) =>
+                        sum + (Number(split.split_origination_percent) || 0), 0
+                      );
+                      const isValid = Math.abs(totalPercent - 100) < 0.1;
+                      return (
+                        <span className={`text-sm ${isValid ? 'text-blue-600' : 'text-red-600'}`}>
+                          {totalPercent.toFixed(1)}%
+                        </span>
+                      );
+                    })()}
+                    <div className="text-xs text-gray-500 mt-1">
+                      {formatUSD(commissionSplits.reduce((sum, split) =>
+                        sum + ((split.split_origination_percent || 0) / 100 * baseAmounts.originationUSD), 0
+                      ))}
+                    </div>
+                  </div>
                 </td>
-                
-                <td className="py-3 px-3 text-right text-sm text-blue-600">
-                  {formatUSD(commissionSplits.reduce((sum, split) => 
-                    sum + ((split.split_origination_percent || 0) / 100 * baseAmounts.originationUSD), 0
-                  ))}
-                </td>
-                
-                {/* Site % Total with validation */}
+
+                {/* Site Total - % with $ underneath */}
                 <td className="py-3 px-3 text-center">
-                  {(() => {
-                    const total = commissionSplits.reduce((sum, split) => 
-                      sum + (Number(split.split_site_percent) || 0), 0
-                    );
-                    const isValid = Math.abs(total - 100) < 0.1; // Allow small rounding differences
-                    return (
-                      <span className={`text-sm ${isValid ? 'text-blue-600' : 'text-red-600'}`}>
-                        {total.toFixed(1)}%
-                      </span>
-                    );
-                  })()}
+                  <div className="flex flex-col items-center">
+                    {(() => {
+                      const totalPercent = commissionSplits.reduce((sum, split) =>
+                        sum + (Number(split.split_site_percent) || 0), 0
+                      );
+                      const isValid = Math.abs(totalPercent - 100) < 0.1;
+                      return (
+                        <span className={`text-sm ${isValid ? 'text-blue-600' : 'text-red-600'}`}>
+                          {totalPercent.toFixed(1)}%
+                        </span>
+                      );
+                    })()}
+                    <div className="text-xs text-gray-500 mt-1">
+                      {formatUSD(commissionSplits.reduce((sum, split) =>
+                        sum + ((split.split_site_percent || 0) / 100 * baseAmounts.siteUSD), 0
+                      ))}
+                    </div>
+                  </div>
                 </td>
-                
-                <td className="py-3 px-3 text-right text-sm text-blue-600">
-                  {formatUSD(commissionSplits.reduce((sum, split) => 
-                    sum + ((split.split_site_percent || 0) / 100 * baseAmounts.siteUSD), 0
-                  ))}
-                </td>
-                
-                {/* Deal % Total with validation */}
+
+                {/* Deal Total - % with $ underneath */}
                 <td className="py-3 px-3 text-center">
-                  {(() => {
-                    const total = commissionSplits.reduce((sum, split) => 
-                      sum + (Number(split.split_deal_percent) || 0), 0
-                    );
-                    const isValid = Math.abs(total - 100) < 0.1; // Allow small rounding differences
-                    return (
-                      <span className={`text-sm ${isValid ? 'text-blue-600' : 'text-red-600'}`}>
-                        {total.toFixed(1)}%
-                      </span>
-                    );
-                  })()}
+                  <div className="flex flex-col items-center">
+                    {(() => {
+                      const totalPercent = commissionSplits.reduce((sum, split) =>
+                        sum + (Number(split.split_deal_percent) || 0), 0
+                      );
+                      const isValid = Math.abs(totalPercent - 100) < 0.1;
+                      return (
+                        <span className={`text-sm ${isValid ? 'text-blue-600' : 'text-red-600'}`}>
+                          {totalPercent.toFixed(1)}%
+                        </span>
+                      );
+                    })()}
+                    <div className="text-xs text-gray-500 mt-1">
+                      {formatUSD(commissionSplits.reduce((sum, split) =>
+                        sum + ((split.split_deal_percent || 0) / 100 * baseAmounts.dealUSD), 0
+                      ))}
+                    </div>
+                  </div>
                 </td>
-                
-                <td className="py-3 px-3 text-right text-sm text-blue-600">
-                  {formatUSD(commissionSplits.reduce((sum, split) => 
-                    sum + ((split.split_deal_percent || 0) / 100 * baseAmounts.dealUSD), 0
-                  ))}
-                </td>
-                <td className="py-3 px-3 text-right text-sm font-semibold text-blue-600">
+
+                {/* Total $ */}
+                <td className="py-3 px-3 text-center text-sm font-semibold text-blue-600">
                   {formatUSD(commissionSplits.reduce((sum, split) => {
                     const origUSD = (split.split_origination_percent || 0) / 100 * baseAmounts.originationUSD;
                     const siteUSD = (split.split_site_percent || 0) / 100 * baseAmounts.siteUSD;
@@ -512,6 +514,8 @@ const InlinePercentageEdit: React.FC<InlinePercentageEditProps> = ({ value, onCh
                     return sum + origUSD + siteUSD + dealUSD;
                   }, 0))}
                 </td>
+
+                {/* Empty Actions column */}
                 <td className="py-3 px-3"></td>
               </tr>
             </tfoot>

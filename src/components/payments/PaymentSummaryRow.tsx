@@ -55,12 +55,16 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
 
       {/* Invoice Number - 2 cols */}
       <div className="col-span-2">
-        <div className="text-xs text-gray-500">
+        <div className={`text-xs ${payment.orep_invoice ? 'text-gray-500' : 'text-red-500'}`}>
           Invoice #
         </div>
-        <div className="text-sm text-gray-900">
-          {payment.orep_invoice || '-'}
-        </div>
+        <input
+          type="text"
+          value={payment.orep_invoice || ''}
+          onChange={(e) => onUpdatePayment({ orep_invoice: e.target.value || null })}
+          placeholder="-"
+          className="w-full border-0 bg-transparent px-0 py-0 text-sm text-gray-900 focus:outline-none focus:ring-0 placeholder-gray-400 cursor-text"
+        />
       </div>
 
       {/* Status - 2 cols */}
