@@ -35,9 +35,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // Fetch user role from user table
   const fetchUserRole = async (userId: string) => {
     try {
-      // Add timeout to prevent infinite loading (10 second timeout)
+      // Add timeout to prevent infinite loading (20 second timeout for slow database)
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Query timeout after 10 seconds')), 10000)
+        setTimeout(() => reject(new Error('Query timeout after 20 seconds')), 20000)
       );
 
       const queryPromise = supabase
@@ -60,6 +60,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.error('Unexpected error fetching user role:', err);
       // Default to admin on timeout or exception - this prevents lockouts due to slow queries
       setUserRole('admin');
+
+      // Continue trying in background to get the real role
+      supabase
+        .from('user')
+        .select('ovis_role')
+        .eq('id', userId)
+        .single()
+        .then(({ data }) => {
+          if (data?.ovis_role) {
+            console.log('Background role fetch completed:', data.ovis_role);
+            setUserRole(data.ovis_role);
+          }
+        });
     }
   };
 
