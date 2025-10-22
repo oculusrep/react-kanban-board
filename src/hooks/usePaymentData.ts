@@ -85,7 +85,7 @@ export const usePaymentData = (dealId: string): PaymentDataResult => {
       setLoading(true);
       setError(null);
 
-      // Fetch payments with property information via JOIN
+      // Fetch payments with property information via JOIN (only active payments)
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('payment')
         .select(`
@@ -126,6 +126,7 @@ export const usePaymentData = (dealId: string): PaymentDataResult => {
           )
         `)
         .eq('deal_id', dealId)
+        .eq('is_active', true)  // Only fetch active payments (exclude archived)
         .order('payment_sequence', { ascending: true });
 
       if (paymentsError) throw paymentsError;
