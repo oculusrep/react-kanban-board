@@ -102,8 +102,15 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
       if (onUpdatePaymentSplit) {
         // Update paid status
         await onUpdatePaymentSplit(splitId, 'paid', paid);
-        // Update paid_date (will be set to now or null)
-        await onUpdatePaymentSplit(splitId, 'paid_date', paid ? new Date().toISOString() : null);
+        // Update paid_date (will be set to today's date or null)
+        const today = paid ? (() => {
+          const now = new Date();
+          const year = now.getFullYear();
+          const month = String(now.getMonth() + 1).padStart(2, '0');
+          const day = String(now.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        })() : null;
+        await onUpdatePaymentSplit(splitId, 'paid_date', today);
         console.log('✅ Payment split paid status updated, parent state refreshed');
       }
 

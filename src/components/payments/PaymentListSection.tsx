@@ -139,12 +139,7 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
                   deal={deal}
                   onSplitPercentageChange={handleSplitPercentageChange}
                   onUpdatePayment={(updates) => onUpdatePayment(payment.id, updates)}
-                  onUpdatePaymentSplit={async (splitId, updates) => {
-                    // Update the local payment split state immediately
-                    if (onUpdatePaymentSplit && updates.paid !== undefined) {
-                      await onUpdatePaymentSplit(splitId, 'paid', updates.paid);
-                    }
-                  }}
+                  onUpdatePaymentSplit={onUpdatePaymentSplit}
                 />
               )}
             </div>
