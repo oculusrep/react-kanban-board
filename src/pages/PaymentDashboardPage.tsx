@@ -316,6 +316,17 @@ const PaymentDashboardPage: React.FC = () => {
               onFilterChange={handleFilterChange}
             />
 
+            {/* Record Count */}
+            <div className="mb-4 flex items-center justify-between">
+              <div className="text-sm text-gray-600">
+                <span className="font-medium text-gray-900">{filteredPayments.length}</span>
+                {filteredPayments.length === 1 ? ' payment' : ' payments'} found
+                {filteredPayments.length !== payments.length && (
+                  <span className="text-gray-500"> (filtered from {payments.length} total)</span>
+                )}
+              </div>
+            </div>
+
             {/* Payment Table */}
             <PaymentDashboardTable
               payments={filteredPayments}
