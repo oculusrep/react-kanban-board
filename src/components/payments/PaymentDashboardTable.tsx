@@ -219,31 +219,29 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="w-8 px-3 py-3"></th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="w-8 px-2 py-2"></th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                 Deal
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                 Payment
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">
                 Amount
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                 Est. Date
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                 Received
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                 Brokers
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                 Payout Status
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
-              </th>
+              <th className="px-2 py-2 w-10"></th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -253,7 +251,7 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                 <React.Fragment key={payment.payment_id}>
                   {/* Main Payment Row */}
                   <tr className="hover:bg-gray-50 cursor-pointer">
-                    <td className="px-3 py-4">
+                    <td className="px-2 py-3">
                       <button
                         onClick={() => toggleRow(payment.payment_id)}
                         className="text-gray-400 hover:text-gray-600"
@@ -274,7 +272,7 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                       </button>
                     </td>
                     <td
-                      className="px-6 py-4 whitespace-nowrap"
+                      className="px-3 py-3 whitespace-nowrap"
                       onClick={() => toggleRow(payment.payment_id)}
                     >
                       <button
@@ -288,24 +286,24 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                       </button>
                     </td>
                     <td
-                      className="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+                      className="px-3 py-3 whitespace-nowrap text-sm text-gray-900"
                       onClick={() => toggleRow(payment.payment_id)}
                     >
                       Payment {payment.payment_sequence} of {payment.total_payments}
                     </td>
                     <td
-                      className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900"
+                      className="px-3 py-3 whitespace-nowrap text-sm text-right font-medium text-gray-900"
                       onClick={() => toggleRow(payment.payment_id)}
                     >
                       {formatCurrency(payment.payment_amount)}
                     </td>
                     <td
-                      className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
+                      className="px-3 py-3 whitespace-nowrap text-sm text-gray-500"
                       onClick={() => toggleRow(payment.payment_id)}
                     >
                       {formatDate(payment.payment_date_estimated)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <td className="px-3 py-3 whitespace-nowrap text-sm">
                       <div className="flex items-center space-x-2">
                         <input
                           type="checkbox"
@@ -324,7 +322,7 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                       </div>
                     </td>
                     <td
-                      className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
+                      className="px-3 py-3 whitespace-nowrap text-sm text-gray-500"
                       onClick={() => toggleRow(payment.payment_id)}
                     >
                       {payment.broker_splits.length} broker(s)
@@ -334,12 +332,12 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                       </span>
                     </td>
                     <td
-                      className="px-6 py-4 whitespace-nowrap"
+                      className="px-3 py-3 whitespace-nowrap"
                       onClick={() => toggleRow(payment.payment_id)}
                     >
                       {getPayoutStatusBadge(payment)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm relative">
+                    <td className="px-2 py-3 whitespace-nowrap text-sm relative">
                       <div ref={openMenuId === payment.payment_id ? menuRef : null}>
                         <button
                           onClick={(e) => {
