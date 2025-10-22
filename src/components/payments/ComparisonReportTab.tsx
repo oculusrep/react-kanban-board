@@ -26,13 +26,19 @@ const ComparisonReportTab: React.FC = () => {
       setLoading(true);
 
       // Fetch Salesforce payment data
+      console.log('[ComparisonReport] Fetching Salesforce payments...');
       const { data: sfPayments, error: sfError } = await supabase
         .from('salesforce_Payment__c')
         .select('Id, Name, Payment_Amount__c, Payment_Date_Actual__c, PMT_Received_Date__c, Payment_Received__c, Opportunity__c');
 
-      if (sfError) throw sfError;
+      if (sfError) {
+        console.error('[ComparisonReport] Salesforce payment fetch error:', sfError);
+        throw sfError;
+      }
+      console.log('[ComparisonReport] Salesforce payments fetched:', sfPayments?.length || 0);
 
       // Fetch OVIS payment data
+      console.log('[ComparisonReport] Fetching OVIS payments...');
       const { data: ovisPayments, error: ovisError } = await supabase
         .from('payment')
         .select(`
@@ -46,11 +52,28 @@ const ComparisonReportTab: React.FC = () => {
             id,
             deal_name,
             sf_id,
-            deal_stage_name
+            stage_id
           )
         `);
 
-      if (ovisError) throw ovisError;
+      if (ovisError) {
+        console.error('[ComparisonReport] OVIS payment fetch error:', ovisError);
+        throw ovisError;
+      }
+      console.log('[ComparisonReport] OVIS payments fetched:', ovisPayments?.length || 0);
+
+      // Fetch deal stages separately
+      const { data: stagesData, error: stagesError } = await supabase
+        .from('deal_stage')
+        .select('id, label');
+
+      if (stagesError) throw stagesError;
+
+      // Create stage lookup map
+      const stageMap = new Map<string, string>();
+      stagesData?.forEach(stage => {
+        stageMap.set(stage.id, stage.label);
+      });
 
       // Create comparison rows
       const comparisons: PaymentComparison[] = [];
@@ -82,7 +105,7 @@ const ComparisonReportTab: React.FC = () => {
         comparisons.push({
           deal_id: ovisPayment?.deal?.id || '',
           deal_name: ovisPayment?.deal?.deal_name || sfPayment.Name || 'Unknown',
-          deal_stage_name: ovisPayment?.deal?.deal_stage_name || null,
+          deal_stage_name: ovisPayment?.deal?.stage_id ? stageMap.get(ovisPayment.deal.stage_id) || null : null,
           payment_sequence: ovisPayment?.payment_sequence || 0,
           sf_payment_id: sfPayment.Id,
           sf_payment_amount: sfAmount,
@@ -105,7 +128,7 @@ const ComparisonReportTab: React.FC = () => {
           comparisons.push({
             deal_id: ovisPayment.deal?.id || '',
             deal_name: ovisPayment.deal?.deal_name || 'Unknown',
-            deal_stage_name: ovisPayment.deal?.deal_stage_name || null,
+            deal_stage_name: ovisPayment.deal?.stage_id ? stageMap.get(ovisPayment.deal.stage_id) || null : null,
             payment_sequence: ovisPayment.payment_sequence || 0,
             sf_payment_id: null,
             sf_payment_amount: null,
@@ -168,11 +191,24 @@ const ComparisonReportTab: React.FC = () => {
             id,
             deal_name,
             sf_id,
-            deal_stage_name
+            stage_id
           )
         `);
 
       if (ovisError) throw ovisError;
+
+      // Fetch deal stages separately
+      const { data: stagesData, error: stagesError } = await supabase
+        .from('deal_stage')
+        .select('id, label');
+
+      if (stagesError) throw stagesError;
+
+      // Create stage lookup map
+      const stageMap = new Map<string, string>();
+      stagesData?.forEach(stage => {
+        stageMap.set(stage.id, stage.label);
+      });
 
       // Create comparison rows
       const comparisons: CommissionComparison[] = [];
@@ -201,7 +237,7 @@ const ComparisonReportTab: React.FC = () => {
         comparisons.push({
           deal_id: ovisComm?.deal?.id || '',
           deal_name: ovisComm?.deal?.deal_name || sfComm.Name || 'Unknown',
-          deal_stage_name: ovisComm?.deal?.deal_stage_name || null,
+          deal_stage_name: ovisComm?.deal?.stage_id ? stageMap.get(ovisComm.deal.stage_id) || null : null,
           broker_name: ovisComm?.broker?.name || sfComm.Broker__c || 'Unknown',
           sf_commission_split_id: sfComm.Id,
           sf_origination_usd: sfComm.Origination_Dollars__c,
@@ -225,7 +261,7 @@ const ComparisonReportTab: React.FC = () => {
           comparisons.push({
             deal_id: ovisComm.deal?.id || '',
             deal_name: ovisComm.deal?.deal_name || 'Unknown',
-            deal_stage_name: ovisComm.deal?.deal_stage_name || null,
+            deal_stage_name: ovisComm.deal?.stage_id ? stageMap.get(ovisComm.deal.stage_id) || null : null,
             broker_name: ovisComm.broker?.name || 'Unknown',
             sf_commission_split_id: null,
             sf_origination_usd: null,
