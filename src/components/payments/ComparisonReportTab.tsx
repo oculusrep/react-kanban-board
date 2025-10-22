@@ -45,7 +45,8 @@ const ComparisonReportTab: React.FC = () => {
           deal!inner (
             id,
             deal_name,
-            sf_id
+            sf_id,
+            deal_stage_name
           )
         `);
 
@@ -81,6 +82,7 @@ const ComparisonReportTab: React.FC = () => {
         comparisons.push({
           deal_id: ovisPayment?.deal?.id || '',
           deal_name: ovisPayment?.deal?.deal_name || sfPayment.Name || 'Unknown',
+          deal_stage_name: ovisPayment?.deal?.deal_stage_name || null,
           payment_sequence: ovisPayment?.payment_sequence || 0,
           sf_payment_id: sfPayment.Id,
           sf_payment_amount: sfAmount,
@@ -103,6 +105,7 @@ const ComparisonReportTab: React.FC = () => {
           comparisons.push({
             deal_id: ovisPayment.deal?.id || '',
             deal_name: ovisPayment.deal?.deal_name || 'Unknown',
+            deal_stage_name: ovisPayment.deal?.deal_stage_name || null,
             payment_sequence: ovisPayment.payment_sequence || 0,
             sf_payment_id: null,
             sf_payment_amount: null,
@@ -164,7 +167,8 @@ const ComparisonReportTab: React.FC = () => {
           deal!inner (
             id,
             deal_name,
-            sf_id
+            sf_id,
+            deal_stage_name
           )
         `);
 
@@ -197,6 +201,7 @@ const ComparisonReportTab: React.FC = () => {
         comparisons.push({
           deal_id: ovisComm?.deal?.id || '',
           deal_name: ovisComm?.deal?.deal_name || sfComm.Name || 'Unknown',
+          deal_stage_name: ovisComm?.deal?.deal_stage_name || null,
           broker_name: ovisComm?.broker?.name || sfComm.Broker__c || 'Unknown',
           sf_commission_split_id: sfComm.Id,
           sf_origination_usd: sfComm.Origination_Dollars__c,
@@ -220,6 +225,7 @@ const ComparisonReportTab: React.FC = () => {
           comparisons.push({
             deal_id: ovisComm.deal?.id || '',
             deal_name: ovisComm.deal?.deal_name || 'Unknown',
+            deal_stage_name: ovisComm.deal?.deal_stage_name || null,
             broker_name: ovisComm.broker?.name || 'Unknown',
             sf_commission_split_id: null,
             sf_origination_usd: null,
@@ -351,7 +357,23 @@ const ComparisonReportTab: React.FC = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredPaymentComparisons.map((comp, idx) => (
                   <tr key={idx} className={comp.discrepancy_notes.length > 0 ? 'bg-red-50' : ''}>
-                    <td className="px-4 py-3 text-sm text-gray-900">{comp.deal_name}</td>
+                    <td className="px-4 py-3 text-sm">
+                      {comp.deal_id ? (
+                        <a
+                          href={`/deal/${comp.deal_id}?tab=payment`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                        >
+                          {comp.deal_name}
+                        </a>
+                      ) : (
+                        <span className="text-gray-900">{comp.deal_name}</span>
+                      )}
+                      {comp.deal_stage_name && (
+                        <div className="text-xs text-gray-500 mt-0.5">{comp.deal_stage_name}</div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-600">{comp.payment_sequence || '-'}</td>
                     <td className="px-4 py-3 text-sm text-right text-gray-900">
                       {formatCurrency(comp.sf_payment_amount)}
@@ -412,7 +434,23 @@ const ComparisonReportTab: React.FC = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredCommissionComparisons.map((comp, idx) => (
                   <tr key={idx} className={comp.discrepancy_notes.length > 0 ? 'bg-red-50' : ''}>
-                    <td className="px-4 py-3 text-sm text-gray-900">{comp.deal_name}</td>
+                    <td className="px-4 py-3 text-sm">
+                      {comp.deal_id ? (
+                        <a
+                          href={`/deal/${comp.deal_id}?tab=payment`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                        >
+                          {comp.deal_name}
+                        </a>
+                      ) : (
+                        <span className="text-gray-900">{comp.deal_name}</span>
+                      )}
+                      {comp.deal_stage_name && (
+                        <div className="text-xs text-gray-500 mt-0.5">{comp.deal_stage_name}</div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-900">{comp.broker_name}</td>
                     <td className="px-4 py-3 text-sm text-right text-gray-900">
                       {formatCurrency(comp.sf_total)}

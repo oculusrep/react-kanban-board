@@ -88,6 +88,7 @@ export interface PaymentSummaryStats {
 export interface PaymentComparison {
   deal_id: string;
   deal_name: string;
+  deal_stage_name: string | null;
   payment_sequence: number;
 
   // Salesforce data
@@ -112,6 +113,7 @@ export interface PaymentComparison {
 export interface CommissionComparison {
   deal_id: string;
   deal_name: string;
+  deal_stage_name: string | null;
   broker_name: string;
 
   // Salesforce data
