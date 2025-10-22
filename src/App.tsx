@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
+import AdminRoute from "./components/AdminRoute";
 import KanbanBoard from "./components/KanbanBoard";
 import DealDetailsPage from "./pages/DealDetailsPage";
 import PropertyDetailsPage from "./pages/PropertyDetailsPage";
@@ -49,7 +50,7 @@ function App() {
           <Route index element={<Navigate to="/master-pipeline" replace />} />
           <Route path="master-pipeline" element={<KanbanBoard />} />
           <Route path="tasks" element={<TaskDashboardPage />} />
-          <Route path="payments" element={<PaymentDashboardPage />} />
+          <Route path="payments" element={<AdminRoute><PaymentDashboardPage /></AdminRoute>} />
           <Route path="deal/new" element={<DealDetailsPage />} />
           <Route path="deal/:dealId" element={<DealDetailsPage />} />
           <Route path="assignment/new" element={<AssignmentDetailsPage />} />

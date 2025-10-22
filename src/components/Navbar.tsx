@@ -137,7 +137,7 @@ const getUserInitials = (firstName?: string, lastName?: string): string => {
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, signOut } = useAuth();
+  const { user, signOut, userRole } = useAuth();
   const { getRecentItems } = useRecentlyViewed();
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isReportsMenuOpen, setIsReportsMenuOpen] = useState(false);
@@ -374,15 +374,17 @@ export default function Navbar() {
                   >
                     📊 Reports
                   </button>
-                  <button
-                    onClick={() => {
-                      navigate('/payments');
-                      setIsReportsMenuOpen(false);
-                    }}
-                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
-                  >
-                    💰 Payments
-                  </button>
+                  {userRole === 'admin' && (
+                    <button
+                      onClick={() => {
+                        navigate('/payments');
+                        setIsReportsMenuOpen(false);
+                      }}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                    >
+                      💰 Payments
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       navigate('/notes-debug');
@@ -836,15 +838,17 @@ export default function Navbar() {
                 >
                   📊 Reports
                 </button>
-                <button
-                  onClick={() => {
-                    navigate('/payments');
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
-                >
-                  💰 Payments
-                </button>
+                {userRole === 'admin' && (
+                  <button
+                    onClick={() => {
+                      navigate('/payments');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                  >
+                    💰 Payments
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     navigate('/notes-debug');
