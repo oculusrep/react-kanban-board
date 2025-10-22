@@ -174,20 +174,42 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
           }}
         />
 
-        {/* Broker Split Cards */}
+        {/* Broker Split Cards or No Broker Split Section */}
         <div className="space-y-4">
-          {calculatedSplits.map((split) => (
-            <BrokerSplitEditor
-              key={split.id}
-              split={split}
-              brokerName={getBrokerName(split.broker_id)}
-              paymentAmount={payment.payment_amount || 0}
-              onPercentageChange={(field, value) => onSplitPercentageChange(split.id, field, value)}
-              validationTotals={validationTotals}
-              onPaidChange={handleUpdatePaymentSplitPaid}
-              onPaidDateChange={handleUpdatePaymentSplitPaidDate}
-            />
-          ))}
+          {splits.length === 0 ? (
+            /* No Broker Split Section - shown when there are no broker commission splits */
+            <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+              <div className="space-y-2">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h5 className="text-sm font-medium text-gray-900">
+                      No Broker Split
+                    </h5>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Deal-level commission (AGCI)
+                    </p>
+                  </div>
+                  <div className="text-sm font-semibold text-blue-900">
+                    ${paymentAGCI.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Broker Split Cards - shown when there are broker commission splits */
+            calculatedSplits.map((split) => (
+              <BrokerSplitEditor
+                key={split.id}
+                split={split}
+                brokerName={getBrokerName(split.broker_id)}
+                paymentAmount={payment.payment_amount || 0}
+                onPercentageChange={(field, value) => onSplitPercentageChange(split.id, field, value)}
+                validationTotals={validationTotals}
+                onPaidChange={handleUpdatePaymentSplitPaid}
+                onPaidDateChange={handleUpdatePaymentSplitPaidDate}
+              />
+            ))
+          )}
 
           {/* Referral Fee Row */}
           {deal.referral_fee_usd && deal.referral_fee_usd > 0 && (
@@ -234,9 +256,9 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
             </div>
           )}
         </div>
-        
-        {/* Validation Summary */}
-        {!validationTotals.isValid && (
+
+        {/* Validation Summary - only show when there are broker splits */}
+        {splits.length > 0 && !validationTotals.isValid && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-4">
             <div className="text-sm font-medium text-red-800">Percentage Validation Errors:</div>
             <div className="text-xs text-red-600 mt-1">
