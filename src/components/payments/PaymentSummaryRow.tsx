@@ -53,7 +53,7 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
             Payment {payment.payment_sequence} of {totalPayments}
           </div>
           <div className="text-xs text-gray-500">
-            ${calculatedPaymentAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            ${calculatedPaymentAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
       </div>
