@@ -428,11 +428,13 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                     >
                       {formatCurrency(payment.payment_amount)}
                     </td>
-                    <td
-                      className="px-3 py-3 whitespace-nowrap text-sm text-gray-500"
-                      onClick={() => toggleRow(payment.payment_id)}
-                    >
-                      {formatDate(payment.payment_date_estimated)}
+                    <td className="px-3 py-3 whitespace-nowrap text-sm" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="date"
+                        value={payment.payment_date_estimated || ''}
+                        onChange={(e) => handleUpdatePaymentField(payment.payment_id, 'payment_date_estimated', e.target.value || null)}
+                        className="border-0 bg-transparent px-0 py-0 text-sm text-gray-900 focus:outline-none focus:ring-0 cursor-text"
+                      />
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-sm">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
