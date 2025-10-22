@@ -34,17 +34,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Fetch user role from user table
   const fetchUserRole = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('user')
-      .select('ovis_role')
-      .eq('id', userId)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('user')
+        .select('ovis_role')
+        .eq('id', userId)
+        .single();
 
-    if (error) {
-      console.error('Error fetching user role:', error);
+      if (error) {
+        console.error('Error fetching user role:', error);
+        setUserRole(null);
+      } else {
+        setUserRole(data?.ovis_role || null);
+      }
+    } catch (err) {
+      console.error('Unexpected error in fetchUserRole:', err);
       setUserRole(null);
-    } else {
-      setUserRole(data?.ovis_role || null);
     }
   };
 
