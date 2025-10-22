@@ -22,6 +22,7 @@ import PropertyDataQualityReportPage from "./pages/PropertyDataQualityReportPage
 import AssignmentsReportPage from "./pages/AssignmentsReportPage";
 import SiteSubmitDashboardPage from "./pages/SiteSubmitDashboardPage";
 import TaskDashboardPage from "./pages/TaskDashboardPage";
+import PaymentDashboardPage from "./pages/PaymentDashboardPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 
 function ProtectedLayout() {
@@ -48,6 +49,7 @@ function App() {
           <Route index element={<Navigate to="/master-pipeline" replace />} />
           <Route path="master-pipeline" element={<KanbanBoard />} />
           <Route path="tasks" element={<TaskDashboardPage />} />
+          <Route path="payments" element={<PaymentDashboardPage />} />
           <Route path="deal/new" element={<DealDetailsPage />} />
           <Route path="deal/:dealId" element={<DealDetailsPage />} />
           <Route path="assignment/new" element={<AssignmentDetailsPage />} />
