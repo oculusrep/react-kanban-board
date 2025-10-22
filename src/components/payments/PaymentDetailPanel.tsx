@@ -45,17 +45,19 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
     return client?.client_name || null;
   };
 
-  // Calculate AGCI for this payment
+  // Calculate AGCI for this payment based on calculated payment amount, not database value
   const calculatePaymentAGCI = () => {
-    const paymentAmount = payment.payment_amount || 0;
     const numberOfPayments = deal.number_of_payments || 1;
-    
+
+    // Use calculated payment amount (total commission / number of payments)
+    const calculatedPaymentAmount = (deal.fee || 0) / numberOfPayments;
+
     // Proportional referral and house fees for this payment
     const referralFeeUSD = (deal.referral_fee_usd || 0) / numberOfPayments;
     const houseFeeUSD = (deal.house_usd || 0) / numberOfPayments;
-    
-    // AGCI = Payment Amount - Referral Fee - House Fee
-    return paymentAmount - referralFeeUSD - houseFeeUSD;
+
+    // AGCI = Calculated Payment Amount - Referral Fee - House Fee
+    return calculatedPaymentAmount - referralFeeUSD - houseFeeUSD;
   };
 
   const paymentAGCI = calculatePaymentAGCI();
