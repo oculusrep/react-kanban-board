@@ -54,6 +54,8 @@ const PaymentDashboardPage: React.FC = () => {
           payment_date_estimated,
           payment_received_date,
           payment_received,
+          invoice_sent,
+          payment_invoice_date,
           referral_fee_paid,
           referral_fee_paid_date,
           deal!inner (
@@ -126,6 +128,8 @@ const PaymentDashboardPage: React.FC = () => {
           payment_date_estimated: payment.payment_date_estimated,
           payment_received_date: payment.payment_received_date,
           payment_received: payment.payment_received || false,
+          invoice_sent: payment.invoice_sent || false,
+          payment_invoice_date: payment.payment_invoice_date,
           referral_fee_usd: paymentReferralFee > 0 ? paymentReferralFee : null,
           referral_payee_name: payment.deal?.client?.client_name || null,
           referral_payee_client_id: payment.deal?.referral_payee_client_id || null,

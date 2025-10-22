@@ -16,6 +16,10 @@ export interface PaymentDashboardRow {
   payment_received_date: string | null;
   payment_received: boolean;
 
+  // Invoice info
+  invoice_sent: boolean;
+  payment_invoice_date: string | null;
+
   // Referral fee info
   referral_fee_usd: number | null;
   referral_payee_name: string | null;
