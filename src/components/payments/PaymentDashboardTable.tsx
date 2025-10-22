@@ -447,7 +447,32 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                       {getPayoutStatusBadge(payment)}
                     </td>
                     <td className="px-2 py-3 whitespace-nowrap text-sm relative">
-                      <div ref={openMenuId === payment.payment_id ? menuRef : null}>
+                      <div className="flex items-center gap-1" ref={openMenuId === payment.payment_id ? menuRef : null}>
+                        {/* Lock/Unlock Button - Admin Only (TODO: Add role check) */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleUpdatePaymentField(payment.payment_id, 'locked', !payment.locked);
+                          }}
+                          className={`p-1 rounded hover:bg-gray-100 transition-colors ${
+                            payment.locked ? 'text-red-500 hover:text-red-600' : 'text-gray-400 hover:text-gray-600'
+                          }`}
+                          title={payment.locked ? 'Unlock payment (allows auto-updates)' : 'Lock payment (prevents auto-updates)'}
+                        >
+                          {payment.locked ? (
+                            // Locked icon
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                          ) : (
+                            // Unlocked icon
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                            </svg>
+                          )}
+                        </button>
+
+                        {/* Three-dot menu */}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();

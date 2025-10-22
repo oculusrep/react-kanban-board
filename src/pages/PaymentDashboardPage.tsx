@@ -58,6 +58,7 @@ const PaymentDashboardPage: React.FC = () => {
           payment_invoice_date,
           referral_fee_paid,
           referral_fee_paid_date,
+          locked,
           deal!inner (
             deal_name,
             stage_id,
@@ -146,6 +147,7 @@ const PaymentDashboardPage: React.FC = () => {
           payment_sequence: payment.payment_sequence || 0,
           total_payments: dealTotalPayments,
           payment_amount: payment.payment_amount || 0,
+          locked: payment.locked || false,
           payment_date_estimated: payment.payment_date_estimated,
           payment_received_date: payment.payment_received_date,
           payment_received: payment.payment_received || false,

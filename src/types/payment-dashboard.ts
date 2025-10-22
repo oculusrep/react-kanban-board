@@ -11,6 +11,7 @@ export interface PaymentDashboardRow {
   payment_sequence: number;
   total_payments: number;
   payment_amount: number;
+  locked: boolean;
 
   // Payment dates
   payment_date_estimated: string | null;
