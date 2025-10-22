@@ -313,6 +313,9 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
               <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">
                 Amount
               </th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                Invoice #
+              </th>
               <th
                 className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('payment_date_estimated')}
@@ -406,6 +409,15 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                     >
                       {formatCurrency(payment.payment_amount)}
                     </td>
+                    <td className="px-3 py-3 whitespace-nowrap text-sm" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="text"
+                        value={payment.orep_invoice || ''}
+                        onChange={(e) => handleUpdatePaymentField(payment.payment_id, 'orep_invoice', e.target.value || null)}
+                        placeholder="-"
+                        className="w-full border-0 bg-transparent px-0 py-0 text-sm text-gray-900 focus:outline-none focus:ring-0 placeholder-gray-400 cursor-text"
+                      />
+                    </td>
                     <td
                       className="px-3 py-3 whitespace-nowrap text-sm text-gray-500"
                       onClick={() => toggleRow(payment.payment_id)}
@@ -413,22 +425,13 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                       {formatDate(payment.payment_date_estimated)}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-sm">
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          checked={payment.payment_received}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            handleMarkPaymentReceived(payment.payment_id, e.target.checked);
-                          }}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <span className="text-gray-500">
-                          {payment.payment_received_date
-                            ? formatDate(payment.payment_received_date)
-                            : '-'}
-                        </span>
-                      </div>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        payment.payment_received
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {payment.payment_received ? 'Received' : 'Not Received'}
+                      </span>
                     </td>
                     <td
                       className="px-3 py-3 whitespace-nowrap text-sm text-gray-500"

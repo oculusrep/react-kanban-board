@@ -21,6 +21,7 @@ export interface PaymentDashboardRow {
   // Invoice info
   invoice_sent: boolean;
   payment_invoice_date: string | null;
+  orep_invoice: string | null;
 
   // Referral fee info
   referral_fee_usd: number | null;
