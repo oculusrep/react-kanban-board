@@ -13,6 +13,9 @@ interface PaymentDashboardTableProps {
   onPaymentUpdate: () => void;
 }
 
+type SortField = 'deal_name' | 'payment_date_estimated' | 'payment_received' | 'disbursement';
+type SortDirection = 'asc' | 'desc';
+
 const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
   payments,
   loading,
@@ -26,12 +29,68 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [paymentToDelete, setPaymentToDelete] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<SortField>('payment_date_estimated');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Sync local payments with parent when parent data changes
+  // Sync local payments with parent when parent data changes and apply sorting
   useEffect(() => {
-    setLocalPayments(payments);
-  }, [payments]);
+    const sorted = sortPayments([...payments], sortField, sortDirection);
+    setLocalPayments(sorted);
+  }, [payments, sortField, sortDirection]);
+
+  const sortPayments = (
+    paymentsToSort: PaymentDashboardRow[],
+    field: SortField,
+    direction: SortDirection
+  ): PaymentDashboardRow[] => {
+    return [...paymentsToSort].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      switch (field) {
+        case 'deal_name':
+          aValue = a.deal_name.toLowerCase();
+          bValue = b.deal_name.toLowerCase();
+          break;
+        case 'payment_date_estimated':
+          aValue = a.payment_date_estimated || '';
+          bValue = b.payment_date_estimated || '';
+          break;
+        case 'payment_received':
+          aValue = a.payment_received ? 1 : 0;
+          bValue = b.payment_received ? 1 : 0;
+          break;
+        case 'disbursement':
+          // Calculate disbursement status: all paid = 2, some paid = 1, none paid = 0
+          const aAllPaid = a.all_brokers_paid && (a.referral_fee_usd ? a.referral_fee_paid : true);
+          const bAllPaid = b.all_brokers_paid && (b.referral_fee_usd ? b.referral_fee_paid : true);
+          const aSomePaid = a.broker_splits.some(s => s.paid) || a.referral_fee_paid;
+          const bSomePaid = b.broker_splits.some(s => s.paid) || b.referral_fee_paid;
+
+          aValue = aAllPaid ? 2 : (aSomePaid ? 1 : 0);
+          bValue = bAllPaid ? 2 : (bSomePaid ? 1 : 0);
+          break;
+        default:
+          return 0;
+      }
+
+      if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      // Toggle direction if clicking the same field
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Set new field with default direction
+      setSortField(field);
+      setSortDirection(field === 'payment_date_estimated' ? 'desc' : 'asc');
+    }
+  };
 
   const toggleRow = (paymentId: string) => {
     const newExpanded = new Set(expandedRows);
@@ -213,6 +272,25 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
     );
   }
 
+  const renderSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return (
+        <svg className="ml-1 h-3 w-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+        </svg>
+      );
+    }
+    return sortDirection === 'asc' ? (
+      <svg className="ml-1 h-3 w-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+      </svg>
+    ) : (
+      <svg className="ml-1 h-3 w-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+    );
+  };
+
   return (
     <div className="bg-white shadow rounded-lg overflow-hidden">
       <div className="overflow-x-auto">
@@ -220,8 +298,14 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
           <thead className="bg-gray-50">
             <tr>
               <th className="w-8 px-2 py-2"></th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                Deal
+              <th
+                className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('deal_name')}
+              >
+                <div className="flex items-center">
+                  Deal
+                  {renderSortIcon('deal_name')}
+                </div>
               </th>
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                 Payment
@@ -229,17 +313,35 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
               <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">
                 Amount
               </th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                Est. Date
+              <th
+                className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('payment_date_estimated')}
+              >
+                <div className="flex items-center">
+                  Est. Date
+                  {renderSortIcon('payment_date_estimated')}
+                </div>
               </th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                Received
+              <th
+                className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('payment_received')}
+              >
+                <div className="flex items-center">
+                  Received
+                  {renderSortIcon('payment_received')}
+                </div>
               </th>
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                 Brokers
               </th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                Disbursement
+              <th
+                className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => handleSort('disbursement')}
+              >
+                <div className="flex items-center">
+                  Disbursement
+                  {renderSortIcon('disbursement')}
+                </div>
               </th>
               <th className="px-2 py-2 w-10"></th>
             </tr>
