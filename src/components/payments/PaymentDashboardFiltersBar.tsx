@@ -86,6 +86,88 @@ const CustomDropdown: React.FC<{
   );
 };
 
+const MultiSelectDropdown: React.FC<{
+  label: string;
+  selectedValues: string[];
+  options: string[];
+  onChange: (values: string[]) => void;
+}> = ({ label, selectedValues, options, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const handleToggle = (value: string) => {
+    if (selectedValues.includes(value)) {
+      onChange(selectedValues.filter(v => v !== value));
+    } else {
+      onChange([...selectedValues, value]);
+    }
+  };
+
+  const displayLabel = selectedValues.length === 0
+    ? 'All Stages'
+    : selectedValues.length === 1
+    ? selectedValues[0]
+    : `${selectedValues.length} selected`;
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <label className="block text-xs font-medium text-gray-700 mb-1">
+        {label}
+      </label>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm bg-white text-left focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:bg-gray-50 transition-colors flex items-center justify-between"
+      >
+        <span className="truncate">{displayLabel}</span>
+        <svg
+          className={`ml-2 h-4 w-4 text-gray-400 transition-transform ${isOpen ? 'transform rotate-180' : ''}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+          {options.map((option) => (
+            <label
+              key={option}
+              className="flex items-center px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer transition-colors"
+            >
+              <input
+                type="checkbox"
+                checked={selectedValues.includes(option)}
+                onChange={() => handleToggle(option)}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-2"
+              />
+              <span className="text-gray-700">{option}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
   filters,
   onFilterChange,
@@ -116,7 +198,7 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
       paymentStatus: 'all',
       payoutStatus: 'all',
       dateRange: { start: null, end: null },
-      dealStage: null,
+      dealStages: [],
       dealId: null,
     });
   };
@@ -127,7 +209,7 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
     filters.payoutStatus !== 'all' ||
     filters.dateRange.start ||
     filters.dateRange.end ||
-    filters.dealStage ||
+    filters.dealStages.length > 0 ||
     filters.dealId;
 
   const paymentStatusOptions: DropdownOption[] = [
@@ -141,11 +223,6 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
     { value: 'paid', label: 'Fully Paid' },
     { value: 'unpaid', label: 'Unpaid' },
     { value: 'partial', label: 'Partially Paid' },
-  ];
-
-  const dealStageOptions: DropdownOption[] = [
-    { value: '', label: 'All Stages' },
-    ...dealStages.map(stage => ({ value: stage, label: stage })),
   ];
 
   return (
@@ -182,11 +259,11 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
         />
 
         {/* Deal Stage Filter */}
-        <CustomDropdown
+        <MultiSelectDropdown
           label="Deal Stage"
-          value={filters.dealStage || ''}
-          options={dealStageOptions}
-          onChange={(value) => onFilterChange({ dealStage: value || null })}
+          selectedValues={filters.dealStages}
+          options={dealStages}
+          onChange={(values) => onFilterChange({ dealStages: values })}
         />
       </div>
 
