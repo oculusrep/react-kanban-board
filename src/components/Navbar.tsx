@@ -376,6 +376,15 @@ export default function Navbar() {
                   </button>
                   <button
                     onClick={() => {
+                      navigate('/payments');
+                      setIsReportsMenuOpen(false);
+                    }}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                  >
+                    💰 Payments
+                  </button>
+                  <button
+                    onClick={() => {
                       navigate('/notes-debug');
                       setIsReportsMenuOpen(false);
                     }}
@@ -814,7 +823,7 @@ export default function Navbar() {
               )}
             </div>
 
-            {/* Reports & Notes Section */}
+            {/* Reports, Payments & Notes Section */}
             <div className="mb-6">
               <div className="text-sm font-medium text-gray-500 uppercase mb-2">Other</div>
               <div className="space-y-1">
@@ -826,6 +835,15 @@ export default function Navbar() {
                   className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                 >
                   📊 Reports
+                </button>
+                <button
+                  onClick={() => {
+                    navigate('/payments');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                >
+                  💰 Payments
                 </button>
                 <button
                   onClick={() => {
