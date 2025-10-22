@@ -1,5 +1,5 @@
 // src/pages/DealDetailsPage.tsx
-import { useParams, useLocation, useNavigate } from "react-router-dom";
+import { useParams, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import DealDetailsForm from "../components/DealDetailsForm";
@@ -21,6 +21,7 @@ export default function DealDetailsPage() {
   const { dealId } = useParams<{ dealId: string }>();
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [deal, setDeal] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [isNewDeal, setIsNewDeal] = useState(false);
@@ -40,6 +41,14 @@ export default function DealDetailsPage() {
 
   // Fallback: if dealId is undefined but pathname is /deal/new, treat as new deal
   const actualDealId = dealId || (location.pathname === '/deal/new' ? 'new' : undefined);
+
+  // Check for tab query parameter and set active tab
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['overview', 'commission', 'payments', 'activity', 'files'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
 
   // Listen for messages from iframe (site submit sidebar)
   useEffect(() => {
