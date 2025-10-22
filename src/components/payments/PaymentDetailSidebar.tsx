@@ -102,7 +102,7 @@ const PaymentDetailSidebar: React.FC<PaymentDetailSidebarProps> = ({
               <div className="bg-white border border-gray-200 rounded-lg p-4">
                 <button
                   onClick={() => {
-                    navigate(`/deal/${payment.deal_id}`);
+                    navigate(`/deal/${payment.deal_id}?tab=payments`);
                     onClose();
                   }}
                   className="text-lg font-semibold text-blue-600 hover:text-blue-800 hover:underline"
@@ -304,7 +304,7 @@ const PaymentDetailSidebar: React.FC<PaymentDetailSidebarProps> = ({
             <div className="flex space-x-3">
               <button
                 onClick={() => {
-                  navigate(`/deal/${payment.deal_id}`);
+                  navigate(`/deal/${payment.deal_id}?tab=payments`);
                   onClose();
                 }}
                 className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
