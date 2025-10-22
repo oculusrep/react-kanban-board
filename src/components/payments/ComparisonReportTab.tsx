@@ -37,7 +37,7 @@ const ComparisonReportTab: React.FC = () => {
       }
       console.log('[ComparisonReport] Salesforce payments fetched:', sfPayments?.length || 0);
 
-      // Fetch OVIS payment data
+      // Fetch OVIS payment data (only active payments)
       console.log('[ComparisonReport] Fetching OVIS payments...');
       const { data: ovisPayments, error: ovisError } = await supabase
         .from('payment')
@@ -52,9 +52,12 @@ const ComparisonReportTab: React.FC = () => {
             id,
             deal_name,
             sf_id,
-            stage_id
+            stage_id,
+            fee,
+            number_of_payments
           )
-        `);
+        `)
+        .eq('is_active', true);
 
       if (ovisError) {
         console.error('[ComparisonReport] OVIS payment fetch error:', ovisError);
@@ -90,8 +93,11 @@ const ComparisonReportTab: React.FC = () => {
         }
 
         const sfAmount = sfPayment.Payment_Amount__c || 0;
-        const ovisAmount = ovisPayment?.payment_amount || 0;
-        const amountDiff = Math.abs(sfAmount - ovisAmount);
+        // Use calculated payment amount instead of database value
+        const calculatedOvisAmount = ovisPayment?.deal?.fee && ovisPayment?.deal?.number_of_payments
+          ? ovisPayment.deal.fee / ovisPayment.deal.number_of_payments
+          : ovisPayment?.payment_amount || 0;
+        const amountDiff = Math.abs(sfAmount - calculatedOvisAmount);
 
         const discrepancyNotes: string[] = [];
         const amountMatches = amountDiff < 0.01;
@@ -112,7 +118,7 @@ const ComparisonReportTab: React.FC = () => {
           sf_payment_date: sfPayment.PMT_Received_Date__c || sfPayment.Payment_Date_Actual__c,
           sf_payment_status: sfPayment.Payment_Received__c ? 'Received' : 'Pending',
           ovis_payment_id: ovisPayment?.id || null,
-          ovis_payment_amount: ovisAmount,
+          ovis_payment_amount: calculatedOvisAmount,
           ovis_payment_received_date: ovisPayment?.payment_received_date || null,
           ovis_payment_received: ovisPayment?.payment_received || null,
           amount_matches: amountMatches,
@@ -125,6 +131,11 @@ const ComparisonReportTab: React.FC = () => {
       // Second pass: find OVIS payments not in Salesforce
       (ovisPayments || []).forEach((ovisPayment: any) => {
         if (!matchedOvisPayments.has(ovisPayment.id) && !ovisPayment.sf_id) {
+          // Use calculated payment amount instead of database value
+          const calculatedAmount = ovisPayment.deal?.fee && ovisPayment.deal?.number_of_payments
+            ? ovisPayment.deal.fee / ovisPayment.deal.number_of_payments
+            : ovisPayment.payment_amount || 0;
+
           comparisons.push({
             deal_id: ovisPayment.deal?.id || '',
             deal_name: ovisPayment.deal?.deal_name || 'Unknown',
@@ -135,7 +146,7 @@ const ComparisonReportTab: React.FC = () => {
             sf_payment_date: null,
             sf_payment_status: null,
             ovis_payment_id: ovisPayment.id,
-            ovis_payment_amount: ovisPayment.payment_amount,
+            ovis_payment_amount: calculatedAmount,
             ovis_payment_received_date: ovisPayment.payment_received_date,
             ovis_payment_received: ovisPayment.payment_received,
             amount_matches: false,
