@@ -33,6 +33,87 @@ const PaymentDashboardPage: React.FC = () => {
     fetchPaymentData();
   }, []);
 
+  // Set up real-time subscriptions for automatic updates
+  useEffect(() => {
+    // Subscribe to payment table changes
+    const paymentSubscription = supabase
+      .channel('payment-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'payment'
+        },
+        (payload) => {
+          console.log('💰 Payment change detected:', payload.eventType);
+          fetchPaymentData();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to payment_split table changes (triggered by database triggers)
+    const paymentSplitSubscription = supabase
+      .channel('payment-split-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'payment_split'
+        },
+        (payload) => {
+          console.log('📊 Payment split change detected:', payload.eventType);
+          fetchPaymentData();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to commission_split changes (will trigger payment_split updates)
+    const commissionSplitSubscription = supabase
+      .channel('commission-split-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'commission_split'
+        },
+        (payload) => {
+          console.log('🎯 Commission split change detected, payment splits will auto-update');
+          // The database trigger will update payment_splits, which will trigger the above subscription
+          // But let's refetch immediately to show the change faster
+          fetchPaymentData();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to deal changes (for fee/payment count changes)
+    const dealSubscription = supabase
+      .channel('deal-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'deal'
+        },
+        (payload) => {
+          console.log('💼 Deal change detected, payments may auto-update');
+          fetchPaymentData();
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscriptions on unmount
+    return () => {
+      supabase.removeChannel(paymentSubscription);
+      supabase.removeChannel(paymentSplitSubscription);
+      supabase.removeChannel(commissionSplitSubscription);
+      supabase.removeChannel(dealSubscription);
+    };
+  }, []);
+
   // Apply filters whenever payments or filters change
   useEffect(() => {
     applyFilters();
