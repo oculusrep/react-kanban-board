@@ -391,15 +391,15 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                       onClick={() => toggleRow(payment.payment_id)}
                     >
                       <div className="flex flex-col">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/deal/${payment.deal_id}`);
-                          }}
+                        <a
+                          href={`/deal/${payment.deal_id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
                           className="text-sm font-medium text-blue-600 hover:text-blue-900 hover:underline text-left"
                         >
                           {payment.deal_name}
-                        </button>
+                        </a>
                         {payment.deal_stage && (
                           <span className="text-xs text-gray-500 mt-0.5">
                             {payment.deal_stage}
