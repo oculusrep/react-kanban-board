@@ -188,7 +188,8 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
 
     if (data) {
       const stageLabels = data.map(d => d.label).filter(Boolean);
-      setDealStages(stageLabels);
+      // Add "None" option at the beginning for payments without a deal stage
+      setDealStages(['None', ...stageLabels]);
     }
   };
 

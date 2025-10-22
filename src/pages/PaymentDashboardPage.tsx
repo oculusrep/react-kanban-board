@@ -341,7 +341,14 @@ const PaymentDashboardPage: React.FC = () => {
 
     // Deal stage filter (multi-select)
     if (filters.dealStages.length > 0) {
-      filtered = filtered.filter(p => p.deal_stage && filters.dealStages.includes(p.deal_stage));
+      filtered = filtered.filter(p => {
+        // If "None" is selected, include payments without a deal stage
+        if (filters.dealStages.includes('None') && !p.deal_stage) {
+          return true;
+        }
+        // Otherwise, check if payment's stage is in selected stages
+        return p.deal_stage && filters.dealStages.includes(p.deal_stage);
+      });
     }
 
     // Deal filter
