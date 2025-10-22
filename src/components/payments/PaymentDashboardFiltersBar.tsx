@@ -91,11 +91,9 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
   onFilterChange,
 }) => {
   const [brokers, setBrokers] = useState<{ id: string; name: string }[]>([]);
-  const [deals, setDeals] = useState<{ id: string; deal_name: string }[]>([]);
 
   useEffect(() => {
     fetchBrokers();
-    fetchDeals();
   }, []);
 
   const fetchBrokers = async () => {
@@ -106,17 +104,6 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
       .order('name');
 
     if (data) setBrokers(data);
-  };
-
-  const fetchDeals = async () => {
-    const { data } = await supabase
-      .from('deal')
-      .select('id, deal_name')
-      .not('deal_name', 'is', null)
-      .order('deal_name')
-      .limit(100);
-
-    if (data) setDeals(data);
   };
 
   const handleClearFilters = () => {
@@ -157,14 +144,9 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
     ...brokers.map(broker => ({ value: broker.id, label: broker.name })),
   ];
 
-  const dealOptions: DropdownOption[] = [
-    { value: '', label: 'All Deals' },
-    ...deals.map(deal => ({ value: deal.id, label: deal.deal_name })),
-  ];
-
   return (
     <div className="bg-white shadow rounded-lg p-4 mb-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         {/* Search */}
         <div className="xl:col-span-2">
           <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -201,14 +183,6 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
           value={filters.brokerId || ''}
           options={brokerOptions}
           onChange={(value) => onFilterChange({ brokerId: value || null })}
-        />
-
-        {/* Deal Filter */}
-        <CustomDropdown
-          label="Deal"
-          value={filters.dealId || ''}
-          options={dealOptions}
-          onChange={(value) => onFilterChange({ dealId: value || null })}
         />
       </div>
 
