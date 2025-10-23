@@ -21,15 +21,63 @@ const PaymentAmountOverrideModal: React.FC<PaymentAmountOverrideModalProps> = ({
   onSuccess,
 }) => {
   const [overrideAmount, setOverrideAmount] = useState<string>('');
+  const [displayValue, setDisplayValue] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setOverrideAmount(currentAmount.toString());
+      setDisplayValue(formatCurrency(currentAmount));
       setError(null);
     }
   }, [isOpen, currentAmount]);
+
+  const formatCurrency = (value: number | string): string => {
+    const numValue = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(numValue)) return '';
+    return numValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target.value;
+    // Remove all non-digit and non-decimal characters
+    const cleaned = input.replace(/[^\d.]/g, '');
+
+    // Prevent multiple decimal points
+    const parts = cleaned.split('.');
+    const formatted = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : cleaned;
+
+    setOverrideAmount(formatted);
+
+    // Format for display
+    if (formatted) {
+      const numValue = parseFloat(formatted);
+      if (!isNaN(numValue)) {
+        setDisplayValue(formatCurrency(numValue));
+      } else {
+        setDisplayValue(formatted);
+      }
+    } else {
+      setDisplayValue('');
+    }
+  };
+
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    // Show raw number when focused
+    e.target.value = overrideAmount;
+  };
+
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    // Show formatted number when blurred
+    if (overrideAmount) {
+      const numValue = parseFloat(overrideAmount);
+      if (!isNaN(numValue)) {
+        setDisplayValue(formatCurrency(numValue));
+        e.target.value = formatCurrency(numValue);
+      }
+    }
+  };
 
   const handleSave = async () => {
     const newAmount = parseFloat(overrideAmount);
@@ -82,7 +130,13 @@ const PaymentAmountOverrideModal: React.FC<PaymentAmountOverrideModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Error updating payment override:', err);
-      setError(err.message || 'Failed to update payment amount');
+      const errorMessage = err?.message || err?.error_description || 'Failed to update payment amount';
+      setError(errorMessage);
+
+      // Show alert for network errors
+      if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('ERR_CONNECTION')) {
+        alert('Network error: Unable to connect to the database. Please check your connection and try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -120,14 +174,20 @@ const PaymentAmountOverrideModal: React.FC<PaymentAmountOverrideModalProps> = ({
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">New Amount</label>
-              <input
-                type="number"
-                step="0.01"
-                value={overrideAmount}
-                onChange={(e) => setOverrideAmount(e.target.value)}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="Enter new amount"
-              />
+              <div className="mt-1 relative rounded-md shadow-sm">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <span className="text-gray-500 sm:text-sm">$</span>
+                </div>
+                <input
+                  type="text"
+                  defaultValue={displayValue}
+                  onChange={handleInputChange}
+                  onFocus={handleFocus}
+                  onBlur={handleBlur}
+                  className="block w-full pl-7 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  placeholder="0.00"
+                />
+              </div>
             </div>
             {error && (
               <div className="bg-red-50 border-l-4 border-red-400 p-4">
