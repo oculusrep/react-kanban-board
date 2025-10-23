@@ -214,7 +214,7 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="text-sm font-semibold text-purple-900">
-                      ${((deal.referral_fee_usd || 0) / (deal.number_of_payments || 1)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ${(payment.referral_fee_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
