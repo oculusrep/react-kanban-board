@@ -42,16 +42,41 @@ const PaymentAmountOverrideModal: React.FC<PaymentAmountOverrideModalProps> = ({
       setLoading(true);
       setError(null);
 
-      const { error: updateError } = await supabase
-        .from('payment')
-        .update({
-          payment_amount: newAmount,
-          amount_override: true,
-          override_at: new Date().toISOString(),
-        })
-        .eq('id', paymentId);
+      // Try to update with override columns first
+      const updateData: any = {
+        payment_amount: newAmount,
+      };
 
-      if (updateError) throw updateError;
+      // Check if amount_override column exists by attempting to update it
+      // If migrations haven't been run, fall back to just updating payment_amount
+      try {
+        const { error: updateError } = await supabase
+          .from('payment')
+          .update({
+            ...updateData,
+            amount_override: true,
+            override_at: new Date().toISOString(),
+          })
+          .eq('id', paymentId);
+
+        if (updateError) {
+          // Check if error is about missing column
+          if (updateError.message.includes("amount_override") || updateError.message.includes("schema cache")) {
+            // Column doesn't exist yet - just update the amount
+            console.warn('Override columns not found - updating payment_amount only. Please run migrations.');
+            const { error: fallbackError } = await supabase
+              .from('payment')
+              .update(updateData)
+              .eq('id', paymentId);
+
+            if (fallbackError) throw fallbackError;
+          } else {
+            throw updateError;
+          }
+        }
+      } catch (err: any) {
+        throw err;
+      }
 
       onSuccess();
       onClose();

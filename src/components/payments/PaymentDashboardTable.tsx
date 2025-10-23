@@ -233,6 +233,14 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
         })
         .eq('id', paymentId);
 
+      // If columns don't exist yet, just warn and close menu
+      if (error && (error.message.includes('amount_override') || error.message.includes('schema cache'))) {
+        console.warn('Override columns not found. Please run migrations to enable override functionality.');
+        alert('Override feature requires database migrations. Please run migrations first.');
+        setOpenMenuId(null);
+        return;
+      }
+
       if (error) throw error;
 
       onPaymentUpdate();
