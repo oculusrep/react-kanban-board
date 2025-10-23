@@ -27,6 +27,7 @@
     "email-addresses": "^5.0.0",
     "email-reply-parser": "^2.0.1",
     "lucide-react": "^0.544.0",
+    "pg": "^8.16.3",
     "quill": "^2.0.3",
     "react": "^18.2.0",
     "react-datepicker": "^8.4.0",
