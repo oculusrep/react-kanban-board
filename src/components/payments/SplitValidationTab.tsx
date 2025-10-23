@@ -316,7 +316,7 @@ const SplitValidationTab: React.FC = () => {
                       <div className="text-sm font-medium text-gray-900">{issue.dealName}</div>
                       <div className="text-sm text-gray-500">
                         Payment {issue.paymentSeq}
-                        {issue.isOverride && <span className="ml-2 text-blue-600">🔒</span>}
+                        {issue.isOverride && <span className="ml-2 text-orange-600" title="Amount has been manually adjusted">🚩</span>}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">

@@ -78,7 +78,7 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
           <div className="text-xs text-gray-500 flex items-center gap-1">
             ${storedPaymentAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             {(payment as any).amount_override && (
-              <span className="text-blue-600" title="Amount has been manually overridden">🔒</span>
+              <span className="text-orange-600" title="Amount has been manually adjusted">🚩</span>
             )}
           </div>
         </div>
@@ -189,8 +189,8 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
           </div>
         )}
         {(payment as any)?.amount_override && (
-          <span className="ml-2 text-xs text-blue-600" title="Amount has been manually overridden">
-            🔒
+          <span className="ml-2 text-xs text-orange-600" title="Amount has been manually adjusted">
+            🚩
           </span>
         )}
       </div>

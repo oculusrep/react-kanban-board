@@ -624,8 +624,8 @@ const ComparisonReportTab: React.FC = () => {
                             </div>
                           )}
                           {comp.ovis_amount_override && (
-                            <span className="ml-2 text-xs text-blue-600" title="Amount has been manually overridden">
-                              🔒
+                            <span className="ml-2 text-xs text-orange-600" title="Amount has been manually adjusted">
+                              🚩
                             </span>
                           )}
                         </div>
