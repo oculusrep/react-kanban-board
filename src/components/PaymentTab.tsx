@@ -624,14 +624,15 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
             onDeletePayment={deletePayment}
             onUpdatePaymentSplit={async (splitId, field, value) => {
               // Update local state immediately instead of full refresh
-              setPaymentSplits(prev => 
-                prev.map(split => 
-                  split.id === splitId 
+              setPaymentSplits(prev =>
+                prev.map(split =>
+                  split.id === splitId
                     ? { ...split, [field]: value !== null ? value : (field === 'paid' ? false : 0) }
                     : split
                 )
               );
             }}
+            onRefresh={fetchPaymentData}
           />
         </div>
       ) : (

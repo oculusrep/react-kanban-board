@@ -10,8 +10,9 @@ import PaymentDashboardFiltersBar from '../components/payments/PaymentDashboardF
 import PaymentSummaryCards from '../components/payments/PaymentSummaryCards';
 import ComparisonReportTab from '../components/payments/ComparisonReportTab';
 import PaymentDiscrepancyReport from '../components/payments/PaymentDiscrepancyReport';
+import SplitValidationTab from '../components/payments/SplitValidationTab';
 
-type TabType = 'dashboard' | 'comparison' | 'discrepancies';
+type TabType = 'dashboard' | 'comparison' | 'discrepancies' | 'validation';
 
 const PaymentDashboardPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -415,6 +416,16 @@ const PaymentDashboardPage: React.FC = () => {
             >
               Fix Discrepancies
             </button>
+            <button
+              onClick={() => setActiveTab('validation')}
+              className={`${
+                activeTab === 'validation'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            >
+              Split Validation
+            </button>
           </nav>
         </div>
       </div>
@@ -452,8 +463,10 @@ const PaymentDashboardPage: React.FC = () => {
           </>
         ) : activeTab === 'comparison' ? (
           <ComparisonReportTab />
-        ) : (
+        ) : activeTab === 'discrepancies' ? (
           <PaymentDiscrepancyReport />
+        ) : (
+          <SplitValidationTab />
         )}
       </div>
     </div>

@@ -15,6 +15,7 @@ interface PaymentListSectionProps {
   onUpdatePayment: (paymentId: string, updates: Partial<Payment>) => Promise<void>;
   onDeletePayment: (paymentId: string) => Promise<void>;
   onUpdatePaymentSplit?: (splitId: string, field: string, value: number | null) => Promise<void>;
+  onRefresh?: () => void;
 }
 
 const PaymentListSection: React.FC<PaymentListSectionProps> = ({
@@ -26,7 +27,8 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
   deal,
   onUpdatePayment,
   onDeletePayment,
-  onUpdatePaymentSplit
+  onUpdatePaymentSplit,
+  onRefresh
 }) => {
   const [expandedPayments, setExpandedPayments] = useState<Set<string>>(new Set());
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -122,6 +124,7 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
                 onToggleExpansion={() => togglePaymentExpansion(payment.id)}
                 onUpdatePayment={(updates) => onUpdatePayment(payment.id, updates)}
                 onDeletePayment={() => confirmDeletePayment(payment)}
+                onRefresh={onRefresh}
               />
 
               {/* Expandable Detail Panel */}
