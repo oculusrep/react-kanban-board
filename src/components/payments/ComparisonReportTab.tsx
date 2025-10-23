@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { PaymentComparison, CommissionComparison } from '../../types/payment-dashboard';
+import PaymentAmountOverrideModal from './PaymentAmountOverrideModal';
 
 type ReportType = 'payments' | 'commissions';
 
@@ -17,8 +18,6 @@ const ComparisonReportTab: React.FC = () => {
   // Override modal state
   const [showOverrideModal, setShowOverrideModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PaymentComparison | null>(null);
-  const [overrideAmount, setOverrideAmount] = useState<string>('');
-  const [overrideLoading, setOverrideLoading] = useState(false);
 
   // Menu dropdown state
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -68,6 +67,9 @@ const ComparisonReportTab: React.FC = () => {
           sf_id,
           payment_sequence,
           payment_amount,
+          amount_override,
+          override_at,
+          override_by,
           payment_received_date,
           payment_received,
           deal!inner (
@@ -92,6 +94,17 @@ const ComparisonReportTab: React.FC = () => {
         !excludedStageIds.includes(p.deal.stage_id)
       );
       console.log('[ComparisonReport] OVIS payments after stage filter:', ovisPayments?.length || 0);
+
+      // Debug: Log overridden payments
+      const overriddenPayments = ovisPayments?.filter((p: any) => p.amount_override);
+      if (overriddenPayments && overriddenPayments.length > 0) {
+        console.log('[ComparisonReport] Found overridden payments:', overriddenPayments.map((p: any) => ({
+          id: p.id,
+          payment_amount: p.payment_amount,
+          amount_override: p.amount_override,
+          deal: p.deal?.deal_name
+        })));
+      }
 
       // Get set of SF deal IDs that belong to Lost or Closed Paid deals
       const excludedSfDealIds = new Set<string>();
@@ -380,46 +393,8 @@ const ComparisonReportTab: React.FC = () => {
 
   const handleOpenOverrideModal = (payment: PaymentComparison) => {
     setSelectedPayment(payment);
-    setOverrideAmount(payment.ovis_payment_amount?.toString() || '');
     setShowOverrideModal(true);
     setOpenMenuId(null);
-  };
-
-  const handleSaveOverride = async () => {
-    if (!selectedPayment || !selectedPayment.ovis_payment_id) return;
-
-    const newAmount = parseFloat(overrideAmount);
-    if (isNaN(newAmount) || newAmount <= 0) {
-      alert('Please enter a valid amount');
-      return;
-    }
-
-    try {
-      setOverrideLoading(true);
-
-      const { error } = await supabase
-        .from('payment')
-        .update({
-          payment_amount: newAmount,
-          amount_override: true,
-          override_at: new Date().toISOString(),
-        })
-        .eq('id', selectedPayment.ovis_payment_id);
-
-      if (error) throw error;
-
-      // Refresh the report
-      await fetchPaymentComparisons();
-
-      setShowOverrideModal(false);
-      setSelectedPayment(null);
-      setOverrideAmount('');
-    } catch (error: any) {
-      console.error('Error updating payment override:', error);
-      alert(`Error: ${error.message}`);
-    } finally {
-      setOverrideLoading(false);
-    }
   };
 
   const handleClearOverride = async (payment: PaymentComparison) => {
@@ -665,72 +640,21 @@ const ComparisonReportTab: React.FC = () => {
       )}
 
       {/* Override Modal */}
-      {showOverrideModal && selectedPayment && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" onClick={() => setShowOverrideModal(false)}>
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white" onClick={(e) => e.stopPropagation()}>
-            <div className="mt-3">
-              <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Override Payment Amount</h3>
-              <div className="mt-2 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Deal</label>
-                  <div className="mt-1 text-sm text-gray-900">{selectedPayment.ovis_deal_name || selectedPayment.deal_name}</div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Payment #</label>
-                  <div className="mt-1 text-sm text-gray-900">{selectedPayment.payment_sequence}</div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Current Amount</label>
-                  <div className="mt-1 text-sm text-gray-900">{formatCurrency(selectedPayment.ovis_payment_amount)}</div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">New Amount</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={overrideAmount}
-                    onChange={(e) => setOverrideAmount(e.target.value)}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder="Enter new amount"
-                  />
-                </div>
-                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-                  <div className="flex">
-                    <div className="flex-shrink-0">
-                      <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm text-yellow-700">
-                        This will lock the amount and prevent automatic recalculation when deal fee or number of payments changes.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-5 sm:mt-6 flex space-x-3">
-                <button
-                  onClick={handleSaveOverride}
-                  disabled={overrideLoading}
-                  className="flex-1 inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:text-sm disabled:opacity-50"
-                >
-                  {overrideLoading ? 'Saving...' : 'Save Override'}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowOverrideModal(false);
-                    setSelectedPayment(null);
-                    setOverrideAmount('');
-                  }}
-                  className="flex-1 inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:text-sm"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {selectedPayment && selectedPayment.ovis_payment_id && (
+        <PaymentAmountOverrideModal
+          isOpen={showOverrideModal}
+          onClose={() => {
+            setShowOverrideModal(false);
+            setSelectedPayment(null);
+          }}
+          paymentId={selectedPayment.ovis_payment_id}
+          currentAmount={selectedPayment.ovis_payment_amount || 0}
+          paymentSequence={selectedPayment.payment_sequence || 0}
+          dealName={selectedPayment.ovis_deal_name || selectedPayment.deal_name || 'Unknown Deal'}
+          onSuccess={() => {
+            fetchPaymentComparisons();
+          }}
+        />
       )}
 
       {/* Commission Comparison Table */}

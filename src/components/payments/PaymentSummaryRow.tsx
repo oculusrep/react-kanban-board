@@ -36,7 +36,10 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
     payment_received_date: payment.payment_received_date
   });
 
-  // Calculate the correct payment amount based on deal commission
+  // Use stored payment amount (respects overrides) as the source of truth
+  const storedPaymentAmount = payment.payment_amount || 0;
+
+  // Calculate what the amount would be without override (for comparison)
   const calculatedPaymentAmount = (deal.fee || 0) / (deal.number_of_payments || 1);
 
   const handleClearOverride = async () => {
@@ -72,8 +75,11 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
           <div className="text-sm font-medium text-gray-900 truncate">
             Payment {payment.payment_sequence} of {totalPayments}
           </div>
-          <div className="text-xs text-gray-500">
-            ${calculatedPaymentAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          <div className="text-xs text-gray-500 flex items-center gap-1">
+            ${storedPaymentAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {(payment as any).amount_override && (
+              <span className="text-blue-600" title="Amount has been manually overridden">🔒</span>
+            )}
           </div>
         </div>
       </div>
