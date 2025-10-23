@@ -35,4 +35,11 @@ backups/
 *.sql
 *.sql.gz
 *.dump
+
+# Test/debug scripts that may contain hardcoded credentials
+check-*.js
+query-*.js
+test-*.js
+debug-*.js
+
 .vercel
