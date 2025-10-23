@@ -79,7 +79,19 @@ BEGIN
 
       -- Archive excess payments if we have too many (only unlocked ones)
       -- Don't delete to preserve invoice numbers and QB links
+      -- Also delete associated payment splits to prevent duplicates
       ELSIF v_current_payment_count > v_num_payments THEN
+        -- First, delete payment splits for payments that will be archived
+        DELETE FROM payment_split
+        WHERE payment_id IN (
+          SELECT id FROM payment
+          WHERE deal_id = NEW.id
+            AND payment_sequence > v_num_payments
+            AND locked = false
+            AND is_active = true
+        );
+
+        -- Then archive the payments
         UPDATE payment
         SET is_active = false,
             deleted_at = NOW()
@@ -88,7 +100,7 @@ BEGIN
           AND locked = false  -- Only archive unlocked payments
           AND is_active = true;
 
-        RAISE NOTICE 'Archived excess unlocked payments for deal %', NEW.id;
+        RAISE NOTICE 'Archived excess unlocked payments and deleted their splits for deal %', NEW.id;
       END IF;
     END IF;
   END IF;
