@@ -249,6 +249,12 @@ export interface Payment {
   // OREP invoice tracking
   orep_invoice?: string | null;
   
+  // Commission calculation fields
+  agci?: number | null;                // Agent Gross Commission Income (calculated by trigger)
+  referral_fee_usd?: number | null;    // Referral fee amount (calculated by trigger)
+  amount_override?: boolean | null;    // True if payment amount was manually overridden
+  override_at?: string | null;         // Timestamp when amount was overridden
+
   // Disbursement tracking
   referral_fee_paid?: boolean | null;
   referral_fee_paid_date?: string | null;

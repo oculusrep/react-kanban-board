@@ -105,25 +105,30 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
   }, [payments, paymentSplits, commissionSplits]);
 
   // Optimized fetch with caching
-  const fetchPaymentData = useCallback(async () => {
+  const fetchPaymentData = useCallback(async (forceFresh = false) => {
     if (!deal.id) return;
 
-    // Check cache first
-    const cached = paymentDataCache.get(deal.id);
-    const now = Date.now();
-    
-    if (cached && (now - cached.timestamp) < PAYMENT_CACHE_DURATION) {
-      console.log('📦 Using cached payment data for deal:', deal.id);
-      setPayments(cached.payments);
-      setPaymentSplits(cached.paymentSplits);
-      setCommissionSplits(cached.commissionSplits);
-      setBrokers(cached.brokers);
-      setClients(cached.clients);
-      setLoading(false);
-      return;
+    // Check cache first (unless force fresh is requested)
+    if (!forceFresh) {
+      const cached = paymentDataCache.get(deal.id);
+      const now = Date.now();
+
+      if (cached && (now - cached.timestamp) < PAYMENT_CACHE_DURATION) {
+        console.log('📦 Using cached payment data for deal:', deal.id);
+        setPayments(cached.payments);
+        setPaymentSplits(cached.paymentSplits);
+        setCommissionSplits(cached.commissionSplits);
+        setBrokers(cached.brokers);
+        setClients(cached.clients);
+        setLoading(false);
+        return;
+      }
+    } else {
+      console.log('🔄 Force refreshing payment data for deal:', deal.id);
+      paymentDataCache.delete(deal.id);
     }
 
-    try {
+    try{
       setLoading(true);
       setError(null);
 
@@ -632,7 +637,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
                 )
               );
             }}
-            onRefresh={fetchPaymentData}
+            onRefresh={() => fetchPaymentData(true)}
           />
         </div>
       ) : (

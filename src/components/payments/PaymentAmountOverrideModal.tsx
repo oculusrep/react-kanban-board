@@ -8,7 +8,7 @@ interface PaymentAmountOverrideModalProps {
   currentAmount: number;
   paymentSequence: number;
   dealName: string;
-  onSuccess: () => void;
+  onSuccess?: () => void;
 }
 
 const PaymentAmountOverrideModal: React.FC<PaymentAmountOverrideModalProps> = ({
@@ -92,51 +92,27 @@ const PaymentAmountOverrideModal: React.FC<PaymentAmountOverrideModalProps> = ({
       setLoading(true);
       setError(null);
 
-      // Try to update with override columns first
-      const updateData: any = {
-        payment_amount: newAmount,
-      };
+      // Update payment amount with override flag
+      console.log('[Override] Updating payment amount to:', newAmount);
+      const { error: updateError } = await supabase
+        .from('payment')
+        .update({
+          payment_amount: newAmount,
+          amount_override: true,
+          override_at: new Date().toISOString(),
+        })
+        .eq('id', paymentId);
 
-      // Update payment amount and set override flag in a single transaction
-      // The database triggers now respect the amount_override flag
-      try {
-        console.log('[Override] Updating payment_amount to', newAmount, 'with override flag...');
-        const { data, error: updateError } = await supabase
-          .from('payment')
-          .update({
-            payment_amount: newAmount,
-            amount_override: true,
-            override_at: new Date().toISOString(),
-          })
-          .eq('id', paymentId)
-          .select();
-
-        console.log('[Override] Update result:', { data, error: updateError });
-
-        if (updateError) {
-          // Check if error is about missing column
-          if (updateError.message.includes("amount_override") || updateError.message.includes("schema cache")) {
-            // Column doesn't exist yet - just update the amount
-            console.warn('[Override] Override columns not found - updating payment_amount only. Please run migrations.');
-            const { data: fallbackData, error: fallbackError } = await supabase
-              .from('payment')
-              .update(updateData)
-              .eq('id', paymentId)
-              .select();
-
-            console.log('[Override] Fallback update result:', { data: fallbackData, error: fallbackError });
-            if (fallbackError) throw fallbackError;
-          } else {
-            throw updateError;
-          }
-        }
-      } catch (err: any) {
-        throw err;
+      if (updateError) {
+        throw updateError;
       }
 
-      console.log('[Override] Update successful, calling onSuccess...');
-      onSuccess();
+      console.log('[Override] Update successful, refreshing data...');
+      // Close modal and trigger refresh callback
       onClose();
+      if (onSuccess) {
+        onSuccess();
+      }
     } catch (err: any) {
       console.error('[Override] Error updating payment override:', err);
       const errorMessage = err?.message || err?.error_description || 'Failed to update payment amount';
