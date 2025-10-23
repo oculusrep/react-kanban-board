@@ -12,6 +12,16 @@ const ComparisonReportTab: React.FC = () => {
   const [commissionComparisons, setCommissionComparisons] = useState<CommissionComparison[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDiscrepanciesOnly, setShowDiscrepanciesOnly] = useState(false);
+  const [hideOvisOnlyPayments, setHideOvisOnlyPayments] = useState(false);
+
+  // Override modal state
+  const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentComparison | null>(null);
+  const [overrideAmount, setOverrideAmount] = useState<string>('');
+  const [overrideLoading, setOverrideLoading] = useState(false);
+
+  // Menu dropdown state
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   useEffect(() => {
     if (reportType === 'payments') {
@@ -37,9 +47,21 @@ const ComparisonReportTab: React.FC = () => {
       }
       console.log('[ComparisonReport] Salesforce payments fetched:', sfPayments?.length || 0);
 
-      // Fetch OVIS payment data (only active payments)
+      // Fetch deal stages first to get IDs for filtering
+      const { data: stagesData, error: stagesError } = await supabase
+        .from('deal_stage')
+        .select('id, label');
+
+      if (stagesError) throw stagesError;
+
+      // Find Lost and Closed Paid stage IDs
+      const lostStage = stagesData?.find(s => s.label === 'Lost');
+      const closedPaidStage = stagesData?.find(s => s.label === 'Closed Paid');
+      const excludedStageIds = [lostStage?.id, closedPaidStage?.id].filter(Boolean);
+
+      // Fetch ALL OVIS payment data (active only) to properly match SF payments
       console.log('[ComparisonReport] Fetching OVIS payments...');
-      const { data: ovisPayments, error: ovisError } = await supabase
+      const { data: allOvisPayments, error: ovisError } = await supabase
         .from('payment')
         .select(`
           id,
@@ -63,14 +85,22 @@ const ComparisonReportTab: React.FC = () => {
         console.error('[ComparisonReport] OVIS payment fetch error:', ovisError);
         throw ovisError;
       }
-      console.log('[ComparisonReport] OVIS payments fetched:', ovisPayments?.length || 0);
+      console.log('[ComparisonReport] All OVIS payments fetched:', allOvisPayments?.length || 0);
 
-      // Fetch deal stages separately
-      const { data: stagesData, error: stagesError } = await supabase
-        .from('deal_stage')
-        .select('id, label');
+      // Filter OVIS payments to exclude Lost and Closed Paid deals
+      const ovisPayments = allOvisPayments?.filter((p: any) =>
+        !excludedStageIds.includes(p.deal.stage_id)
+      );
+      console.log('[ComparisonReport] OVIS payments after stage filter:', ovisPayments?.length || 0);
 
-      if (stagesError) throw stagesError;
+      // Get set of SF deal IDs that belong to Lost or Closed Paid deals
+      const excludedSfDealIds = new Set<string>();
+      allOvisPayments?.forEach((p: any) => {
+        if (excludedStageIds.includes(p.deal.stage_id) && p.deal.sf_id) {
+          excludedSfDealIds.add(p.deal.sf_id);
+        }
+      });
+      console.log('[ComparisonReport] Excluded SF deal IDs:', excludedSfDealIds.size);
 
       // Create stage lookup map
       const stageMap = new Map<string, string>();
@@ -84,8 +114,34 @@ const ComparisonReportTab: React.FC = () => {
       // Map to track which OVIS payments we've matched
       const matchedOvisPayments = new Set<string>();
 
+      // Fetch archived OVIS payments to check if SF payment is linked to archived payment
+      const { data: archivedOvisPayments } = await supabase
+        .from('payment')
+        .select('id, sf_id, is_active')
+        .eq('is_active', false)
+        .not('sf_id', 'is', null);
+
+      // Create set of SF IDs that are linked to archived OVIS payments
+      const archivedSfIds = new Set<string>();
+      (archivedOvisPayments || []).forEach((p: any) => {
+        if (p.sf_id) {
+          archivedSfIds.add(p.sf_id);
+        }
+      });
+
       // First pass: match SF payments to OVIS payments by sf_id
+      // Skip SF payments that are linked to archived OVIS payments or excluded deals
       (sfPayments || []).forEach((sfPayment: any) => {
+        // Skip if this SF payment is linked to an archived OVIS payment
+        if (archivedSfIds.has(sfPayment.Id)) {
+          return;
+        }
+
+        // Skip if this SF payment belongs to a Lost or Closed Paid deal
+        if (excludedSfDealIds.has(sfPayment.Opportunity__c)) {
+          return;
+        }
+
         const ovisPayment = (ovisPayments || []).find((p: any) => p.sf_id === sfPayment.Id);
 
         if (ovisPayment) {
@@ -93,11 +149,9 @@ const ComparisonReportTab: React.FC = () => {
         }
 
         const sfAmount = sfPayment.Payment_Amount__c || 0;
-        // Use calculated payment amount instead of database value
-        const calculatedOvisAmount = ovisPayment?.deal?.fee && ovisPayment?.deal?.number_of_payments
-          ? ovisPayment.deal.fee / ovisPayment.deal.number_of_payments
-          : ovisPayment?.payment_amount || 0;
-        const amountDiff = Math.abs(sfAmount - calculatedOvisAmount);
+        // Use stored payment amount (the source of truth for reporting and splits)
+        const ovisAmount = ovisPayment?.payment_amount || 0;
+        const amountDiff = Math.abs(sfAmount - ovisAmount);
 
         const discrepancyNotes: string[] = [];
         const amountMatches = amountDiff < 0.01;
@@ -117,10 +171,14 @@ const ComparisonReportTab: React.FC = () => {
           sf_payment_amount: sfAmount,
           sf_payment_date: sfPayment.PMT_Received_Date__c || sfPayment.Payment_Date_Actual__c,
           sf_payment_status: sfPayment.Payment_Received__c ? 'Received' : 'Pending',
+          sf_deal_name: sfPayment.Name || null,
           ovis_payment_id: ovisPayment?.id || null,
-          ovis_payment_amount: calculatedOvisAmount,
+          ovis_payment_amount: ovisAmount,
+          ovis_amount_override: (ovisPayment as any)?.amount_override || false,
           ovis_payment_received_date: ovisPayment?.payment_received_date || null,
           ovis_payment_received: ovisPayment?.payment_received || null,
+          ovis_deal_name: ovisPayment?.deal?.deal_name || null,
+          ovis_deal_stage_name: ovisPayment?.deal?.stage_id ? stageMap.get(ovisPayment.deal.stage_id) || null : null,
           amount_matches: amountMatches,
           date_matches: (sfPayment.PMT_Received_Date__c || sfPayment.Payment_Date_Actual__c) === ovisPayment?.payment_received_date,
           status_matches: sfPayment.Payment_Received__c === ovisPayment?.payment_received,
@@ -131,10 +189,8 @@ const ComparisonReportTab: React.FC = () => {
       // Second pass: find OVIS payments not in Salesforce
       (ovisPayments || []).forEach((ovisPayment: any) => {
         if (!matchedOvisPayments.has(ovisPayment.id) && !ovisPayment.sf_id) {
-          // Use calculated payment amount instead of database value
-          const calculatedAmount = ovisPayment.deal?.fee && ovisPayment.deal?.number_of_payments
-            ? ovisPayment.deal.fee / ovisPayment.deal.number_of_payments
-            : ovisPayment.payment_amount || 0;
+          // Use stored payment amount (the source of truth for reporting and splits)
+          const ovisAmount = ovisPayment.payment_amount || 0;
 
           comparisons.push({
             deal_id: ovisPayment.deal?.id || '',
@@ -145,10 +201,14 @@ const ComparisonReportTab: React.FC = () => {
             sf_payment_amount: null,
             sf_payment_date: null,
             sf_payment_status: null,
+            sf_deal_name: null,
             ovis_payment_id: ovisPayment.id,
-            ovis_payment_amount: calculatedAmount,
+            ovis_payment_amount: ovisAmount,
+            ovis_amount_override: (ovisPayment as any)?.amount_override || false,
             ovis_payment_received_date: ovisPayment.payment_received_date,
             ovis_payment_received: ovisPayment.payment_received,
+            ovis_deal_name: ovisPayment.deal?.deal_name || null,
+            ovis_deal_stage_name: ovisPayment.deal?.stage_id ? stageMap.get(ovisPayment.deal.stage_id) || null : null,
             amount_matches: false,
             date_matches: false,
             status_matches: false,
@@ -318,9 +378,88 @@ const ComparisonReportTab: React.FC = () => {
     });
   };
 
-  const filteredPaymentComparisons = showDiscrepanciesOnly
-    ? paymentComparisons.filter((c) => c.discrepancy_notes.length > 0)
-    : paymentComparisons;
+  const handleOpenOverrideModal = (payment: PaymentComparison) => {
+    setSelectedPayment(payment);
+    setOverrideAmount(payment.ovis_payment_amount?.toString() || '');
+    setShowOverrideModal(true);
+    setOpenMenuId(null);
+  };
+
+  const handleSaveOverride = async () => {
+    if (!selectedPayment || !selectedPayment.ovis_payment_id) return;
+
+    const newAmount = parseFloat(overrideAmount);
+    if (isNaN(newAmount) || newAmount <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+
+    try {
+      setOverrideLoading(true);
+
+      const { error } = await supabase
+        .from('payment')
+        .update({
+          payment_amount: newAmount,
+          amount_override: true,
+          override_at: new Date().toISOString(),
+        })
+        .eq('id', selectedPayment.ovis_payment_id);
+
+      if (error) throw error;
+
+      // Refresh the report
+      await fetchPaymentComparisons();
+
+      setShowOverrideModal(false);
+      setSelectedPayment(null);
+      setOverrideAmount('');
+    } catch (error: any) {
+      console.error('Error updating payment override:', error);
+      alert(`Error: ${error.message}`);
+    } finally {
+      setOverrideLoading(false);
+    }
+  };
+
+  const handleClearOverride = async (payment: PaymentComparison) => {
+    if (!payment.ovis_payment_id) return;
+
+    if (!confirm('Clear the override and allow automatic recalculation?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('payment')
+        .update({
+          amount_override: false,
+          override_at: null,
+          override_by: null,
+        })
+        .eq('id', payment.ovis_payment_id);
+
+      if (error) throw error;
+
+      // Refresh the report
+      await fetchPaymentComparisons();
+      setOpenMenuId(null);
+    } catch (error: any) {
+      console.error('Error clearing override:', error);
+      alert(`Error: ${error.message}`);
+    }
+  };
+
+  const filteredPaymentComparisons = paymentComparisons
+    .filter((c) => {
+      // Filter by discrepancies if enabled
+      if (showDiscrepanciesOnly && c.discrepancy_notes.length === 0) {
+        return false;
+      }
+      // Filter out OVIS-only payments if enabled
+      if (hideOvisOnlyPayments && c.discrepancy_notes.includes('Payment exists in OVIS but not in Salesforce')) {
+        return false;
+      }
+      return true;
+    });
 
   const filteredCommissionComparisons = showDiscrepanciesOnly
     ? commissionComparisons.filter((c) => c.discrepancy_notes.length > 0)
@@ -361,17 +500,31 @@ const ComparisonReportTab: React.FC = () => {
               Commission Split Comparison
             </button>
           </div>
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="discrepancies-only"
-              checked={showDiscrepanciesOnly}
-              onChange={(e) => setShowDiscrepanciesOnly(e.target.checked)}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-            />
-            <label htmlFor="discrepancies-only" className="text-sm text-gray-700">
-              Show discrepancies only
-            </label>
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="discrepancies-only"
+                checked={showDiscrepanciesOnly}
+                onChange={(e) => setShowDiscrepanciesOnly(e.target.checked)}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="discrepancies-only" className="text-sm text-gray-700">
+                Show discrepancies only
+              </label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="hide-ovis-only"
+                checked={hideOvisOnlyPayments}
+                onChange={(e) => setHideOvisOnlyPayments(e.target.checked)}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="hide-ovis-only" className="text-sm text-gray-700">
+                Hide OVIS-only payments
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -391,7 +544,8 @@ const ComparisonReportTab: React.FC = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deal</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">SF Deal</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">OVIS Deal</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment #</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">SF Amount</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">OVIS Amount</th>
@@ -399,26 +553,42 @@ const ComparisonReportTab: React.FC = () => {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">OVIS Date</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredPaymentComparisons.map((comp, idx) => (
                   <tr key={idx} className={comp.discrepancy_notes.length > 0 ? 'bg-red-50' : ''}>
+                    {/* SF Deal Column */}
                     <td className="px-4 py-3 text-sm">
-                      {comp.deal_id ? (
-                        <a
-                          href={`/deal/${comp.deal_id}?tab=payment`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                        >
-                          {comp.deal_name}
-                        </a>
+                      {comp.sf_deal_name ? (
+                        <span className="text-gray-900">{comp.sf_deal_name}</span>
                       ) : (
-                        <span className="text-gray-900">{comp.deal_name}</span>
+                        <span className="text-gray-400">-</span>
                       )}
-                      {comp.deal_stage_name && (
-                        <div className="text-xs text-gray-500 mt-0.5">{comp.deal_stage_name}</div>
+                    </td>
+                    {/* OVIS Deal Column */}
+                    <td className="px-4 py-3 text-sm">
+                      {comp.ovis_deal_name ? (
+                        <>
+                          {comp.deal_id ? (
+                            <a
+                              href={`/deal/${comp.deal_id}?tab=payment`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                            >
+                              {comp.ovis_deal_name}
+                            </a>
+                          ) : (
+                            <span className="text-gray-900">{comp.ovis_deal_name}</span>
+                          )}
+                          {comp.ovis_deal_stage_name && (
+                            <div className="text-xs text-gray-500 mt-0.5">{comp.ovis_deal_stage_name}</div>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-gray-400">-</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">{comp.payment_sequence || '-'}</td>
@@ -446,10 +616,119 @@ const ComparisonReportTab: React.FC = () => {
                     <td className="px-4 py-3 text-xs text-gray-600">
                       {comp.discrepancy_notes.join('; ')}
                     </td>
+                    {/* Actions Column */}
+                    <td className="px-4 py-3 text-sm relative">
+                      {comp.ovis_payment_id && (
+                        <div className="relative inline-block">
+                          <button
+                            onClick={() => setOpenMenuId(openMenuId === comp.ovis_payment_id ? null : comp.ovis_payment_id)}
+                            className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                          >
+                            <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                            </svg>
+                          </button>
+                          {openMenuId === comp.ovis_payment_id && (
+                            <div className="absolute right-0 z-10 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5">
+                              <div className="py-1">
+                                <button
+                                  onClick={() => handleOpenOverrideModal(comp)}
+                                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                >
+                                  {comp.ovis_amount_override ? '📝 Edit Override' : '🔧 Override Amount'}
+                                </button>
+                                {comp.ovis_amount_override && (
+                                  <button
+                                    onClick={() => handleClearOverride(comp)}
+                                    className="block w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-gray-100"
+                                  >
+                                    🔓 Clear Override
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          {comp.ovis_amount_override && (
+                            <span className="ml-2 text-xs text-blue-600" title="Amount has been manually overridden">
+                              🔒
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Override Modal */}
+      {showOverrideModal && selectedPayment && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" onClick={() => setShowOverrideModal(false)}>
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white" onClick={(e) => e.stopPropagation()}>
+            <div className="mt-3">
+              <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Override Payment Amount</h3>
+              <div className="mt-2 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Deal</label>
+                  <div className="mt-1 text-sm text-gray-900">{selectedPayment.ovis_deal_name || selectedPayment.deal_name}</div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Payment #</label>
+                  <div className="mt-1 text-sm text-gray-900">{selectedPayment.payment_sequence}</div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Current Amount</label>
+                  <div className="mt-1 text-sm text-gray-900">{formatCurrency(selectedPayment.ovis_payment_amount)}</div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">New Amount</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={overrideAmount}
+                    onChange={(e) => setOverrideAmount(e.target.value)}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    placeholder="Enter new amount"
+                  />
+                </div>
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm text-yellow-700">
+                        This will lock the amount and prevent automatic recalculation when deal fee or number of payments changes.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-5 sm:mt-6 flex space-x-3">
+                <button
+                  onClick={handleSaveOverride}
+                  disabled={overrideLoading}
+                  className="flex-1 inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:text-sm disabled:opacity-50"
+                >
+                  {overrideLoading ? 'Saving...' : 'Save Override'}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowOverrideModal(false);
+                    setSelectedPayment(null);
+                    setOverrideAmount('');
+                  }}
+                  className="flex-1 inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

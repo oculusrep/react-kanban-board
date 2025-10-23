@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { Payment, Deal } from '../../lib/types';
 import { formatDateString } from '../../utils/dateUtils';
+import PaymentAmountOverrideModal from './PaymentAmountOverrideModal';
 
 interface PaymentSummaryRowProps {
   payment: Payment;
@@ -11,6 +12,7 @@ interface PaymentSummaryRowProps {
   onToggleExpansion: () => void;
   onUpdatePayment: (updates: Partial<Payment>) => Promise<void>;
   onDeletePayment: () => void;
+  onRefresh?: () => void;
 }
 
 const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
@@ -20,8 +22,12 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
   isExpanded,
   onToggleExpansion,
   onUpdatePayment,
-  onDeletePayment
+  onDeletePayment,
+  onRefresh
 }) => {
+  const [showMenu, setShowMenu] = useState(false);
+  const [showOverrideModal, setShowOverrideModal] = useState(false);
+
   // DEBUG: Check payment date values
   console.log('📅 PaymentSummaryRow payment dates:', {
     id: payment.id,
@@ -32,6 +38,20 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
 
   // Calculate the correct payment amount based on deal commission
   const calculatedPaymentAmount = (deal.fee || 0) / (deal.number_of_payments || 1);
+
+  const handleClearOverride = async () => {
+    try {
+      await onUpdatePayment({
+        amount_override: false,
+        override_at: null,
+        override_by: null,
+      } as any);
+      setShowMenu(false);
+      if (onRefresh) onRefresh();
+    } catch (error) {
+      console.error('Error clearing override:', error);
+    }
+  };
 
   return (
     <div className="p-4 grid grid-cols-12 items-center gap-4">
@@ -121,14 +141,66 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
       </div>
 
       {/* Actions - 2 cols */}
-      <div className="col-span-2 text-right">
+      <div className="col-span-2 text-right relative">
         <button
-          onClick={onDeletePayment}
-          className="text-red-600 hover:text-red-900 text-sm whitespace-nowrap"
+          onClick={() => setShowMenu(!showMenu)}
+          className="text-gray-400 hover:text-gray-600 focus:outline-none p-1"
         >
-          Delete
+          <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+          </svg>
         </button>
+        {showMenu && (
+          <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+            <div className="py-1">
+              <button
+                onClick={() => {
+                  setShowOverrideModal(true);
+                  setShowMenu(false);
+                }}
+                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              >
+                {(payment as any)?.amount_override ? '📝 Edit Override' : '🔧 Override Amount'}
+              </button>
+              {(payment as any)?.amount_override && (
+                <button
+                  onClick={handleClearOverride}
+                  className="block w-full text-left px-4 py-2 text-sm text-orange-700 hover:bg-gray-100"
+                >
+                  🔓 Clear Override
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  onDeletePayment();
+                  setShowMenu(false);
+                }}
+                className="block w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-gray-100"
+              >
+                🗑️ Delete Payment
+              </button>
+            </div>
+          </div>
+        )}
+        {(payment as any)?.amount_override && (
+          <span className="ml-2 text-xs text-blue-600" title="Amount has been manually overridden">
+            🔒
+          </span>
+        )}
       </div>
+
+      {/* Override Modal */}
+      <PaymentAmountOverrideModal
+        isOpen={showOverrideModal}
+        onClose={() => setShowOverrideModal(false)}
+        paymentId={payment.id}
+        currentAmount={payment.payment_amount}
+        paymentSequence={payment.payment_sequence}
+        dealName={deal.deal_name}
+        onSuccess={() => {
+          if (onRefresh) onRefresh();
+        }}
+      />
     </div>
   );
 };

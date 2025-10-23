@@ -6,6 +6,7 @@ import BrokerPaymentRow from './BrokerPaymentRow';
 import ReferralFeeRow from './ReferralFeeRow';
 import PaymentDetailSidebar from './PaymentDetailSidebar';
 import PaymentCheckProcessing from './PaymentCheckProcessing';
+import PaymentAmountOverrideModal from './PaymentAmountOverrideModal';
 
 interface PaymentDashboardTableProps {
   payments: PaymentDashboardRow[];
@@ -32,6 +33,10 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
   const [sortField, setSortField] = useState<SortField>('payment_date_estimated');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Override modal state
+  const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [paymentToOverride, setPaymentToOverride] = useState<PaymentDashboardRow | null>(null);
 
   // Sync local payments with parent when parent data changes and apply sorting
   useEffect(() => {
@@ -207,6 +212,35 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
     setPaymentToDelete(paymentId);
     setShowDeleteConfirm(true);
     setOpenMenuId(null);
+  };
+
+  const handleOpenOverrideModal = (payment: PaymentDashboardRow) => {
+    setPaymentToOverride(payment);
+    setShowOverrideModal(true);
+    setOpenMenuId(null);
+  };
+
+  const handleClearOverride = async (paymentId: string) => {
+    if (!confirm('Clear the override and allow automatic recalculation?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('payment')
+        .update({
+          amount_override: false,
+          override_at: null,
+          override_by: null,
+        })
+        .eq('id', paymentId);
+
+      if (error) throw error;
+
+      onPaymentUpdate();
+      setOpenMenuId(null);
+    } catch (error: any) {
+      console.error('Error clearing override:', error);
+      alert(`Error: ${error.message}`);
+    }
   };
 
   const confirmDelete = async () => {
@@ -500,7 +534,7 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                           </svg>
                         </button>
                         {openMenuId === payment.payment_id && (
-                          <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+                          <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
                             <div className="py-1">
                               <button
                                 onClick={(e) => {
@@ -511,6 +545,26 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                               >
                                 View Details
                               </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenOverrideModal(payment);
+                                }}
+                                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                              >
+                                {(payment as any).amount_override ? '📝 Edit Override' : '🔧 Override Amount'}
+                              </button>
+                              {(payment as any).amount_override && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleClearOverride(payment.payment_id);
+                                  }}
+                                  className="block w-full text-left px-4 py-2 text-sm text-orange-700 hover:bg-gray-100"
+                                >
+                                  🔓 Clear Override
+                                </button>
+                              )}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -642,6 +696,25 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Override Modal */}
+      {paymentToOverride && (
+        <PaymentAmountOverrideModal
+          isOpen={showOverrideModal}
+          onClose={() => {
+            setShowOverrideModal(false);
+            setPaymentToOverride(null);
+          }}
+          paymentId={paymentToOverride.payment_id}
+          currentAmount={paymentToOverride.payment_amount}
+          paymentSequence={paymentToOverride.payment_sequence}
+          dealName={paymentToOverride.deal_name}
+          onSuccess={() => {
+            onPaymentUpdate();
+            setPaymentToOverride(null);
+          }}
+        />
       )}
     </div>
   );

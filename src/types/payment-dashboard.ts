@@ -87,7 +87,7 @@ export interface PaymentSummaryStats {
 // Salesforce vs OVIS comparison types
 export interface PaymentComparison {
   deal_id: string;
-  deal_name: string;
+  deal_name: string; // SF deal name (or falls back to OVIS for OVIS-only payments)
   deal_stage_name: string | null;
   payment_sequence: number;
 
@@ -96,12 +96,16 @@ export interface PaymentComparison {
   sf_payment_amount: number | null;
   sf_payment_date: string | null;
   sf_payment_status: string | null;
+  sf_deal_name: string | null; // Explicit SF deal name
 
   // OVIS data
   ovis_payment_id: string | null;
   ovis_payment_amount: number | null;
+  ovis_amount_override: boolean | null; // If true, amount was manually overridden
   ovis_payment_received_date: string | null;
   ovis_payment_received: boolean | null;
+  ovis_deal_name: string | null; // Explicit OVIS deal name
+  ovis_deal_stage_name: string | null; // OVIS deal stage
 
   // Comparison results
   amount_matches: boolean;
