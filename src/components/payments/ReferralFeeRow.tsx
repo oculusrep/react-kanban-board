@@ -11,6 +11,7 @@ interface ReferralFeeRowProps {
   paid: boolean;
   paidDate: string | null;
   onUpdate: () => void;
+  onOptimisticUpdate?: (updates: { referral_fee_paid?: boolean; referral_fee_paid_date?: string | null }) => void;
 }
 
 const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
@@ -20,6 +21,7 @@ const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
   paid,
   paidDate,
   onUpdate,
+  onOptimisticUpdate,
 }) => {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -59,9 +61,14 @@ const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
   const handleTogglePaid = async (isPaid: boolean) => {
     const newDate = isPaid ? getLocalDateString() : null;
 
-    // Optimistic update
+    // Optimistic update locally
     setLocalPaid(isPaid);
     setLocalPaidDate(newDate);
+
+    // Update parent's local state for smooth UI
+    if (onOptimisticUpdate) {
+      onOptimisticUpdate({ referral_fee_paid: isPaid, referral_fee_paid_date: newDate });
+    }
 
     const { error } = await supabase
       .from('payment')
@@ -77,16 +84,20 @@ const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
       // Revert on error
       setLocalPaid(paid);
       setLocalPaidDate(paidDate);
-    } else {
-      // Silently update parent data in background for stats/summary refresh
-      // The optimistic update already happened so UI stays smooth
-      setTimeout(() => onUpdate(), 100);
+      if (onOptimisticUpdate) {
+        onOptimisticUpdate({ referral_fee_paid: paid, referral_fee_paid_date: paidDate });
+      }
     }
   };
 
   const handleUpdatePaidDate = async (date: string) => {
-    // Optimistic update
+    // Optimistic update locally
     setLocalPaidDate(date);
+
+    // Update parent's local state for smooth UI
+    if (onOptimisticUpdate) {
+      onOptimisticUpdate({ referral_fee_paid_date: date });
+    }
 
     const { error } = await supabase
       .from('payment')
@@ -98,9 +109,9 @@ const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
       alert('Failed to update paid date');
       // Revert on error
       setLocalPaidDate(paidDate);
-    } else {
-      // Silently update parent data in background for stats/summary refresh
-      setTimeout(() => onUpdate(), 100);
+      if (onOptimisticUpdate) {
+        onOptimisticUpdate({ referral_fee_paid_date: paidDate });
+      }
     }
   };
 

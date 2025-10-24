@@ -7,10 +7,12 @@ import { BrokerPaymentSplit } from '../../types/payment-dashboard';
 
 interface BrokerPaymentRowProps {
   split: BrokerPaymentSplit;
+  paymentId: string;
   onUpdate: () => void;
+  onOptimisticUpdate?: (splitId: string, updates: { paid?: boolean; paid_date?: string | null }) => void;
 }
 
-const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, onUpdate }) => {
+const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, onUpdate, onOptimisticUpdate }) => {
   const formatCurrency = (amount: number | null) => {
     if (amount === null) return '-';
     return new Intl.NumberFormat('en-US', {
@@ -55,9 +57,14 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, onUpdate }) 
   const handleTogglePaid = async (paid: boolean) => {
     const newDate = paid ? getLocalDateString() : null;
 
-    // Optimistic update
+    // Optimistic update locally
     setLocalPaid(paid);
     setLocalPaidDate(newDate);
+
+    // Update parent's local state for smooth UI
+    if (onOptimisticUpdate) {
+      onOptimisticUpdate(split.payment_split_id, { paid, paid_date: newDate });
+    }
 
     const { error } = await supabase
       .from('payment_split')
@@ -73,16 +80,20 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, onUpdate }) 
       // Revert on error
       setLocalPaid(split.paid);
       setLocalPaidDate(split.paid_date);
-    } else {
-      // Silently update parent data in background for stats/summary refresh
-      // The optimistic update already happened so UI stays smooth
-      setTimeout(() => onUpdate(), 100);
+      if (onOptimisticUpdate) {
+        onOptimisticUpdate(split.payment_split_id, { paid: split.paid, paid_date: split.paid_date });
+      }
     }
   };
 
   const handleUpdatePaidDate = async (date: string) => {
-    // Optimistic update
+    // Optimistic update locally
     setLocalPaidDate(date);
+
+    // Update parent's local state for smooth UI
+    if (onOptimisticUpdate) {
+      onOptimisticUpdate(split.payment_split_id, { paid_date: date });
+    }
 
     const { error } = await supabase
       .from('payment_split')
@@ -94,9 +105,9 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, onUpdate }) 
       alert('Failed to update paid date');
       // Revert on error
       setLocalPaidDate(split.paid_date);
-    } else {
-      // Silently update parent data in background for stats/summary refresh
-      setTimeout(() => onUpdate(), 100);
+      if (onOptimisticUpdate) {
+        onOptimisticUpdate(split.payment_split_id, { paid_date: split.paid_date });
+      }
     }
   };
 

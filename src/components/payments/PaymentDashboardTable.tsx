@@ -171,6 +171,39 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
     }
   };
 
+  const handleUpdateBrokerSplit = (paymentId: string, splitId: string, updates: { paid?: boolean; paid_date?: string | null }) => {
+    // Optimistic update - update local state immediately
+    setLocalPayments(prevPayments =>
+      prevPayments.map(payment =>
+        payment.payment_id === paymentId
+          ? {
+              ...payment,
+              broker_splits: payment.broker_splits.map(split =>
+                split.payment_split_id === splitId
+                  ? { ...split, ...updates }
+                  : split
+              ),
+              // Recalculate all_brokers_paid
+              all_brokers_paid: payment.broker_splits.every(split =>
+                split.payment_split_id === splitId ? (updates.paid ?? split.paid) : split.paid
+              )
+            }
+          : payment
+      )
+    );
+  };
+
+  const handleUpdateReferralFee = (paymentId: string, updates: { referral_fee_paid?: boolean; referral_fee_paid_date?: string | null }) => {
+    // Optimistic update - update local state immediately
+    setLocalPayments(prevPayments =>
+      prevPayments.map(payment =>
+        payment.payment_id === paymentId
+          ? { ...payment, ...updates }
+          : payment
+      )
+    );
+  };
+
   const getLocalDateString = () => {
     const now = new Date();
     const year = now.getFullYear();
@@ -638,7 +671,9 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                                       <BrokerPaymentRow
                                         key={split.payment_split_id}
                                         split={split}
+                                        paymentId={payment.payment_id}
                                         onUpdate={onPaymentUpdate}
+                                        onOptimisticUpdate={(splitId, updates) => handleUpdateBrokerSplit(payment.payment_id, splitId, updates)}
                                       />
                                     ))}
                                   </tbody>
@@ -661,6 +696,7 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                                   paid={payment.referral_fee_paid}
                                   paidDate={payment.referral_fee_paid_date}
                                   onUpdate={onPaymentUpdate}
+                                  onOptimisticUpdate={(updates) => handleUpdateReferralFee(payment.payment_id, updates)}
                                 />
                               </div>
                             </div>
