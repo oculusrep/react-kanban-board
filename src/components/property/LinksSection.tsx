@@ -15,7 +15,7 @@ const LinksSection: React.FC<LinksSectionProps> = ({
   isEditing,
   onFieldUpdate
 }) => {
-  const links = [
+  const externalLinks = [
     {
       key: 'costar_link' as keyof Property,
       label: 'CoStar',
@@ -30,6 +30,24 @@ const LinksSection: React.FC<LinksSectionProps> = ({
       key: 'tax_url' as keyof Property,
       label: 'Tax Records',
       description: 'Property tax information'
+    }
+  ];
+
+  const submissionLinks = [
+    {
+      key: 'marketing_materials' as keyof Property,
+      label: 'Marketing Materials',
+      description: 'Marketing collateral and materials'
+    },
+    {
+      key: 'site_plan' as keyof Property,
+      label: 'Site Plan',
+      description: 'Property site plan documents'
+    },
+    {
+      key: 'demographics' as keyof Property,
+      label: 'Demographics',
+      description: 'Demographic information and reports'
     }
   ];
 
@@ -52,7 +70,7 @@ const LinksSection: React.FC<LinksSectionProps> = ({
       </div>
 
       <div className="space-y-2">
-        {links.map((link) => {
+        {externalLinks.map((link) => {
           const linkValue = property[link.key] as string;
           const hasLink = linkValue && linkValue.trim() !== '';
           const isValid = hasLink && isValidUrl(linkValue);
@@ -87,6 +105,51 @@ const LinksSection: React.FC<LinksSectionProps> = ({
             </div>
           );
         })}
+      </div>
+
+      {/* Section Divider */}
+      <div className="my-4 border-t border-gray-200"></div>
+
+      {/* Submission Links Subsection */}
+      <div className="mb-3">
+        <h4 className="text-xs font-medium text-gray-900 mb-2">Submission Links</h4>
+        <div className="space-y-2">
+          {submissionLinks.map((link) => {
+            const linkValue = property[link.key] as string;
+            const hasLink = linkValue && linkValue.trim() !== '';
+            const isValid = hasLink && isValidUrl(linkValue);
+
+            return (
+              <div key={link.key} className="flex items-center gap-2">
+                <span className="text-xs font-medium text-gray-700 w-32 flex-shrink-0">{link.label}:</span>
+                <div className="flex-1 flex items-center gap-2">
+                  <PropertyInputField
+                    label=""
+                    value={linkValue}
+                    onChange={(value) => onFieldUpdate(link.key, value)}
+                    placeholder={`https://...`}
+                    type="url"
+                    compact={true}
+                    defaultText="Click to add link"
+                  />
+                  {hasLink && isValid && (
+                    <a
+                      href={linkValue}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 flex-shrink-0"
+                      title="Open link in new tab"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Quick generation buttons */}
