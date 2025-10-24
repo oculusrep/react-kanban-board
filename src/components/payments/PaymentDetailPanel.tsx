@@ -199,8 +199,8 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
             ))
           )}
 
-          {/* Referral Fee Row */}
-          {deal.referral_fee_usd && deal.referral_fee_usd > 0 && (
+          {/* Referral Fee Row - only show if payment has referral fee amount */}
+          {deal.referral_fee_usd && deal.referral_fee_usd > 0 && payment.referral_fee_usd && payment.referral_fee_usd > 0 && (
             <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
               <div className="space-y-2">
                 <div className="flex justify-between items-start">
