@@ -53,8 +53,8 @@ const ReconciliationReport: React.FC = () => {
       // Fetch all deal stages
       const { data: allStagesData, error: stagesError } = await supabase
         .from('deal_stage')
-        .select('id, label, is_active')
-        .eq('is_active', true);
+        .select('id, label, active')
+        .eq('active', true);
 
       if (stagesError) throw stagesError;
 
