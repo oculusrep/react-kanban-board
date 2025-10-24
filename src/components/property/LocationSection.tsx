@@ -97,26 +97,26 @@ const LocationSection: React.FC<LocationSectionProps> = ({
   };
 
   return (
-    <section className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 mb-4">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <section className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-1.5">
+          <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
-          <h3 className="text-lg font-semibold text-gray-900">Location</h3>
+          <h3 className="text-sm font-semibold text-gray-900">Location</h3>
         </div>
         
         {onGetCurrentLocation && (
           <button
             onClick={handleGetCurrentLocation}
             disabled={isGettingLocation}
-            className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition-colors text-sm disabled:opacity-50"
+            className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition-colors text-xs disabled:opacity-50"
           >
             {isGettingLocation ? (
-              <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
             ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
               </svg>
             )}
@@ -126,7 +126,7 @@ const LocationSection: React.FC<LocationSectionProps> = ({
       </div>
 
       {/* Address Fields */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
         <div className="sm:col-span-2">
           <PropertyInputField
             label="Street Address*"
@@ -238,18 +238,18 @@ const LocationSection: React.FC<LocationSectionProps> = ({
       </div>
 
       {/* GPS Coordinates */}
-      <div className="border-t border-gray-200 pt-4 mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <h4 className="text-sm font-medium text-gray-900">GPS Coordinates</h4>
+      <div className="border-t border-gray-200 pt-3 mb-3">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs font-medium text-gray-900">GPS Coordinates</h4>
           
           {/* Verify Location Button */}
           <div className="relative">
             <button
               type="button"
               onClick={handleVerifyLocation}
-              className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500"
+              className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
               </svg>
               Verify Location
@@ -273,7 +273,7 @@ const LocationSection: React.FC<LocationSectionProps> = ({
             )}
           </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <PropertyInputField
             label="Latitude"
             value={property.latitude}
@@ -318,8 +318,8 @@ const LocationSection: React.FC<LocationSectionProps> = ({
 
       {/* Map Preview - Uses verified coordinates when available */}
       {getBestCoordinates() && (
-        <div className="border-t border-gray-200 pt-4">
-          <div className="bg-gray-100 rounded-md p-6 text-center">
+        <div className="border-t border-gray-200 pt-3">
+          <div className="bg-gray-100 rounded-md p-4 text-center">
             <svg className="w-12 h-12 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
             </svg>

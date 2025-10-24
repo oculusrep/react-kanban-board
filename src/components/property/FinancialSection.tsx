@@ -34,17 +34,17 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
   const showSquareFootageFields = !isLandType; // Show SF for buildings
 
   return (
-    <section className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 mb-4">
-      <div className="flex items-center gap-2 mb-4">
-        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <section className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
+      <div className="flex items-center gap-1.5 mb-3">
+        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
         </svg>
-        <h3 className="text-lg font-semibold text-gray-900">Financial Information</h3>
+        <h3 className="text-sm font-semibold text-gray-900">Financial Information</h3>
       </div>
 
       {/* Conditional Pricing Fields */}
       {showLeaseFields && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
           <PropertyCurrencyField
             label="Asking Lease Price"
             value={property.asking_lease_price}
@@ -59,9 +59,9 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
 
       {/* Per Square Foot Rates - Only for leasable properties */}
       {showPSFFields && (
-        <div className="border-t border-gray-200 pt-4">
-          <h4 className="text-sm font-medium text-gray-900 mb-3">Per Square Foot Rates</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="border-t border-gray-200 pt-3">
+          <h4 className="text-xs font-medium text-gray-900 mb-2">Per Square Foot Rates</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <PropertyPSFField
               label="Rent PSF"
               value={property.rent_psf}
@@ -96,11 +96,11 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
 
       {/* Square Footage - Only for buildings */}
       {showSquareFootageFields && (
-        <div className="border-t border-gray-200 pt-4 mt-4">
-          <h4 className="text-sm font-medium text-gray-900 mb-3">Square Footage</h4>
+        <div className="border-t border-gray-200 pt-3 mt-3">
+          <h4 className="text-xs font-medium text-gray-900 mb-2">Square Footage</h4>
           {isShoppingCenterType ? (
             // Shopping Centers - Just Available Sqft
-            <div className="grid grid-cols-1 gap-4">
+            <div className="grid grid-cols-1 gap-3">
               <PropertySquareFootageField
                 label="Available Sqft"
                 value={property.available_sqft}
@@ -111,7 +111,7 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
           ) : (
             // Other building types - Full square footage details
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <PropertySquareFootageField
                   label="Building Size"
                   value={property.building_sqft}
@@ -143,11 +143,11 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
 
       {/* Land-specific fields */}
       {isLandType && (
-        <div className="border-t border-gray-200 pt-4 mt-4">
-          <h4 className="text-sm font-medium text-gray-900 mb-3">Land Information</h4>
+        <div className="border-t border-gray-200 pt-3 mt-3">
+          <h4 className="text-xs font-medium text-gray-900 mb-2">Land Information</h4>
 
           {/* Row 1: Asking Purchase Price, Asking Ground Lease Price */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <PropertyCurrencyField
               label="Asking Purchase Price"
               value={property.asking_purchase_price}
@@ -168,7 +168,7 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
           </div>
 
           {/* Row 2: NNN, Acres */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <PropertyInputField
               label="NNN"
               value={property.nnn_psf}
@@ -189,7 +189,7 @@ const FinancialSection: React.FC<FinancialSectionProps> = ({
           </div>
 
           {/* Row 3: Building Sqft, Lease Expiration Date */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <PropertyInputField
               label="Building Sqft"
               value={property.building_sqft}
