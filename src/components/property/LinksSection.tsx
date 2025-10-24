@@ -90,19 +90,19 @@ const LinksSection: React.FC<LinksSectionProps> = ({
   };
 
   return (
-    <section className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 mb-4">
-      <div className="flex items-center gap-2 mb-4">
-        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <section className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
+      <div className="flex items-center gap-1.5 mb-3">
+        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
         </svg>
-        <h3 className="text-lg font-semibold text-gray-900">External Links</h3>
+        <h3 className="text-sm font-semibold text-gray-900">Links</h3>
       </div>
 
       {isEditing ? (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {links.map((link) => (
             <div key={link.key}>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
                 {link.label}
               </label>
               <input
@@ -110,57 +110,38 @@ const LinksSection: React.FC<LinksSectionProps> = ({
                 value={(property[link.key] as string) || ''}
                 onChange={(e) => onFieldUpdate(link.key, e.target.value)}
                 placeholder={`https://example.com/${link.label.toLowerCase()}-link`}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-base min-h-[44px]"
+                className="w-full px-2 py-1.5 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
               />
-              <p className="text-xs text-gray-500 mt-1">{link.description}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{link.description}</p>
             </div>
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="space-y-2">
           {links.map((link) => {
             const linkValue = property[link.key] as string;
             const hasLink = linkValue && linkValue.trim() !== '';
             const isValid = hasLink && isValidUrl(linkValue);
 
             return (
-              <button
-                key={link.key}
-                onClick={() => {
-                  if (hasLink && isValid) {
-                    window.open(linkValue, '_blank', 'noopener,noreferrer');
-                  }
-                }}
-                disabled={!hasLink || !isValid}
-                className={`w-full p-3 border rounded-lg text-left transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${getColorClasses(
-                  link.color,
-                  hasLink && isValid
-                )}`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex-shrink-0">
-                    {link.icon}
-                  </div>
-                  <div className="flex-grow min-w-0">
-                    <div className="font-medium text-sm">{link.label}</div>
-                    <div className={`text-xs opacity-75 truncate ${
-                      hasLink && isValid ? 'text-current' : 'text-gray-500'
-                    }`}>
-                      {hasLink 
-                        ? (isValid ? 'Click to open' : 'Invalid URL')
-                        : link.description
-                      }
-                    </div>
-                  </div>
-                  {hasLink && isValid && (
-                    <div className="flex-shrink-0">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                      </svg>
-                    </div>
-                  )}
-                </div>
-              </button>
+              <div key={link.key} className="flex items-center gap-2">
+                <span className="text-xs font-medium text-gray-700 w-24">{link.label}:</span>
+                {hasLink && isValid ? (
+                  <a
+                    href={linkValue}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                  >
+                    Open Link
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                ) : (
+                  <span className="text-xs text-gray-400">No link</span>
+                )}
+              </div>
             );
           })}
         </div>
@@ -168,8 +149,8 @@ const LinksSection: React.FC<LinksSectionProps> = ({
 
       {/* Quick generation buttons for editing mode */}
       {isEditing && (
-        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <div className="text-sm font-medium text-blue-900 mb-2">Quick Actions</div>
+        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="text-xs font-medium text-blue-900 mb-2">Quick Actions</div>
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => {
@@ -179,11 +160,11 @@ const LinksSection: React.FC<LinksSectionProps> = ({
                 }
               }}
               disabled={!property.latitude || !property.longitude}
-              className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-2 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Generate Map Link
             </button>
-            
+
             <button
               onClick={() => {
                 if (property.address && property.city && property.state) {
@@ -193,12 +174,12 @@ const LinksSection: React.FC<LinksSectionProps> = ({
                 }
               }}
               disabled={!property.address || !property.city || !property.state}
-              className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-2 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Generate CoStar Search
             </button>
           </div>
-          <p className="text-xs text-blue-700 mt-2">
+          <p className="text-xs text-blue-700 mt-1.5">
             Quick generation requires property address and coordinates to be set.
           </p>
         </div>
