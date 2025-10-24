@@ -133,7 +133,8 @@ serve(async (req) => {
           address,
           city,
           state,
-          zip
+          zip,
+          marketing_materials
         ),
         property_unit:property_unit_id (
           id,
@@ -384,6 +385,13 @@ function generateEmailTemplate(siteSubmit: any, contact: any): string {
           <div class="field">
             <span class="label">Delivery Timeframe:</span>
             <span class="value">${siteSubmit.delivery_timeframe}</span>
+          </div>
+          ` : ''}
+
+          ${siteSubmit.property?.marketing_materials ? `
+          <div class="field">
+            <span class="label">Marketing Materials:</span>
+            <span class="value"><a href="${siteSubmit.property.marketing_materials}" target="_blank" style="color: #2563eb; text-decoration: none;">View Marketing Materials</a></span>
           </div>
           ` : ''}
 
