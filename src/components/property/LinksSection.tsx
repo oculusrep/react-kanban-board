@@ -152,28 +152,6 @@ const LinksSection: React.FC<LinksSectionProps> = ({
         </div>
       </div>
 
-      {/* Quick generation buttons */}
-      <div className="mt-4 pt-3 border-t border-gray-200">
-        <div className="text-xs font-medium text-gray-700 mb-2">Quick Actions</div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => {
-              if (property.address && property.city && property.state) {
-                const searchQuery = encodeURIComponent(`${property.address} ${property.city} ${property.state}`);
-                const costarUrl = `https://www.costar.com/search?q=${searchQuery}`;
-                onFieldUpdate('costar_link', costarUrl);
-              }
-            }}
-            disabled={!property.address || !property.city || !property.state}
-            className="px-2 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Generate CoStar Link
-          </button>
-        </div>
-        <p className="text-xs text-gray-500 mt-1.5">
-          Generate CoStar link from property address
-        </p>
-      </div>
     </section>
   );
 };
