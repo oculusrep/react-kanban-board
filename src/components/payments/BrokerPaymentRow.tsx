@@ -73,6 +73,10 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, onUpdate }) 
       // Revert on error
       setLocalPaid(split.paid);
       setLocalPaidDate(split.paid_date);
+    } else {
+      // Silently update parent data in background for stats/summary refresh
+      // The optimistic update already happened so UI stays smooth
+      setTimeout(() => onUpdate(), 100);
     }
   };
 
@@ -90,6 +94,9 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, onUpdate }) 
       alert('Failed to update paid date');
       // Revert on error
       setLocalPaidDate(split.paid_date);
+    } else {
+      // Silently update parent data in background for stats/summary refresh
+      setTimeout(() => onUpdate(), 100);
     }
   };
 
