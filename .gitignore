@@ -32,9 +32,18 @@ screenshots/
 
 # Database backups (contain sensitive data, too large for git)
 backups/
-*.sql
 *.sql.gz
 *.dump
+
+# Exclude all SQL files except migrations
+*.sql
+!supabase/migrations/*.sql
+!supabase/CLEAN_SLATE_PAYMENT_TRIGGERS.sql
+!supabase/RESTORE_ALL_PAYMENT_TRIGGERS.sql
+!supabase/TEST_REFERRAL_FEE_CALCULATION.sql
+
+# Archive folder (old troubleshooting files)
+supabase/archive/
 
 # Test/debug scripts that may contain hardcoded credentials
 check-*.js
