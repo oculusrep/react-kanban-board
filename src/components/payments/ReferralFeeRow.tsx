@@ -77,6 +77,9 @@ const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
       // Revert on error
       setLocalPaid(paid);
       setLocalPaidDate(paidDate);
+    } else {
+      // Trigger parent update to refresh data
+      onUpdate();
     }
   };
 
@@ -94,6 +97,9 @@ const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
       alert('Failed to update paid date');
       // Revert on error
       setLocalPaidDate(paidDate);
+    } else {
+      // Trigger parent update to refresh data
+      onUpdate();
     }
   };
 
