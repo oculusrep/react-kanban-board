@@ -1,290 +1,306 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 
-interface SalesforcePayment {
-  opportunityName: string;
-  stage: string;
-  paymentName: string;
-  invoiceNumber: string;
-  paymentAmount: number;
-  gci: number;
-  agci: number;
-  house: number;
-  mikeTotal: number;
-  artyTotal: number;
-  gregTotal: number;
-  paymentDate: string;
-}
-
-interface OVISPaymentData {
-  dealName: string;
-  stage: string;
-  totalPayments: number;
-  gci: number;
-  agci: number;
-  house: number;
-  mikeTotal: number;
-  artyTotal: number;
-  gregTotal: number;
-  paymentCount: number;
-}
-
 interface ReconciliationRow {
-  dealName: string;
-  ovisStage: string;
-  sfStage: string;
-  ovisPaymentAmount: number;
-  sfPaymentAmount: number;
-  paymentVariance: number;
-  ovisGCI: number;
-  sfGCI: number;
-  gciVariance: number;
-  ovisAGCI: number;
-  sfAGCI: number;
-  agciVariance: number;
-  ovisHouse: number;
-  sfHouse: number;
-  houseVariance: number;
-  ovisMike: number;
-  sfMike: number;
-  mikeVariance: number;
-  ovisArty: number;
-  sfArty: number;
-  artyVariance: number;
-  ovisGreg: number;
-  sfGreg: number;
-  gregVariance: number;
+  deal_id: string;
+  deal_name: string;
+  sf_id: string | null;
+  ovis_stage: string;
+  sf_stage: string | null;
+  stage_match: boolean;
+  ovis_payment_amount: number;
+  sf_payment_amount: number;
+  payment_variance: number;
+  ovis_gci: number;
+  sf_gci: number;
+  gci_variance: number;
+  ovis_agci: number;
+  sf_agci: number;
+  agci_variance: number;
+  ovis_house: number;
+  sf_house: number;
+  house_variance: number;
+  ovis_mike: number;
+  sf_mike: number;
+  mike_variance: number;
+  ovis_arty: number;
+  sf_arty: number;
+  arty_variance: number;
+  ovis_greg: number;
+  sf_greg: number;
+  greg_variance: number;
 }
 
 const ReconciliationReport: React.FC = () => {
-  const [ovisData, setOvisData] = useState<OVISPaymentData[]>([]);
-  const [salesforceData, setSalesforceData] = useState<SalesforcePayment[]>([]);
+  const [reconciliationData, setReconciliationData] = useState<ReconciliationRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedStage, setSelectedStage] = useState<string>('all');
-  const [sortColumn, setSortColumn] = useState<string>('dealName');
+  const [sortColumn, setSortColumn] = useState<string>('deal_name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [stages, setStages] = useState<string[]>([]);
 
   useEffect(() => {
-    fetchOVISData();
+    fetchReconciliationData();
   }, []);
 
-  const fetchOVISData = async () => {
+  const fetchReconciliationData = async () => {
     setLoading(true);
+    setError(null);
     try {
-      // Fetch active deals with payments and broker splits
-      const { data: deals, error: dealsError } = await supabase
+      console.log('[ReconciliationReport] Starting data fetch...');
+
+      // Fetch all active deal stages (not Lost)
+      const { data: stagesData, error: stagesError } = await supabase
+        .from('deal_stage')
+        .select('id, label, is_active')
+        .eq('is_active', true)
+        .not('label', 'ilike', '%lost%');
+
+      if (stagesError) throw stagesError;
+
+      const activeStageIds = stagesData?.map(s => s.id) || [];
+      const stageLabelMap = new Map(stagesData?.map(s => [s.id, s.label]) || []);
+      setStages(stagesData?.map(s => s.label) || []);
+
+      console.log('[ReconciliationReport] Active stages:', stagesData?.length);
+
+      // Fetch OVIS deals with active stages
+      const { data: ovisDeals, error: dealsError} = await supabase
         .from('deal')
         .select(`
           id,
           deal_name,
+          sf_id,
           stage_id,
           fee,
-          origination_usd,
-          site_usd,
-          deal_usd,
-          referral_fee_usd,
-          stage:stage_id (
-            stage_name,
-            is_active
-          )
+          referral_fee_usd
         `)
-        .eq('stage.is_active', true)
-        .not('stage.stage_name', 'ilike', '%lost%');
+        .in('stage_id', activeStageIds);
 
       if (dealsError) throw dealsError;
+      console.log('[ReconciliationReport] OVIS deals:', ovisDeals?.length);
 
-      // Fetch payments for these deals
-      const dealIds = deals?.map(d => d.id) || [];
-      const { data: payments, error: paymentsError } = await supabase
+      // Fetch OVIS payments for these deals
+      const dealIds = ovisDeals?.map(d => d.id) || [];
+      const { data: ovisPayments, error: paymentsError } = await supabase
         .from('payment')
-        .select('*')
-        .in('deal_id', dealIds);
+        .select('deal_id, payment_amount')
+        .in('deal_id', dealIds)
+        .eq('is_active', true);
 
       if (paymentsError) throw paymentsError;
+      console.log('[ReconciliationReport] OVIS payments:', ovisPayments?.length);
 
-      // Fetch payment splits for broker totals
-      const paymentIds = payments?.map(p => p.id) || [];
-      const { data: paymentSplits, error: splitsError } = await supabase
+      // Fetch OVIS payment splits to get broker totals
+      const { data: ovisSplits, error: splitsError } = await supabase
         .from('payment_split')
         .select(`
-          *,
-          broker:broker_id (
-            id,
-            name
-          )
+          payment_id,
+          split_origination_usd,
+          split_site_usd,
+          split_deal_usd,
+          payment!inner(deal_id),
+          broker!inner(name)
         `)
-        .in('payment_id', paymentIds);
+        .in('payment.deal_id', dealIds);
 
       if (splitsError) throw splitsError;
+      console.log('[ReconciliationReport] OVIS splits:', ovisSplits?.length);
 
-      // Aggregate data by deal
-      const aggregatedData: OVISPaymentData[] = deals?.map(deal => {
-        const dealPayments = payments?.filter(p => p.deal_id === deal.id) || [];
+      // Get all SF IDs from deals
+      const sfIds = ovisDeals?.filter(d => d.sf_id).map(d => d.sf_id) || [];
+      console.log('[ReconciliationReport] Fetching SF data for', sfIds.length, 'opportunities');
+
+      // Fetch Salesforce Opportunity data for stages
+      const { data: sfOpportunities, error: sfOppError } = await supabase
+        .from('salesforce_Opportunity')
+        .select('Id, StageName')
+        .in('Id', sfIds);
+
+      if (sfOppError) throw sfOppError;
+      console.log('[ReconciliationReport] SF opportunities:', sfOpportunities?.length);
+
+      const sfStageMap = new Map(sfOpportunities?.map(o => [o.Id, o.StageName]) || []);
+
+      // Fetch Salesforce Payment data
+      const { data: sfPayments, error: sfPaymentError } = await supabase
+        .from('salesforce_Payment__c')
+        .select(`
+          Opportunity__c,
+          Payment_Amount__c,
+          AGCI__c,
+          House_Dollars__c,
+          Broker_Total_Mike__c,
+          Broker_Total_Arty__c,
+          Broker_Total_Greg__c
+        `)
+        .in('Opportunity__c', sfIds)
+        .eq('IsDeleted', false);
+
+      if (sfPaymentError) throw sfPaymentError;
+      console.log('[ReconciliationReport] SF payments:', sfPayments?.length);
+
+      // Aggregate OVIS data by deal
+      const ovisDataByDeal = new Map<string, {
+        totalPayments: number;
+        gci: number;
+        agci: number;
+        house: number;
+        mikeTotal: number;
+        artyTotal: number;
+        gregTotal: number;
+      }>();
+
+      ovisDeals?.forEach(deal => {
+        const dealPayments = ovisPayments?.filter(p => p.deal_id === deal.id) || [];
         const totalPayments = dealPayments.reduce((sum, p) => sum + (p.payment_amount || 0), 0);
-        const paymentCount = dealPayments.length;
-
-        // Calculate GCI (before house fee)
         const gci = deal.fee || 0;
-
-        // Calculate AGCI (after house fee) - this should be origination + site + deal
-        const agci = (deal.origination_usd || 0) + (deal.site_usd || 0) + (deal.deal_usd || 0);
-
-        // Calculate house fee
-        const house = gci - agci;
+        const referralFee = deal.referral_fee_usd || 0;
+        const agci = gci - referralFee;
 
         // Calculate broker totals
         let mikeTotal = 0;
         let artyTotal = 0;
         let gregTotal = 0;
 
-        dealPayments.forEach(payment => {
-          const splits = paymentSplits?.filter(ps => ps.payment_id === payment.id) || [];
-          splits.forEach(split => {
-            const brokerName = split.broker?.name || '';
+        ovisSplits?.forEach((split: any) => {
+          if (split.payment?.deal_id === deal.id) {
             const total = (split.split_origination_usd || 0) + (split.split_site_usd || 0) + (split.split_deal_usd || 0);
+            const brokerName = split.broker?.name?.toLowerCase() || '';
 
-            if (brokerName.toLowerCase().includes('mike')) {
+            if (brokerName.includes('mike')) {
               mikeTotal += total;
-            } else if (brokerName.toLowerCase().includes('arty')) {
+            } else if (brokerName.includes('arty')) {
               artyTotal += total;
-            } else if (brokerName.toLowerCase().includes('greg')) {
+            } else if (brokerName.includes('greg')) {
               gregTotal += total;
             }
-          });
+          }
         });
 
-        return {
-          dealName: deal.deal_name || '',
-          stage: deal.stage?.stage_name || '',
+        // Calculate house (GCI - AGCI)
+        const house = gci - agci;
+
+        ovisDataByDeal.set(deal.id, {
           totalPayments,
           gci,
           agci,
           house,
           mikeTotal,
           artyTotal,
-          gregTotal,
-          paymentCount
+          gregTotal
+        });
+      });
+
+      // Aggregate SF data by opportunity
+      const sfDataByOpportunity = new Map<string, {
+        totalPayments: number;
+        agci: number;
+        house: number;
+        mikeTotal: number;
+        artyTotal: number;
+        gregTotal: number;
+      }>();
+
+      sfPayments?.forEach((payment: any) => {
+        const oppId = payment.Opportunity__c;
+        if (!oppId) return;
+
+        const existing = sfDataByOpportunity.get(oppId) || {
+          totalPayments: 0,
+          agci: 0,
+          house: 0,
+          mikeTotal: 0,
+          artyTotal: 0,
+          gregTotal: 0
+        };
+
+        existing.totalPayments += payment.Payment_Amount__c || 0;
+        existing.agci += payment.AGCI__c || 0;
+        existing.house += payment.House_Dollars__c || 0;
+        existing.mikeTotal += payment.Broker_Total_Mike__c || 0;
+        existing.artyTotal += payment.Broker_Total_Arty__c || 0;
+        existing.gregTotal += payment.Broker_Total_Greg__c || 0;
+
+        sfDataByOpportunity.set(oppId, existing);
+      });
+
+      // Create reconciliation rows
+      const rows: ReconciliationRow[] = ovisDeals?.map(deal => {
+        const ovisData = ovisDataByDeal.get(deal.id) || {
+          totalPayments: 0,
+          gci: 0,
+          agci: 0,
+          house: 0,
+          mikeTotal: 0,
+          artyTotal: 0,
+          gregTotal: 0
+        };
+
+        const sfData = deal.sf_id ? sfDataByOpportunity.get(deal.sf_id) || {
+          totalPayments: 0,
+          agci: 0,
+          house: 0,
+          mikeTotal: 0,
+          artyTotal: 0,
+          gregTotal: 0
+        } : {
+          totalPayments: 0,
+          agci: 0,
+          house: 0,
+          mikeTotal: 0,
+          artyTotal: 0,
+          gregTotal: 0
+        };
+
+        const ovisStage = stageLabelMap.get(deal.stage_id) || 'Unknown';
+        const sfStage = deal.sf_id ? sfStageMap.get(deal.sf_id) || null : null;
+
+        // SF GCI = SF AGCI + SF House
+        const sfGci = sfData.agci + sfData.house;
+
+        return {
+          deal_id: deal.id,
+          deal_name: deal.deal_name || 'Unknown',
+          sf_id: deal.sf_id,
+          ovis_stage: ovisStage,
+          sf_stage: sfStage,
+          stage_match: ovisStage === sfStage,
+          ovis_payment_amount: ovisData.totalPayments,
+          sf_payment_amount: sfData.totalPayments,
+          payment_variance: ovisData.totalPayments - sfData.totalPayments,
+          ovis_gci: ovisData.gci,
+          sf_gci: sfGci,
+          gci_variance: ovisData.gci - sfGci,
+          ovis_agci: ovisData.agci,
+          sf_agci: sfData.agci,
+          agci_variance: ovisData.agci - sfData.agci,
+          ovis_house: ovisData.house,
+          sf_house: sfData.house,
+          house_variance: ovisData.house - sfData.house,
+          ovis_mike: ovisData.mikeTotal,
+          sf_mike: sfData.mikeTotal,
+          mike_variance: ovisData.mikeTotal - sfData.mikeTotal,
+          ovis_arty: ovisData.artyTotal,
+          sf_arty: sfData.artyTotal,
+          arty_variance: ovisData.artyTotal - sfData.artyTotal,
+          ovis_greg: ovisData.gregTotal,
+          sf_greg: sfData.gregTotal,
+          greg_variance: ovisData.gregTotal - sfData.gregTotal
         };
       }) || [];
 
-      setOvisData(aggregatedData);
-    } catch (error) {
-      console.error('Error fetching OVIS data:', error);
+      setReconciliationData(rows);
+      console.log('[ReconciliationReport] Reconciliation complete:', rows.length, 'rows');
+
+    } catch (error: any) {
+      console.error('[ReconciliationReport] Error:', error);
+      setError(error.message);
     } finally {
       setLoading(false);
     }
   };
-
-  const parseSalesforceHTML = (htmlContent: string): SalesforcePayment[] => {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(htmlContent, 'text/html');
-    const rows = doc.querySelectorAll('table tr');
-
-    const payments: SalesforcePayment[] = [];
-
-    // Skip header row (index 0)
-    for (let i = 1; i < rows.length; i++) {
-      const cells = rows[i].querySelectorAll('td');
-      if (cells.length < 13) continue;
-
-      payments.push({
-        opportunityName: cells[1]?.textContent?.trim() || '',
-        stage: cells[2]?.textContent?.trim() || '',
-        paymentName: cells[3]?.textContent?.trim() || '',
-        invoiceNumber: cells[4]?.textContent?.trim() || '',
-        paymentAmount: parseFloat(cells[5]?.textContent?.replace(/,/g, '') || '0'),
-        gci: parseFloat(cells[6]?.textContent?.replace(/,/g, '') || '0'),
-        agci: parseFloat(cells[7]?.textContent?.replace(/,/g, '') || '0'),
-        house: parseFloat(cells[8]?.textContent?.replace(/,/g, '') || '0'),
-        mikeTotal: parseFloat(cells[9]?.textContent?.replace(/,/g, '') || '0'),
-        artyTotal: parseFloat(cells[10]?.textContent?.replace(/,/g, '') || '0'),
-        gregTotal: parseFloat(cells[11]?.textContent?.replace(/,/g, '') || '0'),
-        paymentDate: cells[12]?.textContent?.trim() || ''
-      });
-    }
-
-    return payments;
-  };
-
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const content = e.target?.result as string;
-      const parsed = parseSalesforceHTML(content);
-      setSalesforceData(parsed);
-    };
-    reader.readAsText(file);
-  };
-
-  // Aggregate Salesforce data by opportunity
-  const aggregatedSFData = useMemo(() => {
-    const grouped = new Map<string, SalesforcePayment[]>();
-
-    salesforceData.forEach(payment => {
-      const existing = grouped.get(payment.opportunityName) || [];
-      existing.push(payment);
-      grouped.set(payment.opportunityName, existing);
-    });
-
-    return Array.from(grouped.entries()).map(([name, payments]) => {
-      return {
-        opportunityName: name,
-        stage: payments[0].stage,
-        totalPayments: payments.reduce((sum, p) => sum + p.paymentAmount, 0),
-        gci: payments.reduce((sum, p) => sum + p.gci, 0),
-        agci: payments.reduce((sum, p) => sum + p.agci, 0),
-        house: payments.reduce((sum, p) => sum + p.house, 0),
-        mikeTotal: payments.reduce((sum, p) => sum + p.mikeTotal, 0),
-        artyTotal: payments.reduce((sum, p) => sum + p.artyTotal, 0),
-        gregTotal: payments.reduce((sum, p) => sum + p.gregTotal, 0)
-      };
-    });
-  }, [salesforceData]);
-
-  // Create reconciliation rows
-  const reconciliationData = useMemo(() => {
-    const rows: ReconciliationRow[] = [];
-
-    // Match OVIS data with Salesforce data
-    ovisData.forEach(ovis => {
-      const sf = aggregatedSFData.find(sf =>
-        sf.opportunityName.toLowerCase().includes(ovis.dealName.toLowerCase()) ||
-        ovis.dealName.toLowerCase().includes(sf.opportunityName.toLowerCase())
-      );
-
-      rows.push({
-        dealName: ovis.dealName,
-        ovisStage: ovis.stage,
-        sfStage: sf?.stage || 'Not Found',
-        ovisPaymentAmount: ovis.totalPayments,
-        sfPaymentAmount: sf?.totalPayments || 0,
-        paymentVariance: ovis.totalPayments - (sf?.totalPayments || 0),
-        ovisGCI: ovis.gci,
-        sfGCI: sf?.gci || 0,
-        gciVariance: ovis.gci - (sf?.gci || 0),
-        ovisAGCI: ovis.agci,
-        sfAGCI: sf?.agci || 0,
-        agciVariance: ovis.agci - (sf?.agci || 0),
-        ovisHouse: ovis.house,
-        sfHouse: sf?.house || 0,
-        houseVariance: ovis.house - (sf?.house || 0),
-        ovisMike: ovis.mikeTotal,
-        sfMike: sf?.mikeTotal || 0,
-        mikeVariance: ovis.mikeTotal - (sf?.mikeTotal || 0),
-        ovisArty: ovis.artyTotal,
-        sfArty: sf?.artyTotal || 0,
-        artyVariance: ovis.artyTotal - (sf?.artyTotal || 0),
-        ovisGreg: ovis.gregTotal,
-        sfGreg: sf?.gregTotal || 0,
-        gregVariance: ovis.gregTotal - (sf?.gregTotal || 0)
-      });
-    });
-
-    return rows;
-  }, [ovisData, aggregatedSFData]);
 
   // Filter and sort data
   const filteredAndSortedData = useMemo(() => {
@@ -292,7 +308,7 @@ const ReconciliationReport: React.FC = () => {
 
     // Filter by stage
     if (selectedStage !== 'all') {
-      filtered = filtered.filter(row => row.ovisStage === selectedStage);
+      filtered = filtered.filter(row => row.ovis_stage === selectedStage);
     }
 
     // Sort
@@ -302,7 +318,7 @@ const ReconciliationReport: React.FC = () => {
 
       if (typeof aVal === 'string') {
         aVal = aVal.toLowerCase();
-        bVal = bVal.toLowerCase();
+        bVal = bVal?.toLowerCase() || '';
       }
 
       if (sortDirection === 'asc') {
@@ -318,20 +334,20 @@ const ReconciliationReport: React.FC = () => {
   // Calculate totals
   const totals = useMemo(() => {
     return filteredAndSortedData.reduce((acc, row) => {
-      acc.ovisPaymentAmount += row.ovisPaymentAmount;
-      acc.sfPaymentAmount += row.sfPaymentAmount;
-      acc.ovisGCI += row.ovisGCI;
-      acc.sfGCI += row.sfGCI;
-      acc.ovisAGCI += row.ovisAGCI;
-      acc.sfAGCI += row.sfAGCI;
-      acc.ovisHouse += row.ovisHouse;
-      acc.sfHouse += row.sfHouse;
-      acc.ovisMike += row.ovisMike;
-      acc.sfMike += row.sfMike;
-      acc.ovisArty += row.ovisArty;
-      acc.sfArty += row.sfArty;
-      acc.ovisGreg += row.ovisGreg;
-      acc.sfGreg += row.sfGreg;
+      acc.ovisPaymentAmount += row.ovis_payment_amount;
+      acc.sfPaymentAmount += row.sf_payment_amount;
+      acc.ovisGCI += row.ovis_gci;
+      acc.sfGCI += row.sf_gci;
+      acc.ovisAGCI += row.ovis_agci;
+      acc.sfAGCI += row.sf_agci;
+      acc.ovisHouse += row.ovis_house;
+      acc.sfHouse += row.sf_house;
+      acc.ovisMike += row.ovis_mike;
+      acc.sfMike += row.sf_mike;
+      acc.ovisArty += row.ovis_arty;
+      acc.sfArty += row.sf_arty;
+      acc.ovisGreg += row.ovis_greg;
+      acc.sfGreg += row.sf_greg;
       return acc;
     }, {
       ovisPaymentAmount: 0,
@@ -361,7 +377,7 @@ const ReconciliationReport: React.FC = () => {
   };
 
   const formatCurrency = (value: number) => {
-    return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `$${value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
   };
 
   const getVarianceColor = (variance: number) => {
@@ -369,14 +385,23 @@ const ReconciliationReport: React.FC = () => {
     return variance > 0 ? 'text-green-600' : 'text-red-600';
   };
 
-  // Get unique stages for filter
-  const stages = useMemo(() => {
-    const uniqueStages = new Set(ovisData.map(d => d.stage));
-    return Array.from(uniqueStages).sort();
-  }, [ovisData]);
-
   if (loading) {
-    return <div className="p-6 text-center">Loading OVIS data...</div>;
+    return (
+      <div className="p-6 text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+        <p className="mt-4 text-gray-600">Loading reconciliation data...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-800">Error loading data: {error}</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -385,30 +410,12 @@ const ReconciliationReport: React.FC = () => {
       <div className="p-6 border-b border-gray-200">
         <h2 className="text-xl font-semibold text-gray-900">Payment Reconciliation Report</h2>
         <p className="text-sm text-gray-600 mt-1">
-          Compare OVIS payment data with Salesforce
+          Compare OVIS payment data with Salesforce for active deals
         </p>
       </div>
 
       {/* Controls */}
       <div className="p-6 border-b border-gray-200 flex items-center gap-4">
-        {/* File Upload */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Upload Salesforce Report (HTML/XLS)
-          </label>
-          <input
-            type="file"
-            accept=".xls,.html"
-            onChange={handleFileUpload}
-            className="block w-full text-sm text-gray-500
-              file:mr-4 file:py-2 file:px-4
-              file:rounded-md file:border-0
-              file:text-sm file:font-semibold
-              file:bg-blue-50 file:text-blue-700
-              hover:file:bg-blue-100"
-          />
-        </div>
-
         {/* Stage Filter */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -429,9 +436,6 @@ const ReconciliationReport: React.FC = () => {
         {/* Stats */}
         <div className="ml-auto text-right">
           <div className="text-sm text-gray-600">Showing {filteredAndSortedData.length} deals</div>
-          <div className="text-sm text-gray-600">
-            {salesforceData.length > 0 ? `${salesforceData.length} SF payments loaded` : 'No SF data loaded'}
-          </div>
         </div>
       </div>
 
@@ -440,8 +444,8 @@ const ReconciliationReport: React.FC = () => {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th onClick={() => handleSort('dealName')} className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
-                Deal Name {sortColumn === 'dealName' && (sortDirection === 'asc' ? '↑' : '↓')}
+              <th onClick={() => handleSort('deal_name')} className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                Deal Name {sortColumn === 'deal_name' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stage</th>
               <th colSpan={3} className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">Payment Amount</th>
@@ -481,29 +485,38 @@ const ReconciliationReport: React.FC = () => {
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredAndSortedData.map((row, idx) => (
               <tr key={idx} className="hover:bg-gray-50">
-                <td className="px-3 py-2 text-sm text-gray-900 whitespace-nowrap">{row.dealName}</td>
-                <td className="px-3 py-2 text-sm text-gray-600 whitespace-nowrap">{row.ovisStage}</td>
-                <td className="px-2 py-2 text-sm text-right bg-blue-50">{formatCurrency(row.ovisPaymentAmount)}</td>
-                <td className="px-2 py-2 text-sm text-right bg-blue-50">{formatCurrency(row.sfPaymentAmount)}</td>
-                <td className={`px-2 py-2 text-sm text-right font-semibold bg-blue-50 ${getVarianceColor(row.paymentVariance)}`}>{formatCurrency(row.paymentVariance)}</td>
-                <td className="px-2 py-2 text-sm text-right bg-green-50">{formatCurrency(row.ovisGCI)}</td>
-                <td className="px-2 py-2 text-sm text-right bg-green-50">{formatCurrency(row.sfGCI)}</td>
-                <td className={`px-2 py-2 text-sm text-right font-semibold bg-green-50 ${getVarianceColor(row.gciVariance)}`}>{formatCurrency(row.gciVariance)}</td>
-                <td className="px-2 py-2 text-sm text-right bg-purple-50">{formatCurrency(row.ovisAGCI)}</td>
-                <td className="px-2 py-2 text-sm text-right bg-purple-50">{formatCurrency(row.sfAGCI)}</td>
-                <td className={`px-2 py-2 text-sm text-right font-semibold bg-purple-50 ${getVarianceColor(row.agciVariance)}`}>{formatCurrency(row.agciVariance)}</td>
-                <td className="px-2 py-2 text-sm text-right bg-orange-50">{formatCurrency(row.ovisHouse)}</td>
-                <td className="px-2 py-2 text-sm text-right bg-orange-50">{formatCurrency(row.sfHouse)}</td>
-                <td className={`px-2 py-2 text-sm text-right font-semibold bg-orange-50 ${getVarianceColor(row.houseVariance)}`}>{formatCurrency(row.houseVariance)}</td>
-                <td className="px-2 py-2 text-sm text-right bg-red-50">{formatCurrency(row.ovisMike)}</td>
-                <td className="px-2 py-2 text-sm text-right bg-red-50">{formatCurrency(row.sfMike)}</td>
-                <td className={`px-2 py-2 text-sm text-right font-semibold bg-red-50 ${getVarianceColor(row.mikeVariance)}`}>{formatCurrency(row.mikeVariance)}</td>
-                <td className="px-2 py-2 text-sm text-right bg-yellow-50">{formatCurrency(row.ovisArty)}</td>
-                <td className="px-2 py-2 text-sm text-right bg-yellow-50">{formatCurrency(row.sfArty)}</td>
-                <td className={`px-2 py-2 text-sm text-right font-semibold bg-yellow-50 ${getVarianceColor(row.artyVariance)}`}>{formatCurrency(row.artyVariance)}</td>
-                <td className="px-2 py-2 text-sm text-right bg-pink-50">{formatCurrency(row.ovisGreg)}</td>
-                <td className="px-2 py-2 text-sm text-right bg-pink-50">{formatCurrency(row.sfGreg)}</td>
-                <td className={`px-2 py-2 text-sm text-right font-semibold bg-pink-50 ${getVarianceColor(row.gregVariance)}`}>{formatCurrency(row.gregVariance)}</td>
+                <td className="px-3 py-2 text-sm text-gray-900 whitespace-nowrap">
+                  <a href={`/deal/${row.deal_id}`} className="text-blue-600 hover:underline">
+                    {row.deal_name}
+                  </a>
+                </td>
+                <td className="px-3 py-2 text-sm text-gray-600 whitespace-nowrap">
+                  {row.ovis_stage}
+                  {!row.stage_match && row.sf_stage && (
+                    <div className="text-xs text-orange-600">SF: {row.sf_stage}</div>
+                  )}
+                </td>
+                <td className="px-2 py-2 text-sm text-right bg-blue-50">{formatCurrency(row.ovis_payment_amount)}</td>
+                <td className="px-2 py-2 text-sm text-right bg-blue-50">{formatCurrency(row.sf_payment_amount)}</td>
+                <td className={`px-2 py-2 text-sm text-right font-semibold bg-blue-50 ${getVarianceColor(row.payment_variance)}`}>{formatCurrency(row.payment_variance)}</td>
+                <td className="px-2 py-2 text-sm text-right bg-green-50">{formatCurrency(row.ovis_gci)}</td>
+                <td className="px-2 py-2 text-sm text-right bg-green-50">{formatCurrency(row.sf_gci)}</td>
+                <td className={`px-2 py-2 text-sm text-right font-semibold bg-green-50 ${getVarianceColor(row.gci_variance)}`}>{formatCurrency(row.gci_variance)}</td>
+                <td className="px-2 py-2 text-sm text-right bg-purple-50">{formatCurrency(row.ovis_agci)}</td>
+                <td className="px-2 py-2 text-sm text-right bg-purple-50">{formatCurrency(row.sf_agci)}</td>
+                <td className={`px-2 py-2 text-sm text-right font-semibold bg-purple-50 ${getVarianceColor(row.agci_variance)}`}>{formatCurrency(row.agci_variance)}</td>
+                <td className="px-2 py-2 text-sm text-right bg-orange-50">{formatCurrency(row.ovis_house)}</td>
+                <td className="px-2 py-2 text-sm text-right bg-orange-50">{formatCurrency(row.sf_house)}</td>
+                <td className={`px-2 py-2 text-sm text-right font-semibold bg-orange-50 ${getVarianceColor(row.house_variance)}`}>{formatCurrency(row.house_variance)}</td>
+                <td className="px-2 py-2 text-sm text-right bg-red-50">{formatCurrency(row.ovis_mike)}</td>
+                <td className="px-2 py-2 text-sm text-right bg-red-50">{formatCurrency(row.sf_mike)}</td>
+                <td className={`px-2 py-2 text-sm text-right font-semibold bg-red-50 ${getVarianceColor(row.mike_variance)}`}>{formatCurrency(row.mike_variance)}</td>
+                <td className="px-2 py-2 text-sm text-right bg-yellow-50">{formatCurrency(row.ovis_arty)}</td>
+                <td className="px-2 py-2 text-sm text-right bg-yellow-50">{formatCurrency(row.sf_arty)}</td>
+                <td className={`px-2 py-2 text-sm text-right font-semibold bg-yellow-50 ${getVarianceColor(row.arty_variance)}`}>{formatCurrency(row.arty_variance)}</td>
+                <td className="px-2 py-2 text-sm text-right bg-pink-50">{formatCurrency(row.ovis_greg)}</td>
+                <td className="px-2 py-2 text-sm text-right bg-pink-50">{formatCurrency(row.sf_greg)}</td>
+                <td className={`px-2 py-2 text-sm text-right font-semibold bg-pink-50 ${getVarianceColor(row.greg_variance)}`}>{formatCurrency(row.greg_variance)}</td>
               </tr>
             ))}
             {/* Totals Row */}
