@@ -50,18 +50,19 @@ const ReconciliationReport: React.FC = () => {
     try {
       console.log('[ReconciliationReport] Starting data fetch...');
 
-      // Fetch all active deal stages (not Lost)
-      const { data: stagesData, error: stagesError } = await supabase
+      // Fetch all deal stages
+      const { data: allStagesData, error: stagesError } = await supabase
         .from('deal_stage')
         .select('id, label, is_active')
-        .eq('is_active', true)
-        .not('label', 'ilike', '%lost%');
+        .eq('is_active', true);
 
       if (stagesError) throw stagesError;
 
-      const activeStageIds = stagesData?.map(s => s.id) || [];
-      const stageLabelMap = new Map(stagesData?.map(s => [s.id, s.label]) || []);
-      setStages(stagesData?.map(s => s.label) || []);
+      // Filter out Lost stage
+      const stagesData = allStagesData?.filter(s => !s.label.toLowerCase().includes('lost')) || [];
+      const activeStageIds = stagesData.map(s => s.id);
+      const stageLabelMap = new Map(stagesData.map(s => [s.id, s.label]));
+      setStages(stagesData.map(s => s.label));
 
       console.log('[ReconciliationReport] Active stages:', stagesData?.length);
 
