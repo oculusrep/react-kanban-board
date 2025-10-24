@@ -4,7 +4,8 @@
 
 The payment override system allows users to manually adjust a payment amount in the Payment Dashboard. When a payment is overridden, the system automatically recalculates:
 1. **Payment AGCI** (Agent Gross Commission Income)
-2. **All broker splits** (Origination, Site, and Deal splits)
+2. **Referral Fee** (based on new payment amount)
+3. **All broker splits** (Origination, Site, and Deal splits)
 
 This happens in real-time without page refresh or tab switching.
 
@@ -30,12 +31,15 @@ This happens in real-time without page refresh or tab switching.
 
 ### Calculation Logic
 
-#### Payment AGCI Calculation
+#### Payment AGCI and Referral Fee Calculation
 ```
-Payment GCI = Payment Amount - (Payment Amount × Referral Fee %)
+Referral Fee = Payment Amount × Referral Fee %
+Payment GCI = Payment Amount - Referral Fee
 House Split = House Percent × Payment GCI
 Payment AGCI = Payment GCI - House Split
 ```
+
+**Note:** Both `referral_fee_usd` and `agci` are calculated by the `calculate_payment_agci()` trigger whenever `payment_amount` changes.
 
 #### Broker Split Calculation (Per Payment)
 When a payment is overridden:
@@ -179,9 +183,11 @@ if (onSuccess) {
 ```
 
 #### PaymentDetailPanel.tsx
-**Purpose:** Displays payment details including AGCI
+**Purpose:** Displays payment details including AGCI and referral fees
 
-**Key Change:** Uses database value instead of calculating
+**Key Changes:** Uses database values instead of calculating
+
+**AGCI Display:**
 ```typescript
 // BEFORE (WRONG): Calculated AGCI client-side
 const paymentAGCI = calculatePaymentAGCI();
@@ -189,6 +195,20 @@ const paymentAGCI = calculatePaymentAGCI();
 // AFTER (CORRECT): Uses database value
 const paymentAGCI = payment.agci || 0;
 ```
+
+**Referral Fee Display:**
+```typescript
+// BEFORE (WRONG): Divided deal total by number of payments
+${((deal.referral_fee_usd || 0) / (deal.number_of_payments || 1)).toLocaleString(...)}
+
+// AFTER (CORRECT): Uses database value for this specific payment
+${(payment.referral_fee_usd || 0).toLocaleString(...)}
+```
+
+**Why This Matters:**
+- When a payment is overridden, the `calculate_payment_agci()` trigger recalculates `payment.referral_fee_usd` based on the new payment amount
+- Using `deal.referral_fee_usd / number_of_payments` doesn't account for overrides
+- Using `payment.referral_fee_usd` ensures the correct amount is displayed
 
 #### usePaymentSplitCalculations.ts
 **Purpose:** Hook to get broker split data
@@ -270,6 +290,29 @@ export interface Payment {
 
 This was the critical fix that made everything work.
 
+### Problem 4: Referral Fee Not Updating in UI
+**Symptom:** When payment was overridden, AGCI and broker splits updated correctly, but referral fee still showed old amount
+
+**Root Cause:** PaymentDetailPanel was calculating referral fee by dividing the deal's total referral_fee_usd by number_of_payments, which doesn't account for payment overrides
+
+**Investigation Steps:**
+1. Verified database trigger WAS calculating `payment.referral_fee_usd` correctly
+2. Tested with SQL - confirmed trigger updates the field when payment_amount changes
+3. Found UI was using `(deal.referral_fee_usd / number_of_payments)` instead of `payment.referral_fee_usd`
+
+**Solution:** Changed PaymentDetailPanel to use `payment.referral_fee_usd` directly:
+```typescript
+// Before: ${((deal.referral_fee_usd || 0) / (deal.number_of_payments || 1)).toLocaleString(...)}
+// After:  ${(payment.referral_fee_usd || 0).toLocaleString(...)}
+```
+
+**Example:**
+- Payment overridden to $9,812
+- Referral fee percent: 50%
+- Database correctly calculated: $4,906 (50% of $9,812)
+- UI was showing: incorrect value from deal total ÷ payments
+- After fix: $4,906 ✓
+
 ## Testing
 
 ### Database Testing
@@ -304,6 +347,7 @@ WHERE p.id = 'payment-uuid';
    - Modal closes
    - Payment amount updates immediately
    - AGCI recalculates (should be lower than original)
+   - Referral fee recalculates based on new payment amount
    - All broker splits recalculate proportionally
    - Total broker splits sum to new AGCI
    - No page refresh occurs
@@ -347,7 +391,7 @@ This single flag coordinates behavior across multiple triggers without them need
 
 ### Frontend
 - `src/components/payments/PaymentAmountOverrideModal.tsx` - Removed reload, added callback
-- `src/components/payments/PaymentDetailPanel.tsx` - Use database AGCI instead of calculation
+- `src/components/payments/PaymentDetailPanel.tsx` - Use database AGCI and referral_fee_usd instead of calculation
 - `src/hooks/usePaymentSplitCalculations.ts` - Simplified to use database values
 - `src/lib/types.ts` - Added agci, referral_fee_usd, amount_override, override_at fields
 - `src/components/PaymentTab.tsx` - Added force refresh capability
@@ -368,9 +412,11 @@ This single flag coordinates behavior across multiple triggers without them need
 
 ### Common Pitfalls
 1. **Don't calculate AGCI client-side** - Always use `payment.agci` from database
-2. **Don't calculate splits client-side** - Always use payment_split table values
-3. **Don't add BEFORE triggers to payment_split without considering overrides**
-4. **Don't clear amount_override flag** - It needs to persist for trigger logic
+2. **Don't calculate referral fees client-side** - Always use `payment.referral_fee_usd` from database
+3. **Don't calculate splits client-side** - Always use payment_split table values
+4. **Don't add BEFORE triggers to payment_split without considering overrides**
+5. **Don't clear amount_override flag** - It needs to persist for trigger logic
+6. **Don't divide deal totals by number of payments** - Use payment-specific values for overridden payments
 
 ## Future Enhancements
 
