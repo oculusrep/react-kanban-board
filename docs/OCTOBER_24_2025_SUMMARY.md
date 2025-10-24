@@ -4,7 +4,7 @@
 
 A complete auto-sync system for payment commission splits that eliminates manual "Generate Payments" buttons and ensures broker commission data stays synchronized automatically.
 
-## Three Major Achievements
+## Five Major Achievements
 
 ### 1. Payment Auto-Sync System ✅
 
@@ -81,6 +81,30 @@ SELECT regenerate_payment_splits_for_deal('deal-id-here');
 
 **Migration:** `20251024000003_add_regenerate_payment_splits_function.sql`
 
+### 5. Deal Changes Auto-Sync Fix ✅
+
+**Problem Discovered in Production:** When changing deal-level percentages (referral fee %, house %, category splits), the payment AGCI and broker commission splits didn't update automatically.
+
+**Example:** User removed 50% referral fee from a deal → AGCI should increase → broker splits should increase. But nothing happened until manual refresh.
+
+**Root Cause:** The `calculate_payment_agci_trigger` only fires when payment table columns change (payment_amount, amount_override). It doesn't fire when deal table columns change (referral_fee_percent, house_percent, etc.).
+
+**Solution:** Created trigger on `deal` table that cascades changes to payments:
+
+**New trigger on `deal` table:**
+- `recalculate_payments_on_deal_change_trigger` (AFTER UPDATE)
+- Fires when: referral_fee_percent, house_percent, or category percents change
+- Action: Updates all payments for the deal (dummy update to trigger recalculation)
+
+**The Chain Reaction:**
+1. User changes deal.referral_fee_percent (50% → 0%)
+2. Deal trigger fires → Updates all payments
+3. Payment BEFORE trigger fires → Recalculates AGCI and referral_fee_usd
+4. Payment AFTER trigger fires → Updates all broker splits
+5. UI shows updated values ✅
+
+**Migration:** `20251024000004_fix_deal_changes_update_payments.sql`
+
 ## Testing Results - ALL PASSED ✅
 
 ### Test 1: Add Broker
@@ -129,12 +153,26 @@ SELECT regenerate_payment_splits_for_deal('deal-id-here');
 - ✅ Assignment kept but deal_id set to NULL (SET NULL)
 - ✅ No orphaned records
 
+### Test 8: Deal Changes Auto-Sync (Production Test)
+- ✅ Deal 099463d8-c6be-42b6-8659-daf154730383 had 50% referral fee
+- ✅ Changed referral fee from 50% → 0%
+- ✅ Payment AGCI increased automatically
+- ✅ All broker splits increased automatically
+- ✅ No manual refresh needed
+
+### Test 9: Referral Fee Bug Fix
+- ✅ Found referral fee showing $1,302,408.00 instead of $13,024.08
+- ✅ Root cause: Old migration missing `/ 100` in calculation
+- ✅ Fixed by triggering recalculation with current (correct) trigger
+- ✅ Referral fee now shows correct $13,024.08
+
 ## Migrations Applied (in order)
 
 1. `20251024_complete_payment_auto_sync.sql` - 5 triggers for auto-sync
 2. `20251024000001_remove_conflicting_payment_split_trigger.sql` - Fix $0.00 issue
 3. `20251024000002_add_cascade_deletes.sql` - Prevent orphaned records
 4. `20251024000003_add_regenerate_payment_splits_function.sql` - Utility for fixing bad data
+5. `20251024000004_fix_deal_changes_update_payments.sql` - Deal changes auto-sync
 
 ## Key Technical Decisions
 
@@ -207,26 +245,40 @@ Broker Amounts:
    - Enter new amount
    - AGCI and all splits recalculate automatically
 
-5. **Delete deal:**
+5. **Change deal percentages:**
+   - Go to Deal Details tab
+   - Change referral fee %, house %, or category %
+   - Auto-saves → payments and splits recalculate automatically
+   - Works for: referral fee, house split, origination/site/deal splits
+
+6. **Delete deal:**
    - Delete deal from UI or database
    - Payments, commission_splits, payment_splits deleted automatically (CASCADE)
    - Assignments kept but unlinked (SET NULL)
 
 ### Maintenance Operations
 
-6. **Fix messed up deal from Salesforce migration:**
+7. **Fix messed up deal from Salesforce migration:**
    ```sql
    SELECT regenerate_payment_splits_for_deal('deal-id');
+   ```
+
+8. **Fix incorrect referral fee from old data:**
+   ```sql
+   UPDATE payment
+   SET payment_amount = payment_amount  -- Triggers recalculation
+   WHERE deal_id = 'deal-id';
    ```
 
 ## Documentation Created
 
 1. **[FINAL_TRIGGER_DESIGN.md](../FINAL_TRIGGER_DESIGN.md)** - Complete trigger architecture design
-2. **[PAYMENT_AUTO_SYNC_TEST_PLAN.md](../PAYMENT_AUTO_SYNC_TEST_PLAN.md)** - Testing plan with all 7 tests
+2. **[PAYMENT_AUTO_SYNC_TEST_PLAN.md](../PAYMENT_AUTO_SYNC_TEST_PLAN.md)** - Testing plan with all tests
 3. **[TRIGGER_ANALYSIS_OCT24.md](../TRIGGER_ANALYSIS_OCT24.md)** - Analysis of how new triggers interact with Oct 23rd work
 4. **[PAYMENT_AUTO_SYNC_IMPLEMENTATION_COMPLETE.md](./PAYMENT_AUTO_SYNC_IMPLEMENTATION_COMPLETE.md)** - Complete implementation summary
 5. **[FIXING_MESSED_UP_DEALS.md](./FIXING_MESSED_UP_DEALS.md)** - Guide for fixing Salesforce migration issues
-6. **[OCTOBER_24_2025_SUMMARY.md](./OCTOBER_24_2025_SUMMARY.md)** - This document
+6. **[DEAL_CHANGES_AUTO_SYNC.md](./DEAL_CHANGES_AUTO_SYNC.md)** - Deal percentage changes auto-sync documentation
+7. **[OCTOBER_24_2025_SUMMARY.md](./OCTOBER_24_2025_SUMMARY.md)** - This document
 
 ## What Changed from Before
 
@@ -236,6 +288,7 @@ Broker Amounts:
 - User had to click buttons after making changes
 - Risk of forgetting to regenerate after changes
 - Deleting deals left orphaned records
+- Changing deal percentages didn't update payments/splits
 
 ### After (Auto-Sync System)
 - No buttons needed
@@ -243,12 +296,13 @@ Broker Amounts:
 - Impossible to have out-of-sync data
 - Better user experience
 - CASCADE deletes prevent orphans
+- Deal percentage changes auto-sync to payments/splits
 
 ## Production Status
 
 - ✅ **Applied to production:** October 24, 2025
-- ✅ **All migrations tested:** Dev environment
-- ✅ **All 7 tests passed**
+- ✅ **All migrations tested:** Production environment
+- ✅ **All 9 tests passed**
 - ✅ **October 23rd payment override preserved**
 - ✅ **Ready for production use**
 
