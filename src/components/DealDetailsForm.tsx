@@ -56,6 +56,7 @@ interface Deal {
   probability: number | null;
   target_close_date: string | null;
   loi_signed_date: string | null;
+  contract_signed_date: string | null;
   booked_date: string | null;
   closed_date: string | null;
   booked: boolean | null;
@@ -386,6 +387,7 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
       fee: calculatedFee,
       target_close_date: form.target_close_date,
       loi_signed_date: form.loi_signed_date,
+      contract_signed_date: form.contract_signed_date,
       booked_date: form.booked_date,
       closed_date: form.closed_date,
       booked: isMovingToBooked ? true : form.booked, // Auto-check when moving to Booked
@@ -518,6 +520,7 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
       fee: calculatedFee,
       target_close_date: updatedForm.target_close_date,
       loi_signed_date: updatedForm.loi_signed_date,
+      contract_signed_date: updatedForm.contract_signed_date,
       closed_date: updatedForm.closed_date,
       loss_reason: lossReason,
       probability: updatedForm.probability,
@@ -608,6 +611,7 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
       fee: calculatedFee,
       target_close_date: updatedForm.target_close_date,
       loi_signed_date: updatedForm.loi_signed_date,
+      contract_signed_date: updatedForm.contract_signed_date,
       closed_date: closedDate,
       loss_reason: updatedForm.loss_reason,
       probability: updatedForm.probability,
@@ -698,6 +702,7 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
       fee: calculatedFee,
       target_close_date: updatedForm.target_close_date,
       loi_signed_date: updatedForm.loi_signed_date,
+      contract_signed_date: updatedForm.contract_signed_date,
       booked_date: bookedDate,
       closed_date: updatedForm.closed_date,
       booked: true, // Auto-check when moving to Booked
@@ -938,6 +943,11 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
             label="LOI Signed Date"
             value={form.loi_signed_date}
             onChange={(v) => updateField("loi_signed_date", v)}
+          />
+          <DateInput
+            label="Contract X Date"
+            value={form.contract_signed_date}
+            onChange={(v) => updateField("contract_signed_date", v)}
           />
           <DateInput
             label="Booked Date"

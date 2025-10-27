@@ -112,6 +112,7 @@ export default function DealDetailsPage() {
           site_percent: 25,
           deal_percent: 25,
           number_of_payments: 2,
+          contract_signed_date: null,
           booked_date: null,
           booked: null,
           loss_reason: null,
