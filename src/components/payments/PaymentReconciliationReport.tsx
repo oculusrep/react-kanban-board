@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import DealSidebar from '../DealSidebar';
 
 interface PaymentReconciliationRow {
   payment_id: string;
@@ -48,7 +49,7 @@ const PaymentReconciliationReport: React.FC = () => {
   // Closed Date Filter
   const [showClosedDateMenu, setShowClosedDateMenu] = useState(false);
   const closedDateMenuRef = useRef<HTMLDivElement>(null);
-  const [closedDateFilter, setClosedDateFilter] = useState<'current_year' | 'last_2_years' | 'all_time' | 'custom'>('last_2_years');
+  const [closedDateFilter, setClosedDateFilter] = useState<'current_year' | 'last_2_years' | 'all_time' | 'missing' | 'custom'>('last_2_years');
   const [customClosedDateFrom, setCustomClosedDateFrom] = useState<string>('');
   const [customClosedDateTo, setCustomClosedDateTo] = useState<string>('');
 
@@ -65,6 +66,14 @@ const PaymentReconciliationReport: React.FC = () => {
   const [estPaymentDateFilter, setEstPaymentDateFilter] = useState<'all' | 'current_year' | 'last_2_years' | 'custom'>('all');
   const [estimatedPaymentDateFrom, setEstimatedPaymentDateFrom] = useState<string>('');
   const [estimatedPaymentDateTo, setEstimatedPaymentDateTo] = useState<string>('');
+
+  // Deal sidebar state
+  const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
+  const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
+
+  // Inline editing state for closed_date
+  const [editingClosedDateDealId, setEditingClosedDateDealId] = useState<string | null>(null);
+  const [editingClosedDateValue, setEditingClosedDateValue] = useState<string>('');
 
   useEffect(() => {
     fetchReconciliationData();
@@ -285,7 +294,15 @@ const PaymentReconciliationReport: React.FC = () => {
     let filtered = reconciliationData;
 
     // Filter by closed date based on selected option
-    if (closedDateFilter === 'current_year') {
+    if (closedDateFilter === 'missing') {
+      // Show only "Closed Paid" deals WITHOUT a closed_date
+      filtered = filtered.filter(row => {
+        if (row.ovis_stage === 'Closed Paid') {
+          return !row.closed_date;
+        }
+        return true; // Keep non-Closed Paid deals
+      });
+    } else if (closedDateFilter === 'current_year') {
       // For "Closed Paid" deals: only show if closed_date >= 2025-01-01
       // For other stages: keep all
       filtered = filtered.filter(row => {
@@ -470,6 +487,8 @@ const PaymentReconciliationReport: React.FC = () => {
 
   const getClosedDateFilterLabel = () => {
     switch (closedDateFilter) {
+      case 'missing':
+        return 'Missing Date';
       case 'current_year':
         return '2025';
       case 'last_2_years':
@@ -532,6 +551,40 @@ const PaymentReconciliationReport: React.FC = () => {
       default:
         return 'All';
     }
+  };
+
+  const handleClosedDateEdit = (dealId: string, currentDate: string | null) => {
+    setEditingClosedDateDealId(dealId);
+    setEditingClosedDateValue(currentDate || '');
+  };
+
+  const handleClosedDateSave = async (dealId: string) => {
+    try {
+      const { error } = await supabase
+        .from('deal')
+        .update({ closed_date: editingClosedDateValue || null })
+        .eq('id', dealId);
+
+      if (error) throw error;
+
+      // Update local state
+      setReconciliationData(prev => prev.map(row =>
+        row.deal_id === dealId
+          ? { ...row, closed_date: editingClosedDateValue || null }
+          : row
+      ));
+
+      setEditingClosedDateDealId(null);
+      setEditingClosedDateValue('');
+    } catch (err) {
+      console.error('Error updating closed date:', err);
+      alert('Failed to update closed date');
+    }
+  };
+
+  const handleClosedDateCancel = () => {
+    setEditingClosedDateDealId(null);
+    setEditingClosedDateValue('');
   };
 
   if (loading) {
@@ -630,7 +683,7 @@ const PaymentReconciliationReport: React.FC = () => {
               onClick={() => setShowClosedDateMenu(!showClosedDateMenu)}
               className="px-3 py-1.5 border border-gray-300 rounded-md shadow-sm bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              Closed: {closedDateFilter === 'current_year' ? '2025' : closedDateFilter === 'last_2_years' ? '2024+' : closedDateFilter === 'all_time' ? 'All' : 'Custom'}
+              Closed: {closedDateFilter === 'missing' ? 'Missing' : closedDateFilter === 'current_year' ? '2025' : closedDateFilter === 'last_2_years' ? '2024+' : closedDateFilter === 'all_time' ? 'All' : 'Custom'}
               <svg className="inline-block ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
@@ -639,6 +692,10 @@ const PaymentReconciliationReport: React.FC = () => {
             {showClosedDateMenu && (
               <div className="absolute z-10 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg">
                 <div className="p-2">
+                  <button onClick={() => { setClosedDateFilter('missing'); setShowClosedDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${closedDateFilter === 'missing' ? 'bg-orange-50 font-semibold text-orange-700' : ''}`}>
+                    ⚠️ Missing Closed Date
+                  </button>
+                  <div className="border-t border-gray-200 my-1"></div>
                   <button onClick={() => { setClosedDateFilter('current_year'); setShowClosedDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${closedDateFilter === 'current_year' ? 'bg-blue-50 font-semibold' : ''}`}>
                     This Year (2025)
                   </button>
@@ -796,6 +853,9 @@ const PaymentReconciliationReport: React.FC = () => {
               <th onClick={() => handleSort('ovis_stage')} className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
                 Stage {sortColumn === 'ovis_stage' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
+              <th onClick={() => handleSort('closed_date')} className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                Closed {sortColumn === 'closed_date' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </th>
               <th colSpan={3} className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">Payment Amt</th>
               <th colSpan={3} className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-purple-50">AGCI</th>
               <th colSpan={3} className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-orange-50">House $</th>
@@ -804,6 +864,7 @@ const PaymentReconciliationReport: React.FC = () => {
               <th colSpan={3} className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-pink-50">Greg</th>
             </tr>
             <tr>
+              <th></th>
               <th></th>
               <th></th>
               <th className="px-1 py-0.5 text-xs font-medium text-gray-500 text-center bg-blue-50">OVIS</th>
@@ -830,9 +891,12 @@ const PaymentReconciliationReport: React.FC = () => {
             {filteredAndSortedData.map((row, idx) => (
               <tr key={idx} className="hover:bg-gray-50">
                 <td className="px-2 py-1.5 text-xs text-gray-900">
-                  <a href={`/deal/${row.deal_id}`} className="text-blue-600 hover:underline block">
+                  <button
+                    onClick={() => setSelectedDealId(row.deal_id)}
+                    className="text-blue-600 hover:underline block text-left"
+                  >
                     {row.deal_name}
-                  </a>
+                  </button>
                   {row.payment_name && (
                     <div className="text-xs text-gray-500 mt-0.5">
                       {row.payment_name}
@@ -843,6 +907,41 @@ const PaymentReconciliationReport: React.FC = () => {
                   {row.ovis_stage}
                   {!row.stage_match && row.sf_stage && (
                     <div className="text-xs text-orange-600">SF: {row.sf_stage}</div>
+                  )}
+                </td>
+                <td className="px-2 py-1.5 text-xs text-gray-600 whitespace-nowrap">
+                  {editingClosedDateDealId === row.deal_id ? (
+                    <div className="flex items-center space-x-1">
+                      <input
+                        type="date"
+                        value={editingClosedDateValue}
+                        onChange={(e) => setEditingClosedDateValue(e.target.value)}
+                        className="px-1 py-0.5 text-xs border border-blue-500 rounded"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handleClosedDateSave(row.deal_id)}
+                        className="px-1 py-0.5 bg-green-600 text-white rounded hover:bg-green-700"
+                        title="Save"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        onClick={handleClosedDateCancel}
+                        className="px-1 py-0.5 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                        title="Cancel"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleClosedDateEdit(row.deal_id, row.closed_date)}
+                      className={`hover:bg-gray-200 px-1 py-0.5 rounded ${!row.closed_date ? 'text-orange-600 font-semibold' : ''}`}
+                      title="Click to edit"
+                    >
+                      {row.closed_date || '⚠️ Missing'}
+                    </button>
                   )}
                 </td>
                 <td className="px-1 py-1.5 text-xs text-right bg-blue-50">{formatCurrency(row.ovis_payment_amount)}</td>
@@ -867,7 +966,7 @@ const PaymentReconciliationReport: React.FC = () => {
             ))}
             {/* Totals Row */}
             <tr className="bg-gray-800 text-white font-bold">
-              <td className="px-2 py-1.5 text-xs" colSpan={2}>TOTALS</td>
+              <td className="px-2 py-1.5 text-xs" colSpan={3}>TOTALS</td>
               <td className="px-1 py-1.5 text-xs text-right">{formatCurrency(totals.ovisPaymentAmount)}</td>
               <td className="px-1 py-1.5 text-xs text-right">{formatCurrency(totals.sfPaymentAmount)}</td>
               <td className="px-1 py-1.5 text-xs text-right">{formatCurrency(totals.ovisPaymentAmount - totals.sfPaymentAmount)}</td>
@@ -890,6 +989,23 @@ const PaymentReconciliationReport: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Deal Sidebar */}
+      {selectedDealId && (
+        <DealSidebar
+          dealId={selectedDealId}
+          isMinimized={isSidebarMinimized}
+          onMinimize={() => {
+            if (isSidebarMinimized) {
+              setIsSidebarMinimized(false);
+            } else {
+              setIsSidebarMinimized(true);
+              // Close completely after minimizing
+              setTimeout(() => setSelectedDealId(null), 300);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };
