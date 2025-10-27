@@ -12,8 +12,9 @@ import ComparisonReportTab from '../components/payments/ComparisonReportTab';
 import PaymentDiscrepancyReport from '../components/payments/PaymentDiscrepancyReport';
 import SplitValidationTab from '../components/payments/SplitValidationTab';
 import ReconciliationReport from '../components/payments/ReconciliationReport';
+import PaymentReconciliationReport from '../components/payments/PaymentReconciliationReport';
 
-type TabType = 'dashboard' | 'comparison' | 'discrepancies' | 'validation' | 'reconciliation';
+type TabType = 'dashboard' | 'comparison' | 'discrepancies' | 'validation' | 'deal-reconciliation' | 'payment-reconciliation';
 
 const PaymentDashboardPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -428,24 +429,38 @@ const PaymentDashboardPage: React.FC = () => {
               Split Validation
             </button>
             <button
-              onClick={() => setActiveTab('reconciliation')}
+              onClick={() => setActiveTab('deal-reconciliation')}
               className={`${
-                activeTab === 'reconciliation'
+                activeTab === 'deal-reconciliation'
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
             >
-              Reconciliation
+              Deal Reconciliation
+            </button>
+            <button
+              onClick={() => setActiveTab('payment-reconciliation')}
+              className={`${
+                activeTab === 'payment-reconciliation'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            >
+              Payment Reconciliation
             </button>
           </nav>
         </div>
       </div>
 
       {/* Content */}
-      {activeTab === 'reconciliation' ? (
-        // Full-width container for reconciliation report
+      {activeTab === 'deal-reconciliation' || activeTab === 'payment-reconciliation' ? (
+        // Full-width container for reconciliation reports
         <div className="px-4 sm:px-6 lg:px-8 py-6">
-          <ReconciliationReport />
+          {activeTab === 'deal-reconciliation' ? (
+            <ReconciliationReport />
+          ) : (
+            <PaymentReconciliationReport />
+          )}
         </div>
       ) : (
         // Regular max-width container for other tabs

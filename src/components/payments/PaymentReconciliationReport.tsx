@@ -1,22 +1,21 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 
-interface ReconciliationRow {
+interface PaymentReconciliationRow {
+  payment_id: string;
   deal_id: string;
   deal_name: string;
-  payment_names: string[];
+  payment_name: string | null;
+  payment_sequence: number;
   booked_date: string | null;
-  payment_dates_estimated: (string | null)[];
-  sf_id: string | null;
+  payment_date_estimated: string | null;
+  sf_payment_id: string | null;
   ovis_stage: string;
   sf_stage: string | null;
   stage_match: boolean;
   ovis_payment_amount: number;
   sf_payment_amount: number;
   payment_variance: number;
-  ovis_gci: number;
-  sf_gci: number;
-  gci_variance: number;
   ovis_agci: number;
   sf_agci: number;
   agci_variance: number;
@@ -34,8 +33,8 @@ interface ReconciliationRow {
   greg_variance: number;
 }
 
-const ReconciliationReport: React.FC = () => {
-  const [reconciliationData, setReconciliationData] = useState<ReconciliationRow[]>([]);
+const PaymentReconciliationReport: React.FC = () => {
+  const [reconciliationData, setReconciliationData] = useState<PaymentReconciliationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedStages, setSelectedStages] = useState<string[]>([]);
@@ -74,7 +73,7 @@ const ReconciliationReport: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      console.log('[ReconciliationReport] Starting data fetch...');
+      console.log('[PaymentReconciliationReport] Starting data fetch...');
 
       // Fetch all deal stages
       const { data: allStagesData, error: stagesError } = await supabase
@@ -90,7 +89,7 @@ const ReconciliationReport: React.FC = () => {
       const stageLabelMap = new Map(stagesData.map(s => [s.id, s.label]));
       setStages(stagesData.map(s => s.label));
 
-      console.log('[ReconciliationReport] Active stages:', stagesData?.length);
+      console.log('[PaymentReconciliationReport] Active stages:', stagesData?.length);
 
       // Fetch OVIS deals with active stages
       const { data: ovisDeals, error: dealsError} = await supabase
@@ -100,27 +99,26 @@ const ReconciliationReport: React.FC = () => {
           deal_name,
           sf_id,
           stage_id,
-          fee,
-          referral_fee_usd,
           booked_date
         `)
         .in('stage_id', activeStageIds);
 
       if (dealsError) throw dealsError;
-      console.log('[ReconciliationReport] OVIS deals:', ovisDeals?.length);
+      console.log('[PaymentReconciliationReport] OVIS deals:', ovisDeals?.length);
 
       // Fetch OVIS payments for these deals
       const dealIds = ovisDeals?.map(d => d.id) || [];
       const { data: ovisPayments, error: paymentsError } = await supabase
         .from('payment')
-        .select('deal_id, payment_amount, payment_name, payment_date_estimated')
+        .select('id, deal_id, sf_id, payment_amount, payment_name, payment_sequence, payment_date_estimated, agci')
         .in('deal_id', dealIds)
         .eq('is_active', true);
 
       if (paymentsError) throw paymentsError;
-      console.log('[ReconciliationReport] OVIS payments:', ovisPayments?.length);
+      console.log('[PaymentReconciliationReport] OVIS payments:', ovisPayments?.length);
 
       // Fetch OVIS payment splits to get broker totals
+      const paymentIds = ovisPayments?.map(p => p.id) || [];
       const { data: ovisSplits, error: splitsError } = await supabase
         .from('payment_split')
         .select(`
@@ -128,17 +126,16 @@ const ReconciliationReport: React.FC = () => {
           split_origination_usd,
           split_site_usd,
           split_deal_usd,
-          payment!inner(deal_id),
           broker!inner(name)
         `)
-        .in('payment.deal_id', dealIds);
+        .in('payment_id', paymentIds);
 
       if (splitsError) throw splitsError;
-      console.log('[ReconciliationReport] OVIS splits:', ovisSplits?.length);
+      console.log('[PaymentReconciliationReport] OVIS splits:', ovisSplits?.length);
 
       // Get all SF IDs from deals
       const sfIds = ovisDeals?.filter(d => d.sf_id).map(d => d.sf_id) || [];
-      console.log('[ReconciliationReport] Fetching SF data for', sfIds.length, 'opportunities');
+      console.log('[PaymentReconciliationReport] Fetching SF data for', sfIds.length, 'opportunities');
 
       // Fetch Salesforce Opportunity data for stages
       const { data: sfOpportunities, error: sfOppError } = await supabase
@@ -147,14 +144,16 @@ const ReconciliationReport: React.FC = () => {
         .in('Id', sfIds);
 
       if (sfOppError) throw sfOppError;
-      console.log('[ReconciliationReport] SF opportunities:', sfOpportunities?.length);
+      console.log('[PaymentReconciliationReport] SF opportunities:', sfOpportunities?.length);
 
       const sfStageMap = new Map(sfOpportunities?.map(o => [o.Id, o.StageName]) || []);
 
       // Fetch Salesforce Payment data
+      const sfPaymentIds = ovisPayments?.filter((p: any) => p.sf_id).map((p: any) => p.sf_id) || [];
       const { data: sfPayments, error: sfPaymentError } = await supabase
         .from('salesforce_Payment__c')
         .select(`
+          Id,
           Opportunity__c,
           Payment_Amount__c,
           AGCI__c,
@@ -163,175 +162,89 @@ const ReconciliationReport: React.FC = () => {
           Broker_Total_Arty__c,
           Broker_Total_Greg__c
         `)
-        .in('Opportunity__c', sfIds)
+        .in('Id', sfPaymentIds)
         .eq('IsDeleted', false);
 
       if (sfPaymentError) throw sfPaymentError;
-      console.log('[ReconciliationReport] SF payments:', sfPayments?.length);
+      console.log('[PaymentReconciliationReport] SF payments:', sfPayments?.length);
 
-      // Aggregate OVIS data by deal
-      const ovisDataByDeal = new Map<string, {
-        totalPayments: number;
-        gci: number;
-        agci: number;
-        house: number;
+      const sfPaymentMap = new Map(sfPayments?.map((p: any) => [p.Id, p]) || []);
+
+      // Aggregate split data by payment
+      const splitsByPayment = new Map<string, {
         mikeTotal: number;
         artyTotal: number;
         gregTotal: number;
       }>();
 
-      ovisDeals?.forEach(deal => {
-        const dealPayments = ovisPayments?.filter(p => p.deal_id === deal.id) || [];
-        const totalPayments = dealPayments.reduce((sum, p) => sum + (p.payment_amount || 0), 0);
-        const gci = deal.fee || 0;
-        const referralFee = deal.referral_fee_usd || 0;
-        const agci = gci - referralFee;
+      ovisSplits?.forEach((split: any) => {
+        const existing = splitsByPayment.get(split.payment_id) || { mikeTotal: 0, artyTotal: 0, gregTotal: 0 };
+        const total = (split.split_origination_usd || 0) + (split.split_site_usd || 0) + (split.split_deal_usd || 0);
+        const brokerName = split.broker?.name?.toLowerCase() || '';
 
-        // Calculate broker totals
-        let mikeTotal = 0;
-        let artyTotal = 0;
-        let gregTotal = 0;
+        if (brokerName.includes('mike')) {
+          existing.mikeTotal += total;
+        } else if (brokerName.includes('arty')) {
+          existing.artyTotal += total;
+        } else if (brokerName.includes('greg')) {
+          existing.gregTotal += total;
+        }
 
-        ovisSplits?.forEach((split: any) => {
-          if (split.payment?.deal_id === deal.id) {
-            const total = (split.split_origination_usd || 0) + (split.split_site_usd || 0) + (split.split_deal_usd || 0);
-            const brokerName = split.broker?.name?.toLowerCase() || '';
-
-            if (brokerName.includes('mike')) {
-              mikeTotal += total;
-            } else if (brokerName.includes('arty')) {
-              artyTotal += total;
-            } else if (brokerName.includes('greg')) {
-              gregTotal += total;
-            }
-          }
-        });
-
-        // Calculate house (GCI - AGCI)
-        const house = gci - agci;
-
-        ovisDataByDeal.set(deal.id, {
-          totalPayments,
-          gci,
-          agci,
-          house,
-          mikeTotal,
-          artyTotal,
-          gregTotal
-        });
+        splitsByPayment.set(split.payment_id, existing);
       });
 
-      // Aggregate SF data by opportunity
-      const sfDataByOpportunity = new Map<string, {
-        totalPayments: number;
-        agci: number;
-        house: number;
-        mikeTotal: number;
-        artyTotal: number;
-        gregTotal: number;
-      }>();
-
-      sfPayments?.forEach((payment: any) => {
-        const oppId = payment.Opportunity__c;
-        if (!oppId) return;
-
-        const existing = sfDataByOpportunity.get(oppId) || {
-          totalPayments: 0,
-          agci: 0,
-          house: 0,
-          mikeTotal: 0,
-          artyTotal: 0,
-          gregTotal: 0
-        };
-
-        existing.totalPayments += payment.Payment_Amount__c || 0;
-        existing.agci += payment.AGCI__c || 0;
-        existing.house += payment.House_Dollars__c || 0;
-        existing.mikeTotal += payment.Broker_Total_Mike__c || 0;
-        existing.artyTotal += payment.Broker_Total_Arty__c || 0;
-        existing.gregTotal += payment.Broker_Total_Greg__c || 0;
-
-        sfDataByOpportunity.set(oppId, existing);
-      });
-
-      // Create reconciliation rows
-      const rows: ReconciliationRow[] = ovisDeals?.map(deal => {
-        const ovisData = ovisDataByDeal.get(deal.id) || {
-          totalPayments: 0,
-          gci: 0,
-          agci: 0,
-          house: 0,
-          mikeTotal: 0,
-          artyTotal: 0,
-          gregTotal: 0
-        };
-
-        const sfData = deal.sf_id ? sfDataByOpportunity.get(deal.sf_id) || {
-          totalPayments: 0,
-          agci: 0,
-          house: 0,
-          mikeTotal: 0,
-          artyTotal: 0,
-          gregTotal: 0
-        } : {
-          totalPayments: 0,
-          agci: 0,
-          house: 0,
-          mikeTotal: 0,
-          artyTotal: 0,
-          gregTotal: 0
-        };
+      // Create reconciliation rows for each payment
+      const rows: PaymentReconciliationRow[] = ovisPayments?.map((payment: any) => {
+        const deal = ovisDeals?.find(d => d.id === payment.deal_id);
+        if (!deal) return null;
 
         const ovisStage = stageLabelMap.get(deal.stage_id) || 'Unknown';
         const sfStage = deal.sf_id ? sfStageMap.get(deal.sf_id) || null : null;
 
-        // SF GCI = SF AGCI + SF House
-        const sfGci = sfData.agci + sfData.house;
+        const ovisSplitData = splitsByPayment.get(payment.id) || { mikeTotal: 0, artyTotal: 0, gregTotal: 0 };
 
-        // Get payment names and estimated dates for this deal
-        const dealPayments = ovisPayments?.filter(p => p.deal_id === deal.id) || [];
-        const paymentNames = dealPayments.map((p: any) => p.payment_name || '').filter(Boolean);
-        const paymentDatesEstimated = dealPayments.map((p: any) => p.payment_date_estimated);
+        const sfPayment = payment.sf_id ? sfPaymentMap.get(payment.sf_id) : null;
+        const sfAgci = sfPayment?.AGCI__c || 0;
+        const sfHouse = sfPayment?.House_Dollars__c || 0;
 
         return {
+          payment_id: payment.id,
           deal_id: deal.id,
           deal_name: deal.deal_name || 'Unknown',
-          payment_names: paymentNames,
+          payment_name: payment.payment_name,
+          payment_sequence: payment.payment_sequence || 0,
           booked_date: deal.booked_date,
-          payment_dates_estimated: paymentDatesEstimated,
-          sf_id: deal.sf_id,
+          payment_date_estimated: payment.payment_date_estimated,
+          sf_payment_id: payment.sf_id,
           ovis_stage: ovisStage,
           sf_stage: sfStage,
           stage_match: ovisStage === sfStage,
-          ovis_payment_amount: ovisData.totalPayments,
-          sf_payment_amount: sfData.totalPayments,
-          payment_variance: ovisData.totalPayments - sfData.totalPayments,
-          ovis_gci: ovisData.gci,
-          sf_gci: sfGci,
-          gci_variance: ovisData.gci - sfGci,
-          ovis_agci: ovisData.agci,
-          sf_agci: sfData.agci,
-          agci_variance: ovisData.agci - sfData.agci,
-          ovis_house: ovisData.house,
-          sf_house: sfData.house,
-          house_variance: ovisData.house - sfData.house,
-          ovis_mike: ovisData.mikeTotal,
-          sf_mike: sfData.mikeTotal,
-          mike_variance: ovisData.mikeTotal - sfData.mikeTotal,
-          ovis_arty: ovisData.artyTotal,
-          sf_arty: sfData.artyTotal,
-          arty_variance: ovisData.artyTotal - sfData.artyTotal,
-          ovis_greg: ovisData.gregTotal,
-          sf_greg: sfData.gregTotal,
-          greg_variance: ovisData.gregTotal - sfData.gregTotal
+          ovis_payment_amount: payment.payment_amount || 0,
+          sf_payment_amount: sfPayment?.Payment_Amount__c || 0,
+          payment_variance: (payment.payment_amount || 0) - (sfPayment?.Payment_Amount__c || 0),
+          ovis_agci: payment.agci || 0,
+          sf_agci: sfAgci,
+          agci_variance: (payment.agci || 0) - sfAgci,
+          ovis_house: 0, // Would need to calculate from deal-level data
+          sf_house: sfHouse,
+          house_variance: 0 - sfHouse,
+          ovis_mike: ovisSplitData.mikeTotal,
+          sf_mike: sfPayment?.Broker_Total_Mike__c || 0,
+          mike_variance: ovisSplitData.mikeTotal - (sfPayment?.Broker_Total_Mike__c || 0),
+          ovis_arty: ovisSplitData.artyTotal,
+          sf_arty: sfPayment?.Broker_Total_Arty__c || 0,
+          arty_variance: ovisSplitData.artyTotal - (sfPayment?.Broker_Total_Arty__c || 0),
+          ovis_greg: ovisSplitData.gregTotal,
+          sf_greg: sfPayment?.Broker_Total_Greg__c || 0,
+          greg_variance: ovisSplitData.gregTotal - (sfPayment?.Broker_Total_Greg__c || 0),
         };
-      }) || [];
+      }).filter(Boolean) as PaymentReconciliationRow[];
 
       setReconciliationData(rows);
-      console.log('[ReconciliationReport] Reconciliation complete:', rows.length, 'rows');
+      console.log('[PaymentReconciliationReport] Reconciliation complete:', rows.length, 'rows');
 
     } catch (error: any) {
-      console.error('[ReconciliationReport] Error:', error);
+      console.error('[PaymentReconciliationReport] Error:', error);
       setError(error.message);
     } finally {
       setLoading(false);
@@ -360,22 +273,21 @@ const ReconciliationReport: React.FC = () => {
     }
 
     // Filter by estimated payment date
-    if (estimatedPaymentDateFrom || estimatedPaymentDateTo) {
-      filtered = filtered.filter(row => {
-        // Check if any payment date falls within the range
-        return row.payment_dates_estimated.some(date => {
-          if (!date) return false;
-          if (estimatedPaymentDateFrom && date < estimatedPaymentDateFrom) return false;
-          if (estimatedPaymentDateTo && date > estimatedPaymentDateTo) return false;
-          return true;
-        });
-      });
+    if (estimatedPaymentDateFrom) {
+      filtered = filtered.filter(row =>
+        row.payment_date_estimated && row.payment_date_estimated >= estimatedPaymentDateFrom
+      );
+    }
+    if (estimatedPaymentDateTo) {
+      filtered = filtered.filter(row =>
+        row.payment_date_estimated && row.payment_date_estimated <= estimatedPaymentDateTo
+      );
     }
 
     // Sort
     filtered.sort((a, b) => {
-      let aVal: any = a[sortColumn as keyof ReconciliationRow];
-      let bVal: any = b[sortColumn as keyof ReconciliationRow];
+      let aVal: any = a[sortColumn as keyof PaymentReconciliationRow];
+      let bVal: any = b[sortColumn as keyof PaymentReconciliationRow];
 
       if (typeof aVal === 'string') {
         aVal = aVal.toLowerCase();
@@ -397,8 +309,6 @@ const ReconciliationReport: React.FC = () => {
     return filteredAndSortedData.reduce((acc, row) => {
       acc.ovisPaymentAmount += row.ovis_payment_amount;
       acc.sfPaymentAmount += row.sf_payment_amount;
-      acc.ovisGCI += row.ovis_gci;
-      acc.sfGCI += row.sf_gci;
       acc.ovisAGCI += row.ovis_agci;
       acc.sfAGCI += row.sf_agci;
       acc.ovisHouse += row.ovis_house;
@@ -413,8 +323,6 @@ const ReconciliationReport: React.FC = () => {
     }, {
       ovisPaymentAmount: 0,
       sfPaymentAmount: 0,
-      ovisGCI: 0,
-      sfGCI: 0,
       ovisAGCI: 0,
       sfAGCI: 0,
       ovisHouse: 0,
@@ -485,9 +393,9 @@ const ReconciliationReport: React.FC = () => {
     <div className="bg-white rounded-lg border border-gray-200">
       {/* Header */}
       <div className="p-4 border-b border-gray-200">
-        <h2 className="text-base font-semibold text-gray-900">Deal Reconciliation Report</h2>
+        <h2 className="text-base font-semibold text-gray-900">Payment Reconciliation Report</h2>
         <p className="text-xs text-gray-600 mt-1">
-          Compare OVIS deal data with Salesforce for active deals
+          Compare OVIS payment data with Salesforce at the payment level
         </p>
       </div>
 
@@ -576,7 +484,7 @@ const ReconciliationReport: React.FC = () => {
           {/* Stats */}
           <div className="ml-auto text-right">
             <div className="text-xs text-gray-600">
-              Showing {filteredAndSortedData.length} of {reconciliationData.length} deals
+              Showing {filteredAndSortedData.length} of {reconciliationData.length} payments
             </div>
             {(selectedStages.length > 0 || bookedDateFrom || bookedDateTo || estimatedPaymentDateFrom || estimatedPaymentDateTo) && (
               <button
@@ -622,11 +530,10 @@ const ReconciliationReport: React.FC = () => {
           <thead className="bg-gray-50">
             <tr>
               <th onClick={() => handleSort('deal_name')} className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
-                Deal Name {sortColumn === 'deal_name' && (sortDirection === 'asc' ? '↑' : '↓')}
+                Deal / Payment {sortColumn === 'deal_name' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
               <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stage</th>
               <th colSpan={3} className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">Payment Amt</th>
-              <th colSpan={3} className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-green-50">GCI</th>
               <th colSpan={3} className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-purple-50">AGCI</th>
               <th colSpan={3} className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-orange-50">House $</th>
               <th colSpan={3} className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-red-50">Mike</th>
@@ -639,9 +546,6 @@ const ReconciliationReport: React.FC = () => {
               <th className="px-1 py-0.5 text-xs font-medium text-gray-500 text-center bg-blue-50">OVIS</th>
               <th className="px-1 py-0.5 text-xs font-medium text-gray-500 text-center bg-blue-50">SF</th>
               <th className="px-1 py-0.5 text-xs font-medium text-gray-500 text-center bg-blue-50">Var</th>
-              <th className="px-1 py-0.5 text-xs font-medium text-gray-500 text-center bg-green-50">OVIS</th>
-              <th className="px-1 py-0.5 text-xs font-medium text-gray-500 text-center bg-green-50">SF</th>
-              <th className="px-1 py-0.5 text-xs font-medium text-gray-500 text-center bg-green-50">Var</th>
               <th className="px-1 py-0.5 text-xs font-medium text-gray-500 text-center bg-purple-50">OVIS</th>
               <th className="px-1 py-0.5 text-xs font-medium text-gray-500 text-center bg-purple-50">SF</th>
               <th className="px-1 py-0.5 text-xs font-medium text-gray-500 text-center bg-purple-50">Var</th>
@@ -666,9 +570,9 @@ const ReconciliationReport: React.FC = () => {
                   <a href={`/deal/${row.deal_id}`} className="text-blue-600 hover:underline block">
                     {row.deal_name}
                   </a>
-                  {row.payment_names.length > 0 && (
+                  {row.payment_name && (
                     <div className="text-xs text-gray-500 mt-0.5">
-                      {row.payment_names.join(', ')}
+                      {row.payment_name}
                     </div>
                   )}
                 </td>
@@ -681,9 +585,6 @@ const ReconciliationReport: React.FC = () => {
                 <td className="px-1 py-1.5 text-xs text-right bg-blue-50">{formatCurrency(row.ovis_payment_amount)}</td>
                 <td className="px-1 py-1.5 text-xs text-right bg-blue-50">{formatCurrency(row.sf_payment_amount)}</td>
                 <td className={`px-1 py-1.5 text-xs text-right font-semibold bg-blue-50 ${getVarianceColor(row.payment_variance)}`}>{formatCurrency(row.payment_variance)}</td>
-                <td className="px-1 py-1.5 text-xs text-right bg-green-50">{formatCurrency(row.ovis_gci)}</td>
-                <td className="px-1 py-1.5 text-xs text-right bg-green-50">{formatCurrency(row.sf_gci)}</td>
-                <td className={`px-1 py-1.5 text-xs text-right font-semibold bg-green-50 ${getVarianceColor(row.gci_variance)}`}>{formatCurrency(row.gci_variance)}</td>
                 <td className="px-1 py-1.5 text-xs text-right bg-purple-50">{formatCurrency(row.ovis_agci)}</td>
                 <td className="px-1 py-1.5 text-xs text-right bg-purple-50">{formatCurrency(row.sf_agci)}</td>
                 <td className={`px-1 py-1.5 text-xs text-right font-semibold bg-purple-50 ${getVarianceColor(row.agci_variance)}`}>{formatCurrency(row.agci_variance)}</td>
@@ -707,9 +608,6 @@ const ReconciliationReport: React.FC = () => {
               <td className="px-1 py-1.5 text-xs text-right">{formatCurrency(totals.ovisPaymentAmount)}</td>
               <td className="px-1 py-1.5 text-xs text-right">{formatCurrency(totals.sfPaymentAmount)}</td>
               <td className="px-1 py-1.5 text-xs text-right">{formatCurrency(totals.ovisPaymentAmount - totals.sfPaymentAmount)}</td>
-              <td className="px-1 py-1.5 text-xs text-right">{formatCurrency(totals.ovisGCI)}</td>
-              <td className="px-1 py-1.5 text-xs text-right">{formatCurrency(totals.sfGCI)}</td>
-              <td className="px-1 py-1.5 text-xs text-right">{formatCurrency(totals.ovisGCI - totals.sfGCI)}</td>
               <td className="px-1 py-1.5 text-xs text-right">{formatCurrency(totals.ovisAGCI)}</td>
               <td className="px-1 py-1.5 text-xs text-right">{formatCurrency(totals.sfAGCI)}</td>
               <td className="px-1 py-1.5 text-xs text-right">{formatCurrency(totals.ovisAGCI - totals.sfAGCI)}</td>
@@ -733,4 +631,4 @@ const ReconciliationReport: React.FC = () => {
   );
 };
 
-export default ReconciliationReport;
+export default PaymentReconciliationReport;
