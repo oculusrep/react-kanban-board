@@ -1028,11 +1028,13 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
       console.log('📤 Sending property updates to database:', propertyUpdates);
       console.log('🔍 Property notes in updates object:', propertyUpdates.property_notes);
+      console.log('🔍 Property type_id in updates object:', propertyUpdates.property_type_id);
 
       // Save all changes to database
       await updateProperty(propertyUpdates);
 
       console.log('✅ updateProperty completed successfully');
+      console.log('🔍 Property type_id after save:', localPropertyData.property_type_id);
 
       console.log('✅ Property saved successfully');
 
