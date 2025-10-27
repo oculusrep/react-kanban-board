@@ -19,6 +19,13 @@ export default function ReportsPage() {
 
   const reports: ReportCard[] = [
     {
+      id: "payment-reconciliation",
+      name: "Payment Reconciliation",
+      description: "Compare OVIS payments with Salesforce data, track variances, and reconcile commission splits",
+      route: "/reports/payment-reconciliation",
+      icon: "💰"
+    },
+    {
       id: "deal-compare",
       name: "Deal Compare Report",
       description: "Export all deals with commission details for Salesforce comparison",

@@ -17,6 +17,7 @@ import NotesDebugPage from "./pages/NotesDebugPage";
 import MappingPage from "./pages/MappingPage";
 import MappingPageNew from "./pages/MappingPageNew";
 import ReportsPage from "./pages/ReportsPage";
+import PaymentReconciliationPage from "./pages/PaymentReconciliationPage";
 import DealCompareReportPage from "./pages/DealCompareReportPage";
 import DealCompareToSalesforceReportPage from "./pages/DealCompareToSalesforceReportPage";
 import PropertyDataQualityReportPage from "./pages/PropertyDataQualityReportPage";
@@ -66,6 +67,7 @@ function App() {
           <Route path="mapping" element={<MappingPageNew />} />
           <Route path="mapping-old" element={<MappingPage />} />
           <Route path="reports" element={<ReportsPage />} />
+          <Route path="reports/payment-reconciliation" element={<PaymentReconciliationPage />} />
           <Route path="reports/deal-compare" element={<DealCompareReportPage />} />
           <Route path="reports/deal-compare-salesforce" element={<DealCompareToSalesforceReportPage />} />
           <Route path="reports/property-data-quality" element={<PropertyDataQualityReportPage />} />
