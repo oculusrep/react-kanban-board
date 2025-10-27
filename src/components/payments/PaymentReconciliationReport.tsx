@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import DealDetailsSlideout from '../DealDetailsSlideout';
+import PaymentAmountOverrideModal from './PaymentAmountOverrideModal';
 
 interface PaymentReconciliationRow {
   payment_id: string;
@@ -74,6 +75,10 @@ const PaymentReconciliationReport: React.FC = () => {
   // Inline editing state for closed_date
   const [editingClosedDateDealId, setEditingClosedDateDealId] = useState<string | null>(null);
   const [editingClosedDateValue, setEditingClosedDateValue] = useState<string>('');
+
+  // Payment override modal state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedPaymentForEdit, setSelectedPaymentForEdit] = useState<any>(null);
 
   useEffect(() => {
     fetchReconciliationData();
@@ -587,6 +592,16 @@ const PaymentReconciliationReport: React.FC = () => {
     setEditingClosedDateValue('');
   };
 
+  const handleOpenPaymentModal = (row: PaymentReconciliationRow) => {
+    setSelectedPaymentForEdit({
+      paymentId: row.payment_id,
+      currentAmount: row.ovis_payment_amount,
+      paymentSequence: row.payment_sequence,
+      dealName: row.deal_name,
+    });
+    setShowPaymentModal(true);
+  };
+
   if (loading) {
     return (
       <div className="p-4 text-center">
@@ -901,8 +916,18 @@ const PaymentReconciliationReport: React.FC = () => {
                     {row.deal_name}
                   </button>
                   {row.payment_name && (
-                    <div className="text-xs text-gray-500 mt-0.5">
+                    <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
                       {row.payment_name}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenPaymentModal(row);
+                        }}
+                        className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-1 rounded transition-colors"
+                        title="Edit Payment"
+                      >
+                        💰→
+                      </button>
                     </div>
                   )}
                 </td>
@@ -992,6 +1017,27 @@ const PaymentReconciliationReport: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Payment Amount Override Modal */}
+      {showPaymentModal && selectedPaymentForEdit && (
+        <PaymentAmountOverrideModal
+          isOpen={showPaymentModal}
+          onClose={() => {
+            setShowPaymentModal(false);
+            setSelectedPaymentForEdit(null);
+          }}
+          paymentId={selectedPaymentForEdit.paymentId}
+          currentAmount={selectedPaymentForEdit.currentAmount}
+          paymentSequence={selectedPaymentForEdit.paymentSequence}
+          dealName={selectedPaymentForEdit.dealName}
+          onSuccess={() => {
+            // Refresh the reconciliation data when payment is updated
+            fetchReconciliationData();
+            setShowPaymentModal(false);
+            setSelectedPaymentForEdit(null);
+          }}
+        />
+      )}
 
       {/* Deal Details Slideout */}
       <DealDetailsSlideout
