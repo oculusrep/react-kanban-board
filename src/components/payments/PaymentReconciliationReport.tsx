@@ -48,7 +48,7 @@ const PaymentReconciliationReport: React.FC = () => {
   // Closed Date Filter
   const [showClosedDateMenu, setShowClosedDateMenu] = useState(false);
   const closedDateMenuRef = useRef<HTMLDivElement>(null);
-  const [closedDateFilter, setClosedDateFilter] = useState<'current_year' | 'last_2_years' | 'all_time' | 'custom'>('current_year');
+  const [closedDateFilter, setClosedDateFilter] = useState<'current_year' | 'last_2_years' | 'all_time' | 'custom'>('last_2_years');
   const [customClosedDateFrom, setCustomClosedDateFrom] = useState<string>('');
   const [customClosedDateTo, setCustomClosedDateTo] = useState<string>('');
 
@@ -286,17 +286,17 @@ const PaymentReconciliationReport: React.FC = () => {
 
     // Filter by closed date based on selected option
     if (closedDateFilter === 'current_year') {
-      // Exclude deals with closed_date before 2024-01-01 AND stage = "Closed Paid"
+      // Exclude deals with closed_date before 2025-01-01 AND stage = "Closed Paid"
       filtered = filtered.filter(row => {
-        if (row.ovis_stage === 'Closed Paid' && row.closed_date && row.closed_date < '2024-01-01') {
+        if (row.ovis_stage === 'Closed Paid' && row.closed_date && row.closed_date < '2025-01-01') {
           return false;
         }
         return true;
       });
     } else if (closedDateFilter === 'last_2_years') {
-      // Exclude deals with closed_date before 2023-01-01 AND stage = "Closed Paid"
+      // Exclude deals with closed_date before 2024-01-01 AND stage = "Closed Paid"
       filtered = filtered.filter(row => {
-        if (row.ovis_stage === 'Closed Paid' && row.closed_date && row.closed_date < '2023-01-01') {
+        if (row.ovis_stage === 'Closed Paid' && row.closed_date && row.closed_date < '2024-01-01') {
           return false;
         }
         return true;
@@ -329,9 +329,9 @@ const PaymentReconciliationReport: React.FC = () => {
 
     // Filter by booked date
     if (bookedDateFilter === 'current_year') {
-      filtered = filtered.filter(row => !row.booked_date || row.booked_date >= '2024-01-01');
+      filtered = filtered.filter(row => !row.booked_date || row.booked_date >= '2025-01-01');
     } else if (bookedDateFilter === 'last_2_years') {
-      filtered = filtered.filter(row => !row.booked_date || row.booked_date >= '2023-01-01');
+      filtered = filtered.filter(row => !row.booked_date || row.booked_date >= '2024-01-01');
     } else if (bookedDateFilter === 'custom') {
       if (bookedDateFrom) {
         filtered = filtered.filter(row =>
@@ -348,9 +348,9 @@ const PaymentReconciliationReport: React.FC = () => {
 
     // Filter by estimated payment date
     if (estPaymentDateFilter === 'current_year') {
-      filtered = filtered.filter(row => !row.payment_date_estimated || row.payment_date_estimated >= '2024-01-01');
+      filtered = filtered.filter(row => !row.payment_date_estimated || row.payment_date_estimated >= '2025-01-01');
     } else if (estPaymentDateFilter === 'last_2_years') {
-      filtered = filtered.filter(row => !row.payment_date_estimated || row.payment_date_estimated >= '2023-01-01');
+      filtered = filtered.filter(row => !row.payment_date_estimated || row.payment_date_estimated >= '2024-01-01');
     } else if (estPaymentDateFilter === 'custom') {
       if (estimatedPaymentDateFrom) {
         filtered = filtered.filter(row =>
@@ -468,9 +468,9 @@ const PaymentReconciliationReport: React.FC = () => {
   const getClosedDateFilterLabel = () => {
     switch (closedDateFilter) {
       case 'current_year':
-        return 'Current Year (2024+)';
+        return '2025';
       case 'last_2_years':
-        return 'Last 2 Years (2023+)';
+        return '2024+';
       case 'all_time':
         return 'All Time';
       case 'custom':
@@ -483,7 +483,7 @@ const PaymentReconciliationReport: React.FC = () => {
         }
         return 'Custom Range';
       default:
-        return 'Current Year (2024+)';
+        return '2024+';
     }
   };
 
@@ -492,9 +492,9 @@ const PaymentReconciliationReport: React.FC = () => {
       case 'all':
         return 'All';
       case 'current_year':
-        return '2024+';
+        return '2025';
       case 'last_2_years':
-        return '2023+';
+        return '2024+';
       case 'custom':
         if (bookedDateFrom && bookedDateTo) {
           return `${bookedDateFrom} to ${bookedDateTo}`;
@@ -514,9 +514,9 @@ const PaymentReconciliationReport: React.FC = () => {
       case 'all':
         return 'All';
       case 'current_year':
-        return '2024+';
+        return '2025';
       case 'last_2_years':
-        return '2023+';
+        return '2024+';
       case 'custom':
         if (estimatedPaymentDateFrom && estimatedPaymentDateTo) {
           return `${estimatedPaymentDateFrom} to ${estimatedPaymentDateTo}`;
@@ -627,7 +627,7 @@ const PaymentReconciliationReport: React.FC = () => {
               onClick={() => setShowClosedDateMenu(!showClosedDateMenu)}
               className="px-3 py-1.5 border border-gray-300 rounded-md shadow-sm bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              Closed: {closedDateFilter === 'current_year' ? '2024+' : closedDateFilter === 'last_2_years' ? '2023+' : closedDateFilter === 'all_time' ? 'All' : 'Custom'}
+              Closed: {closedDateFilter === 'current_year' ? '2025' : closedDateFilter === 'last_2_years' ? '2024+' : closedDateFilter === 'all_time' ? 'All' : 'Custom'}
               <svg className="inline-block ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
@@ -637,10 +637,10 @@ const PaymentReconciliationReport: React.FC = () => {
               <div className="absolute z-10 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg">
                 <div className="p-2">
                   <button onClick={() => { setClosedDateFilter('current_year'); setShowClosedDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${closedDateFilter === 'current_year' ? 'bg-blue-50 font-semibold' : ''}`}>
-                    Current Year (2024+)
+                    This Year (2025)
                   </button>
                   <button onClick={() => { setClosedDateFilter('last_2_years'); setShowClosedDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${closedDateFilter === 'last_2_years' ? 'bg-blue-50 font-semibold' : ''}`}>
-                    Last 2 Years (2023+)
+                    Last 2 Years (2024+)
                   </button>
                   <button onClick={() => { setClosedDateFilter('all_time'); setShowClosedDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${closedDateFilter === 'all_time' ? 'bg-blue-50 font-semibold' : ''}`}>
                     All Time
@@ -671,7 +671,7 @@ const PaymentReconciliationReport: React.FC = () => {
               onClick={() => setShowBookedDateMenu(!showBookedDateMenu)}
               className="px-3 py-1.5 border border-gray-300 rounded-md shadow-sm bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              Booked: {bookedDateFilter === 'all' ? 'All' : bookedDateFilter === 'current_year' ? '2024+' : bookedDateFilter === 'last_2_years' ? '2023+' : 'Custom'}
+              Booked: {bookedDateFilter === 'all' ? 'All' : bookedDateFilter === 'current_year' ? '2025' : bookedDateFilter === 'last_2_years' ? '2024+' : 'Custom'}
               <svg className="inline-block ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
@@ -684,10 +684,10 @@ const PaymentReconciliationReport: React.FC = () => {
                     All
                   </button>
                   <button onClick={() => { setBookedDateFilter('current_year'); setShowBookedDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${bookedDateFilter === 'current_year' ? 'bg-blue-50 font-semibold' : ''}`}>
-                    Current Year (2024+)
+                    This Year (2025)
                   </button>
                   <button onClick={() => { setBookedDateFilter('last_2_years'); setShowBookedDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${bookedDateFilter === 'last_2_years' ? 'bg-blue-50 font-semibold' : ''}`}>
-                    Last 2 Years (2023+)
+                    Last 2 Years (2024+)
                   </button>
                   <button onClick={() => setBookedDateFilter('custom')} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${bookedDateFilter === 'custom' ? 'bg-blue-50 font-semibold' : ''}`}>
                     Custom Range
@@ -715,7 +715,7 @@ const PaymentReconciliationReport: React.FC = () => {
               onClick={() => setShowEstPaymentDateMenu(!showEstPaymentDateMenu)}
               className="px-3 py-1.5 border border-gray-300 rounded-md shadow-sm bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              Est. Pmt: {estPaymentDateFilter === 'all' ? 'All' : estPaymentDateFilter === 'current_year' ? '2024+' : estPaymentDateFilter === 'last_2_years' ? '2023+' : 'Custom'}
+              Est. Pmt: {estPaymentDateFilter === 'all' ? 'All' : estPaymentDateFilter === 'current_year' ? '2025' : estPaymentDateFilter === 'last_2_years' ? '2024+' : 'Custom'}
               <svg className="inline-block ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
@@ -728,10 +728,10 @@ const PaymentReconciliationReport: React.FC = () => {
                     All
                   </button>
                   <button onClick={() => { setEstPaymentDateFilter('current_year'); setShowEstPaymentDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${estPaymentDateFilter === 'current_year' ? 'bg-blue-50 font-semibold' : ''}`}>
-                    Current Year (2024+)
+                    This Year (2025)
                   </button>
                   <button onClick={() => { setEstPaymentDateFilter('last_2_years'); setShowEstPaymentDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${estPaymentDateFilter === 'last_2_years' ? 'bg-blue-50 font-semibold' : ''}`}>
-                    Last 2 Years (2023+)
+                    Last 2 Years (2024+)
                   </button>
                   <button onClick={() => setEstPaymentDateFilter('custom')} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${estPaymentDateFilter === 'custom' ? 'bg-blue-50 font-semibold' : ''}`}>
                     Custom Range
