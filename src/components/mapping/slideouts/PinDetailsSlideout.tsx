@@ -578,7 +578,6 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   const [hasChanges, setHasChanges] = useState(false);
   const [lastSavedData, setLastSavedData] = useState<any>(null);
   const [isEditingPropertyType, setIsEditingPropertyType] = useState(false);
-  const [isEditingPropertyTypeSelector, setIsEditingPropertyTypeSelector] = useState(false);
 
   // Local state for property data (so we can update it immediately)
   const [localPropertyData, setLocalPropertyData] = useState<Property | null>(null);
@@ -588,29 +587,9 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   const [originalPropertyName, setOriginalPropertyName] = useState<string | null>(null);
 
   // Use shared hooks
-  const { propertyRecordTypes, isLoading: isLoadingRecordTypes } = usePropertyRecordTypes();
+  const { propertyRecordTypes } = usePropertyRecordTypes();
   const { updateProperty } = useProperty(localPropertyData?.id || undefined);
   const { toast, showToast } = useToast();
-
-  // Property types list
-  const [propertyTypes, setPropertyTypes] = useState<{ id: string; label: string }[]>([]);
-
-  // Fetch property types on mount
-  useEffect(() => {
-    const fetchPropertyTypes = async () => {
-      const { data, error } = await supabase
-        .from('property_type')
-        .select('id, label')
-        .eq('active', true)
-        .order('sort_order');
-
-      if (!error && data) {
-        setPropertyTypes(data);
-      }
-    };
-
-    fetchPropertyTypes();
-  }, []);
 
   // Sync activeTab with initialTab when it changes OR when slideout opens
   useEffect(() => {
@@ -1944,63 +1923,22 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                   )}
                 </div>
 
-                {/* Property Type */}
-                {isProperty && property && (
-                  <div className="flex items-center gap-2 mb-2">
-                    <Building2 size={14} className="text-gray-400 flex-shrink-0" />
-                    {!isEditingPropertyTypeSelector ? (
-                      <div
-                        className="inline-flex items-center gap-2 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium cursor-pointer hover:bg-blue-200 transition-colors"
-                        onClick={() => setIsEditingPropertyTypeSelector(true)}
-                      >
-                        <span>
-                          {property.property_type_id && propertyTypes.length > 0
-                            ? propertyTypes.find(type => type.id === property.property_type_id)?.label || 'Unknown Type'
-                            : 'Set Property Type'
-                          }
-                        </span>
-                        <Edit3 size={12} className="text-blue-600" />
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={property.property_type_id || ''}
-                          onChange={(e) => {
-                            handlePropertyFieldUpdate('property_type_id', e.target.value);
-                            setIsEditingPropertyTypeSelector(false);
-                          }}
-                          className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                          autoFocus
-                          onBlur={() => setIsEditingPropertyTypeSelector(false)}
-                        >
-                          <option value="">Select property type...</option>
-                          {propertyTypes.map(type => (
-                            <option key={type.id} value={type.id}>
-                              {type.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {/* Property Record Type - Controls which fields are displayed */}
                 {isProperty && property && (
                   <div className="flex items-center gap-2 mb-2">
-                    <FileText size={14} className="text-gray-400 flex-shrink-0" />
+                    <Building2 size={14} className="text-gray-400 flex-shrink-0" />
                     {!isEditingPropertyType ? (
                       <div
-                        className="inline-flex items-center gap-2 px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium cursor-pointer hover:bg-green-200 transition-colors"
+                        className="inline-flex items-center gap-2 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium cursor-pointer hover:bg-blue-200 transition-colors"
                         onClick={() => setIsEditingPropertyType(true)}
                       >
                         <span>
                           {property.property_record_type_id && propertyRecordTypes.length > 0
-                            ? propertyRecordTypes.find(type => type.id === property.property_record_type_id)?.label || 'Unknown Record Type'
-                            : 'Set Record Type (Land/Shopping Center)'
+                            ? propertyRecordTypes.find(type => type.id === property.property_record_type_id)?.label || 'Unknown Type'
+                            : 'Set Property Type (Land/Shopping Center)'
                           }
                         </span>
-                        <Edit3 size={12} className="text-green-600" />
+                        <Edit3 size={12} className="text-blue-600" />
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">
@@ -2010,11 +1948,11 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                             handlePropertyFieldUpdate('property_record_type_id', e.target.value);
                             setIsEditingPropertyType(false);
                           }}
-                          className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-green-500 focus:border-green-500 bg-white"
+                          className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
                           autoFocus
                           onBlur={() => setIsEditingPropertyType(false)}
                         >
-                          <option value="">Select record type...</option>
+                          <option value="">Select property type...</option>
                           {propertyRecordTypes.map(type => (
                             <option key={type.id} value={type.id}>
                               {type.label}
