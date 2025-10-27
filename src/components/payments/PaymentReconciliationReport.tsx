@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import DealDetailsSlideout from '../DealDetailsSlideout';
-import PaymentAmountOverrideModal from './PaymentAmountOverrideModal';
+import PaymentDetailSidebar from './PaymentDetailSidebar';
+import { PaymentDashboardRow } from '../../types/payment-dashboard';
 
 interface PaymentReconciliationRow {
   payment_id: string;
@@ -76,9 +77,9 @@ const PaymentReconciliationReport: React.FC = () => {
   const [editingClosedDateDealId, setEditingClosedDateDealId] = useState<string | null>(null);
   const [editingClosedDateValue, setEditingClosedDateValue] = useState<string>('');
 
-  // Payment override modal state
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [selectedPaymentForEdit, setSelectedPaymentForEdit] = useState<any>(null);
+  // Payment sidebar state
+  const [showPaymentSidebar, setShowPaymentSidebar] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentDashboardRow | null>(null);
 
   useEffect(() => {
     fetchReconciliationData();
@@ -592,14 +593,93 @@ const PaymentReconciliationReport: React.FC = () => {
     setEditingClosedDateValue('');
   };
 
-  const handleOpenPaymentModal = (row: PaymentReconciliationRow) => {
-    setSelectedPaymentForEdit({
-      paymentId: row.payment_id,
-      currentAmount: row.ovis_payment_amount,
-      paymentSequence: row.payment_sequence,
-      dealName: row.deal_name,
-    });
-    setShowPaymentModal(true);
+  const handleOpenPaymentSidebar = async (row: PaymentReconciliationRow) => {
+    try {
+      // Fetch full payment data with splits
+      const { data: payment, error: paymentError } = await supabase
+        .from('payment')
+        .select('*')
+        .eq('id', row.payment_id)
+        .single();
+
+      if (paymentError) throw paymentError;
+
+      // Fetch broker splits for this payment
+      const { data: splits, error: splitsError } = await supabase
+        .from('payment_split')
+        .select(`
+          id,
+          broker_id,
+          split_origination_usd,
+          split_site_usd,
+          split_deal_usd,
+          split_broker_total,
+          split_origination_percent,
+          split_site_percent,
+          split_deal_percent,
+          paid,
+          paid_date,
+          broker:broker_id (
+            id,
+            name
+          )
+        `)
+        .eq('payment_id', row.payment_id);
+
+      if (splitsError) throw splitsError;
+
+      // Get total number of payments for this deal
+      const { count: totalPayments } = await supabase
+        .from('payment')
+        .select('*', { count: 'exact', head: true })
+        .eq('deal_id', row.deal_id);
+
+      // Map to PaymentDashboardRow format
+      const paymentData: PaymentDashboardRow = {
+        payment_id: payment.id,
+        payment_sf_id: payment.sf_id,
+        deal_id: row.deal_id,
+        deal_name: row.deal_name,
+        deal_stage: row.ovis_stage,
+        payment_sequence: row.payment_sequence,
+        total_payments: totalPayments || 1,
+        payment_amount: payment.payment_amount,
+        locked: payment.locked || false,
+        payment_date_estimated: payment.payment_date_estimated,
+        payment_received_date: payment.payment_received_date,
+        payment_received: payment.payment_received || false,
+        invoice_sent: payment.invoice_sent || false,
+        payment_invoice_date: payment.payment_invoice_date,
+        orep_invoice: payment.orep_invoice,
+        referral_fee_usd: payment.referral_fee_usd,
+        referral_payee_name: payment.referral_payee_name,
+        referral_payee_client_id: payment.referral_payee_client_id,
+        referral_fee_paid: payment.referral_fee_paid || false,
+        referral_fee_paid_date: payment.referral_fee_paid_date,
+        broker_splits: splits?.map((split: any) => ({
+          payment_split_id: split.id,
+          broker_id: split.broker_id,
+          broker_name: split.broker?.name || 'Unknown',
+          split_origination_usd: split.split_origination_usd,
+          split_site_usd: split.split_site_usd,
+          split_deal_usd: split.split_deal_usd,
+          split_broker_total: split.split_broker_total,
+          split_origination_percent: split.split_origination_percent,
+          split_site_percent: split.split_site_percent,
+          split_deal_percent: split.split_deal_percent,
+          paid: split.paid,
+          paid_date: split.paid_date,
+        })) || [],
+        all_brokers_paid: splits?.every((s: any) => s.paid) || false,
+        total_broker_amount: splits?.reduce((sum: number, s: any) => sum + (s.split_broker_total || 0), 0) || 0,
+      };
+
+      setSelectedPayment(paymentData);
+      setShowPaymentSidebar(true);
+    } catch (err) {
+      console.error('Error fetching payment details:', err);
+      alert('Failed to load payment details');
+    }
   };
 
   if (loading) {
@@ -921,10 +1001,10 @@ const PaymentReconciliationReport: React.FC = () => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleOpenPaymentModal(row);
+                          handleOpenPaymentSidebar(row);
                         }}
                         className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-1 rounded transition-colors"
-                        title="Edit Payment"
+                        title="View Payment Details"
                       >
                         💰→
                       </button>
@@ -1018,26 +1098,19 @@ const PaymentReconciliationReport: React.FC = () => {
         </table>
       </div>
 
-      {/* Payment Amount Override Modal */}
-      {showPaymentModal && selectedPaymentForEdit && (
-        <PaymentAmountOverrideModal
-          isOpen={showPaymentModal}
-          onClose={() => {
-            setShowPaymentModal(false);
-            setSelectedPaymentForEdit(null);
-          }}
-          paymentId={selectedPaymentForEdit.paymentId}
-          currentAmount={selectedPaymentForEdit.currentAmount}
-          paymentSequence={selectedPaymentForEdit.paymentSequence}
-          dealName={selectedPaymentForEdit.dealName}
-          onSuccess={() => {
-            // Refresh the reconciliation data when payment is updated
-            fetchReconciliationData();
-            setShowPaymentModal(false);
-            setSelectedPaymentForEdit(null);
-          }}
-        />
-      )}
+      {/* Payment Detail Sidebar */}
+      <PaymentDetailSidebar
+        payment={selectedPayment}
+        isOpen={showPaymentSidebar}
+        onClose={() => {
+          setShowPaymentSidebar(false);
+          setSelectedPayment(null);
+        }}
+        onUpdate={() => {
+          // Refresh the reconciliation data when payment is updated
+          fetchReconciliationData();
+        }}
+      />
 
       {/* Deal Details Slideout */}
       <DealDetailsSlideout
