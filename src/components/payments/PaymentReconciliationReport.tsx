@@ -286,39 +286,42 @@ const PaymentReconciliationReport: React.FC = () => {
 
     // Filter by closed date based on selected option
     if (closedDateFilter === 'current_year') {
-      // Exclude deals with closed_date before 2025-01-01 AND stage = "Closed Paid"
+      // For "Closed Paid" deals: only show if closed_date >= 2025-01-01
+      // For other stages: keep all
       filtered = filtered.filter(row => {
-        if (row.ovis_stage === 'Closed Paid' && row.closed_date && row.closed_date < '2025-01-01') {
-          return false;
+        if (row.ovis_stage === 'Closed Paid') {
+          return row.closed_date && row.closed_date >= '2025-01-01';
         }
-        return true;
+        return true; // Keep non-Closed Paid deals
       });
     } else if (closedDateFilter === 'last_2_years') {
-      // Exclude deals with closed_date before 2024-01-01 AND stage = "Closed Paid"
+      // For "Closed Paid" deals: only show if closed_date >= 2024-01-01
+      // For other stages: keep all
       filtered = filtered.filter(row => {
-        if (row.ovis_stage === 'Closed Paid' && row.closed_date && row.closed_date < '2024-01-01') {
-          return false;
+        if (row.ovis_stage === 'Closed Paid') {
+          return row.closed_date && row.closed_date >= '2024-01-01';
         }
-        return true;
+        return true; // Keep non-Closed Paid deals
       });
     } else if (closedDateFilter === 'custom') {
       // Custom range for closed date (only applies to "Closed Paid" deals)
-      if (customClosedDateFrom) {
-        filtered = filtered.filter(row => {
-          if (row.ovis_stage === 'Closed Paid') {
-            return row.closed_date && row.closed_date >= customClosedDateFrom;
+      filtered = filtered.filter(row => {
+        if (row.ovis_stage === 'Closed Paid') {
+          let valid = true;
+          if (customClosedDateFrom && row.closed_date) {
+            valid = valid && row.closed_date >= customClosedDateFrom;
+          } else if (customClosedDateFrom && !row.closed_date) {
+            valid = false; // Exclude if we require a from date but deal has no closed_date
           }
-          return true; // Keep non-Closed Paid deals
-        });
-      }
-      if (customClosedDateTo) {
-        filtered = filtered.filter(row => {
-          if (row.ovis_stage === 'Closed Paid') {
-            return row.closed_date && row.closed_date <= customClosedDateTo;
+          if (customClosedDateTo && row.closed_date) {
+            valid = valid && row.closed_date <= customClosedDateTo;
+          } else if (customClosedDateTo && !row.closed_date) {
+            valid = false; // Exclude if we require a to date but deal has no closed_date
           }
-          return true; // Keep non-Closed Paid deals
-        });
-      }
+          return valid;
+        }
+        return true; // Keep non-Closed Paid deals
+      });
     }
     // 'all_time' doesn't filter anything
 
