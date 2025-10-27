@@ -4,6 +4,9 @@ import { supabase } from '../../lib/supabaseClient';
 interface ReconciliationRow {
   deal_id: string;
   deal_name: string;
+  payment_names: string[];
+  booked_date: string | null;
+  payment_dates_estimated: (string | null)[];
   sf_id: string | null;
   ovis_stage: string;
   sf_stage: string | null;
@@ -36,6 +39,10 @@ const ReconciliationReport: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedStages, setSelectedStages] = useState<string[]>([]);
+  const [bookedDateFrom, setBookedDateFrom] = useState<string>('');
+  const [bookedDateTo, setBookedDateTo] = useState<string>('');
+  const [estimatedPaymentDateFrom, setEstimatedPaymentDateFrom] = useState<string>('');
+  const [estimatedPaymentDateTo, setEstimatedPaymentDateTo] = useState<string>('');
   const [sortColumn, setSortColumn] = useState<string>('deal_name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [stages, setStages] = useState<string[]>([]);
@@ -94,7 +101,8 @@ const ReconciliationReport: React.FC = () => {
           sf_id,
           stage_id,
           fee,
-          referral_fee_usd
+          referral_fee_usd,
+          booked_date
         `)
         .in('stage_id', activeStageIds);
 
@@ -105,7 +113,7 @@ const ReconciliationReport: React.FC = () => {
       const dealIds = ovisDeals?.map(d => d.id) || [];
       const { data: ovisPayments, error: paymentsError } = await supabase
         .from('payment')
-        .select('deal_id, payment_amount')
+        .select('deal_id, payment_amount, payment_name, payment_date_estimated')
         .in('deal_id', dealIds)
         .eq('is_active', true);
 
@@ -280,9 +288,17 @@ const ReconciliationReport: React.FC = () => {
         // SF GCI = SF AGCI + SF House
         const sfGci = sfData.agci + sfData.house;
 
+        // Get payment names and estimated dates for this deal
+        const dealPayments = ovisPayments?.filter(p => p.deal_id === deal.id) || [];
+        const paymentNames = dealPayments.map((p: any) => p.payment_name || '').filter(Boolean);
+        const paymentDatesEstimated = dealPayments.map((p: any) => p.payment_date_estimated);
+
         return {
           deal_id: deal.id,
           deal_name: deal.deal_name || 'Unknown',
+          payment_names: paymentNames,
+          booked_date: deal.booked_date,
+          payment_dates_estimated: paymentDatesEstimated,
           sf_id: deal.sf_id,
           ovis_stage: ovisStage,
           sf_stage: sfStage,
@@ -331,6 +347,31 @@ const ReconciliationReport: React.FC = () => {
       filtered = filtered.filter(row => selectedStages.includes(row.ovis_stage));
     }
 
+    // Filter by booked date
+    if (bookedDateFrom) {
+      filtered = filtered.filter(row =>
+        row.booked_date && row.booked_date >= bookedDateFrom
+      );
+    }
+    if (bookedDateTo) {
+      filtered = filtered.filter(row =>
+        row.booked_date && row.booked_date <= bookedDateTo
+      );
+    }
+
+    // Filter by estimated payment date
+    if (estimatedPaymentDateFrom || estimatedPaymentDateTo) {
+      filtered = filtered.filter(row => {
+        // Check if any payment date falls within the range
+        return row.payment_dates_estimated.some(date => {
+          if (!date) return false;
+          if (estimatedPaymentDateFrom && date < estimatedPaymentDateFrom) return false;
+          if (estimatedPaymentDateTo && date > estimatedPaymentDateTo) return false;
+          return true;
+        });
+      });
+    }
+
     // Sort
     filtered.sort((a, b) => {
       let aVal: any = a[sortColumn as keyof ReconciliationRow];
@@ -349,7 +390,7 @@ const ReconciliationReport: React.FC = () => {
     });
 
     return filtered;
-  }, [reconciliationData, selectedStages, sortColumn, sortDirection]);
+  }, [reconciliationData, selectedStages, bookedDateFrom, bookedDateTo, estimatedPaymentDateFrom, estimatedPaymentDateTo, sortColumn, sortDirection]);
 
   // Calculate totals
   const totals = useMemo(() => {
@@ -452,7 +493,7 @@ const ReconciliationReport: React.FC = () => {
 
       {/* Controls */}
       <div className="p-6 border-b border-gray-200">
-        <div className="flex items-center gap-4 mb-4">
+        <div className="flex flex-wrap items-center gap-4 mb-4">
           {/* Stage Filter Toggle */}
           <div className="relative" ref={filterDropdownRef}>
             <button
@@ -496,17 +537,63 @@ const ReconciliationReport: React.FC = () => {
             )}
           </div>
 
+          {/* Booked Date Filter */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-gray-700">Booked Date:</label>
+            <input
+              type="date"
+              value={bookedDateFrom}
+              onChange={(e) => setBookedDateFrom(e.target.value)}
+              className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              placeholder="From"
+            />
+            <span className="text-xs text-gray-500">to</span>
+            <input
+              type="date"
+              value={bookedDateTo}
+              onChange={(e) => setBookedDateTo(e.target.value)}
+              className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              placeholder="To"
+            />
+          </div>
+
+          {/* Estimated Payment Date Filter */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-gray-700">Est. Payment Date:</label>
+            <input
+              type="date"
+              value={estimatedPaymentDateFrom}
+              onChange={(e) => setEstimatedPaymentDateFrom(e.target.value)}
+              className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              placeholder="From"
+            />
+            <span className="text-xs text-gray-500">to</span>
+            <input
+              type="date"
+              value={estimatedPaymentDateTo}
+              onChange={(e) => setEstimatedPaymentDateTo(e.target.value)}
+              className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              placeholder="To"
+            />
+          </div>
+
           {/* Stats */}
           <div className="ml-auto text-right">
             <div className="text-sm text-gray-600">
               Showing {filteredAndSortedData.length} of {reconciliationData.length} deals
             </div>
-            {selectedStages.length > 0 && (
+            {(selectedStages.length > 0 || bookedDateFrom || bookedDateTo || estimatedPaymentDateFrom || estimatedPaymentDateTo) && (
               <button
-                onClick={() => setSelectedStages([])}
+                onClick={() => {
+                  setSelectedStages([]);
+                  setBookedDateFrom('');
+                  setBookedDateTo('');
+                  setEstimatedPaymentDateFrom('');
+                  setEstimatedPaymentDateTo('');
+                }}
                 className="text-xs text-blue-600 hover:text-blue-800 mt-1"
               >
-                Clear filters
+                Clear all filters
               </button>
             )}
           </div>
@@ -579,10 +666,15 @@ const ReconciliationReport: React.FC = () => {
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredAndSortedData.map((row, idx) => (
               <tr key={idx} className="hover:bg-gray-50">
-                <td className="px-3 py-2 text-sm text-gray-900 whitespace-nowrap">
-                  <a href={`/deal/${row.deal_id}`} className="text-blue-600 hover:underline">
+                <td className="px-3 py-2 text-sm text-gray-900">
+                  <a href={`/deal/${row.deal_id}`} className="text-blue-600 hover:underline block">
                     {row.deal_name}
                   </a>
+                  {row.payment_names.length > 0 && (
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {row.payment_names.join(', ')}
+                    </div>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-sm text-gray-600 whitespace-nowrap">
                   {row.ovis_stage}
