@@ -8,6 +8,7 @@ interface PaymentReconciliationRow {
   payment_name: string | null;
   payment_sequence: number;
   booked_date: string | null;
+  closed_date: string | null;
   payment_date_estimated: string | null;
   sf_payment_id: string | null;
   ovis_stage: string;
@@ -38,36 +39,62 @@ const PaymentReconciliationReport: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedStages, setSelectedStages] = useState<string[]>([]);
-  const [bookedDateFrom, setBookedDateFrom] = useState<string>('');
-  const [bookedDateTo, setBookedDateTo] = useState<string>('');
-  const [estimatedPaymentDateFrom, setEstimatedPaymentDateFrom] = useState<string>('');
-  const [estimatedPaymentDateTo, setEstimatedPaymentDateTo] = useState<string>('');
   const [sortColumn, setSortColumn] = useState<string>('deal_name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [stages, setStages] = useState<string[]>([]);
   const [showStageFilter, setShowStageFilter] = useState(false);
   const filterDropdownRef = useRef<HTMLDivElement>(null);
 
+  // Closed Date Filter
+  const [showClosedDateMenu, setShowClosedDateMenu] = useState(false);
+  const closedDateMenuRef = useRef<HTMLDivElement>(null);
+  const [closedDateFilter, setClosedDateFilter] = useState<'current_year' | 'last_2_years' | 'all_time' | 'custom'>('current_year');
+  const [customClosedDateFrom, setCustomClosedDateFrom] = useState<string>('');
+  const [customClosedDateTo, setCustomClosedDateTo] = useState<string>('');
+
+  // Booked Date Filter
+  const [showBookedDateMenu, setShowBookedDateMenu] = useState(false);
+  const bookedDateMenuRef = useRef<HTMLDivElement>(null);
+  const [bookedDateFilter, setBookedDateFilter] = useState<'all' | 'current_year' | 'last_2_years' | 'custom'>('all');
+  const [bookedDateFrom, setBookedDateFrom] = useState<string>('');
+  const [bookedDateTo, setBookedDateTo] = useState<string>('');
+
+  // Estimated Payment Date Filter
+  const [showEstPaymentDateMenu, setShowEstPaymentDateMenu] = useState(false);
+  const estPaymentDateMenuRef = useRef<HTMLDivElement>(null);
+  const [estPaymentDateFilter, setEstPaymentDateFilter] = useState<'all' | 'current_year' | 'last_2_years' | 'custom'>('all');
+  const [estimatedPaymentDateFrom, setEstimatedPaymentDateFrom] = useState<string>('');
+  const [estimatedPaymentDateTo, setEstimatedPaymentDateTo] = useState<string>('');
+
   useEffect(() => {
     fetchReconciliationData();
   }, []);
 
-  // Close dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target as Node)) {
         setShowStageFilter(false);
       }
+      if (closedDateMenuRef.current && !closedDateMenuRef.current.contains(event.target as Node)) {
+        setShowClosedDateMenu(false);
+      }
+      if (bookedDateMenuRef.current && !bookedDateMenuRef.current.contains(event.target as Node)) {
+        setShowBookedDateMenu(false);
+      }
+      if (estPaymentDateMenuRef.current && !estPaymentDateMenuRef.current.contains(event.target as Node)) {
+        setShowEstPaymentDateMenu(false);
+      }
     };
 
-    if (showStageFilter) {
+    if (showStageFilter || showClosedDateMenu || showBookedDateMenu || showEstPaymentDateMenu) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showStageFilter]);
+  }, [showStageFilter, showClosedDateMenu, showBookedDateMenu, showEstPaymentDateMenu]);
 
   const fetchReconciliationData = async () => {
     setLoading(true);
@@ -99,7 +126,8 @@ const PaymentReconciliationReport: React.FC = () => {
           deal_name,
           sf_id,
           stage_id,
-          booked_date
+          booked_date,
+          closed_date
         `)
         .in('stage_id', activeStageIds);
 
@@ -214,6 +242,7 @@ const PaymentReconciliationReport: React.FC = () => {
           payment_name: payment.payment_name,
           payment_sequence: payment.payment_sequence || 0,
           booked_date: deal.booked_date,
+          closed_date: deal.closed_date,
           payment_date_estimated: payment.payment_date_estimated,
           sf_payment_id: payment.sf_id,
           ovis_stage: ovisStage,
@@ -255,34 +284,86 @@ const PaymentReconciliationReport: React.FC = () => {
   const filteredAndSortedData = useMemo(() => {
     let filtered = reconciliationData;
 
+    // Filter by closed date based on selected option
+    if (closedDateFilter === 'current_year') {
+      // Exclude deals with closed_date before 2024-01-01 AND stage = "Closed Paid"
+      filtered = filtered.filter(row => {
+        if (row.ovis_stage === 'Closed Paid' && row.closed_date && row.closed_date < '2024-01-01') {
+          return false;
+        }
+        return true;
+      });
+    } else if (closedDateFilter === 'last_2_years') {
+      // Exclude deals with closed_date before 2023-01-01 AND stage = "Closed Paid"
+      filtered = filtered.filter(row => {
+        if (row.ovis_stage === 'Closed Paid' && row.closed_date && row.closed_date < '2023-01-01') {
+          return false;
+        }
+        return true;
+      });
+    } else if (closedDateFilter === 'custom') {
+      // Custom range for closed date (only applies to "Closed Paid" deals)
+      if (customClosedDateFrom) {
+        filtered = filtered.filter(row => {
+          if (row.ovis_stage === 'Closed Paid') {
+            return row.closed_date && row.closed_date >= customClosedDateFrom;
+          }
+          return true; // Keep non-Closed Paid deals
+        });
+      }
+      if (customClosedDateTo) {
+        filtered = filtered.filter(row => {
+          if (row.ovis_stage === 'Closed Paid') {
+            return row.closed_date && row.closed_date <= customClosedDateTo;
+          }
+          return true; // Keep non-Closed Paid deals
+        });
+      }
+    }
+    // 'all_time' doesn't filter anything
+
     // Filter by stages (multi-select)
     if (selectedStages.length > 0) {
       filtered = filtered.filter(row => selectedStages.includes(row.ovis_stage));
     }
 
     // Filter by booked date
-    if (bookedDateFrom) {
-      filtered = filtered.filter(row =>
-        row.booked_date && row.booked_date >= bookedDateFrom
-      );
+    if (bookedDateFilter === 'current_year') {
+      filtered = filtered.filter(row => !row.booked_date || row.booked_date >= '2024-01-01');
+    } else if (bookedDateFilter === 'last_2_years') {
+      filtered = filtered.filter(row => !row.booked_date || row.booked_date >= '2023-01-01');
+    } else if (bookedDateFilter === 'custom') {
+      if (bookedDateFrom) {
+        filtered = filtered.filter(row =>
+          row.booked_date && row.booked_date >= bookedDateFrom
+        );
+      }
+      if (bookedDateTo) {
+        filtered = filtered.filter(row =>
+          row.booked_date && row.booked_date <= bookedDateTo
+        );
+      }
     }
-    if (bookedDateTo) {
-      filtered = filtered.filter(row =>
-        row.booked_date && row.booked_date <= bookedDateTo
-      );
-    }
+    // 'all' doesn't filter
 
     // Filter by estimated payment date
-    if (estimatedPaymentDateFrom) {
-      filtered = filtered.filter(row =>
-        row.payment_date_estimated && row.payment_date_estimated >= estimatedPaymentDateFrom
-      );
+    if (estPaymentDateFilter === 'current_year') {
+      filtered = filtered.filter(row => !row.payment_date_estimated || row.payment_date_estimated >= '2024-01-01');
+    } else if (estPaymentDateFilter === 'last_2_years') {
+      filtered = filtered.filter(row => !row.payment_date_estimated || row.payment_date_estimated >= '2023-01-01');
+    } else if (estPaymentDateFilter === 'custom') {
+      if (estimatedPaymentDateFrom) {
+        filtered = filtered.filter(row =>
+          row.payment_date_estimated && row.payment_date_estimated >= estimatedPaymentDateFrom
+        );
+      }
+      if (estimatedPaymentDateTo) {
+        filtered = filtered.filter(row =>
+          row.payment_date_estimated && row.payment_date_estimated <= estimatedPaymentDateTo
+        );
+      }
     }
-    if (estimatedPaymentDateTo) {
-      filtered = filtered.filter(row =>
-        row.payment_date_estimated && row.payment_date_estimated <= estimatedPaymentDateTo
-      );
-    }
+    // 'all' doesn't filter
 
     // Sort
     filtered.sort((a, b) => {
@@ -302,7 +383,21 @@ const PaymentReconciliationReport: React.FC = () => {
     });
 
     return filtered;
-  }, [reconciliationData, selectedStages, bookedDateFrom, bookedDateTo, estimatedPaymentDateFrom, estimatedPaymentDateTo, sortColumn, sortDirection]);
+  }, [
+    reconciliationData,
+    selectedStages,
+    sortColumn,
+    sortDirection,
+    closedDateFilter,
+    customClosedDateFrom,
+    customClosedDateTo,
+    bookedDateFilter,
+    bookedDateFrom,
+    bookedDateTo,
+    estPaymentDateFilter,
+    estimatedPaymentDateFrom,
+    estimatedPaymentDateTo
+  ]);
 
   // Calculate totals
   const totals = useMemo(() => {
@@ -370,6 +465,72 @@ const PaymentReconciliationReport: React.FC = () => {
     return variance > 0 ? 'text-green-600' : 'text-red-600';
   };
 
+  const getClosedDateFilterLabel = () => {
+    switch (closedDateFilter) {
+      case 'current_year':
+        return 'Current Year (2024+)';
+      case 'last_2_years':
+        return 'Last 2 Years (2023+)';
+      case 'all_time':
+        return 'All Time';
+      case 'custom':
+        if (customClosedDateFrom && customClosedDateTo) {
+          return `${customClosedDateFrom} to ${customClosedDateTo}`;
+        } else if (customClosedDateFrom) {
+          return `from ${customClosedDateFrom}`;
+        } else if (customClosedDateTo) {
+          return `to ${customClosedDateTo}`;
+        }
+        return 'Custom Range';
+      default:
+        return 'Current Year (2024+)';
+    }
+  };
+
+  const getBookedDateFilterLabel = () => {
+    switch (bookedDateFilter) {
+      case 'all':
+        return 'All';
+      case 'current_year':
+        return '2024+';
+      case 'last_2_years':
+        return '2023+';
+      case 'custom':
+        if (bookedDateFrom && bookedDateTo) {
+          return `${bookedDateFrom} to ${bookedDateTo}`;
+        } else if (bookedDateFrom) {
+          return `from ${bookedDateFrom}`;
+        } else if (bookedDateTo) {
+          return `to ${bookedDateTo}`;
+        }
+        return 'Custom';
+      default:
+        return 'All';
+    }
+  };
+
+  const getEstPaymentDateFilterLabel = () => {
+    switch (estPaymentDateFilter) {
+      case 'all':
+        return 'All';
+      case 'current_year':
+        return '2024+';
+      case 'last_2_years':
+        return '2023+';
+      case 'custom':
+        if (estimatedPaymentDateFrom && estimatedPaymentDateTo) {
+          return `${estimatedPaymentDateFrom} to ${estimatedPaymentDateTo}`;
+        } else if (estimatedPaymentDateFrom) {
+          return `from ${estimatedPaymentDateFrom}`;
+        } else if (estimatedPaymentDateTo) {
+          return `to ${estimatedPaymentDateTo}`;
+        }
+        return 'Custom';
+      default:
+        return 'All';
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-4 text-center">
@@ -399,6 +560,21 @@ const PaymentReconciliationReport: React.FC = () => {
         </p>
       </div>
 
+      {/* Filter Criteria Banner */}
+      <div className="px-4 py-2 bg-blue-50 border-b border-blue-100">
+        <div className="text-xs text-gray-700">
+          <span className="font-semibold">Active Filters:</span>
+          {' '}
+          <span className="font-medium">Stages:</span> {selectedStages.length > 0 ? selectedStages.join(', ') : 'All'}
+          {' • '}
+          <span className="font-medium">Closed Date:</span> {getClosedDateFilterLabel()}
+          {' • '}
+          <span className="font-medium">Booked:</span> {getBookedDateFilterLabel()}
+          {' • '}
+          <span className="font-medium">Est. Payment:</span> {getEstPaymentDateFilterLabel()}
+        </div>
+      </div>
+
       {/* Controls */}
       <div className="p-4 border-b border-gray-200">
         <div className="flex flex-wrap items-center gap-3 mb-3">
@@ -408,7 +584,7 @@ const PaymentReconciliationReport: React.FC = () => {
               onClick={() => setShowStageFilter(!showStageFilter)}
               className="px-3 py-1.5 border border-gray-300 rounded-md shadow-sm bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              Filter by Stage {selectedStages.length > 0 && `(${selectedStages.length})`}
+              Stages {selectedStages.length > 0 && `(${selectedStages.length})`}
               <svg className="inline-block ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
@@ -445,40 +621,136 @@ const PaymentReconciliationReport: React.FC = () => {
             )}
           </div>
 
+          {/* Closed Date Filter */}
+          <div className="relative" ref={closedDateMenuRef}>
+            <button
+              onClick={() => setShowClosedDateMenu(!showClosedDateMenu)}
+              className="px-3 py-1.5 border border-gray-300 rounded-md shadow-sm bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              Closed: {closedDateFilter === 'current_year' ? '2024+' : closedDateFilter === 'last_2_years' ? '2023+' : closedDateFilter === 'all_time' ? 'All' : 'Custom'}
+              <svg className="inline-block ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {showClosedDateMenu && (
+              <div className="absolute z-10 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg">
+                <div className="p-2">
+                  <button onClick={() => { setClosedDateFilter('current_year'); setShowClosedDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${closedDateFilter === 'current_year' ? 'bg-blue-50 font-semibold' : ''}`}>
+                    Current Year (2024+)
+                  </button>
+                  <button onClick={() => { setClosedDateFilter('last_2_years'); setShowClosedDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${closedDateFilter === 'last_2_years' ? 'bg-blue-50 font-semibold' : ''}`}>
+                    Last 2 Years (2023+)
+                  </button>
+                  <button onClick={() => { setClosedDateFilter('all_time'); setShowClosedDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${closedDateFilter === 'all_time' ? 'bg-blue-50 font-semibold' : ''}`}>
+                    All Time
+                  </button>
+                  <button onClick={() => setClosedDateFilter('custom')} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${closedDateFilter === 'custom' ? 'bg-blue-50 font-semibold' : ''}`}>
+                    Custom Range
+                  </button>
+                  {closedDateFilter === 'custom' && (
+                    <div className="mt-2 p-2 border-t space-y-2">
+                      <div>
+                        <label className="text-xs text-gray-600">From:</label>
+                        <input type="date" value={customClosedDateFrom} onChange={(e) => setCustomClosedDateFrom(e.target.value)} className="w-full px-2 py-1 text-xs border rounded" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">To:</label>
+                        <input type="date" value={customClosedDateTo} onChange={(e) => setCustomClosedDateTo(e.target.value)} className="w-full px-2 py-1 text-xs border rounded" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Booked Date Filter */}
-          <div className="flex items-center gap-1.5">
-            <label className="text-xs font-medium text-gray-700">Booked:</label>
-            <input
-              type="date"
-              value={bookedDateFrom}
-              onChange={(e) => setBookedDateFrom(e.target.value)}
-              className="px-1.5 py-0.5 text-xs border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-            />
-            <span className="text-xs text-gray-500">to</span>
-            <input
-              type="date"
-              value={bookedDateTo}
-              onChange={(e) => setBookedDateTo(e.target.value)}
-              className="px-1.5 py-0.5 text-xs border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-            />
+          <div className="relative" ref={bookedDateMenuRef}>
+            <button
+              onClick={() => setShowBookedDateMenu(!showBookedDateMenu)}
+              className="px-3 py-1.5 border border-gray-300 rounded-md shadow-sm bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              Booked: {bookedDateFilter === 'all' ? 'All' : bookedDateFilter === 'current_year' ? '2024+' : bookedDateFilter === 'last_2_years' ? '2023+' : 'Custom'}
+              <svg className="inline-block ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {showBookedDateMenu && (
+              <div className="absolute z-10 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg">
+                <div className="p-2">
+                  <button onClick={() => { setBookedDateFilter('all'); setShowBookedDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${bookedDateFilter === 'all' ? 'bg-blue-50 font-semibold' : ''}`}>
+                    All
+                  </button>
+                  <button onClick={() => { setBookedDateFilter('current_year'); setShowBookedDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${bookedDateFilter === 'current_year' ? 'bg-blue-50 font-semibold' : ''}`}>
+                    Current Year (2024+)
+                  </button>
+                  <button onClick={() => { setBookedDateFilter('last_2_years'); setShowBookedDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${bookedDateFilter === 'last_2_years' ? 'bg-blue-50 font-semibold' : ''}`}>
+                    Last 2 Years (2023+)
+                  </button>
+                  <button onClick={() => setBookedDateFilter('custom')} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${bookedDateFilter === 'custom' ? 'bg-blue-50 font-semibold' : ''}`}>
+                    Custom Range
+                  </button>
+                  {bookedDateFilter === 'custom' && (
+                    <div className="mt-2 p-2 border-t space-y-2">
+                      <div>
+                        <label className="text-xs text-gray-600">From:</label>
+                        <input type="date" value={bookedDateFrom} onChange={(e) => setBookedDateFrom(e.target.value)} className="w-full px-2 py-1 text-xs border rounded" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">To:</label>
+                        <input type="date" value={bookedDateTo} onChange={(e) => setBookedDateTo(e.target.value)} className="w-full px-2 py-1 text-xs border rounded" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Estimated Payment Date Filter */}
-          <div className="flex items-center gap-1.5">
-            <label className="text-xs font-medium text-gray-700">Est. Pmt:</label>
-            <input
-              type="date"
-              value={estimatedPaymentDateFrom}
-              onChange={(e) => setEstimatedPaymentDateFrom(e.target.value)}
-              className="px-1.5 py-0.5 text-xs border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-            />
-            <span className="text-xs text-gray-500">to</span>
-            <input
-              type="date"
-              value={estimatedPaymentDateTo}
-              onChange={(e) => setEstimatedPaymentDateTo(e.target.value)}
-              className="px-1.5 py-0.5 text-xs border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-            />
+          <div className="relative" ref={estPaymentDateMenuRef}>
+            <button
+              onClick={() => setShowEstPaymentDateMenu(!showEstPaymentDateMenu)}
+              className="px-3 py-1.5 border border-gray-300 rounded-md shadow-sm bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              Est. Pmt: {estPaymentDateFilter === 'all' ? 'All' : estPaymentDateFilter === 'current_year' ? '2024+' : estPaymentDateFilter === 'last_2_years' ? '2023+' : 'Custom'}
+              <svg className="inline-block ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {showEstPaymentDateMenu && (
+              <div className="absolute z-10 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg">
+                <div className="p-2">
+                  <button onClick={() => { setEstPaymentDateFilter('all'); setShowEstPaymentDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${estPaymentDateFilter === 'all' ? 'bg-blue-50 font-semibold' : ''}`}>
+                    All
+                  </button>
+                  <button onClick={() => { setEstPaymentDateFilter('current_year'); setShowEstPaymentDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${estPaymentDateFilter === 'current_year' ? 'bg-blue-50 font-semibold' : ''}`}>
+                    Current Year (2024+)
+                  </button>
+                  <button onClick={() => { setEstPaymentDateFilter('last_2_years'); setShowEstPaymentDateMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${estPaymentDateFilter === 'last_2_years' ? 'bg-blue-50 font-semibold' : ''}`}>
+                    Last 2 Years (2023+)
+                  </button>
+                  <button onClick={() => setEstPaymentDateFilter('custom')} className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 rounded ${estPaymentDateFilter === 'custom' ? 'bg-blue-50 font-semibold' : ''}`}>
+                    Custom Range
+                  </button>
+                  {estPaymentDateFilter === 'custom' && (
+                    <div className="mt-2 p-2 border-t space-y-2">
+                      <div>
+                        <label className="text-xs text-gray-600">From:</label>
+                        <input type="date" value={estimatedPaymentDateFrom} onChange={(e) => setEstimatedPaymentDateFrom(e.target.value)} className="w-full px-2 py-1 text-xs border rounded" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">To:</label>
+                        <input type="date" value={estimatedPaymentDateTo} onChange={(e) => setEstimatedPaymentDateTo(e.target.value)} className="w-full px-2 py-1 text-xs border rounded" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Stats */}
@@ -486,20 +758,6 @@ const PaymentReconciliationReport: React.FC = () => {
             <div className="text-xs text-gray-600">
               Showing {filteredAndSortedData.length} of {reconciliationData.length} payments
             </div>
-            {(selectedStages.length > 0 || bookedDateFrom || bookedDateTo || estimatedPaymentDateFrom || estimatedPaymentDateTo) && (
-              <button
-                onClick={() => {
-                  setSelectedStages([]);
-                  setBookedDateFrom('');
-                  setBookedDateTo('');
-                  setEstimatedPaymentDateFrom('');
-                  setEstimatedPaymentDateTo('');
-                }}
-                className="text-xs text-blue-600 hover:text-blue-800 mt-0.5"
-              >
-                Clear all filters
-              </button>
-            )}
           </div>
         </div>
 
@@ -532,7 +790,9 @@ const PaymentReconciliationReport: React.FC = () => {
               <th onClick={() => handleSort('deal_name')} className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
                 Deal / Payment {sortColumn === 'deal_name' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stage</th>
+              <th onClick={() => handleSort('ovis_stage')} className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                Stage {sortColumn === 'ovis_stage' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </th>
               <th colSpan={3} className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">Payment Amt</th>
               <th colSpan={3} className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-purple-50">AGCI</th>
               <th colSpan={3} className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-orange-50">House $</th>
