@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import DealSidebar from '../DealSidebar';
+import DealDetailsSlideout from '../DealDetailsSlideout';
 
 interface PaymentReconciliationRow {
   payment_id: string;
@@ -67,9 +67,9 @@ const PaymentReconciliationReport: React.FC = () => {
   const [estimatedPaymentDateFrom, setEstimatedPaymentDateFrom] = useState<string>('');
   const [estimatedPaymentDateTo, setEstimatedPaymentDateTo] = useState<string>('');
 
-  // Deal sidebar state
+  // Deal slideout state
   const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
-  const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
+  const [isSlideoutOpen, setIsSlideoutOpen] = useState(false);
 
   // Inline editing state for closed_date
   const [editingClosedDateDealId, setEditingClosedDateDealId] = useState<string | null>(null);
@@ -892,7 +892,10 @@ const PaymentReconciliationReport: React.FC = () => {
               <tr key={idx} className="hover:bg-gray-50">
                 <td className="px-2 py-1.5 text-xs text-gray-900">
                   <button
-                    onClick={() => setSelectedDealId(row.deal_id)}
+                    onClick={() => {
+                      setSelectedDealId(row.deal_id);
+                      setIsSlideoutOpen(true);
+                    }}
                     className="text-blue-600 hover:underline block text-left"
                   >
                     {row.deal_name}
@@ -990,22 +993,19 @@ const PaymentReconciliationReport: React.FC = () => {
         </table>
       </div>
 
-      {/* Deal Sidebar */}
-      {selectedDealId && (
-        <DealSidebar
-          dealId={selectedDealId}
-          isMinimized={isSidebarMinimized}
-          onMinimize={() => {
-            if (isSidebarMinimized) {
-              setIsSidebarMinimized(false);
-            } else {
-              setIsSidebarMinimized(true);
-              // Close completely after minimizing
-              setTimeout(() => setSelectedDealId(null), 300);
-            }
-          }}
-        />
-      )}
+      {/* Deal Details Slideout */}
+      <DealDetailsSlideout
+        dealId={selectedDealId}
+        isOpen={isSlideoutOpen}
+        onClose={() => {
+          setIsSlideoutOpen(false);
+          setSelectedDealId(null);
+        }}
+        onDealUpdated={() => {
+          // Refresh the reconciliation data when deal is updated
+          fetchReconciliationData();
+        }}
+      />
     </div>
   );
 };
