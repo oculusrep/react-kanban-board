@@ -1985,6 +1985,47 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                   </div>
                 )}
 
+                {/* Property Record Type - Controls which fields are displayed */}
+                {isProperty && property && (
+                  <div className="flex items-center gap-2 mb-2">
+                    <FileText size={14} className="text-gray-400 flex-shrink-0" />
+                    {!isEditingPropertyType ? (
+                      <div
+                        className="inline-flex items-center gap-2 px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium cursor-pointer hover:bg-green-200 transition-colors"
+                        onClick={() => setIsEditingPropertyType(true)}
+                      >
+                        <span>
+                          {property.property_record_type_id && propertyRecordTypes.length > 0
+                            ? propertyRecordTypes.find(type => type.id === property.property_record_type_id)?.label || 'Unknown Record Type'
+                            : 'Set Record Type (Land/Shopping Center)'
+                          }
+                        </span>
+                        <Edit3 size={12} className="text-green-600" />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={property.property_record_type_id || ''}
+                          onChange={(e) => {
+                            handlePropertyFieldUpdate('property_record_type_id', e.target.value);
+                            setIsEditingPropertyType(false);
+                          }}
+                          className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-green-500 focus:border-green-500 bg-white"
+                          autoFocus
+                          onBlur={() => setIsEditingPropertyType(false)}
+                        >
+                          <option value="">Select record type...</option>
+                          {propertyRecordTypes.map(type => (
+                            <option key={type.id} value={type.id}>
+                              {type.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Property Information - For site submits only */}
                 {!isProperty && siteSubmit && (
                   <div className="mb-2 space-y-0.5">
