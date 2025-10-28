@@ -135,6 +135,7 @@ export default function DealReconciliationReport() {
           commission_percent,
           fee,
           referral_fee_usd,
+          agci,
           house_usd,
           client:client_id(client_name),
           property:property_id(property_name),
@@ -215,7 +216,7 @@ export default function DealReconciliationReport() {
         const ovisFee = deal.fee || 0;
         const ovisCommissionRate = deal.commission_percent || 0;
         const ovisReferralFee = deal.referral_fee_usd || 0;
-        const ovisAGCI = ovisFee - ovisReferralFee;
+        const ovisAGCI = deal.agci || 0;
         const ovisHouse = deal.house_usd || 0;
 
         // Salesforce values
