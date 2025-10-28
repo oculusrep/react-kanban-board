@@ -178,7 +178,7 @@ export default function DealReconciliationReport() {
             Deal_Value__c,
             Amount,
             StageName,
-            Net_Commission_Percentage__c,
+            Commission__c,
             Calculated_Amount__c,
             Referral_Fee__c,
             House_Dollars__c,
@@ -221,7 +221,7 @@ export default function DealReconciliationReport() {
         // Salesforce values
         const sfDealValue = sfData?.Deal_Value__c || sfData?.Amount || 0;
         const sfFee = sfData?.Calculated_Amount__c || 0;
-        const sfCommissionRate = sfData?.Net_Commission_Percentage__c || 0;
+        const sfCommissionRate = sfData?.Commission__c || 0;
         const sfReferralFee = sfData?.Referral_Fee__c || 0;
         const sfAGCI = sfData?.AGCI__c || 0;
         const sfHouse = sfData?.House_Dollars__c || 0;
