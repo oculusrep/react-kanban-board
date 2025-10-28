@@ -143,7 +143,8 @@ const PaymentReconciliationReport: React.FC = () => {
           stage_id,
           booked_date,
           closed_date,
-          agci
+          agci,
+          house_usd
         `)
         .in('stage_id', activeStageIds);
 
@@ -154,7 +155,7 @@ const PaymentReconciliationReport: React.FC = () => {
       const dealIds = ovisDeals?.map(d => d.id) || [];
       const { data: ovisPayments, error: paymentsError } = await supabase
         .from('payment')
-        .select('id, deal_id, sf_id, payment_amount, payment_name, payment_sequence, payment_date_estimated, house_usd')
+        .select('id, deal_id, sf_id, payment_amount, payment_name, payment_sequence, payment_date_estimated')
         .in('deal_id', dealIds)
         .eq('is_active', true);
 
@@ -270,9 +271,9 @@ const PaymentReconciliationReport: React.FC = () => {
           ovis_agci: deal.agci || 0,
           sf_agci: sfAgci,
           agci_variance: (deal.agci || 0) - sfAgci,
-          ovis_house: payment.house_usd || 0,
+          ovis_house: deal.house_usd || 0,
           sf_house: sfHouse,
-          house_variance: (payment.house_usd || 0) - sfHouse,
+          house_variance: (deal.house_usd || 0) - sfHouse,
           ovis_mike: ovisSplitData.mikeTotal,
           sf_mike: sfPayment?.Broker_Total_Mike__c || 0,
           mike_variance: ovisSplitData.mikeTotal - (sfPayment?.Broker_Total_Mike__c || 0),
