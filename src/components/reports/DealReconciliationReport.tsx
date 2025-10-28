@@ -175,6 +175,16 @@ export default function DealReconciliationReport() {
 
       const salesforceMap = new Map<string, any>();
       if (sfIds.length > 0) {
+        // First, try to get all columns to see what's available
+        const { data: sfDataAll, error: sfErrorAll } = await supabase
+          .from('salesforce_Opportunity')
+          .select('*')
+          .in('Id', sfIds)
+          .eq('IsDeleted', false)
+          .limit(1);
+
+        console.log('[DealReconciliation] SF sample record (all fields):', sfDataAll?.[0]);
+
         const { data: sfData, error: sfError } = await supabase
           .from('salesforce_Opportunity')
           .select(`
