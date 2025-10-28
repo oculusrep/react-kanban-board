@@ -102,7 +102,7 @@ export default function DealDetailsSlideout({
       isOpen={isOpen}
       onClose={onClose}
       title={deal?.deal_name || 'Deal Details'}
-      width="90%"
+      width="45%"
       canMinimize={true}
     >
       {loading && (
