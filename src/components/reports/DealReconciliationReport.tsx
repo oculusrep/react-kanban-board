@@ -169,30 +169,8 @@ export default function DealReconciliationReport() {
         .map(deal => deal.sf_id)
         .filter(id => id !== null);
 
-      console.log('[DealReconciliation] Total OVIS deals:', ovisDeals?.length);
-      console.log('[DealReconciliation] Deals with SF IDs:', sfIds.length);
-      console.log('[DealReconciliation] SF IDs:', sfIds);
-
       const salesforceMap = new Map<string, any>();
       if (sfIds.length > 0) {
-        // First, try to get all columns to see what's available
-        const { data: sfDataAll, error: sfErrorAll } = await supabase
-          .from('salesforce_Opportunity')
-          .select('*')
-          .in('Id', sfIds)
-          .eq('IsDeleted', false)
-          .limit(1);
-
-        console.log('[DealReconciliation] SF sample record (all fields):', sfDataAll?.[0]);
-        if (sfDataAll?.[0]) {
-          console.log('[DealReconciliation] Commission fields:', {
-            'Commission__c': sfDataAll[0].Commission__c,
-            'Net_Commission_Calculated__c': sfDataAll[0].Net_Commission_Calculated__c,
-            'Net_Commissions__c': sfDataAll[0].Net_Commissions__c,
-            'Weighted_Fee__c': sfDataAll[0].Weighted_Fee__c
-          });
-        }
-
         const { data: sfData, error: sfError } = await supabase
           .from('salesforce_Opportunity')
           .select(`
@@ -201,9 +179,7 @@ export default function DealReconciliationReport() {
             Amount,
             StageName,
             Net_Commission_Percentage__c,
-            Commission__c,
-            Net_Commission_Calculated__c,
-            Net_Commissions__c,
+            Calculated_Amount__c,
             Referral_Fee__c,
             House_Dollars__c,
             AGCI__c,
@@ -215,9 +191,6 @@ export default function DealReconciliationReport() {
         if (sfError) {
           console.error('[DealReconciliation] Salesforce query error:', sfError);
         }
-
-        console.log('[DealReconciliation] SF opportunities fetched:', sfData?.length);
-        console.log('[DealReconciliation] SF data sample:', sfData?.[0]);
 
         if (sfData) {
           sfData.forEach(sf => {
@@ -247,8 +220,7 @@ export default function DealReconciliationReport() {
 
         // Salesforce values
         const sfDealValue = sfData?.Deal_Value__c || sfData?.Amount || 0;
-        // Try Net_Commission_Calculated__c first, then fall back to Commission__c
-        const sfFee = sfData?.Net_Commission_Calculated__c || sfData?.Net_Commissions__c || sfData?.Commission__c || 0;
+        const sfFee = sfData?.Calculated_Amount__c || 0;
         const sfCommissionRate = sfData?.Net_Commission_Percentage__c || 0;
         const sfReferralFee = sfData?.Referral_Fee__c || 0;
         const sfAGCI = sfData?.AGCI__c || 0;
