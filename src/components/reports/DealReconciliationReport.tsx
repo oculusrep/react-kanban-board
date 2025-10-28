@@ -192,10 +192,11 @@ export default function DealReconciliationReport() {
             Deal_Value__c,
             Amount,
             StageName,
-            Commission_Percent__c,
+            Net_Commission_Percentage__c,
             Commission__c,
             Referral_Fee__c,
-            House__c,
+            House_Dollars__c,
+            AGCI__c,
             CloseDate
           `)
           .in('Id', sfIds)
@@ -237,10 +238,10 @@ export default function DealReconciliationReport() {
         // Salesforce values
         const sfDealValue = sfData?.Deal_Value__c || sfData?.Amount || 0;
         const sfFee = sfData?.Commission__c || 0;
-        const sfCommissionRate = sfData?.Commission_Percent__c || 0;
+        const sfCommissionRate = sfData?.Net_Commission_Percentage__c || 0;
         const sfReferralFee = sfData?.Referral_Fee__c || 0;
-        const sfAGCI = sfFee - sfReferralFee;
-        const sfHouse = sfData?.House__c || 0;
+        const sfAGCI = sfData?.AGCI__c || 0;
+        const sfHouse = sfData?.House_Dollars__c || 0;
 
         // Stages
         const ovisStage = deal.stage?.label || '';
