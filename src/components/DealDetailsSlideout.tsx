@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import DealDetailsForm from './DealDetailsForm';
+import CommissionTab from './CommissionTab';
+import PaymentTab from './PaymentTab';
+import ActivityTab from './ActivityTab';
+import FileManager from './FileManager/FileManager';
 import SlideOutPanel from './SlideOutPanel';
 
 interface Deal {
@@ -58,6 +62,7 @@ export default function DealDetailsSlideout({
   const [deal, setDeal] = useState<Deal | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => {
     if (dealId && isOpen) {
@@ -97,6 +102,16 @@ export default function DealDetailsSlideout({
     }
   };
 
+  const handleAsyncDealUpdate = async () => {
+    // Refetch the deal to get latest data
+    if (dealId) {
+      await fetchDeal();
+      if (onDealUpdated) {
+        onDealUpdated();
+      }
+    }
+  };
+
   return (
     <SlideOutPanel
       isOpen={isOpen}
@@ -119,10 +134,101 @@ export default function DealDetailsSlideout({
       )}
 
       {!loading && !error && deal && (
-        <DealDetailsForm
-          deal={deal}
-          onSave={handleSave}
-        />
+        <>
+          {/* Tab Navigation */}
+          <div className="border-b border-gray-200">
+            <nav className="flex space-x-8 px-6" aria-label="Tabs">
+              <button
+                onClick={() => setActiveTab('overview')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
+                  activeTab === 'overview'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Details
+              </button>
+              <button
+                onClick={() => setActiveTab('commission')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
+                  activeTab === 'commission'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Commission
+              </button>
+              <button
+                onClick={() => setActiveTab('payments')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
+                  activeTab === 'payments'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Payments
+              </button>
+              <button
+                onClick={() => setActiveTab('activity')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
+                  activeTab === 'activity'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Activity
+              </button>
+              <button
+                onClick={() => setActiveTab('files')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
+                  activeTab === 'files'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Files
+              </button>
+            </nav>
+          </div>
+
+          {/* Tab Content */}
+          <div className="px-6 py-4">
+            {activeTab === 'overview' && (
+              <DealDetailsForm
+                deal={deal}
+                onSave={handleSave}
+              />
+            )}
+
+            {activeTab === 'commission' && (
+              <CommissionTab
+                dealId={deal.id}
+                deal={deal}
+                onDealUpdate={handleAsyncDealUpdate}
+                onSwitchToPayments={() => setActiveTab('payments')}
+              />
+            )}
+
+            {activeTab === 'payments' && (
+              <PaymentTab
+                deal={deal}
+                onDealUpdate={handleAsyncDealUpdate}
+              />
+            )}
+
+            {activeTab === 'activity' && (
+              <ActivityTab dealId={deal.id} />
+            )}
+
+            {activeTab === 'files' && (
+              <FileManager
+                entityType="deal"
+                entityId={deal.id}
+                entityName={deal.deal_name}
+              />
+            )}
+          </div>
+        </>
       )}
     </SlideOutPanel>
   );
