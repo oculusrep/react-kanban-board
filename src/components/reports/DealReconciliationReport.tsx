@@ -184,6 +184,14 @@ export default function DealReconciliationReport() {
           .limit(1);
 
         console.log('[DealReconciliation] SF sample record (all fields):', sfDataAll?.[0]);
+        if (sfDataAll?.[0]) {
+          console.log('[DealReconciliation] Commission fields:', {
+            'Commission__c': sfDataAll[0].Commission__c,
+            'Net_Commission_Calculated__c': sfDataAll[0].Net_Commission_Calculated__c,
+            'Net_Commissions__c': sfDataAll[0].Net_Commissions__c,
+            'Weighted_Fee__c': sfDataAll[0].Weighted_Fee__c
+          });
+        }
 
         const { data: sfData, error: sfError } = await supabase
           .from('salesforce_Opportunity')
@@ -194,6 +202,8 @@ export default function DealReconciliationReport() {
             StageName,
             Net_Commission_Percentage__c,
             Commission__c,
+            Net_Commission_Calculated__c,
+            Net_Commissions__c,
             Referral_Fee__c,
             House_Dollars__c,
             AGCI__c,
@@ -237,7 +247,8 @@ export default function DealReconciliationReport() {
 
         // Salesforce values
         const sfDealValue = sfData?.Deal_Value__c || sfData?.Amount || 0;
-        const sfFee = sfData?.Commission__c || 0;
+        // Try Net_Commission_Calculated__c first, then fall back to Commission__c
+        const sfFee = sfData?.Net_Commission_Calculated__c || sfData?.Net_Commissions__c || sfData?.Commission__c || 0;
         const sfCommissionRate = sfData?.Net_Commission_Percentage__c || 0;
         const sfReferralFee = sfData?.Referral_Fee__c || 0;
         const sfAGCI = sfData?.AGCI__c || 0;
