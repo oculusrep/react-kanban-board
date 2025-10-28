@@ -169,9 +169,13 @@ export default function DealReconciliationReport() {
         .map(deal => deal.sf_id)
         .filter(id => id !== null);
 
+      console.log('[DealReconciliation] Total OVIS deals:', ovisDeals?.length);
+      console.log('[DealReconciliation] Deals with SF IDs:', sfIds.length);
+      console.log('[DealReconciliation] SF IDs:', sfIds);
+
       const salesforceMap = new Map<string, any>();
       if (sfIds.length > 0) {
-        const { data: sfData } = await supabase
+        const { data: sfData, error: sfError } = await supabase
           .from('salesforce_Opportunity')
           .select(`
             Id,
@@ -184,7 +188,15 @@ export default function DealReconciliationReport() {
             House__c,
             CloseDate
           `)
-          .in('Id', sfIds);
+          .in('Id', sfIds)
+          .eq('IsDeleted', false);
+
+        if (sfError) {
+          console.error('[DealReconciliation] Salesforce query error:', sfError);
+        }
+
+        console.log('[DealReconciliation] SF opportunities fetched:', sfData?.length);
+        console.log('[DealReconciliation] SF data sample:', sfData?.[0]);
 
         if (sfData) {
           sfData.forEach(sf => {
