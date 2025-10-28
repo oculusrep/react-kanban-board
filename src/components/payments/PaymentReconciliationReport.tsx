@@ -143,8 +143,7 @@ const PaymentReconciliationReport: React.FC = () => {
           stage_id,
           booked_date,
           closed_date,
-          agci,
-          house_usd
+          house_percent
         `)
         .in('stage_id', activeStageIds);
 
@@ -155,7 +154,7 @@ const PaymentReconciliationReport: React.FC = () => {
       const dealIds = ovisDeals?.map(d => d.id) || [];
       const { data: ovisPayments, error: paymentsError } = await supabase
         .from('payment')
-        .select('id, deal_id, sf_id, payment_amount, payment_name, payment_sequence, payment_date_estimated')
+        .select('id, deal_id, sf_id, payment_amount, payment_name, payment_sequence, payment_date_estimated, agci')
         .in('deal_id', dealIds)
         .eq('is_active', true);
 
@@ -268,12 +267,12 @@ const PaymentReconciliationReport: React.FC = () => {
           ovis_payment_amount: payment.payment_amount || 0,
           sf_payment_amount: sfPayment?.Payment_Amount__c || 0,
           payment_variance: (payment.payment_amount || 0) - (sfPayment?.Payment_Amount__c || 0),
-          ovis_agci: deal.agci || 0,
+          ovis_agci: payment.agci || 0,
           sf_agci: sfAgci,
-          agci_variance: (deal.agci || 0) - sfAgci,
-          ovis_house: deal.house_usd || 0,
+          agci_variance: (payment.agci || 0) - sfAgci,
+          ovis_house: (payment.agci || 0) * ((deal.house_percent || 0) / 100),
           sf_house: sfHouse,
-          house_variance: (deal.house_usd || 0) - sfHouse,
+          house_variance: ((payment.agci || 0) * ((deal.house_percent || 0) / 100)) - sfHouse,
           ovis_mike: ovisSplitData.mikeTotal,
           sf_mike: sfPayment?.Broker_Total_Mike__c || 0,
           mike_variance: ovisSplitData.mikeTotal - (sfPayment?.Broker_Total_Mike__c || 0),
