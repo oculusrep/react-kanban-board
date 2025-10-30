@@ -391,7 +391,7 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
             property_unit (
               property_unit_name
             ),
-            submit_stage!submit_stage_id (
+            submit_stage!site_submit_submit_stage_id_fkey (
               name
             )
           `)
