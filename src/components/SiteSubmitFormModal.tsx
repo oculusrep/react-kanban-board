@@ -522,6 +522,10 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
     const property = siteSubmit.property;
     const propertyUnit = siteSubmit.property_unit;
 
+    console.log('DEBUG generateEmailTemplate - siteSubmit:', siteSubmit);
+    console.log('DEBUG generateEmailTemplate - propertyUnit:', propertyUnit);
+    console.log('DEBUG generateEmailTemplate - propertyUnit?.property_unit_name:', propertyUnit?.property_unit_name);
+
     const contactNames = contacts && Array.isArray(contacts)
       ? contacts.map(c => c.first_name).filter(Boolean).join(', ')
       : 'Site Selectors';
