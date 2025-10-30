@@ -8,7 +8,8 @@ import Toast from './Toast';
 import { useToast } from '../hooks/useToast';
 import ClientSelector from './mapping/ClientSelector';
 import { ClientSearchResult } from '../hooks/useClientSearch';
-import { generateSiteSubmitEmailTemplate } from '../utils/siteSubmitEmailTemplate';
+import { generateSiteSubmitEmailTemplate, PropertyUnitFile } from '../utils/siteSubmitEmailTemplate';
+import DropboxService from '../services/dropboxService';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type SiteSubmitInsert = Database['public']['Tables']['site_submit']['Insert'];
@@ -503,28 +504,57 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
         userData = data;
       }
 
-      // Fetch property unit folder link if property_unit_id exists
-      let propertyUnitFolderLink = null;
+      // Fetch property unit files if property_unit_id exists
+      let propertyUnitFiles: PropertyUnitFile[] = [];
       if (siteSubmitData.property_unit_id) {
-        const { data: dropboxMapping } = await supabase
-          .from('dropbox_mapping')
-          .select('dropbox_folder_path')
-          .eq('entity_type', 'property_unit')
-          .eq('entity_id', siteSubmitData.property_unit_id)
-          .single();
+        try {
+          const { data: dropboxMapping } = await supabase
+            .from('dropbox_mapping')
+            .select('dropbox_folder_path')
+            .eq('entity_type', 'property_unit')
+            .eq('entity_id', siteSubmitData.property_unit_id)
+            .single();
 
-        if (dropboxMapping?.dropbox_folder_path) {
-          // Create a shared link for the folder
-          // Note: For now, we'll use a direct Dropbox path format
-          // In production, you might want to generate actual shared links
-          const encodedPath = encodeURIComponent(dropboxMapping.dropbox_folder_path);
-          propertyUnitFolderLink = `https://www.dropbox.com/home${encodedPath}`;
+          if (dropboxMapping?.dropbox_folder_path) {
+            // Initialize Dropbox service
+            const dropboxService = new DropboxService(
+              import.meta.env.VITE_DROPBOX_ACCESS_TOKEN || '',
+              import.meta.env.VITE_DROPBOX_REFRESH_TOKEN || '',
+              import.meta.env.VITE_DROPBOX_APP_KEY || '',
+              import.meta.env.VITE_DROPBOX_APP_SECRET || ''
+            );
+
+            // Fetch files from the folder
+            const files = await dropboxService.listFolderContents(dropboxMapping.dropbox_folder_path);
+
+            // Filter to only include files (not folders) and generate shared links
+            const filePromises = files
+              .filter(file => file.type === 'file')
+              .map(async (file) => {
+                try {
+                  const sharedLink = await dropboxService.getSharedLink(file.path);
+                  return {
+                    name: file.name,
+                    sharedLink: sharedLink
+                  };
+                } catch (error) {
+                  console.error(`Failed to get shared link for ${file.name}:`, error);
+                  return null;
+                }
+              });
+
+            const filesWithLinks = await Promise.all(filePromises);
+            propertyUnitFiles = filesWithLinks.filter((file): file is PropertyUnitFile => file !== null);
+          }
+        } catch (error) {
+          console.error('Error fetching property unit files:', error);
+          // Continue with empty array if there's an error
         }
       }
 
       // Generate email template
       const defaultSubject = `New site for Review – ${siteSubmitData.property?.property_name || 'Untitled'} – ${siteSubmitData.client?.client_name || 'N/A'}`;
-      const defaultBody = generateEmailTemplate(siteSubmitData, uniqueContacts, userData, propertyUnitFolderLink);
+      const defaultBody = generateEmailTemplate(siteSubmitData, uniqueContacts, userData, propertyUnitFiles);
 
       setEmailDefaultData({
         subject: defaultSubject,
@@ -538,14 +568,14 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
     }
   };
 
-  const generateEmailTemplate = (siteSubmit: any, contacts: any[], userData: any, propertyUnitFolderLink: string | null = null): string => {
+  const generateEmailTemplate = (siteSubmit: any, contacts: any[], userData: any, propertyUnitFiles: PropertyUnitFile[] = []): string => {
     return generateSiteSubmitEmailTemplate({
       siteSubmit,
       property: siteSubmit.property,
       propertyUnit: siteSubmit.property_unit,
       contacts,
       userData,
-      propertyUnitFolderLink,
+      propertyUnitFiles,
     });
   };
 

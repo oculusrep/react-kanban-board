@@ -5,17 +5,22 @@
  * Used by both SiteSubmitFormModal and SiteSubmitDetailsPage to ensure consistency.
  */
 
+export interface PropertyUnitFile {
+  name: string;
+  sharedLink: string;
+}
+
 export interface SiteSubmitEmailData {
   siteSubmit: any;
   property: any;
   propertyUnit: any;
   contacts: any[];
   userData: any;
-  propertyUnitFolderLink?: string | null; // Dropbox shared link to property unit folder
+  propertyUnitFiles?: PropertyUnitFile[]; // Array of files with shared links
 }
 
 export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): string {
-  const { siteSubmit, property, propertyUnit, contacts, userData, propertyUnitFolderLink } = data;
+  const { siteSubmit, property, propertyUnit, contacts, userData, propertyUnitFiles } = data;
 
   // Helper: Format currency
   const formatCurrency = (value: number | null | undefined) => {
@@ -111,7 +116,8 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
   emailHtml += `</p>`;
 
   // Supporting Files Section
-  const hasFiles = property?.marketing_materials || property?.site_plan || property?.demographics || propertyUnitFolderLink;
+  const hasPropertyUnitFiles = propertyUnitFiles && propertyUnitFiles.length > 0;
+  const hasFiles = property?.marketing_materials || property?.site_plan || property?.demographics || hasPropertyUnitFiles;
   if (hasFiles) {
     emailHtml += `<br/>`;
     emailHtml += `<p><strong>Supporting Files:</strong><br/>`;
@@ -124,8 +130,11 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
     if (property?.demographics) {
       emailHtml += `<a href="${property.demographics}">Demographics</a><br/>`;
     }
-    if (propertyUnitFolderLink) {
-      emailHtml += `<a href="${propertyUnitFolderLink}">Unit Files</a><br/>`;
+    // Add individual property unit files
+    if (hasPropertyUnitFiles) {
+      propertyUnitFiles.forEach(file => {
+        emailHtml += `<a href="${file.sharedLink}">${file.name}</a><br/>`;
+      });
     }
     emailHtml += `</p>`;
   }
