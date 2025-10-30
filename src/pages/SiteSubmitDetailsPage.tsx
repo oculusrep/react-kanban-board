@@ -590,13 +590,30 @@ const SiteSubmitDetailsPage: React.FC = () => {
       const { data: { user } } = await supabase.auth.getSession();
       const { data: userData } = await supabase
         .from('user')
-        .select('first_name, last_name, email')
+        .select('first_name, last_name, email, mobile_phone')
         .eq('id', user?.id)
         .single();
 
+      // Fetch property unit folder link if property_unit_id exists
+      let propertyUnitFolderLink = null;
+      if (siteSubmitData.property_unit_id) {
+        const { data: dropboxMapping } = await supabase
+          .from('dropbox_mapping')
+          .select('dropbox_folder_path')
+          .eq('entity_type', 'property_unit')
+          .eq('entity_id', siteSubmitData.property_unit_id)
+          .single();
+
+        if (dropboxMapping?.dropbox_folder_path) {
+          // Create a shared link for the folder
+          const encodedPath = encodeURIComponent(dropboxMapping.dropbox_folder_path);
+          propertyUnitFolderLink = `https://www.dropbox.com/home${encodedPath}`;
+        }
+      }
+
       // Generate default email template
       const defaultSubject = `New site for Review – ${siteSubmitData.property?.property_name || 'Untitled'} – ${siteSubmitData.client?.client_name || 'N/A'}`;
-      const defaultBody = generateEmailTemplate(siteSubmitData, uniqueContacts, userData);
+      const defaultBody = generateEmailTemplate(siteSubmitData, uniqueContacts, userData, propertyUnitFolderLink);
 
       // Set email default data and show composer modal
       setEmailDefaultData({
@@ -671,13 +688,14 @@ const SiteSubmitDetailsPage: React.FC = () => {
     }
   };
 
-  const generateEmailTemplate = (siteSubmit: any, contacts: any[], userData: any): string => {
+  const generateEmailTemplate = (siteSubmit: any, contacts: any[], userData: any, propertyUnitFolderLink: string | null = null): string => {
     return generateSiteSubmitEmailTemplate({
       siteSubmit,
       property: siteSubmit.property,
       propertyUnit: siteSubmit.property_unit,
       contacts,
       userData,
+      propertyUnitFolderLink,
     });
   };
 

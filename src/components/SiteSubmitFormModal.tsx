@@ -503,9 +503,28 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
         userData = data;
       }
 
+      // Fetch property unit folder link if property_unit_id exists
+      let propertyUnitFolderLink = null;
+      if (siteSubmitData.property_unit_id) {
+        const { data: dropboxMapping } = await supabase
+          .from('dropbox_mapping')
+          .select('dropbox_folder_path')
+          .eq('entity_type', 'property_unit')
+          .eq('entity_id', siteSubmitData.property_unit_id)
+          .single();
+
+        if (dropboxMapping?.dropbox_folder_path) {
+          // Create a shared link for the folder
+          // Note: For now, we'll use a direct Dropbox path format
+          // In production, you might want to generate actual shared links
+          const encodedPath = encodeURIComponent(dropboxMapping.dropbox_folder_path);
+          propertyUnitFolderLink = `https://www.dropbox.com/home${encodedPath}`;
+        }
+      }
+
       // Generate email template
       const defaultSubject = `New site for Review – ${siteSubmitData.property?.property_name || 'Untitled'} – ${siteSubmitData.client?.client_name || 'N/A'}`;
-      const defaultBody = generateEmailTemplate(siteSubmitData, uniqueContacts, userData);
+      const defaultBody = generateEmailTemplate(siteSubmitData, uniqueContacts, userData, propertyUnitFolderLink);
 
       setEmailDefaultData({
         subject: defaultSubject,
@@ -519,13 +538,14 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
     }
   };
 
-  const generateEmailTemplate = (siteSubmit: any, contacts: any[], userData: any): string => {
+  const generateEmailTemplate = (siteSubmit: any, contacts: any[], userData: any, propertyUnitFolderLink: string | null = null): string => {
     return generateSiteSubmitEmailTemplate({
       siteSubmit,
       property: siteSubmit.property,
       propertyUnit: siteSubmit.property_unit,
       contacts,
       userData,
+      propertyUnitFolderLink,
     });
   };
 

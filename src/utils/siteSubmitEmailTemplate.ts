@@ -11,10 +11,11 @@ export interface SiteSubmitEmailData {
   propertyUnit: any;
   contacts: any[];
   userData: any;
+  propertyUnitFolderLink?: string | null; // Dropbox shared link to property unit folder
 }
 
 export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): string {
-  const { siteSubmit, property, propertyUnit, contacts, userData } = data;
+  const { siteSubmit, property, propertyUnit, contacts, userData, propertyUnitFolderLink } = data;
 
   // Helper: Format currency
   const formatCurrency = (value: number | null | undefined) => {
@@ -110,7 +111,7 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
   emailHtml += `</p>`;
 
   // Supporting Files Section
-  const hasFiles = property?.marketing_materials || property?.site_plan || property?.demographics;
+  const hasFiles = property?.marketing_materials || property?.site_plan || property?.demographics || propertyUnitFolderLink;
   if (hasFiles) {
     emailHtml += `<br/>`;
     emailHtml += `<p><strong>Supporting Files:</strong><br/>`;
@@ -122,6 +123,9 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
     }
     if (property?.demographics) {
       emailHtml += `<a href="${property.demographics}">Demographics</a><br/>`;
+    }
+    if (propertyUnitFolderLink) {
+      emailHtml += `<a href="${propertyUnitFolderLink}">Unit Files</a><br/>`;
     }
     emailHtml += `</p>`;
   }
