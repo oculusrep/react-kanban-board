@@ -247,9 +247,40 @@ export function useDropboxFiles(
 
       console.log(`📁 Creating Dropbox folder for ${entityType}: ${entityName}`);
 
-      // Create folder in Dropbox
-      const folder = await dropboxService.createFolderForEntity(entityType, entityName);
-      const newFolderPath = folder.path;
+      let newFolderPath: string;
+
+      // Special handling for property_unit - nest under parent property
+      if (entityType === 'property_unit') {
+        // Get the parent property info
+        const { data: unitData, error: unitError } = await supabase
+          .from('property_unit')
+          .select('property_id, property!property_id(property_name)')
+          .eq('id', entityId)
+          .single();
+
+        if (unitError || !unitData) {
+          throw new Error('Could not fetch property unit parent property');
+        }
+
+        const propertyName = (unitData.property as any)?.property_name;
+        if (!propertyName) {
+          throw new Error('Property name not found for unit');
+        }
+
+        // Build nested path: /Salesforce Documents/Properties/[Property Name]/Units/[Unit Name]
+        const cleanPropertyName = propertyName.replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, ' ').trim();
+        const cleanUnitName = entityName.replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, ' ').trim();
+        newFolderPath = `/Salesforce Documents/Properties/${cleanPropertyName}/Units/${cleanUnitName}`;
+
+        console.log(`📁 Creating nested unit folder under property: ${newFolderPath}`);
+
+        // Create the folder manually (since dropboxService doesn't support property_unit)
+        await dropboxService.createFolder(newFolderPath);
+      } else {
+        // Create folder in Dropbox for standard entity types
+        const folder = await dropboxService.createFolderForEntity(entityType as any, entityName);
+        newFolderPath = folder.path;
+      }
 
       console.log(`✅ Created Dropbox folder: ${newFolderPath}`);
 
