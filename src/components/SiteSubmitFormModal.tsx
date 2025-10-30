@@ -558,6 +558,10 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
       emailHtml += `<strong>Address:</strong> ${address}<br/>`;
     }
 
+    if (propertyUnit?.property_unit_name) {
+      emailHtml += `<strong>Unit:</strong> ${propertyUnit.property_unit_name}<br/>`;
+    }
+
     if (propertyUnit?.sqft) {
       emailHtml += `<strong>Available Sqft:</strong> ${propertyUnit.sqft.toLocaleString()}<br/>`;
     } else if (property?.available_sqft) {

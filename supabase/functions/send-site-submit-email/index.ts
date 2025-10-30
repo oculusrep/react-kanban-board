@@ -6,6 +6,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+interface Attachment {
+  filename: string
+  content: string // Base64 encoded
+  content_type: string
+}
+
 interface SiteSubmitEmailRequest {
   siteSubmitId: string
   submitterEmail?: string
@@ -15,6 +21,7 @@ interface SiteSubmitEmailRequest {
     bcc: string[]
     subject: string
     htmlBody: string
+    attachments?: Attachment[]
   }
 }
 
@@ -80,6 +87,26 @@ serve(async (req) => {
         fromAddress = Deno.env.get('RESEND_FROM_EMAIL') ?? 'onboarding@resend.dev'
       }
 
+      // Prepare email payload
+      const emailPayload: any = {
+        from: fromAddress,
+        reply_to: userEmail || undefined,
+        to: customEmail.to,
+        cc: customEmail.cc.length > 0 ? customEmail.cc : undefined,
+        bcc: customEmail.bcc.length > 0 ? customEmail.bcc : undefined,
+        subject: customEmail.subject,
+        html: customEmail.htmlBody,
+      }
+
+      // Add attachments if provided
+      if (customEmail.attachments && customEmail.attachments.length > 0) {
+        emailPayload.attachments = customEmail.attachments.map((att: Attachment) => ({
+          filename: att.filename,
+          content: att.content,
+          content_type: att.content_type,
+        }))
+      }
+
       // Send email to actual recipients
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
@@ -87,15 +114,7 @@ serve(async (req) => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${resendApiKey}`,
         },
-        body: JSON.stringify({
-          from: fromAddress,
-          reply_to: userEmail || undefined,
-          to: customEmail.to,
-          cc: customEmail.cc.length > 0 ? customEmail.cc : undefined,
-          bcc: customEmail.bcc.length > 0 ? customEmail.bcc : undefined,
-          subject: customEmail.subject,
-          html: customEmail.htmlBody,
-        }),
+        body: JSON.stringify(emailPayload),
       })
 
       if (!res.ok) {

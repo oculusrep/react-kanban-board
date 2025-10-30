@@ -36,12 +36,19 @@ interface EmailComposerModalProps {
   siteSubmitName: string;
 }
 
+export interface Attachment {
+  filename: string;
+  content: string; // Base64 encoded
+  content_type: string;
+}
+
 export interface EmailData {
   to: string[];
   cc: string[];
   bcc: string[];
   subject: string;
   htmlBody: string;
+  attachments?: Attachment[];
 }
 
 const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
@@ -60,6 +67,7 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
   const [emailBody, setEmailBody] = useState('');
   const [sending, setSending] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -70,6 +78,7 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
       setSubject(defaultSubject);
       setEmailBody(defaultBody);
       setShowPreview(false);
+      setAttachments([]);
     }
   }, [isOpen, defaultRecipients, defaultSubject, defaultBody]);
 
@@ -122,6 +131,66 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const newAttachments: Attachment[] = [];
+    const maxSize = 40 * 1024 * 1024; // 40MB limit for Resend
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+
+      if (file.size > maxSize) {
+        alert(`File ${file.name} is too large. Maximum size is 40MB.`);
+        continue;
+      }
+
+      try {
+        const base64 = await fileToBase64(file);
+        newAttachments.push({
+          filename: file.name,
+          content: base64,
+          content_type: file.type || 'application/octet-stream',
+        });
+      } catch (error) {
+        console.error(`Error reading file ${file.name}:`, error);
+        alert(`Failed to read file ${file.name}`);
+      }
+    }
+
+    setAttachments([...attachments, ...newAttachments]);
+    // Reset input so same file can be selected again
+    e.target.value = '';
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          // Remove data URL prefix to get just the base64 string
+          const base64 = reader.result.split(',')[1];
+          resolve(base64);
+        } else {
+          reject(new Error('Failed to read file as base64'));
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleRemoveAttachment = (index: number) => {
+    setAttachments(attachments.filter((_, i) => i !== index));
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  };
+
   const handleSend = async () => {
     if (toRecipients.length === 0) {
       alert('Please add at least one recipient');
@@ -141,6 +210,7 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
         bcc: bccRecipients,
         subject,
         htmlBody: emailBody,
+        attachments: attachments.length > 0 ? attachments : undefined,
       });
       // Don't close immediately - let parent handle closing
       // onClose();
@@ -223,6 +293,59 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
               />
             </div>
 
+            {/* Attachments */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Attachments
+              </label>
+              <div className="flex items-center gap-2">
+                <label className="cursor-pointer px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus-within:ring-2 focus-within:ring-blue-500">
+                  <input
+                    type="file"
+                    multiple
+                    onChange={handleFileSelect}
+                    className="sr-only"
+                  />
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                  </svg>
+                  Attach Files
+                </label>
+                <span className="text-xs text-gray-500">Max 40MB per email</span>
+              </div>
+
+              {/* Attached Files List */}
+              {attachments.length > 0 && (
+                <div className="mt-2 space-y-2">
+                  {attachments.map((attachment, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-2 bg-gray-50 border border-gray-200 rounded-md"
+                    >
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span className="text-sm text-gray-700 truncate">{attachment.filename}</span>
+                        <span className="text-xs text-gray-500 flex-shrink-0">
+                          ({formatFileSize(Math.round(attachment.content.length * 0.75))})
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveAttachment(index)}
+                        className="ml-2 text-red-600 hover:text-red-800"
+                        title="Remove attachment"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Preview/Edit Toggle */}
             <div className="mb-2 flex items-center space-x-2">
               <button
@@ -264,6 +387,7 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
               {toRecipients.length} recipient{toRecipients.length !== 1 ? 's' : ''}
               {ccRecipients.length > 0 && `, ${ccRecipients.length} CC`}
               {bccRecipients.length > 0 && `, ${bccRecipients.length} BCC`}
+              {attachments.length > 0 && `, ${attachments.length} attachment${attachments.length !== 1 ? 's' : ''}`}
             </div>
             <div className="flex space-x-3">
               <button
