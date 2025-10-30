@@ -723,6 +723,11 @@ const SiteSubmitDetailsPage: React.FC = () => {
       emailHtml += `<strong>Address:</strong> ${address}<br/>`;
     }
 
+    // Unit Name (if property unit exists)
+    if (propertyUnit?.property_unit_name) {
+      emailHtml += `<strong>Unit Name:</strong> ${propertyUnit.property_unit_name}<br/>`;
+    }
+
     // Line 7: Available Sqft / Acres (complex conditional logic)
     if (propertyUnit?.sqft) {
       emailHtml += `<strong>Available Sqft:</strong> ${propertyUnit.sqft.toLocaleString()}<br/>`;
@@ -847,7 +852,11 @@ const SiteSubmitDetailsPage: React.FC = () => {
     emailHtml += `<br/><br/>`;
     emailHtml += `<p>Thanks!<br/><br/>`;
     emailHtml += `${userData?.first_name || ''} ${userData?.last_name || ''}<br/>`;
-    emailHtml += `${userData?.email || ''}</p>`;
+    emailHtml += `${userData?.email || ''}`;
+    if (userData?.mobile_phone) {
+      emailHtml += `<br/>M: ${userData.mobile_phone}`;
+    }
+    emailHtml += `</p>`;
 
     return emailHtml;
   };
