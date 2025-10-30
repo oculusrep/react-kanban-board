@@ -173,6 +173,7 @@ Located in `features/` - Comprehensive test suites for major features.
 
 **Current Tests**:
 - `site-submits.md` - Full test suite for site submit functionality
+- `property-unit-files.md` - Full test suite for property unit file management
 
 ### Integration Tests
 Located in `integration/` - End-to-end testing scenarios across multiple features.
