@@ -5,6 +5,7 @@ import PropertySquareFootageField from './PropertySquareFootageField';
 import PropertyCurrencyField from './PropertyCurrencyField';
 import { useToast } from '../../hooks/useToast';
 import Toast from '../Toast';
+import FileManagerModule from '../sidebar/FileManagerModule';
 
 type PropertyUnit = Database['public']['Tables']['property_unit']['Row'];
 
@@ -577,6 +578,16 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
                           onChange={(checked) => updateUnit(unit.id, 'second_gen_restaurant', checked)}
                         />
                       </div>
+                    </div>
+
+                    {/* Unit Files */}
+                    <div className="pt-2 border-t border-gray-100">
+                      <FileManagerModule
+                        entityType="property_unit"
+                        entityId={unit.id}
+                        isExpanded={true}
+                        onToggle={() => {}}
+                      />
                     </div>
                   </div>
                 )}

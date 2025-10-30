@@ -18,13 +18,13 @@ interface UseDropboxFilesReturn {
 }
 
 /**
- * React hook to manage Dropbox files for a specific entity (client/property/deal)
- * @param entityType - Type of entity: 'client' | 'property' | 'deal'
+ * React hook to manage Dropbox files for a specific entity (client/property/deal/property_unit)
+ * @param entityType - Type of entity: 'client' | 'property' | 'deal' | 'contact' | 'property_unit'
  * @param entityId - UUID of the entity
  * @returns Object containing files, loading states, and file management functions
  */
 export function useDropboxFiles(
-  entityType: 'client' | 'property' | 'deal' | 'contact',
+  entityType: 'client' | 'property' | 'deal' | 'contact' | 'property_unit',
   entityId: string | null
 ): UseDropboxFilesReturn {
   const [files, setFiles] = useState<DropboxFile[]>([]);
@@ -197,6 +197,10 @@ export function useDropboxFiles(
         case 'contact':
           tableName = 'contact';
           nameField = 'first_name,last_name';
+          break;
+        case 'property_unit':
+          tableName = 'property_unit';
+          nameField = 'property_unit_name';
           break;
         default:
           return null;
