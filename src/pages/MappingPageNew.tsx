@@ -183,6 +183,68 @@ const MappingPageContent: React.FC = () => {
     }
   }, [location.search, refreshLayer]);
 
+  // Handle site submit verification from URL parameter
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const siteSubmitId = params.get('site-submit');
+    const verifyMode = params.get('verify') === 'true';
+
+    if (siteSubmitId && verifyMode && mapInstance) {
+      console.log('📍 Site submit verification requested:', siteSubmitId);
+
+      // Fetch the site submit to get its coordinates
+      supabase
+        .from('site_submit')
+        .select(`
+          id,
+          site_submit_name,
+          verified_latitude,
+          verified_longitude,
+          property!site_submit_property_id_fkey (
+            latitude,
+            longitude,
+            verified_latitude,
+            verified_longitude
+          )
+        `)
+        .eq('id', siteSubmitId)
+        .single()
+        .then(({ data, error }) => {
+          if (error || !data) {
+            console.error('Failed to fetch site submit:', error);
+            showToast('Site submit not found', 'error');
+            return;
+          }
+
+          // Determine coordinates to use (priority: verified site submit coords > property coords)
+          let lat = data.verified_latitude;
+          let lng = data.verified_longitude;
+
+          // Fallback to property coordinates if site submit doesn't have verified coords
+          if (!lat || !lng) {
+            lat = data.property?.verified_latitude ?? data.property?.latitude;
+            lng = data.property?.verified_longitude ?? data.property?.longitude;
+          }
+
+          if (lat && lng) {
+            // Zoom to the location
+            mapInstance.setCenter({ lat, lng });
+            mapInstance.setZoom(18);
+
+            // Open the pin details slideout for this site submit
+            setSelectedPinData(data);
+            setSelectedPinType('site_submit');
+            setPinDetailsInitialTab('location');
+            setIsPinDetailsOpen(true);
+
+            showToast(`Zoomed to ${data.site_submit_name || 'Site Submit'} - Drag the pin to verify location`, 'success');
+          } else {
+            showToast('This site submit has no coordinates. Please add property coordinates first.', 'warning');
+          }
+        });
+    }
+  }, [location.search, mapInstance]);
+
   const handleMapLoad = (map: google.maps.Map) => {
     setMapInstance(map);
     console.log('Map loaded successfully:', map);

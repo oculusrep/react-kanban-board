@@ -747,6 +747,16 @@ const SiteSubmitDetailsPage: React.FC = () => {
                 {!isNewSiteSubmit && (
                   <>
                     <button
+                      onClick={() => window.open(`/map?site-submit=${siteSubmitId}&verify=true`, '_blank')}
+                      className="px-3 py-1.5 text-xs font-medium text-white bg-purple-600 border border-transparent rounded hover:bg-purple-700 flex items-center gap-1.5"
+                      title="Open map to verify location"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                      </svg>
+                      Verify Location
+                    </button>
+                    <button
                       onClick={handleSendEmail}
                       disabled={sendingEmail || loading}
                       className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 border border-transparent rounded hover:bg-green-700 disabled:opacity-50 flex items-center gap-1.5"

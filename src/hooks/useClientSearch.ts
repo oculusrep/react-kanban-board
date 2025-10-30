@@ -64,12 +64,12 @@ export const useClientSearch = () => {
             .select('*', { count: 'exact', head: true })
             .eq('client_id', client.id);
 
-          // Count site submits with coordinates (either sf_property or verified)
+          // Count all site submits for this client
+          // Note: Coordinate filtering happens in the map layer via getDisplayCoordinates()
           const { count: siteSubmitCount } = await supabase
             .from('site_submit')
             .select('*', { count: 'exact', head: true })
-            .eq('client_id', client.id)
-            .or('and(sf_property_latitude.not.is.null,sf_property_longitude.not.is.null),and(verified_latitude.not.is.null,verified_longitude.not.is.null)');
+            .eq('client_id', client.id);
 
           return {
             id: client.id,
@@ -133,12 +133,12 @@ export const useClientSearch = () => {
             .select('*', { count: 'exact', head: true })
             .eq('client_id', client.id);
 
-          // Count site submits with coordinates (either sf_property or verified)
+          // Count all site submits for this client
+          // Note: Coordinate filtering happens in the map layer via getDisplayCoordinates()
           const { count: siteSubmitCount } = await supabase
             .from('site_submit')
             .select('*', { count: 'exact', head: true })
-            .eq('client_id', client.id)
-            .or('and(sf_property_latitude.not.is.null,sf_property_longitude.not.is.null),and(verified_latitude.not.is.null,verified_longitude.not.is.null)');
+            .eq('client_id', client.id);
 
           return {
             id: client.id,

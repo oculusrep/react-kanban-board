@@ -186,6 +186,7 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
   const [contacts, setContacts] = useState<PropertyContactWithDetails[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
+  const [propertyCoordinates, setPropertyCoordinates] = useState<{ latitude: number | null; longitude: number | null }>({ latitude: null, longitude: null });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false); // For creating new
@@ -241,26 +242,34 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
           });
         }
 
-        // Check for primary contact
+        // Check for primary contact and load property coordinates
         const { data: property, error: propertyError } = await supabase
           .from('property')
-          .select('contact_id')
+          .select('contact_id, latitude, longitude, verified_latitude, verified_longitude')
           .eq('id', propertyId)
           .single();
 
-        if (!propertyError && property?.contact_id) {
-          const primaryContactIndex = contactsData.findIndex(c => c.id === property.contact_id);
-          if (primaryContactIndex >= 0) {
-            contactsData[primaryContactIndex].isPrimaryContact = true;
-          } else {
-            const { data: primaryContact } = await supabase
-              .from('contact')
-              .select('*')
-              .eq('id', property.contact_id)
-              .single();
+        if (!propertyError && property) {
+          // Store property coordinates (prefer verified, fallback to regular)
+          const lat = property.verified_latitude ?? property.latitude;
+          const lng = property.verified_longitude ?? property.longitude;
+          setPropertyCoordinates({ latitude: lat, longitude: lng });
 
-            if (primaryContact) {
-              contactsData.unshift({ ...primaryContact, isPrimaryContact: true });
+          // Handle primary contact
+          if (property.contact_id) {
+            const primaryContactIndex = contactsData.findIndex(c => c.id === property.contact_id);
+            if (primaryContactIndex >= 0) {
+              contactsData[primaryContactIndex].isPrimaryContact = true;
+            } else {
+              const { data: primaryContact } = await supabase
+                .from('contact')
+                .select('*')
+                .eq('id', property.contact_id)
+                .single();
+
+              if (primaryContact) {
+                contactsData.unshift({ ...primaryContact, isPrimaryContact: true });
+              }
             }
           }
         }
@@ -522,6 +531,8 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
           onSiteSubmitModalChange?.(false);
         }}
         propertyId={propertyId}
+        initialLatitude={propertyCoordinates.latitude ?? undefined}
+        initialLongitude={propertyCoordinates.longitude ?? undefined}
         onSave={(newSiteSubmit) => {
           setSiteSubmits(prev => [newSiteSubmit, ...prev]);
           setShowSiteSubmitModal(false);

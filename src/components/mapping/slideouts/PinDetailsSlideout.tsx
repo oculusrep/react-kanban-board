@@ -1099,8 +1099,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           delivery_timeframe: formData.deliveryTimeframe || null,
           notes: formData.notes || null,
           customer_comments: formData.customerComments || null,
-          sf_property_latitude: propertyCoords.lat,  // Required for map pin
-          sf_property_longitude: propertyCoords.lng, // Required for map pin
+          verified_latitude: propertyCoords.lat,  // User-verified coordinates from map pin
+          verified_longitude: propertyCoords.lng, // User-verified coordinates from map pin
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };

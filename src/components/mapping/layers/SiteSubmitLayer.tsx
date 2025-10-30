@@ -93,8 +93,9 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Function to get display coordinates (verified takes priority over sf_property coordinates)
+  // Function to get display coordinates (priority: verified site submit coords > property coords)
   const getDisplayCoordinates = (siteSubmit: SiteSubmit) => {
+    // First priority: Verified site submit coordinates
     if (siteSubmit.verified_latitude && siteSubmit.verified_longitude) {
       return {
         lat: siteSubmit.verified_latitude,
@@ -102,13 +103,21 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
         verified: true
       };
     }
-    if (siteSubmit.sf_property_latitude && siteSubmit.sf_property_longitude) {
-      return {
-        lat: siteSubmit.sf_property_latitude,
-        lng: siteSubmit.sf_property_longitude,
-        verified: false
-      };
+
+    // Second priority: Property coordinates (prefer verified property coords, fallback to regular)
+    if (siteSubmit.property) {
+      const propertyLat = siteSubmit.property.verified_latitude ?? siteSubmit.property.latitude;
+      const propertyLng = siteSubmit.property.verified_longitude ?? siteSubmit.property.longitude;
+
+      if (propertyLat && propertyLng) {
+        return {
+          lat: propertyLat,
+          lng: propertyLng,
+          verified: false
+        };
+      }
     }
+
     return null;
   };
 
@@ -139,7 +148,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
       console.log('🔍 Testing basic site_submit table access...');
       const { data: testData, error: testError, count } = await supabase
         .from('site_submit')
-        .select('id, site_submit_name, sf_property_latitude, sf_property_longitude', { count: 'exact' })
+        .select('id, site_submit_name, verified_latitude, verified_longitude', { count: 'exact' })
         .limit(5);
 
       if (testError) {
@@ -150,11 +159,19 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
       console.log('✅ Basic site_submit query succeeded:', testData);
       console.log(`📊 Found ${testData?.length || 0} site submit records in basic query (total count: ${count})`);
 
-      // Check for records with coordinates
+      // Check for records with coordinates (including property coords via join)
       const { data: coordData, error: coordError } = await supabase
         .from('site_submit')
-        .select('id, site_submit_name, sf_property_latitude, sf_property_longitude, verified_latitude, verified_longitude')
-        .or('and(sf_property_latitude.not.is.null,sf_property_longitude.not.is.null),and(verified_latitude.not.is.null,verified_longitude.not.is.null)')
+        .select(`
+          id,
+          site_submit_name,
+          verified_latitude,
+          verified_longitude,
+          property!site_submit_property_id_fkey (
+            latitude,
+            longitude
+          )
+        `)
         .limit(10);
 
       if (coordError) {
@@ -163,7 +180,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
       }
 
       console.log('✅ Coordinate query succeeded:', coordData);
-      console.log(`📍 Found ${coordData?.length || 0} site submits with coordinates`);
+      console.log(`📍 Found ${coordData?.length || 0} site submits (will filter for coordinates in app logic)`);
 
       // Use correct foreign key syntax like other components
       let query = supabase
@@ -175,8 +192,6 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
           assignment_id,
           property_id,
           submit_stage_id,
-          sf_property_latitude,
-          sf_property_longitude,
           verified_latitude,
           verified_longitude,
           notes,
@@ -222,8 +237,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
           property_unit!site_submit_property_unit_id_fkey (
             property_unit_name
           )
-        `)
-        .or('and(sf_property_latitude.not.is.null,sf_property_longitude.not.is.null),and(verified_latitude.not.is.null,verified_longitude.not.is.null)');
+        `);
 
       console.log('🔍 Using correct foreign key syntax...');
 
@@ -265,8 +279,6 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
                 assignment_id,
                 property_id,
                 submit_stage_id,
-                sf_property_latitude,
-                sf_property_longitude,
                 verified_latitude,
                 verified_longitude,
                 notes,
@@ -312,7 +324,6 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
                   property_unit_name
                 )
               `)
-              .or('and(sf_property_latitude.not.is.null,sf_property_longitude.not.is.null),and(verified_latitude.not.is.null,verified_longitude.not.is.null)')
               .range(pageStart, pageStart + pageSize - 1)
               .order('id');
 

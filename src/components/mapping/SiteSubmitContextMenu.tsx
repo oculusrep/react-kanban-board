@@ -6,8 +6,6 @@ interface SiteSubmit {
   client_id: string | null;
   property_id: string | null;
   submit_stage_id: string | null;
-  sf_property_latitude: number;
-  sf_property_longitude: number;
   verified_latitude?: number;
   verified_longitude?: number;
   notes?: string;
@@ -25,6 +23,10 @@ interface SiteSubmit {
     id: string;
     property_name?: string;
     address: string;
+    latitude?: number;
+    longitude?: number;
+    verified_latitude?: number;
+    verified_longitude?: number;
   };
 }
 
@@ -52,10 +54,20 @@ const SiteSubmitContextMenu: React.FC<SiteSubmitContextMenuProps> = ({
   if (!isVisible || !siteSubmit) return null;
 
   const getDisplayCoordinates = () => {
+    // Priority: verified site submit coords > property coords
     if (siteSubmit.verified_latitude && siteSubmit.verified_longitude) {
       return `${siteSubmit.verified_latitude}, ${siteSubmit.verified_longitude}`;
     }
-    return `${siteSubmit.sf_property_latitude}, ${siteSubmit.sf_property_longitude}`;
+
+    // Fallback to property coordinates
+    const propertyLat = siteSubmit.property?.verified_latitude ?? siteSubmit.property?.latitude;
+    const propertyLng = siteSubmit.property?.verified_longitude ?? siteSubmit.property?.longitude;
+
+    if (propertyLat && propertyLng) {
+      return `${propertyLat}, ${propertyLng}`;
+    }
+
+    return 'No coordinates';
   };
 
   const isVerifiedLocation = siteSubmit.verified_latitude && siteSubmit.verified_longitude;
