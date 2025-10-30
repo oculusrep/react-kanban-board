@@ -252,17 +252,23 @@ export function useDropboxFiles(
       // Special handling for property_unit - nest under parent property
       if (entityType === 'property_unit') {
         // Get the parent property info
+        console.log('🔍 Fetching parent property for unit:', entityId);
         const { data: unitData, error: unitError } = await supabase
           .from('property_unit')
-          .select('property_id, property!property_id(property_name)')
+          .select('property_id, property:property_id(property_name)')
           .eq('id', entityId)
           .single();
 
+        console.log('📊 Unit data result:', { unitData, unitError });
+
         if (unitError || !unitData) {
-          throw new Error('Could not fetch property unit parent property');
+          console.error('❌ Error fetching property unit parent:', unitError);
+          throw new Error(`Could not fetch property unit parent property: ${unitError?.message || 'Unknown error'}`);
         }
 
         const propertyName = (unitData.property as any)?.property_name;
+        console.log('🏢 Property name:', propertyName);
+
         if (!propertyName) {
           throw new Error('Property name not found for unit');
         }
