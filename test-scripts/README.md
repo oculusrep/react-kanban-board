@@ -160,15 +160,39 @@ These tests can be integrated into a CI/CD pipeline:
 
 ---
 
+## Test Organization
+
+### Regression Tests
+Located in `regression/` - Tests for specific bug fixes to prevent regressions.
+
+**Current Tests**:
+- `site-submit-stage-display.md` - Verifies site submit stage names display correctly in sidebars
+
+### Feature Tests
+Located in `features/` - Comprehensive test suites for major features.
+
+**Current Tests**:
+- `site-submits.md` - Full test suite for site submit functionality
+
+### Integration Tests
+Located in `integration/` - End-to-end testing scenarios across multiple features.
+
+---
+
 ## Adding New Tests
 
 To add new test scripts:
 
-1. Create a new `.js` file in this folder
-2. Follow the naming convention: `test-[feature-name].js`
-3. Include clear console output with colors
-4. Document usage in this README
-5. Add corresponding manual test cases if needed
+1. **Automated Tests**: Create a new `.js` file in this folder
+   - Follow naming convention: `test-[feature-name].js`
+   - Include clear console output with colors
+   - Document usage in this README
+
+2. **Manual Tests**: Create a `.md` file in the appropriate subfolder
+   - `regression/` for bug fix verification
+   - `features/` for feature test suites
+   - `integration/` for cross-feature scenarios
+   - Follow the test case format (Prerequisites, Steps, Expected Results)
 
 ---
 
