@@ -1256,6 +1256,20 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
   const availableTabs = getAvailableTabs();
 
+  // Handle tab click - for site submits, clicking PROPERTY tab opens property sidebar
+  const handleTabClick = (tabId: TabType) => {
+    // If it's a site submit and clicking the PROPERTY tab (which has id 'location')
+    if (!isProperty && tabId === 'location' && onViewPropertyDetails) {
+      const property = siteSubmit?.property || (data as SiteSubmit)?.property;
+      if (property) {
+        onViewPropertyDetails(property);
+        return; // Don't switch tabs, open property sidebar instead
+      }
+    }
+    // Otherwise, normal tab switching
+    setActiveTab(tabId);
+  };
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'submit':
@@ -1992,7 +2006,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
             {availableTabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabClick(tab.id)}
                 className={`relative flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-medium transition-all duration-200 border-b-2 ${
                   activeTab === tab.id
                     ? 'border-blue-500 text-blue-600 bg-blue-50/50'
