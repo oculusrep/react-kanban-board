@@ -469,6 +469,11 @@ Property units now support file management through Dropbox integration. Each pro
 - First upload to a unit auto-creates the Dropbox folder
 - Folder paths use the property name and unit name for organization
 
+## Related Documentation
+
+- [Property Unit File Management Documentation](/docs/property-unit-file-management.md) - Complete technical documentation
+- [Property Unit File Management Test Suite](/test-scripts/features/property-unit-files.md) - This test suite
+
 ## Related Files
 
 - `/Users/mike/Documents/GitHub/react-kanban-board/src/hooks/useDropboxFiles.ts` (Extended to support property_unit)
