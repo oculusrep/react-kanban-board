@@ -156,7 +156,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
 
   // Handle verify location - open map with site submit verification
   const handleVerifyLocation = () => {
-    const mapUrl = `/map?site-submit=${siteSubmitId}&verify=true`;
+    const mapUrl = `/mapping?site-submit=${siteSubmitId}&verify=true`;
 
     if (isInIframe) {
       // If in iframe (slideout), open in parent window's new tab
