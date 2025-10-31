@@ -6,21 +6,28 @@ interface SiteSubmitSlideOutProps {
   onClose: () => void;
   siteSubmitId: string;
   propertySlideoutOpen?: boolean;
+  propertySlideoutMinimized?: boolean;
 }
 
 export default function SiteSubmitSlideOut({
   isOpen,
   onClose,
   siteSubmitId,
-  propertySlideoutOpen = false
+  propertySlideoutOpen = false,
+  propertySlideoutMinimized = false
 }: SiteSubmitSlideOutProps) {
+  // Calculate rightOffset based on property slideout state
+  const rightOffset = propertySlideoutOpen
+    ? (propertySlideoutMinimized ? 48 : 900)  // 48px when minimized, 900px when expanded
+    : 0;  // 0 when closed
+
   return (
     <SlideOutPanel
       isOpen={isOpen}
       onClose={onClose}
       title="Site Submit Details"
       width="800px"
-      rightOffset={propertySlideoutOpen ? 900 : 0}
+      rightOffset={rightOffset}
       canMinimize={true}
     >
       <iframe

@@ -9,6 +9,8 @@ interface SlideOutPanelProps {
   width?: string; // e.g., '500px', '50%', etc.
   canMinimize?: boolean;
   rightOffset?: number; // Offset from right edge in pixels (for layering slideouts)
+  isMinimized?: boolean; // Optional controlled minimize state
+  onMinimizeChange?: (minimized: boolean) => void; // Callback when minimize state changes
 }
 
 export default function SlideOutPanel({
@@ -18,16 +20,21 @@ export default function SlideOutPanel({
   children,
   width = '600px',
   canMinimize = true,
-  rightOffset = 0
+  rightOffset = 0,
+  isMinimized: controlledMinimized,
+  onMinimizeChange
 }: SlideOutPanelProps) {
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [internalMinimized, setInternalMinimized] = useState(false);
 
-  // Reset minimized state when panel closes
+  // Use controlled state if provided, otherwise use internal state
+  const isMinimized = controlledMinimized !== undefined ? controlledMinimized : internalMinimized;
+
+  // Reset minimized state when panel closes (only for uncontrolled mode)
   useEffect(() => {
-    if (!isOpen) {
-      setIsMinimized(false);
+    if (!isOpen && controlledMinimized === undefined) {
+      setInternalMinimized(false);
     }
-  }, [isOpen]);
+  }, [isOpen, controlledMinimized]);
 
   // Prevent body scroll when panel is open (but only if rightOffset === 0, meaning it's the leftmost panel)
   useEffect(() => {
@@ -78,8 +85,16 @@ export default function SlideOutPanel({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              console.log('Minimize button clicked, current state:', isMinimized);
-              setIsMinimized(!isMinimized);
+              const newMinimized = !isMinimized;
+              console.log('Minimize button clicked, new state:', newMinimized);
+
+              // Update internal state if uncontrolled
+              if (controlledMinimized === undefined) {
+                setInternalMinimized(newMinimized);
+              }
+
+              // Notify parent if callback provided
+              onMinimizeChange?.(newMinimized);
             }}
             className="absolute left-0 top-1/2 -translate-x-full -translate-y-1/2 bg-white border border-r-0 border-gray-300 rounded-l-lg p-2 hover:bg-gray-50 transition-colors shadow-lg z-[100] cursor-pointer"
             aria-label={isMinimized ? 'Expand panel' : 'Minimize panel'}
@@ -112,7 +127,7 @@ export default function SlideOutPanel({
 
         {/* Minimized state - show title vertically */}
         {isMinimized && (
-          <div className="flex-1 flex items-center justify-center">
+          <div className="absolute left-1/2 -translate-x-1/2" style={{ top: 'calc(50% - 100px)' }}>
             <div className="transform -rotate-90 whitespace-nowrap text-sm font-medium text-gray-700">
               {title}
             </div>

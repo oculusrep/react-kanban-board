@@ -243,6 +243,9 @@ export default function Navbar() {
     propertyId: null,
   });
 
+  // Track property slideout minimize state
+  const [propertyMinimized, setPropertyMinimized] = useState(false);
+
   const linkClass = (path: string) =>
     `px-4 py-2 rounded hover:bg-blue-100 ${
       location.pathname === path ? "bg-blue-200 font-semibold" : ""
@@ -1014,6 +1017,7 @@ export default function Navbar() {
           onClose={() => setSiteSubmitSlideout({ isOpen: false, siteSubmitId: null })}
           siteSubmitId={siteSubmitSlideout.siteSubmitId}
           propertySlideoutOpen={propertyDetailsSlideout.isOpen}
+          propertySlideoutMinimized={propertyMinimized}
         />
       )}
 
@@ -1022,8 +1026,13 @@ export default function Navbar() {
         <PropertyDetailsSlideOut
           key={`navbar-property-${propertyDetailsSlideout.propertyId}`}
           isOpen={propertyDetailsSlideout.isOpen}
-          onClose={() => setPropertyDetailsSlideout({ isOpen: false, propertyId: null })}
+          onClose={() => {
+            setPropertyDetailsSlideout({ isOpen: false, propertyId: null });
+            setPropertyMinimized(false);
+          }}
           propertyId={propertyDetailsSlideout.propertyId}
+          isMinimized={propertyMinimized}
+          onMinimizeChange={setPropertyMinimized}
         />
       )}
     </nav>

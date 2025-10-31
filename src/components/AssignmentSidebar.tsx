@@ -126,6 +126,9 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
     propertyId: null,
   });
 
+  // Track property slideout minimize state
+  const [propertyMinimized, setPropertyMinimized] = useState(false);
+
   // Expansion state for site submits
   const [expandedSidebarModules, setExpandedSidebarModules] = useState(() => {
     const saved = localStorage.getItem(`expandedSidebarModules_assignment_${assignmentId}`);
@@ -336,6 +339,7 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
             onSiteSubmitModalChange?.(false);
           }}
           propertySlideoutOpen={propertyDetailsSlideout.isOpen}
+          propertySlideoutMinimized={propertyMinimized}
         />
       )}
 
@@ -343,8 +347,13 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
       {propertyDetailsSlideout.isOpen && propertyDetailsSlideout.propertyId && (
         <PropertyDetailsSlideOut
           isOpen={propertyDetailsSlideout.isOpen}
-          onClose={() => setPropertyDetailsSlideout({ isOpen: false, propertyId: null })}
+          onClose={() => {
+            setPropertyDetailsSlideout({ isOpen: false, propertyId: null });
+            setPropertyMinimized(false);
+          }}
           propertyId={propertyDetailsSlideout.propertyId}
+          isMinimized={propertyMinimized}
+          onMinimizeChange={setPropertyMinimized}
         />
       )}
     </>

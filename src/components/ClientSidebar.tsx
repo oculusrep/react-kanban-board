@@ -275,6 +275,9 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
     propertyId: null,
   });
 
+  // Track property slideout minimize state
+  const [propertyMinimized, setPropertyMinimized] = useState(false);
+
   // Expansion states - all collapsed by default
   const [expandedSidebarModules, setExpandedSidebarModules] = useState({
     contacts: false,
@@ -801,6 +804,7 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
             onSiteSubmitModalChange?.(false);
           }}
           propertySlideoutOpen={propertyDetailsSlideout.isOpen}
+          propertySlideoutMinimized={propertyMinimized}
         />
       )}
 
@@ -847,8 +851,13 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
       {propertyDetailsSlideout.isOpen && propertyDetailsSlideout.propertyId && (
         <PropertyDetailsSlideOut
           isOpen={propertyDetailsSlideout.isOpen}
-          onClose={() => setPropertyDetailsSlideout({ isOpen: false, propertyId: null })}
+          onClose={() => {
+            setPropertyDetailsSlideout({ isOpen: false, propertyId: null });
+            setPropertyMinimized(false);
+          }}
           propertyId={propertyDetailsSlideout.propertyId}
+          isMinimized={propertyMinimized}
+          onMinimizeChange={setPropertyMinimized}
         />
       )}
     </>

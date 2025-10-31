@@ -207,6 +207,9 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
     propertyId: null,
   });
 
+  // Track property slideout minimize state
+  const [propertyMinimized, setPropertyMinimized] = useState(false);
+
   // Expansion states
   const getSmartDefaults = () => ({
     contacts: contacts.length > 0,
@@ -577,6 +580,7 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
             onSiteSubmitModalChange?.(false);
           }}
           propertySlideoutOpen={propertyDetailsSlideout.isOpen}
+          propertySlideoutMinimized={propertyMinimized}
         />
       )}
 
@@ -629,8 +633,13 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
       {propertyDetailsSlideout.isOpen && propertyDetailsSlideout.propertyId && (
         <PropertyDetailsSlideOut
           isOpen={propertyDetailsSlideout.isOpen}
-          onClose={() => setPropertyDetailsSlideout({ isOpen: false, propertyId: null })}
+          onClose={() => {
+            setPropertyDetailsSlideout({ isOpen: false, propertyId: null });
+            setPropertyMinimized(false);
+          }}
           propertyId={propertyDetailsSlideout.propertyId}
+          isMinimized={propertyMinimized}
+          onMinimizeChange={setPropertyMinimized}
         />
       )}
     </>

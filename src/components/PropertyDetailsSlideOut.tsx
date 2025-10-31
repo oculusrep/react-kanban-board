@@ -6,6 +6,8 @@ interface PropertyDetailsSlideOutProps {
   isOpen: boolean;
   onClose: () => void;
   propertyId: string;
+  isMinimized?: boolean;
+  onMinimizeChange?: (minimized: boolean) => void;
 }
 
 /**
@@ -17,7 +19,9 @@ interface PropertyDetailsSlideOutProps {
 export default function PropertyDetailsSlideOut({
   isOpen,
   onClose,
-  propertyId
+  propertyId,
+  isMinimized,
+  onMinimizeChange
 }: PropertyDetailsSlideOutProps) {
   return (
     <SlideOutPanel
@@ -26,6 +30,8 @@ export default function PropertyDetailsSlideOut({
       title="Property Details"
       width="900px"
       canMinimize={true}
+      isMinimized={isMinimized}
+      onMinimizeChange={onMinimizeChange}
     >
       <PropertyDetailsSlideoutContent propertyId={propertyId} />
     </SlideOutPanel>

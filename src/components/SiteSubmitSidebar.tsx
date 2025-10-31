@@ -6,6 +6,7 @@ interface SiteSubmitSidebarProps {
   onMinimize?: () => void;
   onClose?: () => void;
   propertySlideoutOpen?: boolean;
+  propertySlideoutMinimized?: boolean;
 }
 
 const SiteSubmitSidebar: React.FC<SiteSubmitSidebarProps> = ({
@@ -13,11 +14,14 @@ const SiteSubmitSidebar: React.FC<SiteSubmitSidebarProps> = ({
   isMinimized = false,
   onMinimize,
   onClose,
-  propertySlideoutOpen = false
+  propertySlideoutOpen = false,
+  propertySlideoutMinimized = false
 }) => {
-  // Calculate right position based on whether property slideout is open
-  // Property slideout is 900px wide, so push site submit sidebar to the left
-  const rightPosition = propertySlideoutOpen ? '900px' : '0';
+  // Calculate right position based on property slideout state
+  // Property slideout is 900px wide when expanded, 48px when minimized
+  const rightPosition = propertySlideoutOpen
+    ? (propertySlideoutMinimized ? '48px' : '900px')
+    : '0';
 
   return (
     <div
