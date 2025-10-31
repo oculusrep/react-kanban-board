@@ -197,7 +197,10 @@ const MappingPageContent: React.FC = () => {
         .from('site_submit')
         .select(`
           *,
-          property:property_id (
+          client!site_submit_client_id_fkey (id, client_name),
+          submit_stage!site_submit_submit_stage_id_fkey (id, name),
+          property_unit!site_submit_property_unit_id_fkey (id, property_unit_name),
+          property!site_submit_property_id_fkey (
             id,
             property_name,
             address,
@@ -208,18 +211,6 @@ const MappingPageContent: React.FC = () => {
             longitude,
             verified_latitude,
             verified_longitude
-          ),
-          client:client_id (
-            id,
-            client_name
-          ),
-          submit_stage:submit_stage_id (
-            id,
-            name
-          ),
-          property_unit:property_unit_id (
-            id,
-            property_unit_name
           )
         `)
         .eq('id', siteSubmitId)
