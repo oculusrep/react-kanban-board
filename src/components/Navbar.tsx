@@ -1020,6 +1020,7 @@ export default function Navbar() {
       {/* Property Details Slideout - Shows to the right of Site Submit Slideout */}
       {propertyDetailsSlideout.isOpen && propertyDetailsSlideout.propertyId && (
         <PropertyDetailsSlideOut
+          key={`navbar-property-${propertyDetailsSlideout.propertyId}`}
           isOpen={propertyDetailsSlideout.isOpen}
           onClose={() => setPropertyDetailsSlideout({ isOpen: false, propertyId: null })}
           propertyId={propertyDetailsSlideout.propertyId}

@@ -21,17 +21,23 @@ export default function SlideOutPanel({
   rightOffset = 0
 }: SlideOutPanelProps) {
   const [isMinimized, setIsMinimized] = useState(false);
-  // Prevent body scroll when panel is open
+
+  // Reset minimized state when panel closes
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
+    if (!isOpen) {
+      setIsMinimized(false);
     }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
   }, [isOpen]);
+
+  // Prevent body scroll when panel is open (but only if rightOffset === 0, meaning it's the leftmost panel)
+  useEffect(() => {
+    if (isOpen && rightOffset === 0 && !isMinimized) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = 'unset';
+      };
+    }
+  }, [isOpen, rightOffset, isMinimized]);
 
   // Handle escape key
   useEffect(() => {
@@ -50,8 +56,8 @@ export default function SlideOutPanel({
 
   return (
     <>
-      {/* Overlay - only show when not minimized */}
-      {!isMinimized && (
+      {/* Overlay - only show when not minimized and this is the rightmost panel (rightOffset === 0) */}
+      {!isMinimized && rightOffset === 0 && (
         <div
           className="fixed inset-0 bg-black bg-opacity-30 z-40 transition-opacity"
           onClick={onClose}
