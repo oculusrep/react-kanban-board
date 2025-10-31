@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import MasterSearchBox from "./MasterSearchBox";
@@ -17,9 +17,10 @@ interface DropdownMenuProps {
   }>;
   recentItems?: RecentItem[];
   onRecentItemClick?: (item: RecentItem) => void;
+  onTitleClick?: () => void; // Optional: Navigate when clicking the title (not the arrow)
 }
 
-const DropdownMenu: React.FC<DropdownMenuProps> = ({ title, items, recentItems, onRecentItemClick }) => {
+const DropdownMenu: React.FC<DropdownMenuProps> = ({ title, items, recentItems, onRecentItemClick, onTitleClick }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [currentRecentItems, setCurrentRecentItems] = useState(recentItems || []);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -62,20 +63,53 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ title, items, recentItems, 
 
   return (
     <div className="relative" ref={dropdownRef}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center px-4 py-2 rounded hover:bg-blue-100 transition-colors"
-      >
-        {title}
-        <svg 
-          className={`w-4 h-4 ml-1 transition-transform ${isOpen ? 'rotate-180' : ''}`} 
-          fill="none" 
-          stroke="currentColor" 
-          viewBox="0 0 24 24"
+      {onTitleClick ? (
+        // Split button: title navigates, arrow opens dropdown
+        <div className="flex items-center rounded overflow-hidden">
+          {/* Title button - navigates when clicked */}
+          <button
+            onClick={onTitleClick}
+            className="px-4 py-2 hover:bg-blue-100 transition-colors"
+          >
+            {title}
+          </button>
+
+          {/* Dropdown arrow button - opens menu */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsOpen(!isOpen);
+            }}
+            className="px-2 py-2 hover:bg-blue-100 transition-colors border-l border-gray-200"
+            aria-label={`Open ${title} menu`}
+          >
+            <svg
+              className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        </div>
+      ) : (
+        // Single button: opens dropdown (default behavior)
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex items-center px-4 py-2 rounded hover:bg-blue-100 transition-colors"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
+          {title}
+          <svg
+            className={`w-4 h-4 ml-1 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      )}
 
       {isOpen && (
         <div className="absolute left-0 mt-2 w-64 bg-white border border-gray-200 rounded-md shadow-lg z-50">
@@ -472,6 +506,7 @@ export default function Navbar() {
             items={assignmentsItems}
             recentItems={getRecentItems('assignment')}
             onRecentItemClick={handleRecentItemClick}
+            onTitleClick={() => navigate('/reports/assignments')}
             key={`assignments-${refreshTrigger}`}
           />
           <DropdownMenu
