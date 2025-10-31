@@ -154,6 +154,19 @@ const SiteSubmitDetailsPage: React.FC = () => {
     }
   };
 
+  // Handle verify location - open map with site submit verification
+  const handleVerifyLocation = () => {
+    const mapUrl = `/map?site-submit=${siteSubmitId}&verify=true`;
+
+    if (isInIframe) {
+      // If in iframe (slideout), open in parent window's new tab
+      window.parent.open(mapUrl, '_blank');
+    } else {
+      // If standalone page, open normally
+      window.open(mapUrl, '_blank');
+    }
+  };
+
   // Fetch property details when property changes
   useEffect(() => {
     if (formData.property_id) {
@@ -780,7 +793,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
                 {!isNewSiteSubmit && (
                   <>
                     <button
-                      onClick={() => window.open(`/map?site-submit=${siteSubmitId}&verify=true`, '_blank')}
+                      onClick={handleVerifyLocation}
                       className="px-3 py-1.5 text-xs font-medium text-white bg-purple-600 border border-transparent rounded hover:bg-purple-700 flex items-center gap-1.5"
                       title="Open map to verify location"
                     >
