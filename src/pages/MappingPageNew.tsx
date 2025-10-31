@@ -139,6 +139,7 @@ const MappingPageContent: React.FC = () => {
 
   // Site submit verification state
   const [verifyingSiteSubmitId, setVerifyingSiteSubmitId] = useState<string | null>(null);
+  const [verifyingSiteSubmit, setVerifyingSiteSubmit] = useState<any>(null);
 
   // Flag to prevent property context menu when site submit was just clicked
   const [suppressPropertyContextMenu, setSuppressPropertyContextMenu] = useState<boolean>(false);
@@ -245,6 +246,7 @@ const MappingPageContent: React.FC = () => {
 
             // Set verifying state so the SiteSubmitLayer creates a marker for this site submit
             setVerifyingSiteSubmitId(siteSubmitId);
+            setVerifyingSiteSubmit(data); // Pass the full data to the layer
 
             // Open the pin details slideout for this site submit
             setSelectedPinData(data);
@@ -1523,6 +1525,7 @@ const MappingPageContent: React.FC = () => {
               onStageCountsUpdate={handleStageCountsUpdate}
               onSiteSubmitRightClick={handleSiteSubmitRightClick}
               verifyingSiteSubmitId={verifyingSiteSubmitId}
+              verifyingSiteSubmit={verifyingSiteSubmit}
               onLocationVerified={handleSiteSubmitLocationVerified}
             />
 

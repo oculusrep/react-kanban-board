@@ -72,6 +72,7 @@ interface SiteSubmitLayerProps {
   onStageCountsUpdate?: (counts: Record<string, number>) => void;
   onSiteSubmitRightClick?: (siteSubmit: SiteSubmit, x: number, y: number) => void;
   verifyingSiteSubmitId?: string | null; // Site submit being verified
+  verifyingSiteSubmit?: SiteSubmit | null; // Full site submit data for the one being verified
   onLocationVerified?: (siteSubmitId: string, lat: number, lng: number) => void;
 }
 
@@ -85,6 +86,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
   onStageCountsUpdate,
   onSiteSubmitRightClick,
   verifyingSiteSubmitId = null,
+  verifyingSiteSubmit = null,
   onLocationVerified
 }) => {
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
@@ -423,21 +425,41 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
 
   // Create markers for all site submits
   const createMarkers = () => {
-    if (!map || !siteSubmits.length) return;
+    if (!map) return;
+
+    // Ensure verifying site submit is included even if not in loaded list
+    let siteSubmitsToRender = [...siteSubmits];
+
+    if (verifyingSiteSubmit && verifyingSiteSubmitId) {
+      // Check if verifying site submit is already in the list
+      const alreadyInList = siteSubmits.some(ss => ss.id === verifyingSiteSubmitId);
+
+      if (!alreadyInList) {
+        console.log('➕ Adding verifying site submit to render list:', verifyingSiteSubmit.site_submit_name);
+        siteSubmitsToRender = [verifyingSiteSubmit, ...siteSubmits];
+      } else {
+        console.log('✅ Verifying site submit already in loaded list');
+      }
+    }
+
+    if (!siteSubmitsToRender.length) return;
 
     console.log('🗺️ Creating markers for site submits...');
     console.log('📊 Visible stages:', loadingConfig.visibleStages ? Array.from(loadingConfig.visibleStages) : 'all');
+    console.log('🎯 Verifying site submit ID:', verifyingSiteSubmitId);
 
     // Clear existing markers
     markers.forEach(marker => marker.setMap(null));
 
-    const newMarkers: google.maps.Marker[] = siteSubmits.map(siteSubmit => {
+    const newMarkers: google.maps.Marker[] = siteSubmitsToRender.map(siteSubmit => {
       const coords = getDisplayCoordinates(siteSubmit);
       if (!coords) return null;
 
-      // Skip if stage is not visible
+      // Skip if stage is not visible (unless this is the verifying site submit)
+      const isBeingVerified = verifyingSiteSubmitId === siteSubmit.id;
       const stageName = siteSubmit.submit_stage?.name || 'Monitor';
-      if (loadingConfig.visibleStages && !loadingConfig.visibleStages.has(stageName)) {
+
+      if (!isBeingVerified && loadingConfig.visibleStages && !loadingConfig.visibleStages.has(stageName)) {
         console.log(`🙈 Hiding marker for stage: ${stageName} (not in visible stages:`, Array.from(loadingConfig.visibleStages));
         return null;
       }
@@ -469,7 +491,15 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
         content: infoContent
       });
 
-      const isBeingVerified = verifyingSiteSubmitId === siteSubmit.id;
+      if (isBeingVerified) {
+        console.log('🎯 Found verifying site submit!', {
+          id: siteSubmit.id,
+          name: siteSubmit.site_submit_name,
+          coords,
+          map: map ? 'available' : 'null'
+        });
+      }
+
       const marker = new google.maps.Marker({
         position: { lat: coords.lat, lng: coords.lng },
         map: isBeingVerified ? map : null, // Show immediately if being verified, otherwise add via clusterer
@@ -658,10 +688,10 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
 
   // Create markers when site submits load or stage visibility changes
   useEffect(() => {
-    if (siteSubmits.length > 0) {
+    if (siteSubmits.length > 0 || verifyingSiteSubmit) {
       createMarkers();
     }
-  }, [siteSubmits, map, loadingConfig.visibleStages, verifyingSiteSubmitId]);
+  }, [siteSubmits, map, loadingConfig.visibleStages, verifyingSiteSubmitId, verifyingSiteSubmit]);
 
   // Set up clustering when markers change (including when empty)
   useEffect(() => {
