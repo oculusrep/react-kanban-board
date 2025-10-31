@@ -192,19 +192,34 @@ const MappingPageContent: React.FC = () => {
     if (siteSubmitId && verifyMode && mapInstance) {
       console.log('📍 Site submit verification requested:', siteSubmitId);
 
-      // Fetch the site submit to get its coordinates
+      // Fetch the FULL site submit data (not just coordinates)
       supabase
         .from('site_submit')
         .select(`
-          id,
-          site_submit_name,
-          verified_latitude,
-          verified_longitude,
-          property!site_submit_property_id_fkey (
+          *,
+          property:property_id (
+            id,
+            property_name,
+            address,
+            city,
+            state,
+            zip,
             latitude,
             longitude,
             verified_latitude,
             verified_longitude
+          ),
+          client:client_id (
+            id,
+            client_name
+          ),
+          submit_stage:submit_stage_id (
+            id,
+            name
+          ),
+          property_unit:property_unit_id (
+            id,
+            property_unit_name
           )
         `)
         .eq('id', siteSubmitId)
