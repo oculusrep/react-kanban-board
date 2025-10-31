@@ -80,7 +80,7 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ title, items, recentItems, 
               e.stopPropagation();
               setIsOpen(!isOpen);
             }}
-            className="px-2 py-2 hover:bg-blue-100 transition-colors border-l border-gray-200"
+            className="px-2 py-2 hover:bg-blue-100 transition-colors"
             aria-label={`Open ${title} menu`}
           >
             <svg
