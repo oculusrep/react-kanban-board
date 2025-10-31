@@ -886,7 +886,29 @@ const MappingPageContent: React.FC = () => {
   // Handle site submit location verification
   const handleSiteSubmitVerifyLocation = (siteSubmitId: string) => {
     console.log('🎯 Starting location verification for site submit:', siteSubmitId);
-    setVerifyingSiteSubmitId(siteSubmitId);
+
+    // Get the site submit data from the context menu
+    const siteSubmit = siteSubmitContextMenu.siteSubmit;
+
+    if (siteSubmit) {
+      // Set both the ID and the full data so the marker is visible
+      setVerifyingSiteSubmitId(siteSubmitId);
+      setVerifyingSiteSubmit(siteSubmit);
+
+      // Open the slideout if not already open
+      if (!isPinDetailsOpen) {
+        setSelectedPinData(siteSubmit);
+        setSelectedPinType('site_submit');
+        setPinDetailsInitialTab('location');
+        setIsPinDetailsOpen(true);
+      }
+
+      showToast('Verification mode active - drag the pin to adjust location', 'success');
+      console.log('✅ Verification mode enabled - marker is now draggable');
+    } else {
+      console.error('❌ Cannot enable verification mode - site submit data not available');
+      showToast('Unable to enable verification mode', 'error');
+    }
   };
 
   // Handle site submit location reset (clear verified coordinates)
