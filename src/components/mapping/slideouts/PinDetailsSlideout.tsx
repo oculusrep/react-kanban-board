@@ -4,6 +4,7 @@ import { useLayerManager } from '../layers/LayerManager';
 import { usePropertyRecordTypes } from '../../../hooks/usePropertyRecordTypes';
 import { useProperty } from '../../../hooks/useProperty';
 import { useToast } from '../../../hooks/useToast';
+import { useAutosave } from '../../../hooks/useAutosave';
 import PropertyInputField from '../../property/PropertyInputField';
 import PropertyPSFField from '../../property/PropertyPSFField';
 import PropertyCurrencyField from '../../property/PropertyCurrencyField';
@@ -22,6 +23,7 @@ import DeleteConfirmationModal from '../../DeleteConfirmationModal';
 import AssignmentSelector from '../AssignmentSelector';
 import { AssignmentSearchResult } from '../../../hooks/useAssignmentSearch';
 import AddAssignmentModal from '../../AddAssignmentModal';
+import AutosaveIndicator from '../../AutosaveIndicator';
 
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
@@ -635,6 +637,51 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   const [showAddAssignmentModal, setShowAddAssignmentModal] = useState(false);
 
   const { refreshLayer } = useLayerManager();
+
+  // Autosave for site submit changes (only for existing site submits, not new ones)
+  const siteSubmit = type === 'site_submit' ? (data as SiteSubmit) : null;
+  const isNewSiteSubmit = siteSubmit?._isNew || !siteSubmit?.id;
+
+  const { status: autosaveStatus, lastSavedAt } = useAutosave({
+    data: {
+      ...formData,
+      selectedClient,
+      selectedAssignment,
+      selectedPropertyUnit,
+      siteSubmitName,
+      currentStageId,
+    },
+    onSave: async (saveData) => {
+      if (!siteSubmit?.id || isNewSiteSubmit) return; // Don't autosave new records
+      if (!selectedClient?.id) return; // Don't save without required fields
+
+      console.log('💾 Autosaving site submit changes...');
+
+      const { error } = await supabase
+        .from('site_submit')
+        .update({
+          site_submit_name: saveData.siteSubmitName,
+          client_id: saveData.selectedClient?.id,
+          assignment_id: saveData.selectedAssignment?.id || null,
+          property_unit_id: saveData.selectedPropertyUnit || null,
+          date_submitted: saveData.dateSubmitted || null,
+          delivery_timeframe: saveData.deliveryTimeframe || null,
+          notes: saveData.notes || null,
+          customer_comments: saveData.customerComments || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', siteSubmit.id);
+
+      if (error) throw error;
+
+      console.log('✅ Site submit autosaved successfully');
+
+      // Refresh the layer to show changes on map
+      refreshLayer('site_submits');
+    },
+    delay: 1500,
+    enabled: type === 'site_submit' && !isNewSiteSubmit,
+  });
 
   // Auto-generate site submit name when client is selected
   useEffect(() => {
@@ -2069,15 +2116,26 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
               </div>
             )}
 
-            {/* Update Site Submit button - only show when changes made to site submits */}
-            {hasChanges && !isProperty && (
-              <div className="flex items-center justify-center">
-                <button
-                  onClick={handleSaveChanges}
-                  className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all duration-200 font-medium text-sm shadow-sm hover:shadow-md"
-                >
-                  {siteSubmit?._isNew || !siteSubmit?.id ? 'CREATE SITE SUBMIT' : 'UPDATE SITE SUBMIT'}
-                </button>
+            {/* Site Submit: Show autosave indicator for existing, CREATE button for new */}
+            {!isProperty && type === 'site_submit' && (
+              <div className="flex flex-col gap-2">
+                {/* Autosave indicator for existing site submits */}
+                {!isNewSiteSubmit && (
+                  <div className="flex items-center justify-center py-2">
+                    <AutosaveIndicator status={autosaveStatus} lastSavedAt={lastSavedAt} />
+                  </div>
+                )}
+                {/* CREATE button only for new site submits */}
+                {isNewSiteSubmit && (
+                  <div className="flex items-center justify-center">
+                    <button
+                      onClick={handleSaveChanges}
+                      className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all duration-200 font-medium text-sm shadow-sm hover:shadow-md"
+                    >
+                      CREATE SITE SUBMIT
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
