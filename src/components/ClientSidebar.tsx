@@ -13,6 +13,8 @@ import AddContactRelationModal from './AddContactRelationModal';
 import AddChildAccountModal from './AddChildAccountModal';
 import RoleSelector from './RoleSelector';
 import ContactRolesManager from './ContactRolesManager';
+import PinDetailsSlideout from './mapping/slideouts/PinDetailsSlideout';
+import { LayerManagerProvider } from './mapping/layers/LayerManager';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type Note = Database['public']['Tables']['note']['Row'];
@@ -265,6 +267,10 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [showAddChildAccountModal, setShowAddChildAccountModal] = useState(false);
 
+  // Property details slideout state (for "View Property Details" from Site Submit)
+  const [propertyDetailsSlideoutOpen, setPropertyDetailsSlideoutOpen] = useState(false);
+  const [propertyDetailsData, setPropertyDetailsData] = useState<any>(null);
+
   // Expansion states - all collapsed by default
   const [expandedSidebarModules, setExpandedSidebarModules] = useState({
     contacts: false,
@@ -411,6 +417,31 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
 
     loadData();
   }, [clientId]);
+
+  // Listen for messages from iframe (site submit sidebar) to open property slideout
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.data.type === 'OPEN_PROPERTY_SLIDEOUT') {
+        const requestedPropertyId = event.data.propertyId;
+        console.log('📨 ClientSidebar received message to open property slideout:', requestedPropertyId);
+
+        // Fetch property data for the slideout
+        const { data, error } = await supabase
+          .from('property')
+          .select('*')
+          .eq('id', requestedPropertyId)
+          .single();
+
+        if (data && !error) {
+          setPropertyDetailsData(data);
+          setPropertyDetailsSlideoutOpen(true);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   const handleRemoveContact = async (contactId: string) => {
     try {
@@ -775,6 +806,7 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
             setSiteSubmitSidebarId(null);
             onSiteSubmitModalChange?.(false);
           }}
+          propertySlideoutOpen={propertyDetailsSlideoutOpen}
         />
       )}
 
@@ -816,6 +848,22 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
         currentClientId={clientId}
         existingChildIds={childAccounts.map(c => c.id)}
       />
+
+      {/* Property Details Slideout - Shows to the right of Site Submit Sidebar */}
+      {propertyDetailsSlideoutOpen && propertyDetailsData && (
+        <LayerManagerProvider>
+          <PinDetailsSlideout
+            isOpen={propertyDetailsSlideoutOpen}
+            onClose={() => {
+              setPropertyDetailsSlideoutOpen(false);
+              setPropertyDetailsData(null);
+            }}
+            data={propertyDetailsData}
+            type="property"
+            rightOffset={0}
+          />
+        </LayerManagerProvider>
+      )}
     </>
   );
 };

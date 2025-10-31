@@ -4,6 +4,8 @@ import { Database } from '../../database-schema';
 import SiteSubmitFormModal from './SiteSubmitFormModal';
 import SiteSubmitSidebar from './SiteSubmitSidebar';
 import SiteSubmitItem from './sidebar/SiteSubmitItem';
+import PinDetailsSlideout from './mapping/slideouts/PinDetailsSlideout';
+import { LayerManagerProvider } from './mapping/layers/LayerManager';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 
@@ -116,6 +118,10 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
   const [siteSubmitSidebarId, setSiteSubmitSidebarId] = useState<string | null>(null);
   const [siteSubmitSidebarMinimized, setSiteSubmitSidebarMinimized] = useState(false);
 
+  // Property details slideout state (for "View Property Details" from Site Submit)
+  const [propertyDetailsSlideoutOpen, setPropertyDetailsSlideoutOpen] = useState(false);
+  const [propertyDetailsData, setPropertyDetailsData] = useState<any>(null);
+
   // Expansion state for site submits
   const [expandedSidebarModules, setExpandedSidebarModules] = useState(() => {
     const saved = localStorage.getItem(`expandedSidebarModules_assignment_${assignmentId}`);
@@ -178,6 +184,31 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
       });
     }
   }, [siteSubmits.length, loading, assignmentId]);
+
+  // Listen for messages from iframe (site submit sidebar) to open property slideout
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.data.type === 'OPEN_PROPERTY_SLIDEOUT') {
+        const requestedPropertyId = event.data.propertyId;
+        console.log('📨 AssignmentSidebar received message to open property slideout:', requestedPropertyId);
+
+        // Fetch property data for the slideout
+        const { data, error } = await supabase
+          .from('property')
+          .select('*')
+          .eq('id', requestedPropertyId)
+          .single();
+
+        if (data && !error) {
+          setPropertyDetailsData(data);
+          setPropertyDetailsSlideoutOpen(true);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   const toggleSidebarModule = (module: keyof typeof expandedSidebarModules) => {
     const newState = {
@@ -310,7 +341,24 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
             setSiteSubmitSidebarId(null);
             onSiteSubmitModalChange?.(false);
           }}
+          propertySlideoutOpen={propertyDetailsSlideoutOpen}
         />
+      )}
+
+      {/* Property Details Slideout - Shows to the right of Site Submit Sidebar */}
+      {propertyDetailsSlideoutOpen && propertyDetailsData && (
+        <LayerManagerProvider>
+          <PinDetailsSlideout
+            isOpen={propertyDetailsSlideoutOpen}
+            onClose={() => {
+              setPropertyDetailsSlideoutOpen(false);
+              setPropertyDetailsData(null);
+            }}
+            data={propertyDetailsData}
+            type="property"
+            rightOffset={0}
+          />
+        </LayerManagerProvider>
       )}
     </>
   );

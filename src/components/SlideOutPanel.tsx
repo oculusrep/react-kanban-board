@@ -8,6 +8,7 @@ interface SlideOutPanelProps {
   children: React.ReactNode;
   width?: string; // e.g., '500px', '50%', etc.
   canMinimize?: boolean;
+  rightOffset?: number; // Offset from right edge in pixels (for layering slideouts)
 }
 
 export default function SlideOutPanel({
@@ -16,7 +17,8 @@ export default function SlideOutPanel({
   title,
   children,
   width = '600px',
-  canMinimize = true
+  canMinimize = true,
+  rightOffset = 0
 }: SlideOutPanelProps) {
   const [isMinimized, setIsMinimized] = useState(false);
   // Prevent body scroll when panel is open
@@ -58,8 +60,12 @@ export default function SlideOutPanel({
 
       {/* Slide-out panel */}
       <div
-        className="fixed top-0 right-0 h-full bg-white shadow-2xl z-50 transform transition-all duration-300 ease-in-out flex flex-col"
-        style={{ width: actualWidth, maxWidth: isMinimized ? '48px' : '90vw' }}
+        className="fixed top-0 h-full bg-white shadow-2xl z-50 transform transition-all duration-300 ease-in-out flex flex-col"
+        style={{
+          width: actualWidth,
+          maxWidth: isMinimized ? '48px' : '90vw',
+          right: `${rightOffset}px`
+        }}
       >
         {/* Minimize/Expand Button */}
         {canMinimize && (

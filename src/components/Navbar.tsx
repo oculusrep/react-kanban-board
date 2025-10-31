@@ -6,6 +6,8 @@ import DedicatedSearchModal from "./DedicatedSearchModal";
 import { useRecentlyViewed, RecentItem } from "../hooks/useRecentlyViewed";
 import { supabase } from "../lib/supabaseClient";
 import SiteSubmitSlideOut from "./SiteSubmitSlideOut";
+import PinDetailsSlideout from "./mapping/slideouts/PinDetailsSlideout";
+import { LayerManagerProvider } from "./mapping/layers/LayerManager";
 
 interface DropdownMenuProps {
   title: string;
@@ -196,6 +198,31 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Listen for messages from iframe (site submit slideout) to open property slideout
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.data.type === 'OPEN_PROPERTY_SLIDEOUT') {
+        const requestedPropertyId = event.data.propertyId;
+        console.log('📨 Navbar received message to open property slideout:', requestedPropertyId);
+
+        // Fetch property data for the slideout
+        const { data, error } = await supabase
+          .from('property')
+          .select('*')
+          .eq('id', requestedPropertyId)
+          .single();
+
+        if (data && !error) {
+          setPropertyDetailsData(data);
+          setPropertyDetailsSlideoutOpen(true);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
   // Close mobile menu when route changes
   useEffect(() => {
     setIsMobileMenuOpen(false);
@@ -218,6 +245,10 @@ export default function Navbar() {
     isOpen: false,
     siteSubmitId: null,
   });
+
+  // Property details slideout state (for "View Property Details" from Site Submit)
+  const [propertyDetailsSlideoutOpen, setPropertyDetailsSlideoutOpen] = useState(false);
+  const [propertyDetailsData, setPropertyDetailsData] = useState<any>(null);
 
   const linkClass = (path: string) =>
     `px-4 py-2 rounded hover:bg-blue-100 ${
@@ -989,7 +1020,24 @@ export default function Navbar() {
           isOpen={siteSubmitSlideout.isOpen}
           onClose={() => setSiteSubmitSlideout({ isOpen: false, siteSubmitId: null })}
           siteSubmitId={siteSubmitSlideout.siteSubmitId}
+          propertySlideoutOpen={propertyDetailsSlideoutOpen}
         />
+      )}
+
+      {/* Property Details Slideout - Shows to the right of Site Submit Slideout */}
+      {propertyDetailsSlideoutOpen && propertyDetailsData && (
+        <LayerManagerProvider>
+          <PinDetailsSlideout
+            isOpen={propertyDetailsSlideoutOpen}
+            onClose={() => {
+              setPropertyDetailsSlideoutOpen(false);
+              setPropertyDetailsData(null);
+            }}
+            data={propertyDetailsData}
+            type="property"
+            rightOffset={0}
+          />
+        </LayerManagerProvider>
       )}
     </nav>
   );

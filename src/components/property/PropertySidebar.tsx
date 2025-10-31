@@ -8,6 +8,8 @@ import AddContactsModal from './AddContactsModal';
 import SidebarModule from '../sidebar/SidebarModule';
 import FileManagerModule from '../sidebar/FileManagerModule';
 import SiteSubmitItem from '../sidebar/SiteSubmitItem';
+import PinDetailsSlideout from '../mapping/slideouts/PinDetailsSlideout';
+import { LayerManagerProvider } from '../mapping/layers/LayerManager';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type Deal = Database['public']['Tables']['deal']['Row'];
@@ -197,6 +199,10 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
   const [showAddContactsModal, setShowAddContactsModal] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
 
+  // Property details slideout state (for "View Property Details" from Site Submit)
+  const [propertyDetailsSlideoutOpen, setPropertyDetailsSlideoutOpen] = useState(false);
+  const [propertyDetailsData, setPropertyDetailsData] = useState<any>(null);
+
   // Expansion states
   const getSmartDefaults = () => ({
     contacts: contacts.length > 0,
@@ -340,6 +346,31 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
       });
     }
   }, [contacts.length, deals.length, siteSubmits.length, loading, propertyId]);
+
+  // Listen for messages from iframe (site submit sidebar) to open property slideout
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.data.type === 'OPEN_PROPERTY_SLIDEOUT') {
+        const requestedPropertyId = event.data.propertyId;
+        console.log('📨 PropertySidebar received message to open property slideout:', requestedPropertyId);
+
+        // Fetch property data for the slideout
+        const { data, error } = await supabase
+          .from('property')
+          .select('*')
+          .eq('id', requestedPropertyId)
+          .single();
+
+        if (data && !error) {
+          setPropertyDetailsData(data);
+          setPropertyDetailsSlideoutOpen(true);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   const toggleSidebarModule = (module: keyof typeof expandedSidebarModules) => {
     const newState = {
@@ -551,6 +582,7 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
             setSiteSubmitSidebarId(null);
             onSiteSubmitModalChange?.(false);
           }}
+          propertySlideoutOpen={propertyDetailsSlideoutOpen}
         />
       )}
 
@@ -598,6 +630,22 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
           setEditingContactId(null);
         }}
       />
+
+      {/* Property Details Slideout - Shows to the right of Site Submit Sidebar */}
+      {propertyDetailsSlideoutOpen && propertyDetailsData && (
+        <LayerManagerProvider>
+          <PinDetailsSlideout
+            isOpen={propertyDetailsSlideoutOpen}
+            onClose={() => {
+              setPropertyDetailsSlideoutOpen(false);
+              setPropertyDetailsData(null);
+            }}
+            data={propertyDetailsData}
+            type="property"
+            rightOffset={0}
+          />
+        </LayerManagerProvider>
+      )}
     </>
   );
 };

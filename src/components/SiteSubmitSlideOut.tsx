@@ -5,12 +5,14 @@ interface SiteSubmitSlideOutProps {
   isOpen: boolean;
   onClose: () => void;
   siteSubmitId: string;
+  propertySlideoutOpen?: boolean;
 }
 
 export default function SiteSubmitSlideOut({
   isOpen,
   onClose,
-  siteSubmitId
+  siteSubmitId,
+  propertySlideoutOpen = false
 }: SiteSubmitSlideOutProps) {
   return (
     <SlideOutPanel
@@ -18,9 +20,10 @@ export default function SiteSubmitSlideOut({
       onClose={onClose}
       title="Site Submit Details"
       width="800px"
+      rightOffset={propertySlideoutOpen ? 500 : 0}
     >
       <iframe
-        src={`/site-submit/${siteSubmitId}`}
+        src={`/site-submit/${siteSubmitId}?embedded=true`}
         className="w-full h-full border-0"
         style={{ minHeight: 'calc(100vh - 120px)' }}
         title="Site Submit Details"
