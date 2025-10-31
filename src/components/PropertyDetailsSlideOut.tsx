@@ -1,5 +1,6 @@
 import React from 'react';
 import SlideOutPanel from './SlideOutPanel';
+import PropertyDetailsSlideoutContent from './PropertyDetailsSlideoutContent';
 
 interface PropertyDetailsSlideOutProps {
   isOpen: boolean;
@@ -10,7 +11,7 @@ interface PropertyDetailsSlideOutProps {
 /**
  * Property Details slideout for non-map contexts
  *
- * Uses SlideOutPanel for consistent UX with Site Submit Details.
+ * Uses SlideOutPanel with tab-based content for clean UX.
  * For map contexts, use PinDetailsSlideout instead.
  */
 export default function PropertyDetailsSlideOut({
@@ -24,13 +25,9 @@ export default function PropertyDetailsSlideOut({
       onClose={onClose}
       title="Property Details"
       width="900px"
+      canMinimize={false}
     >
-      <iframe
-        src={`/property/${propertyId}?embedded=true`}
-        className="w-full h-full border-0"
-        style={{ minHeight: 'calc(100vh - 120px)' }}
-        title="Property Details"
-      />
+      <PropertyDetailsSlideoutContent propertyId={propertyId} />
     </SlideOutPanel>
   );
 }
