@@ -472,7 +472,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
       const isBeingVerified = verifyingSiteSubmitId === siteSubmit.id;
       const marker = new google.maps.Marker({
         position: { lat: coords.lat, lng: coords.lng },
-        map: null, // Don't show initially
+        map: isBeingVerified ? map : null, // Show immediately if being verified, otherwise add via clusterer
         title: siteSubmit.site_submit_name || `Site Submit - ${siteSubmit.client?.client_name}`,
         icon: markerIcon,
         draggable: isBeingVerified, // Only draggable when explicitly verifying location
@@ -631,11 +631,17 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
     if (!clusterer) return;
 
     if (isVisible) {
-      console.log(`👁️ Showing ${markers.length} site submit markers`);
-      clusterer.addMarkers(markers);
+      // Filter out the verifying marker since it's already directly on the map
+      const markersToCluster = markers.filter(marker => {
+        // Skip markers that are already on the map (verifying marker)
+        return marker.getMap() === null;
+      });
+      console.log(`👁️ Showing ${markersToCluster.length} site submit markers (${markers.length - markersToCluster.length} already visible)`);
+      clusterer.addMarkers(markersToCluster);
     } else {
       console.log('🙈 Hiding site submit markers');
       clusterer.clearMarkers();
+      // Note: We don't hide the verifying marker - it stays visible
     }
   };
 
