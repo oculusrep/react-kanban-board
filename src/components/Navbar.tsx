@@ -5,6 +5,7 @@ import MasterSearchBox from "./MasterSearchBox";
 import DedicatedSearchModal from "./DedicatedSearchModal";
 import { useRecentlyViewed, RecentItem } from "../hooks/useRecentlyViewed";
 import { supabase } from "../lib/supabaseClient";
+import SiteSubmitSlideOut from "./SiteSubmitSlideOut";
 
 interface DropdownMenuProps {
   title: string;
@@ -209,6 +210,15 @@ export default function Navbar() {
     siteSubmits: false,
   });
 
+  // State for site submit slideout
+  const [siteSubmitSlideout, setSiteSubmitSlideout] = useState<{
+    isOpen: boolean;
+    siteSubmitId: string | null;
+  }>({
+    isOpen: false,
+    siteSubmitId: null,
+  });
+
   const linkClass = (path: string) =>
     `px-4 py-2 rounded hover:bg-blue-100 ${
       location.pathname === path ? "bg-blue-200 font-semibold" : ""
@@ -238,7 +248,7 @@ export default function Navbar() {
         navigate(`/client/${item.id}`);
         break;
       case 'site_submit':
-        navigate(`/site-submit/${item.id}`);
+        setSiteSubmitSlideout({ isOpen: true, siteSubmitId: item.id });
         break;
       default:
         console.warn('Unknown item type:', item.type);
@@ -304,7 +314,7 @@ export default function Navbar() {
   const siteSubmitsItems = [
     {
       label: "Add New Site Submit",
-      action: () => navigate('/site-submit/new')
+      action: () => setSiteSubmitSlideout({ isOpen: true, siteSubmitId: 'new' })
     },
     {
       label: "Search Site Submits",
@@ -793,7 +803,7 @@ export default function Navbar() {
                 <div className="space-y-1 mt-1 ml-4">
                   <button
                     onClick={() => {
-                      navigate('/site-submit/new');
+                      setSiteSubmitSlideout({ isOpen: true, siteSubmitId: 'new' });
                       setIsMobileMenuOpen(false);
                     }}
                     className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700 text-sm"
@@ -813,7 +823,7 @@ export default function Navbar() {
                     <button
                       key={index}
                       onClick={() => {
-                        navigate(`/site-submit/${item.id}`);
+                        setSiteSubmitSlideout({ isOpen: true, siteSubmitId: item.id });
                         setIsMobileMenuOpen(false);
                       }}
                       className="w-full text-left px-4 py-2 rounded hover:bg-gray-100 text-sm text-gray-600"
@@ -965,9 +975,20 @@ export default function Navbar() {
           title="Search Site Submits"
           searchType="site_submit"
           onSelect={(result) => {
-            navigate(result.url || '/');
+            // Extract site submit ID from URL (e.g., /site-submit/123 -> 123)
+            const siteSubmitId = result.url?.split('/').pop() || '';
+            setSiteSubmitSlideout({ isOpen: true, siteSubmitId });
             setSearchModals(prev => ({ ...prev, siteSubmits: false }));
           }}
+        />
+      )}
+
+      {/* Site Submit Slideout */}
+      {siteSubmitSlideout.isOpen && siteSubmitSlideout.siteSubmitId && (
+        <SiteSubmitSlideOut
+          isOpen={siteSubmitSlideout.isOpen}
+          onClose={() => setSiteSubmitSlideout({ isOpen: false, siteSubmitId: null })}
+          siteSubmitId={siteSubmitSlideout.siteSubmitId}
         />
       )}
     </nav>

@@ -9,6 +9,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import EmailComposerModal, { EmailData } from '../components/EmailComposerModal';
 import { useToast } from '../hooks/useToast';
 import { useRecentlyViewed } from '../hooks/useRecentlyViewed';
+import { useAutosave } from '../hooks/useAutosave';
 import ClientSelector from '../components/mapping/ClientSelector';
 import { ClientSearchResult } from '../hooks/useClientSearch';
 import AssignmentSelector from '../components/mapping/AssignmentSelector';
@@ -16,6 +17,7 @@ import { AssignmentSearchResult } from '../hooks/useAssignmentSearch';
 import AddAssignmentModal from '../components/AddAssignmentModal';
 import { generateSiteSubmitEmailTemplate, PropertyUnitFile } from '../utils/siteSubmitEmailTemplate';
 import DropboxService from '../services/dropboxService';
+import AutosaveIndicator from '../components/AutosaveIndicator';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type SiteSubmitInsert = Database['public']['Tables']['site_submit']['Insert'];
@@ -110,6 +112,33 @@ const SiteSubmitDetailsPage: React.FC = () => {
   // Collapsible section states
   const [isFinancialExpanded, setIsFinancialExpanded] = useState(false);
   const [isLocationExpanded, setIsLocationExpanded] = useState(false);
+
+  // Autosave for existing site submits (not for new ones)
+  const { status: autosaveStatus, lastSavedAt } = useAutosave({
+    data: formData,
+    onSave: async (data) => {
+      if (!siteSubmitId || isNewSiteSubmit) return; // Don't autosave new records
+      if (!validateForm()) return; // Don't save invalid data
+
+      const updateData = {
+        ...data,
+        // Convert empty date strings to null for database compatibility
+        date_submitted: data.date_submitted || null,
+        loi_date: data.loi_date || null,
+        delivery_date: data.delivery_date || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('site_submit')
+        .update(updateData)
+        .eq('id', siteSubmitId);
+
+      if (error) throw error;
+    },
+    delay: 1500,
+    enabled: !isNewSiteSubmit && !loading, // Only enable for existing records
+  });
 
   // Handle viewing property details - post message to parent if in iframe
   const handleViewPropertyDetails = (propertyId: string) => {
@@ -738,10 +767,14 @@ const SiteSubmitDetailsPage: React.FC = () => {
         <div className={isInIframe ? "mb-4" : "bg-white shadow rounded-lg mb-6"}>
           <div className={isInIframe ? "pb-3 border-b border-gray-200" : "px-6 py-4 border-b border-gray-200"}>
             <div className="flex items-center justify-between">
-              <div>
+              <div className="flex items-center gap-3">
                 <h1 className={isInIframe ? "text-lg font-bold text-gray-900" : "text-2xl font-bold text-gray-900"}>
                   {isNewSiteSubmit ? 'New Site Submit' : 'Edit Site Submit'}
                 </h1>
+                {/* Autosave indicator - only show for existing records */}
+                {!isNewSiteSubmit && (
+                  <AutosaveIndicator status={autosaveStatus} lastSavedAt={lastSavedAt} />
+                )}
               </div>
               <div className="flex space-x-2">
                 {!isNewSiteSubmit && (
@@ -787,13 +820,16 @@ const SiteSubmitDetailsPage: React.FC = () => {
                     </button>
                   </>
                 )}
-                <button
-                  onClick={handleSave}
-                  disabled={saving || loading}
-                  className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 border border-transparent rounded hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {saving ? 'Saving...' : 'Save Site Submit'}
-                </button>
+                {/* Only show Save button for new records */}
+                {isNewSiteSubmit && (
+                  <button
+                    onClick={handleSave}
+                    disabled={saving || loading}
+                    className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 border border-transparent rounded hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {saving ? 'Saving...' : 'Create Site Submit'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
