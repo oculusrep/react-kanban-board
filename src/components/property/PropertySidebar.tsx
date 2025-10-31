@@ -8,8 +8,7 @@ import AddContactsModal from './AddContactsModal';
 import SidebarModule from '../sidebar/SidebarModule';
 import FileManagerModule from '../sidebar/FileManagerModule';
 import SiteSubmitItem from '../sidebar/SiteSubmitItem';
-import PinDetailsSlideout from '../mapping/slideouts/PinDetailsSlideout';
-import { LayerManagerProvider } from '../mapping/layers/LayerManager';
+import PropertyDetailsSlideOut from '../PropertyDetailsSlideOut';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type Deal = Database['public']['Tables']['deal']['Row'];
@@ -200,8 +199,13 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
 
   // Property details slideout state (for "View Property Details" from Site Submit)
-  const [propertyDetailsSlideoutOpen, setPropertyDetailsSlideoutOpen] = useState(false);
-  const [propertyDetailsData, setPropertyDetailsData] = useState<any>(null);
+  const [propertyDetailsSlideout, setPropertyDetailsSlideout] = useState<{
+    isOpen: boolean;
+    propertyId: string | null;
+  }>({
+    isOpen: false,
+    propertyId: null,
+  });
 
   // Expansion states
   const getSmartDefaults = () => ({
@@ -349,22 +353,11 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
 
   // Listen for messages from iframe (site submit sidebar) to open property slideout
   useEffect(() => {
-    const handleMessage = async (event: MessageEvent) => {
+    const handleMessage = (event: MessageEvent) => {
       if (event.data.type === 'OPEN_PROPERTY_SLIDEOUT') {
         const requestedPropertyId = event.data.propertyId;
         console.log('📨 PropertySidebar received message to open property slideout:', requestedPropertyId);
-
-        // Fetch property data for the slideout
-        const { data, error } = await supabase
-          .from('property')
-          .select('*')
-          .eq('id', requestedPropertyId)
-          .single();
-
-        if (data && !error) {
-          setPropertyDetailsData(data);
-          setPropertyDetailsSlideoutOpen(true);
-        }
+        setPropertyDetailsSlideout({ isOpen: true, propertyId: requestedPropertyId });
       }
     };
 
@@ -582,7 +575,7 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
             setSiteSubmitSidebarId(null);
             onSiteSubmitModalChange?.(false);
           }}
-          propertySlideoutOpen={propertyDetailsSlideoutOpen}
+          propertySlideoutOpen={propertyDetailsSlideout.isOpen}
         />
       )}
 
@@ -632,19 +625,12 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
       />
 
       {/* Property Details Slideout - Shows to the right of Site Submit Sidebar */}
-      {propertyDetailsSlideoutOpen && propertyDetailsData && (
-        <LayerManagerProvider>
-          <PinDetailsSlideout
-            isOpen={propertyDetailsSlideoutOpen}
-            onClose={() => {
-              setPropertyDetailsSlideoutOpen(false);
-              setPropertyDetailsData(null);
-            }}
-            data={propertyDetailsData}
-            type="property"
-            rightOffset={0}
-          />
-        </LayerManagerProvider>
+      {propertyDetailsSlideout.isOpen && propertyDetailsSlideout.propertyId && (
+        <PropertyDetailsSlideOut
+          isOpen={propertyDetailsSlideout.isOpen}
+          onClose={() => setPropertyDetailsSlideout({ isOpen: false, propertyId: null })}
+          propertyId={propertyDetailsSlideout.propertyId}
+        />
       )}
     </>
   );
