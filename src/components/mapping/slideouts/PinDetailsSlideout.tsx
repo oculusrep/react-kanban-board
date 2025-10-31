@@ -914,7 +914,6 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
   const isProperty = type === 'property';
   const property = isProperty ? localPropertyData : (data as SiteSubmit)?.property;
-  const siteSubmit = !isProperty ? (data as SiteSubmit) : null;
 
   // Handle stage change with immediate database update
   const handleStageChange = async (newStageId: string) => {
