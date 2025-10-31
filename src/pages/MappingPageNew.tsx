@@ -467,9 +467,19 @@ const MappingPageContent: React.FC = () => {
 
       console.log('✅ Site submit verified location saved successfully');
 
-      // Clear verification state
-      setVerifyingSiteSubmitId(null);
-      // Refresh site submit layer to show updated coordinates
+      // Update local state with new coordinates (keeps marker visible at new position)
+      if (verifyingSiteSubmit) {
+        const updatedSiteSubmit = {
+          ...verifyingSiteSubmit,
+          verified_latitude: lat,
+          verified_longitude: lng
+        };
+        setVerifyingSiteSubmit(updatedSiteSubmit);
+        // Also update the slideout data so it shows the new coordinates
+        setSelectedPinData(updatedSiteSubmit);
+      }
+
+      // Refresh site submit layer to update other markers (but keep verifying marker visible)
       refreshLayer('site_submits');
       console.log('✅ Site submit location verification completed');
     } catch (error) {
