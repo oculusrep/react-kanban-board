@@ -237,19 +237,25 @@ const MappingPageContent: React.FC = () => {
             mapInstance.setCenter({ lat, lng });
             mapInstance.setZoom(18);
 
+            // Enable site submits layer if not already visible (so pin is visible)
+            if (!layerState.site_submits?.isVisible) {
+              console.log('🎯 Verify mode: auto-enabling site submits layer');
+              toggleLayer('site_submits');
+            }
+
             // Open the pin details slideout for this site submit
             setSelectedPinData(data);
             setSelectedPinType('site_submit');
             setPinDetailsInitialTab('location');
             setIsPinDetailsOpen(true);
 
-            showToast(`Zoomed to ${data.site_submit_name || 'Site Submit'} - Drag the pin to verify location`, 'success');
+            showToast(`Zoomed to ${data.site_submit_name || 'Site Submit'} - Right-click the pin to verify location`, 'success');
           } else {
             showToast('This site submit has no coordinates. Please add property coordinates first.', 'warning');
           }
         });
     }
-  }, [location.search, mapInstance]);
+  }, [location.search, mapInstance, layerState.site_submits?.isVisible, toggleLayer]);
 
   const handleMapLoad = (map: google.maps.Map) => {
     setMapInstance(map);
