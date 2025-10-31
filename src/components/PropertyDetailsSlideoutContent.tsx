@@ -23,25 +23,37 @@ export default function PropertyDetailsSlideoutContent({ propertyId }: PropertyD
   const [property, setProperty] = useState<Property | null>(null);
   const [formData, setFormData] = useState<Partial<Property>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch property data
   useEffect(() => {
     const fetchProperty = async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('property')
-        .select('*')
-        .eq('id', propertyId)
-        .single();
+      try {
+        setLoading(true);
+        setError(null);
+        const { data, error: fetchError } = await supabase
+          .from('property')
+          .select('*')
+          .eq('id', propertyId)
+          .single();
 
-      if (data && !error) {
-        setProperty(data);
-        setFormData(data);
+        if (fetchError) throw fetchError;
+
+        if (data) {
+          setProperty(data);
+          setFormData(data);
+        }
+      } catch (err) {
+        console.error('Error fetching property:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load property');
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
-    fetchProperty();
+    if (propertyId) {
+      fetchProperty();
+    }
   }, [propertyId]);
 
   // Autosave
@@ -74,6 +86,17 @@ export default function PropertyDetailsSlideoutContent({ propertyId }: PropertyD
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-gray-500">Loading property...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="text-red-500 font-medium mb-2">Error loading property</div>
+          <div className="text-gray-600 text-sm">{error}</div>
+        </div>
       </div>
     );
   }

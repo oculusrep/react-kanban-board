@@ -21,7 +21,7 @@ export default function SiteSubmitSlideOut({
       title="Site Submit Details"
       width="800px"
       rightOffset={propertySlideoutOpen ? 900 : 0}
-      canMinimize={false}
+      canMinimize={true}
     >
       <iframe
         src={`/site-submit/${siteSubmitId}?embedded=true`}

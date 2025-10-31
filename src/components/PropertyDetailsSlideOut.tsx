@@ -25,7 +25,7 @@ export default function PropertyDetailsSlideOut({
       onClose={onClose}
       title="Property Details"
       width="900px"
-      canMinimize={false}
+      canMinimize={true}
     >
       <PropertyDetailsSlideoutContent propertyId={propertyId} />
     </SlideOutPanel>

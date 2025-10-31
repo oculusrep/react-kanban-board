@@ -70,9 +70,14 @@ export default function SlideOutPanel({
         {/* Minimize/Expand Button */}
         {canMinimize && (
           <button
-            onClick={() => setIsMinimized(!isMinimized)}
-            className="absolute left-0 top-1/2 -translate-x-full -translate-y-1/2 bg-white border border-r-0 border-gray-300 rounded-l-lg p-2 hover:bg-gray-50 transition-colors shadow-md z-10"
+            onClick={(e) => {
+              e.stopPropagation();
+              console.log('Minimize button clicked, current state:', isMinimized);
+              setIsMinimized(!isMinimized);
+            }}
+            className="absolute left-0 top-1/2 -translate-x-full -translate-y-1/2 bg-white border border-r-0 border-gray-300 rounded-l-lg p-2 hover:bg-gray-50 transition-colors shadow-lg z-[100] cursor-pointer"
             aria-label={isMinimized ? 'Expand panel' : 'Minimize panel'}
+            type="button"
           >
             {isMinimized ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
           </button>
