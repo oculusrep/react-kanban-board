@@ -6,10 +6,12 @@ import PropertyUnitSelector from './PropertyUnitSelector';
 import EmailComposerModal, { EmailData } from './EmailComposerModal';
 import Toast from './Toast';
 import { useToast } from '../hooks/useToast';
+import { useAutosave } from '../hooks/useAutosave';
 import ClientSelector from './mapping/ClientSelector';
 import { ClientSearchResult } from '../hooks/useClientSearch';
 import { generateSiteSubmitEmailTemplate, PropertyUnitFile } from '../utils/siteSubmitEmailTemplate';
 import DropboxService from '../services/dropboxService';
+import AutosaveIndicator from './AutosaveIndicator';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type SiteSubmitInsert = Database['public']['Tables']['site_submit']['Insert'];
@@ -97,6 +99,36 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
   const [emailDefaultData, setEmailDefaultData] = useState<any>(null);
   const [sendingEmail, setSendingEmail] = useState(false);
   const { toast, showToast, hideToast } = useToast();
+
+  // Determine if this is a new site submit
+  const isNewSiteSubmit = !siteSubmitId;
+
+  // Autosave for existing site submits (not for new ones)
+  const { status: autosaveStatus, lastSavedAt } = useAutosave({
+    data: formData,
+    onSave: async (data) => {
+      if (isNewSiteSubmit) return; // Don't autosave new records
+
+      const updateData = {
+        ...data,
+        // Convert empty date strings to null for database compatibility
+        date_submitted: data.date_submitted || null,
+        loi_date: data.loi_date || null,
+        delivery_date: data.delivery_date || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('site_submit')
+        .update(updateData)
+        .eq('id', siteSubmitId!);
+
+      if (error) throw error;
+      console.log('✅ Site submit autosaved in modal');
+    },
+    delay: 1500,
+    enabled: !isNewSiteSubmit && !loading && isOpen, // Only enable for existing records when modal is open
+  });
 
   // Load dropdown data and existing site submit if editing
   useEffect(() => {
@@ -642,9 +674,15 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
         
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white">
-          <h2 className="text-xl font-semibold text-gray-900">
-            {siteSubmitId ? 'Edit Site Submit' : 'New Site Submit'}
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-semibold text-gray-900">
+              {siteSubmitId ? 'Edit Site Submit' : 'New Site Submit'}
+            </h2>
+            {/* Autosave indicator - only show for existing records */}
+            {!isNewSiteSubmit && (
+              <AutosaveIndicator status={autosaveStatus} lastSavedAt={lastSavedAt} />
+            )}
+          </div>
           <button
             onClick={onClose}
             className="p-2 hover:bg-gray-100 rounded-full transition-colors"
@@ -964,14 +1002,17 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
               >
                 Cancel
               </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving || loading}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-              >
-                {saving ? 'Saving...' : 'Save Site Submit'}
-              </button>
+              {/* Only show Save button for new records */}
+              {isNewSiteSubmit && (
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving || loading}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                >
+                  {saving ? 'Saving...' : 'Create Site Submit'}
+                </button>
+              )}
             </div>
           </div>
         </div>
