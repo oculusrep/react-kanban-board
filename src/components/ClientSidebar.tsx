@@ -423,9 +423,10 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
   }, [clientId]);
 
   // Listen for messages from iframe (site submit sidebar) to open property slideout
+  // Only handle if we have a site submit sidebar open (meaning this is the active context)
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'OPEN_PROPERTY_SLIDEOUT') {
+      if (event.data.type === 'OPEN_PROPERTY_SLIDEOUT' && siteSubmitSidebarOpen) {
         const requestedPropertyId = event.data.propertyId;
         console.log('📨 ClientSidebar received message to open property slideout:', requestedPropertyId);
         setPropertyDetailsSlideout({ isOpen: true, propertyId: requestedPropertyId });
@@ -434,7 +435,7 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [siteSubmitSidebarOpen]);
 
   const handleRemoveContact = async (contactId: string) => {
     try {

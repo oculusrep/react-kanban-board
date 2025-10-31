@@ -190,9 +190,10 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
   }, [siteSubmits.length, loading, assignmentId]);
 
   // Listen for messages from iframe (site submit sidebar) to open property slideout
+  // Only handle if we have a site submit sidebar open (meaning this is the active context)
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'OPEN_PROPERTY_SLIDEOUT') {
+      if (event.data.type === 'OPEN_PROPERTY_SLIDEOUT' && siteSubmitSidebarOpen) {
         const requestedPropertyId = event.data.propertyId;
         console.log('📨 AssignmentSidebar received message to open property slideout:', requestedPropertyId);
         setPropertyDetailsSlideout({ isOpen: true, propertyId: requestedPropertyId });
@@ -201,7 +202,7 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [siteSubmitSidebarOpen]);
 
   const toggleSidebarModule = (module: keyof typeof expandedSidebarModules) => {
     const newState = {
