@@ -20,7 +20,7 @@ export default function SiteSubmitSlideOut({
       onClose={onClose}
       title="Site Submit Details"
       width="800px"
-      rightOffset={propertySlideoutOpen ? 500 : 0}
+      rightOffset={propertySlideoutOpen ? 900 : 0}
     >
       <iframe
         src={`/site-submit/${siteSubmitId}?embedded=true`}

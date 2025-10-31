@@ -23,7 +23,7 @@ export default function PropertyDetailsSlideOut({
       isOpen={isOpen}
       onClose={onClose}
       title="Property Details"
-      width="500px"
+      width="900px"
     >
       <iframe
         src={`/property/${propertyId}?embedded=true`}

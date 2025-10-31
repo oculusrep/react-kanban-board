@@ -16,8 +16,8 @@ const SiteSubmitSidebar: React.FC<SiteSubmitSidebarProps> = ({
   propertySlideoutOpen = false
 }) => {
   // Calculate right position based on whether property slideout is open
-  // Property slideout is 500px wide, so push site submit sidebar to the left
-  const rightPosition = propertySlideoutOpen ? '500px' : '0';
+  // Property slideout is 900px wide, so push site submit sidebar to the left
+  const rightPosition = propertySlideoutOpen ? '900px' : '0';
 
   return (
     <div
