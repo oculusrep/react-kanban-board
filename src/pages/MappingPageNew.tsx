@@ -243,6 +243,9 @@ const MappingPageContent: React.FC = () => {
               toggleLayer('site_submits');
             }
 
+            // Set verifying state so the SiteSubmitLayer creates a marker for this site submit
+            setVerifyingSiteSubmitId(siteSubmitId);
+
             // Open the pin details slideout for this site submit
             setSelectedPinData(data);
             setSelectedPinType('site_submit');
@@ -255,7 +258,7 @@ const MappingPageContent: React.FC = () => {
           }
         });
     }
-  }, [location.search, mapInstance, layerState.site_submits?.isVisible, toggleLayer]);
+  }, [location.search, mapInstance, layerState.site_submits?.isVisible, toggleLayer, setVerifyingSiteSubmitId]);
 
   const handleMapLoad = (map: google.maps.Map) => {
     setMapInstance(map);
