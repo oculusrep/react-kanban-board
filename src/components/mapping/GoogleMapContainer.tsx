@@ -1,8 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
 import { createModernPinIcon, createModernMarkerIcon, MarkerColors, createMutedPlacesStyle, createSatelliteMutedPlacesStyle, createGoogleBlueDotIcon, createAccuracyCircleOptions } from './utils/modernMarkers';
 import { useGPSTracking } from '../../hooks/useGPSTracking';
 import { GPSControls } from './GPSTrackingButton';
+import { RulerTool } from './RulerTool';
+import { calculateStraightLineDistance, formatDistance } from '../../services/distanceService';
 
 interface GoogleMapContainerProps {
   height?: string;
@@ -37,6 +39,13 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
   const accuracyCircleRef = useRef<google.maps.Circle | null>(null);
   const gpsControlRef = useRef<HTMLDivElement | null>(null);
   const [autoCenterEnabled, setAutoCenterEnabled] = useState(true); // Auto-center by default
+
+  // Ruler tool state
+  const [rulerActive, setRulerActive] = useState(false);
+  const rulerMarkersRef = useRef<google.maps.Marker[]>([]);
+  const rulerLinesRef = useRef<google.maps.Polyline[]>([]);
+  const rulerLabelsRef = useRef<google.maps.Marker[]>([]);
+  const rulerClickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
 
   // Initialize GPS tracking hook with battery-optimized settings
   const {
@@ -826,6 +835,156 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
     }
   }, [gpsError]);
 
+  // Ruler tool functionality
+  const clearRulerTool = useCallback(() => {
+    rulerMarkersRef.current.forEach(marker => marker.setMap(null));
+    rulerMarkersRef.current = [];
+    rulerLinesRef.current.forEach(line => line.setMap(null));
+    rulerLinesRef.current = [];
+    rulerLabelsRef.current.forEach(label => label.setMap(null));
+    rulerLabelsRef.current = [];
+  }, []);
+
+  const toggleRulerTool = useCallback(() => {
+    if (rulerActive) {
+      setRulerActive(false);
+      clearRulerTool();
+      if (rulerClickListenerRef.current) {
+        google.maps.event.removeListener(rulerClickListenerRef.current);
+        rulerClickListenerRef.current = null;
+      }
+    } else {
+      setRulerActive(true);
+    }
+  }, [rulerActive, clearRulerTool]);
+
+  // Ruler tool click handler
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !rulerActive) return;
+
+    const clickListener = map.addListener('click', (event: google.maps.MapMouseEvent) => {
+      if (!event.latLng) return;
+
+      const position = event.latLng;
+      const markers = rulerMarkersRef.current;
+      const lines = rulerLinesRef.current;
+      const labels = rulerLabelsRef.current;
+
+      const marker = new google.maps.Marker({
+        position,
+        map,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 6,
+          fillColor: '#fff',
+          fillOpacity: 1,
+          strokeColor: '#000',
+          strokeWeight: 2,
+        },
+        clickable: true,
+      });
+
+      markers.push(marker);
+
+      if (markers.length > 1) {
+        const prevPosition = markers[markers.length - 2].getPosition();
+        if (prevPosition) {
+          const distance = calculateStraightLineDistance(
+            { lat: prevPosition.lat(), lng: prevPosition.lng() },
+            { lat: position.lat(), lng: position.lng() }
+          );
+
+          const line = new google.maps.Polyline({
+            path: [prevPosition, position],
+            strokeColor: '#000',
+            strokeOpacity: 0.8,
+            strokeWeight: 3,
+            geodesic: true,
+            map,
+          });
+          lines.push(line);
+
+          const midLat = (prevPosition.lat() + position.lat()) / 2;
+          const midLng = (prevPosition.lng() + position.lng()) / 2;
+          let totalText = formatDistance(distance);
+
+          if (markers.length > 2) {
+            let totalMeters = 0;
+            for (let i = 1; i < markers.length; i++) {
+              const p1 = markers[i - 1].getPosition();
+              const p2 = markers[i].getPosition();
+              if (p1 && p2) {
+                const d = calculateStraightLineDistance(
+                  { lat: p1.lat(), lng: p1.lng() },
+                  { lat: p2.lat(), lng: p2.lng() }
+                );
+                totalMeters += d.meters;
+              }
+            }
+            totalText = `${formatDistance(distance)}\nTotal: ${formatDistance({
+              meters: totalMeters,
+              kilometers: totalMeters / 1000,
+              miles: totalMeters / 1609.34,
+              feet: totalMeters * 3.28084,
+            })}`;
+          }
+
+          const label = new google.maps.Marker({
+            position: { lat: midLat, lng: midLng },
+            map,
+            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
+            label: {
+              text: totalText,
+              color: '#000',
+              fontSize: '13px',
+              fontWeight: 'bold',
+            },
+            clickable: false,
+            zIndex: 1000,
+          });
+          labels.push(label);
+        }
+      }
+
+      marker.addListener('click', () => {
+        const index = markers.indexOf(marker);
+        if (index === -1) return;
+        marker.setMap(null);
+        markers.splice(index, 1);
+        if (index > 0 && lines[index - 1]) {
+          lines[index - 1].setMap(null);
+          lines.splice(index - 1, 1);
+          if (labels[index - 1]) {
+            labels[index - 1].setMap(null);
+            labels.splice(index - 1, 1);
+          }
+        }
+        if (index < lines.length && lines[index]) {
+          lines[index].setMap(null);
+          lines.splice(index, 1);
+          if (labels[index]) {
+            labels[index].setMap(null);
+            labels.splice(index, 1);
+          }
+        }
+      });
+    });
+
+    rulerClickListenerRef.current = clickListener;
+    return () => google.maps.event.removeListener(clickListener);
+  }, [rulerActive]);
+
+  useEffect(() => {
+    if (mapRef.current) {
+      mapRef.current.style.cursor = rulerActive ? 'crosshair' : '';
+    }
+  }, [rulerActive]);
+
+  useEffect(() => {
+    return () => clearRulerTool();
+  }, [clearRulerTool]);
+
   // Handle onMapLoad callback changes without re-initializing the map
   useEffect(() => {
     if (mapInstanceRef.current && onMapLoad) {
@@ -900,6 +1059,14 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           autoCenterEnabled={autoCenterEnabled}
           onToggleTracking={toggleTracking}
           onToggleAutoCenter={() => setAutoCenterEnabled(prev => !prev)}
+        />
+      )}
+
+      {/* Ruler Tool */}
+      {!isLoading && mapInstanceRef.current && (
+        <RulerTool
+          isActive={rulerActive}
+          onToggle={toggleRulerTool}
         />
       )}
     </div>
