@@ -570,7 +570,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         const loader = new Loader({
           apiKey: apiKey,
           version: 'weekly',
-          libraries: ['places', 'geometry', 'drawing']
+          libraries: ['places', 'geometry']
         });
 
         // Load Google Maps
@@ -704,8 +704,6 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           }
         };
 
-        // Ruler tool will be managed via effect hooks below
-
         // Call callbacks if provided
         if (onMapLoad) {
           onMapLoad(map);
@@ -837,93 +835,203 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
     }
   }, [gpsError]);
 
-  // Update cursor when measurement mode changes
-  useEffect(() => {
-    if (mapRef.current) {
-      mapRef.current.style.cursor = measurementActive ? 'crosshair' : '';
-    }
-  }, [measurementActive]);
+  // Ruler tool functionality
+  const clearRulerTool = useCallback(() => {
+    // Remove all markers
+    rulerMarkersRef.current.forEach(marker => marker.setMap(null));
+    rulerMarkersRef.current = [];
 
-  // Draw lines between measurement points
+    // Remove all lines
+    rulerLinesRef.current.forEach(line => line.setMap(null));
+    rulerLinesRef.current = [];
+
+    // Remove all labels
+    rulerLabelsRef.current.forEach(label => label.setMap(null));
+    rulerLabelsRef.current = [];
+  }, []);
+
+  const toggleRulerTool = useCallback(() => {
+    if (rulerActive) {
+      // Deactivate ruler
+      setRulerActive(false);
+      clearRulerTool();
+
+      // Remove click listener
+      if (rulerClickListenerRef.current) {
+        google.maps.event.removeListener(rulerClickListenerRef.current);
+        rulerClickListenerRef.current = null;
+      }
+    } else {
+      // Activate ruler
+      setRulerActive(true);
+    }
+  }, [rulerActive, clearRulerTool]);
+
+  // Ruler tool click handler with mobile/touch support
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map) return;
+    if (!map || !rulerActive) return;
 
-    // Clear existing lines
-    measurementLinesRef.current.forEach(line => line.setMap(null));
-    measurementLinesRef.current = [];
+    // Add click listener for ruler (works for both mouse and touch)
+    const clickListener = map.addListener('click', (event: google.maps.MapMouseEvent) => {
+      if (!event.latLng) return;
 
-    // Draw lines for each measurement segment
-    measurements.forEach(measurement => {
-      const line = new google.maps.Polyline({
-        path: [
-          { lat: measurement.from.position.lat, lng: measurement.from.position.lng },
-          { lat: measurement.to.position.lat, lng: measurement.to.position.lng },
-        ],
-        strokeColor: '#1a73e8',
-        strokeOpacity: 0.8,
-        strokeWeight: 3,
-        geodesic: true,
+      const position = event.latLng;
+      const markers = rulerMarkersRef.current;
+      const lines = rulerLinesRef.current;
+      const labels = rulerLabelsRef.current;
+
+      // Create marker for this point
+      const marker = new google.maps.Marker({
+        position: position,
         map: map,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 6, // Slightly larger for easier touch interaction
+          fillColor: '#fff',
+          fillOpacity: 1,
+          strokeColor: '#000',
+          strokeWeight: 2,
+        },
+        draggable: false,
+        clickable: true,
       });
 
-      measurementLinesRef.current.push(line);
+      markers.push(marker);
+
+      // If this is not the first point, draw a line and label
+      if (markers.length > 1) {
+        const prevMarker = markers[markers.length - 2];
+        const prevPosition = prevMarker.getPosition();
+
+        if (prevPosition) {
+          // Calculate distance
+          const distance = calculateStraightLineDistance(
+            { lat: prevPosition.lat(), lng: prevPosition.lng() },
+            { lat: position.lat(), lng: position.lng() }
+          );
+
+          // Draw line
+          const line = new google.maps.Polyline({
+            path: [prevPosition, position],
+            strokeColor: '#000',
+            strokeOpacity: 0.8,
+            strokeWeight: 3,
+            geodesic: true,
+            map: map,
+            clickable: false,
+          });
+
+          lines.push(line);
+
+          // Create label for distance (midpoint)
+          const midLat = (prevPosition.lat() + position.lat()) / 2;
+          const midLng = (prevPosition.lng() + position.lng()) / 2;
+
+          const distanceText = formatDistance(distance);
+
+          // Calculate total distance if more than 2 points
+          let totalText = distanceText;
+          if (markers.length > 2) {
+            let totalMeters = 0;
+            for (let i = 1; i < markers.length; i++) {
+              const p1 = markers[i - 1].getPosition();
+              const p2 = markers[i].getPosition();
+              if (p1 && p2) {
+                const d = calculateStraightLineDistance(
+                  { lat: p1.lat(), lng: p1.lng() },
+                  { lat: p2.lat(), lng: p2.lng() }
+                );
+                totalMeters += d.meters;
+              }
+            }
+
+            const totalDistance = {
+              meters: totalMeters,
+              kilometers: totalMeters / 1000,
+              miles: totalMeters / 1609.34,
+              feet: totalMeters * 3.28084,
+            };
+
+            totalText = `${distanceText}\nTotal: ${formatDistance(totalDistance)}`;
+          }
+
+          const label = new google.maps.Marker({
+            position: { lat: midLat, lng: midLng },
+            map: map,
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 0,
+            },
+            label: {
+              text: totalText,
+              color: '#000',
+              fontSize: '13px', // Slightly larger for mobile readability
+              fontWeight: 'bold',
+              className: 'ruler-distance-label',
+            },
+            clickable: false,
+            zIndex: 1000,
+          });
+
+          labels.push(label);
+        }
+      }
+
+      // Add click listener to remove point (both mouse and touch)
+      marker.addListener('click', () => {
+        const index = markers.indexOf(marker);
+        if (index === -1) return;
+
+        // Remove this marker
+        marker.setMap(null);
+        markers.splice(index, 1);
+
+        // Remove connected lines and labels
+        if (index > 0 && lines[index - 1]) {
+          lines[index - 1].setMap(null);
+          lines.splice(index - 1, 1);
+
+          if (labels[index - 1]) {
+            labels[index - 1].setMap(null);
+            labels.splice(index - 1, 1);
+          }
+        }
+
+        if (index < lines.length && lines[index]) {
+          lines[index].setMap(null);
+          lines.splice(index, 1);
+
+          if (labels[index]) {
+            labels[index].setMap(null);
+            labels.splice(index, 1);
+          }
+        }
+      });
     });
-  }, [measurements]);
 
-  // Clean up measurement markers and lines when measurement stops
+    rulerClickListenerRef.current = clickListener;
+
+    return () => {
+      if (clickListener) {
+        google.maps.event.removeListener(clickListener);
+      }
+    };
+  }, [rulerActive]);
+
+  // Update cursor when ruler mode changes
   useEffect(() => {
-    if (!measurementActive) {
-      // Clear markers
-      measurementMarkersRef.current.forEach(marker => marker.setMap(null));
-      measurementMarkersRef.current = [];
-
-      // Clear lines
-      measurementLinesRef.current.forEach(line => line.setMap(null));
-      measurementLinesRef.current = [];
+    if (mapRef.current) {
+      mapRef.current.style.cursor = rulerActive ? 'crosshair' : '';
     }
-  }, [measurementActive]);
+  }, [rulerActive]);
 
-  // Handle clearing points
-  const handleClearPoints = () => {
-    // Clear markers
-    measurementMarkersRef.current.forEach(marker => marker.setMap(null));
-    measurementMarkersRef.current = [];
-
-    // Clear lines
-    measurementLinesRef.current.forEach(line => line.setMap(null));
-    measurementLinesRef.current = [];
-
-    // Clear points in hook
-    clearPoints();
-  };
-
-  // Handle removing last point
-  const handleRemoveLastPoint = () => {
-    // Remove last marker
-    const lastMarker = measurementMarkersRef.current.pop();
-    if (lastMarker) {
-      lastMarker.setMap(null);
-    }
-
-    // Remove last line
-    const lastLine = measurementLinesRef.current.pop();
-    if (lastLine) {
-      lastLine.setMap(null);
-    }
-
-    // Remove point from hook
-    removeLastPoint();
-  };
-
-  // Toggle measurement mode
-  const handleToggleMeasurement = () => {
-    if (measurementActive) {
-      stopMeasurement();
-    } else {
-      startMeasurement();
-    }
-  };
+  // Clean up ruler when component unmounts
+  useEffect(() => {
+    return () => {
+      clearRulerTool();
+    };
+  }, [clearRulerTool]);
 
   // Handle onMapLoad callback changes without re-initializing the map
   useEffect(() => {
@@ -1002,28 +1110,11 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         />
       )}
 
-      {/* Distance Measurement Controls */}
+      {/* Ruler Tool */}
       {!isLoading && mapInstanceRef.current && (
-        <DistanceMeasurementControls
-          isActive={measurementActive}
-          hasPoints={hasMeasurementPoints}
-          pointCount={measurementPointCount}
-          mode={travelMode}
-          calculating={calculatingDistance}
-          measurementInfo={
-            measurements.length > 0
-              ? {
-                  straightLineDistance: formatDistance(getTotalDistance().straightLine),
-                  drivingDistance: getTotalDistance().driving?.formatted,
-                  duration: getTotalDistance().duration,
-                  durationInTraffic: getTotalDistance().durationInTraffic,
-                }
-              : undefined
-          }
-          onToggleMeasurement={handleToggleMeasurement}
-          onChangeTravelMode={changeTravelMode}
-          onClearPoints={handleClearPoints}
-          onRemoveLastPoint={handleRemoveLastPoint}
+        <RulerTool
+          isActive={rulerActive}
+          onToggle={toggleRulerTool}
         />
       )}
     </div>

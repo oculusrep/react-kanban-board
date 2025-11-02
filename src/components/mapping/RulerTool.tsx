@@ -1,8 +1,9 @@
 /**
- * Google Maps Ruler Tool
+ * Google Maps Ruler Tool - Mobile-Friendly
  *
  * Mimics the native Google Maps "Measure distance" feature
- * Click to add points, shows distance between points and total distance
+ * Click/tap to add points, shows distance between points and total distance
+ * Optimized for both desktop and mobile devices
  */
 
 import React from 'react';
@@ -17,7 +18,7 @@ export const RulerTool: React.FC<RulerToolProps> = ({ isActive, onToggle }) => {
     <div
       style={{
         position: 'absolute',
-        top: '10px',
+        top: '70px', // Position below GPS controls
         right: '10px',
         zIndex: 1000,
       }}
@@ -33,14 +34,15 @@ export const RulerTool: React.FC<RulerToolProps> = ({ isActive, onToggle }) => {
         <button
           onClick={onToggle}
           title={isActive ? "Stop measuring" : "Measure distance"}
+          aria-label={isActive ? "Stop measuring" : "Measure distance"}
           style={{
             backgroundColor: isActive ? '#1a73e8' : 'transparent',
             color: isActive ? '#fff' : 'rgb(25,25,25)',
             border: 'none',
             cursor: 'pointer',
-            padding: '10px 12px',
-            width: '48px',
-            height: '48px',
+            padding: '12px', // Larger padding for better touch targets
+            minWidth: '48px', // Minimum 48px for accessibility
+            minHeight: '48px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -48,6 +50,8 @@ export const RulerTool: React.FC<RulerToolProps> = ({ isActive, onToggle }) => {
             fontSize: '14px',
             fontWeight: 500,
             transition: 'all 0.2s',
+            WebkitTapHighlightColor: 'transparent', // Remove blue highlight on mobile
+            touchAction: 'manipulation', // Improve touch responsiveness
           }}
           onMouseEnter={(e) => {
             if (!isActive) {
@@ -70,6 +74,7 @@ export const RulerTool: React.FC<RulerToolProps> = ({ isActive, onToggle }) => {
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
+            aria-hidden="true"
           >
             <path d="M4 4 L20 20" />
             <circle cx="4" cy="4" r="2" fill="currentColor" stroke="none" />
@@ -80,6 +85,32 @@ export const RulerTool: React.FC<RulerToolProps> = ({ isActive, onToggle }) => {
           </svg>
         </button>
       </div>
+
+      {/* Instruction tooltip when active */}
+      {isActive && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '56px',
+            right: '0',
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            color: '#fff',
+            padding: '8px 12px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            whiteSpace: 'nowrap',
+            fontFamily: 'Roboto,Arial,sans-serif',
+            boxShadow: '0 2px 6px rgba(0,0,0,.3)',
+            pointerEvents: 'none', // Don't interfere with map clicks
+          }}
+        >
+          Tap/click on map to measure
+          <br />
+          <span style={{ fontSize: '11px', opacity: 0.8 }}>
+            Tap points to remove them
+          </span>
+        </div>
+      )}
     </div>
   );
 };
