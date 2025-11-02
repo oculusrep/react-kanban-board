@@ -1,8 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
 import { createModernPinIcon, createModernMarkerIcon, MarkerColors, createMutedPlacesStyle, createSatelliteMutedPlacesStyle, createGoogleBlueDotIcon, createAccuracyCircleOptions } from './utils/modernMarkers';
 import { useGPSTracking } from '../../hooks/useGPSTracking';
 import { GPSControls } from './GPSTrackingButton';
+import { RulerTool } from './RulerTool';
+import { calculateStraightLineDistance, formatDistance } from '../../services/distanceService';
 
 interface GoogleMapContainerProps {
   height?: string;
@@ -37,6 +39,13 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
   const accuracyCircleRef = useRef<google.maps.Circle | null>(null);
   const gpsControlRef = useRef<HTMLDivElement | null>(null);
   const [autoCenterEnabled, setAutoCenterEnabled] = useState(true); // Auto-center by default
+
+  // Ruler tool state
+  const [rulerActive, setRulerActive] = useState(false);
+  const rulerMarkersRef = useRef<google.maps.Marker[]>([]);
+  const rulerLinesRef = useRef<google.maps.Polyline[]>([]);
+  const rulerLabelsRef = useRef<google.maps.Marker[]>([]);
+  const rulerClickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
 
   // Initialize GPS tracking hook with battery-optimized settings
   const {
@@ -561,7 +570,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         const loader = new Loader({
           apiKey: apiKey,
           version: 'weekly',
-          libraries: ['places', 'geometry']
+          libraries: ['places', 'geometry', 'drawing']
         });
 
         // Load Google Maps
@@ -695,6 +704,8 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           }
         };
 
+        // Ruler tool will be managed via effect hooks below
+
         // Call callbacks if provided
         if (onMapLoad) {
           onMapLoad(map);
@@ -826,6 +837,94 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
     }
   }, [gpsError]);
 
+  // Update cursor when measurement mode changes
+  useEffect(() => {
+    if (mapRef.current) {
+      mapRef.current.style.cursor = measurementActive ? 'crosshair' : '';
+    }
+  }, [measurementActive]);
+
+  // Draw lines between measurement points
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    // Clear existing lines
+    measurementLinesRef.current.forEach(line => line.setMap(null));
+    measurementLinesRef.current = [];
+
+    // Draw lines for each measurement segment
+    measurements.forEach(measurement => {
+      const line = new google.maps.Polyline({
+        path: [
+          { lat: measurement.from.position.lat, lng: measurement.from.position.lng },
+          { lat: measurement.to.position.lat, lng: measurement.to.position.lng },
+        ],
+        strokeColor: '#1a73e8',
+        strokeOpacity: 0.8,
+        strokeWeight: 3,
+        geodesic: true,
+        map: map,
+      });
+
+      measurementLinesRef.current.push(line);
+    });
+  }, [measurements]);
+
+  // Clean up measurement markers and lines when measurement stops
+  useEffect(() => {
+    if (!measurementActive) {
+      // Clear markers
+      measurementMarkersRef.current.forEach(marker => marker.setMap(null));
+      measurementMarkersRef.current = [];
+
+      // Clear lines
+      measurementLinesRef.current.forEach(line => line.setMap(null));
+      measurementLinesRef.current = [];
+    }
+  }, [measurementActive]);
+
+  // Handle clearing points
+  const handleClearPoints = () => {
+    // Clear markers
+    measurementMarkersRef.current.forEach(marker => marker.setMap(null));
+    measurementMarkersRef.current = [];
+
+    // Clear lines
+    measurementLinesRef.current.forEach(line => line.setMap(null));
+    measurementLinesRef.current = [];
+
+    // Clear points in hook
+    clearPoints();
+  };
+
+  // Handle removing last point
+  const handleRemoveLastPoint = () => {
+    // Remove last marker
+    const lastMarker = measurementMarkersRef.current.pop();
+    if (lastMarker) {
+      lastMarker.setMap(null);
+    }
+
+    // Remove last line
+    const lastLine = measurementLinesRef.current.pop();
+    if (lastLine) {
+      lastLine.setMap(null);
+    }
+
+    // Remove point from hook
+    removeLastPoint();
+  };
+
+  // Toggle measurement mode
+  const handleToggleMeasurement = () => {
+    if (measurementActive) {
+      stopMeasurement();
+    } else {
+      startMeasurement();
+    }
+  };
+
   // Handle onMapLoad callback changes without re-initializing the map
   useEffect(() => {
     if (mapInstanceRef.current && onMapLoad) {
@@ -900,6 +999,31 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           autoCenterEnabled={autoCenterEnabled}
           onToggleTracking={toggleTracking}
           onToggleAutoCenter={() => setAutoCenterEnabled(prev => !prev)}
+        />
+      )}
+
+      {/* Distance Measurement Controls */}
+      {!isLoading && mapInstanceRef.current && (
+        <DistanceMeasurementControls
+          isActive={measurementActive}
+          hasPoints={hasMeasurementPoints}
+          pointCount={measurementPointCount}
+          mode={travelMode}
+          calculating={calculatingDistance}
+          measurementInfo={
+            measurements.length > 0
+              ? {
+                  straightLineDistance: formatDistance(getTotalDistance().straightLine),
+                  drivingDistance: getTotalDistance().driving?.formatted,
+                  duration: getTotalDistance().duration,
+                  durationInTraffic: getTotalDistance().durationInTraffic,
+                }
+              : undefined
+          }
+          onToggleMeasurement={handleToggleMeasurement}
+          onChangeTravelMode={changeTravelMode}
+          onClearPoints={handleClearPoints}
+          onRemoveLastPoint={handleRemoveLastPoint}
         />
       )}
     </div>

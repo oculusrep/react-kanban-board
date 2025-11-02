@@ -27,6 +27,7 @@ import SiteSubmitDashboardPage from "./pages/SiteSubmitDashboardPage";
 import TaskDashboardPage from "./pages/TaskDashboardPage";
 import PaymentDashboardPage from "./pages/PaymentDashboardPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
+import TypographyTestPage from "./pages/TypographyTestPage";
 
 function ProtectedLayout() {
   const location = useLocation();
@@ -75,6 +76,7 @@ function App() {
           <Route path="reports/property-data-quality" element={<PropertyDataQualityReportPage />} />
           <Route path="reports/assignments" element={<AssignmentsReportPage />} />
           <Route path="reports/site-submit-dashboard" element={<SiteSubmitDashboardPage />} />
+          <Route path="typography-test" element={<TypographyTestPage />} />
         </Route>
       </Routes>
     </AuthProvider>

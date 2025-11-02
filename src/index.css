@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Remove number input spinner arrows (those annoying up/down arrows) */
+/* Chrome, Safari, Edge, Opera */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Firefox */
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* Hide scrollbar utility */
 .scrollbar-hide {
   -ms-overflow-style: none;  /* Internet Explorer 10+ */
