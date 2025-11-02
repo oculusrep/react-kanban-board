@@ -201,7 +201,7 @@ const FormattedField: React.FC<FormattedFieldProps> = ({
         <span
           className={`${
             value !== null ? colorClasses[colorScheme] : 'text-gray-500'
-          } ${showLarge ? 'text-display-value font-semibold' : 'text-form-input-lg font-medium'}`}
+          } ${showLarge ? 'text-display-value font-semibold' : 'text-sm'}`}
         >
           {displayValue}
         </span>
