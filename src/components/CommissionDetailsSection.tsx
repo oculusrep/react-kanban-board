@@ -1,7 +1,7 @@
 // components/CommissionDetailsSection.tsx
 import React from 'react';
 import { Deal } from '../lib/types';
-import PercentageInput from './PercentageInput';
+import FormattedField from './shared/FormattedField';
 import ReferralPayeeAutocomplete from './ReferralPayeeAutocomplete';
 import { useCommissionCalculations } from '../hooks/useCommissionCalculations';
 
@@ -65,39 +65,37 @@ const CommissionDetailsSection: React.FC<CommissionDetailsSectionProps> = ({
               {formatCurrency(deal.fee)}
             </div>
           </div>
-          
-          <PercentageInput
+
+          <FormattedField
             label="Commission Rate %"
+            type="percentage"
             value={deal.commission_percent}
             onChange={(v) => onFieldUpdate('commission_percent', v)}
+            maxValue={100}
           />
-          
-          <PercentageInput
+
+          <FormattedField
             label="Referral Fee %"
+            type="percentage"
             value={deal.referral_fee_percent}
             onChange={(v) => onFieldUpdate('referral_fee_percent', v)}
+            maxValue={100}
           />
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700">Referral Fee $</label>
             <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
               {formatCurrency(deal.referral_fee_usd)}
             </div>
           </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Number of Payments</label>
-            <input
-              type="number"
-              step="1"
-              min="1"
-              value={deal.number_of_payments || 1}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
-                onFieldUpdate('number_of_payments', parseInt(e.target.value) || 1)
-              }
-              className="mt-1 block w-full rounded border-gray-300 shadow-sm cursor-pointer hover:bg-blue-50 px-3 py-2 transition-colors border border-transparent hover:border-blue-200 text-sm"
-            />
-          </div>
+
+          <FormattedField
+            label="Number of Payments"
+            type="number"
+            value={deal.number_of_payments}
+            onChange={(v) => onFieldUpdate('number_of_payments', v)}
+            decimalPlaces={0}
+          />
         </div>
 
         {/* Second Row: Referral Payee and GCI/AGCI */}
@@ -125,12 +123,14 @@ const CommissionDetailsSection: React.FC<CommissionDetailsSectionProps> = ({
 
         {/* Third Row: House */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <PercentageInput
+          <FormattedField
             label="House %"
+            type="percentage"
             value={deal.house_percent}
             onChange={(v) => onFieldUpdate('house_percent', v)}
+            maxValue={100}
           />
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700">House $</label>
             <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
@@ -141,12 +141,14 @@ const CommissionDetailsSection: React.FC<CommissionDetailsSectionProps> = ({
 
         {/* Fourth Row: Origination */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <PercentageInput
+          <FormattedField
             label="Origination %"
+            type="percentage"
             value={deal.origination_percent}
             onChange={(v) => onFieldUpdate('origination_percent', v)}
+            maxValue={100}
           />
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700">Origination $</label>
             <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
@@ -157,12 +159,14 @@ const CommissionDetailsSection: React.FC<CommissionDetailsSectionProps> = ({
 
         {/* Fifth Row: Site */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <PercentageInput
+          <FormattedField
             label="Site %"
+            type="percentage"
             value={deal.site_percent}
             onChange={(v) => onFieldUpdate('site_percent', v)}
+            maxValue={100}
           />
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700">Site $</label>
             <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
@@ -173,12 +177,14 @@ const CommissionDetailsSection: React.FC<CommissionDetailsSectionProps> = ({
 
         {/* Sixth Row: Deal */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <PercentageInput
+          <FormattedField
             label="Deal %"
+            type="percentage"
             value={deal.deal_percent}
             onChange={(v) => onFieldUpdate('deal_percent', v)}
+            maxValue={100}
           />
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700">Deal $</label>
             <div className="mt-1 p-2 bg-gray-100 rounded text-sm">

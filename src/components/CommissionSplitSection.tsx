@@ -62,8 +62,8 @@ const InlinePercentageEdit: React.FC<InlinePercentageEditProps> = ({ value, onCh
   if (isEditing) {
     return (
       <input
-        type="number"
-        step="0.1"
+        type="text"
+        inputMode="decimal"
         value={editValue}
         onChange={(e) => setEditValue(e.target.value)}
         onBlur={handleSave}
