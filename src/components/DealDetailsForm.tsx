@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { formatCurrency, formatPercent, formatIntegerPercent } from "../utils/format";
 import FormattedInput from "./FormattedInput";
+import FormattedField from "./shared/FormattedField";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { parseISO, format as formatDateFn } from "date-fns";
@@ -861,40 +862,36 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
       {/* SECTION: Financials */}
       <Section title="Financials" help="Set value and commission. Fee auto-calculates unless a flat fee is set.">
         <div className="grid grid-cols-2 gap-4">
-          <FormattedInput
-            label="Deal Value"
-            value={form.deal_value}
-            onChange={(v) => updateField("deal_value", v === "" ? null : parseFloat(v))}
-            format={(val) => formatCurrency(val, 2)}
-            editingField={editingField}
-            setEditingField={setEditingField}
-            fieldKey="deal_value"
-          />
-          {errors.deal_value && <FieldError msg={errors.deal_value} />}
+          <div>
+            <FormattedField
+              label="Deal Value"
+              type="currency"
+              value={form.deal_value}
+              onChange={(v) => updateField("deal_value", v)}
+            />
+            {errors.deal_value && <FieldError msg={errors.deal_value} />}
+          </div>
 
-          <FormattedInput
-            label="Commission %"
-            value={form.commission_percent}
-            onChange={(v) => updateField("commission_percent", v === "" ? null : parseFloat(v))}
-            format={(val) => formatPercent(val, 2)}
-            editingField={editingField}
-            setEditingField={setEditingField}
-            fieldKey="commission_percent"
-          />
-          {errors.commission_percent && <FieldError msg={errors.commission_percent} />}
+          <div>
+            <FormattedField
+              label="Commission %"
+              type="percentage"
+              value={form.commission_percent}
+              onChange={(v) => updateField("commission_percent", v)}
+              maxValue={100}
+            />
+            {errors.commission_percent && <FieldError msg={errors.commission_percent} />}
+          </div>
 
-          <FormattedInput
+          <FormattedField
             label="Flat Fee Override"
+            type="currency"
             value={form.flat_fee_override}
-            onChange={(v) => updateField("flat_fee_override", v === "" ? null : parseFloat(v))}
-            format={(val) => (val === null ? "" : formatCurrency(val, 2))}
-            editingField={editingField}
-            setEditingField={setEditingField}
-            fieldKey="flat_fee_override"
+            onChange={(v) => updateField("flat_fee_override", v)}
           />
 
           <div>
-            <label className="block text-sm font-medium">Calculated Fee</label>
+            <label className="block text-form-label font-medium text-gray-700 mb-form-label-gap">Calculated Fee</label>
             <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
               {isNaN(calculatedFee) ? "" : formatCurrency(calculatedFee, 2)}
             </div>

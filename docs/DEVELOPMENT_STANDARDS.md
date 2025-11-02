@@ -232,7 +232,99 @@ For complex UIs with multiple related parts:
 
 ---
 
-## 📋 CRITICAL RULE #4: Code Review Checklist
+## 🎯 CRITICAL RULE #4: Always Use Inline Editable Fields
+
+### The Rule
+
+**ALWAYS use `FormattedField` (inline editable / click-to-edit) for currency, percentage, and number inputs.**
+
+**NEVER use:**
+- ❌ `<input type="number">` (has spinner arrows)
+- ❌ Old `FormattedInput` component (different API, has issues)
+- ❌ `AssignmentCurrencyField`, `PropertyCurrencyField`, `AssignmentPercentField`, `PercentageInput` (old duplicates)
+
+### Why This Matters
+
+**Spinner arrows are bad UX:**
+- Accidentally triggered by mouse wheel
+- Take up space
+- Not useful for most numeric inputs
+- Inconsistent across browsers
+
+**Click-to-edit fields are better:**
+- ✅ Clean display when not editing
+- ✅ NO spinner arrows (removed globally via CSS)
+- ✅ Click to edit, Enter to save, Escape to cancel
+- ✅ Can type directly without clicking
+- ✅ Consistent formatting ($1,250,000.00, 3.5%, etc.)
+- ✅ Keyboard accessible
+- ✅ Touch-friendly (44px min height)
+
+### How to Use
+
+**For currency fields:**
+```typescript
+<FormattedField
+  label="Deal Value"
+  type="currency"
+  value={dealValue}
+  onChange={setDealValue}
+/>
+```
+
+**For percentage fields:**
+```typescript
+<FormattedField
+  label="Commission %"
+  type="percentage"
+  value={commission}
+  onChange={setCommission}
+  maxValue={100}
+/>
+```
+
+**For number fields (square footage, units, etc.):**
+```typescript
+<FormattedField
+  label="Building Sqft"
+  type="number"
+  value={sqft}
+  onChange={setSqft}
+  decimalPlaces={0}  // whole numbers only
+/>
+```
+
+### Component Location
+
+**Use this component:** `src/components/shared/FormattedField.tsx`
+
+**Import:**
+```typescript
+import FormattedField from '../components/shared/FormattedField';
+```
+
+### Reference Names
+
+When discussing these fields, call them:
+- "Click-to-edit fields"
+- "Inline editable fields"
+- Or just: "FormattedField"
+
+### Examples in the Codebase
+
+**Good examples:**
+- ✅ Property Details Slideout (`PropertyDetailsSlideoutContent.tsx`)
+- ✅ Deal Details Form (`DealDetailsForm.tsx`) - Deal Value, Commission %, Flat Fee
+- ✅ Typography Test Page (`/typography-test`)
+
+**Needs migration:**
+- `src/components/property/FinancialSection.tsx`
+- `src/components/CommissionDetailsSection.tsx`
+- `src/components/AddAssignmentModal.tsx`
+
+---
+
+## 📋 CRITICAL RULE #5: Code Review Checklist
 
 ### Before Writing Code
 
@@ -240,6 +332,7 @@ For complex UIs with multiple related parts:
 - [ ] Could this be extracted into a custom hook?
 - [ ] Is this component presentation-only or does it mix logic?
 - [ ] Will this need to work in multiple contexts (modal, slideout, page)?
+- [ ] **Am I adding a currency/percentage/number field? Use `FormattedField`!**
 
 ### Before Committing
 
@@ -257,6 +350,8 @@ For complex UIs with multiple related parts:
 ❌ Navigation that loses map position
 ❌ Opening new tabs when already on map
 ❌ Manual "Update" buttons instead of autosave
+❌ **Using `<input type="number">` instead of `FormattedField`**
+❌ **Creating new currency/percentage field components instead of using `FormattedField`**
 
 ---
 
