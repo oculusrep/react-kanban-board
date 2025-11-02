@@ -1,4 +1,5 @@
 import React from 'react';
+import { Ruler } from 'lucide-react';
 
 interface GPSTrackingButtonProps {
   isTracking: boolean;
@@ -73,6 +74,8 @@ interface GPSControlsProps {
   autoCenterEnabled: boolean;
   onToggleTracking: () => void;
   onToggleAutoCenter: () => void;
+  rulerActive: boolean;
+  onToggleRuler: () => void;
 }
 
 /**
@@ -82,9 +85,11 @@ export const GPSControls: React.FC<GPSControlsProps> = ({
   isTracking,
   autoCenterEnabled,
   onToggleTracking,
-  onToggleAutoCenter
+  onToggleAutoCenter,
+  rulerActive,
+  onToggleRuler
 }) => {
-  console.log('🎮 GPSControls rendering:', { isTracking, autoCenterEnabled });
+  console.log('🎮 GPSControls rendering:', { isTracking, autoCenterEnabled, rulerActive });
 
   return (
     <div
@@ -187,6 +192,43 @@ export const GPSControls: React.FC<GPSControlsProps> = ({
           </svg>
         </button>
       )}
+
+      {/* Ruler Button - always visible */}
+      <button
+        onClick={onToggleRuler}
+        style={{
+          width: '40px',
+          height: '40px',
+          borderRadius: '3px',
+          border: 'none',
+          backgroundColor: rulerActive ? '#1a73e8' : '#fff',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'all 0.2s',
+          padding: '0'
+        }}
+        title={rulerActive ? 'Stop measuring' : 'Measure distance'}
+        onMouseEnter={(e) => {
+          if (!rulerActive) {
+            e.currentTarget.style.backgroundColor = '#f8f9fa';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!rulerActive) {
+            e.currentTarget.style.backgroundColor = '#fff';
+          }
+        }}
+      >
+        <Ruler
+          size={20}
+          strokeWidth={2}
+          style={{ transform: 'rotate(90deg)' }}
+          color={rulerActive ? '#fff' : '#666'}
+        />
+      </button>
     </div>
   );
 };

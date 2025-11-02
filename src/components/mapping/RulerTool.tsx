@@ -7,6 +7,7 @@
  */
 
 import React from 'react';
+import { Ruler } from 'lucide-react';
 
 interface RulerToolProps {
   isActive: boolean;
@@ -18,8 +19,8 @@ export const RulerTool: React.FC<RulerToolProps> = ({ isActive, onToggle }) => {
     <div
       style={{
         position: 'absolute',
-        top: '70px', // Position below GPS controls
-        right: '10px',
+        top: '10px',
+        left: '240px', // Position to the right of GPS controls (152px + 40px + 4px gap + 40px + 4px gap)
         zIndex: 1000,
       }}
     >
@@ -36,13 +37,13 @@ export const RulerTool: React.FC<RulerToolProps> = ({ isActive, onToggle }) => {
           title={isActive ? "Stop measuring" : "Measure distance"}
           aria-label={isActive ? "Stop measuring" : "Measure distance"}
           style={{
-            backgroundColor: isActive ? '#1a73e8' : 'transparent',
+            backgroundColor: isActive ? '#1a73e8' : '#fff',
             color: isActive ? '#fff' : 'rgb(25,25,25)',
             border: 'none',
             cursor: 'pointer',
-            padding: '12px',
-            minWidth: '48px',
-            minHeight: '48px',
+            padding: '0',
+            width: '40px',
+            height: '40px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -60,28 +61,11 @@ export const RulerTool: React.FC<RulerToolProps> = ({ isActive, onToggle }) => {
           }}
           onMouseLeave={(e) => {
             if (!isActive) {
-              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.backgroundColor = '#fff';
             }
           }}
         >
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M4 4 L20 20" />
-            <circle cx="4" cy="4" r="2" fill="currentColor" stroke="none" />
-            <circle cx="20" cy="20" r="2" fill="currentColor" stroke="none" />
-            <line x1="8" y1="8" x2="9" y2="9" />
-            <line x1="12" y1="12" x2="13" y2="13" />
-            <line x1="16" y1="16" x2="17" y2="17" />
-          </svg>
+          <Ruler size={24} strokeWidth={2} style={{ transform: 'rotate(90deg)' }} />
         </button>
       </div>
 
@@ -102,10 +86,10 @@ export const RulerTool: React.FC<RulerToolProps> = ({ isActive, onToggle }) => {
             pointerEvents: 'none',
           }}
         >
-          Tap/click on map to measure
+          Click points to measure distance
           <br />
           <span style={{ fontSize: '11px', opacity: 0.8 }}>
-            Tap points to remove them
+            Press ESC or click ruler to finish
           </span>
         </div>
       )}

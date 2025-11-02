@@ -3,8 +3,8 @@ import { Loader } from '@googlemaps/js-api-loader';
 import { createModernPinIcon, createModernMarkerIcon, MarkerColors, createMutedPlacesStyle, createSatelliteMutedPlacesStyle, createGoogleBlueDotIcon, createAccuracyCircleOptions } from './utils/modernMarkers';
 import { useGPSTracking } from '../../hooks/useGPSTracking';
 import { GPSControls } from './GPSTrackingButton';
-import { RulerTool } from './RulerTool';
-import { calculateStraightLineDistance, formatDistance } from '../../services/distanceService';
+import { calculateStraightLineDistance, calculateDrivingDistance, formatDistance, getDepartureTime, getTimeLabel, type DrivingDistanceResult, type StraightLineDistance } from '../../services/distanceService';
+import { DistanceInfoBox } from './DistanceInfoBox';
 
 interface GoogleMapContainerProps {
   height?: string;
@@ -42,10 +42,31 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
 
   // Ruler tool state
   const [rulerActive, setRulerActive] = useState(false);
+  const [selectedTimeOfDay, setSelectedTimeOfDay] = useState<'now' | 'morning' | 'evening' | 'weekend'>('now');
   const rulerMarkersRef = useRef<google.maps.Marker[]>([]);
   const rulerLinesRef = useRef<google.maps.Polyline[]>([]);
-  const rulerLabelsRef = useRef<google.maps.Marker[]>([]);
+  const rulerLabelsRef = useRef<google.maps.Marker[]>([]); // Distance labels
+  const rulerDrivingDataRef = useRef<Map<google.maps.Polyline, DrivingDistanceResult | null>>(new Map());
   const rulerClickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  const rulerMoveListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  const rulerPreviewLineRef = useRef<google.maps.Polyline | null>(null);
+  const rulerPreviewLabelRef = useRef<google.maps.OverlayView | null>(null);
+  const rulerInfoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+
+  // Custom info box state (replaces InfoWindow)
+  const [customInfoBox, setCustomInfoBox] = useState<{
+    visible: boolean;
+    position: { x: number; y: number };
+    straightDistance: StraightLineDistance;
+    drivingDistance: DrivingDistanceResult | null;
+    latLng: { lat: number; lng: number }; // Store lat/lng for repositioning
+  } | null>(null);
+
+  // Ref to track info box for use in event handlers (avoids stale closure)
+  const customInfoBoxRef = useRef(customInfoBox);
+  useEffect(() => {
+    customInfoBoxRef.current = customInfoBox;
+  }, [customInfoBox]);
 
   // Initialize GPS tracking hook with battery-optimized settings
   const {
@@ -843,6 +864,20 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
     rulerLinesRef.current = [];
     rulerLabelsRef.current.forEach(label => label.setMap(null));
     rulerLabelsRef.current = [];
+    rulerDrivingDataRef.current.clear();
+
+    // Clear preview elements
+    if (rulerPreviewLineRef.current) {
+      rulerPreviewLineRef.current.setMap(null);
+      rulerPreviewLineRef.current = null;
+    }
+    if (rulerPreviewLabelRef.current) {
+      rulerPreviewLabelRef.current.setMap(null);
+      rulerPreviewLabelRef.current = null;
+    }
+
+    // Close custom info box
+    setCustomInfoBox(null);
   }, []);
 
   const toggleRulerTool = useCallback(() => {
@@ -853,23 +888,338 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         google.maps.event.removeListener(rulerClickListenerRef.current);
         rulerClickListenerRef.current = null;
       }
+      if (rulerMoveListenerRef.current) {
+        google.maps.event.removeListener(rulerMoveListenerRef.current);
+        rulerMoveListenerRef.current = null;
+      }
     } else {
       setRulerActive(true);
     }
   }, [rulerActive, clearRulerTool]);
+
+  // Helper function to convert lat/lng to pixel coordinates
+  const latLngToPixel = useCallback((latLng: { lat: number; lng: number }): { x: number; y: number } => {
+    const map = mapInstanceRef.current;
+    const mapDiv = mapRef.current;
+    if (!map || !mapDiv) {
+      return { x: 0, y: 0 };
+    }
+
+    const projection = map.getProjection();
+    const bounds = map.getBounds();
+
+    if (!projection || !bounds) {
+      return { x: 0, y: 0 };
+    }
+
+    const scale = Math.pow(2, map.getZoom() || 0);
+    const worldCoordinate = projection.fromLatLngToPoint(new google.maps.LatLng(latLng.lat, latLng.lng));
+    const pixelCoordinate = new google.maps.Point(
+      worldCoordinate!.x * scale,
+      worldCoordinate!.y * scale
+    );
+
+    const topRight = projection.fromLatLngToPoint(bounds.getNorthEast());
+    const bottomLeft = projection.fromLatLngToPoint(bounds.getSouthWest());
+    const pixelOrigin = new google.maps.Point(
+      bottomLeft!.x * scale,
+      topRight!.y * scale
+    );
+
+    return {
+      x: pixelCoordinate.x - pixelOrigin.x,
+      y: pixelCoordinate.y - pixelOrigin.y
+    };
+  }, []);
+
+  // Helper function to show custom info box
+  const showCustomInfoBox = useCallback((
+    latLng: { lat: number; lng: number },
+    straightDistance: StraightLineDistance,
+    drivingDistance: DrivingDistanceResult | null
+  ) => {
+    const pixelPosition = latLngToPixel(latLng);
+    setCustomInfoBox({
+      visible: true,
+      position: pixelPosition,
+      straightDistance,
+      drivingDistance,
+      latLng
+    });
+  }, [latLngToPixel]);
+
+  // Update info box position when map moves or zooms
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !customInfoBox?.visible) return;
+
+    const updatePosition = () => {
+      if (customInfoBox?.latLng) {
+        const newPixelPosition = latLngToPixel(customInfoBox.latLng);
+        setCustomInfoBox(prev => prev ? { ...prev, position: newPixelPosition } : null);
+      }
+    };
+
+    const boundsListener = map.addListener('bounds_changed', updatePosition);
+    const zoomListener = map.addListener('zoom_changed', updatePosition);
+
+    return () => {
+      google.maps.event.removeListener(boundsListener);
+      google.maps.event.removeListener(zoomListener);
+    };
+  }, [customInfoBox?.visible, customInfoBox?.latLng, latLngToPixel]);
+
+  // Helper function to generate info window content
+  const generateInfoWindowContent = useCallback((straightDist: any, driving: DrivingDistanceResult | null, segmentNum: number, timeOfDay?: 'now' | 'morning' | 'evening' | 'weekend') => {
+    const timeLabel = getTimeLabel(timeOfDay || 'now');
+
+    let content = `
+      <div style="padding: 0; font-family: Roboto, Arial, sans-serif; min-width: 220px; margin-top: -8px;">
+        <h3 style="margin: 0 0 6px 0; padding: 0 10px; font-size: 13px; font-weight: 600; color: #202124; line-height: 1;">Distance Details</h3>
+        <div style="border-top: 1px solid #e0e0e0; padding: 6px 10px 10px 10px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span style="color: #5f6368; font-size: 12px;">As crow flies:</span>
+            <strong style="color: #202124; font-size: 12px;">${formatDistance(straightDist)}</strong>
+          </div>
+    `;
+
+    if (driving) {
+      content += `
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span style="color: #5f6368; font-size: 12px;">Driving distance:</span>
+            <strong style="color: #1a73e8; font-size: 12px;">${driving.distance.text}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+            <span style="color: #5f6368; font-size: 12px;">Travel time (${timeLabel}):</span>
+            <strong style="color: ${driving.durationInTraffic && driving.durationInTraffic.value > driving.duration.value ? '#ea4335' : '#202124'}; font-size: 12px;">${driving.durationInTraffic ? driving.durationInTraffic.text : driving.duration.text}</strong>
+          </div>
+          <div style="border-top: 1px solid #e0e0e0; padding-top: 6px; margin-top: 2px;">
+            <div style="font-size: 10px; color: #5f6368; margin-bottom: 4px;">Check traffic at:</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3px;">
+              <button onclick="window.updateRulerTime('now')" style="padding: 3px 6px; font-size: 10px; border: 1px solid #dadce0; border-radius: 3px; background: ${timeLabel === 'Now' ? '#e8f0fe' : '#fff'}; cursor: pointer; color: #202124;">Now</button>
+              <button onclick="window.updateRulerTime('morning')" style="padding: 3px 6px; font-size: 10px; border: 1px solid #dadce0; border-radius: 3px; background: ${timeLabel === 'Morning' ? '#e8f0fe' : '#fff'}; cursor: pointer; color: #202124;">Morning (8 AM)</button>
+              <button onclick="window.updateRulerTime('evening')" style="padding: 3px 6px; font-size: 10px; border: 1px solid #dadce0; border-radius: 3px; background: ${timeLabel === 'Evening' ? '#e8f0fe' : '#fff'}; cursor: pointer; color: #202124;">Evening (5 PM)</button>
+              <button onclick="window.updateRulerTime('weekend')" style="padding: 3px 6px; font-size: 10px; border: 1px solid #dadce0; border-radius: 3px; background: ${timeLabel === 'Weekend' ? '#e8f0fe' : '#fff'}; cursor: pointer; color: #202124;">Weekend</button>
+            </div>
+          </div>
+      `;
+    } else {
+      content += `
+          <div style="color: #5f6368; font-size: 12px; font-style: italic;">Loading driving data...</div>
+      `;
+    }
+
+    content += `
+        </div>
+      </div>
+    `;
+
+    return content;
+  }, []);
+
+  // Handle time-of-day changes for custom info box
+  const handleTimeChange = useCallback((timeOfDay: 'now' | 'morning' | 'evening' | 'weekend') => {
+    console.log('⏰ Updating ruler time to:', timeOfDay);
+    setSelectedTimeOfDay(timeOfDay);
+
+    // Recalculate driving distance with new time
+    const markers = rulerMarkersRef.current;
+    const lines = rulerLinesRef.current;
+    const drivingData = rulerDrivingDataRef.current;
+
+    if (markers.length === 2 && lines.length > 0) {
+      const pos0 = markers[0].getPosition();
+      const pos1 = markers[1].getPosition();
+
+      if (pos0 && pos1) {
+        const from = { lat: pos0.lat(), lng: pos0.lng() };
+        const to = { lat: pos1.lat(), lng: pos1.lng() };
+        const departureTime = getDepartureTime(timeOfDay);
+
+        console.log('🚗 Recalculating driving distance for time:', timeOfDay, 'at:', departureTime);
+
+        // Recalculate with new departure time
+        calculateDrivingDistance(from, to, departureTime)
+          .then(result => {
+            console.log('✅ Updated driving distance result:', result);
+            drivingData.set(lines[0], result);
+
+            // Update custom info box if it's open
+            if (customInfoBox?.visible) {
+              const straightDist = calculateStraightLineDistance(from, to);
+              setCustomInfoBox(prev => prev ? {
+                ...prev,
+                straightDistance: straightDist,
+                drivingDistance: result
+              } : null);
+            }
+          })
+          .catch(err => {
+            console.error('❌ Error fetching driving distance:', err);
+            drivingData.set(lines[0], null);
+
+            // Update custom info box to show error state
+            if (customInfoBox?.visible) {
+              const straightDist = calculateStraightLineDistance(from, to);
+              setCustomInfoBox(prev => prev ? {
+                ...prev,
+                straightDistance: straightDist,
+                drivingDistance: null
+              } : null);
+            }
+          });
+      }
+    }
+  }, [customInfoBox?.visible]);
 
   // Ruler tool click handler
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !rulerActive) return;
 
-    const clickListener = map.addListener('click', (event: google.maps.MapMouseEvent) => {
+    // Add escape key listener to finish measurement
+    const handleEscapeKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && rulerActive) {
+        // Clear preview but keep existing measurements
+        if (rulerPreviewLineRef.current) {
+          rulerPreviewLineRef.current.setMap(null);
+          rulerPreviewLineRef.current = null;
+        }
+        if (rulerPreviewLabelRef.current) {
+          rulerPreviewLabelRef.current.setMap(null);
+          rulerPreviewLabelRef.current = null;
+        }
+      }
+    };
+    document.addEventListener('keydown', handleEscapeKey);
+
+    // Add mouse move listener for live preview
+    const moveListener = map.addListener('mousemove', (event: google.maps.MapMouseEvent) => {
+      if (!event.latLng) return;
+
+      const markers = rulerMarkersRef.current;
+
+      // Only show preview if we have exactly one marker (waiting for second point)
+      if (markers.length !== 1) return;
+
+      const lastMarker = markers[0];
+      const prevPosition = lastMarker.getPosition();
+      if (!prevPosition) return;
+
+      const currentPosition = event.latLng;
+
+      // Calculate distance for preview
+      const from = { lat: prevPosition.lat(), lng: prevPosition.lng() };
+      const to = { lat: currentPosition.lat(), lng: currentPosition.lng() };
+      const straightDist = calculateStraightLineDistance(from, to);
+      const distanceText = formatDistance(straightDist);
+
+      // Update or create preview line
+      if (!rulerPreviewLineRef.current) {
+        rulerPreviewLineRef.current = new google.maps.Polyline({
+          path: [prevPosition, currentPosition],
+          strokeColor: '#4285F4',
+          strokeOpacity: 0.5, // More transparent for preview
+          strokeWeight: 3,
+          geodesic: true,
+          map,
+          clickable: false,
+          zIndex: 998, // Below permanent lines
+        });
+      } else {
+        rulerPreviewLineRef.current.setPath([prevPosition, currentPosition]);
+      }
+
+      // Update or create preview label
+      if (!rulerPreviewLabelRef.current) {
+        const labelDiv = document.createElement('div');
+        labelDiv.style.background = 'rgba(66, 133, 244, 0.9)'; // Blue background for preview
+        labelDiv.style.color = '#fff';
+        labelDiv.style.padding = '4px 8px';
+        labelDiv.style.borderRadius = '4px';
+        labelDiv.style.fontSize = '12px';
+        labelDiv.style.fontWeight = 'bold';
+        labelDiv.style.fontFamily = 'Roboto, Arial, sans-serif';
+        labelDiv.style.whiteSpace = 'nowrap';
+        labelDiv.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+        labelDiv.textContent = distanceText;
+
+        // Store the current cursor position that will be updated
+        let currentPreviewPosition = currentPosition;
+
+        const labelOverlay = new google.maps.OverlayView();
+        labelOverlay.onAdd = function() {
+          const panes = this.getPanes();
+          if (panes) {
+            panes.overlayLayer.appendChild(labelDiv);
+          }
+        };
+        labelOverlay.draw = function() {
+          const projection = this.getProjection();
+          if (projection && currentPreviewPosition) {
+            const point = projection.fromLatLngToDivPixel(currentPreviewPosition);
+            if (point) {
+              labelDiv.style.position = 'absolute';
+              labelDiv.style.left = point.x + 'px';
+              labelDiv.style.top = (point.y + 15) + 'px';
+              labelDiv.style.transform = 'translateX(-50%)';
+            }
+          }
+        };
+        labelOverlay.onRemove = function() {
+          if (labelDiv.parentNode) {
+            labelDiv.parentNode.removeChild(labelDiv);
+          }
+        };
+
+        // Store position updater function
+        (labelOverlay as any).updatePosition = (newPos: google.maps.LatLng) => {
+          currentPreviewPosition = newPos;
+        };
+
+        labelOverlay.setMap(map);
+        rulerPreviewLabelRef.current = labelOverlay;
+
+        // Store reference to div for updates
+        (labelOverlay as any)._labelDiv = labelDiv;
+      } else {
+        // Update existing preview label with new position and text
+        const labelDiv = (rulerPreviewLabelRef.current as any)._labelDiv;
+        if (labelDiv) {
+          labelDiv.textContent = distanceText;
+          // Update position to follow cursor
+          if ((rulerPreviewLabelRef.current as any).updatePosition) {
+            (rulerPreviewLabelRef.current as any).updatePosition(currentPosition);
+          }
+          rulerPreviewLabelRef.current.draw();
+        }
+      }
+    });
+
+    rulerMoveListenerRef.current = moveListener;
+
+    const clickListener = map.addListener('click', async (event: google.maps.MapMouseEvent) => {
       if (!event.latLng) return;
 
       const position = event.latLng;
       const markers = rulerMarkersRef.current;
       const lines = rulerLinesRef.current;
-      const labels = rulerLabelsRef.current;
+      const drivingData = rulerDrivingDataRef.current;
+
+      // Clear preview elements when clicking to set a point
+      if (rulerPreviewLineRef.current) {
+        rulerPreviewLineRef.current.setMap(null);
+        rulerPreviewLineRef.current = null;
+      }
+      if (rulerPreviewLabelRef.current) {
+        rulerPreviewLabelRef.current.setMap(null);
+        rulerPreviewLabelRef.current = null;
+      }
+
+      // If we already have 2 markers, clear everything and start fresh
+      if (markers.length >= 2) {
+        clearRulerTool();
+      }
 
       const marker = new google.maps.Marker({
         position,
@@ -883,86 +1233,275 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           strokeWeight: 2,
         },
         clickable: true,
+        draggable: true, // Make markers draggable
+        title: 'Drag to move, click to remove',
       });
 
       markers.push(marker);
 
-      if (markers.length > 1) {
+      // Add drag listener to update line and label when ANY marker is dragged
+      // The label should follow the cursor (the marker being dragged)
+      marker.addListener('drag', () => {
+        if (markers.length === 2) {
+          const pos0 = markers[0].getPosition();
+          const pos1 = markers[1].getPosition();
+
+          if (pos0 && pos1) {
+            // Update the line in real-time
+            if (lines.length > 0) {
+              lines[0].setPath([pos0, pos1]);
+            }
+
+            // Calculate and update distance in real-time
+            const from = { lat: pos0.lat(), lng: pos0.lng() };
+            const to = { lat: pos1.lat(), lng: pos1.lng() };
+            const straightDist = calculateStraightLineDistance(from, to);
+            const distanceText = formatDistance(straightDist);
+
+            // Update label text and position to follow the marker being dragged
+            if (rulerLabelsRef.current.length > 0) {
+              const labelOverlay = rulerLabelsRef.current[0];
+              const labelDiv = (labelOverlay as any)._labelDiv;
+              if (labelDiv) {
+                labelDiv.textContent = distanceText;
+
+                // Position label at the cursor (the marker being dragged)
+                const draggedMarkerPos = marker.getPosition();
+                if (draggedMarkerPos && (labelOverlay as any).updatePosition) {
+                  (labelOverlay as any).updatePosition(draggedMarkerPos);
+                  labelOverlay.draw();
+                }
+              }
+            }
+
+            // Update custom info box in real-time if it's open (straight-line distance only)
+            if (customInfoBoxRef.current?.visible) {
+              const midLat = (from.lat + to.lat) / 2;
+              const midLng = (from.lng + to.lng) / 2;
+              const newLatLng = { lat: midLat, lng: midLng };
+              const newPixelPosition = latLngToPixel(newLatLng);
+
+              // Update with new straight-line distance, keep existing driving data
+              setCustomInfoBox(prev => prev ? {
+                ...prev,
+                position: newPixelPosition,
+                straightDistance: straightDist,
+                latLng: newLatLng
+              } : null);
+            }
+          }
+        }
+      });
+
+      // When drag ends, move label back to endpoint and recalculate driving distance
+      marker.addListener('dragend', () => {
+        if (markers.length === 2) {
+          const pos0 = markers[0].getPosition();
+          const pos1 = markers[1].getPosition();
+
+          if (pos0 && pos1 && lines.length > 0) {
+            const from = { lat: pos0.lat(), lng: pos0.lng() };
+            const to = { lat: pos1.lat(), lng: pos1.lng() };
+
+            // Move label back to endpoint (second marker) after drag ends
+            if (rulerLabelsRef.current.length > 0) {
+              const labelOverlay = rulerLabelsRef.current[0];
+              if ((labelOverlay as any).updatePosition) {
+                (labelOverlay as any).updatePosition(pos1);
+                labelOverlay.draw();
+              }
+            }
+
+            // Recalculate driving distance with current time selection
+            console.log('🚗 Recalculating driving distance after drag');
+            const departureTime = getDepartureTime(selectedTimeOfDay);
+            calculateDrivingDistance(from, to, departureTime)
+              .then(result => {
+                console.log('✅ Driving distance result (after drag):', result);
+                drivingData.set(lines[0], result);
+
+                // Update custom info box if it's open
+                if (customInfoBoxRef.current?.visible) {
+                  const straightDist = calculateStraightLineDistance(from, to);
+                  const midLat = (from.lat + to.lat) / 2;
+                  const midLng = (from.lng + to.lng) / 2;
+                  const newLatLng = { lat: midLat, lng: midLng };
+                  const newPixelPosition = latLngToPixel(newLatLng);
+
+                  setCustomInfoBox({
+                    visible: true,
+                    position: newPixelPosition,
+                    straightDistance: straightDist,
+                    drivingDistance: result,
+                    latLng: newLatLng
+                  });
+                }
+              })
+              .catch(err => {
+                console.error('❌ Error fetching driving distance:', err);
+                drivingData.set(lines[0], null);
+
+                // Update custom info box to show error state
+                if (customInfoBoxRef.current?.visible) {
+                  const straightDist = calculateStraightLineDistance(from, to);
+                  const midLat = (from.lat + to.lat) / 2;
+                  const midLng = (from.lng + to.lng) / 2;
+                  const newLatLng = { lat: midLat, lng: midLng };
+                  const newPixelPosition = latLngToPixel(newLatLng);
+
+                  setCustomInfoBox({
+                    visible: true,
+                    position: newPixelPosition,
+                    straightDistance: straightDist,
+                    drivingDistance: null,
+                    latLng: newLatLng
+                  });
+                }
+              });
+          }
+        }
+      });
+
+      if (markers.length === 2) {
         const prevPosition = markers[markers.length - 2].getPosition();
         if (prevPosition) {
-          const distance = calculateStraightLineDistance(
-            { lat: prevPosition.lat(), lng: prevPosition.lng() },
-            { lat: position.lat(), lng: position.lng() }
-          );
+          const from = { lat: prevPosition.lat(), lng: prevPosition.lng() };
+          const to = { lat: position.lat(), lng: position.lng() };
+          const straightDist = calculateStraightLineDistance(from, to);
 
+          // Create clickable line
           const line = new google.maps.Polyline({
             path: [prevPosition, position],
-            strokeColor: '#000',
+            strokeColor: '#4285F4',
             strokeOpacity: 0.8,
-            strokeWeight: 3,
+            strokeWeight: 4,
             geodesic: true,
             map,
+            clickable: true, // Make line clickable
           });
           lines.push(line);
 
-          const midLat = (prevPosition.lat() + position.lat()) / 2;
-          const midLng = (prevPosition.lng() + position.lng()) / 2;
-          let totalText = formatDistance(distance);
+          // Create distance label at endpoint (destination)
+          const distanceText = formatDistance(straightDist);
 
-          if (markers.length > 2) {
-            let totalMeters = 0;
-            for (let i = 1; i < markers.length; i++) {
-              const p1 = markers[i - 1].getPosition();
-              const p2 = markers[i].getPosition();
-              if (p1 && p2) {
-                const d = calculateStraightLineDistance(
-                  { lat: p1.lat(), lng: p1.lng() },
-                  { lat: p2.lat(), lng: p2.lng() }
-                );
-                totalMeters += d.meters;
+          // Create a custom marker with background box like Google Maps
+          const labelDiv = document.createElement('div');
+          labelDiv.style.background = 'rgba(50, 50, 50, 0.9)';
+          labelDiv.style.color = '#fff';
+          labelDiv.style.padding = '4px 8px';
+          labelDiv.style.borderRadius = '4px';
+          labelDiv.style.fontSize = '12px';
+          labelDiv.style.fontWeight = 'bold';
+          labelDiv.style.fontFamily = 'Roboto, Arial, sans-serif';
+          labelDiv.style.whiteSpace = 'nowrap';
+          labelDiv.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+          labelDiv.textContent = distanceText;
+
+          const labelOverlay = new google.maps.OverlayView();
+
+          // Store the current position reference that will be updated
+          let currentLabelPosition = position;
+
+          labelOverlay.onAdd = function() {
+            const panes = this.getPanes();
+            if (panes) {
+              panes.overlayLayer.appendChild(labelDiv);
+            }
+          };
+          labelOverlay.draw = function() {
+            const projection = this.getProjection();
+            if (projection && currentLabelPosition) {
+              const point = projection.fromLatLngToDivPixel(currentLabelPosition);
+              if (point) {
+                labelDiv.style.position = 'absolute';
+                labelDiv.style.left = point.x + 'px';
+                labelDiv.style.top = (point.y + 15) + 'px'; // Offset below the point so line doesn't cover it
+                labelDiv.style.transform = 'translateX(-50%)'; // Center horizontally
               }
             }
-            totalText = `${formatDistance(distance)}\nTotal: ${formatDistance({
-              meters: totalMeters,
-              kilometers: totalMeters / 1000,
-              miles: totalMeters / 1609.34,
-              feet: totalMeters * 3.28084,
-            })}`;
-          }
+          };
+          labelOverlay.onRemove = function() {
+            if (labelDiv.parentNode) {
+              labelDiv.parentNode.removeChild(labelDiv);
+            }
+          };
 
-          const label = new google.maps.Marker({
-            position: { lat: midLat, lng: midLng },
-            map,
-            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
-            label: {
-              text: totalText,
-              color: '#000',
-              fontSize: '13px',
-              fontWeight: 'bold',
-            },
-            clickable: false,
-            zIndex: 1000,
+          // Store position updater function
+          (labelOverlay as any).updatePosition = (newPos: google.maps.LatLng) => {
+            currentLabelPosition = newPos;
+          };
+
+          labelOverlay.setMap(map);
+
+          // Store the overlay and div reference for cleanup
+          (labelOverlay as any)._labelDiv = labelDiv;
+          rulerLabelsRef.current.push(labelOverlay as any);
+
+          // Store null initially, will be updated when driving data loads
+          drivingData.set(line, null);
+
+          // Fetch driving distance asynchronously with current time selection
+          console.log('🚗 Fetching driving distance from', from, 'to', to);
+          const departureTime = getDepartureTime(selectedTimeOfDay);
+          calculateDrivingDistance(from, to, departureTime)
+            .then(result => {
+              console.log('✅ Driving distance result:', result);
+              drivingData.set(line, result);
+            })
+            .catch(err => {
+              console.error('❌ Error fetching driving distance:', err);
+              // Store error state so UI knows it failed
+              drivingData.set(line, null);
+            });
+
+          // Add click listener to line to show custom info box
+          line.addListener('click', (lineEvent: google.maps.PolyIconEvent) => {
+            // Calculate midpoint for info box position
+            const midLat = (prevPosition.lat() + position.lat()) / 2;
+            const midLng = (prevPosition.lng() + position.lng()) / 2;
+
+            const driving = drivingData.get(line);
+
+            // Show custom info box
+            showCustomInfoBox(
+              { lat: midLat, lng: midLng },
+              straightDist,
+              driving
+            );
           });
-          labels.push(label);
         }
       }
 
+      // Add click listener to marker to remove it
       marker.addListener('click', () => {
         const index = markers.indexOf(marker);
         if (index === -1) return;
+
         marker.setMap(null);
         markers.splice(index, 1);
+
+        const labels = rulerLabelsRef.current;
+
+        // Remove connected lines and labels
         if (index > 0 && lines[index - 1]) {
-          lines[index - 1].setMap(null);
+          const line = lines[index - 1];
+          drivingData.delete(line);
+          line.setMap(null);
           lines.splice(index - 1, 1);
+
+          // Remove associated label
           if (labels[index - 1]) {
             labels[index - 1].setMap(null);
             labels.splice(index - 1, 1);
           }
         }
         if (index < lines.length && lines[index]) {
-          lines[index].setMap(null);
+          const line = lines[index];
+          drivingData.delete(line);
+          line.setMap(null);
           lines.splice(index, 1);
+
+          // Remove associated label
           if (labels[index]) {
             labels[index].setMap(null);
             labels.splice(index, 1);
@@ -972,8 +1511,14 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
     });
 
     rulerClickListenerRef.current = clickListener;
-    return () => google.maps.event.removeListener(clickListener);
-  }, [rulerActive]);
+    return () => {
+      document.removeEventListener('keydown', handleEscapeKey);
+      google.maps.event.removeListener(clickListener);
+      if (rulerMoveListenerRef.current) {
+        google.maps.event.removeListener(rulerMoveListenerRef.current);
+      }
+    };
+  }, [rulerActive, selectedTimeOfDay, clearRulerTool, showCustomInfoBox, latLngToPixel]);
 
   useEffect(() => {
     if (mapRef.current) {
@@ -1059,14 +1604,20 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           autoCenterEnabled={autoCenterEnabled}
           onToggleTracking={toggleTracking}
           onToggleAutoCenter={() => setAutoCenterEnabled(prev => !prev)}
+          rulerActive={rulerActive}
+          onToggleRuler={toggleRulerTool}
         />
       )}
 
-      {/* Ruler Tool */}
-      {!isLoading && mapInstanceRef.current && (
-        <RulerTool
-          isActive={rulerActive}
-          onToggle={toggleRulerTool}
+      {/* Custom distance info box */}
+      {customInfoBox?.visible && (
+        <DistanceInfoBox
+          position={customInfoBox.position}
+          straightDistance={customInfoBox.straightDistance}
+          drivingDistance={customInfoBox.drivingDistance}
+          selectedTime={selectedTimeOfDay}
+          onTimeChange={handleTimeChange}
+          onClose={() => setCustomInfoBox(null)}
         />
       )}
     </div>
