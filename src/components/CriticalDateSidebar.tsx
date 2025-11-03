@@ -204,8 +204,9 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
       }
     }
 
-    onSave(); // Refresh the parent list
-  }, [dealId, criticalDateId, userTableId, onSave]);
+    // NOTE: Don't call onSave() here - the real-time subscription will handle refreshing the table
+    // Calling onSave() here causes an infinite loop: save → subscription → fetch → re-render → autosave
+  }, [dealId, criticalDateId, userTableId]);
 
   // Autosave hook
   const { status, lastSavedAt } = useAutosave({
@@ -486,7 +487,11 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
                     Cancel
                   </button>
                   <button
-                    onClick={() => handleSave(formData)}
+                    onClick={async () => {
+                      await handleSave(formData);
+                      onSave(); // Refresh parent list after creating
+                      onClose(); // Close sidebar after creating
+                    }}
                     disabled={status === 'saving'}
                     className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
