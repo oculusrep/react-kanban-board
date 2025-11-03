@@ -63,7 +63,7 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
   const [criticalDate, setCriticalDate] = useState<CriticalDate | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { toast, showToast, hideToast } = useToast();
-  const { user } = useAuth();
+  const { userTableId } = useAuth();
 
   // Form fields
   const [subject, setSubject] = useState('');
@@ -153,7 +153,7 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
         send_email: sendEmail,
         send_email_days_prior: sendEmail && sendEmailDaysPrior ? parseInt(sendEmailDaysPrior) : null,
         updated_at: new Date().toISOString(),
-        updated_by_id: user?.id || null
+        updated_by_id: userTableId || null
       };
 
       if (criticalDateId) {
@@ -167,7 +167,7 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
       } else {
         // Create new
         payload.created_at = new Date().toISOString();
-        payload.created_by_id = user?.id || null;
+        payload.created_by_id = userTableId || null;
         payload.is_default = false;
 
         const { error } = await supabase
