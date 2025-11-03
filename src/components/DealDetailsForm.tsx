@@ -35,6 +35,7 @@ interface Deal {
   assignment_id: string | null;
   source: string | null;
   transaction_type_id: string | null;
+  deal_type_id: string | null;
   property_id: string | null;
   site_submit_id: string | null;
   property_unit_id: string | null;
@@ -80,6 +81,7 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
   const [editingField, setEditingField] = useState<string | null>(null);
   const [stageOptions, setStageOptions] = useState<{ id: string; label: string }[]>([]);
   const [teamOptions, setTeamOptions] = useState<{ id: string; label: string }[]>([]);
+  const [dealTypeOptions, setDealTypeOptions] = useState<{ id: string; label: string }[]>([]);
   const [updatedByName, setUpdatedByName] = useState<string>("");
   const [dropboxSyncError, setDropboxSyncError] = useState<string | null>(null);
   const [originalDealName, setOriginalDealName] = useState<string>(deal.deal_name);
@@ -126,6 +128,7 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
   useEffect(() => {
     supabase.from("deal_stage").select("id, label").then(({ data }) => data && setStageOptions(data));
     supabase.from("deal_team").select("id, label").then(({ data }) => data && setTeamOptions(data));
+    supabase.from("deal_type").select("id, label").then(({ data }) => data && setDealTypeOptions(data));
     // Fetch updated_by user name if exists
     if (deal.updated_by_id) {
       supabase
@@ -854,6 +857,15 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
             onChange={(v) => updateField("deal_team_id", v)}
             options={teamOptions}
           />
+
+          {/* Row 4: Deal Type (left) + empty (right) */}
+          <Select
+            label="Deal Type"
+            value={form.deal_type_id}
+            onChange={(v) => updateField("deal_type_id", v)}
+            options={dealTypeOptions}
+          />
+          <div></div>
 
           {errors.deal_name && <FieldError msg={errors.deal_name} className="col-span-2" />}
         </div>
