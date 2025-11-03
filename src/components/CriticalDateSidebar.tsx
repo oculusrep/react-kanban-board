@@ -64,7 +64,6 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
   const [saving, setSaving] = useState(false);
   const [criticalDate, setCriticalDate] = useState<CriticalDate | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [isInitializing, setIsInitializing] = useState(false); // Track initial data load
   const { toast, showToast, hideToast} = useToast();
   const { userTableId } = useAuth();
 
@@ -89,11 +88,9 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
   // Fetch existing critical date if editing
   useEffect(() => {
     if (criticalDateId) {
-      setIsInitializing(true); // Set BEFORE fetching to prevent any autosave
       fetchCriticalDate();
     } else {
       // Reset form for new critical date
-      setIsInitializing(false);
       resetForm();
     }
   }, [criticalDateId]);
@@ -103,7 +100,6 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
 
     try {
       setLoading(true);
-      setIsInitializing(true); // Disable autosave during initial load
       const { data, error } = await supabase
         .from('critical_date')
         .select(`
@@ -125,13 +121,9 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
       setDescription(data.description || '');
       setSendEmail(data.send_email);
       setSendEmailDaysPrior(data.send_email_days_prior?.toString() || '');
-
-      // Re-enable autosave after a delay to ensure form is fully populated and settled
-      setTimeout(() => setIsInitializing(false), 500);
     } catch (err) {
       console.error('Error fetching critical date:', err);
       showToast(err instanceof Error ? err.message : 'Failed to load critical date', { type: 'error' });
-      setIsInitializing(false); // Re-enable autosave even on error
     } finally {
       setLoading(false);
     }
@@ -174,12 +166,14 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
 
     if (criticalDateId) {
       // Update existing
+      console.log('Updating critical date:', criticalDateId, 'with payload:', payload);
       const { error } = await supabase
         .from('critical_date')
         .update(payload)
         .eq('id', criticalDateId);
 
       if (error) throw error;
+      console.log('Critical date updated successfully');
     } else {
       // Create new
       payload.created_at = new Date().toISOString();
@@ -203,12 +197,12 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
     onSave(); // Refresh the parent list
   };
 
-  // Autosave hook - only enabled for existing records (not new ones) and not during initialization
+  // Autosave hook - only enabled for existing records (not new ones) and after loading completes
   const { status, lastSavedAt } = useAutosave({
     data: formData,
     onSave: handleSave,
     delay: 1500,
-    enabled: !!criticalDateId && !isInitializing, // Only autosave for existing records, not during init
+    enabled: !loading && !!criticalDate, // Only autosave after loading completes and data exists
   });
 
   const handleDelete = async () => {
