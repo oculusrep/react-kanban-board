@@ -33,7 +33,7 @@ const InlinePropertyCreationModal: React.FC<InlinePropertyCreationModalProps> = 
     city: '',
     state: '',
     zip: '',
-    property_notes: `Created from map pin at coordinates: ${coordinates.lat.toFixed(6)}, ${coordinates.lng.toFixed(6)}`,
+    property_notes: '',
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -61,8 +61,7 @@ const InlinePropertyCreationModal: React.FC<InlinePropertyCreationModalProps> = 
               address: result.street_address || result.formatted_address.split(',')[0] || '',
               city: result.city || '',
               state: result.state || '',
-              zip: result.zip || '',
-              property_notes: prev.property_notes + '\n\nAddress auto-populated from map coordinates via reverse geocoding.'
+              zip: result.zip || ''
             }));
           } else {
             setReverseGeocodeError(result.error || 'Failed to determine address from coordinates');

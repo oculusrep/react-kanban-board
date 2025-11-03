@@ -9,7 +9,7 @@ import PropertyInputField from '../../property/PropertyInputField';
 import PropertyPSFField from '../../property/PropertyPSFField';
 import PropertyCurrencyField from '../../property/PropertyCurrencyField';
 import PropertySquareFootageField from '../../property/PropertySquareFootageField';
-import { FileText, DollarSign, Building2, Activity, MapPin, Edit3, FolderOpen, Users, Trash2, Grid3x3 } from 'lucide-react';
+import { FileText, DollarSign, Building2, Activity, MapPin, Edit3, FolderOpen, Users, Trash2, Grid3x3, ExternalLink } from 'lucide-react';
 import { Database } from '../../../../database-schema';
 import { getDropboxPropertySyncService } from '../../../services/dropboxPropertySync';
 import FileManager from '../../FileManager/FileManager';
@@ -1884,6 +1884,17 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
             {/* Header Controls */}
             <div className="absolute top-4 right-4 flex space-x-2">
+              {/* Open in New Tab Button - For properties */}
+              {isProperty && localPropertyData?.id && (
+                <button
+                  onClick={() => window.open(`/property/${localPropertyData.id}`, '_blank')}
+                  className="p-2 bg-blue-500 bg-opacity-80 hover:bg-blue-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
+                  title="Open property in new tab"
+                >
+                  <ExternalLink size={16} className="text-white" />
+                </button>
+              )}
+
               {/* Delete Button - For properties */}
               {isProperty && onDeleteProperty && localPropertyData?.id && (
                 <button

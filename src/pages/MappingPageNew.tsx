@@ -438,6 +438,13 @@ const MappingPageContent: React.FC = () => {
     refreshLayer('properties');
 
     console.log('🧹 Cleared search markers, property session pin should be visible');
+
+    // Open the PinDetailsSlideout to allow editing all fields
+    setSelectedPinData(property);
+    setSelectedPinType('property');
+    setIsPinDetailsOpen(true);
+    setPinDetailsInitialTab('property'); // Start on Property tab
+    console.log('📂 Opened PinDetailsSlideout for newly created property');
   };
 
   // Handle site submit creation success
