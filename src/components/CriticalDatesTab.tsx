@@ -90,8 +90,9 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
   }, [fetchCriticalDates]);
 
   // Real-time subscription for critical date changes
+  // ONLY active when sidebar is closed to avoid infinite loop
   useEffect(() => {
-    if (!dealId) return;
+    if (!dealId || sidebarOpen) return; // Don't subscribe while sidebar is open
 
     console.log('Setting up real-time subscription for critical dates, deal:', dealId);
 
@@ -112,7 +113,7 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
       console.log('Cleaning up critical date subscription');
       supabase.removeChannel(subscription);
     };
-  }, [dealId, fetchCriticalDates]);
+  }, [dealId, fetchCriticalDates, sidebarOpen]);
 
   // Update a field in a critical date
   const updateField = async (criticalDateId: string, field: string, value: any) => {
