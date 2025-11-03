@@ -18,8 +18,8 @@ import InlinePropertyCreationModal from '../components/mapping/InlinePropertyCre
 import SiteSubmitLegend from '../components/mapping/SiteSubmitLegend';
 import ContactFormModal from '../components/ContactFormModal';
 import { STAGE_CATEGORIES } from '../components/mapping/SiteSubmitPin';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { supportsRightClick, isTouchDevice, addLongPressListener } from '../utils/deviceDetection';
+import { useLocation } from 'react-router-dom';
+import { supportsRightClick, isTouchDevice } from '../utils/deviceDetection';
 import { supabase } from '../lib/supabaseClient';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Toast from '../components/Toast';
@@ -147,15 +147,11 @@ const MappingPageContent: React.FC = () => {
   // Flag to prevent map context menu when a marker was just right-clicked
   const [suppressMapContextMenu, setSuppressMapContextMenu] = useState<boolean>(false);
 
-  // Flag to prevent closing context menus after long-press
-  const [justLongPressed, setJustLongPressed] = useState<boolean>(false);
-
   // Delete property state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [propertyToDelete, setPropertyToDelete] = useState<string | null>(null);
   const { toast, showToast } = useToast();
 
-  const navigate = useNavigate();
   const location = useLocation();
 
   // Persist recently created IDs to sessionStorage
@@ -168,7 +164,7 @@ const MappingPageContent: React.FC = () => {
   }, [recentlyCreatedPropertyIds]);
 
   // Get layer state from context
-  const { layerState, setLayerCount, setLayerLoading, setLayerError, createMode, refreshLayer, toggleLayer } = useLayerManager();
+  const { layerState, setLayerCount, setLayerLoading, createMode, refreshLayer, toggleLayer } = useLayerManager();
 
   // Check for property creation success and refresh layer
   useEffect(() => {
@@ -219,7 +215,7 @@ const MappingPageContent: React.FC = () => {
         .then(({ data, error }) => {
           if (error || !data) {
             console.error('Failed to fetch site submit:', error);
-            showToast('Site submit not found', 'error');
+            showToast('Site submit not found', { type: 'error' });
             return;
           }
 
@@ -254,9 +250,9 @@ const MappingPageContent: React.FC = () => {
             setPinDetailsInitialTab('location');
             setIsPinDetailsOpen(true);
 
-            showToast(`Zoomed to ${data.site_submit_name || 'Site Submit'} - Right-click the pin to verify location`, 'success');
+            showToast(`Zoomed to ${data.site_submit_name || 'Site Submit'} - Right-click the pin to verify location`, { type: 'success' });
           } else {
-            showToast('This site submit has no coordinates. Please add property coordinates first.', 'warning');
+            showToast('This site submit has no coordinates. Please add property coordinates first.', { type: 'info' });
           }
         });
     }
@@ -299,7 +295,7 @@ const MappingPageContent: React.FC = () => {
           return;
         }
 
-        if (event.latLng && event.domEvent) {
+        if (event.latLng && event.domEvent && 'clientX' in event.domEvent && 'clientY' in event.domEvent) {
           const lat = event.latLng.lat();
           const lng = event.latLng.lng();
 
@@ -372,7 +368,7 @@ const MappingPageContent: React.FC = () => {
             console.log('⚡ Touch too short for long-press:', touchDuration, 'ms');
           }
 
-          if (touchDuration >= 750 && !touchMoved) {
+          if (touchDuration >= 750 && !touchMoved && touchLatLng) {
             // Don't show map context menu if a marker was just long-pressed
             if (suppressMapContextMenu) {
               console.log('🚫 Marker was long-pressed, skipping map context menu');
@@ -383,11 +379,15 @@ const MappingPageContent: React.FC = () => {
             console.log('📱 Long press detected on map at:', touchLatLng.lat(), touchLatLng.lng());
             const touch = event.domEvent.changedTouches[0];
 
+            // Capture coordinates in local constant for use in setTimeout closure
+            const capturedLat = touchLatLng.lat();
+            const capturedLng = touchLatLng.lng();
+
             setContextMenu({
               isVisible: true,
               x: touch.clientX,
               y: touch.clientY,
-              coordinates: { lat: touchLatLng.lat(), lng: touchLatLng.lng() },
+              coordinates: { lat: capturedLat, lng: capturedLng },
             });
 
             // Re-open after delay to ensure it stays visible
@@ -397,7 +397,7 @@ const MappingPageContent: React.FC = () => {
                 isVisible: true,
                 x: touch.clientX,
                 y: touch.clientY,
-                coordinates: { lat: touchLatLng.lat(), lng: touchLatLng.lng() },
+                coordinates: { lat: capturedLat, lng: capturedLng },
               }));
             }, 100);
 
@@ -903,11 +903,11 @@ const MappingPageContent: React.FC = () => {
         setIsPinDetailsOpen(true);
       }
 
-      showToast('Verification mode active - drag the pin to adjust location', 'success');
+      showToast('Verification mode active - drag the pin to adjust location', { type: 'success' });
       console.log('✅ Verification mode enabled - marker is now draggable');
     } else {
       console.error('❌ Cannot enable verification mode - site submit data not available');
-      showToast('Unable to enable verification mode', 'error');
+      showToast('Unable to enable verification mode', { type: 'error' });
     }
   };
 
@@ -1324,13 +1324,6 @@ const MappingPageContent: React.FC = () => {
                     disabled={isSearching}
                     placeholder="Search Address, City, State, or Property Name..."
                   />
-                  <button
-                    onClick={handleAddressSearch}
-                    disabled={isSearching || !searchAddress.trim()}
-                    className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isSearching ? '🔄 Searching...' : '🔍 Search'}
-                  </button>
                   <button
                     onClick={() => centerOnLocation?.()}
                     disabled={!centerOnLocation}
