@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../contexts/AuthContext';
@@ -141,7 +141,7 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
   };
 
   // Save function for autosave
-  const handleSave = async (data: typeof formData) => {
+  const handleSave = useCallback(async (data: typeof formData) => {
     // Determine final subject (use custom if selected)
     const finalSubject = data.subject === "Custom" ? data.customSubject.trim() : data.subject;
 
@@ -196,7 +196,7 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
     }
 
     onSave(); // Refresh the parent list
-  };
+  }, [dealId, criticalDateId, userTableId, onSave]);
 
   // Autosave hook - only enabled for existing records (not new ones) and after loading completes
   const { status, lastSavedAt } = useAutosave({
