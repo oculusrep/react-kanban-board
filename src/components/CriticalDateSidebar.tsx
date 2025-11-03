@@ -106,11 +106,19 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
 
       setCriticalDate(data);
 
+      // Convert critical_date to YYYY-MM-DD format for date input
+      let dateValue = '';
+      if (data.critical_date) {
+        // Handle both date-only (YYYY-MM-DD) and ISO datetime formats
+        const dateObj = new Date(data.critical_date);
+        dateValue = dateObj.toISOString().split('T')[0]; // Extract YYYY-MM-DD
+      }
+
       // Populate form data - all at once to prevent multiple re-renders
       setFormData({
         subject: CRITICAL_DATE_SUBJECTS.includes(data.subject) ? data.subject : 'Custom',
         customSubject: CRITICAL_DATE_SUBJECTS.includes(data.subject) ? '' : data.subject,
-        criticalDateValue: data.critical_date || '',
+        criticalDateValue: dateValue,
         description: data.description || '',
         sendEmail: data.send_email,
         sendEmailDaysPrior: data.send_email_days_prior?.toString() || '',
@@ -198,12 +206,12 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
     onSave(); // Refresh the parent list
   }, [dealId, criticalDateId, userTableId, onSave]);
 
-  // Autosave hook - TEMPORARILY DISABLED for debugging
+  // Autosave hook
   const { status, lastSavedAt } = useAutosave({
     data: formData,
     onSave: handleSave,
     delay: 1500,
-    enabled: false, // DISABLED - testing without autosave
+    enabled: !loading && !!criticalDateId, // Only autosave for existing records
   });
 
   const handleDelete = async () => {
@@ -458,29 +466,14 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
             </div>
             <div className="flex space-x-2">
               {criticalDateId ? (
-                // Existing record - show Save and Close (autosave disabled for now)
-                <>
-                  <button
-                    onClick={onClose}
-                    className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={async () => {
-                      try {
-                        await handleSave(formData);
-                        onClose();
-                      } catch (err) {
-                        showToast(err instanceof Error ? err.message : 'Failed to save', { type: 'error' });
-                      }
-                    }}
-                    disabled={saving}
-                    className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
-                  >
-                    {saving ? 'Saving...' : 'Save'}
-                  </button>
-                </>
+                // Existing record - autosave enabled, just show Close
+                <button
+                  onClick={onClose}
+                  disabled={status === 'saving'}
+                  className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Close
+                </button>
               ) : (
                 // New record - show Cancel and Create
                 <>

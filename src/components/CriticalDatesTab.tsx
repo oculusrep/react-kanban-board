@@ -639,13 +639,11 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
         dealName={deal.deal_name || 'Unnamed Deal'}
         criticalDateId={selectedCriticalDateId}
         isOpen={sidebarOpen}
-        onClose={() => {
+        onClose={useCallback(() => {
           setSidebarOpen(false);
           setSelectedCriticalDateId(null);
-        }}
-        onSave={() => {
-          fetchCriticalDates(); // Refresh list after save
-        }}
+        }, [])}
+        onSave={fetchCriticalDates}
       />
 
       {/* Confirm Delete Dialog */}
