@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "12.2.3 (519615d)"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       activity: {
@@ -180,11 +205,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "activity_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
             foreignKeyName: "activity_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contact"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "activity_deal_id_fkey"
@@ -278,11 +317,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "fk_activity_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
             foreignKeyName: "fk_activity_contact_id"
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contact"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_activity_contact_id"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "fk_activity_deal_id"
@@ -902,6 +955,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "client_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
             foreignKeyName: "client_updated_by_id_fkey"
             columns: ["updated_by_id"]
             isOneToOne: false
@@ -1320,6 +1380,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "contact_tenant_rep_contact_id_fkey"
+            columns: ["tenant_rep_contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "contact_updated_by_id_fkey"
             columns: ["updated_by_id"]
             isOneToOne: false
@@ -1333,52 +1400,73 @@ export type Database = {
             referencedRelation: "client"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "fk_contact_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
         ]
       }
       contact_client_relation: {
         Row: {
-          id: string
-          contact_id: string
           client_id: string
-          role: string | null
-          is_primary: boolean
-          is_active: boolean
-          sf_relation_id: string | null
-          synced_from_salesforce: boolean
-          created_at: string
+          contact_id: string
+          created_at: string | null
           created_by_id: string | null
-          updated_at: string
+          id: string
+          is_active: boolean | null
+          is_primary: boolean | null
+          role: string | null
+          sf_relation_id: string | null
+          synced_from_salesforce: boolean | null
+          updated_at: string | null
           updated_by_id: string | null
         }
         Insert: {
-          id?: string
-          contact_id: string
           client_id: string
-          role?: string | null
-          is_primary?: boolean
-          is_active?: boolean
-          sf_relation_id?: string | null
-          synced_from_salesforce?: boolean
-          created_at?: string
+          contact_id: string
+          created_at?: string | null
           created_by_id?: string | null
-          updated_at?: string
+          id?: string
+          is_active?: boolean | null
+          is_primary?: boolean | null
+          role?: string | null
+          sf_relation_id?: string | null
+          synced_from_salesforce?: boolean | null
+          updated_at?: string | null
           updated_by_id?: string | null
         }
         Update: {
-          id?: string
-          contact_id?: string
           client_id?: string
-          role?: string | null
-          is_primary?: boolean
-          is_active?: boolean
-          sf_relation_id?: string | null
-          synced_from_salesforce?: boolean
-          created_at?: string
+          contact_id?: string
+          created_at?: string | null
           created_by_id?: string | null
-          updated_at?: string
+          id?: string
+          is_active?: boolean | null
+          is_primary?: boolean | null
+          role?: string | null
+          sf_relation_id?: string | null
+          synced_from_salesforce?: boolean | null
+          updated_at?: string | null
           updated_by_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "contact_client_relation_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_client_relation_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
           {
             foreignKeyName: "contact_client_relation_contact_id_fkey"
             columns: ["contact_id"]
@@ -1387,11 +1475,11 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "contact_client_relation_client_id_fkey"
-            columns: ["client_id"]
+            foreignKeyName: "contact_client_relation_contact_id_fkey"
+            columns: ["contact_id"]
             isOneToOne: false
-            referencedRelation: "client"
-            referencedColumns: ["id"]
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "contact_client_relation_created_by_id_fkey"
@@ -1408,6 +1496,125 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      contact_client_role: {
+        Row: {
+          client_id: string
+          contact_id: string
+          created_at: string | null
+          created_by_id: string | null
+          id: string
+          is_active: boolean | null
+          notes: string | null
+          role_id: string
+          updated_at: string | null
+          updated_by_id: string | null
+        }
+        Insert: {
+          client_id: string
+          contact_id: string
+          created_at?: string | null
+          created_by_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          notes?: string | null
+          role_id: string
+          updated_at?: string | null
+          updated_by_id?: string | null
+        }
+        Update: {
+          client_id?: string
+          contact_id?: string
+          created_at?: string | null
+          created_by_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          notes?: string | null
+          role_id?: string
+          updated_at?: string | null
+          updated_by_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_client_role_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_client_role_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "contact_client_role_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_client_role_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "contact_client_role_created_by_id_fkey"
+            columns: ["created_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_client_role_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "contact_client_role_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_client_role_updated_by_id_fkey"
+            columns: ["updated_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contact_client_role_type: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          role_name: string
+          sort_order: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          role_name: string
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          role_name?: string
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       contact_contact_type: {
         Row: {
@@ -1505,6 +1712,89 @@ export type Database = {
           sort_order?: number | null
         }
         Relationships: []
+      }
+      critical_date: {
+        Row: {
+          created_at: string | null
+          created_by_id: string | null
+          critical_date: string | null
+          deal_id: string
+          description: string | null
+          id: string
+          is_default: boolean | null
+          send_email: boolean | null
+          send_email_days_prior: number | null
+          sent_at: string | null
+          sf_id: string | null
+          sf_opportunity_id: string | null
+          subject: string
+          updated_at: string | null
+          updated_by_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by_id?: string | null
+          critical_date?: string | null
+          deal_id: string
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          send_email?: boolean | null
+          send_email_days_prior?: number | null
+          sent_at?: string | null
+          sf_id?: string | null
+          sf_opportunity_id?: string | null
+          subject: string
+          updated_at?: string | null
+          updated_by_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by_id?: string | null
+          critical_date?: string | null
+          deal_id?: string
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          send_email?: boolean | null
+          send_email_days_prior?: number | null
+          sent_at?: string | null
+          sf_id?: string | null
+          sf_opportunity_id?: string | null
+          subject?: string
+          updated_at?: string | null
+          updated_by_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "critical_date_created_by_id_fkey"
+            columns: ["created_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "critical_date_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "critical_date_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "critical_date_updated_by_id_fkey"
+            columns: ["updated_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       deal: {
         Row: {
@@ -1784,6 +2074,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "deal_referral_payee_client_id_fkey"
+            columns: ["referral_payee_client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
             foreignKeyName: "deal_site_submit_fk"
             columns: ["site_submit_id"]
             isOneToOne: false
@@ -1803,6 +2100,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "client"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_deal_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
           },
           {
             foreignKeyName: "fk_deal_stage_id"
@@ -1897,6 +2201,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contact"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_contact_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "deal_contact_created_by_id_fkey"
@@ -2079,7 +2390,7 @@ export type Database = {
         }
         Relationships: []
       }
-      dropbox_folder_mapping: {
+      dropbox_mapping: {
         Row: {
           created_at: string | null
           dropbox_folder_path: string
@@ -2437,11 +2748,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "fk_note_object_link_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
             foreignKeyName: "fk_note_object_link_contact_id"
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contact"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_note_object_link_contact_id"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "fk_note_object_link_deal_id"
@@ -2521,11 +2846,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "note_object_link_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
             foreignKeyName: "note_object_link_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contact"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_object_link_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "note_object_link_deal_id_fkey"
@@ -2595,12 +2934,18 @@ export type Database = {
       payment: {
         Row: {
           agci: number | null
+          amount_override: boolean | null
           created_at: string | null
           created_by_id: string | null
           deal_id: string | null
+          deleted_at: string | null
           id: string
           invoice_sent: boolean | null
+          is_active: boolean | null
+          locked: boolean | null
           orep_invoice: string | null
+          override_at: string | null
+          override_by: string | null
           payment_amount: number | null
           payment_date_estimated: string | null
           payment_invoice_date: string | null
@@ -2613,6 +2958,7 @@ export type Database = {
           qb_payment_id: string | null
           qb_sync_status: string | null
           referral_fee_paid: boolean | null
+          referral_fee_paid_date: string | null
           referral_fee_percent_override: number | null
           referral_fee_usd: number | null
           sf_agci: number | null
@@ -2672,12 +3018,18 @@ export type Database = {
         }
         Insert: {
           agci?: number | null
+          amount_override?: boolean | null
           created_at?: string | null
           created_by_id?: string | null
           deal_id?: string | null
+          deleted_at?: string | null
           id?: string
           invoice_sent?: boolean | null
+          is_active?: boolean | null
+          locked?: boolean | null
           orep_invoice?: string | null
+          override_at?: string | null
+          override_by?: string | null
           payment_amount?: number | null
           payment_date_estimated?: string | null
           payment_invoice_date?: string | null
@@ -2690,6 +3042,7 @@ export type Database = {
           qb_payment_id?: string | null
           qb_sync_status?: string | null
           referral_fee_paid?: boolean | null
+          referral_fee_paid_date?: string | null
           referral_fee_percent_override?: number | null
           referral_fee_usd?: number | null
           sf_agci?: number | null
@@ -2749,12 +3102,18 @@ export type Database = {
         }
         Update: {
           agci?: number | null
+          amount_override?: boolean | null
           created_at?: string | null
           created_by_id?: string | null
           deal_id?: string | null
+          deleted_at?: string | null
           id?: string
           invoice_sent?: boolean | null
+          is_active?: boolean | null
+          locked?: boolean | null
           orep_invoice?: string | null
+          override_at?: string | null
+          override_by?: string | null
           payment_amount?: number | null
           payment_date_estimated?: string | null
           payment_invoice_date?: string | null
@@ -2767,6 +3126,7 @@ export type Database = {
           qb_payment_id?: string | null
           qb_sync_status?: string | null
           referral_fee_paid?: boolean | null
+          referral_fee_paid_date?: string | null
           referral_fee_percent_override?: number | null
           referral_fee_usd?: number | null
           sf_agci?: number | null
@@ -2863,6 +3223,7 @@ export type Database = {
           created_by_id: string | null
           id: string
           paid: boolean | null
+          paid_date: string | null
           payment_id: string | null
           sf_broker: string | null
           sf_broker_picklist: string | null
@@ -2896,6 +3257,7 @@ export type Database = {
           created_by_id?: string | null
           id?: string
           paid?: boolean | null
+          paid_date?: string | null
           payment_id?: string | null
           sf_broker?: string | null
           sf_broker_picklist?: string | null
@@ -2929,6 +3291,7 @@ export type Database = {
           created_by_id?: string | null
           id?: string
           paid?: boolean | null
+          paid_date?: string | null
           payment_id?: string | null
           sf_broker?: string | null
           sf_broker_picklist?: string | null
@@ -3253,6 +3616,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "fk_property_contact_contact_id"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "fk_property_contact_created_by_id"
             columns: ["created_by_id"]
             isOneToOne: false
@@ -3300,6 +3670,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contact"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_contact_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "property_contact_created_by_id_fkey"
@@ -8987,6 +9364,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "site_submit_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
             foreignKeyName: "site_submit_created_by_id_fkey"
             columns: ["created_by_id"]
             isOneToOne: false
@@ -9251,7 +9635,9 @@ export type Database = {
           first_name: string | null
           id: string
           last_name: string | null
+          mobile_phone: string | null
           name: string | null
+          ovis_role: string | null
           sf_id: string | null
           sf_profile_id: string | null
           sf_user_role_id: string | null
@@ -9270,7 +9656,9 @@ export type Database = {
           first_name?: string | null
           id?: string
           last_name?: string | null
+          mobile_phone?: string | null
           name?: string | null
+          ovis_role?: string | null
           sf_id?: string | null
           sf_profile_id?: string | null
           sf_user_role_id?: string | null
@@ -9289,7 +9677,9 @@ export type Database = {
           first_name?: string | null
           id?: string
           last_name?: string | null
+          mobile_phone?: string | null
           name?: string | null
+          ovis_role?: string | null
           sf_id?: string | null
           sf_profile_id?: string | null
           sf_user_role_id?: string | null
@@ -9407,6 +9797,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "deal_referral_payee_client_id_fkey"
+            columns: ["referral_payee_client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
             foreignKeyName: "deal_site_submit_fk"
             columns: ["site_submit_id"]
             isOneToOne: false
@@ -9426,6 +9823,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "client"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_deal_client_id"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
           },
           {
             foreignKeyName: "fk_deal_stage_id"
@@ -9707,8 +10111,77 @@ export type Database = {
           },
         ]
       }
+      v_contact_client_roles: {
+        Row: {
+          client_id: string | null
+          client_name: string | null
+          contact_email: string | null
+          contact_id: string | null
+          contact_name: string | null
+          created_at: string | null
+          id: string | null
+          is_active: boolean | null
+          notes: string | null
+          role_description: string | null
+          role_id: string | null
+          role_name: string | null
+          updated_at: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_client_role_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "client"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_client_role_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "contact_client_role_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_client_role_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_site_selectors_by_client"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "contact_client_role_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "contact_client_role_type"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_site_selectors_by_client: {
+        Row: {
+          client_id: string | null
+          client_name: string | null
+          contact_id: string | null
+          contact_name: string | null
+          email: string | null
+          is_active: boolean | null
+          mobile_phone: string | null
+          notes: string | null
+          phone: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      can_manage_operations: { Args: never; Returns: boolean }
       create_payment_splits_for_payment: {
         Args: { p_payment_id: string; p_user_id?: string }
         Returns: undefined
@@ -9717,6 +10190,25 @@ export type Database = {
         Args: { deal_uuid: string }
         Returns: string
       }
+      get_current_user_role: { Args: never; Returns: string }
+      get_user_role:
+        | { Args: { user_id: string }; Returns: string }
+        | { Args: never; Returns: string }
+      has_full_access: { Args: never; Returns: boolean }
+      is_admin: { Args: never; Returns: boolean }
+      is_assistant: { Args: never; Returns: boolean }
+      is_broker: { Args: never; Returns: boolean }
+      lock_payment: { Args: { payment_uuid: string }; Returns: undefined }
+      override_payment_amount: {
+        Args: { p_new_amount: number; p_payment_id: string }
+        Returns: {
+          result_agci: number
+          result_payment_amount: number
+          result_payment_id: string
+          result_referral_fee_usd: number
+        }[]
+      }
+      unlock_payment: { Args: { payment_uuid: string }; Returns: undefined }
     }
     Enums: {
       [_ in never]: never
@@ -9845,6 +10337,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

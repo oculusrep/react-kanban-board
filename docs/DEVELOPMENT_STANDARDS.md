@@ -698,6 +698,79 @@ git push origin main
 
 ---
 
+## 🗄️ CRITICAL RULE #6: Database Query Standards
+
+### PostgreSQL Case Sensitivity
+
+**ALWAYS quote Salesforce table and column names** in SQL queries because they are case-sensitive.
+
+#### The Rule
+
+❌ **WRONG** - Unquoted identifiers (will fail):
+```sql
+SELECT Id, Subject__c, Opportunity__c
+FROM salesforce_Critical_Date__c
+WHERE Opportunity__c = 'some_id'
+```
+
+✅ **RIGHT** - Quoted identifiers (will work):
+```sql
+SELECT "Id", "Subject__c", "Opportunity__c"
+FROM "salesforce_Critical_Date__c"
+WHERE "Opportunity__c" = 'some_id'
+```
+
+#### Why This Matters
+
+- Salesforce table names use mixed case (e.g., `salesforce_Critical_Date__c`)
+- Salesforce column names use PascalCase (e.g., `Subject__c`, `Opportunity__c`)
+- PostgreSQL treats unquoted identifiers as lowercase
+- Without quotes, `Opportunity__c` becomes `opportunity__c` and won't match
+
+#### When to Quote
+
+**ALWAYS quote:**
+- ✅ Salesforce table names: `"salesforce_Critical_Date__c"`
+- ✅ Salesforce column names: `"Id"`, `"Subject__c"`, `"Opportunity__c"`, `"CreatedDate"`
+- ✅ Any identifier with mixed case or special characters
+
+**No need to quote:**
+- Regular lowercase table names: `deal`, `contact`, `property`
+- Regular lowercase column names: `id`, `deal_id`, `created_at`
+
+#### Examples
+
+**Joining Salesforce tables with local tables:**
+```sql
+SELECT
+  d.id,
+  sf_cd."Subject__c",
+  sf_cd."Critical_Date__c"
+FROM "salesforce_Critical_Date__c" sf_cd
+LEFT JOIN deal d ON d.sf_id = sf_cd."Opportunity__c"
+WHERE d.id IS NOT NULL;
+```
+
+**Checking if Salesforce table exists:**
+```sql
+IF EXISTS (
+  SELECT 1 FROM information_schema.tables
+  WHERE table_schema = 'public'
+  AND table_name = 'salesforce_Critical_Date__c'  -- This checks the lowercase version in metadata
+) THEN
+  -- Use quoted version in actual query
+  SELECT * FROM "salesforce_Critical_Date__c";
+END IF;
+```
+
+### Red Flags 🚩
+
+❌ Unquoted Salesforce table names
+❌ Unquoted Salesforce column names with `__c` suffix
+❌ Queries that work in development but fail in production due to case sensitivity
+
+---
+
 ## 📚 Additional Resources
 
 - [React Custom Hooks Guide](https://react.dev/learn/reusing-logic-with-custom-hooks)
