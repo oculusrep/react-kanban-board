@@ -49,6 +49,13 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
     setSelectedCriticalDateId(null);
   }, []);
 
+  // Update local state immediately when sidebar saves (no fetch needed)
+  const handleSidebarUpdate = useCallback((criticalDateId: string, updates: any) => {
+    setCriticalDates(prev => prev.map(cd =>
+      cd.id === criticalDateId ? { ...cd, ...updates } : cd
+    ));
+  }, []);
+
   // Fetch critical dates for this deal
   const fetchCriticalDates = useCallback(async () => {
     if (!dealId) return;
@@ -650,6 +657,7 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
         isOpen={sidebarOpen}
         onClose={handleSidebarClose}
         onSave={fetchCriticalDates}
+        onUpdate={handleSidebarUpdate}
       />
 
       {/* Confirm Delete Dialog */}

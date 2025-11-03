@@ -32,6 +32,7 @@ interface CriticalDateSidebarProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: () => void;
+  onUpdate?: (criticalDateId: string, updates: any) => void; // Update parent state immediately
 }
 
 // Predefined critical date subjects based on deal type
@@ -58,7 +59,8 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
   criticalDateId,
   isOpen,
   onClose,
-  onSave
+  onSave,
+  onUpdate
 }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -184,6 +186,9 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
 
       if (error) throw error;
       console.log('Critical date updated successfully');
+
+      // Update parent state immediately (no fetch needed)
+      onUpdate?.(criticalDateId, payload);
     } else {
       // Create new
       payload.created_at = new Date().toISOString();
