@@ -6,6 +6,7 @@ import DealDetailsForm from "../components/DealDetailsForm";
 import CommissionTab from '../components/CommissionTab';
 import PaymentTab from '../components/PaymentTab';
 import ActivityTab from '../components/ActivityTab';
+import CriticalDatesTab from '../components/CriticalDatesTab';
 import DealHeaderBar from '../components/DealHeaderBar';
 import DealSidebar from '../components/DealSidebar';
 import SiteSubmitSidebar from '../components/SiteSubmitSidebar';
@@ -45,7 +46,7 @@ export default function DealDetailsPage() {
   // Check for tab query parameter and set active tab
   useEffect(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam && ['overview', 'commission', 'payments', 'activity', 'files'].includes(tabParam)) {
+    if (tabParam && ['overview', 'commission', 'payments', 'activity', 'files', 'critical-dates'].includes(tabParam)) {
       setActiveTab(tabParam);
     }
   }, [searchParams]);
@@ -339,7 +340,7 @@ export default function DealDetailsPage() {
       <div className="flex flex-1 overflow-hidden">
         {/* Main Content */}
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-4xl mx-auto p-4 pb-8">
+          <div className="max-w-7xl mx-auto p-4 pb-8">
             {/* Tab Navigation */}
             <div className="border-b border-gray-200 mb-6">
               <nav className="-mb-px flex space-x-8">
@@ -372,6 +373,16 @@ export default function DealDetailsPage() {
                   }`}
                 >
                   Payments
+                </button>
+                <button
+                  onClick={() => setActiveTab('critical-dates')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'critical-dates'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Critical Dates
                 </button>
                 <button
                   onClick={() => setActiveTab('activity')}
@@ -439,6 +450,25 @@ export default function DealDetailsPage() {
                   </div>
                 ) : (
                   <PaymentTab deal={deal} onDealUpdate={handleAsyncDealUpdate} />
+                )}
+              </>
+            )}
+
+            {activeTab === 'critical-dates' && (
+              <>
+                {isNewDeal || !deal.id ? (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                    <div className="flex">
+                      <div className="ml-3">
+                        <h3 className="text-sm font-medium text-yellow-800">Save Deal First</h3>
+                        <div className="mt-2 text-sm text-yellow-700">
+                          <p>Please save the deal in the Details tab before managing critical dates.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <CriticalDatesTab dealId={deal.id} deal={deal} />
                 )}
               </>
             )}

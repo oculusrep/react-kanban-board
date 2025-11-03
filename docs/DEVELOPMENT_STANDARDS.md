@@ -333,6 +333,8 @@ When discussing these fields, call them:
 - [ ] Is this component presentation-only or does it mix logic?
 - [ ] Will this need to work in multiple contexts (modal, slideout, page)?
 - [ ] **Am I adding a currency/percentage/number field? Use `FormattedField`!**
+- [ ] **Am I showing a message to the user? Use Toast, not `alert()`!**
+- [ ] **Am I asking for confirmation? Use ConfirmDialog, not `confirm()`!**
 
 ### Before Committing
 
@@ -352,6 +354,7 @@ When discussing these fields, call them:
 ❌ Manual "Update" buttons instead of autosave
 ❌ **Using `<input type="number">` instead of `FormattedField`**
 ❌ **Creating new currency/percentage field components instead of using `FormattedField`**
+❌ **Using `alert()`, `confirm()`, or `prompt()` instead of Toast/ConfirmDialog**
 
 ---
 
@@ -698,7 +701,156 @@ git push origin main
 
 ---
 
-## 🗄️ CRITICAL RULE #6: Database Query Standards
+## 💬 CRITICAL RULE #6: User Messaging - Toast Notifications Only
+
+### The Rule
+
+**ALWAYS use Toast notifications and ConfirmDialog components for user feedback.**
+
+**NEVER use:**
+- ❌ `alert()` - Browser alert dialogs
+- ❌ `confirm()` - Browser confirm dialogs
+- ❌ `prompt()` - Browser prompt dialogs
+- ❌ `window.alert()`, `window.confirm()`, `window.prompt()`
+
+### Why This Matters
+
+**Browser dialogs are bad UX:**
+- Block the entire browser window
+- Can't be styled to match app design
+- No accessibility features
+- Look outdated and unprofessional
+- Can't be controlled programmatically
+- Different appearance across browsers
+
+**Toast notifications and modal dialogs are better:**
+- ✅ Non-blocking and contextual
+- ✅ Styled consistently with app
+- ✅ Can include icons, colors, and formatting
+- ✅ Auto-dismiss for info messages
+- ✅ Accessible and screen-reader friendly
+- ✅ Professional appearance
+- ✅ Can be stacked for multiple messages
+
+### How to Use
+
+#### For Success/Error/Info Messages
+
+**Use Toast notifications:**
+
+```typescript
+import { useToast } from '../hooks/useToast';
+import Toast from './Toast';
+
+function MyComponent() {
+  const { toast, showToast, hideToast } = useToast();
+
+  const handleSave = async () => {
+    try {
+      await saveData();
+      showToast('Data saved successfully', { type: 'success' });
+    } catch (err) {
+      showToast(err.message, { type: 'error' });
+    }
+  };
+
+  return (
+    <>
+      {/* Your component content */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onClose={hideToast}
+      />
+    </>
+  );
+}
+```
+
+#### For Confirmation Dialogs
+
+**Use ConfirmDialog component:**
+
+```typescript
+import ConfirmDialog from './ConfirmDialog';
+
+function MyComponent() {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const handleDelete = async () => {
+    setShowDeleteConfirm(false);
+    try {
+      await deleteItem();
+      showToast('Item deleted successfully', { type: 'success' });
+    } catch (err) {
+      showToast(err.message, { type: 'error' });
+    }
+  };
+
+  return (
+    <>
+      <button onClick={() => setShowDeleteConfirm(true)}>
+        Delete
+      </button>
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Item"
+        message="Are you sure you want to delete this item? This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
+    </>
+  );
+}
+```
+
+### Toast Types
+
+**Success** - For successful operations:
+```typescript
+showToast('Critical date saved successfully', { type: 'success' });
+```
+
+**Error** - For errors and failures:
+```typescript
+showToast('Failed to save critical date', { type: 'error' });
+```
+
+**Info** - For informational messages:
+```typescript
+showToast('Loading data...', { type: 'info' });
+```
+
+### Component Locations
+
+**Toast hook:** `src/hooks/useToast.ts`
+**Toast component:** `src/components/Toast.tsx`
+**Confirm dialog:** `src/components/ConfirmDialog.tsx`
+
+### Examples in the Codebase
+
+**Good examples:**
+- ✅ CriticalDateSidebar.tsx - Uses toast for save/delete and ConfirmDialog for delete confirmation
+- ✅ CriticalDatesTab.tsx - Uses toast for inline edits and ConfirmDialog for delete
+- ✅ DealDetailsPage.tsx - Uses toast for autosave feedback
+
+**Needs migration:**
+- ❌ Any file using `alert()`, `confirm()`, or `prompt()`
+
+### Red Flags 🚩
+
+❌ Using `alert()` for error messages
+❌ Using `confirm()` for delete confirmations
+❌ Using `prompt()` for user input
+❌ Any browser native dialog functions
+
+---
+
+## 🗄️ CRITICAL RULE #7: Database Query Standards
 
 ### PostgreSQL Case Sensitivity
 
