@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../contexts/AuthContext';
@@ -67,23 +67,15 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
   const { toast, showToast, hideToast} = useToast();
   const { userTableId } = useAuth();
 
-  // Form fields
-  const [subject, setSubject] = useState('');
-  const [customSubject, setCustomSubject] = useState('');
-  const [criticalDateValue, setCriticalDateValue] = useState('');
-  const [description, setDescription] = useState('');
-  const [sendEmail, setSendEmail] = useState(false);
-  const [sendEmailDaysPrior, setSendEmailDaysPrior] = useState('');
-
-  // Form data object for autosave - memoized to prevent unnecessary changes
-  const formData = useMemo(() => ({
-    subject,
-    customSubject,
-    criticalDateValue,
-    description,
-    sendEmail,
-    sendEmailDaysPrior,
-  }), [subject, customSubject, criticalDateValue, description, sendEmail, sendEmailDaysPrior]);
+  // Form data - single state object to prevent multiple re-renders
+  const [formData, setFormData] = useState({
+    subject: '',
+    customSubject: '',
+    criticalDateValue: '',
+    description: '',
+    sendEmail: false,
+    sendEmailDaysPrior: '',
+  });
 
   // Fetch existing critical date if editing
   useEffect(() => {
@@ -114,13 +106,15 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
 
       setCriticalDate(data);
 
-      // Populate form fields
-      setSubject(CRITICAL_DATE_SUBJECTS.includes(data.subject) ? data.subject : 'Custom');
-      setCustomSubject(CRITICAL_DATE_SUBJECTS.includes(data.subject) ? '' : data.subject);
-      setCriticalDateValue(data.critical_date || '');
-      setDescription(data.description || '');
-      setSendEmail(data.send_email);
-      setSendEmailDaysPrior(data.send_email_days_prior?.toString() || '');
+      // Populate form data - all at once to prevent multiple re-renders
+      setFormData({
+        subject: CRITICAL_DATE_SUBJECTS.includes(data.subject) ? data.subject : 'Custom',
+        customSubject: CRITICAL_DATE_SUBJECTS.includes(data.subject) ? '' : data.subject,
+        criticalDateValue: data.critical_date || '',
+        description: data.description || '',
+        sendEmail: data.send_email,
+        sendEmailDaysPrior: data.send_email_days_prior?.toString() || '',
+      });
     } catch (err) {
       console.error('Error fetching critical date:', err);
       showToast(err instanceof Error ? err.message : 'Failed to load critical date', { type: 'error' });
@@ -131,18 +125,25 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
 
   const resetForm = () => {
     setCriticalDate(null);
-    setSubject('');
-    setCustomSubject('');
-    setCriticalDateValue('');
-    setDescription('');
-    setSendEmail(false);
-    setSendEmailDaysPrior('');
+    setFormData({
+      subject: '',
+      customSubject: '',
+      criticalDateValue: '',
+      description: '',
+      sendEmail: false,
+      sendEmailDaysPrior: '',
+    });
+  };
+
+  // Helper to update form data
+  const updateFormData = (field: keyof typeof formData, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   // Save function for autosave
   const handleSave = async (data: typeof formData) => {
     // Determine final subject (use custom if selected)
-    const finalSubject = data.subject === 'Custom' ? data.customSubject.trim() : data.subject;
+    const finalSubject = data.subject === "Custom" ? data.customSubject.trim() : data.subject;
 
     if (!finalSubject) {
       throw new Error('Please enter a subject for the critical date');
@@ -298,8 +299,8 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
               Subject <span className="text-red-500">*</span>
             </label>
             <select
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
+              value={formData.subject}
+              onChange={(e) => updateFormData("subject", e.target.value)}
               className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
             >
               <option value="">Select a critical date type</option>
@@ -310,15 +311,15 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
           </div>
 
           {/* Custom Subject Input (shown when "Custom" is selected) */}
-          {subject === 'Custom' && (
+          {formData.subject === "Custom" && (
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">
                 Custom Subject <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
-                value={customSubject}
-                onChange={(e) => setCustomSubject(e.target.value)}
+                value={formData.customSubject}
+                onChange={(e) => updateFormData("customSubject", e.target.value)}
                 className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
                 placeholder="Enter custom subject"
                 autoComplete="off"
@@ -333,8 +334,8 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
             </label>
             <input
               type="date"
-              value={criticalDateValue}
-              onChange={(e) => setCriticalDateValue(e.target.value)}
+              value={formData.criticalDateValue}
+              onChange={(e) => updateFormData("criticalDateValue", e.target.value)}
               className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
               autoComplete="off"
             />
@@ -347,8 +348,8 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
               Description
             </label>
             <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              value={formData.description}
+              onChange={(e) => updateFormData("description", e.target.value)}
               rows={3}
               className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-xs"
               placeholder="Add any notes or details about this critical date..."
@@ -361,8 +362,8 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
             <input
               type="checkbox"
               id="send-email"
-              checked={sendEmail}
-              onChange={(e) => setSendEmail(e.target.checked)}
+              checked={formData.sendEmail}
+              onChange={(e) => updateFormData("sendEmail", e.target.checked)}
               className="mt-0.5 h-3 w-3 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer"
             />
             <div className="flex-1">
@@ -376,7 +377,7 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
           </div>
 
           {/* Send Email Days Prior (only shown when Send Email is checked) */}
-          {sendEmail && (
+          {formData.sendEmail && (
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">
                 Send Email Days Prior <span className="text-red-500">*</span>
@@ -386,8 +387,8 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
                 inputMode="numeric"
                 pattern="[0-9]*"
                 name="days-prior-notification"
-                value={sendEmailDaysPrior}
-                onChange={(e) => setSendEmailDaysPrior(e.target.value)}
+                value={formData.sendEmailDaysPrior}
+                onChange={(e) => updateFormData("sendEmailDaysPrior", e.target.value)}
                 onFocus={(e) => e.target.removeAttribute('readonly')}
                 className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
                 placeholder="e.g., 7"
