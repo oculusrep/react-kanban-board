@@ -107,11 +107,12 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
       setCriticalDate(data);
 
       // Convert critical_date to YYYY-MM-DD format for date input
+      // IMPORTANT: Use substring to avoid timezone conversion issues
+      // If we use new Date().toISOString(), it converts to UTC which can shift the date by a day
       let dateValue = '';
       if (data.critical_date) {
-        // Handle both date-only (YYYY-MM-DD) and ISO datetime formats
-        const dateObj = new Date(data.critical_date);
-        dateValue = dateObj.toISOString().split('T')[0]; // Extract YYYY-MM-DD
+        // Extract just the date part (YYYY-MM-DD) without timezone conversion
+        dateValue = data.critical_date.substring(0, 10);
       }
 
       // Populate form data - all at once to prevent multiple re-renders

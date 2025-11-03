@@ -850,7 +850,107 @@ showToast('Loading data...', { type: 'info' });
 
 ---
 
-## 🗄️ CRITICAL RULE #7: Database Query Standards
+## 📅 CRITICAL RULE #7: Date Handling - Avoid Timezone Conversion
+
+### The Rule
+
+**ALWAYS use `.substring(0, 10)` to extract date strings. NEVER use `new Date()` for date-only values.**
+
+### The Problem
+
+When working with date-only values (no time component), converting through JavaScript `Date` objects causes timezone shifts that change the actual date:
+
+```typescript
+// ❌ WRONG - Timezone conversion changes the date
+const dateValue = '2026-02-14T00:00:00.000Z';  // Feb 14
+const date = new Date(dateValue);
+const result = date.toISOString().split('T')[0]; // Might become Feb 13 or Feb 15!
+```
+
+```typescript
+// ✅ RIGHT - Direct string extraction preserves the date
+const dateValue = '2026-02-14T00:00:00.000Z';  // Feb 14
+const result = dateValue.substring(0, 10);     // Always Feb 14
+```
+
+### Why This Matters
+
+**Database stores dates as ISO datetime:**
+- `critical_date: "2026-02-14T00:00:00.000Z"`
+- Even if you only care about the date, PostgreSQL adds time
+
+**HTML date inputs need YYYY-MM-DD format:**
+- `<input type="date">` requires exactly "2026-02-14"
+
+**Timezone conversion ruins everything:**
+- User in PST sees Feb 13 (8 hours behind UTC)
+- User in JST sees Feb 14 (9 hours ahead UTC)
+- Same date in database, different dates shown to users!
+
+### The Solution
+
+**Use substring for date-only values:**
+
+```typescript
+// Fetching a date from database
+const dateValue = data.critical_date;  // "2026-02-14T00:00:00.000Z"
+const displayDate = dateValue ? dateValue.substring(0, 10) : '';
+// Result: "2026-02-14" - No timezone conversion!
+```
+
+**Saving dates from date inputs:**
+
+```typescript
+// Date input already gives us YYYY-MM-DD format
+const dateInput = formData.criticalDateValue;  // "2026-02-14"
+const payload = {
+  critical_date: dateInput || null  // Save as-is, PostgreSQL handles rest
+};
+```
+
+### When to Use Each Approach
+
+**Use `.substring(0, 10)` for:**
+- ✅ Date-only fields (birthdate, deadline, scheduled_date)
+- ✅ Extracting dates from datetime for display
+- ✅ Populating `<input type="date">` values
+- ✅ Comparing dates without time component
+
+**Use `new Date()` for:**
+- ✅ Datetime fields with time component (created_at, updated_at)
+- ✅ Formatting with time (showing "Feb 14, 2026 3:30 PM")
+- ✅ Date calculations (adding days, comparing datetimes)
+
+### Examples in the Codebase
+
+**Good example - CriticalDateSidebar:**
+```typescript
+// Fetching date value
+let dateValue = '';
+if (data.critical_date) {
+  // Extract just the date part (YYYY-MM-DD) without timezone conversion
+  dateValue = data.critical_date.substring(0, 10);
+}
+```
+
+**Bad example (don't do this):**
+```typescript
+// ❌ WRONG - This will cause timezone issues
+const dateObj = new Date(data.critical_date);
+const dateValue = dateObj.toISOString().split('T')[0];
+```
+
+### Red Flags 🚩
+
+❌ Using `new Date()` on date-only fields
+❌ Using `.toISOString()` to format dates for date inputs
+❌ Date shows correctly in one timezone but wrong in another
+❌ Date in form doesn't match date in table
+❌ Off-by-one day errors with dates
+
+---
+
+## 🗄️ CRITICAL RULE #8: Database Query Standards
 
 ### PostgreSQL Case Sensitivity
 

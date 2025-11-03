@@ -43,6 +43,12 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const { toast, showToast, hideToast } = useToast();
 
+  // Stable callbacks for sidebar
+  const handleSidebarClose = useCallback(() => {
+    setSidebarOpen(false);
+    setSelectedCriticalDateId(null);
+  }, []);
+
   // Fetch critical dates for this deal
   const fetchCriticalDates = useCallback(async () => {
     if (!dealId) return;
@@ -639,10 +645,7 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
         dealName={deal.deal_name || 'Unnamed Deal'}
         criticalDateId={selectedCriticalDateId}
         isOpen={sidebarOpen}
-        onClose={useCallback(() => {
-          setSidebarOpen(false);
-          setSelectedCriticalDateId(null);
-        }, [])}
+        onClose={handleSidebarClose}
         onSave={fetchCriticalDates}
       />
 
