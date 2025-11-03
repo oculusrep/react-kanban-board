@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../contexts/AuthContext';
@@ -76,22 +76,24 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
   const [sendEmail, setSendEmail] = useState(false);
   const [sendEmailDaysPrior, setSendEmailDaysPrior] = useState('');
 
-  // Form data object for autosave
-  const formData = {
+  // Form data object for autosave - memoized to prevent unnecessary changes
+  const formData = useMemo(() => ({
     subject,
     customSubject,
     criticalDateValue,
     description,
     sendEmail,
     sendEmailDaysPrior,
-  };
+  }), [subject, customSubject, criticalDateValue, description, sendEmail, sendEmailDaysPrior]);
 
   // Fetch existing critical date if editing
   useEffect(() => {
     if (criticalDateId) {
+      setIsInitializing(true); // Set BEFORE fetching to prevent any autosave
       fetchCriticalDate();
     } else {
       // Reset form for new critical date
+      setIsInitializing(false);
       resetForm();
     }
   }, [criticalDateId]);
@@ -124,8 +126,8 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
       setSendEmail(data.send_email);
       setSendEmailDaysPrior(data.send_email_days_prior?.toString() || '');
 
-      // Re-enable autosave after a short delay to ensure form is fully populated
-      setTimeout(() => setIsInitializing(false), 100);
+      // Re-enable autosave after a delay to ensure form is fully populated and settled
+      setTimeout(() => setIsInitializing(false), 500);
     } catch (err) {
       console.error('Error fetching critical date:', err);
       showToast(err instanceof Error ? err.message : 'Failed to load critical date', { type: 'error' });
