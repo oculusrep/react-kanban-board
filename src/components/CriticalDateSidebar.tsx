@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../contexts/AuthContext';
+import { useAutosave } from '../hooks/useAutosave';
 import Toast from './Toast';
 import ConfirmDialog from './ConfirmDialog';
+import AutosaveIndicator from './AutosaveIndicator';
 
 interface CriticalDate {
   id: string;
@@ -59,10 +61,9 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
   onSave
 }) => {
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [criticalDate, setCriticalDate] = useState<CriticalDate | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const { toast, showToast, hideToast } = useToast();
+  const { toast, showToast, hideToast} = useToast();
   const { userTableId } = useAuth();
 
   // Form fields
@@ -72,6 +73,16 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
   const [description, setDescription] = useState('');
   const [sendEmail, setSendEmail] = useState(false);
   const [sendEmailDaysPrior, setSendEmailDaysPrior] = useState('');
+
+  // Form data object for autosave
+  const formData = {
+    subject,
+    customSubject,
+    criticalDateValue,
+    description,
+    sendEmail,
+    sendEmailDaysPrior,
+  };
 
   // Fetch existing critical date if editing
   useEffect(() => {
@@ -127,66 +138,69 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
     setSendEmailDaysPrior('');
   };
 
-  const handleSave = async () => {
-    try {
-      setSaving(true);
+  // Save function for autosave
+  const handleSave = async (data: typeof formData) => {
+    // Determine final subject (use custom if selected)
+    const finalSubject = data.subject === 'Custom' ? data.customSubject.trim() : data.subject;
 
-      // Determine final subject (use custom if selected)
-      const finalSubject = subject === 'Custom' ? customSubject.trim() : subject;
-
-      if (!finalSubject) {
-        showToast('Please enter a subject for the critical date', { type: 'error' });
-        return;
-      }
-
-      // Validate send_email_days_prior if send_email is checked
-      if (sendEmail && !sendEmailDaysPrior) {
-        showToast('Please specify how many days prior to send the email reminder', { type: 'error' });
-        return;
-      }
-
-      const payload: any = {
-        deal_id: dealId,
-        subject: finalSubject,
-        critical_date: criticalDateValue || null,
-        description: description.trim() || null,
-        send_email: sendEmail,
-        send_email_days_prior: sendEmail && sendEmailDaysPrior ? parseInt(sendEmailDaysPrior) : null,
-        updated_at: new Date().toISOString(),
-        updated_by_id: userTableId || null
-      };
-
-      if (criticalDateId) {
-        // Update existing
-        const { error } = await supabase
-          .from('critical_date')
-          .update(payload)
-          .eq('id', criticalDateId);
-
-        if (error) throw error;
-      } else {
-        // Create new
-        payload.created_at = new Date().toISOString();
-        payload.created_by_id = userTableId || null;
-        payload.is_default = false;
-
-        const { error } = await supabase
-          .from('critical_date')
-          .insert([payload]);
-
-        if (error) throw error;
-      }
-
-      showToast(criticalDateId ? 'Critical date updated successfully' : 'Critical date created successfully', { type: 'success' });
-      onSave();
-      onClose();
-    } catch (err) {
-      console.error('Error saving critical date:', err);
-      showToast(err instanceof Error ? err.message : 'Failed to save critical date', { type: 'error' });
-    } finally {
-      setSaving(false);
+    if (!finalSubject) {
+      throw new Error('Please enter a subject for the critical date');
     }
+
+    // Validate send_email_days_prior if send_email is checked
+    if (data.sendEmail && !data.sendEmailDaysPrior) {
+      throw new Error('Please specify how many days prior to send the email reminder');
+    }
+
+    const payload: any = {
+      deal_id: dealId,
+      subject: finalSubject,
+      critical_date: data.criticalDateValue || null,
+      description: data.description.trim() || null,
+      send_email: data.sendEmail,
+      send_email_days_prior: data.sendEmail && data.sendEmailDaysPrior ? parseInt(data.sendEmailDaysPrior) : null,
+      updated_at: new Date().toISOString(),
+      updated_by_id: userTableId || null
+    };
+
+    if (criticalDateId) {
+      // Update existing
+      const { error } = await supabase
+        .from('critical_date')
+        .update(payload)
+        .eq('id', criticalDateId);
+
+      if (error) throw error;
+    } else {
+      // Create new
+      payload.created_at = new Date().toISOString();
+      payload.created_by_id = userTableId || null;
+      payload.is_default = false;
+
+      const { error, data: newData } = await supabase
+        .from('critical_date')
+        .insert([payload])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update the criticalDateId so subsequent saves are updates
+      if (newData) {
+        setCriticalDate(newData);
+      }
+    }
+
+    onSave(); // Refresh the parent list
   };
+
+  // Autosave hook - only enabled for existing records (not new ones)
+  const { status, lastSavedAt } = useAutosave({
+    data: formData,
+    onSave: handleSave,
+    delay: 1500,
+    enabled: !!criticalDateId, // Only autosave for existing records
+  });
 
   const handleDelete = async () => {
     if (!criticalDateId) return;
@@ -237,9 +251,12 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
     >
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-gray-200 bg-gray-50 sticky top-0 z-10">
-        <h3 className="text-sm font-semibold text-gray-800">
-          {criticalDateId ? 'Edit Critical Date' : 'New Critical Date'}
-        </h3>
+        <div className="flex items-center gap-3">
+          <h3 className="text-sm font-semibold text-gray-800">
+            {criticalDateId ? 'Edit Critical Date' : 'New Critical Date'}
+          </h3>
+          {criticalDateId && <AutosaveIndicator status={status} lastSavedAt={lastSavedAt} />}
+        </div>
         <button
           onClick={onClose}
           className="p-2 hover:bg-gray-200 rounded-md transition-colors text-gray-500 hover:text-gray-700"
@@ -428,7 +445,7 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
               {criticalDateId && (
                 <button
                   onClick={() => setShowDeleteConfirm(true)}
-                  disabled={saving}
+                  disabled={status === 'saving'}
                   className="px-3 py-1.5 text-xs font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Delete
@@ -436,20 +453,33 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
               )}
             </div>
             <div className="flex space-x-2">
-              <button
-                onClick={onClose}
-                disabled={saving}
-                className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {saving ? 'Saving...' : 'Save'}
-              </button>
+              {criticalDateId ? (
+                // Existing record - just show Close (autosave handles saving)
+                <button
+                  onClick={onClose}
+                  className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                >
+                  Close
+                </button>
+              ) : (
+                // New record - show Cancel and Create
+                <>
+                  <button
+                    onClick={onClose}
+                    disabled={status === 'saving'}
+                    className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleSave(formData)}
+                    disabled={status === 'saving'}
+                    className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {status === 'saving' ? 'Creating...' : 'Create'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
           </div>

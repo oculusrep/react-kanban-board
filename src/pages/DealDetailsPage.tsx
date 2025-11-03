@@ -375,7 +375,10 @@ export default function DealDetailsPage() {
                   Payments
                 </button>
                 <button
-                  onClick={() => setActiveTab('critical-dates')}
+                  onClick={() => {
+                    setActiveTab('critical-dates');
+                    setSidebarMinimized(true); // Auto-collapse sidebar
+                  }}
                   className={`py-2 px-1 border-b-2 font-medium text-sm ${
                     activeTab === 'critical-dates'
                       ? 'border-blue-500 text-blue-600'
