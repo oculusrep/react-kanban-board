@@ -950,7 +950,114 @@ const dateValue = dateObj.toISOString().split('T')[0];
 
 ---
 
-## 🗄️ CRITICAL RULE #8: Database Query Standards
+## 🔄 CRITICAL RULE #8: Real-Time Subscriptions with Autosave
+
+### The Rule
+
+**NEVER have real-time subscriptions active in a parent component while a child component is autosaving to the same data.**
+
+### The Problem
+
+When a parent component has a Supabase real-time subscription AND a child component autosaves data, you create an infinite loop:
+
+1. User edits in child → autosave fires → saves to database
+2. Database change triggers parent's real-time subscription
+3. Subscription calls a fetch function → refetches ALL data
+4. Fresh data causes React re-render
+5. Child component sees "new" data (even though it's the same)
+6. formData update triggers autosave again → **INFINITE LOOP**
+
+**Symptoms:**
+- Screen "twitching" or rapidly refreshing
+- Console shows repeated save messages
+- UI becomes unresponsive
+- Network tab shows continuous database queries
+
+### The Solution
+
+**Disable real-time subscription while editing:**
+
+```typescript
+// In parent component with real-time subscription
+const [sidebarOpen, setSidebarOpen] = useState(false);
+
+// Real-time subscription - ONLY active when NOT editing
+useEffect(() => {
+  if (!dealId || sidebarOpen) return; // Don't subscribe while sidebar is open
+
+  const subscription = supabase
+    .channel(`critical-date-changes-${dealId}`)
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'critical_date',
+      filter: `deal_id=eq.${dealId}`
+    }, (payload) => {
+      fetchCriticalDates(); // Refetch data
+    })
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(subscription);
+  };
+}, [dealId, fetchCriticalDates, sidebarOpen]); // Include open state
+```
+
+**Use direct state updates instead:**
+
+```typescript
+// Add callback to immediately update local state
+const handleSidebarUpdate = useCallback((criticalDateId: string, updates: any) => {
+  setCriticalDates(prev => prev.map(cd =>
+    cd.id === criticalDateId ? { ...cd, ...updates } : cd
+  ));
+}, []);
+
+// Pass to child component
+<CriticalDateSidebar
+  onUpdate={handleSidebarUpdate} // Direct state update
+  onClose={() => setSidebarOpen(false)} // Re-enables subscription
+/>
+
+// In child component after saving:
+onUpdate?.(criticalDateId, payload); // Update parent state directly
+```
+
+### Why This Works
+
+1. **While editing**: Subscription disabled, child updates parent state directly
+2. **After closing**: Subscription re-enables, catches other users' changes
+3. **No refetch during edit**: Breaks the infinite loop
+4. **Immediate UI updates**: Direct state update, no fetch delay
+
+### Examples in Codebase
+
+**Good example - CriticalDatesTab.tsx:**
+- ✅ Real-time subscription checks `|| sidebarOpen`
+- ✅ Sidebar uses `onUpdate` callback for immediate updates
+- ✅ Subscription re-enables when sidebar closes
+
+**Components with working autosave (no real-time in parent):**
+- ✅ PropertyDetailsSlideoutContent.tsx
+- ✅ DealDetailsPage.tsx
+
+### Red Flags 🚩
+
+❌ Real-time subscription always active regardless of edit state
+❌ Autosave child component triggering refetch in parent
+❌ No direct state update callback, only refetch
+❌ Screen twitching/flashing during edits
+❌ Console showing repeated "Updating..." messages
+
+### Important Notes
+
+- **Browser refresh required**: Changes to subscription logic require browser refresh, not just rebuild
+- **Test in browser**: Console logs are critical to verify the fix actually works
+- **Don't assume**: Just because code looks right doesn't mean loop is fixed - always verify
+
+---
+
+## 🗄️ CRITICAL RULE #9: Database Query Standards
 
 ### PostgreSQL Case Sensitivity
 
