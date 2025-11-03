@@ -198,12 +198,12 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
     onSave(); // Refresh the parent list
   }, [dealId, criticalDateId, userTableId, onSave]);
 
-  // Autosave hook - only enabled for existing records (not new ones) and after loading completes
+  // Autosave hook - TEMPORARILY DISABLED for debugging
   const { status, lastSavedAt } = useAutosave({
     data: formData,
     onSave: handleSave,
     delay: 1500,
-    enabled: !loading && !!criticalDate, // Only autosave after loading completes and data exists
+    enabled: false, // DISABLED - testing without autosave
   });
 
   const handleDelete = async () => {
@@ -458,13 +458,29 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
             </div>
             <div className="flex space-x-2">
               {criticalDateId ? (
-                // Existing record - just show Close (autosave handles saving)
-                <button
-                  onClick={onClose}
-                  className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-                >
-                  Close
-                </button>
+                // Existing record - show Save and Close (autosave disabled for now)
+                <>
+                  <button
+                    onClick={onClose}
+                    className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await handleSave(formData);
+                        onClose();
+                      } catch (err) {
+                        showToast(err instanceof Error ? err.message : 'Failed to save', { type: 'error' });
+                      }
+                    }}
+                    disabled={saving}
+                    className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </>
               ) : (
                 // New record - show Cancel and Create
                 <>
