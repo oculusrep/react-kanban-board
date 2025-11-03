@@ -188,7 +188,8 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
 
     // Format the value for editing
     if (field === 'critical_date' && currentValue) {
-      setEditValue(currentValue);
+      // Extract YYYY-MM-DD for date input without timezone conversion
+      setEditValue(currentValue.substring(0, 10));
     } else if (field === 'send_email_days_prior' && currentValue !== null) {
       setEditValue(currentValue.toString());
     } else {
@@ -220,12 +221,14 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
   // Format date for display
   const formatDate = (dateStr: string | null): string => {
     if (!dateStr) return 'TBD';
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
+
+    // Extract date without timezone conversion using substring
+    const datePart = dateStr.substring(0, 10); // YYYY-MM-DD
+    const [year, month, day] = datePart.split('-');
+
+    // Create date string manually to avoid timezone issues
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${monthNames[parseInt(month) - 1]} ${parseInt(day)}, ${year}`;
   };
 
   // Handle column sorting

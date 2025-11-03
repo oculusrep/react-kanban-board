@@ -203,15 +203,19 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
         setCriticalDate(newData);
       }
     }
-
-    // NOTE: Don't call onSave() here - the real-time subscription will handle refreshing the table
-    // Calling onSave() here causes an infinite loop: save → subscription → fetch → re-render → autosave
   }, [dealId, criticalDateId, userTableId]);
+
+  // Wrapper for autosave that refreshes table after save
+  const handleAutosave = useCallback(async (data: typeof formData) => {
+    await handleSave(data);
+    // Call onSave to refresh table immediately after successful autosave
+    onSave();
+  }, [handleSave, onSave]);
 
   // Autosave hook
   const { status, lastSavedAt } = useAutosave({
     data: formData,
-    onSave: handleSave,
+    onSave: handleAutosave,
     delay: 1500,
     enabled: !loading && !!criticalDateId, // Only autosave for existing records
   });
