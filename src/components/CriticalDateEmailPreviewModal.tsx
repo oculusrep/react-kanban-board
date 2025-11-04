@@ -365,17 +365,21 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
     console.log('sendTestEmail called');
     console.log('User:', user);
 
-    if (!user?.email || !user?.name) {
-      console.error('User information missing:', { email: user?.email, name: user?.name });
-      setToast({ message: 'User information not found', type: 'error' });
+    if (!user?.email) {
+      console.error('User email missing');
+      setToast({ message: 'User email not found', type: 'error' });
       return;
     }
 
     try {
       setSendingTest(true);
+
+      // Use email as fallback for name if name not available
+      const userName = user.email.split('@')[0] || 'there';
+
       console.log('Calling Edge Function with:', {
         toEmail: user.email,
-        toName: user.name,
+        toName: userName,
         subject: subject || 'Untitled',
         criticalDate: criticalDate || '',
         description: description || '',
@@ -387,7 +391,7 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
       const { data, error } = await supabase.functions.invoke('send-test-critical-date-email', {
         body: {
           toEmail: user.email,
-          toName: user.name,
+          toName: userName,
           subject: subject || 'Untitled',
           criticalDate: criticalDate || '',
           description: description || '',
