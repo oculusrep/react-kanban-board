@@ -144,12 +144,28 @@ export const useClientContacts = (clientId: string | null) => {
 
   const removeContactRelation = async (relationId: string) => {
     try {
-      const { error: deleteError } = await supabase
-        .from('contact_client_relation')
-        .delete()
-        .eq('id', relationId);
+      // Check if this is a synthetic "direct" relation ID
+      if (relationId.startsWith('direct-')) {
+        // Extract the actual contact ID
+        const contactId = relationId.replace('direct-', '');
 
-      if (deleteError) throw deleteError;
+        // Clear the client_id from the contact record
+        const { error: updateError } = await supabase
+          .from('contact')
+          .update({ client_id: null })
+          .eq('id', contactId);
+
+        if (updateError) throw updateError;
+      } else {
+        // Normal many-to-many relation
+        const { error: deleteError } = await supabase
+          .from('contact_client_relation')
+          .delete()
+          .eq('id', relationId);
+
+        if (deleteError) throw deleteError;
+      }
+
       await fetchRelations();
     } catch (err) {
       console.error('Error removing contact relation:', err);
