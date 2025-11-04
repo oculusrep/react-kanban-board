@@ -434,7 +434,7 @@ function generateCriticalDateEmailTemplate(data: {
       <body>
         <div class="content">
           <p>${contactFirstName},</p>
-
+          <br>
           <p>This is a reminder email to let you know that the following Critical Date for our deal at ${propertyName || 'the property'} in ${propertyCity || 'the area'} is approaching.</p>
 
           <p style="margin-top: 20px; margin-bottom: 5px;"><strong>Critical Date:</strong> ${subject || 'Untitled'}</p>
