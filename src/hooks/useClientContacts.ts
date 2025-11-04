@@ -144,10 +144,12 @@ export const useClientContacts = (clientId: string | null) => {
 
   const removeContactRelation = async (relationId: string) => {
     try {
+      let contactId: string;
+
       // Check if this is a synthetic "direct" relation ID
       if (relationId.startsWith('direct-')) {
         // Extract the actual contact ID
-        const contactId = relationId.replace('direct-', '');
+        contactId = relationId.replace('direct-', '');
 
         // Clear the client_id from the contact record
         const { error: updateError } = await supabase
@@ -157,13 +159,36 @@ export const useClientContacts = (clientId: string | null) => {
 
         if (updateError) throw updateError;
       } else {
-        // Normal many-to-many relation
+        // Normal many-to-many relation - first get the contact_id
+        const { data: relation, error: fetchError } = await supabase
+          .from('contact_client_relation')
+          .select('contact_id')
+          .eq('id', relationId)
+          .single();
+
+        if (fetchError) throw fetchError;
+        if (!relation) throw new Error('Relation not found');
+
+        contactId = relation.contact_id;
+
+        // Delete the relation
         const { error: deleteError } = await supabase
           .from('contact_client_relation')
           .delete()
           .eq('id', relationId);
 
         if (deleteError) throw deleteError;
+      }
+
+      // Delete all role assignments for this contact-client combination
+      if (clientId) {
+        const { error: roleDeleteError } = await supabase
+          .from('contact_client_role')
+          .delete()
+          .eq('contact_id', contactId)
+          .eq('client_id', clientId);
+
+        if (roleDeleteError) throw roleDeleteError;
       }
 
       await fetchRelations();
