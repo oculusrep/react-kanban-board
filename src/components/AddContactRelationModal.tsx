@@ -166,6 +166,9 @@ const AddContactRelationModal: React.FC<AddContactRelationModalProps> = ({
       // Add the contact relation (this will trigger fetchRelations which shows the roles)
       await onAdd(contactId, undefined, isPrimary);
 
+      // Small delay to ensure database transaction completes and UI updates
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       handleClose();
     } catch (err) {
       console.error('Error adding contact relation:', err);
