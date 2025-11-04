@@ -27,7 +27,7 @@ interface DealOwner {
 }
 
 interface Property {
-  address: string | null;
+  property_name: string | null;
   city: string | null;
   state: string | null;
 }
@@ -72,7 +72,7 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
             email
           ),
           property:property_id (
-            address,
+            property_name,
             city,
             state
           )
@@ -144,7 +144,7 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
       description,
       daysPrior,
       contactFirstName: 'John', // Placeholder for preview
-      propertyAddress: property?.address || undefined,
+      propertyName: property?.property_name || undefined,
       propertyCity: property?.city || undefined,
     });
     setEmailHtml(html);
@@ -376,10 +376,10 @@ function generateCriticalDateEmailTemplate(data: {
   description: string;
   daysPrior: string;
   contactFirstName: string;
-  propertyAddress?: string;
+  propertyName?: string;
   propertyCity?: string;
 }): string {
-  const { subject, criticalDate, description, contactFirstName, propertyAddress, propertyCity } = data;
+  const { subject, criticalDate, description, contactFirstName, propertyName, propertyCity } = data;
   const finalDescription = description || subject;
 
   const formatDate = (dateStr: string): string => {
@@ -419,7 +419,7 @@ function generateCriticalDateEmailTemplate(data: {
         <div class="content">
           <p>${contactFirstName},</p>
 
-          <p>This is a reminder email to let you know that the following Critical Date for our deal at ${propertyAddress || 'the property'} in ${propertyCity || 'the area'} is approaching.</p>
+          <p>This is a reminder email to let you know that the following Critical Date for our deal at ${propertyName || 'the property'} in ${propertyCity || 'the area'} is approaching.</p>
 
           <p style="margin-top: 20px; margin-bottom: 5px;"><strong>Critical Date:</strong> ${subject || 'Untitled'}</p>
           <p style="margin-top: 5px; margin-bottom: 5px;"><strong>Due Date:</strong> ${formatDate(criticalDate)}</p>

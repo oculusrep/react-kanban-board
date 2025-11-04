@@ -44,7 +44,7 @@ serve(async (req) => {
             email
           ),
           property:property_id (
-            address,
+            property_name,
             city,
             state
           )
@@ -249,7 +249,7 @@ function generateCriticalDateEmailTemplate(criticalDate: any, deal: any, contact
         <div class="content">
           <p>${contactFirstName},</p>
 
-          <p>This is a reminder email to let you know that the following Critical Date for our deal at ${deal.property?.address || 'the property'} in ${deal.property?.city || 'the area'} is approaching.</p>
+          <p>This is a reminder email to let you know that the following Critical Date for our deal at ${deal.property?.property_name || 'the property'} in ${deal.property?.city || 'the area'} is approaching.</p>
 
           <p style="margin-top: 20px; margin-bottom: 5px;"><strong>Critical Date:</strong> ${subject}</p>
           <p style="margin-top: 5px; margin-bottom: 5px;"><strong>Due Date:</strong> ${formatDate(criticalDate.critical_date)}</p>
