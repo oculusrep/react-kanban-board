@@ -67,29 +67,40 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
     try {
       setLoading(true);
 
-      // Fetch the deal to get owner info, client_id, and property info
+      // Fetch the deal to get client_id, owner_id, and property_id
       const { data: dealData, error: dealError } = await supabase
         .from('deal')
-        .select(`
-          client_id,
-          owner:owner_id (
-            id,
-            name,
-            email
-          ),
-          property:property_id (
-            property_name,
-            city,
-            state
-          )
-        `)
+        .select('client_id, owner_id, property_id')
         .eq('id', dealId)
         .single();
 
       if (dealError) throw dealError;
 
-      setDealOwner(dealData?.owner as DealOwner);
-      setProperty(dealData?.property as Property);
+      // Fetch owner data separately if owner_id exists
+      if (dealData?.owner_id) {
+        const { data: ownerData } = await supabase
+          .from('user')
+          .select('id, name, email')
+          .eq('id', dealData.owner_id)
+          .single();
+
+        if (ownerData) {
+          setDealOwner(ownerData as DealOwner);
+        }
+      }
+
+      // Fetch property data separately if property_id exists
+      if (dealData?.property_id) {
+        const { data: propertyData } = await supabase
+          .from('property')
+          .select('property_name, city, state')
+          .eq('id', dealData.property_id)
+          .single();
+
+        if (propertyData) {
+          setProperty(propertyData as Property);
+        }
+      }
 
       // Fetch contacts with "Critical Dates Reminders" role
       const { data: roleData, error: roleError } = await supabase
