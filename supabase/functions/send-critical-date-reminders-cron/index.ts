@@ -40,6 +40,11 @@ serve(async (req) => {
             id,
             name,
             email
+          ),
+          property:property_id (
+            address,
+            city,
+            state
           )
         )
       `)
@@ -174,7 +179,7 @@ serve(async (req) => {
               from: fromAddress,
               to: [contact.email],
               cc: ccList,
-              subject: `Critical Date Reminder: ${criticalDate.subject} - ${deal.deal_name || 'Untitled Deal'}`,
+              subject: `Critical Date Approaching - ${criticalDate.subject}`,
               html: emailHtml,
             }),
           })
@@ -244,10 +249,8 @@ serve(async (req) => {
 })
 
 function generateCriticalDateEmailTemplate(criticalDate: any, deal: any, contact: any): string {
-  const dealName = deal.deal_name || 'Untitled Deal'
   const subject = criticalDate.subject || 'Untitled'
-  const description = criticalDate.description || ''
-  const daysPrior = criticalDate.send_email_days_prior || 0
+  const description = criticalDate.description || subject
 
   const formatDate = (dateStr: string | null): string => {
     if (!dateStr) return 'TBD'
@@ -275,109 +278,39 @@ function generateCriticalDateEmailTemplate(criticalDate: any, deal: any, contact
             margin: 0 auto;
             padding: 20px;
           }
-          .header {
-            background-color: #dc2626;
-            color: white;
-            padding: 20px;
-            border-radius: 8px 8px 0 0;
-          }
           .content {
-            background-color: #f9fafb;
-            padding: 20px;
-            border: 1px solid #e5e7eb;
-            border-top: none;
+            background-color: #ffffff;
+            padding: 30px;
           }
-          .field {
-            margin-bottom: 15px;
-          }
-          .label {
-            font-weight: 600;
-            color: #4b5563;
-            display: block;
-            margin-bottom: 4px;
-            font-size: 14px;
-          }
-          .value {
-            color: #1f2937;
-            font-size: 15px;
-          }
-          .critical-date-box {
-            background-color: #fef2f2;
-            border: 2px solid #dc2626;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 20px 0;
-            text-align: center;
-          }
-          .critical-date-label {
-            font-size: 12px;
-            text-transform: uppercase;
-            color: #991b1b;
-            font-weight: 600;
-            margin-bottom: 8px;
-          }
-          .critical-date-value {
-            font-size: 24px;
-            font-weight: bold;
-            color: #dc2626;
-          }
-          .footer {
-            background-color: #f3f4f6;
-            padding: 15px;
-            border-radius: 0 0 8px 8px;
-            text-align: center;
-            font-size: 14px;
-            color: #6b7280;
+          .signature {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
           }
         </style>
       </head>
       <body>
-        <div class="header">
-          <h2 style="margin: 0;">Critical Date Reminder</h2>
-        </div>
-
         <div class="content">
-          <p>Hello ${contactFirstName},</p>
+          <p>${contactFirstName},</p>
 
-          <p>This is a reminder that an important critical date is approaching for one of your deals.</p>
+          <p>This is a reminder email to let you know that the following Critical Date for our deal at ${deal.property?.address || 'the property'} in ${deal.property?.city || 'the area'} is approaching.</p>
 
-          <div class="field">
-            <span class="label">Deal:</span>
-            <span class="value">${dealName}</span>
+          <p style="margin-top: 20px; margin-bottom: 5px;"><strong>Critical Date:</strong> ${subject}</p>
+          <p style="margin-top: 5px; margin-bottom: 5px;"><strong>Due Date:</strong> ${formatDate(criticalDate.critical_date)}</p>
+          <p style="margin-top: 5px; margin-bottom: 20px;"><strong>Description:</strong> ${description}</p>
+
+          <p>Please give Mike or Arty a call if you have any questions or there are any concerns with the approaching deadline.</p>
+
+          <div class="signature">
+            <p style="margin-bottom: 5px;"><strong>Best,</strong></p>
+            <p style="margin-bottom: 5px;"><strong>Mike</strong></p>
+            <br>
+            <p style="margin-bottom: 3px; font-size: 14px;"><strong>Mike Minihan</strong></p>
+            <p style="margin-bottom: 3px; font-size: 14px;">Principal | Managing Broker</p>
+            <p style="margin-bottom: 3px; font-size: 14px;">Oculus Real Estate Partners, LLC</p>
+            <p style="margin-bottom: 3px; font-size: 14px;">M: 404-326-4010</p>
+            <p style="margin-bottom: 3px; font-size: 14px;">E: <a href="mailto:mike@oculusrep.com" style="color: #2563eb; text-decoration: none;">mike@oculusrep.com</a></p>
           </div>
-
-          <div class="field">
-            <span class="label">Critical Date Type:</span>
-            <span class="value">${subject}</span>
-          </div>
-
-          <div class="critical-date-box">
-            <div class="critical-date-label">Critical Date</div>
-            <div class="critical-date-value">${formatDate(criticalDate.critical_date)}</div>
-            ${daysPrior ? `<div style="margin-top: 8px; font-size: 12px; color: #991b1b;">
-              ${daysPrior} day${daysPrior !== 1 ? 's' : ''} prior notification
-            </div>` : ''}
-          </div>
-
-          ${description ? `
-          <div class="field">
-            <span class="label">Description:</span>
-            <span class="value">${description}</span>
-          </div>
-          ` : ''}
-
-          <div style="margin-top: 20px; padding: 15px; background-color: #eff6ff; border-left: 4px solid #2563eb; border-radius: 4px;">
-            <p style="margin: 0; font-size: 14px; color: #1e40af;">
-              <strong>Action Required:</strong> Please review this critical date and take any necessary actions to ensure all deadlines are met.
-            </p>
-          </div>
-        </div>
-
-        <div class="footer">
-          <p style="margin: 0;">This is an automated reminder from your CRM system.</p>
-          <p style="margin: 5px 0 0 0; font-size: 12px;">
-            You are receiving this email because you have the "Critical Dates Reminders" role for this client.
-          </p>
         </div>
       </body>
     </html>
