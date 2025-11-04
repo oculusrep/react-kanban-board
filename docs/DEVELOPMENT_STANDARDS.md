@@ -1057,7 +1057,109 @@ onUpdate?.(criticalDateId, payload); // Update parent state directly
 
 ---
 
-## 🗄️ CRITICAL RULE #9: Database Query Standards
+## 🔗 CRITICAL RULE #9: Related Data Creation Order
+
+### The Rule
+
+**ALWAYS create related data BEFORE creating the parent record that will display it.**
+
+### The Problem
+
+When creating a record with related data (like a contact with roles), if you:
+1. Create the parent record first
+2. Trigger a UI refresh
+3. Then create the related data
+
+The UI will show the parent record WITHOUT the related data, requiring a manual browser refresh to see it.
+
+### The Solution
+
+**Create related data FIRST, then create the parent:**
+
+```typescript
+// ❌ WRONG - Related data created after parent
+await createContactRelation(contactId, clientId);  // Parent refreshes UI
+await addRole(contactId, clientId, roleId);        // Too late, UI already shown
+
+// ✅ RIGHT - Related data created before parent
+await addRole(contactId, clientId, roleId);        // Create related data first
+await createContactRelation(contactId, clientId);  // Parent refreshes with data
+await new Promise(resolve => setTimeout(resolve, 100)); // Allow DB to complete
+```
+
+### Real Example: Adding Contact with Roles
+
+**In AddContactRelationModal.tsx:**
+```typescript
+// If clientId is provided and roles are selected, add them FIRST
+if (clientId && selectedRoleIds.length > 0) {
+  for (const roleId of selectedRoleIds) {
+    await addRole(contactId, clientId, roleId);
+  }
+}
+
+// Add the contact relation (triggers parent fetchRelations)
+await onAdd(contactId, undefined, isPrimary);
+
+// Small delay to ensure database transaction completes
+await new Promise(resolve => setTimeout(resolve, 100));
+
+handleClose();
+```
+
+### Why This Works
+
+1. **Related data exists first**: Roles are in database before contact relation
+2. **Parent fetches complete data**: When `fetchRelations()` runs, it gets contact WITH roles
+3. **UI displays correctly**: Child components (ContactRolesManager) find roles immediately
+4. **No refresh needed**: Everything appears on first render
+
+### When to Use This Pattern
+
+✅ **Use this pattern when:**
+- Creating records with roles/permissions
+- Creating records with tags/categories
+- Creating records with associated metadata
+- Any parent-child relationship where child data should display immediately
+
+❌ **Don't need this pattern when:**
+- Related data can load asynchronously without user noticing
+- Related data is fetched by independent components with their own loading states
+- Order doesn't affect initial display
+
+### The Delay Pattern
+
+**Why add a small delay before closing modals?**
+
+```typescript
+await onAdd(contactId);
+await new Promise(resolve => setTimeout(resolve, 100));
+handleClose();
+```
+
+This 100ms delay ensures:
+- Database transaction completes
+- Parent component's fetch finishes
+- Child components have data to load
+- No race conditions between async operations
+
+### Examples in Codebase
+
+**Good example - AddContactRelationModal.tsx:**
+- ✅ Roles added before contact relation
+- ✅ 100ms delay before closing modal
+- ✅ Parent component sees complete data
+
+### Red Flags 🚩
+
+❌ Creating parent record, then refreshing, then creating related data
+❌ Related data not appearing until browser refresh
+❌ Child components showing loading state when data should be there
+❌ Race conditions between parent and child component data fetching
+
+---
+
+## 🗄️ CRITICAL RULE #10: Database Query Standards
 
 ### PostgreSQL Case Sensitivity
 
