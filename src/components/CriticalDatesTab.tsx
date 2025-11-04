@@ -123,6 +123,19 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
         updated_at: new Date().toISOString()
       };
 
+      // If enabling send_email and send_email_days_prior is null, set a default value
+      if (field === 'send_email' && value === true) {
+        const criticalDate = criticalDates.find(cd => cd.id === criticalDateId);
+        if (criticalDate && criticalDate.send_email_days_prior === null) {
+          updates.send_email_days_prior = 7; // Default to 7 days prior
+
+          // Immediately open the days_prior field for editing so user can change the default
+          setTimeout(() => {
+            startEditing(criticalDateId, 'send_email_days_prior', 7);
+          }, 100);
+        }
+      }
+
       const { error: updateError } = await supabase
         .from('critical_date')
         .update(updates)
@@ -543,17 +556,11 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
                     ) : (
                       <div
                         onClick={(e) => {
-                          if (cd.send_email) {
-                            e.stopPropagation();
-                            startEditing(cd.id, 'send_email_days_prior', cd.send_email_days_prior);
-                          }
+                          e.stopPropagation();
+                          startEditing(cd.id, 'send_email_days_prior', cd.send_email_days_prior);
                         }}
-                        className={`inline-block px-1.5 py-0.5 rounded text-xs ${
-                          cd.send_email
-                            ? 'cursor-pointer hover:bg-blue-50 text-gray-900'
-                            : 'text-gray-400 cursor-not-allowed'
-                        }`}
-                        title={cd.send_email ? 'Click to edit' : 'Enable "Send Email" first'}
+                        className="inline-block px-1.5 py-0.5 rounded text-xs cursor-pointer hover:bg-blue-50 text-gray-900"
+                        title="Click to edit"
                       >
                         {cd.send_email_days_prior !== null ? cd.send_email_days_prior : '-'}
                       </div>
