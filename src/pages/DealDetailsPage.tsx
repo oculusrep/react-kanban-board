@@ -340,7 +340,7 @@ export default function DealDetailsPage() {
       <div className="flex flex-1 overflow-hidden">
         {/* Main Content */}
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-7xl mx-auto p-4 pb-8">
+          <div className={`mx-auto p-4 pb-8 ${activeTab === 'critical-dates' ? 'max-w-7xl' : 'max-w-4xl'}`}>
             {/* Tab Navigation */}
             <div className="border-b border-gray-200 mb-6">
               <nav className="-mb-px flex space-x-8">
