@@ -48,6 +48,7 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
   const [loading, setLoading] = useState(false);
   const [recipients, setRecipients] = useState<Contact[]>([]);
   const [allClientContacts, setAllClientContacts] = useState<Contact[]>([]);
+  const [allContacts, setAllContacts] = useState<Contact[]>([]);
   const [clientId, setClientId] = useState<string | null>(null);
   const [roleId, setRoleId] = useState<string | null>(null);
   const [dealOwner, setDealOwner] = useState<DealOwner | null>(null);
@@ -56,6 +57,11 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
   const [emailHtml, setEmailHtml] = useState('');
   const [sendingTest, setSendingTest] = useState(false);
   const [showAddRecipientModal, setShowAddRecipientModal] = useState(false);
+  const [contactSearch, setContactSearch] = useState('');
+  const [customEmail, setCustomEmail] = useState('');
+  const [customFirstName, setCustomFirstName] = useState('');
+  const [customLastName, setCustomLastName] = useState('');
+  const [showCustomEmailForm, setShowCustomEmailForm] = useState(false);
   const [toast, setToast] = useState({ message: '', type: '' as 'success' | 'error' | '' });
   const { user } = useAuth();
 
@@ -186,6 +192,17 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
       );
 
       setAllClientContacts(uniqueAllContacts);
+
+      // Fetch ALL contacts from the database (not just client contacts)
+      const { data: allContactsData, error: allContactsDataError } = await supabase
+        .from('contact')
+        .select('id, first_name, last_name, email')
+        .not('email', 'is', null)
+        .order('first_name');
+
+      if (allContactsDataError) throw allContactsDataError;
+
+      setAllContacts(allContactsData || []);
     } catch (err) {
       console.error('Error fetching recipients:', err);
     } finally {
@@ -267,6 +284,61 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
     } catch (err) {
       console.error('Error removing recipient:', err);
       setToast({ message: 'Failed to remove recipient', type: 'error' });
+    }
+  };
+
+  const addCustomEmailRecipient = async () => {
+    if (!clientId || !roleId) {
+      setToast({ message: 'Unable to add recipient', type: 'error' });
+      return;
+    }
+
+    // Validate email
+    if (!customEmail || !customEmail.includes('@')) {
+      setToast({ message: 'Please enter a valid email address', type: 'error' });
+      return;
+    }
+
+    try {
+      // Check if contact with this email already exists
+      const { data: existingContact } = await supabase
+        .from('contact')
+        .select('id')
+        .eq('email', customEmail)
+        .maybeSingle();
+
+      let contactId: string;
+
+      if (existingContact) {
+        // Use existing contact
+        contactId = existingContact.id;
+      } else {
+        // Create new contact
+        const { data: newContact, error: createError } = await supabase
+          .from('contact')
+          .insert({
+            email: customEmail,
+            first_name: customFirstName || null,
+            last_name: customLastName || null,
+          })
+          .select('id')
+          .single();
+
+        if (createError) throw createError;
+        contactId = newContact.id;
+      }
+
+      // Now add the role to this contact
+      await addRecipient(contactId);
+
+      // Reset form
+      setCustomEmail('');
+      setCustomFirstName('');
+      setCustomLastName('');
+      setShowCustomEmailForm(false);
+    } catch (err) {
+      console.error('Error adding custom email recipient:', err);
+      setToast({ message: 'Failed to add recipient', type: 'error' });
     }
   };
 
@@ -611,11 +683,18 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
       {/* Add Recipient Modal */}
       {showAddRecipientModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-lg shadow-xl w-[500px] max-h-[600px] overflow-hidden flex flex-col">
+          <div className="bg-white rounded-lg shadow-xl w-[600px] max-h-[700px] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-800">Add Recipient</h3>
               <button
-                onClick={() => setShowAddRecipientModal(false)}
+                onClick={() => {
+                  setShowAddRecipientModal(false);
+                  setShowCustomEmailForm(false);
+                  setContactSearch('');
+                  setCustomEmail('');
+                  setCustomFirstName('');
+                  setCustomLastName('');
+                }}
                 className="p-2 hover:bg-gray-100 rounded-md transition-colors text-gray-500 hover:text-gray-700"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -624,49 +703,164 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
-              <p className="text-sm text-gray-600 mb-4">
-                Select a contact from the client to add as a recipient for critical date reminders.
-              </p>
-              <div className="space-y-2">
-                {allClientContacts.filter(c => !recipients.find(r => r.id === c.id)).length === 0 ? (
-                  <div className="text-sm text-gray-500 text-center py-8">
-                    All contacts are already recipients
+              {!showCustomEmailForm ? (
+                <>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Search for any contact or enter a custom email address.
+                  </p>
+
+                  {/* Search Input */}
+                  <div className="mb-4">
+                    <input
+                      type="text"
+                      placeholder="Search contacts by name or email..."
+                      value={contactSearch}
+                      onChange={(e) => setContactSearch(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
-                ) : (
-                  allClientContacts
-                    .filter(c => !recipients.find(r => r.id === c.id))
-                    .map((contact) => (
-                      <button
-                        key={contact.id}
-                        onClick={() => addRecipient(contact.id)}
-                        className="w-full flex items-center space-x-2 p-3 bg-gray-50 hover:bg-gray-100 rounded border border-gray-200 transition-colors text-left"
-                      >
-                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                          <span className="text-xs font-medium text-blue-600">
-                            {(contact.first_name?.[0] || '') + (contact.last_name?.[0] || '')}
-                          </span>
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-sm font-medium text-gray-800">
-                            {contact.first_name} {contact.last_name}
+
+                  {/* Custom Email Button */}
+                  <button
+                    onClick={() => setShowCustomEmailForm(true)}
+                    className="w-full mb-4 flex items-center justify-center space-x-2 p-3 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 transition-colors"
+                  >
+                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span className="text-sm font-medium text-blue-700">Add Custom Email Address</span>
+                  </button>
+
+                  {/* Contact List */}
+                  <div className="space-y-2">
+                    {(() => {
+                      const searchLower = contactSearch.toLowerCase();
+                      const filteredContacts = allContacts
+                        .filter(c => !recipients.find(r => r.id === c.id))
+                        .filter(c => {
+                          if (!contactSearch) return true;
+                          const fullName = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase();
+                          const email = (c.email || '').toLowerCase();
+                          return fullName.includes(searchLower) || email.includes(searchLower);
+                        });
+
+                      if (filteredContacts.length === 0) {
+                        return (
+                          <div className="text-sm text-gray-500 text-center py-8">
+                            {contactSearch ? 'No contacts found matching your search' : 'All contacts are already recipients'}
                           </div>
-                          <div className="text-xs text-gray-600">{contact.email}</div>
-                        </div>
-                        <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                      </button>
-                    ))
-                )}
-              </div>
+                        );
+                      }
+
+                      return filteredContacts.map((contact) => (
+                        <button
+                          key={contact.id}
+                          onClick={() => addRecipient(contact.id)}
+                          className="w-full flex items-center space-x-2 p-3 bg-gray-50 hover:bg-gray-100 rounded border border-gray-200 transition-colors text-left"
+                        >
+                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                            <span className="text-xs font-medium text-blue-600">
+                              {(contact.first_name?.[0] || '') + (contact.last_name?.[0] || '')}
+                            </span>
+                          </div>
+                          <div className="flex-1">
+                            <div className="text-sm font-medium text-gray-800">
+                              {contact.first_name || contact.last_name ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : 'No Name'}
+                            </div>
+                            <div className="text-xs text-gray-600">{contact.email}</div>
+                          </div>
+                          <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                        </button>
+                      ));
+                    })()}
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Custom Email Form */}
+                  <div className="mb-4">
+                    <button
+                      onClick={() => setShowCustomEmailForm(false)}
+                      className="text-sm text-blue-600 hover:text-blue-700 flex items-center space-x-1 mb-4"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                      <span>Back to search</span>
+                    </button>
+                  </div>
+
+                  <h4 className="text-md font-semibold text-gray-800 mb-3">Add Custom Email</h4>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Enter an email address to add as a recipient. If this email doesn't exist in contacts, a new contact will be created.
+                  </p>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Email Address <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="email"
+                        value={customEmail}
+                        onChange={(e) => setCustomEmail(e.target.value)}
+                        placeholder="email@example.com"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        First Name (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={customFirstName}
+                        onChange={(e) => setCustomFirstName(e.target.value)}
+                        placeholder="John"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Last Name (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={customLastName}
+                        onChange={(e) => setCustomLastName(e.target.value)}
+                        placeholder="Doe"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
             <div className="flex justify-end space-x-2 p-4 border-t border-gray-200">
               <button
-                onClick={() => setShowAddRecipientModal(false)}
+                onClick={() => {
+                  setShowAddRecipientModal(false);
+                  setShowCustomEmailForm(false);
+                  setContactSearch('');
+                  setCustomEmail('');
+                  setCustomFirstName('');
+                  setCustomLastName('');
+                }}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
+              {showCustomEmailForm && (
+                <button
+                  onClick={addCustomEmailRecipient}
+                  disabled={!customEmail}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                >
+                  Add Recipient
+                </button>
+              )}
             </div>
           </div>
         </div>
