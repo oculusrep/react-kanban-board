@@ -53,9 +53,15 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
   useEffect(() => {
     if (isOpen) {
       fetchRecipients();
+    }
+  }, [isOpen, dealId]);
+
+  // Regenerate preview when any of these change
+  useEffect(() => {
+    if (isOpen) {
       generateEmailPreview();
     }
-  }, [isOpen, dealId, subject, criticalDate, description, daysPrior, property]);
+  }, [isOpen, subject, criticalDate, description, daysPrior, property]);
 
   const fetchRecipients = async () => {
     try {
