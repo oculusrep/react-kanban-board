@@ -8,6 +8,7 @@ interface PropertyDetailsSlideOutProps {
   propertyId: string;
   isMinimized?: boolean;
   onMinimizeChange?: (minimized: boolean) => void;
+  onSiteSubmitClick?: (siteSubmitId: string) => void;
 }
 
 /**
@@ -16,12 +17,13 @@ interface PropertyDetailsSlideOutProps {
  * Uses SlideOutPanel with tab-based content for clean UX.
  * For map contexts, use PinDetailsSlideout instead.
  */
-export default function PropertyDetailsSlideOut({
+const PropertyDetailsSlideOut = React.memo(function PropertyDetailsSlideOut({
   isOpen,
   onClose,
   propertyId,
   isMinimized,
-  onMinimizeChange
+  onMinimizeChange,
+  onSiteSubmitClick
 }: PropertyDetailsSlideOutProps) {
   return (
     <SlideOutPanel
@@ -33,7 +35,12 @@ export default function PropertyDetailsSlideOut({
       isMinimized={isMinimized}
       onMinimizeChange={onMinimizeChange}
     >
-      <PropertyDetailsSlideoutContent propertyId={propertyId} />
+      <PropertyDetailsSlideoutContent
+        propertyId={propertyId}
+        onSiteSubmitClick={onSiteSubmitClick}
+      />
     </SlideOutPanel>
   );
-}
+});
+
+export default PropertyDetailsSlideOut;

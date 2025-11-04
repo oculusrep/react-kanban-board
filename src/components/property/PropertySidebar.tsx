@@ -640,6 +640,15 @@ const PropertySidebar: React.FC<PropertySidebarProps> = ({
           propertyId={propertyDetailsSlideout.propertyId}
           isMinimized={propertyMinimized}
           onMinimizeChange={setPropertyMinimized}
+          onSiteSubmitClick={(siteSubmitId) => {
+            // Update the existing site submit sidebar with the new ID
+            setSiteSubmitSidebarId(siteSubmitId);
+            // Ensure the site submit sidebar is open
+            if (!siteSubmitSidebarOpen) {
+              setSiteSubmitSidebarOpen(true);
+              setSiteSubmitSidebarMinimized(false);
+            }
+          }}
         />
       )}
     </>

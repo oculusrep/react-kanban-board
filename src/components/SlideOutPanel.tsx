@@ -24,10 +24,19 @@ export default function SlideOutPanel({
   isMinimized: controlledMinimized,
   onMinimizeChange
 }: SlideOutPanelProps) {
+
   const [internalMinimized, setInternalMinimized] = useState(false);
 
   // Use controlled state if provided, otherwise use internal state
   const isMinimized = controlledMinimized !== undefined ? controlledMinimized : internalMinimized;
+
+  // Memoize the style object to prevent unnecessary re-renders and CSS transitions
+  const actualWidth = isMinimized ? '48px' : width;
+  const panelStyle = React.useMemo(() => ({
+    width: actualWidth,
+    maxWidth: isMinimized ? '48px' : '90vw',
+    right: `${rightOffset}px`
+  }), [actualWidth, isMinimized, rightOffset]);
 
   // Reset minimized state when panel closes (only for uncontrolled mode)
   useEffect(() => {
@@ -59,8 +68,6 @@ export default function SlideOutPanel({
 
   if (!isOpen) return null;
 
-  const actualWidth = isMinimized ? '48px' : width;
-
   return (
     <>
       {/* Overlay - only show when not minimized and this is the rightmost panel (rightOffset === 0) */}
@@ -74,11 +81,7 @@ export default function SlideOutPanel({
       {/* Slide-out panel */}
       <div
         className="fixed top-0 h-full bg-white shadow-2xl z-50 transform transition-all duration-300 ease-in-out flex flex-col"
-        style={{
-          width: actualWidth,
-          maxWidth: isMinimized ? '48px' : '90vw',
-          right: `${rightOffset}px`
-        }}
+        style={panelStyle}
       >
         {/* Minimize/Expand Button */}
         {canMinimize && (

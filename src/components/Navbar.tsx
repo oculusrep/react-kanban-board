@@ -231,20 +231,6 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Listen for messages from iframe (site submit slideout) to open property slideout
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'OPEN_PROPERTY_SLIDEOUT') {
-        const requestedPropertyId = event.data.propertyId;
-        console.log('📨 Navbar received message to open property slideout:', requestedPropertyId);
-        setPropertyDetailsSlideout({ isOpen: true, propertyId: requestedPropertyId });
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, []);
-
   // Close mobile menu when route changes
   useEffect(() => {
     setIsMobileMenuOpen(false);
@@ -276,6 +262,21 @@ export default function Navbar() {
     isOpen: false,
     propertyId: null,
   });
+
+  // Listen for messages from iframe (site submit slideout) to open property slideout
+  // Only handle if we have a site submit slideout open (meaning this is the active context)
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data.type === 'OPEN_PROPERTY_SLIDEOUT' && siteSubmitSlideout.isOpen) {
+        const requestedPropertyId = event.data.propertyId;
+        console.log('📨 Navbar received message to open property slideout:', requestedPropertyId);
+        setPropertyDetailsSlideout({ isOpen: true, propertyId: requestedPropertyId });
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [siteSubmitSlideout.isOpen]);
 
   // Track property slideout minimize state
   const [propertyMinimized, setPropertyMinimized] = useState(false);
@@ -1068,6 +1069,10 @@ export default function Navbar() {
           propertyId={propertyDetailsSlideout.propertyId}
           isMinimized={propertyMinimized}
           onMinimizeChange={setPropertyMinimized}
+          onSiteSubmitClick={(siteSubmitId) => {
+            // Update the existing site submit slideout with the new ID
+            setSiteSubmitSlideout({ isOpen: true, siteSubmitId });
+          }}
         />
       )}
     </nav>

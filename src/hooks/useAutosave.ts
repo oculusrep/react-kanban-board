@@ -46,14 +46,24 @@ export function useAutosave<T>({
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const previousDataRef = useRef<T>(data);
   const isSavingRef = useRef(false);
+  const onStatusChangeRef = useRef(onStatusChange);
+  const dataRef = useRef<T>(data);
+  const onSaveRef = useRef(onSave);
+
+  // Keep refs up to date
+  useEffect(() => {
+    onStatusChangeRef.current = onStatusChange;
+    dataRef.current = data;
+    onSaveRef.current = onSave;
+  }, [onStatusChange, data, onSave]);
 
   // Update status and notify callback
   const updateStatus = useCallback((newStatus: AutosaveStatus) => {
     setStatus(newStatus);
-    onStatusChange?.(newStatus);
-  }, [onStatusChange]);
+    onStatusChangeRef.current?.(newStatus);
+  }, []);
 
-  // Save function
+  // Save function with stable reference
   const save = useCallback(async () => {
     if (isSavingRef.current) return;
 
@@ -61,16 +71,14 @@ export function useAutosave<T>({
     updateStatus('saving');
 
     try {
-      await onSave(data);
+      await onSaveRef.current(dataRef.current);
       setLastSavedAt(new Date());
       updateStatus('saved');
-      previousDataRef.current = data;
+      previousDataRef.current = dataRef.current;
 
       // Reset to idle after showing "saved" for 2 seconds
       setTimeout(() => {
-        if (status === 'saved') {
-          updateStatus('idle');
-        }
+        updateStatus('idle');
       }, 2000);
     } catch (error) {
       console.error('Autosave error:', error);
@@ -78,14 +86,12 @@ export function useAutosave<T>({
 
       // Reset error status after 3 seconds
       setTimeout(() => {
-        if (status === 'error') {
-          updateStatus('idle');
-        }
+        updateStatus('idle');
       }, 3000);
     } finally {
       isSavingRef.current = false;
     }
-  }, [data, onSave, updateStatus, status]);
+  }, [updateStatus]);
 
   // Force save (bypass debounce)
   const forceSave = useCallback(async () => {
@@ -110,8 +116,33 @@ export function useAutosave<T>({
     }
 
     // Set new timeout for autosave
-    timeoutRef.current = setTimeout(() => {
-      save();
+    timeoutRef.current = setTimeout(async () => {
+      if (isSavingRef.current) return;
+
+      isSavingRef.current = true;
+      updateStatus('saving');
+
+      try {
+        await onSaveRef.current(dataRef.current);
+        setLastSavedAt(new Date());
+        updateStatus('saved');
+        previousDataRef.current = dataRef.current;
+
+        // Reset to idle after showing "saved" for 2 seconds
+        setTimeout(() => {
+          updateStatus('idle');
+        }, 2000);
+      } catch (error) {
+        console.error('Autosave error:', error);
+        updateStatus('error');
+
+        // Reset error status after 3 seconds
+        setTimeout(() => {
+          updateStatus('idle');
+        }, 3000);
+      } finally {
+        isSavingRef.current = false;
+      }
     }, delay);
 
     // Cleanup
@@ -120,7 +151,7 @@ export function useAutosave<T>({
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [data, delay, enabled, save]);
+  }, [data, delay, enabled, updateStatus]);
 
   // Cleanup on unmount
   useEffect(() => {

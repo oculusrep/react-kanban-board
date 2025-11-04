@@ -13,11 +13,14 @@ interface AddPropertyContactModalProps {
   onContactAdded?: () => void;
 }
 
+// Stable empty array to prevent infinite re-renders
+const EMPTY_ARRAY: string[] = [];
+
 const AddPropertyContactModal: React.FC<AddPropertyContactModalProps> = ({
   isOpen,
   onClose,
   propertyId,
-  existingContactIds = [],
+  existingContactIds = EMPTY_ARRAY,
   onContactAdded
 }) => {
   const [mode, setMode] = useState<'search' | 'create'>('search');

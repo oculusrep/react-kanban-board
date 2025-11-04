@@ -1,15 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { Database } from '../../../database-schema';
-
-type Contact = Database['public']['Tables']['contact']['Row'];
-type Client = Database['public']['Tables']['client']['Row'];
-
-interface PropertyContactWithDetails extends Contact {
-  client?: Client;
-  isPrimaryContact?: boolean;
-  fromDeal?: boolean;
-}
+import { usePropertyContacts } from '../../hooks/usePropertyContacts';
 
 interface ContactsSidebarProps {
   propertyId: string;
@@ -22,9 +13,7 @@ const ContactsSidebar: React.FC<ContactsSidebarProps> = ({
   isOpen,
   onClose
 }) => {
-  const [contacts, setContacts] = useState<PropertyContactWithDetails[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { contacts, loading, error } = usePropertyContacts({ propertyId, enabled: isOpen });
 
   // Fetch contacts associated with the property via junction table
   useEffect(() => {

@@ -1,17 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabaseClient';
-import { Database } from '../../../database-schema';
+import React, { useState } from 'react';
 import AddContactsModal from './AddContactsModal';
 import ContactFormModal from '../ContactFormModal';
-
-type Contact = Database['public']['Tables']['contact']['Row'];
-type Client = Database['public']['Tables']['client']['Row'];
-
-interface PropertyContactWithDetails extends Contact {
-  client?: Client;
-  isPrimaryContact?: boolean;
-  fromDeal?: boolean;
-}
+import { usePropertyContacts } from '../../hooks/usePropertyContacts';
 
 interface StaticContactsSidebarProps {
   propertyId: string;
@@ -24,88 +14,9 @@ const StaticContactsSidebar: React.FC<StaticContactsSidebarProps> = ({
   isCollapsed = false,
   onToggleCollapse
 }) => {
-  const [contacts, setContacts] = useState<PropertyContactWithDetails[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { contacts, loading, error, refetch } = usePropertyContacts({ propertyId });
   const [showAddContactsModal, setShowAddContactsModal] = useState(false);
   const [showContactFormModal, setShowContactFormModal] = useState(false);
-
-  // Fetch contacts associated with the property
-  const fetchPropertyContacts = async () => {
-    if (!propertyId) return;
-      setLoading(true);
-      setError(null);
-
-      try {
-        console.log('StaticContactsSidebar: Fetching contacts for property:', propertyId);
-        
-        // Get contacts through the property_contact junction table
-        const { data: propertyContacts, error: junctionError } = await supabase
-          .from('property_contact')
-          .select(`
-            *,
-            contact!fk_property_contact_contact_id (
-              *
-            )
-          `)
-          .eq('property_id', propertyId);
-
-        console.log('StaticContactsSidebar: Property contacts query result:', { propertyContacts, junctionError });
-
-        if (junctionError) throw junctionError;
-
-        const allContacts: PropertyContactWithDetails[] = [];
-
-        // Process junction table contacts
-        if (propertyContacts) {
-          propertyContacts.forEach((pc: any) => {
-            if (pc.contact) {
-              allContacts.push({
-                ...pc.contact,
-                isPrimaryContact: false,
-                fromDeal: false
-              });
-            }
-          });
-        }
-
-        // Also check for the property's primary contact (legacy support)
-        const { data: property, error: propertyError } = await supabase
-          .from('property')
-          .select('contact_id')
-          .eq('id', propertyId)
-          .single();
-
-        if (!propertyError && property?.contact_id) {
-          const primaryContactIndex = allContacts.findIndex(c => c.id === property.contact_id);
-          if (primaryContactIndex >= 0) {
-            allContacts[primaryContactIndex].isPrimaryContact = true;
-          } else {
-            const { data: primaryContact, error: contactError } = await supabase
-              .from('contact')
-              .select('*')
-              .eq('id', property.contact_id)
-              .single();
-
-            if (!contactError && primaryContact) {
-              allContacts.unshift({ ...primaryContact, isPrimaryContact: true, fromDeal: false });
-            }
-          }
-        }
-
-        console.log('StaticContactsSidebar: Final contacts list:', allContacts);
-        setContacts(allContacts);
-      } catch (err) {
-        console.error('Error fetching property contacts:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load contacts');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-  useEffect(() => {
-    fetchPropertyContacts();
-  }, [propertyId]);
 
   const getContactInitials = (firstName: string | null, lastName: string | null): string => {
     const first = firstName?.charAt(0)?.toUpperCase() || '';
@@ -357,7 +268,7 @@ const StaticContactsSidebar: React.FC<StaticContactsSidebarProps> = ({
         propertyId={propertyId}
         existingContactIds={contacts.map(c => c.id)}
         onContactsAdded={() => {
-          fetchPropertyContacts();
+          refetch();
           setShowAddContactsModal(false);
         }}
         onCreateNew={() => {
@@ -371,11 +282,11 @@ const StaticContactsSidebar: React.FC<StaticContactsSidebarProps> = ({
         onClose={() => setShowContactFormModal(false)}
         propertyId={propertyId}
         onSave={(newContact) => {
-          fetchPropertyContacts();
+          refetch();
           setShowContactFormModal(false);
         }}
         onUpdate={() => {
-          fetchPropertyContacts();
+          refetch();
           setShowContactFormModal(false);
         }}
       />

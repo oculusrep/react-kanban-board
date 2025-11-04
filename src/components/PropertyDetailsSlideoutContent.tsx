@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import PropertyInputField from './property/PropertyInputField';
@@ -6,6 +6,9 @@ import PropertyPSFField from './property/PropertyPSFField';
 import PropertyCurrencyField from './property/PropertyCurrencyField';
 import PropertySquareFootageField from './property/PropertySquareFootageField';
 import PropertyUnitsSection from './property/PropertyUnitsSection';
+import PropertySubmitsTab from './property/PropertySubmitsTab';
+import PropertyContactsTab from './property/PropertyContactsTab';
+import PropertyFilesTab from './property/PropertyFilesTab';
 import AutosaveIndicator from './AutosaveIndicator';
 import { useAutosave } from '../hooks/useAutosave';
 import { FileText, DollarSign, Building2, MapPin, Users, Grid3x3 } from 'lucide-react';
@@ -16,9 +19,11 @@ type TabType = 'property' | 'units' | 'submits' | 'contacts' | 'files';
 
 interface PropertyDetailsSlideoutContentProps {
   propertyId: string;
+  onSiteSubmitClick?: (siteSubmitId: string) => void;
 }
 
-export default function PropertyDetailsSlideoutContent({ propertyId }: PropertyDetailsSlideoutContentProps) {
+export default function PropertyDetailsSlideoutContent({ propertyId, onSiteSubmitClick }: PropertyDetailsSlideoutContentProps) {
+
   const [activeTab, setActiveTab] = useState<TabType>('property');
   const [property, setProperty] = useState<Property | null>(null);
   const [formData, setFormData] = useState<Partial<Property>>({});
@@ -27,6 +32,8 @@ export default function PropertyDetailsSlideoutContent({ propertyId }: PropertyD
 
   // Fetch property data
   useEffect(() => {
+    if (!propertyId) return;
+
     const fetchProperty = async () => {
       try {
         setLoading(true);
@@ -51,21 +58,22 @@ export default function PropertyDetailsSlideoutContent({ propertyId }: PropertyD
       }
     };
 
-    if (propertyId) {
-      fetchProperty();
-    }
+    fetchProperty();
+  }, [propertyId]);
+
+  // Stable save callback to prevent infinite re-renders
+  const handleSave = useCallback(async (data: Partial<Property>) => {
+    const { error} = await supabase
+      .from('property')
+      .update(data)
+      .eq('id', propertyId);
+    if (error) throw error;
   }, [propertyId]);
 
   // Autosave
   const { status: autosaveStatus, lastSavedAt } = useAutosave({
     data: formData,
-    onSave: async (data) => {
-      const { error } = await supabase
-        .from('property')
-        .update(data)
-        .eq('id', propertyId);
-      if (error) throw error;
-    },
+    onSave: handleSave,
     delay: 1500,
     enabled: !loading && !!property,
   });
@@ -244,21 +252,18 @@ export default function PropertyDetailsSlideoutContent({ propertyId }: PropertyD
         )}
 
         {activeTab === 'submits' && (
-          <div className="text-gray-500 text-center py-8">
-            Site submits view - to be implemented
-          </div>
+          <PropertySubmitsTab
+            propertyId={propertyId}
+            onSiteSubmitClick={onSiteSubmitClick}
+          />
         )}
 
         {activeTab === 'contacts' && (
-          <div className="text-gray-500 text-center py-8">
-            Contacts view - to be implemented
-          </div>
+          <PropertyContactsTab propertyId={propertyId} />
         )}
 
         {activeTab === 'files' && (
-          <div className="text-gray-500 text-center py-8">
-            Files view - to be implemented
-          </div>
+          <PropertyFilesTab propertyId={propertyId} />
         )}
       </div>
     </div>

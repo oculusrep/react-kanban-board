@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import SiteSubmitFormModal from './SiteSubmitFormModal';
-import SiteSubmitSidebar from './SiteSubmitSidebar';
+import SiteSubmitSlideOut from './SiteSubmitSlideOut';
 import SiteSubmitItem from './sidebar/SiteSubmitItem';
 import PropertyDetailsSlideOut from './PropertyDetailsSlideOut';
 
@@ -109,13 +109,13 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
   onMinimize,
   onSiteSubmitModalChange
 }) => {
+
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false); // For creating new
-  const [siteSubmitSidebarOpen, setSiteSubmitSidebarOpen] = useState(false); // For viewing existing
-  const [siteSubmitSidebarId, setSiteSubmitSidebarId] = useState<string | null>(null);
-  const [siteSubmitSidebarMinimized, setSiteSubmitSidebarMinimized] = useState(false);
+  const [siteSubmitSlideoutOpen, setSiteSubmitSlideoutOpen] = useState(false); // For viewing existing
+  const [siteSubmitSlideoutId, setSiteSubmitSlideoutId] = useState<string | null>(null);
 
   // Property details slideout state (for "View Property Details" from Site Submit)
   const [propertyDetailsSlideout, setPropertyDetailsSlideout] = useState<{
@@ -192,11 +192,11 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
     }
   }, [siteSubmits.length, loading, assignmentId]);
 
-  // Listen for messages from iframe (site submit sidebar) to open property slideout
-  // Only handle if we have a site submit sidebar open (meaning this is the active context)
+  // Listen for messages from iframe (site submit slideout) to open property slideout
+  // Only handle if we have a site submit slideout open (meaning this is the active context)
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'OPEN_PROPERTY_SLIDEOUT' && siteSubmitSidebarOpen) {
+      if (event.data.type === 'OPEN_PROPERTY_SLIDEOUT' && siteSubmitSlideoutOpen) {
         const requestedPropertyId = event.data.propertyId;
         console.log('📨 AssignmentSidebar received message to open property slideout:', requestedPropertyId);
         setPropertyDetailsSlideout({ isOpen: true, propertyId: requestedPropertyId });
@@ -205,7 +205,21 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [siteSubmitSidebarOpen]);
+  }, [siteSubmitSlideoutOpen]);
+
+  // Stable callback for onSiteSubmitClick to prevent infinite re-renders
+  const handleSiteSubmitClick = useCallback((siteSubmitId: string) => {
+    // Update the existing site submit slideout with the new ID
+    setSiteSubmitSlideoutId(siteSubmitId);
+    // Ensure the site submit slideout is open
+    setSiteSubmitSlideoutOpen(true);
+  }, []);
+
+  // Stable callback for onClose to prevent infinite re-renders
+  const handlePropertyDetailsClose = useCallback(() => {
+    setPropertyDetailsSlideout({ isOpen: false, propertyId: null });
+    setPropertyMinimized(false);
+  }, []);
 
   const toggleSidebarModule = (module: keyof typeof expandedSidebarModules) => {
     const newState = {
@@ -296,9 +310,8 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
                       key={siteSubmit.id}
                       siteSubmit={siteSubmit}
                       onClick={(id) => {
-                        setSiteSubmitSidebarId(id);
-                        setSiteSubmitSidebarOpen(true);
-                        setSiteSubmitSidebarMinimized(false);
+                        setSiteSubmitSlideoutId(id);
+                        setSiteSubmitSlideoutOpen(true);
                         onSiteSubmitModalChange?.(true);
                       }}
                     />
@@ -327,15 +340,14 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
         />
       )}
 
-      {/* Site Submit Sidebar - For viewing existing site submits */}
-      {siteSubmitSidebarOpen && siteSubmitSidebarId && (
-        <SiteSubmitSidebar
-          siteSubmitId={siteSubmitSidebarId}
-          isMinimized={siteSubmitSidebarMinimized}
-          onMinimize={() => setSiteSubmitSidebarMinimized(!siteSubmitSidebarMinimized)}
+      {/* Site Submit Slideout - For viewing existing site submits */}
+      {siteSubmitSlideoutOpen && siteSubmitSlideoutId && (
+        <SiteSubmitSlideOut
+          isOpen={siteSubmitSlideoutOpen}
+          siteSubmitId={siteSubmitSlideoutId}
           onClose={() => {
-            setSiteSubmitSidebarOpen(false);
-            setSiteSubmitSidebarId(null);
+            setSiteSubmitSlideoutOpen(false);
+            setSiteSubmitSlideoutId(null);
             onSiteSubmitModalChange?.(false);
           }}
           propertySlideoutOpen={propertyDetailsSlideout.isOpen}
@@ -343,17 +355,16 @@ const AssignmentSidebar: React.FC<AssignmentSidebarProps> = ({
         />
       )}
 
-      {/* Property Details Slideout - Shows to the right of Site Submit Sidebar */}
+      {/* Property Details Slideout - Shows to the right of Site Submit Slideout */}
       {propertyDetailsSlideout.isOpen && propertyDetailsSlideout.propertyId && (
         <PropertyDetailsSlideOut
+          key={propertyDetailsSlideout.propertyId}
           isOpen={propertyDetailsSlideout.isOpen}
-          onClose={() => {
-            setPropertyDetailsSlideout({ isOpen: false, propertyId: null });
-            setPropertyMinimized(false);
-          }}
+          onClose={handlePropertyDetailsClose}
           propertyId={propertyDetailsSlideout.propertyId}
           isMinimized={propertyMinimized}
           onMinimizeChange={setPropertyMinimized}
+          onSiteSubmitClick={handleSiteSubmitClick}
         />
       )}
     </>

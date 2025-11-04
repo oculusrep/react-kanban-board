@@ -1,5 +1,5 @@
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { Assignment } from "../lib/types";
 import AssignmentOverviewTab from "../components/AssignmentOverviewTab";
@@ -28,6 +28,11 @@ export default function AssignmentDetailsPage() {
 
   // Fallback: if assignmentId is undefined but pathname is /assignment/new, treat as new assignment
   const actualAssignmentId = assignmentId || (location.pathname === '/assignment/new' ? 'new' : undefined);
+
+  // Stable callback for sidebar minimize toggle
+  const handleSidebarMinimize = useCallback(() => {
+    setSidebarMinimized(prev => !prev);
+  }, []);
 
   // Set page title
   useEffect(() => {
@@ -349,7 +354,7 @@ export default function AssignmentDetailsPage() {
         <AssignmentSidebar
           assignmentId={actualAssignmentId || 'new'}
           isMinimized={sidebarMinimized}
-          onMinimize={() => setSidebarMinimized(!sidebarMinimized)}
+          onMinimize={handleSidebarMinimize}
           onSiteSubmitModalChange={setSiteSubmitModalOpen}
         />
       </div>
