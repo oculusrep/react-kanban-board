@@ -362,54 +362,35 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
   };
 
   const sendTestEmail = async () => {
-    if (!user?.email) {
-      setToast({ message: 'No user email found', type: 'error' });
+    if (!user?.email || !user?.name) {
+      setToast({ message: 'User information not found', type: 'error' });
       return;
     }
 
     try {
       setSendingTest(true);
 
-      // Generate the email HTML with user's first name
-      const userFirstName = user.name?.split(' ')[0] || 'there';
-      const testEmailHtml = generateCriticalDateEmailTemplate({
-        dealName,
-        subject,
-        criticalDate,
-        description,
-        daysPrior,
-        contactFirstName: userFirstName,
-        propertyName: property?.property_name || undefined,
-        propertyCity: property?.city || undefined,
-      });
-
-      // Call Resend API directly to send test email
-      const resendApiKey = import.meta.env.VITE_RESEND_API_KEY;
-      if (!resendApiKey) {
-        throw new Error('Resend API key not configured');
-      }
-
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${resendApiKey}`,
+      // Call the Edge Function to send test email
+      const { data, error } = await supabase.functions.invoke('send-test-critical-date-email', {
+        body: {
+          toEmail: user.email,
+          toName: user.name,
+          subject: subject || 'Untitled',
+          criticalDate: criticalDate || '',
+          description: description || '',
+          propertyName: property?.property_name,
+          propertyCity: property?.city,
         },
-        body: JSON.stringify({
-          from: 'notifications@oculusrep.com',
-          to: [user.email],
-          subject: `[TEST] Critical Date Approaching - ${subject}`,
-          html: testEmailHtml,
-        }),
       });
 
-      if (!res.ok) {
-        const error = await res.text();
-        console.error('Failed to send test email:', error);
-        throw new Error('Failed to send test email');
-      }
+      if (error) throw error;
 
       setToast({ message: `Test email sent to ${user.email}`, type: 'success' });
+
+      // Close the modal after 1.5 seconds
+      setTimeout(() => {
+        onClose();
+      }, 1500);
     } catch (err) {
       console.error('Error sending test email:', err);
       setToast({ message: 'Failed to send test email', type: 'error' });
