@@ -13,6 +13,8 @@ import AddContactRelationModal from './AddContactRelationModal';
 import AddChildAccountModal from './AddChildAccountModal';
 import RoleSelector from './RoleSelector';
 import ContactRolesManager from './ContactRolesManager';
+import Toast from './Toast';
+import ConfirmDialog from './ConfirmDialog';
 import PropertyDetailsSlideOut from './PropertyDetailsSlideOut';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
@@ -34,15 +36,17 @@ interface ClientSidebarProps {
 // Contact Item Component
 interface ContactItemProps {
   contact: Contact;
+  relationId: string;
   isExpanded?: boolean;
   onToggle?: () => void;
   onEdit?: (contactId: string) => void;
   onClick?: (contactId: string) => void;
-  onRemove?: (contactId: string) => void;
+  onRemove?: (relationId: string) => void;
 }
 
 const ContactItem: React.FC<ContactItemProps> = ({
   contact,
+  relationId,
   isExpanded = false,
   onToggle,
   onEdit,
@@ -82,9 +86,7 @@ const ContactItem: React.FC<ContactItemProps> = ({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if (confirm('Remove this contact from the client? The contact will not be deleted, only the association.')) {
-                  onRemove(contact.id);
-                }
+                onRemove(relationId);
               }}
               className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-50 rounded"
               title="Remove contact from client"
@@ -265,6 +267,9 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [showAddChildAccountModal, setShowAddChildAccountModal] = useState(false);
+  const [toast, setToast] = useState({ message: '', type: '' as 'success' | 'error' | '' });
+  const [showConfirmRemove, setShowConfirmRemove] = useState(false);
+  const [relationToRemove, setRelationToRemove] = useState<string | null>(null);
 
   // Property details slideout state (for "View Property Details" from Site Submit)
   const [propertyDetailsSlideout, setPropertyDetailsSlideout] = useState<{
@@ -440,13 +445,22 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
     return () => window.removeEventListener('message', handleMessage);
   }, [siteSubmitSidebarOpen]);
 
-  const handleRemoveContact = async (contactId: string) => {
+  const handleRemoveContact = async (relationId: string) => {
+    setRelationToRemove(relationId);
+    setShowConfirmRemove(true);
+  };
+
+  const confirmRemoveContact = async () => {
+    if (!relationToRemove) return;
+
     try {
-      await removeContactRelation(contactId);
-      // The hook will automatically refresh the relations list
+      await removeContactRelation(relationToRemove);
+      setToast({ message: 'Contact removed from client successfully', type: 'success' });
+      setShowConfirmRemove(false);
+      setRelationToRemove(null);
     } catch (err) {
       console.error('Error removing contact from client:', err);
-      alert('Failed to remove contact from client. Please try again.');
+      setToast({ message: 'Failed to remove contact from client', type: 'error' });
     }
   };
 
@@ -563,6 +577,7 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
                       <div key={relation.id} className="border-b border-gray-100 last:border-b-0">
                         <ContactItem
                           contact={contact}
+                          relationId={relation.id}
                           isExpanded={expandedContacts[contact.id]}
                           onToggle={() => toggleContact(contact.id)}
                           onEdit={(contactId) => {
@@ -858,6 +873,29 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
           propertyId={propertyDetailsSlideout.propertyId}
           isMinimized={propertyMinimized}
           onMinimizeChange={setPropertyMinimized}
+        />
+      )}
+
+      {/* Confirm Dialog for Removing Contact */}
+      <ConfirmDialog
+        isOpen={showConfirmRemove}
+        onClose={() => {
+          setShowConfirmRemove(false);
+          setRelationToRemove(null);
+        }}
+        onConfirm={confirmRemoveContact}
+        title="Remove Contact from Client"
+        message="Are you sure you want to remove this contact from the client? This will not delete the contact itself, only the association with this client."
+        confirmButtonText="Remove"
+        confirmButtonClass="bg-red-600 hover:bg-red-700"
+      />
+
+      {/* Toast Notification */}
+      {toast.message && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast({ message: '', type: '' })}
         />
       )}
     </>
