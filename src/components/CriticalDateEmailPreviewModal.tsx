@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { useAuth } from '../contexts/AuthContext';
+import Toast from './Toast';
 
 interface CriticalDateEmailPreviewModalProps {
   isOpen: boolean;
@@ -49,6 +51,9 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
   const [property, setProperty] = useState<Property | null>(null);
   const [showPreview, setShowPreview] = useState(true);
   const [emailHtml, setEmailHtml] = useState('');
+  const [sendingTest, setSendingTest] = useState(false);
+  const [toast, setToast] = useState({ message: '', type: '' as 'success' | 'error' | '' });
+  const { user } = useAuth();
 
   useEffect(() => {
     if (isOpen) {
@@ -167,6 +172,63 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
     setEmailHtml(html);
   };
 
+  const sendTestEmail = async () => {
+    if (!user?.email) {
+      setToast({ message: 'No user email found', type: 'error' });
+      return;
+    }
+
+    try {
+      setSendingTest(true);
+
+      // Generate the email HTML with user's first name
+      const userFirstName = user.name?.split(' ')[0] || 'there';
+      const testEmailHtml = generateCriticalDateEmailTemplate({
+        dealName,
+        subject,
+        criticalDate,
+        description,
+        daysPrior,
+        contactFirstName: userFirstName,
+        propertyName: property?.property_name || undefined,
+        propertyCity: property?.city || undefined,
+      });
+
+      // Call Resend API directly to send test email
+      const resendApiKey = import.meta.env.VITE_RESEND_API_KEY;
+      if (!resendApiKey) {
+        throw new Error('Resend API key not configured');
+      }
+
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${resendApiKey}`,
+        },
+        body: JSON.stringify({
+          from: 'notifications@oculusrep.com',
+          to: [user.email],
+          subject: `[TEST] Critical Date Approaching - ${subject}`,
+          html: testEmailHtml,
+        }),
+      });
+
+      if (!res.ok) {
+        const error = await res.text();
+        console.error('Failed to send test email:', error);
+        throw new Error('Failed to send test email');
+      }
+
+      setToast({ message: `Test email sent to ${user.email}`, type: 'success' });
+    } catch (err) {
+      console.error('Error sending test email:', err);
+      setToast({ message: 'Failed to send test email', type: 'error' });
+    } finally {
+      setSendingTest(false);
+    }
+  };
+
   const formatDate = (dateStr: string): string => {
     if (!dateStr) return 'TBD';
     const [year, month, day] = dateStr.split('-');
@@ -200,14 +262,38 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
           <h3 className="text-lg font-semibold text-gray-800">
             Email Preview - Critical Date Reminder
           </h3>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-md transition-colors text-gray-500 hover:text-gray-700"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={sendTestEmail}
+              disabled={sendingTest}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+            >
+              {sendingTest ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Sending...</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  <span>Send Test Email</span>
+                </>
+              )}
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-md transition-colors text-gray-500 hover:text-gray-700"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Preview/Edit Toggle */}
@@ -381,6 +467,13 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
           </button>
         </div>
       </div>
+
+      {/* Toast Notification */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast({ message: '', type: '' })}
+      />
     </div>
   );
 };
