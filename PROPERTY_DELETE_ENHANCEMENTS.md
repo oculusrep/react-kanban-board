@@ -86,20 +86,20 @@ npm run build
 
 ## Testing Checklist
 
-- [ ] Apply CASCADE DELETE migration to production
-- [ ] Verify foreign key constraints are set correctly
-- [ ] Test deleting a property with no related records
-- [ ] Test deleting a property with related deals (should show warning)
-- [ ] Test deleting a property with related site submits (should show warning)
-- [ ] Test deleting a property with both deals and site submits
-- [ ] Verify that related records are handled correctly:
-  - Property contacts are deleted
-  - Property units are deleted
-  - Activities are deleted
-  - Notes are deleted
-  - Site submits keep property_id set to NULL
-  - Deals keep property_id set to NULL (based on migration)
-- [ ] Test deletion from Property Details Page
+- [x] Apply CASCADE DELETE migration to production
+- [x] Verify foreign key constraints are set correctly
+- [x] Test deleting a property with no related records
+- [x] Test deleting a property with related deals (should show warning)
+- [x] Test deleting a property with related site submits (should show warning)
+- [x] Test deleting a property with both deals and site submits
+- [x] Verify that related records are handled correctly:
+  - Property contacts are deleted ✅
+  - Property units are deleted ✅
+  - Activities are deleted ✅
+  - Notes are deleted ✅
+  - Site submits keep property_id set to NULL ✅
+  - Deals keep property_id set to NULL ✅
+- [x] Test deletion from Property Details Page
 - [ ] Test deletion from Mapping Page context menu
 
 ## Error Resolution
