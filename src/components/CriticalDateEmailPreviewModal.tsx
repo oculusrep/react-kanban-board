@@ -368,9 +368,10 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
   };
 
   const generateEmailPreview = () => {
-    // Get recipient first names separated by commas
+    // Get recipient first names separated by commas, filtering out empty names
     const recipientNames = recipients
-      .map(r => r.first_name || 'there')
+      .map(r => r.first_name)
+      .filter(name => name)
       .join(', ');
 
     const html = generateCriticalDateEmailTemplate({
@@ -379,7 +380,7 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
       criticalDate,
       description,
       daysPrior,
-      contactFirstName: recipientNames || 'there',
+      contactFirstName: recipientNames || '',
       propertyName: property?.property_name || undefined,
       propertyCity: property?.city || undefined,
     });
@@ -951,8 +952,7 @@ function generateCriticalDateEmailTemplate(data: {
       </head>
       <body>
         <div class="content">
-          <p>${contactFirstName},</p>
-          <br>
+          ${contactFirstName ? `<p>${contactFirstName},</p><br>` : ''}
           <p>This is a reminder email to let you know that the following Critical Date for our deal at ${propertyName || 'the property'} in ${propertyCity || 'the area'} is approaching.</p>
 
           <p style="margin-top: 20px; margin-bottom: 5px;"><strong>Critical Date:</strong> ${subject || 'Untitled'}</p>
