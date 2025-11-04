@@ -362,13 +362,26 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
   };
 
   const sendTestEmail = async () => {
+    console.log('sendTestEmail called');
+    console.log('User:', user);
+
     if (!user?.email || !user?.name) {
+      console.error('User information missing:', { email: user?.email, name: user?.name });
       setToast({ message: 'User information not found', type: 'error' });
       return;
     }
 
     try {
       setSendingTest(true);
+      console.log('Calling Edge Function with:', {
+        toEmail: user.email,
+        toName: user.name,
+        subject: subject || 'Untitled',
+        criticalDate: criticalDate || '',
+        description: description || '',
+        propertyName: property?.property_name,
+        propertyCity: property?.city,
+      });
 
       // Call the Edge Function to send test email
       const { data, error } = await supabase.functions.invoke('send-test-critical-date-email', {
@@ -382,6 +395,8 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
           propertyCity: property?.city,
         },
       });
+
+      console.log('Edge Function response:', { data, error });
 
       if (error) throw error;
 
