@@ -15,6 +15,7 @@ interface ContactRolesManagerProps {
   clientName?: string
   showAddButton?: boolean
   compact?: boolean
+  onRoleChange?: () => void
 }
 
 export const ContactRolesManager: React.FC<ContactRolesManagerProps> = ({
@@ -24,6 +25,7 @@ export const ContactRolesManager: React.FC<ContactRolesManagerProps> = ({
   clientName,
   showAddButton = true,
   compact = false,
+  onRoleChange,
 }) => {
   const {
     roles,
@@ -54,6 +56,8 @@ export const ContactRolesManager: React.FC<ContactRolesManagerProps> = ({
       }
       setShowAddModal(false)
       setSelectedRoleIds([])
+      // Notify parent component that roles have changed
+      onRoleChange?.()
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to add roles')
     } finally {
@@ -64,6 +68,8 @@ export const ContactRolesManager: React.FC<ContactRolesManagerProps> = ({
   const handleRemoveRole = async (roleId: string, roleName: string) => {
     try {
       await removeRole(roleId)
+      // Notify parent component that roles have changed
+      onRoleChange?.()
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to remove role')
     }

@@ -601,6 +601,10 @@ const ClientSidebar: React.FC<ClientSidebarProps> = ({
                             contactName={`${contact.first_name} ${contact.last_name}`}
                             clientName={client?.client_name}
                             compact={true}
+                            onRoleChange={() => {
+                              // Force a small re-render to update any dependent UI
+                              // The ContactRolesManager itself updates via its own hook
+                            }}
                           />
                         </div>
                       </div>
