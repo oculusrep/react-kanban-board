@@ -1007,10 +1007,52 @@ const MappingPageContent: React.FC = () => {
   };
 
   // Handle property deletion
-  const handleDeleteProperty = (propertyId: string) => {
+  const handleDeleteProperty = async (propertyId: string) => {
     console.log('🗑️ Delete property requested:', propertyId);
-    setPropertyToDelete(propertyId);
-    setShowDeleteConfirm(true);
+
+    try {
+      // Check for related deals
+      const { data: relatedDeals, error: dealsError } = await supabase
+        .from('deal')
+        .select('id, deal_name')
+        .eq('property_id', propertyId);
+
+      if (dealsError) throw dealsError;
+
+      // Check for related site submits
+      const { data: relatedSiteSubmits, error: siteSubmitsError } = await supabase
+        .from('site_submit')
+        .select('id, loi_date, year_1_rent')
+        .eq('property_id', propertyId);
+
+      if (siteSubmitsError) throw siteSubmitsError;
+
+      // Show warnings if there are related records
+      if (relatedDeals && relatedDeals.length > 0) {
+        const dealNames = relatedDeals.map(d => d.deal_name || 'Unnamed Deal').join(', ');
+        const confirmed = window.confirm(
+          `Warning: This property is attached to ${relatedDeals.length} deal(s):\n\n${dealNames}\n\nDeleting this property will remove the property reference from these deals. Do you want to continue?`
+        );
+        if (!confirmed) return;
+      }
+
+      if (relatedSiteSubmits && relatedSiteSubmits.length > 0) {
+        const siteSubmitInfo = relatedSiteSubmits
+          .map((s, idx) => `${idx + 1}. Site Submit (${s.loi_date || 'No LOI date'})`)
+          .join('\n');
+        const confirmed = window.confirm(
+          `Warning: This property is attached to ${relatedSiteSubmits.length} site submit(s):\n\n${siteSubmitInfo}\n\nDeleting this property will remove the property reference from these site submits. Do you want to continue?`
+        );
+        if (!confirmed) return;
+      }
+
+      // If no related records or user confirmed, show final delete confirmation
+      setPropertyToDelete(propertyId);
+      setShowDeleteConfirm(true);
+    } catch (error) {
+      console.error('Error checking related records:', error);
+      showToast(`Error checking related records: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });
+    }
   };
 
   const confirmDeleteProperty = async () => {
@@ -1716,7 +1758,7 @@ const MappingPageContent: React.FC = () => {
       <ConfirmDialog
         isOpen={showDeleteConfirm}
         title="Delete Property"
-        message="Are you sure you want to delete this property? This action cannot be undone and will remove the property from the map."
+        message="Are you sure you want to permanently delete this property? This will also delete all associated property contacts, property units, activities, and notes. This action cannot be undone."
         confirmLabel="Delete"
         cancelLabel="Cancel"
         onConfirm={confirmDeleteProperty}
