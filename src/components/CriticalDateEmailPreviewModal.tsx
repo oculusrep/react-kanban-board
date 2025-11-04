@@ -63,13 +63,38 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
   const [customLastName, setCustomLastName] = useState('');
   const [showCustomEmailForm, setShowCustomEmailForm] = useState(false);
   const [toast, setToast] = useState({ message: '', type: '' as 'success' | 'error' | '' });
-  const { user } = useAuth();
+  const [userName, setUserName] = useState<string | null>(null);
+  const { user, userTableId } = useAuth();
 
   useEffect(() => {
     if (isOpen) {
       fetchRecipients();
     }
   }, [isOpen, dealId]);
+
+  // Fetch user's name from user table
+  useEffect(() => {
+    const fetchUserName = async () => {
+      if (userTableId) {
+        try {
+          const { data, error } = await supabase
+            .from('user')
+            .select('first_name, last_name')
+            .eq('id', userTableId)
+            .single();
+
+          if (!error && data) {
+            const fullName = `${data.first_name || ''} ${data.last_name || ''}`.trim();
+            setUserName(fullName || null);
+          }
+        } catch (err) {
+          console.error('Error fetching user name:', err);
+        }
+      }
+    };
+
+    fetchUserName();
+  }, [userTableId]);
 
   // Regenerate preview when any of these change
   useEffect(() => {
@@ -364,6 +389,7 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
   const sendTestEmail = async () => {
     console.log('sendTestEmail called');
     console.log('User:', user);
+    console.log('User name from table:', userName);
 
     if (!user?.email) {
       console.error('User email missing');
@@ -374,12 +400,12 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
     try {
       setSendingTest(true);
 
-      // Use email as fallback for name if name not available
-      const userName = user.email.split('@')[0] || 'there';
+      // Use actual user name from table, or email username as fallback
+      const nameToUse = userName || user.email.split('@')[0] || 'there';
 
       console.log('Calling Edge Function with:', {
         toEmail: user.email,
-        toName: userName,
+        toName: nameToUse,
         subject: subject || 'Untitled',
         criticalDate: criticalDate || '',
         description: description || '',
@@ -391,7 +417,7 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
       const { data, error } = await supabase.functions.invoke('send-test-critical-date-email', {
         body: {
           toEmail: user.email,
-          toName: userName,
+          toName: nameToUse,
           subject: subject || 'Untitled',
           criticalDate: criticalDate || '',
           description: description || '',
