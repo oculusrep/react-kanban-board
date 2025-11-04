@@ -68,6 +68,7 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
   const [criticalDate, setCriticalDate] = useState<CriticalDate | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showEmailPreview, setShowEmailPreview] = useState(false);
+  const [emailToggleKey, setEmailToggleKey] = useState(0); // Counter to track email toggle changes
   const { toast, showToast, hideToast} = useToast();
   const { userTableId } = useAuth();
 
@@ -378,7 +379,15 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
               type="checkbox"
               id="send-email"
               checked={formData.sendEmail}
-              onChange={(e) => updateFormData("sendEmail", e.target.checked)}
+              onChange={(e) => {
+                updateFormData("sendEmail", e.target.checked);
+                // Clear days prior when unchecking
+                if (!e.target.checked) {
+                  updateFormData("sendEmailDaysPrior", "");
+                }
+                // Increment toggle key to force modal remount
+                setEmailToggleKey(prev => prev + 1);
+              }}
               className="mt-0.5 h-3 w-3 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer"
             />
             <div className="flex-1">
@@ -537,6 +546,7 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
 
       {/* Email Preview Modal */}
       <CriticalDateEmailPreviewModal
+        key={`${criticalDateId}-${emailToggleKey}`}
         isOpen={showEmailPreview}
         onClose={() => setShowEmailPreview(false)}
         criticalDateId={criticalDateId}

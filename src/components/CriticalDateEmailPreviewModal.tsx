@@ -68,6 +68,10 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
 
   useEffect(() => {
     if (isOpen) {
+      // Reset recipients state before fetching to ensure fresh data
+      setRecipients([]);
+      setAllClientContacts([]);
+      setAllContacts([]);
       fetchRecipients();
     }
   }, [isOpen, dealId]);
