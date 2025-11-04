@@ -150,10 +150,8 @@ const AddContactRelationModal: React.FC<AddContactRelationModalProps> = ({
         contactId = newContact.id;
       }
 
-      // Add the contact relation
-      await onAdd(contactId, undefined, isPrimary);
-
-      // If clientId is provided and roles are selected, add them
+      // If clientId is provided and roles are selected, add them FIRST
+      // This ensures they exist before the contact relation is added
       if (clientId && selectedRoleIds.length > 0) {
         for (const roleId of selectedRoleIds) {
           try {
@@ -164,6 +162,9 @@ const AddContactRelationModal: React.FC<AddContactRelationModalProps> = ({
           }
         }
       }
+
+      // Add the contact relation (this will trigger fetchRelations which shows the roles)
+      await onAdd(contactId, undefined, isPrimary);
 
       handleClose();
     } catch (err) {
