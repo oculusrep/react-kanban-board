@@ -304,11 +304,11 @@ function generateCriticalDateEmailTemplate(criticalDate: any, deal: any, contact
             <p style="margin-bottom: 5px;"><strong>Best,</strong></p>
             <p style="margin-bottom: 5px;"><strong>Mike</strong></p>
             <br>
-            <p style="margin-bottom: 3px; font-size: 14px;"><strong>Mike Minihan</strong></p>
-            <p style="margin-bottom: 3px; font-size: 14px;">Principal | Managing Broker</p>
-            <p style="margin-bottom: 3px; font-size: 14px;">Oculus Real Estate Partners, LLC</p>
-            <p style="margin-bottom: 3px; font-size: 14px;">M: 404-326-4010</p>
-            <p style="margin-bottom: 3px; font-size: 14px;">E: <a href="mailto:mike@oculusrep.com" style="color: #2563eb; text-decoration: none;">mike@oculusrep.com</a></p>
+            <p style="margin-bottom: 3px; font-size: 12px;"><strong>Mike Minihan</strong></p>
+            <p style="margin-bottom: 3px; font-size: 12px;">Principal | Managing Broker</p>
+            <p style="margin-bottom: 3px; font-size: 12px;">Oculus Real Estate Partners, LLC</p>
+            <p style="margin-bottom: 3px; font-size: 12px;">M: 404-326-4010</p>
+            <p style="margin-bottom: 3px; font-size: 12px;">E: <a href="mailto:mike@oculusrep.com" style="color: #2563eb; text-decoration: none;">mike@oculusrep.com</a></p>
           </div>
         </div>
       </body>
