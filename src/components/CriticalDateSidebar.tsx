@@ -6,6 +6,7 @@ import { useAutosave } from '../hooks/useAutosave';
 import Toast from './Toast';
 import ConfirmDialog from './ConfirmDialog';
 import AutosaveIndicator from './AutosaveIndicator';
+import CriticalDateEmailPreviewModal from './CriticalDateEmailPreviewModal';
 
 interface CriticalDate {
   id: string;
@@ -66,6 +67,7 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
   const [saving, setSaving] = useState(false);
   const [criticalDate, setCriticalDate] = useState<CriticalDate | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showEmailPreview, setShowEmailPreview] = useState(false);
   const { toast, showToast, hideToast} = useToast();
   const { userTableId } = useAuth();
 
@@ -395,19 +397,33 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
               <label className="block text-xs font-medium text-gray-700 mb-1">
                 Send Email Days Prior <span className="text-red-500">*</span>
               </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                name="days-prior-notification"
-                value={formData.sendEmailDaysPrior}
-                onChange={(e) => updateFormData("sendEmailDaysPrior", e.target.value)}
-                onFocus={(e) => e.target.removeAttribute('readonly')}
-                className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
-                placeholder="e.g., 7"
-                autoComplete="new-password"
-                readOnly
-              />
+              <div className="flex space-x-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  name="days-prior-notification"
+                  value={formData.sendEmailDaysPrior}
+                  onChange={(e) => updateFormData("sendEmailDaysPrior", e.target.value)}
+                  onFocus={(e) => e.target.removeAttribute('readonly')}
+                  className="flex-1 px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                  placeholder="e.g., 7"
+                  autoComplete="new-password"
+                  readOnly
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowEmailPreview(true)}
+                  className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 transition-colors flex items-center space-x-1"
+                  title="Preview email template"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                  <span>Preview Email</span>
+                </button>
+              </div>
               <p className="text-[10px] text-gray-500 mt-0.5">
                 Number of days before the critical date to send the reminder
               </p>
@@ -517,6 +533,19 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
         cancelLabel="Cancel"
         onConfirm={handleDelete}
         onCancel={() => setShowDeleteConfirm(false)}
+      />
+
+      {/* Email Preview Modal */}
+      <CriticalDateEmailPreviewModal
+        isOpen={showEmailPreview}
+        onClose={() => setShowEmailPreview(false)}
+        criticalDateId={criticalDateId}
+        dealId={dealId}
+        dealName={dealName}
+        subject={formData.subject === "Custom" ? formData.customSubject : formData.subject}
+        criticalDate={formData.criticalDateValue}
+        description={formData.description}
+        daysPrior={formData.sendEmailDaysPrior}
       />
 
       {/* Toast Notification */}
