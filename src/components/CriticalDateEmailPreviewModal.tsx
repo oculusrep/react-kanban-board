@@ -417,7 +417,6 @@ function generateCriticalDateEmailTemplate(data: {
           .signature {
             margin-top: 30px;
             padding-top: 20px;
-            border-top: 1px solid #e5e7eb;
           }
         </style>
       </head>

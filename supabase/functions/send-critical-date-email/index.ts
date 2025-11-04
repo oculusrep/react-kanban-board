@@ -241,7 +241,6 @@ function generateCriticalDateEmailTemplate(criticalDate: any, deal: any, contact
           .signature {
             margin-top: 30px;
             padding-top: 20px;
-            border-top: 1px solid #e5e7eb;
           }
         </style>
       </head>
