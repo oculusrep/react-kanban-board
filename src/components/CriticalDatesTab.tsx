@@ -123,16 +123,22 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
         updated_at: new Date().toISOString()
       };
 
-      // If enabling send_email and send_email_days_prior is null, set a default value
-      if (field === 'send_email' && value === true) {
-        const criticalDate = criticalDates.find(cd => cd.id === criticalDateId);
-        if (criticalDate && criticalDate.send_email_days_prior === null) {
-          updates.send_email_days_prior = 7; // Default to 7 days prior
+      // Handle send_email checkbox changes
+      if (field === 'send_email') {
+        if (value === true) {
+          // If enabling send_email and send_email_days_prior is null, set a default value
+          const criticalDate = criticalDates.find(cd => cd.id === criticalDateId);
+          if (criticalDate && criticalDate.send_email_days_prior === null) {
+            updates.send_email_days_prior = 7; // Default to 7 days prior
 
-          // Immediately open the days_prior field for editing so user can change the default
-          setTimeout(() => {
-            startEditing(criticalDateId, 'send_email_days_prior', 7);
-          }, 100);
+            // Immediately open the days_prior field for editing so user can change the default
+            setTimeout(() => {
+              startEditing(criticalDateId, 'send_email_days_prior', 7);
+            }, 100);
+          }
+        } else {
+          // If disabling send_email, clear the days_prior value
+          updates.send_email_days_prior = null;
         }
       }
 
