@@ -301,8 +301,8 @@ function generateCriticalDateEmailTemplate(criticalDate: any, deal: any, contact
           <p>Please give Mike or Arty a call if you have any questions or there are any concerns with the approaching deadline.</p>
 
           <div class="signature">
-            <p style="margin-bottom: 5px;"><strong>Best,</strong></p>
-            <p style="margin-bottom: 5px;"><strong>Mike</strong></p>
+            <p style="margin-bottom: 5px;">Best,</p>
+            <p style="margin-bottom: 5px;">Mike</p>
             <br>
             <p style="margin-bottom: 3px; font-size: 12px;"><strong>Mike Minihan</strong></p>
             <p style="margin-bottom: 3px; font-size: 12px;">Principal | Managing Broker</p>
