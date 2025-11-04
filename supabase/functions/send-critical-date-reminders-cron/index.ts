@@ -277,6 +277,7 @@ function generateCriticalDateEmailTemplate(criticalDate: any, deal: any, contact
             max-width: 600px;
             margin: 0 auto;
             padding: 20px;
+            font-size: 14px;
           }
           .content {
             background-color: #ffffff;
