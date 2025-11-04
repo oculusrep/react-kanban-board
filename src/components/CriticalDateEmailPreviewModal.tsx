@@ -98,6 +98,7 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
   const fetchRecipients = async () => {
     try {
       setLoading(true);
+      console.log('Fetching recipients for dealId:', dealId);
 
       // Fetch the deal to get client_id, owner_id, and property_id
       const { data: dealData, error: dealError } = await supabase
@@ -107,10 +108,7 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
         .single();
 
       if (dealError) throw dealError;
-
-      if (dealData?.client_id) {
-        setClientId(dealData.client_id);
-      }
+      console.log('Deal data:', dealData);
 
       // Fetch owner data separately if owner_id exists
       if (dealData?.owner_id) {
@@ -156,6 +154,7 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
       }
 
       // Fetch all contacts with Critical Dates Reminders role for this client
+      console.log('Fetching contacts for client_id:', dealData.client_id, 'role_id:', roleData.id);
       const { data: contacts, error: contactsError } = await supabase
         .from('contact_client_role')
         .select(`
@@ -171,6 +170,7 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
         .eq('is_active', true);
 
       if (contactsError) throw contactsError;
+      console.log('Raw contacts from database:', contacts);
 
       // Filter for contacts with emails and deduplicate
       const contactsWithEmail = contacts
@@ -181,6 +181,7 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
         new Map(contactsWithEmail.map((c: any) => [c.email, c])).values()
       );
 
+      console.log('Final recipients:', uniqueContacts);
       setRecipients(uniqueContacts);
     } catch (err) {
       console.error('Error fetching recipients:', err);
