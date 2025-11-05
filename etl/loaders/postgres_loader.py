@@ -90,9 +90,17 @@ class PostgresLoader:
         if 'store_no' not in df.columns:
             raise ValueError("DataFrame must contain 'store_no' column")
 
-        # Convert DataFrame to list of tuples
+        # Replace NaN with None for proper NULL handling in PostgreSQL
+        df = df.where(pd.notna(df), None)
+
+        # Convert DataFrame to list of tuples, replacing NaN with None explicitly
         columns = df.columns.tolist()
-        values = [tuple(row) for row in df.values]
+        import math
+        values = []
+        for row in df.values:
+            # Replace NaN values with None for each element in the row
+            cleaned_row = tuple(None if (isinstance(val, float) and math.isnan(val)) else val for val in row)
+            values.append(cleaned_row)
 
         # Build column list for INSERT
         col_list = ', '.join(columns)
@@ -155,9 +163,17 @@ class PostgresLoader:
         if 'trend_id' in df.columns:
             df = df.drop(columns=['trend_id'])
 
-        # Convert DataFrame to list of tuples
+        # Replace NaN with None for proper NULL handling in PostgreSQL
+        df = df.where(pd.notna(df), None)
+
+        # Convert DataFrame to list of tuples, replacing NaN with None explicitly
         columns = df.columns.tolist()
-        values = [tuple(row) for row in df.values]
+        import math
+        values = []
+        for row in df.values:
+            # Replace NaN values with None for each element in the row
+            cleaned_row = tuple(None if (isinstance(val, float) and math.isnan(val)) else val for val in row)
+            values.append(cleaned_row)
 
         # Build column list for INSERT
         col_list = ', '.join(columns)
@@ -205,7 +221,8 @@ class PostgresLoader:
         if trend_df.empty:
             return (True, [])
 
-        store_nos = trend_df['store_no'].unique().tolist()
+        # Convert store_nos to strings to match TEXT column type
+        store_nos = [str(sn) for sn in trend_df['store_no'].unique().tolist()]
 
         # Query database for existing store_nos
         placeholders = ', '.join(['%s'] * len(store_nos))

@@ -185,6 +185,13 @@ def load_to_database(location_df: pd.DataFrame, trend_df: pd.DataFrame,
     logger = logging.getLogger(__name__)
     logger.info("Loading data to PostgreSQL database")
 
+    # Convert store_no to string to match TEXT column type in database
+    location_df = location_df.copy()
+    trend_df = trend_df.copy()
+    location_df['store_no'] = location_df['store_no'].astype(str)
+    trend_df['store_no'] = trend_df['store_no'].astype(str)
+    logger.info("Converted store_no to string type for database compatibility")
+
     try:
         with PostgresLoader(connection_string) as loader:
             # Load locations first (referenced by trends)
