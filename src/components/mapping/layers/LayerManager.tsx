@@ -13,7 +13,7 @@ export interface LayerConfig {
   permissions?: LayerPermissions; // For future use
 }
 
-export type LayerType = 'property' | 'site_submit' | 'custom';
+export type LayerType = 'property' | 'site_submit' | 'restaurant' | 'custom';
 
 export interface LayerPermissions {
   canView: boolean;
@@ -63,6 +63,15 @@ export type CreateMode = 'property' | 'site_submit';
 // Default system layers
 const DEFAULT_LAYERS: LayerConfig[] = [
   {
+    id: 'restaurants',
+    name: 'Restaurant Sales',
+    type: 'restaurant',
+    icon: '🍔',
+    description: 'Restaurant locations with sales trend data',
+    defaultVisible: false,
+    isSystemLayer: true,
+  },
+  {
     id: 'properties',
     name: 'Properties',
     type: 'property',
@@ -106,6 +115,7 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
 
   // Initialize layer state once
   useEffect(() => {
+    console.log('🗺️ LayerManager initializing with layers:', DEFAULT_LAYERS.map(l => l.id));
     const initialState: LayerState = {};
     DEFAULT_LAYERS.forEach(layer => {
       initialState[layer.id] = {
@@ -115,6 +125,7 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
         hasError: false,
       };
     });
+    console.log('🗺️ LayerManager initial state:', initialState);
     setLayerState(initialState);
   }, []); // Empty dependency array - run only once
 

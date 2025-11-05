@@ -24,6 +24,7 @@ import AssignmentSelector from '../AssignmentSelector';
 import { AssignmentSearchResult } from '../../../hooks/useAssignmentSearch';
 import AddAssignmentModal from '../../AddAssignmentModal';
 import AutosaveIndicator from '../../AutosaveIndicator';
+import { ResponsiveLine } from '@nivo/line';
 
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
@@ -82,12 +83,41 @@ interface SiteSubmit {
   _isNew?: boolean; // Flag for create mode
 }
 
+interface Restaurant {
+  store_no: string;
+  chain?: string | null;
+  geoaddress?: string | null;
+  geocity?: string | null;
+  geostate?: string | null;
+  geozip?: string | null;
+  county?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  verified_latitude?: number | null;
+  verified_longitude?: number | null;
+  yr_built?: number | null;
+  trends?: Array<{
+    trend_id: string;
+    store_no: string;
+    year: number;
+    curr_natl_grade?: string | null;
+    curr_annual_sls_k?: number | null;
+  }>;
+  latest_trend?: {
+    trend_id: string;
+    store_no: string;
+    year: number;
+    curr_natl_grade?: string | null;
+    curr_annual_sls_k?: number | null;
+  } | null;
+}
+
 interface PinDetailsSlideoutProps {
   isOpen: boolean;
   onClose: () => void;
   onOpen?: () => void;
-  data: Property | SiteSubmit | null;
-  type: 'property' | 'site_submit' | null;
+  data: Property | SiteSubmit | Restaurant | null;
+  type: 'property' | 'site_submit' | 'restaurant' | null;
   onVerifyLocation?: (propertyId: string) => void;
   isVerifyingLocation?: boolean;
   onViewPropertyDetails?: (property: Property) => void;
@@ -911,6 +941,274 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   // Property record types are now loaded via usePropertyRecordTypes hook
 
   if (!data || !type) return null;
+
+  // Early return for restaurant type
+  if (type === 'restaurant') {
+    const restaurant = data as Restaurant;
+
+    // Prepare chart data - sort by year ascending for the chart
+    const chartData = restaurant.trends
+      ?.filter(t => t.curr_annual_sls_k !== null)
+      .sort((a, b) => a.year - b.year)
+      .map(trend => ({
+        year: trend.year.toString(),
+        sales: trend.curr_annual_sls_k! * 1000, // Convert to actual dollars
+        salesK: trend.curr_annual_sls_k!, // Keep K for display
+      })) || [];
+
+    // Format ZIP code without decimal
+    const formatZip = (zip: string | null) => {
+      if (!zip) return '';
+      return zip.split('.')[0];
+    };
+
+    // Format sales value for display
+    const formatSalesValue = (value: number) => {
+      if (value >= 1000000) {
+        return `$${(value / 1000000).toFixed(1)} mil`;
+      }
+      return `$${(value / 1000).toFixed(0)}K`;
+    };
+
+    return (
+      <div
+        className={`fixed top-0 right-0 h-full bg-white border-l border-gray-200 shadow-xl transition-all duration-300 z-40 flex flex-col w-[500px]`}
+        style={{
+          top: '67px',
+          height: 'calc(100vh - 67px - 20px)',
+        }}
+      >
+        <div className="p-6 overflow-y-auto">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 capitalize">
+                {restaurant.chain?.toLowerCase() || 'Restaurant'}
+              </h2>
+              {restaurant.geoaddress && (
+                <p className="text-sm text-gray-500 capitalize mt-1">
+                  {restaurant.geoaddress.toLowerCase()}, {restaurant.geocity?.toLowerCase()}, {restaurant.geostate} {formatZip(restaurant.geozip)}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Year Built - small text */}
+          {restaurant.yr_built && (
+            <div className="mb-4">
+              <p className="text-xs text-gray-500">Built {restaurant.yr_built}</p>
+            </div>
+          )}
+
+          {/* Sales Trend Chart */}
+          {chartData.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-semibold text-white mb-3 flex items-center">
+                <span className="bg-gradient-to-r from-red-500 to-orange-500 px-3 py-1 rounded-full">
+                  📈 Sales Performance
+                </span>
+              </h3>
+              <div
+                className="relative p-8 rounded-3xl overflow-hidden shadow-2xl"
+                style={{
+                  height: 340,
+                  background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)'
+                }}
+              >
+                {/* Animated glow effect */}
+                <div
+                  className="absolute inset-0 opacity-30 pointer-events-none"
+                  style={{
+                    background: 'radial-gradient(circle at 20% 50%, rgba(239, 68, 68, 0.15), transparent 50%), radial-gradient(circle at 80% 50%, rgba(251, 146, 60, 0.15), transparent 50%)'
+                  }}
+                />
+
+                {/* Grid pattern overlay */}
+                <div
+                  className="absolute inset-0 opacity-5 pointer-events-none"
+                  style={{
+                    backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
+                    backgroundSize: '20px 20px'
+                  }}
+                />
+
+                <div className="relative h-full">
+                  <ResponsiveLine
+                    data={[{
+                      id: 'sales',
+                      data: chartData.map(d => ({ x: d.year, y: d.sales }))
+                    }]}
+                    margin={{ top: 20, right: 30, bottom: 50, left: 80 }}
+                    xScale={{ type: 'point' }}
+                    yScale={{ type: 'linear', min: 'auto', max: 'auto' }}
+                    curve="cardinal"
+                    axisTop={null}
+                    axisRight={null}
+                    axisBottom={{
+                      tickSize: 0,
+                      tickPadding: 15,
+                      tickRotation: 0,
+                      legend: 'Year',
+                      legendOffset: 40,
+                      legendPosition: 'middle'
+                    }}
+                    axisLeft={{
+                      tickSize: 0,
+                      tickPadding: 15,
+                      tickRotation: 0,
+                      legend: 'Revenue',
+                      legendOffset: -65,
+                      legendPosition: 'middle',
+                      format: (value) => formatSalesValue(value)
+                    }}
+                    enableGridX={false}
+                    gridYValues={5}
+                    colors={['#fb923c']}
+                    lineWidth={5}
+                    enablePoints={true}
+                    pointSize={16}
+                    pointColor="#fbbf24"
+                    pointBorderWidth={4}
+                    pointBorderColor="#fb923c"
+                    enableArea={true}
+                    areaOpacity={0.2}
+                    useMesh={true}
+                    enableSlices="x"
+                    sliceTooltip={({ slice }) => {
+                      const point = slice.points[0];
+                      return (
+                        <div
+                          className="px-5 py-4 rounded-2xl shadow-2xl"
+                          style={{
+                            background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.98) 0%, rgba(15, 23, 42, 0.98) 100%)',
+                            border: '2px solid rgba(251, 146, 60, 0.5)',
+                            backdropFilter: 'blur(10px)'
+                          }}
+                        >
+                          <div className="text-xs font-bold text-orange-300 uppercase tracking-widest mb-2 flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
+                            {point.data.xFormatted}
+                          </div>
+                          <div
+                            className="text-3xl font-black tracking-tight"
+                            style={{
+                              background: 'linear-gradient(135deg, #fb923c 0%, #f97316 50%, #ea580c 100%)',
+                              WebkitBackgroundClip: 'text',
+                              WebkitTextFillColor: 'transparent',
+                              backgroundClip: 'text'
+                            }}
+                          >
+                            {formatSalesValue(point.data.y as number)}
+                          </div>
+                        </div>
+                      );
+                    }}
+                    theme={{
+                      background: 'transparent',
+                      textColor: '#94a3b8',
+                      axis: {
+                        domain: {
+                          line: {
+                            stroke: '#334155',
+                            strokeWidth: 2
+                          }
+                        },
+                        ticks: {
+                          line: { stroke: 'transparent' },
+                          text: {
+                            fontSize: 11,
+                            fill: '#94a3b8',
+                            fontWeight: 600
+                          }
+                        },
+                        legend: {
+                          text: {
+                            fontSize: 12,
+                            fill: '#cbd5e1',
+                            fontWeight: 700,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em'
+                          }
+                        }
+                      },
+                      grid: {
+                        line: {
+                          stroke: '#334155',
+                          strokeWidth: 1,
+                          strokeOpacity: 0.5
+                        }
+                      },
+                      crosshair: {
+                        line: {
+                          stroke: '#fb923c',
+                          strokeWidth: 2,
+                          strokeOpacity: 0.5
+                        }
+                      }
+                    }}
+                    defs={[
+                      {
+                        id: 'gradientGlow',
+                        type: 'linearGradient',
+                        colors: [
+                          { offset: 0, color: '#fb923c', opacity: 0.4 },
+                          { offset: 50, color: '#f97316', opacity: 0.2 },
+                          { offset: 100, color: '#ea580c', opacity: 0 }
+                        ]
+                      }
+                    ]}
+                    fill={[{ match: '*', id: 'gradientGlow' }]}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Sales Data Table */}
+          {restaurant.trends && restaurant.trends.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Sales History</h3>
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Year</th>
+                      <th className="px-3 py-2 text-center font-semibold text-gray-700">Sales</th>
+                      <th className="px-3 py-2 text-center font-semibold text-gray-700">Grade</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {restaurant.trends
+                      .sort((a, b) => b.year - a.year) // Show most recent first in table
+                      .map((trend) => (
+                        <tr key={trend.trend_id} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 text-gray-900">{trend.year}</td>
+                          <td className="px-3 py-2 text-center text-gray-900 font-medium">
+                            {trend.curr_annual_sls_k
+                              ? `$${(trend.curr_annual_sls_k * 1000).toLocaleString()}`
+                              : 'N/A'}
+                          </td>
+                          <td className="px-3 py-2 text-center text-gray-700">
+                            {trend.curr_natl_grade || '-'}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const isProperty = type === 'property';
   const property = isProperty ? localPropertyData : (data as SiteSubmit)?.property;

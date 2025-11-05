@@ -120,6 +120,29 @@ export const createHexagonMarkerIcon = (color: string, size: number = 28): googl
   };
 };
 
+// Diamond marker for restaurant locations
+export const createDiamondMarkerIcon = (color: string, size: number = 20): google.maps.Icon => {
+  const svg = `
+    <svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Shadow -->
+      <path d="M10 2L18 10L10 18L2 10L10 2Z" fill="rgba(0,0,0,0.2)" transform="translate(0.5,0.5)"/>
+      <!-- Main diamond with white border -->
+      <path d="M10 1L19 10L10 19L1 10L10 1Z" fill="white" stroke="${color}" stroke-width="2"/>
+      <!-- Inner diamond -->
+      <path d="M10 4L16 10L10 16L4 10L10 4Z" fill="${color}"/>
+      <!-- Highlight -->
+      <path d="M10 6L13 10L10 14L7 10L10 6Z" fill="rgba(255,255,255,0.5)"/>
+    </svg>
+  `;
+
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(size, size),
+    origin: new google.maps.Point(0, 0),
+    anchor: new google.maps.Point(size / 2, size / 2)
+  };
+};
+
 // Function to create muted Google Places marker styles (subtle, not hidden)
 export const createMutedPlacesStyle = () => {
   return [
@@ -334,6 +357,9 @@ export const MarkerColors = {
   INDUSTRIAL: '#78716C',  // Warm gray
   MIXED_USE: '#14B8A6',   // Teal
 
+  // Restaurant markers
+  RESTAURANT: '#DC2626',  // Red - for restaurant locations
+
   // Neutral
   DEFAULT: '#6B7280'      // Gray
 } as const;
@@ -363,6 +389,15 @@ export const ModernMarkerStyles = {
     office: () => createModernSquareIcon(MarkerColors.OFFICE, 24),
     industrial: () => createModernSquareIcon(MarkerColors.INDUSTRIAL, 24),
     mixedUse: () => createModernSquareIcon(MarkerColors.MIXED_USE, 24)
+  },
+
+  // For restaurants - use small red diamond markers
+  restaurant: {
+    default: () => createDiamondMarkerIcon(MarkerColors.RESTAURANT, 16),
+    selected: () => createDiamondMarkerIcon('#FF6B00', 28), // Large orange diamond for selected
+    verifying: () => createDiamondMarkerIcon('#F97316', 20), // Orange for verification
+    verified: () => createDiamondMarkerIcon(MarkerColors.VERIFIED, 16), // Green for verified
+    noData: () => createDiamondMarkerIcon('#4B5563', 16), // Dark gray for restaurants with no sales data
   },
 
   // Alternative styles if you want to try different shapes
