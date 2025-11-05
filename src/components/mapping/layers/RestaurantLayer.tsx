@@ -401,6 +401,21 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
             if (event.latLng) {
               const newLat = event.latLng.lat();
               const newLng = event.latLng.lng();
+
+              // Optimistically update local state to prevent snap-back
+              setRestaurants(prev => prev.map(r =>
+                r.store_no === restaurant.store_no
+                  ? {
+                      ...r,
+                      verified_latitude: newLat,
+                      verified_longitude: newLng,
+                      verified_source: 'manual',
+                      verified_at: new Date().toISOString()
+                    }
+                  : r
+              ));
+
+              // Then call the verification handler to save to database
               onLocationVerified(restaurant.store_no, newLat, newLng);
             }
           });
