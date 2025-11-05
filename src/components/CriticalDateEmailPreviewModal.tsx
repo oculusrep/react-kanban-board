@@ -134,9 +134,9 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
         }
       }
 
-      // Fetch contacts with "Critical Dates Reminders" role
+      // Fetch contacts with "Critical Dates Reminders" role at DEAL level
       const { data: roleData, error: roleError } = await supabase
-        .from('contact_client_role_type')
+        .from('contact_deal_role_type')
         .select('id')
         .eq('role_name', 'Critical Dates Reminders')
         .single();
@@ -146,13 +146,13 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
         return;
       }
 
-      if (!roleData || !dealData?.client_id) {
+      if (!roleData) {
         return;
       }
 
-      // Fetch all contacts with Critical Dates Reminders role for this client
+      // Fetch all contacts with Critical Dates Reminders role for this DEAL
       const { data: contacts, error: contactsError } = await supabase
-        .from('contact_client_role')
+        .from('contact_deal_role')
         .select(`
           contact:contact_id (
             id,
@@ -161,7 +161,7 @@ const CriticalDateEmailPreviewModal: React.FC<CriticalDateEmailPreviewModalProps
             email
           )
         `)
-        .eq('client_id', dealData.client_id)
+        .eq('deal_id', dealId)
         .eq('role_id', roleData.id)
         .eq('is_active', true);
 

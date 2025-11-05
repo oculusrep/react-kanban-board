@@ -82,7 +82,7 @@ serve(async (req) => {
 
     // Fetch contacts with "Critical Dates Reminders" role
     const { data: roleData, error: roleError } = await supabaseClient
-      .from('contact_client_role_type')
+      .from('contact_deal_role_type')
       .select('id')
       .eq('role_name', 'Critical Dates Reminders')
       .single()
@@ -90,9 +90,9 @@ serve(async (req) => {
     if (roleError) throw roleError
     if (!roleData) throw new Error('Critical Dates Reminders role not found')
 
-    // Fetch all contacts with Critical Dates Reminders role for this client
+    // Fetch all contacts with Critical Dates Reminders role for this DEAL
     const { data: contacts, error: contactsError } = await supabaseClient
-      .from('contact_client_role')
+      .from('contact_deal_role')
       .select(`
         contact:contact_id (
           id,
@@ -101,7 +101,7 @@ serve(async (req) => {
           email
         )
       `)
-      .eq('client_id', deal.client_id)
+      .eq('deal_id', deal.id)
       .eq('role_id', roleData.id)
       .eq('is_active', true)
 
@@ -120,7 +120,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: false,
-          message: 'No contacts found with "Critical Dates Reminders" role and email addresses for this client'
+          message: 'No contacts found with "Critical Dates Reminders" role and email addresses for this deal'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
       )

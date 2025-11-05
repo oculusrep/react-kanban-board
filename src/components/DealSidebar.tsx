@@ -4,6 +4,7 @@ import { Database } from '../../database-schema';
 import SidebarModule from './sidebar/SidebarModule';
 import FileManagerModule from './sidebar/FileManagerModule';
 import ContactFormModal from './ContactFormModal';
+import ContactDealRolesManager from './ContactDealRolesManager';
 
 type Note = Database['public']['Tables']['note']['Row'];
 type Contact = Database['public']['Tables']['contact']['Row'];
@@ -18,18 +19,24 @@ interface DealSidebarProps {
 // Contact Item Component
 interface ContactItemProps {
   contact: Contact;
+  dealId: string;
+  dealName?: string;
   isExpanded?: boolean;
   onToggle?: () => void;
   onClick?: (contactId: string) => void;
   onDelete?: (contactId: string) => void;
+  onRoleChange?: () => void;
 }
 
 const ContactItem: React.FC<ContactItemProps> = ({
   contact,
+  dealId,
+  dealName,
   isExpanded = false,
   onToggle,
   onClick,
-  onDelete
+  onDelete,
+  onRoleChange
 }) => {
   const displayPhone = contact.mobile_phone || contact.phone;
   const phoneLabel = contact.mobile_phone ? 'Mobile' : 'Phone';
@@ -116,6 +123,17 @@ const ContactItem: React.FC<ContactItemProps> = ({
               {contact.mobile_phone && (
                 <div><span className="font-medium text-blue-800">Mobile:</span> <span className="text-blue-700">{contact.mobile_phone}</span></div>
               )}
+            </div>
+            {/* Contact Roles */}
+            <div className="mt-3 pt-2 border-t border-blue-200">
+              <ContactDealRolesManager
+                contactId={contact.id}
+                dealId={dealId}
+                contactName={`${contact.first_name} ${contact.last_name}`}
+                dealName={dealName}
+                compact={true}
+                onRoleChange={onRoleChange}
+              />
             </div>
           </div>
         </div>
@@ -713,6 +731,7 @@ const DealSidebar: React.FC<DealSidebarProps> = ({
   const [newlyCreatedNoteId, setNewlyCreatedNoteId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [propertyId, setPropertyId] = useState<string | null>(null);
+  const [dealName, setDealName] = useState<string | null>(null);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [showContactFormModal, setShowContactFormModal] = useState(false);
 
@@ -772,15 +791,18 @@ const DealSidebar: React.FC<DealSidebarProps> = ({
       setError(null);
 
       try {
-        // Fetch property_id from deal
+        // Fetch property_id and deal_name from deal
         const { data: dealData } = await supabase
           .from('deal')
-          .select('property_id')
+          .select('property_id, deal_name')
           .eq('id', dealId)
           .single();
 
         if (dealData?.property_id) {
           setPropertyId(dealData.property_id);
+        }
+        if (dealData?.deal_name) {
+          setDealName(dealData.deal_name);
         }
 
         const { data, error } = await supabase
@@ -1070,10 +1092,13 @@ const DealSidebar: React.FC<DealSidebarProps> = ({
                   <ContactItem
                     key={contact.id}
                     contact={contact}
+                    dealId={dealId}
+                    dealName={dealName || undefined}
                     isExpanded={expandedContacts[contact.id]}
                     onToggle={() => toggleContact(contact.id)}
                     onClick={onContactClick}
                     onDelete={handleRemoveContact}
+                    onRoleChange={fetchContacts}
                   />
                 ))}
               </SidebarModule>
