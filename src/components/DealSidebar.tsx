@@ -43,59 +43,72 @@ const ContactItem: React.FC<ContactItemProps> = ({
 
   return (
     <div className="border-b border-gray-100 last:border-b-0 group">
-      <div
-        className="p-2 hover:bg-gray-50 cursor-pointer transition-colors flex items-center justify-between"
-        onClick={() => onClick?.(contact.id)}
-      >
-        <div className="flex items-center space-x-3 flex-1 min-w-0">
-          <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
-            <span className="text-white font-medium text-xs">
-              {contact.first_name?.[0] || '?'}{contact.last_name?.[0] || ''}
-            </span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center space-x-2">
-              <span className="text-sm font-medium text-gray-900 truncate">
-                {contact.first_name} {contact.last_name}
+      <div className="p-2 hover:bg-gray-50 transition-colors">
+        <div className="flex items-center justify-between">
+          <div
+            className="flex items-center space-x-3 flex-1 min-w-0 cursor-pointer"
+            onClick={() => onClick?.(contact.id)}
+          >
+            <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+              <span className="text-white font-medium text-xs">
+                {contact.first_name?.[0] || '?'}{contact.last_name?.[0] || ''}
               </span>
-              {displayPhone && (
-                <span className="text-xs text-gray-500 truncate">{phoneLabel}: {displayPhone}</span>
-              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center space-x-2">
+                <span className="text-sm font-medium text-gray-900 truncate">
+                  {contact.first_name} {contact.last_name}
+                </span>
+                {displayPhone && (
+                  <span className="text-xs text-gray-500 truncate">{phoneLabel}: {displayPhone}</span>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-        <div className="flex items-center space-x-1">
-          {onDelete && (
+          <div className="flex items-center space-x-1">
+            {onDelete && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(contact.id);
+                }}
+                className="p-1 text-gray-500 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Remove from deal"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            )}
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onDelete(contact.id);
+                onToggle?.();
               }}
-              className="p-1 text-gray-500 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
-              title="Remove from deal"
             >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              <svg
+                className={`w-3 h-3 text-gray-400 transform transition-transform flex-shrink-0 ${
+                  isExpanded ? 'rotate-90' : ''
+                }`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </button>
-          )}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggle?.();
-            }}
-          >
-            <svg
-              className={`w-3 h-3 text-gray-400 transform transition-transform flex-shrink-0 ${
-                isExpanded ? 'rotate-90' : ''
-              }`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
+          </div>
+        </div>
+        {/* Contact Roles - Always visible */}
+        <div className="ml-9 mt-1">
+          <ContactDealRolesManager
+            contactId={contact.id}
+            dealId={dealId}
+            contactName={`${contact.first_name} ${contact.last_name}`}
+            dealName={dealName}
+            compact={true}
+            onRoleChange={onRoleChange}
+          />
         </div>
       </div>
       {isExpanded && (
@@ -123,17 +136,6 @@ const ContactItem: React.FC<ContactItemProps> = ({
               {contact.mobile_phone && (
                 <div><span className="font-medium text-blue-800">Mobile:</span> <span className="text-blue-700">{contact.mobile_phone}</span></div>
               )}
-            </div>
-            {/* Contact Roles */}
-            <div className="mt-3 pt-2 border-t border-blue-200">
-              <ContactDealRolesManager
-                contactId={contact.id}
-                dealId={dealId}
-                contactName={`${contact.first_name} ${contact.last_name}`}
-                dealName={dealName}
-                compact={true}
-                onRoleChange={onRoleChange}
-              />
             </div>
           </div>
         </div>
