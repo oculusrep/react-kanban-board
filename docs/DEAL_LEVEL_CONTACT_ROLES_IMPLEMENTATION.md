@@ -17,7 +17,7 @@ This implementation adds the ability to assign contact roles at the **deal level
 - `contact_deal_role` - Junction table linking contacts to deals with specific roles
 - `v_contact_deal_roles` - View for querying deal-level contact roles
 
-**Role Types Available at Deal Level (14 total):**
+**Role Types Available at Deal Level (15 total):**
 1. Franchisee
 2. Franchisor
 3. Real Estate Lead
@@ -32,6 +32,7 @@ This implementation adds the ability to assign contact roles at the **deal level
 12. Buyer
 13. **Critical Dates Reminders** ⭐
 14. Architect
+15. Master Broker
 
 **Migration File:** `supabase/migrations/20251105224414_create_deal_contact_roles.sql`
 
@@ -84,7 +85,7 @@ New component for displaying and managing deal-level contact roles. Features:
 - Modified deal data fetch to include `deal_name`
 
 **UI Location:**
-When a user expands a contact in the "Associated Contacts" section of a deal, they will now see role badges and an "+ Add Role" button below the contact details.
+Role badges and the "+ Add Role" button now appear **directly below each contact name** in the "Associated Contacts" section. No need to expand the contact to see or manage roles - they're always visible for quick access.
 
 ### 6. Critical Dates Email System Updates
 
@@ -149,7 +150,7 @@ After running the migration, verify:
 -- Check that deal role tables exist
 SELECT * FROM contact_deal_role_type ORDER BY sort_order;
 
--- Should return 14 roles including "Critical Dates Reminders"
+-- Should return 15 roles including "Critical Dates Reminders" and "Master Broker"
 
 -- Check that client-level "Critical Dates Reminders" is inactive
 SELECT * FROM contact_client_role_type WHERE role_name = 'Critical Dates Reminders';
@@ -163,18 +164,17 @@ SELECT * FROM contact_client_role_type WHERE role_name = 'Critical Dates Reminde
    - Open any deal in the system
    - Open the "Associated Contacts" section in the right sidebar
 
-2. **Expand a Contact**
-   - Click the arrow to expand a contact's details
-   - Verify that you see contact information (email, phone, etc.)
-   - Verify that you see role badges below the contact details
-   - Verify that you see an "+ Add Role" button
+2. **View Contact Roles (Always Visible)**
+   - Roles now appear directly under each contact name without expanding
+   - Verify that you see role badges immediately visible
+   - Verify that you see an "+ Add Role" button for each contact
 
 3. **Add Roles**
    - Click "+ Add Role" button
-   - Verify modal appears with all 14 deal-level role types
-   - Select one or more roles (e.g., "Critical Dates Reminders", "Attorney")
+   - Verify modal appears with all 15 deal-level role types
+   - Select one or more roles (e.g., "Critical Dates Reminders", "Attorney", "Master Broker")
    - Click "Add Role" or "Add X Roles"
-   - Verify roles appear as colored badges under the contact
+   - Verify roles appear as colored badges directly under the contact
    - Verify each badge has an "X" to remove it
 
 4. **Remove Roles**
@@ -182,9 +182,10 @@ SELECT * FROM contact_client_role_type WHERE role_name = 'Critical Dates Reminde
    - Verify the role is immediately removed without confirmation
 
 5. **Multiple Contacts**
-   - Expand multiple contacts in the same deal
-   - Verify each can have different roles
+   - View multiple contacts in the same deal
+   - Verify each can have different roles (all visible without expanding)
    - Verify the "+ Add Role" button only shows roles not already assigned to that contact
+   - Verify roles are color-coded and easy to distinguish at a glance
 
 ### 3. Critical Dates Email Testing
 
@@ -342,7 +343,8 @@ ON CONFLICT (contact_id, deal_id, role_id) DO NOTHING;
 ## Success Criteria
 
 ✅ Database migration runs without errors
-✅ All 14 deal-level role types are available
+✅ All 15 deal-level role types are available (including Master Broker)
+✅ UI shows roles inline under each contact (no expansion needed)
 ✅ UI allows adding/removing roles for contacts on deals
 ✅ Role badges display with correct colors
 ✅ Critical date emails use deal-level "Critical Dates Reminders" contacts
