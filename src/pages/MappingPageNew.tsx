@@ -4,10 +4,12 @@ import BatchGeocodingPanel from '../components/mapping/BatchGeocodingPanel';
 import BatchReverseGeocodingPanel from '../components/mapping/BatchReverseGeocodingPanel';
 import PropertyLayer, { PropertyLoadingConfig } from '../components/mapping/layers/PropertyLayer';
 import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/layers/SiteSubmitLayer';
+import RestaurantLayer from '../components/mapping/layers/RestaurantLayer';
 import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
 import MapContextMenu from '../components/mapping/MapContextMenu';
 import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
 import SiteSubmitContextMenu from '../components/mapping/SiteSubmitContextMenu';
+import RestaurantContextMenu from '../components/mapping/RestaurantContextMenu';
 import ClientSelector from '../components/mapping/ClientSelector';
 import { ClientSearchResult } from '../hooks/useClientSearch';
 import AddressSearchBox from '../components/mapping/AddressSearchBox';
@@ -36,6 +38,7 @@ const MappingPageContent: React.FC = () => {
   const [showBatchPanel, setShowBatchPanel] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [verifyingPropertyId, setVerifyingPropertyId] = useState<string | null>(null);
+  const [verifyingRestaurantStoreNo, setVerifyingRestaurantStoreNo] = useState<string | null>(null);
 
   // Modal states
   const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false);
@@ -46,7 +49,7 @@ const MappingPageContent: React.FC = () => {
   // Slideout states
   const [isPinDetailsOpen, setIsPinDetailsOpen] = useState(false);
   const [selectedPinData, setSelectedPinData] = useState<any>(null);
-  const [selectedPinType, setSelectedPinType] = useState<'property' | 'site_submit' | null>(null);
+  const [selectedPinType, setSelectedPinType] = useState<'property' | 'site_submit' | 'restaurant' | null>(null);
   const [pinDetailsInitialTab, setPinDetailsInitialTab] = useState<'property' | 'submit' | 'location' | 'files' | 'contacts' | 'submits' | undefined>(undefined);
 
   // Property details slideout (for "View Full Details" from site submit)
@@ -81,6 +84,9 @@ const MappingPageContent: React.FC = () => {
   });
   const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
   const [isLegendExpanded, setIsLegendExpanded] = useState(false);
+
+  // Layer navigation panel state
+  const [isLayerPanelOpen, setIsLayerPanelOpen] = useState(true);
 
   // Clustering configuration
   const [clusterConfig, setClusterConfig] = useState({
@@ -135,6 +141,19 @@ const MappingPageContent: React.FC = () => {
     x: 0,
     y: 0,
     siteSubmit: null,
+  });
+
+  // Restaurant context menu state
+  const [restaurantContextMenu, setRestaurantContextMenu] = useState<{
+    isVisible: boolean;
+    x: number;
+    y: number;
+    restaurant: any | null;
+  }>({
+    isVisible: false,
+    x: 0,
+    y: 0,
+    restaurant: null,
   });
 
   // Site submit verification state
@@ -1163,6 +1182,68 @@ const MappingPageContent: React.FC = () => {
     }
   };
 
+  // Handle restaurant location verified (save to database)
+  const handleRestaurantLocationVerified = async (storeNo: string, lat: number, lng: number) => {
+    console.log('📍 Saving verified location for restaurant:', storeNo, { lat, lng });
+
+    try {
+      // Update the restaurant with verified coordinates
+      const { error } = await supabase
+        .from('restaurant_location')
+        .update({
+          verified_latitude: lat,
+          verified_longitude: lng,
+          verified_source: 'manual',
+          verified_at: new Date().toISOString()
+        })
+        .eq('store_no', storeNo);
+
+      if (error) {
+        throw error;
+      }
+
+      console.log('✅ Successfully saved verified location to database');
+
+      // Complete verification
+      setVerifyingRestaurantStoreNo(null);
+
+      // Refresh restaurant layer to show updated coordinates
+      refreshLayer('restaurants');
+
+      console.log('✅ Restaurant location verification completed');
+    } catch (error) {
+      console.error('❌ Failed to save verified restaurant location:', error);
+      // Keep verification mode active on error so user can try again
+    }
+  };
+
+  // Handle restaurant right-click
+  const handleRestaurantRightClick = (restaurant: any, x: number, y: number) => {
+    console.log('🍔 Restaurant right-clicked:', restaurant.store_no, { x, y });
+    setRestaurantContextMenu({
+      isVisible: true,
+      x,
+      y,
+      restaurant
+    });
+  };
+
+  // Handle restaurant verify location
+  const handleRestaurantVerifyLocation = (storeNo: string) => {
+    console.log('🎯 Starting location verification for restaurant:', storeNo);
+    setVerifyingRestaurantStoreNo(storeNo);
+  };
+
+  // Handle restaurant context menu close
+  const handleRestaurantContextMenuClose = () => {
+    setRestaurantContextMenu({
+      isVisible: false,
+      x: 0,
+      y: 0,
+      restaurant: null
+    });
+  };
+
   const handleAddressSearch = async () => {
     if (!searchAddress.trim()) return;
 
@@ -1391,6 +1472,23 @@ const MappingPageContent: React.FC = () => {
               </div>
 
               <div className="flex items-center space-x-4">
+                {/* Restaurant Sales Layer Toggle */}
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm font-medium text-gray-700">Restaurant Sales:</label>
+                  <button
+                    onClick={() => toggleLayer('restaurants')}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      layerState.restaurants?.isVisible ? 'bg-red-600' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        layerState.restaurants?.isVisible ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+
                 {/* Properties Layer Toggle */}
                 <div className="flex items-center space-x-2">
                   <label className="text-sm font-medium text-gray-700">All Properties:</label>
@@ -1603,6 +1701,26 @@ const MappingPageContent: React.FC = () => {
               onLocationVerified={handleSiteSubmitLocationVerified}
             />
 
+            {/* Restaurant Layer - Connected to Layer Manager */}
+            <RestaurantLayer
+              map={mapInstance}
+              isVisible={layerState.restaurants?.isVisible || false}
+              selectedStoreNo={selectedPinType === 'restaurant' && selectedPinData ? selectedPinData.store_no : null}
+              verifyingStoreNo={verifyingRestaurantStoreNo}
+              onLocationVerified={handleRestaurantLocationVerified}
+              onRestaurantRightClick={handleRestaurantRightClick}
+              onRestaurantsLoaded={(count) => {
+                setLayerCount('restaurants', count);
+                setLayerLoading('restaurants', false);
+              }}
+              onPinClick={(restaurant) => {
+                console.log('🍔 Opening sidebar for restaurant:', restaurant);
+                setSelectedPinType('restaurant');
+                setSelectedPinData(restaurant);
+                setIsPinDetailsOpen(true);
+              }}
+            />
+
             {/* Pin Details Slideout */}
             <PinDetailsSlideout
               isOpen={isPinDetailsOpen}
@@ -1727,6 +1845,16 @@ const MappingPageContent: React.FC = () => {
               onResetLocation={handleSiteSubmitResetLocation}
               onDelete={handleDeleteSiteSubmit}
               onClose={handleSiteSubmitContextMenuClose}
+            />
+
+            {/* Restaurant Context Menu for Right-Click on Restaurants */}
+            <RestaurantContextMenu
+              x={restaurantContextMenu.x}
+              y={restaurantContextMenu.y}
+              isVisible={restaurantContextMenu.isVisible}
+              restaurant={restaurantContextMenu.restaurant}
+              onVerifyLocation={handleRestaurantVerifyLocation}
+              onClose={handleRestaurantContextMenuClose}
             />
 
             {/* Site Submit Legend - Show when site submit layer is visible */}

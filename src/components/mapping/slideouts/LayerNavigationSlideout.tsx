@@ -14,6 +14,7 @@ const LayerNavigationSlideout: React.FC<LayerNavigationSlideoutProps> = ({
 
   const getLayerIcon = (layerId: string) => {
     switch (layerId) {
+      case 'restaurants': return '🍔';
       case 'properties': return '🏢';
       case 'site_submits': return '📍';
       case 'property_units': return '🏬';
@@ -25,6 +26,7 @@ const LayerNavigationSlideout: React.FC<LayerNavigationSlideoutProps> = ({
     if (!isVisible) return 'bg-gray-100 text-gray-600';
 
     switch (layerId) {
+      case 'restaurants': return 'bg-red-100 text-red-700 border-red-200';
       case 'properties': return 'bg-blue-100 text-blue-700 border-blue-200';
       case 'site_submits': return 'bg-purple-100 text-purple-700 border-purple-200';
       case 'property_units': return 'bg-green-100 text-green-700 border-green-200';
@@ -59,6 +61,7 @@ const LayerNavigationSlideout: React.FC<LayerNavigationSlideoutProps> = ({
               {layers.map(layer => {
                 const state = layerState[layer.id] || { isVisible: false, count: 0, isLoading: false };
                 const isActive = state.isVisible;
+                console.log('🗺️ Rendering layer toggle:', layer.id, layer.name, 'state:', state);
 
                 return (
                   <button
