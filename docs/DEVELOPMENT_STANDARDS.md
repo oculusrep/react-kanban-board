@@ -335,6 +335,7 @@ When discussing these fields, call them:
 - [ ] **Am I adding a currency/percentage/number field? Use `FormattedField`!**
 - [ ] **Am I showing a message to the user? Use Toast, not `alert()`!**
 - [ ] **Am I asking for confirmation? Use ConfirmDialog, not `confirm()`!**
+- [ ] **Am I adding a dropdown/select? Use `CustomSelect`, not native `<select>`!**
 
 ### Before Committing
 
@@ -355,6 +356,7 @@ When discussing these fields, call them:
 ❌ **Using `<input type="number">` instead of `FormattedField`**
 ❌ **Creating new currency/percentage field components instead of using `FormattedField`**
 ❌ **Using `alert()`, `confirm()`, or `prompt()` instead of Toast/ConfirmDialog**
+❌ **Using native `<select>` elements instead of `CustomSelect` component**
 
 ---
 
@@ -1229,6 +1231,140 @@ END IF;
 ❌ Unquoted Salesforce table names
 ❌ Unquoted Salesforce column names with `__c` suffix
 ❌ Queries that work in development but fail in production due to case sensitivity
+
+---
+
+## 🎨 CRITICAL RULE #11: Dropdown/Select Component Standard
+
+### The Rule
+
+**ALWAYS use the `CustomSelect` component for dropdown selections. NEVER use native HTML `<select>` elements.**
+
+### Why This Matters
+
+**Native select dropdowns have poor UX:**
+- Inconsistent styling across browsers
+- Limited customization options
+- No visual feedback beyond basic hover
+- Can't add icons or rich content
+- Don't match modern app aesthetics
+- Different appearance on mobile vs desktop
+
+**CustomSelect component provides better UX:**
+- ✅ Consistent appearance across all browsers and devices
+- ✅ Smooth animations (chevron rotation, hover effects)
+- ✅ Visual checkmarks for selected items
+- ✅ "Clear selection" option for optional fields
+- ✅ Professional, modern design matching app style
+- ✅ Better keyboard navigation
+- ✅ Touch-friendly on mobile devices
+- ✅ Styled with Tailwind for consistency
+
+### How to Use
+
+**Import the component:**
+```typescript
+import CustomSelect from './shared/CustomSelect';
+```
+
+**Basic usage:**
+```typescript
+<CustomSelect
+  label="Deal Type"
+  value={dealTypeId}
+  onChange={(value) => setDealTypeId(value)}
+  options={dealTypeOptions}
+  placeholder="-- Select Deal Type --"
+/>
+```
+
+**Without clear option (for required fields):**
+```typescript
+<CustomSelect
+  label="Stage"
+  value={stageId}
+  onChange={(value) => setStageId(value || "")}
+  options={stageOptions}
+  placeholder="-- Select Stage --"
+  allowClear={false}  // Prevents clearing for required fields
+/>
+```
+
+### Component Props
+
+```typescript
+interface CustomSelectProps {
+  label: string;              // Field label
+  value: string | null;       // Selected option ID
+  onChange: (value: string | null) => void;  // Change handler
+  options: Array<{            // Array of options
+    id: string;
+    label: string;
+  }>;
+  placeholder?: string;       // Placeholder text (default: "Select...")
+  allowClear?: boolean;       // Show clear option (default: true)
+}
+```
+
+### Component Location
+
+**File:** `src/components/shared/CustomSelect.tsx`
+
+### Features
+
+1. **Animated chevron** - Rotates when dropdown opens
+2. **Visual feedback** - Checkmark for selected item, hover states
+3. **Clear selection** - Optional "Clear selection" option at top of list
+4. **Click outside to close** - Dropdown closes when clicking anywhere else
+5. **Keyboard accessible** - Can be navigated with keyboard
+6. **Consistent styling** - Uses Tailwind classes matching app design
+
+### Migration from Native Select
+
+**Before (native select):**
+```typescript
+<div>
+  <label className="block text-sm font-medium text-gray-700">
+    Deal Type
+  </label>
+  <select
+    value={dealTypeId ?? ""}
+    onChange={(e) => setDealTypeId(e.target.value)}
+    className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+  >
+    <option value="">-- Select --</option>
+    {options.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+  </select>
+</div>
+```
+
+**After (CustomSelect):**
+```typescript
+<CustomSelect
+  label="Deal Type"
+  value={dealTypeId}
+  onChange={(value) => setDealTypeId(value)}
+  options={options}
+  placeholder="-- Select Deal Type --"
+/>
+```
+
+### Examples in Codebase
+
+**Good examples:**
+- ✅ DealDetailsForm.tsx - Deal Type, Deal Team, Stage selectors
+- ✅ All use CustomSelect for consistent UX
+
+**Components that should migrate:**
+- Any component still using `<select>` elements
+- Any component with `<option>` tags
+
+### Red Flags 🚩
+
+❌ Using `<select>` and `<option>` HTML elements
+❌ Creating custom dropdown components instead of using CustomSelect
+❌ Inconsistent dropdown styling across the app
+❌ Dropdowns that look different on different pages
 
 ---
 
