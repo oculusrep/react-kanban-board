@@ -948,13 +948,17 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
     // Prepare chart data - sort by year ascending for the chart
     const chartData = restaurant.trends
-      ?.filter(t => t.curr_annual_sls_k !== null)
+      ?.filter(t => t.curr_annual_sls_k !== null && t.curr_annual_sls_k !== undefined)
       .sort((a, b) => a.year - b.year)
       .map(trend => ({
         year: trend.year.toString(),
         sales: trend.curr_annual_sls_k! * 1000, // Convert to actual dollars
         salesK: trend.curr_annual_sls_k!, // Keep K for display
       })) || [];
+
+    // Check if all sales values are the same (no variation)
+    const hasVariation = chartData.length > 1 &&
+      new Set(chartData.map(d => d.sales)).size > 1;
 
     // Format ZIP code without decimal
     const formatZip = (zip: string | null) => {
@@ -1008,7 +1012,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           )}
 
           {/* Sales Trend Chart */}
-          {chartData.length > 0 && (
+          {chartData.length > 1 && hasVariation && (
             <div className="mb-6">
               <h3 className="text-sm font-semibold text-white mb-3 flex items-center">
                 <span className="bg-gradient-to-r from-red-500 to-orange-500 px-3 py-1 rounded-full">
