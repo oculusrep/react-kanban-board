@@ -782,47 +782,48 @@ const DealSidebar: React.FC<DealSidebarProps> = ({
     fetchNotes();
   }, [dealId]);
 
-  // Fetch associated contacts
-  useEffect(() => {
+  // Define fetchContacts function outside useEffect so it can be called from onRoleChange
+  const fetchContacts = async () => {
     if (!dealId) return;
 
-    const fetchContacts = async () => {
-      setLoading(true);
-      setError(null);
+    setLoading(true);
+    setError(null);
 
-      try {
-        // Fetch property_id and deal_name from deal
-        const { data: dealData } = await supabase
-          .from('deal')
-          .select('property_id, deal_name')
-          .eq('id', dealId)
-          .single();
+    try {
+      // Fetch property_id and deal_name from deal
+      const { data: dealData } = await supabase
+        .from('deal')
+        .select('property_id, deal_name')
+        .eq('id', dealId)
+        .single();
 
-        if (dealData?.property_id) {
-          setPropertyId(dealData.property_id);
-        }
-        if (dealData?.deal_name) {
-          setDealName(dealData.deal_name);
-        }
-
-        const { data, error } = await supabase
-          .from('deal_contact')
-          .select('contact:contact_id(*)')
-          .eq('deal_id', dealId);
-
-        if (error) throw error;
-
-        if (data) {
-          setContacts(data.map((dc: any) => dc.contact).filter(Boolean));
-        }
-      } catch (err) {
-        console.error('Error loading deal contacts:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load contacts');
-      } finally {
-        setLoading(false);
+      if (dealData?.property_id) {
+        setPropertyId(dealData.property_id);
       }
-    };
+      if (dealData?.deal_name) {
+        setDealName(dealData.deal_name);
+      }
 
+      const { data, error } = await supabase
+        .from('deal_contact')
+        .select('contact:contact_id(*)')
+        .eq('deal_id', dealId);
+
+      if (error) throw error;
+
+      if (data) {
+        setContacts(data.map((dc: any) => dc.contact).filter(Boolean));
+      }
+    } catch (err) {
+      console.error('Error loading deal contacts:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load contacts');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch associated contacts on mount
+  useEffect(() => {
     fetchContacts();
   }, [dealId]);
 
