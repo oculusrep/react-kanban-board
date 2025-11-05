@@ -4,12 +4,14 @@
 
 ### Process Single File with Database Load
 ```bash
-export DATABASE_URL='postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres' && python3 etl/etl_restaurant_trends.py --in "Screen Shots/YE24 Oculus SG.xlsx" --out data/processed --load postgres
+# DATABASE_URL is auto-loaded from .env file
+python3 etl/etl_restaurant_trends.py --in "Screen Shots/YE24 Oculus SG.xlsx" --out data/processed --load postgres
 ```
 
 ### Process All Files
 ```bash
-export DATABASE_URL='postgresql://...' && for file in "Screen Shots"/YE*.xlsx; do python3 etl/etl_restaurant_trends.py --in "$file" --out data/processed --load postgres; done
+# DATABASE_URL is auto-loaded from .env file
+for file in "Screen Shots"/YE*.xlsx; do python3 etl/etl_restaurant_trends.py --in "$file" --out data/processed --load postgres; done
 ```
 
 ### CSV Only (No Database)
@@ -56,12 +58,15 @@ PGPASSWORD='PASSWORD' psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U pos
 ## Environment Variables
 
 ```bash
-# Required for database operations
-export DATABASE_URL='postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres'
+# DATABASE_URL is automatically loaded from .env file (recommended)
+# Your .env file should contain:
+DATABASE_URL='postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres'
 
-# Optional: Add to .env file for persistence
-echo "DATABASE_URL='postgresql://...'" >> .env
+# Alternatively, export manually if not using .env:
+export DATABASE_URL='postgresql://...'
 ```
+
+> **Note:** The ETL script automatically loads environment variables from `.env` file using python-dotenv.
 
 ## Database Tables
 

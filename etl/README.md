@@ -120,23 +120,22 @@ Unique constraint on `(store_no, year)` allows idempotent re-runs.
 ### Process a Single Year
 
 ```bash
-# Set database connection (add to .env for persistence)
-export DATABASE_URL='postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres'
-
-# Process and load to database
+# DATABASE_URL is automatically loaded from .env file
+# Just run the command:
 python3 etl/etl_restaurant_trends.py \
   --in "Screen Shots/YE24 Oculus SG.xlsx" \
   --out data/processed \
   --load postgres
 ```
 
+> **Note:** DATABASE_URL is automatically loaded from your `.env` file. No need to export it manually!
+
 ### Process Multiple Years
 
 To process all 9 years (YE15-YE24):
 
 ```bash
-export DATABASE_URL='postgresql://...'
-
+# DATABASE_URL is automatically loaded from .env file
 for file in "Screen Shots"/YE*.xlsx; do
   echo "Processing $file..."
   python3 etl/etl_restaurant_trends.py \
@@ -197,10 +196,9 @@ If you encounter this error during database load, it's likely due to pandas NaN 
 - Avoid the Dedicated Pooler which requires IPv4 add-on or IPv6 support
 - Format: `postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres`
 
-**Connection String:** Make sure DATABASE_URL is set in your environment:
+**Connection String:** DATABASE_URL is automatically loaded from your `.env` file (recommended). If not using `.env`, you can export it manually:
 ```bash
 export DATABASE_URL='postgresql://...'
-# Or add to .env file for persistence
 ```
 
 ### Type Mismatch Errors

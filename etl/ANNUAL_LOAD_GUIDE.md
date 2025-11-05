@@ -53,6 +53,8 @@ python3 etl/etl_restaurant_trends.py --in "Screen Shots/YE24 Oculus SG.xlsx" --o
 
 > **Important:** Replace `YE24 Oculus SG.xlsx` with your actual filename if it's different!
 
+> **Note:** The database connection (DATABASE_URL) is automatically loaded from your `.env` file, so you don't need to export it manually.
+
 ---
 
 ## Step 4: Watch for Success
