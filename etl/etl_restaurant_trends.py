@@ -77,13 +77,15 @@ def split_location_and_trend_data(df: pd.DataFrame, year: int) -> tuple:
     """
     logger = logging.getLogger(__name__)
 
-    # Extract location columns
+    # Extract location columns (only those that exist in the dataframe)
     location_cols = mapping.get_location_columns()
-    location_df = df[location_cols].copy()
+    location_cols_present = [col for col in location_cols if col in df.columns]
+    location_df = df[location_cols_present].copy()
 
-    # Extract trend columns
+    # Extract trend columns (only those that exist in the dataframe)
     trend_cols = mapping.get_trend_columns()
-    trend_df = df[trend_cols].copy()
+    trend_cols_present = [col for col in trend_cols if col in df.columns]
+    trend_df = df[trend_cols_present].copy()
 
     # Add year to trend data
     trend_df['YEAR'] = year
