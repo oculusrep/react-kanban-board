@@ -179,13 +179,14 @@ def export_to_csv(location_df: pd.DataFrame, trend_df: pd.DataFrame,
 
 
 def load_to_database(location_df: pd.DataFrame, trend_df: pd.DataFrame,
-                     connection_string: str = None):
+                     year: int, connection_string: str = None):
     """
     Loads data to PostgreSQL database.
 
     Args:
         location_df (pd.DataFrame): Location data
         trend_df (pd.DataFrame): Trend data
+        year (int): Year of the data being loaded (for determining if location should update)
         connection_string (str, optional): Database connection string
     """
     logger = logging.getLogger(__name__)
@@ -201,7 +202,8 @@ def load_to_database(location_df: pd.DataFrame, trend_df: pd.DataFrame,
     try:
         with PostgresLoader(connection_string) as loader:
             # Load locations first (referenced by trends)
-            loc_inserted, loc_updated = loader.upsert_locations(location_df)
+            # Only update location data if this year is newer than existing data
+            loc_inserted, loc_updated = loader.upsert_locations(location_df, year)
             logger.info(f"Locations upserted: {loc_inserted + loc_updated} total")
 
             # Verify foreign keys before loading trends
@@ -302,7 +304,7 @@ def main():
 
         # Step 7: Load to database (if requested)
         if args.load_mode == 'postgres':
-            load_to_database(location_df, trend_df)
+            load_to_database(location_df, trend_df, year)
         else:
             logger.info("Skipping database load (mode: none)")
 

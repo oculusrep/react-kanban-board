@@ -69,15 +69,16 @@ class PostgresLoader:
             logger.error(f"Transaction rolled back due to error: {exc_val}")
         self.close()
 
-    def upsert_locations(self, df: pd.DataFrame) -> Tuple[int, int]:
+    def upsert_locations(self, df: pd.DataFrame, year: int) -> Tuple[int, int]:
         """
         Upserts restaurant location data.
 
         Uses ON CONFLICT to update existing records or insert new ones.
-        Updates all fields when newer data is loaded.
+        Only updates location data if the incoming year is more recent than existing data.
 
         Args:
             df (pd.DataFrame): Location data with database column names
+            year (int): Year of the data being loaded
 
         Returns:
             tuple: (inserted_count, updated_count)
@@ -89,6 +90,10 @@ class PostgresLoader:
         # Ensure store_no exists
         if 'store_no' not in df.columns:
             raise ValueError("DataFrame must contain 'store_no' column")
+
+        # Add source_year column to track which year this location data came from
+        df = df.copy()
+        df['source_year'] = year
 
         # Replace NaN with None for proper NULL handling in PostgreSQL
         df = df.where(pd.notna(df), None)
@@ -108,16 +113,21 @@ class PostgresLoader:
         # Build placeholders for VALUES
         placeholders = ', '.join(['%s'] * len(columns))
 
-        # Build UPDATE clause (update all columns except store_no)
-        update_cols = [col for col in columns if col != 'store_no' and col != 'created_at']
+        # Build UPDATE clause (update all columns except store_no, created_at, and verified fields)
+        # Verified fields are set manually by users and should never be overwritten by ETL
+        excluded_from_update = ['store_no', 'created_at', 'verified_latitude', 'verified_longitude', 'verified_source', 'verified_at']
+        update_cols = [col for col in columns if col not in excluded_from_update]
         update_clause = ', '.join([f"{col} = EXCLUDED.{col}" for col in update_cols])
 
         # SQL with ON CONFLICT
+        # Only update if the incoming source_year is >= existing source_year (or if source_year is NULL)
         sql = f"""
             INSERT INTO restaurant_location ({col_list})
             VALUES %s
             ON CONFLICT (store_no) DO UPDATE SET
                 {update_clause}
+            WHERE restaurant_location.source_year IS NULL
+               OR EXCLUDED.source_year >= restaurant_location.source_year
         """
 
         try:
