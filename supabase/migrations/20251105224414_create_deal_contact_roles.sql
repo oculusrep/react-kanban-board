@@ -55,7 +55,8 @@ INSERT INTO contact_deal_role_type (role_name, description, sort_order) VALUES
   ('Seller', 'Selling party in the transaction', 11),
   ('Buyer', 'Buying party in the transaction', 12),
   ('Critical Dates Reminders', 'Receives critical date reminder emails', 13),
-  ('Architect', 'Architectural design and planning', 14)
+  ('Architect', 'Architectural design and planning', 14),
+  ('Master Broker', 'Primary broker on the deal', 15)
 ON CONFLICT (role_name) DO NOTHING;
 
 -- =====================================================

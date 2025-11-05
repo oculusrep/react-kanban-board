@@ -347,6 +347,7 @@ export const CONTACT_DEAL_ROLE_NAMES = {
   BUYER: 'Buyer',
   CRITICAL_DATES_REMINDERS: 'Critical Dates Reminders',
   ARCHITECT: 'Architect',
+  MASTER_BROKER: 'Master Broker',
 } as const
 
 export type ContactClientRoleName = typeof CONTACT_CLIENT_ROLE_NAMES[keyof typeof CONTACT_CLIENT_ROLE_NAMES]

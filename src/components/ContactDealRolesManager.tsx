@@ -108,6 +108,8 @@ export const ContactDealRolesManager: React.FC<ContactDealRolesManagerProps> = (
         return 'bg-rose-100 text-rose-800 border-rose-300'
       case 'Architect':
         return 'bg-sky-100 text-sky-800 border-sky-300'
+      case 'Master Broker':
+        return 'bg-blue-100 text-blue-800 border-blue-300'
       default:
         return 'bg-gray-100 text-gray-800 border-gray-300'
     }
