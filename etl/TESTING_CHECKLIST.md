@@ -54,7 +54,7 @@ After running either test method:
 
 3. **Count database records:**
    ```bash
-   PGPASSWORD='esDrh3qdxgydD1Ea' psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -c "SELECT COUNT(*) FROM restaurant_trend WHERE year = 2024;"
+   PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -c "SELECT COUNT(*) FROM restaurant_trend WHERE year = 2024;"
    ```
    Expected: Should show the number of records loaded (e.g., 8752)
 
@@ -88,7 +88,7 @@ After batch processing:
 
 1. **Check all years loaded:**
    ```bash
-   PGPASSWORD='esDrh3qdxgydD1Ea' psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -c "SELECT year, COUNT(*) as records FROM restaurant_trend GROUP BY year ORDER BY year;"
+   PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -c "SELECT year, COUNT(*) as records FROM restaurant_trend GROUP BY year ORDER BY year;"
    ```
 
 2. **Expected results:**
@@ -115,13 +115,13 @@ After batch processing:
 python3 etl/etl_restaurant_trends.py --in "Screen Shots/YE24 Oculus SG.xlsx" --out data/processed --load postgres
 
 # Get record count
-COUNT1=$(PGPASSWORD='esDrh3qdxgydD1Ea' psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -t -c "SELECT COUNT(*) FROM restaurant_trend WHERE year = 2024;")
+COUNT1=$(PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -t -c "SELECT COUNT(*) FROM restaurant_trend WHERE year = 2024;")
 
 # Second load (same file)
 python3 etl/etl_restaurant_trends.py --in "Screen Shots/YE24 Oculus SG.xlsx" --out data/processed --load postgres
 
 # Get record count again
-COUNT2=$(PGPASSWORD='esDrh3qdxgydD1Ea' psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -t -c "SELECT COUNT(*) FROM restaurant_trend WHERE year = 2024;")
+COUNT2=$(PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -t -c "SELECT COUNT(*) FROM restaurant_trend WHERE year = 2024;")
 
 echo "First load: $COUNT1 records"
 echo "Second load: $COUNT2 records"
@@ -264,7 +264,7 @@ Track these metrics for each test:
 cat .env | grep DATABASE_URL
 
 # If missing, add it
-echo "DATABASE_URL='postgresql://postgres.rqbvcvwbziilnycqtmnc:esDrh3qdxgydD1Ea@aws-0-us-east-1.pooler.supabase.com:6543/postgres'" >> .env
+echo "DATABASE_URL='postgresql://postgres.rqbvcvwbziilnycqtmnc:$DB_PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres'" >> .env
 ```
 
 ### Issue: "integer out of range"

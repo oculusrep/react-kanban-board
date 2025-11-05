@@ -79,7 +79,7 @@ The process takes about 10-15 seconds. You should see output like this:
 Run this command to check the database:
 
 ```bash
-PGPASSWORD='esDrh3qdxgydD1Ea' psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -c "SELECT COUNT(*), year FROM restaurant_trend GROUP BY year ORDER BY year;"
+PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -c "SELECT COUNT(*), year FROM restaurant_trend GROUP BY year ORDER BY year;"
 ```
 
 You should see your new year in the list:
@@ -98,7 +98,7 @@ You should see your new year in the list:
 This adds more accurate GPS coordinates from Salesforce:
 
 ```bash
-PGPASSWORD='esDrh3qdxgydD1Ea' psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -f supabase/migrations/20251105_import_salesforce_verified_coords.sql
+PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -f supabase/migrations/20251105_import_salesforce_verified_coords.sql
 ```
 
 You should see something like:
@@ -183,12 +183,12 @@ python3 etl/etl_restaurant_trends.py --in "Screen Shots/YE25 Oculus SG.xlsx" --o
 
 ### Check What Years Are Loaded
 ```bash
-PGPASSWORD='esDrh3qdxgydD1Ea' psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -c "SELECT year, COUNT(*) FROM restaurant_trend GROUP BY year ORDER BY year;"
+PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -c "SELECT year, COUNT(*) FROM restaurant_trend GROUP BY year ORDER BY year;"
 ```
 
 ### Import Verified Coordinates
 ```bash
-PGPASSWORD='esDrh3qdxgydD1Ea' psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -f supabase/migrations/20251105_import_salesforce_verified_coords.sql
+PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -f supabase/migrations/20251105_import_salesforce_verified_coords.sql
 ```
 
 ---

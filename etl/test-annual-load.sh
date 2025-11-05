@@ -91,7 +91,7 @@ echo ""
 
 # Step 6: Check if tables exist
 echo -e "${YELLOW}Step 6: Verifying database tables exist...${NC}"
-TABLES_EXIST=$(PGPASSWORD='esDrh3qdxgydD1Ea' psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_name IN ('restaurant_location', 'restaurant_trend');" 2>&1)
+TABLES_EXIST=$(PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_name IN ('restaurant_location', 'restaurant_trend');" 2>&1)
 
 if [[ ! "$TABLES_EXIST" =~ "2" ]]; then
     echo -e "${RED}❌ Error: Database tables not found${NC}"
@@ -103,7 +103,7 @@ echo ""
 
 # Step 7: Check if year already exists in database
 echo -e "${YELLOW}Step 7: Checking if year $FULL_YEAR already exists...${NC}"
-YEAR_EXISTS=$(PGPASSWORD='esDrh3qdxgydD1Ea' psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -t -c "SELECT COUNT(*) FROM restaurant_trend WHERE year = $FULL_YEAR;" 2>&1)
+YEAR_EXISTS=$(PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -t -c "SELECT COUNT(*) FROM restaurant_trend WHERE year = $FULL_YEAR;" 2>&1)
 
 if [[ "$YEAR_EXISTS" =~ [1-9] ]]; then
     echo -e "${YELLOW}⚠️  Warning: Year $FULL_YEAR already has data (will be updated/merged)${NC}"
@@ -139,7 +139,7 @@ echo ""
 
 # Step 9: Verify data was loaded
 echo -e "${YELLOW}Step 9: Verifying data was loaded...${NC}"
-RECORD_COUNT=$(PGPASSWORD='esDrh3qdxgydD1Ea' psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -t -c "SELECT COUNT(*) FROM restaurant_trend WHERE year = $FULL_YEAR;" 2>&1)
+RECORD_COUNT=$(PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -t -c "SELECT COUNT(*) FROM restaurant_trend WHERE year = $FULL_YEAR;" 2>&1)
 
 if [[ "$RECORD_COUNT" =~ ^[0-9]+$ ]] && [ "$RECORD_COUNT" -gt 0 ]; then
     echo -e "${GREEN}✅ Data loaded successfully: $RECORD_COUNT records for year $FULL_YEAR${NC}"
@@ -151,7 +151,7 @@ echo ""
 
 # Step 10: Show summary
 echo -e "${YELLOW}Step 10: Summary of all years in database...${NC}"
-PGPASSWORD='esDrh3qdxgydD1Ea' psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -c "
+PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -c "
 SELECT
     year,
     COUNT(*) as records,
@@ -168,7 +168,7 @@ echo "This adds more accurate GPS coordinates for ~184 locations."
 read -p "Import verified coordinates? (y/n) " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    PGPASSWORD='esDrh3qdxgydD1Ea' psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -f supabase/migrations/20251105_import_salesforce_verified_coords.sql
+    PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -f supabase/migrations/20251105_import_salesforce_verified_coords.sql
     echo -e "${GREEN}✅ Verified coordinates imported${NC}"
 else
     echo "Skipped verified coordinates import"
