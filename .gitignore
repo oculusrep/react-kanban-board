@@ -6,6 +6,17 @@ node_modules/
 dist/
 build/
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+
 # Environment variables (NEVER commit these)
 .env
 .env.local
@@ -44,6 +55,13 @@ backups/
 
 # Archive folder (old troubleshooting files)
 supabase/archive/
+
+# Restaurant Trends ETL
+data/incoming/          # Excel source files
+data/processed/         # Generated CSV files
+etl/config.yaml         # ETL configuration (may contain credentials)
+*.xlsx                  # Excel files (large, contain data)
+*.csv                   # CSV files (generated outputs)
 
 # Test/debug scripts that may contain hardcoded credentials
 check-*.js

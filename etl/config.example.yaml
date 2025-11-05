@@ -1,0 +1,31 @@
+# Restaurant Trends ETL Configuration (Example)
+# Copy this file to config.yaml and update with your credentials
+# Note: config.yaml is gitignored to prevent committing credentials
+
+# Database Connection
+# Prefer using DATABASE_URL environment variable instead
+database:
+  host: db.example.supabase.co
+  port: 5432
+  database: postgres
+  user: postgres
+  password: your_password_here
+
+# ETL Settings
+etl:
+  # Validation mode: 'lenient' (log warnings, continue) or 'strict' (fail on errors)
+  validation_mode: lenient
+
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  log_level: INFO
+
+  # CSV export settings
+  csv:
+    export_enabled: true
+    date_format: '%Y-%m-%d'
+    encoding: utf-8
+
+# File Paths (relative to project root)
+paths:
+  incoming: data/incoming
+  processed: data/processed
