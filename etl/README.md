@@ -214,13 +214,31 @@ Full implementation details: [docs/IMPLEMENTATION_PLAN_RESTAURANT_TRENDS_ETL.md]
 
 ## Deployment Results
 
-**Initial Load (YE24):**
-- 8,752 locations loaded
-- 8,752 trend records for year 2024
-- 184 locations enriched with verified Salesforce coordinates
-- Processing time: ~10 seconds
+**Full Data Load (2019-2024):**
+- 10,259 unique locations across all years
+- 41,284 trend records spanning 6 years (2019-2024)
+- 216 locations with verified Salesforce coordinates
+- Processing time: ~60 seconds total for all years
+
+**Year Distribution:**
+- 2019: 4,971 trends, 244 unique locations
+- 2020: 4,830 trends, 99 unique locations
+- 2021: 4,909 trends, 113 unique locations
+- 2022: 8,643 trends, 295 unique locations
+- 2023: 8,694 trends, 271 unique locations
+- 2024: 9,237 trends, 9,237 unique locations
+
+**Data Quality:**
+- Zero duplicates (cleaned 4,727 legacy duplicates)
+- All store numbers standardized (removed `.0` suffix from 2019 data)
+- All verified coordinates protected from ETL overwrites
+- Full referential integrity maintained
 
 **Verified Coordinates Import:**
 - 234 Salesforce records with valid coordinates
-- 184 restaurant locations updated successfully
+- 216 restaurant locations updated successfully
 - Run after initial data load using the import migration SQL
+
+## Data Cleanup History
+
+Significant data cleanup operations are documented in [DATA_CLEANUP_LOG.md](DATA_CLEANUP_LOG.md).
