@@ -271,7 +271,7 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
         // Fallback to regular query if materialized view doesn't exist yet
         const { data: trends, error: trendsError } = await supabase
           .from('restaurant_trend')
-          .select('trend_id, store_no, year, curr_natl_grade, curr_annual_sls_k')
+          .select('trend_id, store_no, year, curr_natl_grade, curr_mkt_grade, curr_annual_sls_k')
           .in('store_no', storeNos)
           .order('year', { ascending: false });
 

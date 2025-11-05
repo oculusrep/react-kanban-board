@@ -17,6 +17,7 @@ SELECT DISTINCT ON (store_no)
   store_no,
   year,
   curr_natl_grade,
+  curr_mkt_grade,
   curr_annual_sls_k
 FROM restaurant_trend
 ORDER BY store_no, year DESC;

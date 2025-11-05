@@ -945,9 +945,43 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   // Early return for restaurant type
   if (type === 'restaurant') {
     const restaurant = data as Restaurant;
+    const [fullTrends, setFullTrends] = useState<any[]>(restaurant.trends || []);
+    const [loadingTrends, setLoadingTrends] = useState(false);
+
+    // Lazy load full trend history if only latest trend is present
+    useEffect(() => {
+      const loadFullTrends = async () => {
+        // If we already have multiple years or no trends, skip
+        if (!restaurant.trends || restaurant.trends.length !== 1) {
+          return;
+        }
+
+        setLoadingTrends(true);
+        try {
+          const { data: allTrends, error } = await supabase
+            .from('restaurant_trend')
+            .select('trend_id, store_no, year, curr_natl_grade, curr_mkt_grade, curr_annual_sls_k')
+            .eq('store_no', restaurant.store_no)
+            .order('year', { ascending: false });
+
+          if (error) {
+            console.error('Error loading full trends:', error);
+          } else if (allTrends && allTrends.length > 1) {
+            console.log(`✅ Loaded ${allTrends.length} trend records for ${restaurant.store_no}`);
+            setFullTrends(allTrends);
+          }
+        } catch (err) {
+          console.error('Failed to load full trends:', err);
+        } finally {
+          setLoadingTrends(false);
+        }
+      };
+
+      loadFullTrends();
+    }, [restaurant.store_no, restaurant.trends]);
 
     // Prepare chart data - sort by year ascending for the chart
-    const chartData = restaurant.trends
+    const chartData = fullTrends
       ?.filter(t => t.curr_annual_sls_k !== null && t.curr_annual_sls_k !== undefined)
       .sort((a, b) => a.year - b.year)
       .map(trend => ({
@@ -1176,20 +1210,24 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           )}
 
           {/* Sales Data Table */}
-          {restaurant.trends && restaurant.trends.length > 0 && (
+          {fullTrends && fullTrends.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">Sales History</h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                Sales History
+                {loadingTrends && <span className="text-xs text-gray-500">(Loading...)</span>}
+              </h3>
               <div className="border border-gray-200 rounded-lg overflow-hidden">
                 <table className="w-full text-xs">
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-3 py-2 text-left font-semibold text-gray-700">Year</th>
                       <th className="px-3 py-2 text-center font-semibold text-gray-700">Sales</th>
-                      <th className="px-3 py-2 text-center font-semibold text-gray-700">Grade</th>
+                      <th className="px-3 py-2 text-center font-semibold text-gray-700">Nat'l Grade</th>
+                      <th className="px-3 py-2 text-center font-semibold text-gray-700">Mkt Grade</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {restaurant.trends
+                    {fullTrends
                       .sort((a, b) => b.year - a.year) // Show most recent first in table
                       .map((trend) => (
                         <tr key={trend.trend_id} className="hover:bg-gray-50">
@@ -1201,6 +1239,9 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                           </td>
                           <td className="px-3 py-2 text-center text-gray-700">
                             {trend.curr_natl_grade || '-'}
+                          </td>
+                          <td className="px-3 py-2 text-center text-gray-700">
+                            {trend.curr_mkt_grade || '-'}
                           </td>
                         </tr>
                       ))}
