@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabaseClient";
 import { formatCurrency, formatPercent, formatIntegerPercent } from "../utils/format";
 import FormattedInput from "./FormattedInput";
 import FormattedField from "./shared/FormattedField";
+import CustomSelect from "./shared/CustomSelect";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { parseISO, format as formatDateFn } from "date-fns";
@@ -385,6 +386,7 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
       property_id: form.property_id,
       property_unit_id: form.property_unit_id,
       site_submit_id: form.site_submit_id,
+      deal_type_id: form.deal_type_id,
       deal_value: form.deal_value,
       commission_percent: form.commission_percent,
       flat_fee_override: form.flat_fee_override,
@@ -518,6 +520,7 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
       property_id: updatedForm.property_id,
       property_unit_id: updatedForm.property_unit_id,
       site_submit_id: updatedForm.site_submit_id,
+      deal_type_id: updatedForm.deal_type_id,
       deal_value: updatedForm.deal_value,
       commission_percent: updatedForm.commission_percent,
       flat_fee_override: updatedForm.flat_fee_override,
@@ -609,6 +612,7 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
       property_id: updatedForm.property_id,
       property_unit_id: updatedForm.property_unit_id,
       site_submit_id: updatedForm.site_submit_id,
+      deal_type_id: updatedForm.deal_type_id,
       deal_value: updatedForm.deal_value,
       commission_percent: updatedForm.commission_percent,
       flat_fee_override: updatedForm.flat_fee_override,
@@ -700,6 +704,7 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
       property_id: updatedForm.property_id,
       property_unit_id: updatedForm.property_unit_id,
       site_submit_id: updatedForm.site_submit_id,
+      deal_type_id: updatedForm.deal_type_id,
       deal_value: updatedForm.deal_value,
       commission_percent: updatedForm.commission_percent,
       flat_fee_override: updatedForm.flat_fee_override,
@@ -851,19 +856,21 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
             label="Site Submit"
             onViewDetails={onViewSiteSubmitDetails}
           />
-          <Select
+          <CustomSelect
             label="Deal Team"
             value={form.deal_team_id}
             onChange={(v) => updateField("deal_team_id", v)}
             options={teamOptions}
+            placeholder="-- Select Deal Team --"
           />
 
           {/* Row 4: Deal Type (left) + empty (right) */}
-          <Select
+          <CustomSelect
             label="Deal Type"
             value={form.deal_type_id}
             onChange={(v) => updateField("deal_type_id", v)}
             options={dealTypeOptions}
+            placeholder="-- Select Deal Type --"
           />
           <div></div>
 
@@ -914,11 +921,13 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
       {/* SECTION: Stage & Probability */}
       <Section title="Stage & Probability" help="Choosing a stage will set a default probability. You can override it.">
         <div className="grid grid-cols-2 gap-4">
-          <Select
+          <CustomSelect
             label="Stage"
             value={form.stage_id}
-            onChange={(v) => updateField("stage_id", v)}
+            onChange={(v) => updateField("stage_id", v || "")}
             options={stageOptions}
+            placeholder="-- Select Stage --"
+            allowClear={false}
           />
 
           <div
