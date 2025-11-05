@@ -372,9 +372,8 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
           markerIcon = ModernMarkerStyles.restaurant.verifying();
         } else if (!hasSalesData) {
           markerIcon = ModernMarkerStyles.restaurant.noData(); // Dark gray for no sales data
-        } else if (coords.verified) {
-          markerIcon = ModernMarkerStyles.restaurant.verified();
         } else {
+          // Keep verified and unverified pins the same color (red)
           markerIcon = ModernMarkerStyles.restaurant.default();
         }
 

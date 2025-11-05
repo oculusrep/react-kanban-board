@@ -942,61 +942,81 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
   // Restaurant-specific state (must be at top level to satisfy Rules of Hooks)
   const restaurant = type === 'restaurant' ? (data as Restaurant) : null;
-  const [fullTrends, setFullTrends] = useState<any[]>(restaurant?.trends || []);
+  const [fullTrends, setFullTrends] = useState<any[]>([]);
   const [loadingTrends, setLoadingTrends] = useState(false);
 
-  // Lazy load full trend history for restaurants if only latest trend is present
+  // Initialize and lazy load full trend history for restaurants
   useEffect(() => {
     if (type !== 'restaurant' || !restaurant) return;
 
-    const loadFullTrends = async () => {
-      // If we already have multiple years or no trends, skip
-      if (!restaurant.trends || restaurant.trends.length !== 1) {
-        return;
-      }
+    // Initialize with existing trends
+    if (restaurant.trends && restaurant.trends.length > 0) {
+      setFullTrends(restaurant.trends);
+    }
 
-      setLoadingTrends(true);
-      try {
-        const { data: allTrends, error } = await supabase
-          .from('restaurant_trend')
-          .select('trend_id, store_no, year, curr_natl_grade, curr_mkt_grade, curr_annual_sls_k')
-          .eq('store_no', restaurant.store_no)
-          .order('year', { ascending: false });
+    // If we only have one trend, fetch the full history
+    if (restaurant.trends && restaurant.trends.length === 1) {
+      const loadFullTrends = async () => {
+        setLoadingTrends(true);
+        try {
+          const { data: allTrends, error } = await supabase
+            .from('restaurant_trend')
+            .select('trend_id, store_no, year, curr_natl_grade, curr_mkt_grade, curr_annual_sls_k')
+            .eq('store_no', restaurant.store_no)
+            .order('year', { ascending: false });
 
-        if (error) {
-          console.error('Error loading full trends:', error);
-        } else if (allTrends && allTrends.length > 1) {
-          console.log(`✅ Loaded ${allTrends.length} trend records for ${restaurant.store_no}`);
-          setFullTrends(allTrends);
+          if (error) {
+            console.error('Error loading full trends:', error);
+          } else if (allTrends && allTrends.length > 1) {
+            console.log(`✅ Loaded ${allTrends.length} trend records for ${restaurant.store_no}`);
+            // Deduplicate by year, keeping the most recent entry for each year
+            const uniqueTrends = Array.from(
+              new Map(allTrends.map(t => [t.year, t])).values()
+            );
+            setFullTrends(uniqueTrends);
+          }
+        } catch (err) {
+          console.error('Failed to load full trends:', err);
+        } finally {
+          setLoadingTrends(false);
         }
-      } catch (err) {
-        console.error('Failed to load full trends:', err);
-      } finally {
-        setLoadingTrends(false);
-      }
-    };
+      };
 
-    loadFullTrends();
-  }, [type, restaurant?.store_no, restaurant?.trends]);
+      loadFullTrends();
+    }
+  }, [type, restaurant?.store_no, restaurant?.trends?.length]);
 
   if (!data || !type) return null;
 
   // Early return for restaurant type
   if (type === 'restaurant' && restaurant) {
 
-    // Prepare chart data - sort by year ascending for the chart
-    const chartData = fullTrends
+    // Prepare chart data - deduplicate by year, sort by year ascending for the chart
+    const trendsMap = new Map();
+    fullTrends
       ?.filter(t => t.curr_annual_sls_k !== null && t.curr_annual_sls_k !== undefined)
+      .forEach(trend => {
+        // Keep only one entry per year (the first one we encounter, which is the most recent due to ordering)
+        if (!trendsMap.has(trend.year)) {
+          trendsMap.set(trend.year, trend);
+        }
+      });
+
+    const chartData = Array.from(trendsMap.values())
       .sort((a, b) => a.year - b.year)
       .map(trend => ({
         year: trend.year.toString(),
         sales: trend.curr_annual_sls_k! * 1000, // Convert to actual dollars
         salesK: trend.curr_annual_sls_k!, // Keep K for display
-      })) || [];
+      }));
+
+    console.log('📊 Chart data for restaurant:', restaurant.store_no, chartData);
 
     // Check if all sales values are the same (no variation)
     const hasVariation = chartData.length > 1 &&
       new Set(chartData.map(d => d.sales)).size > 1;
+
+    console.log('📊 Has variation:', hasVariation, 'unique values:', new Set(chartData.map(d => d.sales)).size);
 
     // Format ZIP code without decimal
     const formatZip = (zip: string | null) => {

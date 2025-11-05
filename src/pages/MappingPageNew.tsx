@@ -1189,7 +1189,7 @@ const MappingPageContent: React.FC = () => {
     try {
       // Update the restaurant with verified coordinates
       const { error } = await supabase
-        .from('restaurant_locations')
+        .from('restaurant_location')
         .update({
           verified_latitude: lat,
           verified_longitude: lng,
