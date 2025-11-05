@@ -940,45 +940,49 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
   // Property record types are now loaded via usePropertyRecordTypes hook
 
+  // Restaurant-specific state (must be at top level to satisfy Rules of Hooks)
+  const restaurant = type === 'restaurant' ? (data as Restaurant) : null;
+  const [fullTrends, setFullTrends] = useState<any[]>(restaurant?.trends || []);
+  const [loadingTrends, setLoadingTrends] = useState(false);
+
+  // Lazy load full trend history for restaurants if only latest trend is present
+  useEffect(() => {
+    if (type !== 'restaurant' || !restaurant) return;
+
+    const loadFullTrends = async () => {
+      // If we already have multiple years or no trends, skip
+      if (!restaurant.trends || restaurant.trends.length !== 1) {
+        return;
+      }
+
+      setLoadingTrends(true);
+      try {
+        const { data: allTrends, error } = await supabase
+          .from('restaurant_trend')
+          .select('trend_id, store_no, year, curr_natl_grade, curr_mkt_grade, curr_annual_sls_k')
+          .eq('store_no', restaurant.store_no)
+          .order('year', { ascending: false });
+
+        if (error) {
+          console.error('Error loading full trends:', error);
+        } else if (allTrends && allTrends.length > 1) {
+          console.log(`✅ Loaded ${allTrends.length} trend records for ${restaurant.store_no}`);
+          setFullTrends(allTrends);
+        }
+      } catch (err) {
+        console.error('Failed to load full trends:', err);
+      } finally {
+        setLoadingTrends(false);
+      }
+    };
+
+    loadFullTrends();
+  }, [type, restaurant?.store_no, restaurant?.trends]);
+
   if (!data || !type) return null;
 
   // Early return for restaurant type
-  if (type === 'restaurant') {
-    const restaurant = data as Restaurant;
-    const [fullTrends, setFullTrends] = useState<any[]>(restaurant.trends || []);
-    const [loadingTrends, setLoadingTrends] = useState(false);
-
-    // Lazy load full trend history if only latest trend is present
-    useEffect(() => {
-      const loadFullTrends = async () => {
-        // If we already have multiple years or no trends, skip
-        if (!restaurant.trends || restaurant.trends.length !== 1) {
-          return;
-        }
-
-        setLoadingTrends(true);
-        try {
-          const { data: allTrends, error } = await supabase
-            .from('restaurant_trend')
-            .select('trend_id, store_no, year, curr_natl_grade, curr_mkt_grade, curr_annual_sls_k')
-            .eq('store_no', restaurant.store_no)
-            .order('year', { ascending: false });
-
-          if (error) {
-            console.error('Error loading full trends:', error);
-          } else if (allTrends && allTrends.length > 1) {
-            console.log(`✅ Loaded ${allTrends.length} trend records for ${restaurant.store_no}`);
-            setFullTrends(allTrends);
-          }
-        } catch (err) {
-          console.error('Failed to load full trends:', err);
-        } finally {
-          setLoadingTrends(false);
-        }
-      };
-
-      loadFullTrends();
-    }, [restaurant.store_no, restaurant.trends]);
+  if (type === 'restaurant' && restaurant) {
 
     // Prepare chart data - sort by year ascending for the chart
     const chartData = fullTrends
