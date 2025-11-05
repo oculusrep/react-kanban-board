@@ -256,35 +256,65 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
 
       console.log(`✅ Loaded ${locations.length} restaurant locations in viewport`);
 
-      // Fetch all trends for these stores
+      // Strategy: Load only latest trends first for fast initial render
+      // Full trend history will be loaded on-demand when user clicks a restaurant
       const storeNos = locations.map(loc => loc.store_no);
-      const { data: trends, error: trendsError } = await supabase
-        .from('restaurant_trend')
-        .select('trend_id, store_no, year, curr_natl_grade, curr_annual_sls_k')
-        .in('store_no', storeNos)
-        .order('year', { ascending: false });
 
-      if (trendsError) throw trendsError;
+      // Use the materialized view for latest trends (much faster)
+      const { data: latestTrends, error: latestError } = await supabase
+        .from('restaurant_latest_trends')
+        .select('*')
+        .in('store_no', storeNos);
 
-      console.log(`✅ Loaded ${trends?.length || 0} trend records`);
+      if (latestError) {
+        console.warn('⚠️ Could not load from materialized view, falling back to regular query:', latestError);
+        // Fallback to regular query if materialized view doesn't exist yet
+        const { data: trends, error: trendsError } = await supabase
+          .from('restaurant_trend')
+          .select('trend_id, store_no, year, curr_natl_grade, curr_annual_sls_k')
+          .in('store_no', storeNos)
+          .order('year', { ascending: false });
 
-      // Combine locations with their trends
-      const restaurantsWithTrends: RestaurantWithTrends[] = locations.map(loc => {
-        const locationTrends = trends?.filter(t => t.store_no === loc.store_no) || [];
-        const latestTrend = locationTrends.length > 0 ? locationTrends[0] : null;
+        if (trendsError) throw trendsError;
 
-        return {
-          ...loc,
-          trends: locationTrends,
-          latest_trend: latestTrend
-        };
-      });
+        // Group by store_no and take only the latest
+        const latestByStore = new Map();
+        trends?.forEach(trend => {
+          if (!latestByStore.has(trend.store_no)) {
+            latestByStore.set(trend.store_no, trend);
+          }
+        });
 
-      setRestaurants(restaurantsWithTrends);
+        // Combine locations with their latest trend only
+        const restaurantsWithTrends: RestaurantWithTrends[] = locations.map(loc => {
+          const latestTrend = latestByStore.get(loc.store_no) || null;
+          return {
+            ...loc,
+            trends: latestTrend ? [latestTrend] : [], // Only include latest for now
+            latest_trend: latestTrend
+          };
+        });
 
-      // Notify parent of loaded count
+        setRestaurants(restaurantsWithTrends);
+      } else {
+        console.log(`✅ Loaded ${latestTrends?.length || 0} latest trends from materialized view`);
+
+        // Combine locations with their latest trend only
+        const restaurantsWithTrends: RestaurantWithTrends[] = locations.map(loc => {
+          const latestTrend = latestTrends?.find(t => t.store_no === loc.store_no) || null;
+          return {
+            ...loc,
+            trends: latestTrend ? [latestTrend] : [], // Only include latest for fast loading
+            latest_trend: latestTrend
+          };
+        });
+
+        setRestaurants(restaurantsWithTrends);
+      }
+
+      // Notify parent of loaded count (restaurants state is already set above)
       if (onRestaurantsLoaded) {
-        onRestaurantsLoaded(restaurantsWithTrends.length);
+        onRestaurantsLoaded(locations.length);
       }
 
     } catch (err: any) {
