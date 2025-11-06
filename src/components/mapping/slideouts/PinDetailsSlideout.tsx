@@ -2496,7 +2496,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         {/* Content */}
         {!isMinimized && (
         <div
-          className="flex-1 overflow-y-auto px-4 py-3 pb-6"
+          className="flex-1 overflow-y-auto px-4 py-3 pb-96"
           style={{
             scrollBehavior: 'smooth',
             minHeight: 0, // Ensures flex-1 works properly with overflow
