@@ -1,5 +1,5 @@
 // components/DealDetailsForm.tsx
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { formatCurrency, formatPercent, formatIntegerPercent } from "../utils/format";
@@ -17,6 +17,8 @@ import LossReasonModal from "./LossReasonModal";
 import ClosedDateModal from "./ClosedDateModal";
 import BookedDateModal from "./BookedDateModal";
 import { usePaymentLifecycle } from "../hooks/usePaymentLifecycle";
+import { useAutosave } from "../hooks/useAutosave";
+import AutosaveIndicator from "./AutosaveIndicator";
 
 // 🔹 Stage → Default Probability map (integer percent 0..100)
 const STAGE_PROBABILITY: Record<string, number> = {
@@ -71,11 +73,13 @@ interface Deal {
 
 interface Props {
   deal: Deal;
+  isNewDeal?: boolean;
   onSave: (updatedDeal: Deal) => void;
   onViewSiteSubmitDetails?: (siteSubmitId: string) => void;
+  onSaveRequest?: () => void; // Callback to expose save trigger to parent
 }
 
-export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails }: Props) {
+export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onViewSiteSubmitDetails, onSaveRequest }: Props) {
   const navigate = useNavigate();
   const [form, setForm] = useState<Deal>(deal);
   const [saving, setSaving] = useState(false);
@@ -124,6 +128,95 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
     prevStageIdRef.current = deal.stage_id ?? null;
     isFirstLoadRef.current = true;
   }, [deal]);
+
+  // Autosave callback for existing deals (stable reference with useCallback)
+  const handleAutosave = useCallback(async (formData: Partial<Deal>) => {
+    if (isNewDeal || !deal.id) {
+      // Don't autosave new deals - they need explicit creation
+      return;
+    }
+
+    // Calculate fee if needed
+    const calculatedFee = formData.flat_fee_override ??
+      (formData.deal_value ?? 0) * ((formData.commission_percent ?? 0) / 100);
+
+    // Check if stage changed
+    const stageChanged = formData.stage_id !== originalStageId;
+    const now = new Date().toISOString();
+
+    const dealPayload = {
+      deal_name: formData.deal_name,
+      client_id: formData.client_id,
+      property_id: formData.property_id,
+      property_unit_id: formData.property_unit_id,
+      site_submit_id: formData.site_submit_id,
+      deal_type_id: formData.deal_type_id,
+      deal_value: formData.deal_value,
+      commission_percent: formData.commission_percent,
+      flat_fee_override: formData.flat_fee_override,
+      fee: calculatedFee,
+      target_close_date: formData.target_close_date,
+      loi_signed_date: formData.loi_signed_date,
+      contract_signed_date: formData.contract_signed_date,
+      booked_date: formData.booked_date,
+      closed_date: formData.closed_date,
+      booked: formData.booked,
+      loss_reason: formData.loss_reason,
+      probability: formData.probability,
+      deal_team_id: formData.deal_team_id,
+      stage_id: formData.stage_id,
+      last_stage_change_at: stageChanged ? now : formData.last_stage_change_at,
+      house_percent: formData.house_percent,
+      origination_percent: formData.origination_percent,
+      site_percent: formData.site_percent,
+      deal_percent: formData.deal_percent,
+      number_of_payments: formData.number_of_payments,
+      updated_at: now,
+    };
+
+    const { data, error } = await supabase
+      .from("deal")
+      .update(dealPayload)
+      .eq("id", deal.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    if (data) {
+      // Update original stage_id if it changed
+      if (stageChanged) {
+        setOriginalStageId(data.stage_id);
+      }
+      // Update parent state
+      onSave(data);
+    }
+  }, [isNewDeal, deal.id, originalStageId, onSave]);
+
+  // Autosave hook - only enabled for existing deals
+  const { status: autosaveStatus, lastSavedAt } = useAutosave({
+    data: form,
+    onSave: handleAutosave,
+    delay: 1500,
+    enabled: !isNewDeal && !!deal.id,
+  });
+
+  // Store reference to handleSave so parent can trigger it
+  const handleSaveRef = useRef<(() => Promise<void>) | null>(null);
+
+  // Expose save function to parent via window (for new deals only)
+  // Expose save function to window for parent component
+  useEffect(() => {
+    // Store in window for parent to access
+    (window as any).__dealFormSave = async () => {
+      if (handleSaveRef.current) {
+        await handleSaveRef.current();
+      }
+    };
+    return () => {
+      (window as any).__dealFormSave = undefined;
+    };
+  }, []);
 
   // Lookups + prefill client/property search boxes
   useEffect(() => {
@@ -368,6 +461,11 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
 
     await performSave();
   };
+
+  // Assign handleSave to ref so parent can trigger it via window.__dealFormSave
+  useEffect(() => {
+    handleSaveRef.current = handleSave;
+  }, [handleSave]);
 
   const performSave = async () => {
     setSaving(true);
@@ -791,6 +889,13 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
 
   return (
     <div className="relative">
+      {/* Autosave Indicator - only show for existing deals */}
+      {!isNewDeal && (
+        <div className="mb-4">
+          <AutosaveIndicator status={autosaveStatus} lastSavedAt={lastSavedAt} />
+        </div>
+      )}
+
       {/* SECTION: Deal Context */}
       <Section title="Deal Context" help="Name the opportunity, choose the client, property, and deal team.">
         <div className="grid grid-cols-2 gap-4">
@@ -1022,13 +1127,16 @@ export default function DealDetailsForm({ deal, onSave, onViewSiteSubmitDetails 
           <span className="text-xs text-gray-500">
             {stageLabel ? `Stage: ${stageLabel}` : "No stage selected"}
           </span>
-          <button
-            onClick={handleSave}
-            disabled={saving || Object.keys(errors).length > 0}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60"
-          >
-            {saving ? "Saving..." : "Save Deal"}
-          </button>
+          {/* Only show Save button for new deals - existing deals autosave */}
+          {isNewDeal && (
+            <button
+              onClick={handleSave}
+              disabled={saving || Object.keys(errors).length > 0}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60"
+            >
+              {saving ? "Saving..." : "Save Deal"}
+            </button>
+          )}
         </div>
       </div>
 

@@ -28,6 +28,8 @@ export default function DealDetailsPage() {
   const [isNewDeal, setIsNewDeal] = useState(false);
   const [sidebarMinimized, setSidebarMinimized] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showCreateDealPrompt, setShowCreateDealPrompt] = useState(false);
+  const [pendingTab, setPendingTab] = useState<string | null>(null);
   const [siteSubmitSidebarOpen, setSiteSubmitSidebarOpen] = useState(false);
   const [siteSubmitSidebarMinimized, setSiteSubmitSidebarMinimized] = useState(false);
   const [selectedSiteSubmitId, setSelectedSiteSubmitId] = useState<string | null>(null);
@@ -176,14 +178,60 @@ export default function DealDetailsPage() {
     }
   }, [actualDealId]);
 
+  // Real-time subscription to listen for deal updates (from Critical Dates sync)
+  useEffect(() => {
+    if (!actualDealId || actualDealId === 'new') return;
+
+    console.log('Setting up real-time subscription for deal updates:', actualDealId);
+
+    const subscription = supabase
+      .channel(`deal-updates-${actualDealId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'deal',
+        filter: `id=eq.${actualDealId}`
+      }, (payload) => {
+        console.log('Deal updated via real-time:', payload);
+        // Update local state with new data
+        setDeal((prevDeal: any) => ({
+          ...prevDeal,
+          ...payload.new
+        }));
+      })
+      .subscribe();
+
+    return () => {
+      console.log('Cleaning up deal update subscription');
+      supabase.removeChannel(subscription);
+    };
+  }, [actualDealId]);
+
   // Shared function to update deal state - used by Overview, Commission, and Payment tabs
   const handleDealUpdate = (updatedDeal: any) => {
     setDeal(updatedDeal);
     // If this was a new deal that just got saved, update the URL and state
     if (isNewDeal && updatedDeal.id) {
       setIsNewDeal(false);
-      // Optional: Update URL to the new deal ID
-      // window.history.replaceState(null, '', `/deal/${updatedDeal.id}`);
+      navigate(`/deal/${updatedDeal.id}`, { replace: true });
+      // Close the create deal prompt if open
+      setShowCreateDealPrompt(false);
+      // If user was trying to switch tabs, do it now
+      if (pendingTab) {
+        setActiveTab(pendingTab);
+        setPendingTab(null);
+      }
+    }
+  };
+
+  // Handle tab changes - prompt to save if it's a new deal
+  const handleTabChange = (newTab: string) => {
+    if (isNewDeal && activeTab === 'overview' && newTab !== 'overview') {
+      // Show prompt to create deal first
+      setPendingTab(newTab);
+      setShowCreateDealPrompt(true);
+    } else {
+      setActiveTab(newTab);
     }
   };
 
@@ -345,7 +393,22 @@ export default function DealDetailsPage() {
             <div className="border-b border-gray-200 mb-6">
               <nav className="-mb-px flex space-x-8">
                 <button
-                  onClick={() => setActiveTab('overview')}
+                  onClick={async () => {
+                    setActiveTab('overview');
+                    // Refetch deal data when switching to Details tab to pick up any changes from Critical Dates
+                    // Add a small delay to allow database triggers to complete
+                    if (actualDealId && actualDealId !== 'new') {
+                      await new Promise(resolve => setTimeout(resolve, 300)); // 300ms delay
+                      const { data, error } = await supabase
+                        .from("deal")
+                        .select("*")
+                        .eq("id", actualDealId)
+                        .single();
+                      if (data && !error) {
+                        setDeal(data);
+                      }
+                    }
+                  }}
                   className={`py-2 px-1 border-b-2 font-medium text-sm ${
                     activeTab === 'overview'
                       ? 'border-blue-500 text-blue-600'
@@ -355,7 +418,7 @@ export default function DealDetailsPage() {
                   Details
                 </button>
                 <button
-                  onClick={() => setActiveTab('commission')}
+                  onClick={() => handleTabChange('commission')}
                   className={`py-2 px-1 border-b-2 font-medium text-sm ${
                     activeTab === 'commission'
                       ? 'border-blue-500 text-blue-600'
@@ -365,7 +428,7 @@ export default function DealDetailsPage() {
                   Commission
                 </button>
                 <button
-                  onClick={() => setActiveTab('payments')}
+                  onClick={() => handleTabChange('payments')}
                   className={`py-2 px-1 border-b-2 font-medium text-sm ${
                     activeTab === 'payments'
                       ? 'border-blue-500 text-blue-600'
@@ -376,8 +439,10 @@ export default function DealDetailsPage() {
                 </button>
                 <button
                   onClick={() => {
-                    setActiveTab('critical-dates');
-                    setSidebarMinimized(true); // Auto-collapse sidebar
+                    handleTabChange('critical-dates');
+                    if (!isNewDeal) {
+                      setSidebarMinimized(true); // Auto-collapse sidebar
+                    }
                   }}
                   className={`py-2 px-1 border-b-2 font-medium text-sm ${
                     activeTab === 'critical-dates'
@@ -388,7 +453,7 @@ export default function DealDetailsPage() {
                   Critical Dates
                 </button>
                 <button
-                  onClick={() => setActiveTab('activity')}
+                  onClick={() => handleTabChange('activity')}
                   className={`py-2 px-1 border-b-2 font-medium text-sm ${
                     activeTab === 'activity'
                       ? 'border-blue-500 text-blue-600'
@@ -398,7 +463,7 @@ export default function DealDetailsPage() {
                   Activity
                 </button>
                 <button
-                  onClick={() => setActiveTab('files')}
+                  onClick={() => handleTabChange('files')}
                   className={`py-2 px-1 border-b-2 font-medium text-sm ${
                     activeTab === 'files'
                       ? 'border-blue-500 text-blue-600'
@@ -414,6 +479,7 @@ export default function DealDetailsPage() {
             {activeTab === 'overview' && (
               <DealDetailsForm
                 deal={deal}
+                isNewDeal={isNewDeal}
                 onSave={handleDealUpdate}
                 onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
               />
@@ -565,6 +631,53 @@ export default function DealDetailsPage() {
         type={toast.type}
         visible={toast.visible}
       />
+
+      {/* Create Deal Prompt for New Deals */}
+      {showCreateDealPrompt && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Save Deal First</h3>
+              <p className="text-sm text-gray-600 mb-6">
+                Please save "{deal?.deal_name || 'this deal'}" before switching to the {
+                  pendingTab === 'commission' ? 'Commission' :
+                  pendingTab === 'payments' ? 'Payments' :
+                  pendingTab === 'critical-dates' ? 'Critical Dates' :
+                  pendingTab === 'activity' ? 'Activity' :
+                  'Files'
+                } tab.
+              </p>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={async () => {
+                    // Trigger save from DealDetailsForm
+                    const saveFn = (window as any).__dealFormSave;
+                    if (saveFn) {
+                      await saveFn();
+                      // Dialog will close and navigation will happen via handleDealUpdate
+                    } else {
+                      // Fallback: close dialog and let user click Save button
+                      setShowCreateDealPrompt(false);
+                    }
+                  }}
+                  className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium text-sm"
+                >
+                  Save Deal Now
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCreateDealPrompt(false);
+                    setPendingTab(null);
+                  }}
+                  className="w-full px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 font-medium text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog

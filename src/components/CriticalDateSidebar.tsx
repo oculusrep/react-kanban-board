@@ -18,6 +18,8 @@ interface CriticalDate {
   send_email_days_prior: number | null;
   sent_at: string | null;
   is_default: boolean;
+  is_timeline_linked: boolean;
+  deal_field_name: string | null;
   created_at: string;
   updated_at: string;
   created_by_id: string | null;
@@ -36,18 +38,20 @@ interface CriticalDateSidebarProps {
   onUpdate?: (criticalDateId: string, updates: any) => void; // Update parent state immediately
 }
 
-// Predefined critical date subjects based on deal type
+// Predefined critical date subjects
+// Timeline-linked dates (synced with deal Timeline section) come first
 const CRITICAL_DATE_SUBJECTS = [
-  // Purchase Deal Defaults
-  'Contract X Date (Lease/PSA Effective Date)',
-  'Delivery Date',
-  'Contingency Date Expiration',
+  // Timeline-Linked Dates (auto-created, synced with Details tab)
+  'Target Close Date',
+  'LOI X Date',
+  'Effective Date (Contract X)',
   'Booked Date',
   'Closed Date',
-  'Estimated Open Date',
-  'LOI Signed Date',
-  // Lease Deal Defaults
+  // Other Critical Date Types (user-managed)
+  'Delivery Date',
+  'Contingency Date Expiration',
   'Contingency Removal Date',
+  'Estimated Open Date',
   'Lease Signed Date',
   'Rent Commencement Date',
   // Custom option
@@ -188,7 +192,24 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
         .eq('id', criticalDateId);
 
       if (error) throw error;
-      console.log('Critical date updated successfully');
+
+      // TWO-WAY SYNC: If this is a timeline-linked critical date, update the deal table
+      if (criticalDate?.is_timeline_linked && criticalDate?.deal_field_name) {
+        const dealUpdatePayload: any = {
+          [criticalDate.deal_field_name]: data.criticalDateValue || null,
+          updated_at: new Date().toISOString(),
+          updated_by_id: userTableId || null
+        };
+
+        const { error: dealError } = await supabase
+          .from('deal')
+          .update(dealUpdatePayload)
+          .eq('id', dealId);
+
+        if (dealError) {
+          throw new Error(`Failed to sync to deal Timeline: ${dealError.message}`);
+        }
+      }
 
       // Update parent state immediately (no fetch needed)
       onUpdate?.(criticalDateId, payload);
@@ -211,7 +232,7 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
         setCriticalDate(newData);
       }
     }
-  }, [dealId, criticalDateId, userTableId]);
+  }, [dealId, criticalDateId, userTableId, criticalDate]);
 
   // Autosave hook - does NOT call onSave to avoid infinite loop
   // The real-time subscription in CriticalDatesTab handles table refresh
@@ -313,17 +334,30 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
               Subject <span className="text-red-500">*</span>
+              {criticalDate?.is_timeline_linked && (
+                <span className="ml-2 text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-medium">
+                  Timeline-Linked
+                </span>
+              )}
             </label>
-            <select
-              value={formData.subject}
-              onChange={(e) => updateFormData("subject", e.target.value)}
-              className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
-            >
-              <option value="">Select a critical date type</option>
-              {CRITICAL_DATE_SUBJECTS.map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
+            {criticalDate?.is_timeline_linked ? (
+              // Timeline-linked dates have locked subjects
+              <div className="px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-md text-xs text-gray-700">
+                {formData.subject}
+              </div>
+            ) : (
+              // Regular critical dates can change subject
+              <select
+                value={formData.subject}
+                onChange={(e) => updateFormData("subject", e.target.value)}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+              >
+                <option value="">Select a critical date type</option>
+                {CRITICAL_DATE_SUBJECTS.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Custom Subject Input (shown when "Custom" is selected) */}
@@ -484,7 +518,8 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
           {/* Action Buttons */}
           <div className="border-t border-gray-200 pt-4 flex justify-between items-center">
             <div>
-              {criticalDateId && (
+              {/* Only show delete for non-timeline-linked critical dates */}
+              {criticalDateId && !criticalDate?.is_timeline_linked && (
                 <button
                   onClick={() => setShowDeleteConfirm(true)}
                   disabled={status === 'saving'}
@@ -492,6 +527,12 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
                 >
                   Delete
                 </button>
+              )}
+              {/* Show info message for timeline-linked dates */}
+              {criticalDate?.is_timeline_linked && (
+                <div className="text-[10px] text-gray-500 italic">
+                  Timeline dates cannot be deleted, only cleared
+                </div>
               )}
             </div>
             <div className="flex space-x-2">

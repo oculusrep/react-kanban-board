@@ -16,6 +16,8 @@ interface CriticalDate {
   send_email_days_prior: number | null;
   sent_at: string | null;
   is_default: boolean;
+  is_timeline_linked: boolean;
+  deal_field_name: string | null;
   created_at: string;
   updated_at: string;
   created_by_id: string | null;
@@ -271,7 +273,21 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
   };
 
   // Sort critical dates based on current sort settings
+  // ALWAYS show timeline-linked dates first, then sort within each group
   const sortedCriticalDates = [...criticalDates].sort((a, b) => {
+    // Primary sort: Timeline-linked dates always come first
+    if (a.is_timeline_linked && !b.is_timeline_linked) return -1;
+    if (!a.is_timeline_linked && b.is_timeline_linked) return 1;
+
+    // Secondary sort: Within timeline-linked dates, sort by a fixed order
+    if (a.is_timeline_linked && b.is_timeline_linked) {
+      const timelineOrder = ['target_close_date', 'loi_signed_date', 'contract_signed_date', 'booked_date', 'closed_date'];
+      const aIndex = timelineOrder.indexOf(a.deal_field_name || '');
+      const bIndex = timelineOrder.indexOf(b.deal_field_name || '');
+      if (aIndex !== bIndex) return aIndex - bIndex;
+    }
+
+    // Tertiary sort: Apply user's selected sort field
     const aValue = a[sortField];
     const bValue = b[sortField];
 
@@ -441,7 +457,15 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
                 >
                   {/* Subject */}
                   <td className="px-2 py-1.5 whitespace-nowrap">
-                    {editingField?.id === cd.id && editingField?.field === 'subject' ? (
+                    {cd.is_timeline_linked ? (
+                      // Timeline-linked dates have locked subjects (cannot be edited)
+                      <div className="px-1.5 py-0.5 text-xs font-medium text-gray-900 flex items-center">
+                        {cd.subject}
+                        <span className="ml-1.5 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">
+                          Timeline
+                        </span>
+                      </div>
+                    ) : editingField?.id === cd.id && editingField?.field === 'subject' ? (
                       <input
                         type="text"
                         value={editValue}
@@ -615,19 +639,22 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
                             </svg>
                             <span>View Details</span>
                           </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteConfirmId(cd.id);
-                              setOpenMenuId(null);
-                            }}
-                            className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                            <span>Delete</span>
-                          </button>
+                          {/* Only show delete for non-timeline-linked dates */}
+                          {!cd.is_timeline_linked && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteConfirmId(cd.id);
+                                setOpenMenuId(null);
+                              }}
+                              className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                              <span>Delete</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     )}
