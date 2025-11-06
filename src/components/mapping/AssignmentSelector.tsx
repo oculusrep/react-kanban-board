@@ -222,7 +222,9 @@ const AssignmentSelector: React.FC<AssignmentSelectorProps> = ({
             </>
           ) : query.trim().length > 0 ? (
             <>
-              <div className="p-2 text-sm text-gray-500">No assignments found</div>
+              <div className="p-2 text-sm text-gray-500">
+                No assignments found{clientId ? ' for this client' : ''}
+              </div>
               {onCreateNew && (
                 <div
                   onClick={handleCreateNew}
@@ -238,15 +240,22 @@ const AssignmentSelector: React.FC<AssignmentSelectorProps> = ({
               )}
             </>
           ) : onCreateNew ? (
-            <div
-              onClick={handleCreateNew}
-              className="p-2 hover:bg-green-50 cursor-pointer text-sm"
-            >
-              <div className="flex items-center gap-2 text-green-600 font-medium">
-                <Plus size={16} />
-                <span>Add New Assignment</span>
+            <>
+              {clientId && results.length === 0 && (
+                <div className="p-2 text-sm text-gray-500 border-b border-gray-200">
+                  No assignments for this client
+                </div>
+              )}
+              <div
+                onClick={handleCreateNew}
+                className="p-2 hover:bg-green-50 cursor-pointer text-sm"
+              >
+                <div className="flex items-center gap-2 text-green-600 font-medium">
+                  <Plus size={16} />
+                  <span>Add New Assignment</span>
+                </div>
               </div>
-            </div>
+            </>
           ) : null}
         </div>
       )}

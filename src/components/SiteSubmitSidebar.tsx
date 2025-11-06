@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 
 interface SiteSubmitSidebarProps {
   siteSubmitId: string;
@@ -17,11 +17,24 @@ const SiteSubmitSidebar: React.FC<SiteSubmitSidebarProps> = ({
   propertySlideoutOpen = false,
   propertySlideoutMinimized = false
 }) => {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
   // Calculate right position based on property slideout state
   // Property slideout is 900px wide when expanded, 48px when minimized
   const rightPosition = propertySlideoutOpen
     ? (propertySlideoutMinimized ? '48px' : '900px')
     : '0';
+
+  // Handle Submit Site button click
+  const handleSubmitSite = () => {
+    if (iframeRef.current?.contentWindow) {
+      // Send message to iframe to trigger email send
+      iframeRef.current.contentWindow.postMessage({
+        type: 'SUBMIT_SITE',
+        siteSubmitId: siteSubmitId
+      }, '*');
+    }
+  };
 
   return (
     <div
@@ -37,7 +50,20 @@ const SiteSubmitSidebar: React.FC<SiteSubmitSidebarProps> = ({
       {/* Header with minimize/expand controls */}
       <div className={`flex items-center ${isMinimized ? 'justify-center' : 'justify-between'} p-2 border-b border-gray-200 bg-gray-50`}>
         {!isMinimized && (
-          <h3 className="text-sm font-medium text-gray-700">Site Submit Info</h3>
+          <div className="flex items-center gap-2 flex-1">
+            <h3 className="text-sm font-medium text-gray-700">Site Submit Info</h3>
+            <button
+              onClick={handleSubmitSite}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 border border-transparent rounded hover:bg-green-700 flex items-center gap-1.5"
+              title="Submit site via email"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+                <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+              </svg>
+              Submit Site
+            </button>
+          </div>
         )}
         <div className="flex items-center gap-2">
           {!isMinimized && onClose && (
@@ -75,6 +101,7 @@ const SiteSubmitSidebar: React.FC<SiteSubmitSidebarProps> = ({
       {!isMinimized && (
         <div className="h-full">
           <iframe
+            ref={iframeRef}
             src={`/site-submit/${siteSubmitId}?embedded=true`}
             className="w-full h-full border-0"
             title="Site Submit Details"
