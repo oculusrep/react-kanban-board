@@ -295,37 +295,15 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
   };
 
   // Sort critical dates based on current sort settings
-  // ALWAYS show timeline-linked dates first, then sort within each group
   const sortedCriticalDates = [...criticalDates].sort((a, b) => {
-    // Primary sort: Timeline-linked dates always come first
-    if (a.is_timeline_linked && !b.is_timeline_linked) return -1;
-    if (!a.is_timeline_linked && b.is_timeline_linked) return 1;
-
-    // Secondary sort: Within timeline-linked dates, sort by a fixed order
-    if (a.is_timeline_linked && b.is_timeline_linked) {
-      // First, separate dates with values from TBD dates
-      const aHasDate = a.critical_date !== null;
-      const bHasDate = b.critical_date !== null;
-
-      // If one has a date and the other doesn't, the one with a date comes first
-      if (aHasDate && !bHasDate) return -1;
-      if (!aHasDate && bHasDate) return 1;
-
-      // If both have dates or both are TBD, use fixed order
-      const timelineOrder = ['target_close_date', 'loi_signed_date', 'contract_signed_date', 'booked_date', 'closed_date'];
-      const aIndex = timelineOrder.indexOf(a.deal_field_name || '');
-      const bIndex = timelineOrder.indexOf(b.deal_field_name || '');
-      if (aIndex !== bIndex) return aIndex - bIndex;
-    }
-
-    // Tertiary sort: Apply user's selected sort field
+    // Get the values we're sorting by
     const aValue = a[sortField];
     const bValue = b[sortField];
 
-    // Handle null values (put them at the end)
+    // ALWAYS put null/TBD dates at the bottom, regardless of sort direction
     if (aValue === null && bValue === null) return 0;
-    if (aValue === null) return 1;
-    if (bValue === null) return -1;
+    if (aValue === null) return 1;  // a goes to bottom
+    if (bValue === null) return -1; // b goes to bottom
 
     // Compare values
     let comparison = 0;
