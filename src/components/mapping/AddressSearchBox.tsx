@@ -258,6 +258,12 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
           setSuggestions(allSuggestions);
           setShowSuggestions(true);
           console.log('✅ Showing', allSuggestions.length, 'total suggestions');
+          console.log('🎯 showSuggestions state set to TRUE');
+          console.log('📋 First 3 suggestions:', allSuggestions.slice(0, 3).map(s => ({
+            type: s.type,
+            main: s.display.main_text,
+            secondary: s.display.secondary_text
+          })));
         } else {
           setSuggestions([]);
           setShowSuggestions(false);
