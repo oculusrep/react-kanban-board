@@ -661,17 +661,35 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
     if (!clusterer) return;
 
     if (isVisible) {
-      // Filter out the verifying marker since it's already directly on the map
-      const markersToCluster = markers.filter(marker => {
-        // Skip markers that are already on the map (verifying marker)
-        return marker.getMap() === null;
+      // Add clustered markers back
+      const markersToCluster: google.maps.Marker[] = [];
+      const verifyingMarkers: google.maps.Marker[] = [];
+
+      markers.forEach(marker => {
+        if (marker.getMap() === null) {
+          // Check if this is a verifying marker (draggable + high z-index)
+          if (marker.getDraggable() && marker.getZIndex() === 2000) {
+            verifyingMarkers.push(marker);
+          } else {
+            markersToCluster.push(marker);
+          }
+        }
       });
-      console.log(`👁️ Showing ${markersToCluster.length} site submit markers (${markers.length - markersToCluster.length} already visible)`);
+
+      console.log(`👁️ Showing ${markersToCluster.length} site submit markers + ${verifyingMarkers.length} verifying markers`);
       clusterer.addMarkers(markersToCluster);
+
+      // Re-add verifying markers directly to map
+      verifyingMarkers.forEach(marker => marker.setMap(map));
     } else {
       console.log('🙈 Hiding site submit markers');
       clusterer.clearMarkers();
-      // Note: We don't hide the verifying marker - it stays visible
+      // Also hide any markers that are directly on the map (verifying marker)
+      markers.forEach(marker => {
+        if (marker.getMap() !== null) {
+          marker.setMap(null);
+        }
+      });
     }
   };
 
