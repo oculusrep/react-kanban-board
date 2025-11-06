@@ -170,7 +170,11 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
     : null;
 
   const createdDate = activity.created_at ? new Date(activity.created_at) : null;
-  const displayDate = activityDate || createdDate;
+  const completedDate = activity.completed_at ? new Date(activity.completed_at) : null;
+  const isCompleted = activity.activity_status?.is_closed || activity.completed_call || activity.sf_is_closed;
+
+  // For completed activities, prefer completed_at date; otherwise use activity_date or created_at
+  const displayDate = (isCompleted && completedDate) ? completedDate : (activityDate || createdDate);
   const activityType = activity.activity_type?.name || activity.sf_task_subtype;
 
   const handleToggleExpand = () => {
@@ -398,10 +402,9 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
             <div className="mt-2 text-xs text-gray-400">
               <div className="flex items-center justify-between">
                 <span>
-                  {activityDate && format(activityDate, 'MMM d, yyyy')}
-                  {!activityDate && createdDate && `Created ${formatDistanceToNow(createdDate, { addSuffix: true })}`}
+                  {format(displayDate, 'MMM d, yyyy')}
                 </span>
-                {activityDate && createdDate && activityDate.getTime() !== createdDate.getTime() && (
+                {createdDate && displayDate.getTime() !== createdDate.getTime() && (
                   <span>
                     Created {formatDistanceToNow(createdDate, { addSuffix: true })}
                   </span>
