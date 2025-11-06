@@ -1,5 +1,60 @@
 # Development Changelog
 
+## November 6, 2025
+
+### 🗺️ **Site Submit Layer Visibility Fix**
+
+#### **Background**
+User reported that site submits with verified locations would not hide when toggling the layer visibility off or clicking "Hide All" in the legend. The markers would remain visible on the map regardless of the visibility toggle state.
+
+#### **Root Cause**
+When a site submit has a verified location, the marker is created with `map: map` (directly attached to the map) instead of `map: null` to enable drag-and-drop location verification. This allows the marker to bypass the MarkerClusterer system. However, the `updateMarkerVisibility()` function only called `clusterer.clearMarkers()` which only affects markers managed by the clusterer, not markers directly attached to the map.
+
+#### **Changes Made**
+- **Enhanced SiteSubmitLayer.tsx** `updateMarkerVisibility()` function:
+  - **When hiding layer**: Now explicitly removes ALL markers from the map by calling `marker.setMap(null)` on any marker that has `getMap() !== null`
+  - **When showing layer**: Properly identifies and separates verifying markers (identified by `draggable=true` and `zIndex=2000`) and restores them directly to the map while regular markers go through the clusterer
+  - Added improved logging to track marker visibility changes
+
+#### **Technical Implementation**
+```typescript
+// When hiding
+markers.forEach(marker => {
+  if (marker.getMap() !== null) {
+    marker.setMap(null);  // Explicitly remove from map
+  }
+});
+
+// When showing
+markers.forEach(marker => {
+  if (marker.getMap() === null) {
+    if (marker.getDraggable() && marker.getZIndex() === 2000) {
+      marker.setMap(map);  // Restore verifying markers directly
+    } else {
+      markersToCluster.push(marker);  // Regular markers go to clusterer
+    }
+  }
+});
+```
+
+#### **Impact**
+- ✅ Site submits with verified locations now properly hide when layer visibility is toggled off
+- ✅ "Hide All" button in legend now hides all markers including verified ones
+- ✅ Layer visibility toggle now works consistently for all marker types
+- ✅ Verified markers remain draggable and maintain their special styling when visible
+- ✅ No impact on clustering behavior for regular site submit markers
+
+#### **Testing Verification**
+- Verified location markers hide when layer is toggled off
+- Verified location markers reappear when layer is toggled back on
+- "Hide All" in legend properly hides all markers
+- Verified markers remain draggable when visible
+- No regression in clustering behavior
+
+**Commit:** `99c1385` - fix: hide verified site submit markers when layer visibility is toggled off
+
+---
+
 ## September 28, 2025
 
 ### 🏢 **Site Submit Property Tab Enhancements**
