@@ -76,6 +76,7 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
       console.log('🏢 Searching properties for:', query);
 
       // Search with case-insensitive partial matching on property name, address, and city
+      const searchPattern = `%${query}%`;
       const { data, error } = await supabase
         .from('property')
         .select(`
@@ -97,7 +98,7 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
           available_sqft,
           property_notes
         `)
-        .or(`property_name.ilike.*${query}*,address.ilike.*${query}*,city.ilike.*${query}*`)
+        .or(`property_name.ilike.${searchPattern},address.ilike.${searchPattern},city.ilike.${searchPattern}`)
         .limit(10); // Increase limit before filtering
 
       if (error) {
