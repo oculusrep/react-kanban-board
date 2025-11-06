@@ -303,6 +303,15 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
 
     // Secondary sort: Within timeline-linked dates, sort by a fixed order
     if (a.is_timeline_linked && b.is_timeline_linked) {
+      // First, separate dates with values from TBD dates
+      const aHasDate = a.critical_date !== null;
+      const bHasDate = b.critical_date !== null;
+
+      // If one has a date and the other doesn't, the one with a date comes first
+      if (aHasDate && !bHasDate) return -1;
+      if (!aHasDate && bHasDate) return 1;
+
+      // If both have dates or both are TBD, use fixed order
       const timelineOrder = ['target_close_date', 'loi_signed_date', 'contract_signed_date', 'booked_date', 'closed_date'];
       const aIndex = timelineOrder.indexOf(a.deal_field_name || '');
       const bIndex = timelineOrder.indexOf(b.deal_field_name || '');
