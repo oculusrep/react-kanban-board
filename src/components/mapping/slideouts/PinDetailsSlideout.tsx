@@ -2273,12 +2273,12 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                 </button>
               )}
 
-              {/* Submit Site Button - For site submits (opens email composer) */}
+              {/* Submit Site Button - For site submits (opens in new tab to send email) */}
               {!isProperty && siteSubmit?.id && !isNewSiteSubmit && (
                 <button
                   onClick={() => window.open(`/site-submit/${siteSubmit.id}`, '_blank')}
                   className="p-2 bg-green-500 bg-opacity-80 hover:bg-green-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
-                  title="Open site submit to send email"
+                  title="Submit Site - Opens in new tab to send email"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-white" viewBox="0 0 20 20" fill="currentColor">
                     <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
