@@ -402,6 +402,7 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
             <div className="mt-2 text-xs text-gray-400">
               <div className="flex items-center justify-between">
                 <span>
+                  {isCompleted && completedDate ? 'Completed at: ' : ''}
                   {format(displayDate, 'MMM d, yyyy')}
                 </span>
                 {createdDate && displayDate.getTime() !== createdDate.getTime() && (
