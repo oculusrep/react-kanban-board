@@ -117,7 +117,7 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
       console.log(`✅ After coordinate filter: ${propertiesWithCoords.length} properties`);
 
       const propertySuggestions: SearchSuggestion[] = propertiesWithCoords
-        .slice(0, 5) // Limit to 5 after filtering
+        .slice(0, 8) // Limit to 8 properties before combining with other results
         .map(property => ({
           type: 'property',
           propertyData: property,
@@ -249,8 +249,8 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
           addressSuggestions = [...addressResults, ...placeResults];
         }
 
-        // Combine results with properties first
-        const allSuggestions = [...propertyResults, ...addressSuggestions].slice(0, 8); // Limit total to 8
+        // Combine results with properties first (properties take priority)
+        const allSuggestions = [...propertyResults, ...addressSuggestions].slice(0, 12); // Show up to 12 total suggestions
 
         setIsLoadingSuggestions(false);
 
