@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
@@ -57,18 +57,6 @@ const SiteSubmitDetailsPage: React.FC = () => {
 
   // Check if we're in an iframe (sidebar view)
   const isInIframe = window.self !== window.top;
-
-  // Listen for postMessage from parent (sidebar) to trigger submit
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'SUBMIT_SITE' && event.data.siteSubmitId === siteSubmitId) {
-        handleSendEmail();
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [siteSubmitId, handleSendEmail]);
 
   const [formData, setFormData] = useState<FormData>({
     site_submit_name: '',
@@ -543,7 +531,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
     }
   };
 
-  const handleSendEmail = useCallback(async () => {
+  const handleSendEmail = async () => {
     if (!siteSubmitId || isNewSiteSubmit) {
       showToast('Please save the site submit before sending emails', { type: 'error' });
       return;
@@ -715,7 +703,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
         { type: 'error' }
       );
     }
-  }, [siteSubmitId, isNewSiteSubmit, showToast]);
+  };
 
   const handleSendEmailFromComposer = async (emailData: EmailData) => {
     setSendingEmail(true);
