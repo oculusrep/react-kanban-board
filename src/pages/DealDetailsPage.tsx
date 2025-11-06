@@ -30,6 +30,8 @@ export default function DealDetailsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCreateDealPrompt, setShowCreateDealPrompt] = useState(false);
   const [pendingTab, setPendingTab] = useState<string | null>(null);
+  const [dealValidationErrors, setDealValidationErrors] = useState<string[]>([]);
+  const [saveAttempted, setSaveAttempted] = useState(false);
   const [siteSubmitSidebarOpen, setSiteSubmitSidebarOpen] = useState(false);
   const [siteSubmitSidebarMinimized, setSiteSubmitSidebarMinimized] = useState(false);
   const [selectedSiteSubmitId, setSelectedSiteSubmitId] = useState<string | null>(null);
@@ -42,6 +44,7 @@ export default function DealDetailsPage() {
   const dealFormSaveRef = useRef<(() => Promise<void>) | null>(null);
 
   console.log('DealDetailsPage - location:', location.pathname, 'dealId from params:', dealId);
+  console.log('🔧 dealFormSaveRef.current exists?', !!dealFormSaveRef.current);
 
   // Fallback: if dealId is undefined but pathname is /deal/new, treat as new deal
   const actualDealId = dealId || (location.pathname === '/deal/new' ? 'new' : undefined);
@@ -210,9 +213,12 @@ export default function DealDetailsPage() {
 
   // Shared function to update deal state - used by Overview, Commission, and Payment tabs
   const handleDealUpdate = (updatedDeal: any) => {
+    console.log('🔄 handleDealUpdate called with:', updatedDeal);
+    console.log('🔍 isNewDeal:', isNewDeal, 'updatedDeal.id:', updatedDeal.id);
     setDeal(updatedDeal);
     // If this was a new deal that just got saved, update the URL and state
     if (isNewDeal && updatedDeal.id) {
+      console.log('✅ New deal saved, closing dialog and navigating');
       setIsNewDeal(false);
       navigate(`/deal/${updatedDeal.id}`, { replace: true });
       // Close the create deal prompt if open
@@ -222,6 +228,8 @@ export default function DealDetailsPage() {
         setActiveTab(pendingTab);
         setPendingTab(null);
       }
+    } else {
+      console.log('⚠️ Not closing dialog - isNewDeal:', isNewDeal, 'updatedDeal.id:', updatedDeal.id);
     }
   };
 
@@ -231,6 +239,9 @@ export default function DealDetailsPage() {
       // Show prompt to create deal first
       setPendingTab(newTab);
       setShowCreateDealPrompt(true);
+      // Reset validation state
+      setSaveAttempted(false);
+      setDealValidationErrors([]);
     } else {
       setActiveTab(newTab);
     }
@@ -484,7 +495,16 @@ export default function DealDetailsPage() {
                 onSave={handleDealUpdate}
                 onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
                 onSaveRequest={(saveHandler) => {
+                  console.log('📥 Received save handler from DealDetailsForm');
                   dealFormSaveRef.current = saveHandler;
+                  console.log('✅ dealFormSaveRef.current is now set:', !!dealFormSaveRef.current);
+                }}
+                onValidationChange={(errors) => {
+                  const errorMessages = Object.values(errors);
+                  setDealValidationErrors(errorMessages);
+                  if (errorMessages.length > 0) {
+                    setSaveAttempted(true);
+                  }
                 }}
               />
             )}
@@ -642,7 +662,7 @@ export default function DealDetailsPage() {
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
             <div className="p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Save Deal First</h3>
-              <p className="text-sm text-gray-600 mb-6">
+              <p className="text-sm text-gray-600 mb-4">
                 Please save "{deal?.deal_name || 'this deal'}" before switching to the {
                   pendingTab === 'commission' ? 'Commission' :
                   pendingTab === 'payments' ? 'Payments' :
@@ -651,6 +671,26 @@ export default function DealDetailsPage() {
                   'Files'
                 } tab.
               </p>
+
+              {/* Validation Errors */}
+              {saveAttempted && dealValidationErrors.length > 0 && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                  <div className="flex items-start">
+                    <svg className="w-5 h-5 text-red-600 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                    <div className="flex-1">
+                      <h4 className="text-sm font-medium text-red-800 mb-1">Please fix the following errors:</h4>
+                      <ul className="text-sm text-red-700 list-disc list-inside space-y-0.5">
+                        {dealValidationErrors.map((error, index) => (
+                          <li key={index}>{error}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-col gap-3">
                 <button
                   onClick={async () => {
@@ -674,6 +714,8 @@ export default function DealDetailsPage() {
                   onClick={() => {
                     setShowCreateDealPrompt(false);
                     setPendingTab(null);
+                    setSaveAttempted(false);
+                    setDealValidationErrors([]);
                   }}
                   className="w-full px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 font-medium text-sm"
                 >

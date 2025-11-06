@@ -77,9 +77,10 @@ interface Props {
   onSave: (updatedDeal: Deal) => void;
   onViewSiteSubmitDetails?: (siteSubmitId: string) => void;
   onSaveRequest?: (saveHandler: () => Promise<void>) => void; // Pass save handler to parent
+  onValidationChange?: (errors: Record<string, string>) => void; // Pass validation errors to parent
 }
 
-export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onViewSiteSubmitDetails, onSaveRequest }: Props) {
+export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onViewSiteSubmitDetails, onSaveRequest, onValidationChange }: Props) {
   const navigate = useNavigate();
   const [form, setForm] = useState<Deal>(deal);
   const [saving, setSaving] = useState(false);
@@ -403,9 +404,23 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
   };
 
   const handleSave = async () => {
+    console.log('🔧 handleSave called with form:', form);
     const v = validateAll(form);
     setErrors(v);
-    if (Object.keys(v).length > 0) return; // stop save on validation errors
+    console.log('🔍 Validation errors:', v);
+    if (Object.keys(v).length > 0) {
+      console.log('❌ Validation failed, stopping save');
+      // Notify parent of validation errors
+      if (onValidationChange) {
+        onValidationChange(v);
+      }
+      return; // stop save on validation errors
+    }
+    console.log('✅ Validation passed, proceeding with save');
+    // Clear validation errors on parent
+    if (onValidationChange) {
+      onValidationChange({});
+    }
 
     // Check if stage is "Lost" and loss_reason is empty
     const stageLabel = getStageLabel();
@@ -454,6 +469,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
   }, [onSaveRequest, handleSave]);
 
   const performSave = async () => {
+    console.log('💾 performSave called, form.id:', form.id);
     setSaving(true);
 
     // Check if stage has changed
@@ -517,13 +533,16 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       data = result.data;
       error = result.error;
     }
-    
+
     setSaving(false);
 
     if (error) {
+      console.log('❌ Error saving deal:', error);
       alert("Error saving: " + error.message);
       return;
     }
+
+    console.log('✅ Deal saved successfully, data:', data);
 
     if (data) {
       // If deal_name changed, sync to Dropbox
@@ -578,6 +597,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
         }
       }
 
+      console.log('📤 Calling onSave with data:', data);
       onSave(data);
     }
   };
