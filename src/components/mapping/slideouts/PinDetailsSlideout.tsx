@@ -786,7 +786,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
       setHasChanges(false);
     }
-  }, [data, type, lastSavedData]);
+  }, [data, type]); // Removed lastSavedData from deps to prevent reinit on autosave
 
 
   // Track the last loaded site submit ID to prevent re-initialization on same submit
