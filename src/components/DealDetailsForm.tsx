@@ -360,6 +360,9 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
     if (field === "client_id") {
       if (!value) out.client_id = "Client is required";
     }
+    if (field === "stage_id") {
+      if (!value) out.stage_id = "Stage is required";
+    }
     if (field === "deal_value") {
       if (value === null || value === "" || isNaN(Number(value))) out.deal_value = "Deal Value is required";
       else if (Number(value) <= 0) out.deal_value = "Deal Value must be greater than 0";
@@ -376,6 +379,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
     const out: Record<string, string> = {};
     Object.assign(out, validateField("deal_name", f.deal_name));
     Object.assign(out, validateField("client_id", f.client_id));
+    Object.assign(out, validateField("stage_id", f.stage_id));
     Object.assign(out, validateField("deal_value", f.deal_value));
     Object.assign(out, validateField("commission_percent", f.commission_percent));
     return out;
