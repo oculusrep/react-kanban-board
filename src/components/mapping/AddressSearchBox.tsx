@@ -97,7 +97,7 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
           available_sqft,
           property_notes
         `)
-        .or(`property_name.ilike.%${query}%,address.ilike.%${query}%,city.ilike.%${query}%`)
+        .or(`property_name.ilike.*${query}*,address.ilike.*${query}*,city.ilike.*${query}*`)
         .limit(10); // Increase limit before filtering
 
       if (error) {
