@@ -2,9 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import PropertyInputField from './property/PropertyInputField';
-import PropertyPSFField from './property/PropertyPSFField';
-import PropertyCurrencyField from './property/PropertyCurrencyField';
-import PropertySquareFootageField from './property/PropertySquareFootageField';
+import FormattedField from './shared/FormattedField';
 import PropertyUnitsSection from './property/PropertyUnitsSection';
 import PropertySubmitsTab from './property/PropertySubmitsTab';
 import PropertyContactsTab from './property/PropertyContactsTab';
@@ -184,27 +182,33 @@ export default function PropertyDetailsSlideoutContent({ propertyId, onSiteSubmi
 
             {/* Square Footage */}
             <div className="grid grid-cols-2 gap-4">
-              <PropertySquareFootageField
+              <FormattedField
                 label="Building Sqft"
+                type="number"
                 value={formData.building_sqft || null}
                 onChange={(value) => updateFormData('building_sqft', value)}
+                decimalPlaces={0}
               />
-              <PropertySquareFootageField
+              <FormattedField
                 label="Available Sqft"
+                type="number"
                 value={formData.available_sqft || null}
                 onChange={(value) => updateFormData('available_sqft', value)}
+                decimalPlaces={0}
               />
             </div>
 
             {/* Rent PSF */}
             <div className="grid grid-cols-2 gap-4">
-              <PropertyPSFField
+              <FormattedField
                 label="Rent PSF"
+                type="currency"
                 value={formData.rent_psf || null}
                 onChange={(value) => updateFormData('rent_psf', value)}
               />
-              <PropertyPSFField
+              <FormattedField
                 label="NNN PSF"
+                type="currency"
                 value={formData.nnn_psf || null}
                 onChange={(value) => updateFormData('nnn_psf', value)}
               />
@@ -212,24 +216,27 @@ export default function PropertyDetailsSlideoutContent({ propertyId, onSiteSubmi
 
             {/* Pricing */}
             <div className="grid grid-cols-2 gap-4">
-              <PropertyCurrencyField
+              <FormattedField
                 label="Asking Purchase Price"
+                type="currency"
                 value={formData.asking_purchase_price || null}
                 onChange={(value) => updateFormData('asking_purchase_price', value)}
               />
-              <PropertyCurrencyField
+              <FormattedField
                 label="Asking Lease Price"
+                type="currency"
                 value={formData.asking_lease_price || null}
                 onChange={(value) => updateFormData('asking_lease_price', value)}
               />
             </div>
 
             {/* Acres */}
-            <PropertyInputField
+            <FormattedField
               label="Acres"
               type="number"
-              value={formData.acres?.toString() || ''}
-              onChange={(value) => updateFormData('acres', value ? parseFloat(value) : null)}
+              value={formData.acres || null}
+              onChange={(value) => updateFormData('acres', value)}
+              decimalPlaces={2}
             />
 
             {/* Notes */}
