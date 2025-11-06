@@ -75,6 +75,7 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
     try {
       console.log('🏢 Searching properties for:', query);
 
+      // Search with case-insensitive partial matching on property name, address, and city
       const { data, error } = await supabase
         .from('property')
         .select(`
@@ -96,25 +97,39 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
           available_sqft,
           property_notes
         `)
-        .or(`property_name.ilike.%${query}%,address.ilike.%${query}%`)
-        .or('and(latitude.not.is.null,longitude.not.is.null),and(verified_latitude.not.is.null,verified_longitude.not.is.null)')
-        .limit(3); // Limit to 3 property results
+        .or(`property_name.ilike.%${query}%,address.ilike.%${query}%,city.ilike.%${query}%`)
+        .limit(10); // Increase limit before filtering
 
       if (error) {
         console.error('❌ Property search error:', error);
         return [];
       }
 
-      const propertySuggestions: SearchSuggestion[] = (data || []).map(property => ({
-        type: 'property',
-        propertyData: property,
-        display: {
-          main_text: property.property_name || property.address,
-          secondary_text: `${property.address}${property.city ? `, ${property.city}` : ''}${property.state ? `, ${property.state}` : ''}`
-        }
-      }));
+      console.log(`🔍 Raw query returned ${data?.length || 0} properties`);
 
-      console.log('✅ Found', propertySuggestions.length, 'property matches');
+      // Filter to only show properties with coordinates
+      const propertiesWithCoords = (data || []).filter(property =>
+        (property.latitude && property.longitude) ||
+        (property.verified_latitude && property.verified_longitude)
+      );
+
+      console.log(`✅ After coordinate filter: ${propertiesWithCoords.length} properties`);
+
+      const propertySuggestions: SearchSuggestion[] = propertiesWithCoords
+        .slice(0, 5) // Limit to 5 after filtering
+        .map(property => ({
+          type: 'property',
+          propertyData: property,
+          display: {
+            main_text: property.property_name || property.address,
+            secondary_text: `${property.address}${property.city ? `, ${property.city}` : ''}${property.state ? `, ${property.state}` : ''}`
+          }
+        }));
+
+      console.log('✅ Returning', propertySuggestions.length, 'property matches');
+      if (propertySuggestions.length > 0) {
+        console.log('📋 Property names:', propertySuggestions.map(p => p.display.main_text));
+      }
       return propertySuggestions;
     } catch (error) {
       console.error('❌ Property search error:', error);
