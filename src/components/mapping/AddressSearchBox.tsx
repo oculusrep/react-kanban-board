@@ -32,9 +32,10 @@ interface PropertyResult {
 }
 
 interface SearchSuggestion {
-  type: 'address' | 'property';
+  type: 'address' | 'property' | 'place';
   addressData?: AddressSuggestion;
   propertyData?: PropertyResult;
+  placeData?: AddressSuggestion; // Places use same structure as addresses
   display: {
     main_text: string;
     secondary_text: string;
@@ -162,37 +163,74 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
         let addressSuggestions: SearchSuggestion[] = [];
 
         if (checkGoogleMapsAvailable()) {
-          console.log('🔍 Requesting address suggestions for:', value);
+          console.log('🔍 Requesting suggestions for:', value);
 
           const autocompleteService = new window.google.maps.places.AutocompleteService();
 
-          await new Promise<void>((resolve) => {
-            autocompleteService.getPlacePredictions(
-              {
-                input: value,
-                types: ['geocode'], // Use geocode for all address types
-                componentRestrictions: { country: 'us' } // Restrict to US addresses
-              },
-              (predictions: any[], status: any) => {
-                console.log('📍 Address suggestions response:', { status, predictions: predictions?.length || 0 });
+          // Search for both addresses AND places (businesses)
+          const [addressResults, placeResults] = await Promise.all([
+            // Search for addresses
+            new Promise<SearchSuggestion[]>((resolve) => {
+              autocompleteService.getPlacePredictions(
+                {
+                  input: value,
+                  types: ['geocode'], // Street addresses
+                  componentRestrictions: { country: 'us' }
+                },
+                (predictions: any[], status: any) => {
+                  console.log('📍 Address suggestions response:', { status, predictions: predictions?.length || 0 });
 
-                if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions && predictions.length > 0) {
-                  addressSuggestions = predictions.slice(0, 4).map((prediction): SearchSuggestion => ({
-                    type: 'address',
-                    addressData: prediction,
-                    display: {
-                      main_text: prediction.structured_formatting.main_text,
-                      secondary_text: prediction.structured_formatting.secondary_text
-                    }
-                  }));
-                  console.log('✅ Found', addressSuggestions.length, 'address suggestions');
-                } else {
-                  console.log('⚠️ No address suggestions found or API error');
+                  if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions && predictions.length > 0) {
+                    const suggestions = predictions.slice(0, 3).map((prediction): SearchSuggestion => ({
+                      type: 'address',
+                      addressData: prediction,
+                      display: {
+                        main_text: prediction.structured_formatting.main_text,
+                        secondary_text: prediction.structured_formatting.secondary_text
+                      }
+                    }));
+                    console.log('✅ Found', suggestions.length, 'address suggestions');
+                    resolve(suggestions);
+                  } else {
+                    console.log('⚠️ No address suggestions found');
+                    resolve([]);
+                  }
                 }
-                resolve();
-              }
-            );
-          });
+              );
+            }),
+            // Search for places/businesses
+            new Promise<SearchSuggestion[]>((resolve) => {
+              autocompleteService.getPlacePredictions(
+                {
+                  input: value,
+                  types: ['establishment'], // Businesses and places
+                  componentRestrictions: { country: 'us' }
+                },
+                (predictions: any[], status: any) => {
+                  console.log('🏢 Place suggestions response:', { status, predictions: predictions?.length || 0 });
+
+                  if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions && predictions.length > 0) {
+                    const suggestions = predictions.slice(0, 4).map((prediction): SearchSuggestion => ({
+                      type: 'place',
+                      placeData: prediction,
+                      display: {
+                        main_text: prediction.structured_formatting.main_text,
+                        secondary_text: prediction.structured_formatting.secondary_text
+                      }
+                    }));
+                    console.log('✅ Found', suggestions.length, 'place suggestions');
+                    resolve(suggestions);
+                  } else {
+                    console.log('⚠️ No place suggestions found');
+                    resolve([]);
+                  }
+                }
+              );
+            })
+          ]);
+
+          // Combine address and place results
+          addressSuggestions = [...addressResults, ...placeResults];
         }
 
         // Combine results with properties first
@@ -302,6 +340,14 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
         onSearch();
         // Don't automatically re-enable search - let user input do it
       }, 100);
+    } else if (suggestion.type === 'place' && suggestion.placeData) {
+      // Handle place/business selection
+      console.log('🏪 Handling place selection:', suggestion.placeData.description);
+      onChange(suggestion.placeData.description);
+      setTimeout(() => {
+        onSearch();
+        // Don't automatically re-enable search - let user input do it
+      }, 100);
     }
   };
 
@@ -350,7 +396,13 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
         <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[10001] max-h-64 overflow-y-auto">
           {suggestions.map((suggestion, index) => (
             <div
-              key={suggestion.type === 'property' ? `property-${suggestion.propertyData?.id}` : `address-${suggestion.addressData?.place_id}`}
+              key={
+                suggestion.type === 'property'
+                  ? `property-${suggestion.propertyData?.id}`
+                  : suggestion.type === 'place'
+                  ? `place-${suggestion.placeData?.place_id}`
+                  : `address-${suggestion.addressData?.place_id}`
+              }
               onClick={() => handleSelectSuggestion(suggestion)}
               className={`px-4 py-3 cursor-pointer border-b border-gray-100 last:border-b-0 ${
                 index === selectedIndex
@@ -360,7 +412,7 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
             >
               <div className="flex items-center">
                 <div className="mr-3 text-gray-400">
-                  {suggestion.type === 'property' ? '🏢' : '📍'}
+                  {suggestion.type === 'property' ? '🏢' : suggestion.type === 'place' ? '🏪' : '📍'}
                 </div>
                 <div>
                   <div className="font-medium text-gray-900">
@@ -372,6 +424,11 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
                   {suggestion.type === 'property' && (
                     <div className="text-xs text-blue-600 mt-1">
                       Property in your database
+                    </div>
+                  )}
+                  {suggestion.type === 'place' && (
+                    <div className="text-xs text-green-600 mt-1">
+                      Business from Google Places
                     </div>
                   )}
                 </div>

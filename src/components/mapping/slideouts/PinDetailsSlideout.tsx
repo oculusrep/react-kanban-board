@@ -9,6 +9,7 @@ import PropertyInputField from '../../property/PropertyInputField';
 import PropertyPSFField from '../../property/PropertyPSFField';
 import PropertyCurrencyField from '../../property/PropertyCurrencyField';
 import PropertySquareFootageField from '../../property/PropertySquareFootageField';
+import FormattedField from '../../shared/FormattedField';
 import { FileText, DollarSign, Building2, Activity, MapPin, Edit3, FolderOpen, Users, Trash2, Grid3x3, ExternalLink } from 'lucide-react';
 import { Database } from '../../../../database-schema';
 import { getDropboxPropertySyncService } from '../../../services/dropboxPropertySync';
@@ -2048,52 +2049,35 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
                       {/* Row 1: Asking Purchase Price, Asking Ground Lease Price */}
                       <div className="grid grid-cols-2 gap-2 mb-2">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Asking Purchase Price</label>
-                          <input
-                            type="number"
-                            value={property?.asking_purchase_price || ''}
-                            onChange={(e) => handlePropertyFieldUpdate('asking_purchase_price', e.target.value ? parseFloat(e.target.value) : null)}
-                            placeholder="0"
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Asking Ground Lease Price</label>
-                          <input
-                            type="number"
-                            value={property?.asking_lease_price || ''}
-                            onChange={(e) => handlePropertyFieldUpdate('asking_lease_price', e.target.value ? parseFloat(e.target.value) : null)}
-                            placeholder="0"
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        </div>
+                        <FormattedField
+                          label="Asking Purchase Price"
+                          type="currency"
+                          value={property?.asking_purchase_price ?? null}
+                          onChange={(value) => handlePropertyFieldUpdate('asking_purchase_price', value)}
+                        />
+                        <FormattedField
+                          label="Asking Ground Lease Price"
+                          type="currency"
+                          value={property?.asking_lease_price ?? null}
+                          onChange={(value) => handlePropertyFieldUpdate('asking_lease_price', value)}
+                        />
                       </div>
 
                       {/* Row 2: NNN, Acres */}
                       <div className="grid grid-cols-2 gap-2 mb-2">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">NNN</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={property?.nnn_psf || ''}
-                            onChange={(e) => handlePropertyFieldUpdate('nnn_psf', e.target.value ? parseFloat(e.target.value) : null)}
-                            placeholder="0.00"
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Acres</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={property?.acres || ''}
-                            onChange={(e) => handlePropertyFieldUpdate('acres', e.target.value ? parseFloat(e.target.value) : null)}
-                            placeholder="0.00"
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        </div>
+                        <FormattedField
+                          label="NNN"
+                          type="currency"
+                          value={property?.nnn_psf ?? null}
+                          onChange={(value) => handlePropertyFieldUpdate('nnn_psf', value)}
+                        />
+                        <FormattedField
+                          label="Acres"
+                          type="number"
+                          value={property?.acres ?? null}
+                          onChange={(value) => handlePropertyFieldUpdate('acres', value)}
+                          decimalPlaces={2}
+                        />
                       </div>
 
                       {/* Row 3: Building Sqft, Lease Expiration Date */}
