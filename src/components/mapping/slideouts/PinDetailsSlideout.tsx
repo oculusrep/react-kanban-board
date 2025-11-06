@@ -55,6 +55,10 @@ interface Property {
   asking_purchase_price?: number | null;
   asking_lease_price?: number | null;
   lease_expiration_date?: string | null;
+  created_at?: string | null;
+  created_by_id?: string | null;
+  updated_at?: string | null;
+  updated_by_id?: string | null;
 }
 
 interface SiteSubmit {
@@ -77,7 +81,9 @@ interface SiteSubmit {
   delivery_date?: string;
   delivery_timeframe?: string;
   created_at?: string;
+  created_by_id?: string | null;
   updated_at?: string;
+  updated_by_id?: string | null;
   // Related data
   property?: Property;
   client?: { client_name: string };
@@ -2106,6 +2112,45 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                     </div>
                   </>
                 )}
+
+                {/* Metadata Section */}
+                {(property?.created_at || property?.updated_at) && (
+                  <div className="pt-4 mt-4 border-t border-gray-200">
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Record Information</h4>
+                    <div className="space-y-1 text-xs text-gray-600">
+                      {property?.created_at && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Created:</span>
+                          <span className="font-medium text-gray-700">
+                            {new Date(property.created_at).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit'
+                            })}
+                            {property.created_by_id && <span className="text-gray-500 ml-1">(ID: {property.created_by_id.slice(0, 8)})</span>}
+                          </span>
+                        </div>
+                      )}
+                      {property?.updated_at && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Last Updated:</span>
+                          <span className="font-medium text-gray-700">
+                            {new Date(property.updated_at).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit'
+                            })}
+                            {property.updated_by_id && <span className="text-gray-500 ml-1">(ID: {property.updated_by_id.slice(0, 8)})</span>}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </>
             ) : (
               <>
@@ -2135,6 +2180,45 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                 <label className="block text-sm font-medium text-gray-700 mb-2">Stage</label>
                 <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md">
                   {siteSubmit.submit_stage.name}
+                </div>
+              </div>
+            )}
+
+            {/* Metadata Section for Site Submit */}
+            {!isProperty && (siteSubmit?.created_at || siteSubmit?.updated_at) && (
+              <div className="pt-4 mt-4 border-t border-gray-200">
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Record Information</h4>
+                <div className="space-y-1 text-xs text-gray-600">
+                  {siteSubmit?.created_at && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Created:</span>
+                      <span className="font-medium text-gray-700">
+                        {new Date(siteSubmit.created_at).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit'
+                        })}
+                        {siteSubmit.created_by_id && <span className="text-gray-500 ml-1">(ID: {siteSubmit.created_by_id.slice(0, 8)})</span>}
+                      </span>
+                    </div>
+                  )}
+                  {siteSubmit?.updated_at && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Last Updated:</span>
+                      <span className="font-medium text-gray-700">
+                        {new Date(siteSubmit.updated_at).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit'
+                        })}
+                        {siteSubmit.updated_by_id && <span className="text-gray-500 ml-1">(ID: {siteSubmit.updated_by_id.slice(0, 8)})</span>}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

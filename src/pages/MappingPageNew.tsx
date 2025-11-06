@@ -1454,15 +1454,6 @@ const MappingPageContent: React.FC = () => {
                     disabled={isSearching}
                     placeholder="Search Address, City, State, or Property Name..."
                   />
-                  <button
-                    onClick={() => centerOnLocation?.()}
-                    disabled={!centerOnLocation}
-                    className="px-3 py-1 bg-white text-gray-700 text-sm rounded hover:bg-gray-50 border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
-                    title="Center map on your location"
-                  >
-                    <span>📍</span>
-                    <span>My Location</span>
-                  </button>
                 </div>
                 {searchResult && (
                   <div className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded max-w-md truncate">
