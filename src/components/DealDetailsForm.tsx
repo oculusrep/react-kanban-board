@@ -355,16 +355,19 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
   const validateField = (field: keyof Deal, value: any): Record<string, string> => {
     const out: Record<string, string> = {};
     if (field === "deal_name") {
-      if (!value || String(value).trim().length === 0) out.deal_name = "Deal Name is required.";
+      if (!value || String(value).trim().length === 0) out.deal_name = "Deal Name is required";
+    }
+    if (field === "client_id") {
+      if (!value) out.client_id = "Client is required";
     }
     if (field === "deal_value") {
-      if (value === null || value === "" || isNaN(Number(value))) out.deal_value = "Enter a number.";
-      else if (Number(value) < 0) out.deal_value = "Must be ≥ 0.";
+      if (value === null || value === "" || isNaN(Number(value))) out.deal_value = "Deal Value is required";
+      else if (Number(value) <= 0) out.deal_value = "Deal Value must be greater than 0";
     }
     if (field === "commission_percent") {
       const num = Number(value);
-      if (value === null || value === "" || isNaN(num)) out.commission_percent = "Enter a percent.";
-      else if (num < 0 || num > 100) out.commission_percent = "0–100 only.";
+      if (value === null || value === "" || isNaN(num)) out.commission_percent = "Commission % is required";
+      else if (num < 0 || num > 100) out.commission_percent = "Commission % must be between 0 and 100";
     }
     return out;
   };
@@ -372,6 +375,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
   const validateAll = (f: Deal): Record<string, string> => {
     const out: Record<string, string> = {};
     Object.assign(out, validateField("deal_name", f.deal_name));
+    Object.assign(out, validateField("client_id", f.client_id));
     Object.assign(out, validateField("deal_value", f.deal_value));
     Object.assign(out, validateField("commission_percent", f.commission_percent));
     return out;
