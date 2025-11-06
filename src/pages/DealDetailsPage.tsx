@@ -196,14 +196,21 @@ export default function DealDetailsPage() {
         table: 'deal',
         filter: `id=eq.${actualDealId}`
       }, (payload) => {
-        console.log('Deal updated via real-time:', payload);
+        console.log('🔄 Deal updated via real-time subscription:', payload);
+        console.log('📥 New data from real-time:', payload.new);
         // Update local state with new data
-        setDeal((prevDeal: any) => ({
-          ...prevDeal,
-          ...payload.new
-        }));
+        setDeal((prevDeal: any) => {
+          const updated = {
+            ...prevDeal,
+            ...payload.new
+          };
+          console.log('✅ Updated deal state:', updated);
+          return updated;
+        });
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 Real-time subscription status:', status);
+      });
 
     return () => {
       console.log('Cleaning up deal update subscription');
