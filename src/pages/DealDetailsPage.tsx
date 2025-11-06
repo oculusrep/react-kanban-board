@@ -184,12 +184,19 @@ export default function DealDetailsPage() {
 
   // Real-time subscription to listen for deal updates (from Critical Dates sync)
   useEffect(() => {
-    if (!actualDealId || actualDealId === 'new') return;
+    console.log('🔍 Deal subscription useEffect running - actualDealId:', actualDealId);
+    if (!actualDealId || actualDealId === 'new') {
+      console.log('⚠️ Skipping subscription setup - actualDealId is:', actualDealId);
+      return;
+    }
 
-    console.log('Setting up real-time subscription for deal updates:', actualDealId);
+    console.log('✅ Setting up real-time subscription for deal updates:', actualDealId);
 
-    const subscription = supabase
-      .channel(`deal-updates-${actualDealId}`)
+    const channel = supabase.channel(`deal-updates-${actualDealId}`);
+
+    console.log('📡 Setting up postgres_changes listener...');
+
+    channel
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
@@ -208,9 +215,23 @@ export default function DealDetailsPage() {
           return updated;
         });
       })
-      .subscribe((status) => {
+      .subscribe((status, err) => {
         console.log('📡 Real-time subscription status:', status);
+        if (err) {
+          console.error('❌ Subscription error:', err);
+        }
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Successfully subscribed to deal updates');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Channel error occurred');
+        } else if (status === 'TIMED_OUT') {
+          console.error('❌ Subscription timed out');
+        } else if (status === 'CLOSED') {
+          console.log('⚠️ Subscription closed');
+        }
       });
+
+    const subscription = channel;
 
     return () => {
       console.log('Cleaning up deal update subscription');

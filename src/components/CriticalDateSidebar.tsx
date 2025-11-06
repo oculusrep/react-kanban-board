@@ -113,6 +113,8 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
 
       if (error) throw error;
 
+      console.log('📥 Loaded critical date:', data);
+      console.log('🔍 Is timeline-linked?', data.is_timeline_linked, 'Deal field:', data.deal_field_name);
       setCriticalDate(data);
 
       // Convert critical_date to YYYY-MM-DD format for date input
@@ -194,21 +196,27 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
       if (error) throw error;
 
       // TWO-WAY SYNC: If this is a timeline-linked critical date, update the deal table
+      console.log('🔍 Checking sync conditions - is_timeline_linked:', criticalDate?.is_timeline_linked, 'deal_field_name:', criticalDate?.deal_field_name);
       if (criticalDate?.is_timeline_linked && criticalDate?.deal_field_name) {
+        console.log('🔄 Syncing timeline-linked date to deal field:', criticalDate.deal_field_name);
         const dealUpdatePayload: any = {
           [criticalDate.deal_field_name]: data.criticalDateValue || null,
           updated_at: new Date().toISOString(),
           updated_by_id: userTableId || null
         };
+        console.log('📤 Deal update payload:', dealUpdatePayload);
 
-        const { error: dealError } = await supabase
+        const { data: dealUpdateResult, error: dealError } = await supabase
           .from('deal')
           .update(dealUpdatePayload)
-          .eq('id', dealId);
+          .eq('id', dealId)
+          .select();
 
         if (dealError) {
+          console.error('❌ Failed to sync to deal Timeline:', dealError);
           throw new Error(`Failed to sync to deal Timeline: ${dealError.message}`);
         }
+        console.log('✅ Deal Timeline field updated successfully:', dealUpdateResult);
       }
 
       // Update parent state immediately (no fetch needed)

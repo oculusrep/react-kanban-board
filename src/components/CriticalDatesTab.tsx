@@ -151,6 +151,28 @@ const CriticalDatesTab: React.FC<CriticalDatesTabProps> = ({ dealId, deal }) => 
 
       if (updateError) throw updateError;
 
+      // TWO-WAY SYNC: If this is a timeline-linked critical date and we're updating the date, sync to deal table
+      const criticalDate = criticalDates.find(cd => cd.id === criticalDateId);
+      if (criticalDate?.is_timeline_linked && criticalDate?.deal_field_name && updates.critical_date !== undefined) {
+        console.log('🔄 Syncing timeline-linked date to deal field:', criticalDate.deal_field_name);
+        const dealUpdatePayload: any = {
+          [criticalDate.deal_field_name]: updates.critical_date || null,
+          updated_at: new Date().toISOString(),
+        };
+        console.log('📤 Deal update payload:', dealUpdatePayload);
+
+        const { error: dealError } = await supabase
+          .from('deal')
+          .update(dealUpdatePayload)
+          .eq('id', dealId);
+
+        if (dealError) {
+          console.error('❌ Failed to sync to deal Timeline:', dealError);
+          throw new Error(`Failed to sync to deal Timeline: ${dealError.message}`);
+        }
+        console.log('✅ Deal Timeline field updated successfully');
+      }
+
       // Update local state
       setCriticalDates(prev => prev.map(cd =>
         cd.id === criticalDateId ? { ...cd, ...updates } : cd
