@@ -25,6 +25,8 @@ import { AssignmentSearchResult } from '../../../hooks/useAssignmentSearch';
 import AddAssignmentModal from '../../AddAssignmentModal';
 import AutosaveIndicator from '../../AutosaveIndicator';
 import { ResponsiveLine } from '@nivo/line';
+import EmailComposerModal from '../../EmailComposerModal';
+import { useSiteSubmitEmail } from '../../../hooks/useSiteSubmitEmail';
 
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
@@ -665,6 +667,16 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   const [selectedPropertyUnit, setSelectedPropertyUnit] = useState<string | null>(null);
   const [siteSubmitName, setSiteSubmitName] = useState<string>('');
   const [showAddAssignmentModal, setShowAddAssignmentModal] = useState(false);
+
+  // Email composer hook for site submit emails
+  const {
+    showEmailComposer,
+    setShowEmailComposer,
+    sendingEmail,
+    emailDefaultData,
+    prepareEmail,
+    sendEmail,
+  } = useSiteSubmitEmail();
 
   const { refreshLayer } = useLayerManager();
 
@@ -1649,6 +1661,21 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     }
   };
 
+  // Handle sending site submit email
+  const handleSendEmail = async () => {
+    if (!siteSubmit?.id || isNewSiteSubmit) {
+      showToast('Please save the site submit before sending emails', { type: 'error' });
+      return;
+    }
+
+    await prepareEmail(siteSubmit.id);
+  };
+
+  const handleSendEmailFromComposer = async (emailData: any) => {
+    if (!siteSubmit?.id) return;
+    await sendEmail(siteSubmit.id, emailData);
+  };
+
   // Tab configuration based on type with modern Lucide icons
   const getAvailableTabs = (): { id: TabType; label: string; icon: React.ReactNode }[] => {
     if (isProperty) {
@@ -2273,12 +2300,13 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                 </button>
               )}
 
-              {/* Submit Site Button - For site submits (opens in new tab to send email) */}
+              {/* Submit Site Button - For site submits (opens email composer modal) */}
               {!isProperty && siteSubmit?.id && !isNewSiteSubmit && (
                 <button
-                  onClick={() => window.open(`/site-submit/${siteSubmit.id}`, '_blank')}
-                  className="p-2 bg-green-500 bg-opacity-80 hover:bg-green-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
-                  title="Submit Site - Opens in new tab to send email"
+                  onClick={handleSendEmail}
+                  disabled={sendingEmail}
+                  className="p-2 bg-green-500 bg-opacity-80 hover:bg-green-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Submit Site - Send email to Site Selector contacts"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-white" viewBox="0 0 20 20" fill="currentColor">
                     <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
@@ -2608,6 +2636,19 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         }}
         preselectedClientId={selectedClient?.id || null}
       />
+
+      {/* Email Composer Modal */}
+      {showEmailComposer && (
+        <EmailComposerModal
+          isOpen={showEmailComposer}
+          onClose={() => setShowEmailComposer(false)}
+          onSend={handleSendEmailFromComposer}
+          defaultSubject={emailDefaultData.subject}
+          defaultBody={emailDefaultData.body}
+          defaultRecipients={emailDefaultData.recipients}
+          isSending={sendingEmail}
+        />
+      )}
     </>
   );
 };
