@@ -1,6 +1,6 @@
 // src/pages/DealDetailsPage.tsx
 import { useParams, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
 import DealDetailsForm from "../components/DealDetailsForm";
 import CommissionTab from '../components/CommissionTab';
@@ -39,6 +39,7 @@ export default function DealDetailsPage() {
   const { toast, showToast } = useToast();
   const { trackView } = useTrackPageView();
   const { removeRecentItem } = useRecentlyViewed();
+  const dealFormSaveRef = useRef<(() => Promise<void>) | null>(null);
 
   console.log('DealDetailsPage - location:', location.pathname, 'dealId from params:', dealId);
 
@@ -482,6 +483,9 @@ export default function DealDetailsPage() {
                 isNewDeal={isNewDeal}
                 onSave={handleDealUpdate}
                 onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
+                onSaveRequest={(saveHandler) => {
+                  dealFormSaveRef.current = saveHandler;
+                }}
               />
             )}
 
@@ -650,12 +654,14 @@ export default function DealDetailsPage() {
               <div className="flex flex-col gap-3">
                 <button
                   onClick={async () => {
-                    // Trigger save from DealDetailsForm
-                    const saveFn = (window as any).__dealFormSave;
-                    if (saveFn) {
-                      await saveFn();
+                    console.log('🔵 Save Deal Now button clicked');
+                    if (dealFormSaveRef.current) {
+                      console.log('✅ Calling save function...');
+                      await dealFormSaveRef.current();
+                      console.log('✅ Save function completed');
                       // Dialog will close and navigation will happen via handleDealUpdate
                     } else {
+                      console.log('❌ No save function found, closing dialog');
                       // Fallback: close dialog and let user click Save button
                       setShowCreateDealPrompt(false);
                     }

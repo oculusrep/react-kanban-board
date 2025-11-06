@@ -76,7 +76,7 @@ interface Props {
   isNewDeal?: boolean;
   onSave: (updatedDeal: Deal) => void;
   onViewSiteSubmitDetails?: (siteSubmitId: string) => void;
-  onSaveRequest?: () => void; // Callback to expose save trigger to parent
+  onSaveRequest?: (saveHandler: () => Promise<void>) => void; // Pass save handler to parent
 }
 
 export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onViewSiteSubmitDetails, onSaveRequest }: Props) {
@@ -200,23 +200,6 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
     delay: 1500,
     enabled: !isNewDeal && !!deal.id,
   });
-
-  // Store reference to handleSave so parent can trigger it
-  const handleSaveRef = useRef<(() => Promise<void>) | null>(null);
-
-  // Expose save function to parent via window (for new deals only)
-  // Expose save function to window for parent component
-  useEffect(() => {
-    // Store in window for parent to access
-    (window as any).__dealFormSave = async () => {
-      if (handleSaveRef.current) {
-        await handleSaveRef.current();
-      }
-    };
-    return () => {
-      (window as any).__dealFormSave = undefined;
-    };
-  }, []);
 
   // Lookups + prefill client/property search boxes
   useEffect(() => {
@@ -462,10 +445,13 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
     await performSave();
   };
 
-  // Assign handleSave to ref so parent can trigger it via window.__dealFormSave
+  // Expose handleSave to parent via onSaveRequest callback
   useEffect(() => {
-    handleSaveRef.current = handleSave;
-  }, [handleSave]);
+    if (onSaveRequest) {
+      console.log('📤 Passing handleSave to parent via onSaveRequest');
+      onSaveRequest(handleSave);
+    }
+  }, [onSaveRequest, handleSave]);
 
   const performSave = async () => {
     setSaving(true);
