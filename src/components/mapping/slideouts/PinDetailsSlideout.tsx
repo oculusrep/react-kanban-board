@@ -699,7 +699,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
       console.log('💾 Autosaving site submit changes...');
 
-      const { error } = await supabase
+      const { data: updatedData, error } = await supabase
         .from('site_submit')
         .update({
           site_submit_name: saveData.siteSubmitName,
@@ -712,11 +712,18 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           customer_comments: saveData.customerComments || null,
           updated_at: new Date().toISOString()
         })
-        .eq('id', siteSubmit.id);
+        .eq('id', siteSubmit.id)
+        .select()
+        .single();
 
       if (error) throw error;
 
       console.log('✅ Site submit autosaved successfully');
+
+      // Update lastSavedData to prevent form reinitialization on reopen
+      if (updatedData) {
+        setLastSavedData(updatedData);
+      }
 
       // Refresh the layer to show changes on map
       refreshLayer('site_submits');
