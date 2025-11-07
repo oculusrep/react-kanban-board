@@ -5,6 +5,7 @@ import { usePropertyRecordTypes } from '../../../hooks/usePropertyRecordTypes';
 import { useProperty } from '../../../hooks/useProperty';
 import { useToast } from '../../../hooks/useToast';
 import { useAutosave } from '../../../hooks/useAutosave';
+import { useAuth } from '../../../contexts/AuthContext';
 import PropertyInputField from '../../property/PropertyInputField';
 import PropertyPSFField from '../../property/PropertyPSFField';
 import PropertyCurrencyField from '../../property/PropertyCurrencyField';
@@ -635,6 +636,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   const { propertyRecordTypes } = usePropertyRecordTypes();
   const { updateProperty } = useProperty(localPropertyData?.id || undefined);
   const { toast, showToast } = useToast();
+  const { userTableId } = useAuth();
 
   // Sync activeTab with initialTab when it changes OR when slideout opens
   useEffect(() => {
@@ -781,7 +783,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           delivery_timeframe: saveData.deliveryTimeframe || null,
           notes: saveData.notes || null,
           customer_comments: saveData.customerComments || null,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
+          updated_by_id: userTableId || null
         })
         .eq('id', siteSubmit.id)
         .select()
@@ -1517,9 +1520,10 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       console.log('📤 Sending property updates to database:', propertyUpdates);
       console.log('🔍 Property notes in updates object:', propertyUpdates.property_notes);
       console.log('🔍 Property type_id in updates object:', propertyUpdates.property_type_id);
+      console.log('🔍 Current user ID for updated_by:', userTableId);
 
-      // Save all changes to database
-      await updateProperty(propertyUpdates);
+      // Save all changes to database with current user ID
+      await updateProperty(propertyUpdates, userTableId || undefined);
 
       console.log('✅ updateProperty completed successfully');
       console.log('🔍 Property type_id after save:', localPropertyData.property_type_id);
@@ -1626,7 +1630,9 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           verified_latitude: propertyCoords.lat,  // User-verified coordinates from map pin
           verified_longitude: propertyCoords.lng, // User-verified coordinates from map pin
           created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
+          created_by_id: userTableId || null,
+          updated_by_id: userTableId || null
         };
 
         console.log('📝 Assignment being saved:', selectedAssignment?.id, selectedAssignment?.assignment_name);
@@ -1724,7 +1730,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
             delivery_timeframe: formData.deliveryTimeframe || null,
             notes: formData.notes || null,
             customer_comments: formData.customerComments || null,
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            updated_by_id: userTableId || null
           })
           .eq('id', siteSubmit.id)
           .select()

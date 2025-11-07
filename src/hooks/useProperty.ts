@@ -17,7 +17,7 @@ interface UsePropertyResult {
   property: PropertyWithRelations | null;
   loading: boolean;
   error: string | null;
-  updateProperty: (updates: Partial<Property>) => Promise<void>;
+  updateProperty: (updates: Partial<Property>, currentUserId?: string) => Promise<void>;
   createProperty: (property: Omit<Property, 'id' | 'created_at' | 'updated_at'>) => Promise<Property>;
   refreshProperty: () => Promise<void>;
 }
@@ -81,19 +81,25 @@ export const useProperty = (propertyId?: string): UsePropertyResult => {
     fetchProperty();
   }, [fetchProperty]);
 
-  const updateProperty = useCallback(async (updates: Partial<Property>) => {
+  const updateProperty = useCallback(async (updates: Partial<Property>, currentUserId?: string) => {
     if (!propertyId) throw new Error('No property ID provided');
 
     try {
       setError(null);
 
-      // Prepare update payload with timestamp
-      const updatePayload = {
+      // Prepare update payload with timestamp and updated_by_id
+      const updatePayload: any = {
         ...updates,
         updated_at: new Date().toISOString()
       };
 
+      // Set updated_by_id if current user ID is provided
+      if (currentUserId) {
+        updatePayload.updated_by_id = currentUserId;
+      }
+
       console.log('🔧 useProperty.updateProperty - propertyId:', propertyId);
+      console.log('🔧 useProperty.updateProperty - currentUserId:', currentUserId);
       console.log('🔧 useProperty.updateProperty - updates received:', updates);
       console.log('🔧 useProperty.updateProperty - property_notes in updates:', updates.property_notes);
       console.log('🔧 useProperty.updateProperty - updatePayload:', updatePayload);
@@ -112,6 +118,7 @@ export const useProperty = (propertyId?: string): UsePropertyResult => {
 
       console.log('✅ Supabase update successful, returned data:', data);
       console.log('✅ property_notes in returned data:', data?.property_notes);
+      console.log('✅ updated_by_id in returned data:', data?.updated_by_id);
 
       setProperty(data);
     } catch (err) {
