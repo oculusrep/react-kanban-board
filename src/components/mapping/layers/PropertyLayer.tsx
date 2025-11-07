@@ -167,6 +167,10 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
                 asking_purchase_price,
                 asking_lease_price,
                 lease_expiration_date,
+                created_at,
+                created_by_id,
+                updated_at,
+                updated_by_id,
                 property_record_type (
                   id,
                   label
