@@ -678,24 +678,42 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       if (record.created_by_id) {
         const { data: userData, error } = await supabase
           .from('user')
-          .select('name')
+          .select('name, first_name, last_name')
           .eq('id', record.created_by_id)
           .maybeSingle();
 
         console.log('👤 Created by user lookup:', { created_by_id: record.created_by_id, userData, error });
-        if (userData?.name) setCreatedByName(userData.name);
+
+        if (userData) {
+          // Use name field if available, otherwise construct from first_name and last_name
+          const displayName = userData.name ||
+            (userData.first_name && userData.last_name
+              ? `${userData.first_name} ${userData.last_name}`
+              : userData.first_name || userData.last_name || 'Unknown');
+          setCreatedByName(displayName);
+          console.log('✅ Created by name set to:', displayName);
+        }
       }
 
       // Fetch updated_by user name
       if (record.updated_by_id) {
         const { data: userData, error } = await supabase
           .from('user')
-          .select('name')
+          .select('name, first_name, last_name')
           .eq('id', record.updated_by_id)
           .maybeSingle();
 
         console.log('👤 Updated by user lookup:', { updated_by_id: record.updated_by_id, userData, error });
-        if (userData?.name) setUpdatedByName(userData.name);
+
+        if (userData) {
+          // Use name field if available, otherwise construct from first_name and last_name
+          const displayName = userData.name ||
+            (userData.first_name && userData.last_name
+              ? `${userData.first_name} ${userData.last_name}`
+              : userData.first_name || userData.last_name || 'Unknown');
+          setUpdatedByName(displayName);
+          console.log('✅ Updated by name set to:', displayName);
+        }
       }
     };
 
