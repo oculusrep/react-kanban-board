@@ -206,7 +206,9 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
           loi_date,
           delivery_timeframe,
           created_at,
+          created_by_id,
           updated_at,
+          updated_by_id,
           client!site_submit_client_id_fkey (
             id,
             client_name
@@ -292,7 +294,9 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
                 loi_date,
                 delivery_timeframe,
                 created_at,
+                created_by_id,
                 updated_at,
+                updated_by_id,
                 client!site_submit_client_id_fkey (
                   id,
                   client_name
