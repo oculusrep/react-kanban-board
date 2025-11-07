@@ -668,23 +668,33 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       const record = type === 'property' ? (data as Property) : (data as SiteSubmit);
       if (!record) return;
 
+      console.log('🔍 Fetching user names for:', { type, created_by_id: record.created_by_id, updated_by_id: record.updated_by_id });
+
+      // Reset names
+      setCreatedByName('');
+      setUpdatedByName('');
+
       // Fetch created_by user name
       if (record.created_by_id) {
-        const { data: userData } = await supabase
+        const { data: userData, error } = await supabase
           .from('user')
           .select('name')
           .eq('id', record.created_by_id)
           .maybeSingle();
+
+        console.log('👤 Created by user lookup:', { created_by_id: record.created_by_id, userData, error });
         if (userData?.name) setCreatedByName(userData.name);
       }
 
       // Fetch updated_by user name
       if (record.updated_by_id) {
-        const { data: userData } = await supabase
+        const { data: userData, error } = await supabase
           .from('user')
           .select('name')
           .eq('id', record.updated_by_id)
           .maybeSingle();
+
+        console.log('👤 Updated by user lookup:', { updated_by_id: record.updated_by_id, userData, error });
         if (userData?.name) setUpdatedByName(userData.name);
       }
     };
@@ -762,10 +772,16 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       if (error) throw error;
 
       console.log('✅ Site submit autosaved successfully');
+      console.log('📥 Updated site submit data with metadata:', updatedData);
 
       // Update lastSavedData to prevent form reinitialization on reopen
       if (updatedData) {
         setLastSavedData(updatedData);
+
+        // Update parent's data so metadata shows immediately
+        if (onDataUpdate) {
+          onDataUpdate(updatedData);
+        }
       }
 
       // Refresh the layer to show changes on map
@@ -1490,6 +1506,21 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       console.log('✅ updateProperty completed successfully');
       console.log('🔍 Property type_id after save:', localPropertyData.property_type_id);
 
+      // Fetch the updated property with metadata fields to show instantly
+      const { data: updatedProperty, error: fetchError } = await supabase
+        .from('property')
+        .select('*')
+        .eq('id', localPropertyData.id)
+        .single();
+
+      if (fetchError) {
+        console.error('❌ Failed to fetch updated property:', fetchError);
+      } else if (updatedProperty) {
+        console.log('📥 Fetched updated property with metadata:', updatedProperty);
+        // Update local state with the fresh data including metadata
+        setLocalPropertyData({ ...localPropertyData, ...updatedProperty });
+      }
+
       console.log('✅ Property saved successfully');
 
       // If property_name changed, sync to Dropbox
@@ -1701,6 +1732,11 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
           setHasChanges(false);
           setLastSavedData(updatedData);
+
+          // Update parent's data so metadata shows immediately
+          if (onDataUpdate) {
+            onDataUpdate(updatedData);
+          }
 
           // Trigger refresh of site submit layer to show changes immediately
           refreshLayer('site_submits');
@@ -2157,14 +2193,14 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                         <div>
                           <span>Last Updated by </span>
                           <span className="font-medium">{updatedByName || 'Unknown'}</span>
-                          <span> {new Date(property.updated_at).toLocaleDateString()} {new Date(property.updated_at).toLocaleTimeString()}</span>
+                          <span> {new Date(property.updated_at).toLocaleDateString()} {new Date(property.updated_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
                         </div>
                       )}
                       {property?.created_at && (
                         <div>
                           <span>Created by </span>
                           <span className="font-medium">{createdByName || 'Unknown'}</span>
-                          <span> {new Date(property.created_at).toLocaleDateString()} {new Date(property.created_at).toLocaleTimeString()}</span>
+                          <span> {new Date(property.created_at).toLocaleDateString()} {new Date(property.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
                         </div>
                       )}
                     </div>
@@ -2211,14 +2247,14 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                     <div>
                       <span>Last Updated by </span>
                       <span className="font-medium">{updatedByName || 'Unknown'}</span>
-                      <span> {new Date(siteSubmit.updated_at).toLocaleDateString()} {new Date(siteSubmit.updated_at).toLocaleTimeString()}</span>
+                      <span> {new Date(siteSubmit.updated_at).toLocaleDateString()} {new Date(siteSubmit.updated_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
                     </div>
                   )}
                   {siteSubmit?.created_at && (
                     <div>
                       <span>Created by </span>
                       <span className="font-medium">{createdByName || 'Unknown'}</span>
-                      <span> {new Date(siteSubmit.created_at).toLocaleDateString()} {new Date(siteSubmit.created_at).toLocaleTimeString()}</span>
+                      <span> {new Date(siteSubmit.created_at).toLocaleDateString()} {new Date(siteSubmit.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
                     </div>
                   )}
                 </div>
