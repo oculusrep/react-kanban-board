@@ -2114,7 +2114,17 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                 )}
 
                 {/* Metadata Section */}
-                {(property?.created_at || property?.updated_at) && (
+                {(() => {
+                  console.log('🔍 Checking property metadata:', {
+                    hasCreatedAt: !!property?.created_at,
+                    hasUpdatedAt: !!property?.updated_at,
+                    created_at: property?.created_at,
+                    created_by_id: property?.created_by_id,
+                    updated_at: property?.updated_at,
+                    updated_by_id: property?.updated_by_id
+                  });
+                  return (property?.created_at || property?.updated_at);
+                })() && (
                   <div className="pt-4 mt-4 border-t border-gray-200">
                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Record Information</h4>
                     <div className="space-y-1 text-xs text-gray-600">
@@ -2185,7 +2195,17 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
             )}
 
             {/* Metadata Section for Site Submit */}
-            {!isProperty && (siteSubmit?.created_at || siteSubmit?.updated_at) && (
+            {!isProperty && (() => {
+              console.log('🔍 Checking site submit metadata:', {
+                hasCreatedAt: !!siteSubmit?.created_at,
+                hasUpdatedAt: !!siteSubmit?.updated_at,
+                created_at: siteSubmit?.created_at,
+                created_by_id: siteSubmit?.created_by_id,
+                updated_at: siteSubmit?.updated_at,
+                updated_by_id: siteSubmit?.updated_by_id
+              });
+              return (siteSubmit?.created_at || siteSubmit?.updated_at);
+            })() && (
               <div className="pt-4 mt-4 border-t border-gray-200">
                 <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Record Information</h4>
                 <div className="space-y-1 text-xs text-gray-600">
