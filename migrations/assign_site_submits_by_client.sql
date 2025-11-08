@@ -4,7 +4,7 @@
 -- All other NULL site submits → Arty
 
 -- User IDs (using user.id since that's what the FK constraint expects):
--- Mike Minihan user.id: 16c968f8-4b82-47ab-badb-71207b2c5c0b
+-- Mike Minihan user.id: fe6e516f-11e1-4a3b-b914-910d59d9e8df
 -- Arty Santos user.id: c0e5fde5-9412-4a62-8711-9a6bf74d6e99
 
 -- =====================================================================
@@ -49,8 +49,8 @@ LIMIT 20;
 -- First, update site submits for Huey Magoo's client(s)
 UPDATE site_submit s
 SET
-  created_by_id = '16c968f8-4b82-47ab-badb-71207b2c5c0b',
-  updated_by_id = '16c968f8-4b82-47ab-badb-71207b2c5c0b'
+  created_by_id = 'fe6e516f-11e1-4a3b-b914-910d59d9e8df',
+  updated_by_id = 'fe6e516f-11e1-4a3b-b914-910d59d9e8df'
 FROM client c
 WHERE s.client_id = c.id
   AND s.created_by_id IS NULL
@@ -65,7 +65,7 @@ SELECT
   COUNT(*) as count
 FROM site_submit s
 JOIN client c ON s.client_id = c.id
-WHERE s.created_by_id = '16c968f8-4b82-47ab-badb-71207b2c5c0b'
+WHERE s.created_by_id = 'fe6e516f-11e1-4a3b-b914-910d59d9e8df'
   AND (
     c.client_name ILIKE '%Huey%Magoo%'
     OR c.client_name ILIKE '%Matt%Parmer%'
@@ -89,7 +89,7 @@ WHERE created_by_id IS NULL;
 SELECT
   'After assignment' as status,
   COUNT(*) FILTER (WHERE created_by_id IS NULL) as null_creator,
-  COUNT(*) FILTER (WHERE created_by_id = '16c968f8-4b82-47ab-badb-71207b2c5c0b') as mike_site_submits,
+  COUNT(*) FILTER (WHERE created_by_id = 'fe6e516f-11e1-4a3b-b914-910d59d9e8df') as mike_site_submits,
   COUNT(*) FILTER (WHERE created_by_id = 'c0e5fde5-9412-4a62-8711-9a6bf74d6e99') as arty_site_submits,
   COUNT(*) as total
 FROM site_submit;
@@ -119,7 +119,7 @@ GROUP BY u.name;
 -- Summary
 SELECT
   'Total site submits assigned' as summary,
-  COUNT(*) FILTER (WHERE created_by_id = '16c968f8-4b82-47ab-badb-71207b2c5c0b') as to_mike,
+  COUNT(*) FILTER (WHERE created_by_id = 'fe6e516f-11e1-4a3b-b914-910d59d9e8df') as to_mike,
   COUNT(*) FILTER (WHERE created_by_id = 'c0e5fde5-9412-4a62-8711-9a6bf74d6e99') as to_arty,
   COUNT(*) FILTER (WHERE created_by_id IS NULL) as still_null,
   COUNT(*) as total
