@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Database } from '../../../database-schema';
+import { prepareInsert, prepareUpdate } from '../../lib/supabaseHelpers';
 import PropertySquareFootageField from './PropertySquareFootageField';
 import PropertyCurrencyField from './PropertyCurrencyField';
 import { useToast } from '../../hooks/useToast';
@@ -191,7 +192,7 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
     try {
       const { data, error } = await supabase
         .from('property_unit')
-        .insert([newUnit])
+        .insert(prepareInsert([newUnit]))
         .select()
         .single();
 
@@ -226,7 +227,7 @@ const PropertyUnitsSection: React.FC<PropertyUnitsSectionProps> = ({
 
       const { error } = await supabase
         .from('property_unit')
-        .update(updateData)
+        .update(prepareUpdate(updateData))
         .eq('id', unitId);
 
       if (error) throw error;

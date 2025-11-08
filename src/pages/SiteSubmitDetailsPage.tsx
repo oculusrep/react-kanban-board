@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import { Database } from '../../database-schema';
 import PropertySelector from '../components/PropertySelector';
 import PropertyUnitSelector from '../components/PropertyUnitSelector';
@@ -133,7 +134,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
 
       const { error } = await supabase
         .from('site_submit')
-        .update(updateData)
+        .update(prepareUpdate(updateData))
         .eq('id', siteSubmitId);
 
       if (error) throw error;
@@ -457,7 +458,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
 
         const { data, error } = await supabase
           .from('site_submit')
-          .update(updateData)
+          .update(prepareUpdate(updateData))
           .eq('id', siteSubmitId)
           .select()
           .single();
@@ -480,7 +481,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
 
         const { data, error } = await supabase
           .from('site_submit')
-          .insert(submitData)
+          .insert(prepareInsert(submitData))
           .select()
           .single();
 

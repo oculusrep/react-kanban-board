@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import PropertySelector from './PropertySelector';
 import PropertyUnitSelector from './PropertyUnitSelector';
 import EmailComposerModal, { EmailData } from './EmailComposerModal';
@@ -120,7 +121,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
 
       const { error } = await supabase
         .from('site_submit')
-        .update(updateData)
+        .update(prepareUpdate(updateData))
         .eq('id', siteSubmitId!);
 
       if (error) throw error;
@@ -384,7 +385,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
 
         const { data, error } = await supabase
           .from('site_submit')
-          .update(updateData)
+          .update(prepareUpdate(updateData))
           .eq('id', siteSubmitId)
           .select(`
             *,
@@ -417,7 +418,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
 
         const { data, error } = await supabase
           .from('site_submit')
-          .insert(submitData)
+          .insert(prepareInsert(submitData))
           .select(`
             *,
             submit_stage!site_submit_submit_stage_id_fkey (

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Activity,
@@ -501,7 +502,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
 
         const result = await supabase
           .from('activity')
-          .update(updateData)
+          .update(prepareUpdate(updateData))
           .eq('id', existingTask.id)
           .select('*')
           .single();
@@ -520,7 +521,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
         console.log('About to insert activity data:', JSON.stringify(activityData, null, 2));
         const result = await supabase
           .from('activity')
-          .insert(activityData)
+          .insert(prepareInsert(activityData))
           .select('*')
           .single();
         data = result.data;

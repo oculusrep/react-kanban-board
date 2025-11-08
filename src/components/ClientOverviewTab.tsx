@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import ParentAccountSelector from './ParentAccountSelector';
 
 type Client = Database['public']['Tables']['client']['Row'];
@@ -226,7 +227,7 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
 
         const { data, error } = await supabase
           .from('client')
-          .insert([insertData])
+          .insert(prepareInsert([insertData]))
           .select()
           .single();
 
@@ -259,7 +260,7 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
 
         const { data, error } = await supabase
           .from('client')
-          .update(updateData)
+          .update(prepareUpdate(updateData))
           .eq('id', client!.id)
           .select()
           .single();
@@ -325,7 +326,7 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
     try {
       const { error } = await supabase
         .from('client')
-        .update({ parent_id: parentId })
+        .update(prepareUpdate({ parent_id: parentId }))
         .eq('id', client.id);
 
       if (error) throw error;

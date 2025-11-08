@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Database } from '../../../database-schema';
+import { prepareInsert, prepareUpdate } from '../../lib/supabaseHelpers';
 import ContactFormModal from '../ContactFormModal';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
@@ -86,10 +87,10 @@ const AddPropertyContactModal: React.FC<AddPropertyContactModalProps> = ({
     try {
       const { error: insertError } = await supabase
         .from('property_contact')
-        .insert({
+        .insert(prepareInsert({
           property_id: propertyId,
           contact_id: selectedContact.id,
-        });
+        }));
 
       if (insertError) throw insertError;
 

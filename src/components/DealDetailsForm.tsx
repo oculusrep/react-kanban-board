@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
+import { prepareInsert, prepareUpdate } from "../lib/supabaseHelpers";
 import { formatCurrency, formatPercent, formatIntegerPercent } from "../utils/format";
 import FormattedInput from "./FormattedInput";
 import FormattedField from "./shared/FormattedField";
@@ -177,7 +178,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
 
     const { data, error } = await supabase
       .from("deal")
-      .update(dealPayload)
+      .update(prepareUpdate(dealPayload))
       .eq("id", deal.id)
       .select()
       .single();
@@ -286,10 +287,10 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
 
         const { data, error } = await supabase
           .from("deal")
-          .update({ 
+          .update(prepareUpdate({
             commission_percent: value,
             fee: calculatedFee
-          })
+          }))
           .eq("id", form.id)
           .select()
           .single();
@@ -524,7 +525,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       // Update existing deal
       const result = await supabase
         .from("deal")
-        .update(dealPayload)
+        .update(prepareUpdate(dealPayload))
         .eq("id", form.id)
         .select()
         .single();
@@ -535,7 +536,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       dealPayload.created_at = new Date().toISOString();
       const result = await supabase
         .from("deal")
-        .insert([dealPayload])
+        .insert(prepareInsert([dealPayload]))
         .select()
         .single();
       data = result.data;
@@ -660,7 +661,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       // Update existing deal
       const result = await supabase
         .from("deal")
-        .update(dealPayload)
+        .update(prepareUpdate(dealPayload))
         .eq("id", updatedForm.id)
         .select()
         .single();
@@ -671,7 +672,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       dealPayload.created_at = new Date().toISOString();
       const result = await supabase
         .from("deal")
-        .insert([dealPayload])
+        .insert(prepareInsert([dealPayload]))
         .select()
         .single();
       data = result.data;
@@ -752,7 +753,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       // Update existing deal
       const result = await supabase
         .from("deal")
-        .update(dealPayload)
+        .update(prepareUpdate(dealPayload))
         .eq("id", updatedForm.id)
         .select()
         .single();
@@ -763,7 +764,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       dealPayload.created_at = new Date().toISOString();
       const result = await supabase
         .from("deal")
-        .insert([dealPayload])
+        .insert(prepareInsert([dealPayload]))
         .select()
         .single();
       data = result.data;
@@ -846,7 +847,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       // Update existing deal
       const result = await supabase
         .from("deal")
-        .update(dealPayload)
+        .update(prepareUpdate(dealPayload))
         .eq("id", updatedForm.id)
         .select()
         .single();
@@ -857,7 +858,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       dealPayload.created_at = new Date().toISOString();
       const result = await supabase
         .from("deal")
-        .insert([dealPayload])
+        .insert(prepareInsert([dealPayload]))
         .select()
         .single();
       data = result.data;

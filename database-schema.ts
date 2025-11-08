@@ -9628,6 +9628,7 @@ export type Database = {
       user: {
         Row: {
           active: boolean | null
+          auth_user_id: string | null
           created_at: string | null
           created_by_id: string | null
           created_by_sf_id: string | null
@@ -9649,6 +9650,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean | null
+          auth_user_id?: string | null
           created_at?: string | null
           created_by_id?: string | null
           created_by_sf_id?: string | null
@@ -9670,6 +9672,7 @@ export type Database = {
         }
         Update: {
           active?: boolean | null
+          auth_user_id?: string | null
           created_at?: string | null
           created_by_id?: string | null
           created_by_sf_id?: string | null

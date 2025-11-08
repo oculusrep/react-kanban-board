@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import { Database } from '../../database-schema';
 
 type Client = Database['public']['Tables']['client']['Row'];
@@ -111,13 +112,13 @@ const AddChildAccountModal: React.FC<AddChildAccountModalProps> = ({
         // Create the new client
         const { data: newClient, error: createError } = await supabase
           .from('client')
-          .insert([{
+          .insert(prepareInsert([{
             client_name: newClientName.trim(),
             sf_client_type: newClientType || null,
             phone: newClientPhone || null,
             parent_id: currentClientId,
             is_active_client: true
-          }])
+          }]))
           .select()
           .single();
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 
 type Property = Database['public']['Tables']['property']['Row'];
 type PropertyType = Database['public']['Tables']['property_type']['Row'];
@@ -17,7 +18,7 @@ interface UsePropertyResult {
   property: PropertyWithRelations | null;
   loading: boolean;
   error: string | null;
-  updateProperty: (updates: Partial<Property>, currentUserId?: string) => Promise<void>;
+  updateProperty: (updates: Partial<Property>) => Promise<void>;
   createProperty: (property: Omit<Property, 'id' | 'created_at' | 'updated_at'>) => Promise<Property>;
   refreshProperty: () => Promise<void>;
 }
@@ -81,32 +82,27 @@ export const useProperty = (propertyId?: string): UsePropertyResult => {
     fetchProperty();
   }, [fetchProperty]);
 
-  const updateProperty = useCallback(async (updates: Partial<Property>, currentUserId?: string) => {
+  const updateProperty = useCallback(async (updates: Partial<Property>) => {
     if (!propertyId) throw new Error('No property ID provided');
 
     try {
       setError(null);
 
-      // Prepare update payload with timestamp and updated_by_id
+      // Prepare update payload with timestamp
+      // Note: updated_by_id is automatically set by auth.uid() database default
       const updatePayload: any = {
         ...updates,
         updated_at: new Date().toISOString()
       };
 
-      // Set updated_by_id if current user ID is provided
-      if (currentUserId) {
-        updatePayload.updated_by_id = currentUserId;
-      }
-
       console.log('🔧 useProperty.updateProperty - propertyId:', propertyId);
-      console.log('🔧 useProperty.updateProperty - currentUserId:', currentUserId);
       console.log('🔧 useProperty.updateProperty - updates received:', updates);
       console.log('🔧 useProperty.updateProperty - property_notes in updates:', updates.property_notes);
       console.log('🔧 useProperty.updateProperty - updatePayload:', updatePayload);
 
       const { data, error } = await supabase
         .from('property')
-        .update(updatePayload)
+        .update(prepareUpdate(updatePayload))
         .eq('id', propertyId)
         .select('*')
         .single();
@@ -134,11 +130,11 @@ export const useProperty = (propertyId?: string): UsePropertyResult => {
       
       const { data, error } = await supabase
         .from('property')
-        .insert([{
+        .insert(prepareInsert([{
           ...propertyData,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
-        }])
+        }]))
         .select()
         .single();
 

@@ -65,7 +65,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const queryPromise = supabase
         .from('user')
         .select('id, ovis_role')
-        .eq('email', email)
+        .eq('auth_user_id', authUser.id)
         .single();
 
       // Race between query and timeout

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import { useAuth } from '../contexts/AuthContext';
 import { ParentObject, RelatedOption } from '../types/activity';
 import {
@@ -280,7 +281,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
 
         const { error: updateError } = await supabase
           .from('activity')
-          .update(updateData)
+          .update(prepareUpdate(updateData))
           .eq('id', existingActivity.id);
 
         if (updateError) {
@@ -361,7 +362,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
         // Create the call activity
         const { error: insertError } = await supabase
           .from('activity')
-          .insert([activityData]);
+          .insert(prepareInsert([activityData]));
 
         if (insertError) {
           throw insertError;

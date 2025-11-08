@@ -3,6 +3,7 @@ import 'react-quill/dist/quill.snow.css';
 import './QuillEditor.css';
 import QuillWrapper from './QuillWrapper';
 import { supabase } from '../lib/supabaseClient';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import { Database } from '../../database-schema';
 
 type Note = Database['public']['Tables']['note']['Row'];
@@ -190,7 +191,7 @@ const NoteFormModal: React.FC<NoteFormModalProps> = ({
 
       const { error } = await supabase
         .from('note_object_link')
-        .insert(insertData);
+        .insert(prepareInsert(insertData));
 
       if (error) {
         console.error('Error linking object:', error);
@@ -276,11 +277,11 @@ const NoteFormModal: React.FC<NoteFormModalProps> = ({
         // Update existing note
         const { data, error } = await supabase
           .from('note')
-          .update({
+          .update(prepareUpdate({
             title: formData.title.trim(),
             body: formData.body,
             updated_at: new Date().toISOString()
-          })
+          }))
           .eq('id', noteId)
           .select()
           .single();
@@ -302,7 +303,7 @@ const NoteFormModal: React.FC<NoteFormModalProps> = ({
 
         const { data: note, error: noteError } = await supabase
           .from('note')
-          .insert([noteData])
+          .insert(prepareInsert([noteData]))
           .select()
           .single();
 
@@ -336,7 +337,7 @@ const NoteFormModal: React.FC<NoteFormModalProps> = ({
 
           const { error: linkError } = await supabase
             .from('note_object_link')
-            .insert(associationData);
+            .insert(prepareInsert(associationData));
 
           if (linkError) {
             console.error('Error creating note associations:', linkError);

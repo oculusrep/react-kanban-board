@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import { Database } from '../../database-schema';
 
 type Note = Database['public']['Tables']['note']['Row'];
@@ -184,7 +185,7 @@ const NotesSidebar: React.FC<NotesSidebarProps> = ({
 
       const { data, error } = await supabase
         .from('note_object_link')
-        .insert([associationData])
+        .insert(prepareInsert([associationData]))
         .select()
         .single();
 

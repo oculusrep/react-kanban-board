@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Database } from '../../database-schema';
 import { supabase } from '../../lib/supabaseClient';
+import { prepareInsert, prepareUpdate } from '../../lib/supabaseHelpers';
 import PropertyInputField from './PropertyInputField';
 import PropertyAutocompleteField from './PropertyAutocompleteField';
 import PropertySelectField from './PropertySelectField';
@@ -316,7 +317,7 @@ const NewPropertyPage: React.FC = () => {
         if (unitInserts.length > 0) {
           const { data: createdUnits, error: unitsError } = await supabase
             .from('property_unit')
-            .insert(unitInserts)
+            .insert(prepareInsert(unitInserts))
             .select();
 
           if (unitsError) {

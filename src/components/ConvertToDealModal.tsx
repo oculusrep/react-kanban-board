@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { parseISO, format as formatDateFn } from 'date-fns';
@@ -189,7 +190,7 @@ export default function ConvertToDealModal({
 
       const { data: newDeal, error: dealError } = await supabase
         .from('deal')
-        .insert([dealPayload])
+        .insert(prepareInsert([dealPayload]))
         .select()
         .single();
 
@@ -219,7 +220,7 @@ export default function ConvertToDealModal({
           if (dealContactPayloads.length > 0) {
             const { error: dealContactError } = await supabase
               .from('deal_contact')
-              .insert(dealContactPayloads);
+              .insert(prepareInsert(dealContactPayloads));
 
             if (dealContactError) {
               console.warn('Could not copy property contacts to deal:', dealContactError);
@@ -253,7 +254,7 @@ export default function ConvertToDealModal({
 
       const { error: assignmentError } = await supabase
         .from('assignment')
-        .update(assignmentUpdate)
+        .update(prepareUpdate(assignmentUpdate))
         .eq('id', assignmentId);
 
       if (assignmentError) throw assignmentError;
@@ -281,7 +282,7 @@ export default function ConvertToDealModal({
 
       const { error: siteSubmitError } = await supabase
         .from('site_submit')
-        .update(siteSubmitUpdate)
+        .update(prepareUpdate(siteSubmitUpdate))
         .eq('id', selectedSiteSubmitId);
 
       if (siteSubmitError) {

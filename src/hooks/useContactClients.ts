@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 
 type ContactClientRelation = Database['public']['Tables']['contact_client_relation']['Row'];
 type Client = Database['public']['Tables']['client']['Row'];
@@ -159,19 +160,19 @@ export const useContactClients = (contactId: string | null) => {
       if (isPrimary) {
         await supabase
           .from('contact_client_relation')
-          .update({ is_primary: false })
+          .update(prepareUpdate({ is_primary: false }))
           .eq('contact_id', contactId);
       }
 
       const { data, error: insertError } = await supabase
         .from('contact_client_relation')
-        .insert({
+        .insert(prepareInsert({
           contact_id: contactId,
           client_id: clientId,
           role: role || null,
           is_primary: isPrimary || false,
           is_active: true
-        })
+        }))
         .select()
         .single();
 
@@ -208,13 +209,13 @@ export const useContactClients = (contactId: string | null) => {
       // Unset all primary flags for this contact
       await supabase
         .from('contact_client_relation')
-        .update({ is_primary: false })
+        .update(prepareUpdate({ is_primary: false }))
         .eq('contact_id', contactId);
 
       // Set new primary
       const { error: updateError } = await supabase
         .from('contact_client_relation')
-        .update({ is_primary: true })
+        .update(prepareUpdate({ is_primary: true }))
         .eq('id', relationId);
 
       if (updateError) throw updateError;
@@ -229,7 +230,7 @@ export const useContactClients = (contactId: string | null) => {
     try {
       const { error: updateError } = await supabase
         .from('contact_client_relation')
-        .update({ is_primary: false })
+        .update(prepareUpdate({ is_primary: false }))
         .eq('id', relationId);
 
       if (updateError) throw updateError;
@@ -244,7 +245,7 @@ export const useContactClients = (contactId: string | null) => {
     try {
       const { error: updateError } = await supabase
         .from('contact_client_relation')
-        .update({ role })
+        .update(prepareUpdate({ role }))
         .eq('id', relationId);
 
       if (updateError) throw updateError;

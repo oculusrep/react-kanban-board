@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
+import { useAuth } from '../contexts/AuthContext';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type ContactInsert = Database['public']['Tables']['contact']['Insert'];
@@ -52,6 +54,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
   rightOffset = 0,
   showBackdrop = true
 }) => {
+  const { user } = useAuth();
   const [formData, setFormData] = useState<FormData>({
     first_name: '',
     last_name: '',
@@ -233,7 +236,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
 
         const { data, error } = await supabase
           .from('contact')
-          .update(updateData)
+          .update(prepareUpdate(updateData))
           .eq('id', contactId)
           .select()
           .single();
@@ -242,11 +245,11 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
         onUpdate?.(data);
       } else {
         // Create new contact
-        const contactData: ContactInsert = {
+        const contactData = prepareInsert({
           ...formData,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        };
+        });
 
         const { data, error } = await supabase
           .from('contact')

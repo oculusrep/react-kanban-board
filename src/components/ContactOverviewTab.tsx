@@ -117,7 +117,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
 
       const { data, error } = await supabase
         .from('contact')
-        .insert(contactData)
+        .insert(prepareInsert(contactData))
         .select()
         .single();
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import { Database } from '../../database-schema';
 import EntityAutocomplete from './EntityAutocomplete';
 
@@ -91,7 +92,7 @@ const NoteAssociations: React.FC<NoteAssociationsProps> = ({
 
       const { data, error } = await supabase
         .from('note_object_link')
-        .insert([associationData])
+        .insert(prepareInsert([associationData]))
         .select()
         .single();
 

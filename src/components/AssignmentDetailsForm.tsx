@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
+import { prepareInsert, prepareUpdate } from "../lib/supabaseHelpers";
 import { Assignment, AssignmentPriority } from "../lib/types";
 import { formatCurrency } from "../utils/format";
 import ReferralPayeeAutocomplete from "./ReferralPayeeAutocomplete";
@@ -142,7 +143,7 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
 
         const { data, error } = await supabase
           .from('assignment')
-          .update(assignmentPayload)
+          .update(prepareUpdate(assignmentPayload))
           .eq('id', form.id)
           .select()
           .single();
@@ -203,7 +204,7 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
     try {
       const { data, error } = await supabase
         .from('assignment')
-        .insert([assignmentPayload])
+        .insert(prepareInsert([assignmentPayload]))
         .select()
         .single();
       

@@ -9,6 +9,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers'
 
 export interface ContactDealRoleType {
   id: string
@@ -148,13 +149,13 @@ export function useContactDealRoles(
 
       const { data, error: err } = await supabase
         .from('contact_deal_role')
-        .insert({
+        .insert(prepareInsert({
           contact_id: contactIdParam,
           deal_id: dealIdParam,
           role_id: roleId,
           notes: notes || null,
           is_active: true,
-        })
+        }))
         .select()
         .single()
 
@@ -199,7 +200,7 @@ export function useContactDealRoles(
 
       const { error: err } = await supabase
         .from('contact_deal_role')
-        .update({ is_active: isActive })
+        .update(prepareUpdate({ is_active: isActive }))
         .eq('id', roleAssignmentId)
 
       if (err) throw err
@@ -218,7 +219,7 @@ export function useContactDealRoles(
 
       const { error: err } = await supabase
         .from('contact_deal_role')
-        .update({ notes })
+        .update(prepareUpdate({ notes }))
         .eq('id', roleAssignmentId)
 
       if (err) throw err

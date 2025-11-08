@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../contexts/AuthContext';
 import { useAutosave } from '../hooks/useAutosave';
@@ -190,7 +191,7 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
       console.log('Updating critical date:', criticalDateId, 'with payload:', payload);
       const { error } = await supabase
         .from('critical_date')
-        .update(payload)
+        .update(prepareUpdate(payload))
         .eq('id', criticalDateId);
 
       if (error) throw error;
@@ -208,7 +209,7 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
 
         const { data: dealUpdateResult, error: dealError } = await supabase
           .from('deal')
-          .update(dealUpdatePayload)
+          .update(prepareUpdate(dealUpdatePayload))
           .eq('id', dealId)
           .select();
 
@@ -229,7 +230,7 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
 
       const { error, data: newData } = await supabase
         .from('critical_date')
-        .insert([payload])
+        .insert(prepareInsert([payload]))
         .select()
         .single();
 

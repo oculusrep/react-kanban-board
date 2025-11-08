@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import { Database } from '../../database-schema';
 import { useContactClientRoles } from '../hooks/useContactClientRoles';
 
@@ -133,14 +134,14 @@ const AddContactRelationModal: React.FC<AddContactRelationModalProps> = ({
 
         const { data: newContact, error: createError } = await supabase
           .from('contact')
-          .insert([{
+          .insert(prepareInsert([{
             first_name: newContactFirstName.trim(),
             last_name: newContactLastName.trim(),
             email: newContactEmail.trim() || null,
             phone: newContactPhone.trim() || null,
             title: newContactTitle.trim() || null,
             client_id: clientId || null
-          }])
+          }]))
           .select()
           .single();
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import SidebarModule from './sidebar/SidebarModule';
 import FileManagerModule from './sidebar/FileManagerModule';
 import ContactFormModal from './ContactFormModal';
@@ -245,7 +246,7 @@ const NoteItem: React.FC<NoteItemProps> = ({ note, onUpdate, onDelete, initialEd
 
     const { data, error } = await supabase
       .from('note_object_link')
-      .insert(insertData)
+      .insert(prepareInsert(insertData))
       .select();
 
     if (error) {
@@ -273,7 +274,7 @@ const NoteItem: React.FC<NoteItemProps> = ({ note, onUpdate, onDelete, initialEd
   const handleSave = async () => {
     const { error } = await supabase
       .from('note')
-      .update({ title, body })
+      .update(prepareUpdate({ title, body }))
       .eq('id', note.id);
 
     if (!error) {
@@ -570,7 +571,7 @@ const AddContactsModalForDeals: React.FC<AddContactsModalForDealsProps> = ({
 
       const { error } = await supabase
         .from('deal_contact')
-        .insert(insertions);
+        .insert(prepareInsert(insertions));
 
       if (error) throw error;
 
@@ -874,7 +875,7 @@ const DealSidebar: React.FC<DealSidebarProps> = ({
       // Insert new contacts
       const { error: insertError } = await supabase
         .from('deal_contact')
-        .insert(newContacts);
+        .insert(prepareInsert(newContacts));
 
       if (insertError) throw insertError;
 
@@ -965,10 +966,10 @@ const DealSidebar: React.FC<DealSidebarProps> = ({
       // First create the note
       const { data: newNote, error: noteError } = await supabase
         .from('note')
-        .insert({
+        .insert(prepareInsert({
           title: '',
           body: ''
-        })
+        }))
         .select()
         .single();
 
@@ -977,12 +978,12 @@ const DealSidebar: React.FC<DealSidebarProps> = ({
       // Then create the link to the deal
       const { error: linkError } = await supabase
         .from('note_object_link')
-        .insert({
+        .insert(prepareInsert({
           note_id: newNote.id,
           object_type: 'deal',
           object_id: dealId,
           deal_id: dealId
-        });
+        }));
 
       if (linkError) throw linkError;
 

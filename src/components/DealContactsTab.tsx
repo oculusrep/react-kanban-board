@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import { Database } from '../../database-schema';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
@@ -211,7 +212,7 @@ const DealContactsTab: React.FC<DealContactsTabProps> = ({ dealId }) => {
       // Insert new contacts
       const { error: insertError } = await supabase
         .from('deal_contact')
-        .insert(newContacts);
+        .insert(prepareInsert(newContacts));
 
       if (insertError) throw insertError;
 

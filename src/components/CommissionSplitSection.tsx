@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import { Deal, CommissionSplit, Broker } from '../lib/types';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
 import { useCommissionCalculations } from '../hooks/useCommissionCalculations';
@@ -186,7 +187,7 @@ const InlinePercentageEdit: React.FC<InlinePercentageEditProps> = ({ value, onCh
       // Update in database
       const { error } = await supabase
         .from('commission_split')
-        .update({
+        .update(prepareUpdate({
           split_origination_percent: updatedSplit.split_origination_percent,
           split_origination_usd: updatedSplit.split_origination_usd,
           split_site_percent: updatedSplit.split_site_percent,
@@ -194,7 +195,7 @@ const InlinePercentageEdit: React.FC<InlinePercentageEditProps> = ({ value, onCh
           split_deal_percent: updatedSplit.split_deal_percent,
           split_deal_usd: updatedSplit.split_deal_usd,
           split_broker_total: updatedSplit.split_broker_total
-        })
+        }))
         .eq('id', splitId);
 
       if (error) throw error;
@@ -234,7 +235,7 @@ const InlinePercentageEdit: React.FC<InlinePercentageEditProps> = ({ value, onCh
 
       const { data, error } = await supabase
         .from('commission_split')
-        .insert(newSplit)
+        .insert(prepareInsert(newSplit))
         .select('*')
         .single();
 

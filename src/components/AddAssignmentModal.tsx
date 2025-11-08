@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import { Assignment, AssignmentPriority } from '../lib/types';
 import ClientSelector from './mapping/ClientSelector';
 import { ClientSearchResult } from '../hooks/useClientSearch';
@@ -120,7 +121,7 @@ const AddAssignmentModal: React.FC<AddAssignmentModalProps> = ({
 
       const { data, error: insertError } = await supabase
         .from('assignment')
-        .insert(insertData)
+        .insert(prepareInsert(insertData))
         .select()
         .single();
 

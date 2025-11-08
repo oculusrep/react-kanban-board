@@ -636,7 +636,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   const { propertyRecordTypes } = usePropertyRecordTypes();
   const { updateProperty } = useProperty(localPropertyData?.id || undefined);
   const { toast, showToast } = useToast();
-  const { userTableId } = useAuth();
+  // Note: userTableId no longer needed - auth.uid() automatically sets created_by_id/updated_by_id
 
   // Sync activeTab with initialTab when it changes OR when slideout opens
   useEffect(() => {
@@ -678,10 +678,11 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
       // Fetch created_by user name
       if (record.created_by_id) {
+        // Look up by both id (for old records) and auth_user_id (for new records)
         const { data: userData, error } = await supabase
           .from('user')
           .select('name, first_name, last_name')
-          .eq('id', record.created_by_id)
+          .or(`id.eq.${record.created_by_id},auth_user_id.eq.${record.created_by_id}`)
           .maybeSingle();
 
         console.log('👤 Created by user lookup:', { created_by_id: record.created_by_id, userData, error });
@@ -699,10 +700,11 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
       // Fetch updated_by user name
       if (record.updated_by_id) {
+        // Look up by both id (for old records) and auth_user_id (for new records)
         const { data: userData, error } = await supabase
           .from('user')
           .select('name, first_name, last_name')
-          .eq('id', record.updated_by_id)
+          .or(`id.eq.${record.updated_by_id},auth_user_id.eq.${record.updated_by_id}`)
           .maybeSingle();
 
         console.log('👤 Updated by user lookup:', { updated_by_id: record.updated_by_id, userData, error });
@@ -783,8 +785,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           delivery_timeframe: saveData.deliveryTimeframe || null,
           notes: saveData.notes || null,
           customer_comments: saveData.customerComments || null,
-          updated_at: new Date().toISOString(),
-          updated_by_id: userTableId || null
+          updated_at: new Date().toISOString()
+          // updated_by_id set automatically by auth.uid() default
         })
         .eq('id', siteSubmit.id)
         .select()
@@ -1520,10 +1522,9 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       console.log('📤 Sending property updates to database:', propertyUpdates);
       console.log('🔍 Property notes in updates object:', propertyUpdates.property_notes);
       console.log('🔍 Property type_id in updates object:', propertyUpdates.property_type_id);
-      console.log('🔍 Current user ID for updated_by:', userTableId);
 
-      // Save all changes to database with current user ID
-      await updateProperty(propertyUpdates, userTableId || undefined);
+      // Save all changes to database (updated_by_id set automatically by auth.uid() default)
+      await updateProperty(propertyUpdates);
 
       console.log('✅ updateProperty completed successfully');
       console.log('🔍 Property type_id after save:', localPropertyData.property_type_id);
@@ -1630,18 +1631,24 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           verified_latitude: propertyCoords.lat,  // User-verified coordinates from map pin
           verified_longitude: propertyCoords.lng, // User-verified coordinates from map pin
           created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          created_by_id: userTableId || null,
-          updated_by_id: userTableId || null
+          updated_at: new Date().toISOString()
+          // created_by_id and updated_by_id set automatically by auth.uid() defaults
         };
 
         console.log('📝 Assignment being saved:', selectedAssignment?.id, selectedAssignment?.assignment_name);
+
+        // Remove undefined fields so database defaults (created_by_id, updated_by_id) can apply
+        Object.keys(insertData).forEach(key => {
+          if (insertData[key] === undefined) {
+            delete insertData[key];
+          }
+        });
 
         console.log('📝 Insert data being sent to Supabase:', insertData);
         console.log('🎯 Current stage ID at save time:', currentStageId);
 
         // Insert new site submit
-        const { data: newSiteSubmit, error} = await supabase
+        const { data: newSiteSubmit, error } = await supabase
           .from('site_submit')
           .insert(insertData)
           .select()
@@ -1730,8 +1737,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
             delivery_timeframe: formData.deliveryTimeframe || null,
             notes: formData.notes || null,
             customer_comments: formData.customerComments || null,
-            updated_at: new Date().toISOString(),
-            updated_by_id: userTableId || null
+            updated_at: new Date().toISOString()
+            // updated_by_id set automatically by auth.uid() default
           })
           .eq('id', siteSubmit.id)
           .select()

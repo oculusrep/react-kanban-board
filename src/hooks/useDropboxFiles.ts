@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import DropboxService, { DropboxFile } from '../services/dropboxService';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 
 // Return type for the hook
 interface UseDropboxFilesReturn {
@@ -302,10 +303,10 @@ export function useDropboxFiles(
         // Update existing mapping
         const { error: updateError } = await supabase
           .from('dropbox_mapping')
-          .update({
+          .update(prepareUpdate({
             dropbox_folder_path: newFolderPath,
             last_verified_at: new Date().toISOString()
-          })
+          }))
           .eq('entity_type', entityType)
           .eq('entity_id', entityId);
 
@@ -323,14 +324,14 @@ export function useDropboxFiles(
 
         const { error: insertError } = await supabase
           .from('dropbox_mapping')
-          .insert({
+          .insert(prepareInsert({
             entity_type: entityType,
             entity_id: entityId,
             dropbox_folder_path: newFolderPath,
             sf_id: placeholderSfId, // Unique placeholder for auto-created folders
             sfdb_file_found: false,
             last_verified_at: new Date().toISOString()
-          });
+          }));
 
         if (insertError) {
           console.error('Error inserting folder mapping:', insertError);

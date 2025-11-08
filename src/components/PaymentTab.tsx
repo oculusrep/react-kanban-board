@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import { Deal, Payment, PaymentSplit, Broker, CommissionSplit, Client } from '../lib/types';
 import { usePaymentCalculations } from '../hooks/usePaymentCalculations';
 import PaymentGenerationSection from './PaymentGenerationSection';
@@ -366,7 +367,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
       if (newPaymentSplits.length > 0) {
         const { error: insertError } = await supabase
           .from('payment_split')
-          .insert(newPaymentSplits);
+          .insert(prepareInsert(newPaymentSplits));
 
         if (insertError) {
           console.error('❌ Error inserting new payment splits:', insertError);
@@ -399,7 +400,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
     try {
       const { error } = await supabase
         .from('payment')
-        .update(updates)
+        .update(prepareUpdate(updates))
         .eq('id', paymentId);
 
       if (error) throw error;
