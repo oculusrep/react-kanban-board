@@ -23,6 +23,8 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
   const [clients, setClients] = useState<Client[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [createdByName, setCreatedByName] = useState<string | null>(null);
+  const [updatedByName, setUpdatedByName] = useState<string | null>(null);
 
   // Use the custom hook for form state and validation
   const {
@@ -65,6 +67,45 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
 
     loadData();
   }, []);
+
+  // Fetch user names for created_by and updated_by
+  useEffect(() => {
+    const fetchUserNames = async () => {
+      if (!contact) return;
+
+      try {
+        // Fetch created_by user name
+        if (contact.created_by_id) {
+          const { data: createdByUser } = await supabase
+            .from('user')
+            .select('name, first_name, last_name')
+            .or(`id.eq.${contact.created_by_id},auth_user_id.eq.${contact.created_by_id}`)
+            .single();
+
+          if (createdByUser) {
+            setCreatedByName(createdByUser.name || `${createdByUser.first_name} ${createdByUser.last_name}`.trim() || 'Unknown User');
+          }
+        }
+
+        // Fetch updated_by user name
+        if (contact.updated_by_id) {
+          const { data: updatedByUser } = await supabase
+            .from('user')
+            .select('name, first_name, last_name')
+            .or(`id.eq.${contact.updated_by_id},auth_user_id.eq.${contact.updated_by_id}`)
+            .single();
+
+          if (updatedByUser) {
+            setUpdatedByName(updatedByUser.name || `${updatedByUser.first_name} ${updatedByUser.last_name}`.trim() || 'Unknown User');
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user names:', error);
+      }
+    };
+
+    fetchUserNames();
+  }, [contact?.created_by_id, contact?.updated_by_id]);
 
   // Handle field updates with auto-save (following PropertyDetailScreen pattern)
   const handleFieldUpdate = async (field: keyof Contact, value: any) => {
@@ -561,13 +602,31 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
               {contact.created_at && (
                 <div className="flex justify-between">
                   <span className="font-medium">Created:</span>
-                  <span>{new Date(contact.created_at).toLocaleString()}</span>
+                  <span>
+                    {new Date(contact.created_at).toLocaleString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit'
+                    })}
+                    {createdByName && ` by ${createdByName}`}
+                  </span>
                 </div>
               )}
               {contact.updated_at && (
                 <div className="flex justify-between">
                   <span className="font-medium">Last Updated:</span>
-                  <span>{new Date(contact.updated_at).toLocaleString()}</span>
+                  <span>
+                    {new Date(contact.updated_at).toLocaleString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit'
+                    })}
+                    {updatedByName && ` by ${updatedByName}`}
+                  </span>
                 </div>
               )}
             </div>
