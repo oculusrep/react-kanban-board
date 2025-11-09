@@ -150,7 +150,7 @@ LIMIT 5;
 SELECT
   'Recent Site Submits (Last 5)' as test_section,
   s.id,
-  s.site_name,
+  s.site_submit_name,
   s.created_by_id,
   u.name as created_by_name,
   s.created_at,
