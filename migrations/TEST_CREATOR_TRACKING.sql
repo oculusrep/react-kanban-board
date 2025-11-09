@@ -131,14 +131,14 @@ FROM activity;
 -- After creating a NEW CONTACT through the UI, run this:
 SELECT
   'Recent Contacts (Last 5)' as test_section,
-  id,
-  first_name,
-  last_name,
-  created_by_id,
+  c.id,
+  c.first_name,
+  c.last_name,
+  c.created_by_id,
   u.name as created_by_name,
-  created_at,
+  c.created_at,
   CASE
-    WHEN created_by_id IS NOT NULL THEN '✓ PASS - Creator tracked'
+    WHEN c.created_by_id IS NOT NULL THEN '✓ PASS - Creator tracked'
     ELSE '✗ FAIL - Creator NULL'
   END as status
 FROM contact c
