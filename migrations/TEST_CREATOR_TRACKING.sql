@@ -184,7 +184,7 @@ LIMIT 5;
 SELECT
   'Recent Activities (Last 5)' as test_section,
   a.id,
-  a.title,
+  COALESCE(a.subject, LEFT(a.description, 50)) as activity_preview,
   a.created_by_id,
   u.name as created_by_name,
   a.created_at,
