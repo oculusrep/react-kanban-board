@@ -42,14 +42,64 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =====================================================================
 -- Create trigger on auth.users table
+-- Note: This requires superuser/service_role permissions
+-- If you get permission errors, you have two options:
+--   1. Use the RPC function approach below instead
+--   2. Contact Supabase support to enable this trigger
 -- =====================================================================
 
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+-- Option 1: Try to create trigger (may fail with permission error)
+-- DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+-- CREATE TRIGGER on_auth_user_created
+--   AFTER INSERT OR UPDATE ON auth.users
+--   FOR EACH ROW
+--   EXECUTE FUNCTION create_user_record();
 
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT OR UPDATE ON auth.users
-  FOR EACH ROW
-  EXECUTE FUNCTION create_user_record();
+-- =====================================================================
+-- Alternative: RPC Function Approach (Recommended for Supabase)
+-- =====================================================================
+-- Call this function after creating a user via API or Dashboard
+
+CREATE OR REPLACE FUNCTION sync_user_from_auth(auth_user_id uuid)
+RETURNS void AS $$
+DECLARE
+  auth_user_email text;
+  auth_user_metadata jsonb;
+BEGIN
+  -- Get auth user data
+  SELECT email, raw_user_meta_data
+  INTO auth_user_email, auth_user_metadata
+  FROM auth.users
+  WHERE id = auth_user_id;
+
+  -- Create or update user record
+  IF auth_user_email IS NOT NULL THEN
+    INSERT INTO "user" (
+      auth_user_id,
+      email,
+      name,
+      first_name,
+      last_name,
+      active,
+      ovis_role
+    )
+    VALUES (
+      auth_user_id,
+      auth_user_email,
+      COALESCE(auth_user_metadata->>'name', auth_user_email),
+      auth_user_metadata->>'first_name',
+      auth_user_metadata->>'last_name',
+      true,
+      COALESCE(auth_user_metadata->>'role', 'user')
+    )
+    ON CONFLICT (auth_user_id) DO UPDATE SET
+      email = EXCLUDED.email,
+      name = COALESCE(EXCLUDED.name, "user".name),
+      first_name = COALESCE(EXCLUDED.first_name, "user".first_name),
+      last_name = COALESCE(EXCLUDED.last_name, "user".last_name);
+  END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =====================================================================
 -- Add unique constraint to ensure auth_user_id is unique (if not exists)
@@ -89,25 +139,37 @@ FROM information_schema.routines
 WHERE routine_name = 'create_user_record';
 
 -- =====================================================================
+-- Sync existing auth users (run once after migration)
+-- =====================================================================
+-- This will sync any auth users that don't have user table records yet
+
+DO $$
+DECLARE
+  auth_user_record RECORD;
+BEGIN
+  FOR auth_user_record IN
+    SELECT au.id, au.email, au.raw_user_meta_data
+    FROM auth.users au
+    LEFT JOIN "user" u ON au.id = u.auth_user_id
+    WHERE u.id IS NULL  -- Only users without user table records
+  LOOP
+    PERFORM sync_user_from_auth(auth_user_record.id);
+  END LOOP;
+END $$;
+
+-- =====================================================================
 -- Testing Instructions
 -- =====================================================================
 
--- To test this trigger:
+-- Method 1: Using RPC Function (After creating user in Dashboard)
 -- 1. Go to Supabase Dashboard → Authentication → Users
 -- 2. Click "Add User"
--- 3. Enter email: test.trigger@example.com
--- 4. Enter password
--- 5. Optionally add user metadata:
---    {
---      "name": "Test User",
---      "first_name": "Test",
---      "last_name": "User",
---      "role": "user"
---    }
--- 6. Click "Create User"
--- 7. Run this verification query:
+-- 3. Enter email: test@example.com, password
+-- 4. Copy the user ID that's created
+-- 5. Run this command:
+-- SELECT sync_user_from_auth('PASTE_USER_ID_HERE');
 
-/*
+-- Method 2: Verify existing users were synced
 SELECT
   u.id as user_table_id,
   u.auth_user_id,
@@ -120,25 +182,24 @@ SELECT
     WHEN u.auth_user_id IS NULL THEN '✗ FAIL - auth_user_id is NULL'
     WHEN au.id IS NULL THEN '✗ FAIL - auth user not found'
     WHEN u.email != au.email THEN '⚠ WARNING - emails do not match'
-    ELSE '✓ PASS - User created automatically!'
+    ELSE '✓ PASS - User synced correctly!'
   END as status
 FROM "user" u
 LEFT JOIN auth.users au ON u.auth_user_id = au.id
-WHERE u.email = 'test.trigger@example.com';
-*/
+ORDER BY u.created_at DESC NULLS LAST
+LIMIT 10;
 
 -- =====================================================================
 -- Notes
 -- =====================================================================
 
--- This trigger works with:
--- 1. Manual user creation in Supabase Dashboard
--- 2. Signup via Supabase Auth API
--- 3. Admin SDK user creation
--- 4. Any method that creates auth.users records
+-- This approach works with:
+-- 1. Manual user creation in Supabase Dashboard (call sync_user_from_auth after)
+-- 2. Signup via Supabase Auth API (call sync_user_from_auth in signup handler)
+-- 3. Admin SDK user creation (call sync_user_from_auth after)
 
--- User metadata can be passed during signup:
--- const { data, error } = await supabase.auth.signUp({
+-- Usage in signup handler:
+-- const { data: { user }, error } = await supabase.auth.signUp({
 --   email: 'user@example.com',
 --   password: 'password',
 --   options: {
@@ -150,13 +211,16 @@ WHERE u.email = 'test.trigger@example.com';
 --     }
 --   }
 -- });
+--
+-- if (user) {
+--   await supabase.rpc('sync_user_from_auth', { auth_user_id: user.id });
+-- }
 
 -- Benefits:
--- ✅ Automatic user table record creation
+-- ✅ Works around Supabase permission restrictions
 -- ✅ Guaranteed correct auth_user_id linking
--- ✅ No manual SQL needed
+-- ✅ Syncs existing auth users automatically
 -- ✅ Prevents setup mistakes
--- ✅ Works for all signup methods
+-- ✅ Can be called manually when needed
 
-COMMENT ON FUNCTION create_user_record() IS 'Automatically creates user table record when auth user is created or updated. Ensures auth_user_id is always correct.';
-COMMENT ON TRIGGER on_auth_user_created ON auth.users IS 'Triggers automatic user table record creation on auth user signup';
+COMMENT ON FUNCTION sync_user_from_auth(uuid) IS 'Syncs a user record from auth.users to user table. Call after creating auth users.';
