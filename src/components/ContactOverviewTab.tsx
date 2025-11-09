@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import { useContactForm } from '../hooks/useContactForm';
+import { prepareInsert } from '../lib/supabaseHelpers';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type ContactInsert = Database['public']['Tables']['contact']['Insert'];
@@ -551,6 +552,27 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             placeholder="Tags separated by commas (e.g., VIP, Decision Maker, Cold Lead)"
           />
         </div>
+
+        {/* Record Metadata - Show for existing contacts */}
+        {!isNewContact && contact && (
+          <div className="bg-gray-50 rounded-lg p-4 mt-4">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">Record Information</h4>
+            <div className="space-y-2 text-xs text-gray-600">
+              {contact.created_at && (
+                <div className="flex justify-between">
+                  <span className="font-medium">Created:</span>
+                  <span>{new Date(contact.created_at).toLocaleString()}</span>
+                </div>
+              )}
+              {contact.updated_at && (
+                <div className="flex justify-between">
+                  <span className="font-medium">Last Updated:</span>
+                  <span>{new Date(contact.updated_at).toLocaleString()}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
