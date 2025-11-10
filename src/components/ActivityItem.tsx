@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { formatDistanceToNow, format, parseISO, isAfter, startOfDay } from 'date-fns';
 import { ActivityWithRelations } from '../hooks/useActivities';
 import { supabase } from '../lib/supabaseClient';
-import { 
-  PhoneIcon, 
-  EnvelopeIcon, 
-  CheckCircleIcon, 
+import {
+  PhoneIcon,
+  EnvelopeIcon,
+  CheckCircleIcon,
   ClockIcon,
   UserIcon,
   ExclamationTriangleIcon,
@@ -13,12 +13,13 @@ import {
   ChevronRightIcon,
   PencilIcon
 } from '@heroicons/react/24/outline';
-import { 
+import {
   PhoneIcon as PhoneIconSolid,
   EnvelopeIcon as EnvelopeIconSolid,
   CheckCircleIcon as CheckCircleIconSolid
 } from '@heroicons/react/24/solid';
 import ActivityDetailView from './ActivityDetailView';
+import UserByIdDisplay from './shared/UserByIdDisplay';
 
 interface ActivityItemProps {
   activity: ActivityWithRelations;
@@ -325,6 +326,13 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
           
           {/* Metadata Row */}
           <div className="flex items-center gap-4 text-xs text-gray-500">
+            {/* Activity Type Label */}
+            <div className="flex items-center gap-1">
+              <span className="font-semibold text-gray-700">
+                {activityType || 'Task'}
+              </span>
+            </div>
+
             {/* Contact */}
             {activity.contact && (
               <div className="flex items-center gap-1">
@@ -335,38 +343,27 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
               </div>
             )}
 
-            {/* Assigned User / Updated By */}
-            {(activity.owner || activity.updated_by_user) && (
+            {/* Assigned To */}
+            {activity.owner && (
               <div className="flex items-center gap-1">
                 <UserIcon className="w-5 h-5 text-blue-500" />
                 <span className="font-medium">
-                  {(() => {
-                    if (activityType === 'Call' && activity.updated_by_user) {
-                      const user = activity.updated_by_user;
-                      const userName = user.first_name && user.last_name
-                        ? `${user.first_name} ${user.last_name}`
-                        : user.name || 'Unknown User';
-                      const updatedAt = activity.updated_at
-                        ? new Date(activity.updated_at).toLocaleString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                            hour: 'numeric',
-                            minute: '2-digit',
-                            hour12: true
-                          })
-                        : '';
-                      return updatedAt
-                        ? `Updated at: ${updatedAt} by ${userName}`
-                        : `Updated by: ${userName}`;
-                    } else if (activity.owner) {
-                      const user = activity.owner;
-                      return `Assigned to: ${user.first_name && user.last_name
-                        ? `${user.first_name} ${user.last_name}`
-                        : user.name || 'Unknown User'}`;
-                    }
-                    return '';
-                  })()}
+                  Assigned to: {activity.owner.first_name && activity.owner.last_name
+                    ? `${activity.owner.first_name} ${activity.owner.last_name}`
+                    : activity.owner.name || 'Unknown User'}
+                </span>
+              </div>
+            )}
+
+            {/* Completed Date (for calls only) */}
+            {activityType === 'Call' && completedDate && (
+              <div className="flex items-center gap-1">
+                <ClockIcon className="w-5 h-5 text-green-500" />
+                <span className="font-medium">
+                  Completed: {format(completedDate, 'MMM d, yyyy')}
+                  {activity.updated_by_id && (
+                    <span className="ml-1">by <UserByIdDisplay userId={activity.updated_by_id} /></span>
+                  )}
                 </span>
               </div>
             )}
@@ -410,60 +407,13 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
             )}
           </div>
 
-          {/* Record Metadata */}
-          {(activity.created_at || activity.updated_at) && (
-            <div className="mt-3 pt-3 border-t border-gray-100">
-              <div className="space-y-1 text-xs text-gray-500">
-                {activity.created_at && (
-                  <div>
-                    <span className="font-medium">Created: </span>
-                    <span>
-                      {new Date(activity.created_at).toLocaleString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        hour12: true
-                      })}
-                      {activity.created_by_user && ` by ${activity.created_by_user.name || `${activity.created_by_user.first_name || ''} ${activity.created_by_user.last_name || ''}`.trim() || 'Unknown User'}`}
-                    </span>
-                  </div>
-                )}
-                {activity.updated_at && activity.updated_at !== activity.created_at && (
-                  <div>
-                    <span className="font-medium">Last Updated: </span>
-                    <span>
-                      {new Date(activity.updated_at).toLocaleString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        hour12: true
-                      })}
-                      {activity.updated_by_user && ` by ${activity.updated_by_user.name || `${activity.updated_by_user.first_name || ''} ${activity.updated_by_user.last_name || ''}`.trim() || 'Unknown User'}`}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Date and Time */}
-          {displayDate && (
+          {/* Date and Time - Hide for calls since completion info is shown above */}
+          {displayDate && activityType !== 'Call' && (
             <div className="mt-2 text-xs text-gray-400">
-              <div className="flex items-center justify-between">
-                <span>
-                  {isCompleted && completedDate ? 'Completed at: ' : ''}
-                  {format(displayDate, 'MMM d, yyyy')}
-                </span>
-                {createdDate && displayDate.getTime() !== createdDate.getTime() && (
-                  <span>
-                    Created {formatDistanceToNow(createdDate, { addSuffix: true })}
-                  </span>
-                )}
-              </div>
+              <span>
+                {isCompleted && completedDate ? 'Completed at: ' : ''}
+                {format(displayDate, 'MMM d, yyyy')}
+              </span>
             </div>
           )}
         </div>

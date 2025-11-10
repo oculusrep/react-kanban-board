@@ -4,6 +4,7 @@ import { ActivityWithRelations } from '../hooks/useActivities';
 import { parseEmailDescription, formatEmailAddress, formatEmailBodyForDisplay } from '../utils/emailParser';
 import { supabase } from '../lib/supabaseClient';
 import AdvancedEmailView from './AdvancedEmailView';
+import RecordMetadata from './RecordMetadata';
 import {
   XMarkIcon,
   PencilIcon,
@@ -138,32 +139,6 @@ const TaskEditForm: React.FC<TaskEditFormProps> = ({ activity, onSave, onCancel 
   const [activityDate, setActivityDate] = useState(
     activity.activity_date ? format(parseISO(activity.activity_date), 'yyyy-MM-dd') : ''
   );
-  const [createdByName, setCreatedByName] = useState<string | null>(null);
-
-  // Get updated_by name from relation (already fetched in query)
-  const updatedByName = activity.updated_by_user
-    ? (activity.updated_by_user.name ||
-       `${activity.updated_by_user.first_name || ''} ${activity.updated_by_user.last_name || ''}`.trim() ||
-       'Unknown User')
-    : null;
-
-  // Fetch created_by user name (no FK exists, so fetch manually)
-  useEffect(() => {
-    const fetchCreatedBy = async () => {
-      if (!activity.created_by_id) return;
-
-      const { data: user } = await supabase
-        .from('user')
-        .select('name, first_name, last_name')
-        .or(`id.eq.${activity.created_by_id},auth_user_id.eq.${activity.created_by_id}`)
-        .single();
-
-      if (user) {
-        setCreatedByName(user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Unknown User');
-      }
-    };
-    fetchCreatedBy();
-  }, [activity.created_by_id]);
 
   const handleSave = () => {
     // TODO: Implement actual save to database
@@ -218,29 +193,12 @@ const TaskEditForm: React.FC<TaskEditFormProps> = ({ activity, onSave, onCancel 
       </div>
 
       {/* Record Metadata */}
-      <div className="bg-gray-50 rounded-lg p-4 mt-4">
-        <h4 className="text-sm font-medium text-gray-700 mb-3">Record Information</h4>
-        <div className="space-y-2 text-xs text-gray-600">
-          {activity.created_at && (
-            <div>
-              <span className="font-medium">Created: </span>
-              <span>
-                {new Date(activity.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
-                {createdByName && ` by ${createdByName}`}
-              </span>
-            </div>
-          )}
-          {activity.updated_at && (
-            <div>
-              <span className="font-medium">Last Updated: </span>
-              <span>
-                {new Date(activity.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
-                {updatedByName && ` by ${updatedByName}`}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
+      <RecordMetadata
+        createdAt={activity.created_at}
+        createdById={activity.created_by_id}
+        updatedAt={activity.updated_at}
+        updatedById={activity.updated_by_id}
+      />
 
       <div className="flex gap-2 pt-2">
         <button
@@ -282,32 +240,6 @@ const CallEditForm: React.FC<CallEditFormProps> = ({ activity, onSave, onCancel 
   const [isPropertyProspectingCall, setIsPropertyProspectingCall] = useState(activity.is_property_prospecting_call || false);
   const [completedPropertyCall, setCompletedPropertyCall] = useState(activity.completed_property_call || false);
   const [isLoading, setIsLoading] = useState(false);
-  const [createdByName, setCreatedByName] = useState<string | null>(null);
-
-  // Get updated_by name from relation (already fetched in query)
-  const updatedByName = activity.updated_by_user
-    ? (activity.updated_by_user.name ||
-       `${activity.updated_by_user.first_name || ''} ${activity.updated_by_user.last_name || ''}`.trim() ||
-       'Unknown User')
-    : null;
-
-  // Fetch created_by user name (no FK exists, so fetch manually)
-  useEffect(() => {
-    const fetchCreatedBy = async () => {
-      if (!activity.created_by_id) return;
-
-      const { data: user } = await supabase
-        .from('user')
-        .select('name, first_name, last_name')
-        .or(`id.eq.${activity.created_by_id},auth_user_id.eq.${activity.created_by_id}`)
-        .single();
-
-      if (user) {
-        setCreatedByName(user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Unknown User');
-      }
-    };
-    fetchCreatedBy();
-  }, [activity.created_by_id]);
 
   // Search contacts with debouncing
   useEffect(() => {
@@ -602,29 +534,12 @@ const CallEditForm: React.FC<CallEditFormProps> = ({ activity, onSave, onCancel 
       </div>
 
       {/* Record Metadata */}
-      <div className="bg-gray-50 rounded-lg p-4 mt-4">
-        <h4 className="text-sm font-medium text-gray-700 mb-3">Record Information</h4>
-        <div className="space-y-2 text-xs text-gray-600">
-          {activity.created_at && (
-            <div>
-              <span className="font-medium">Created: </span>
-              <span>
-                {new Date(activity.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
-                {createdByName && ` by ${createdByName}`}
-              </span>
-            </div>
-          )}
-          {activity.updated_at && (
-            <div>
-              <span className="font-medium">Last Updated: </span>
-              <span>
-                {new Date(activity.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
-                {updatedByName && ` by ${updatedByName}`}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
+      <RecordMetadata
+        createdAt={activity.created_at}
+        createdById={activity.created_by_id}
+        updatedAt={activity.updated_at}
+        updatedById={activity.updated_by_id}
+      />
 
       <div className="flex gap-2 pt-2">
         <button
@@ -662,32 +577,6 @@ interface ActivityReadOnlyViewProps {
 
 const ActivityReadOnlyView: React.FC<ActivityReadOnlyViewProps> = ({ activity }) => {
   const activityType = activity.activity_type?.name || activity.sf_task_subtype;
-  const [createdByName, setCreatedByName] = useState<string | null>(null);
-
-  // Get updated_by name from relation (already fetched in query)
-  const updatedByName = activity.updated_by_user
-    ? (activity.updated_by_user.name ||
-       `${activity.updated_by_user.first_name || ''} ${activity.updated_by_user.last_name || ''}`.trim() ||
-       'Unknown User')
-    : null;
-
-  // Fetch created_by user name (no FK exists, so fetch manually)
-  useEffect(() => {
-    const fetchCreatedBy = async () => {
-      if (!activity.created_by_id) return;
-
-      const { data: user } = await supabase
-        .from('user')
-        .select('name, first_name, last_name')
-        .or(`id.eq.${activity.created_by_id},auth_user_id.eq.${activity.created_by_id}`)
-        .single();
-
-      if (user) {
-        setCreatedByName(user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Unknown User');
-      }
-    };
-    fetchCreatedBy();
-  }, [activity.created_by_id]);
 
   return (
     <div className="space-y-4">
@@ -795,38 +684,16 @@ const ActivityReadOnlyView: React.FC<ActivityReadOnlyViewProps> = ({ activity })
           <p className="text-xs text-gray-500">
             Salesforce ID: {activity.sf_id}
           </p>
-          {activity.created_at && (
-            <p className="text-xs text-gray-500">
-              Created: {new Date(activity.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
-            </p>
-          )}
         </div>
       )}
 
       {/* Record Metadata */}
-      <div className="bg-gray-50 rounded-lg p-4 mt-4">
-        <h4 className="text-sm font-medium text-gray-700 mb-3">Record Information</h4>
-        <div className="space-y-2 text-xs text-gray-600">
-          {activity.created_at && (
-            <div>
-              <span className="font-medium">Created: </span>
-              <span>
-                {new Date(activity.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
-                {createdByName && ` by ${createdByName}`}
-              </span>
-            </div>
-          )}
-          {activity.updated_at && (
-            <div>
-              <span className="font-medium">Last Updated: </span>
-              <span>
-                {new Date(activity.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
-                {updatedByName && ` by ${updatedByName}`}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
+      <RecordMetadata
+        createdAt={activity.created_at}
+        createdById={activity.created_by_id}
+        updatedAt={activity.updated_at}
+        updatedById={activity.updated_by_id}
+      />
     </div>
   );
 };

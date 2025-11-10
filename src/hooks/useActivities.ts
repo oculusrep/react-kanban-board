@@ -17,6 +17,10 @@ export interface ActivityWithRelations extends Activity {
   activity_task_type?: ActivityTaskType;
   owner?: User;
   contact?: Contact;
+  // Audit fields added by migration but not yet in generated schema
+  created_by_id?: string | null;
+  updated_by_id?: string | null;
+  updated_by_user?: User;
 }
 
 interface UseActivitiesResult {
