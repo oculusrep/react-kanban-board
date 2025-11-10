@@ -409,7 +409,47 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
               </div>
             )}
           </div>
-          
+
+          {/* Record Metadata */}
+          {(activity.created_at || activity.updated_at) && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="space-y-1 text-xs text-gray-500">
+                {activity.created_at && (
+                  <div>
+                    <span className="font-medium">Created: </span>
+                    <span>
+                      {new Date(activity.created_at).toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true
+                      })}
+                      {activity.created_by_user && ` by ${activity.created_by_user.name || `${activity.created_by_user.first_name || ''} ${activity.created_by_user.last_name || ''}`.trim() || 'Unknown User'}`}
+                    </span>
+                  </div>
+                )}
+                {activity.updated_at && activity.updated_at !== activity.created_at && (
+                  <div>
+                    <span className="font-medium">Last Updated: </span>
+                    <span>
+                      {new Date(activity.updated_at).toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true
+                      })}
+                      {activity.updated_by_user && ` by ${activity.updated_by_user.name || `${activity.updated_by_user.first_name || ''} ${activity.updated_by_user.last_name || ''}`.trim() || 'Unknown User'}`}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Date and Time */}
           {displayDate && (
             <div className="mt-2 text-xs text-gray-400">
