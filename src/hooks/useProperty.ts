@@ -127,14 +127,14 @@ export const useProperty = (propertyId?: string): UsePropertyResult => {
   const createProperty = useCallback(async (propertyData: Omit<Property, 'id' | 'created_at' | 'updated_at'>): Promise<Property> => {
     try {
       setError(null);
-      
+
       const { data, error } = await supabase
         .from('property')
-        .insert(prepareInsert([{
+        .insert(prepareInsert({
           ...propertyData,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
-        }]))
+        }))
         .select()
         .single();
 

@@ -4,6 +4,7 @@ import PropertyInputField from './PropertyInputField';
 import PropertySelectField from './PropertySelectField';
 import PropertyAutocompleteField from './PropertyAutocompleteField';
 import { checkForLegacyRecordType } from '../../utils/propertyRecordTypeUtils';
+import RecordMetadata from '../RecordMetadata';
 
 type Property = Database['public']['Tables']['property']['Row'];
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
@@ -142,6 +143,16 @@ const PropertyDetailsSection: React.FC<PropertyDetailsSectionProps> = ({
               tabIndex={4}
             />
           </div>
+
+          {/* Record Metadata */}
+          {property.id && (
+            <RecordMetadata
+              createdAt={property.created_at}
+              createdById={property.created_by_id}
+              updatedAt={property.updated_at}
+              updatedById={property.updated_by_id}
+            />
+          )}
 
         </div>
       )}

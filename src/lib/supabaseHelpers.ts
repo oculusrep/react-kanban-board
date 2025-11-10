@@ -40,14 +40,23 @@ export function removeUndefinedFields<T extends Record<string, any>>(data: T): P
  * Prepares data for INSERT by removing undefined fields.
  * Alias for removeUndefinedFields with a more explicit name.
  *
- * @param data - The data object to prepare for insertion
- * @returns A new object ready for database insertion
+ * @param data - The data object or array of objects to prepare for insertion
+ * @returns A new object (or array of objects) ready for database insertion
  *
  * @example
  * const insertData = prepareInsert(formData);
  * await supabase.from('contact').insert(insertData);
+ *
+ * @example
+ * const insertArray = prepareInsert([obj1, obj2]);
+ * await supabase.from('contact').insert(insertArray);
  */
-export function prepareInsert<T extends Record<string, any>>(data: T): Partial<T> {
+export function prepareInsert<T extends Record<string, any>>(data: T): Partial<T>;
+export function prepareInsert<T extends Record<string, any>>(data: T[]): Partial<T>[];
+export function prepareInsert<T extends Record<string, any>>(data: T | T[]): Partial<T> | Partial<T>[] {
+  if (Array.isArray(data)) {
+    return data.map(item => removeUndefinedFields(item));
+  }
   return removeUndefinedFields(data);
 }
 
