@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { prepareInsert, prepareUpdate } from '../../lib/supabaseHelpers';
+import { prepareInsert } from '../../lib/supabaseHelpers';
 import { Database } from '../../../database-schema';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
@@ -126,9 +126,13 @@ const AddContactsModal: React.FC<AddContactsModalProps> = ({
         contact_id: contactId,
       }));
 
+      // Use upsert with ignoreDuplicates to gracefully handle existing relationships
       const { error } = await supabase
         .from('property_contact')
-        .insert(prepareInsert(insertions));
+        .upsert(prepareInsert(insertions), {
+          onConflict: 'property_id,contact_id',
+          ignoreDuplicates: true
+        });
 
       if (error) throw error;
 
