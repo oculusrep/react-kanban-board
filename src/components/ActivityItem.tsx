@@ -169,8 +169,8 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
       })()
     : null;
 
-  const createdDate = activity.created_at ? parseISO(activity.created_at) : null;
-  const completedDate = activity.completed_at ? parseISO(activity.completed_at) : null;
+  const createdDate = activity.created_at ? new Date(activity.created_at) : null;
+  const completedDate = activity.completed_at ? new Date(activity.completed_at) : null;
   const isCompleted = activity.activity_status?.is_closed || activity.completed_call || activity.sf_is_closed;
 
   // For completed activities, prefer completed_at date; otherwise use activity_date or created_at
@@ -347,7 +347,14 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
                         ? `${user.first_name} ${user.last_name}`
                         : user.name || 'Unknown User';
                       const updatedAt = activity.updated_at
-                        ? format(parseISO(activity.updated_at), 'MMM d, yyyy h:mm a')
+                        ? new Date(activity.updated_at).toLocaleString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true
+                          })
                         : '';
                       return updatedAt
                         ? `Updated at: ${updatedAt} by ${userName}`

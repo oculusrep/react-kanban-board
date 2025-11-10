@@ -604,7 +604,14 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
                 <div>
                   <span className="font-medium">Created: </span>
                   <span>
-                    {format(parseISO(contact.created_at), 'MMM d, yyyy h:mm a')}
+                    {new Date(contact.created_at).toLocaleString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      hour12: true
+                    })}
                     {createdByName && ` by ${createdByName}`}
                   </span>
                 </div>
@@ -613,7 +620,14 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
                 <div>
                   <span className="font-medium">Last Updated: </span>
                   <span>
-                    {format(parseISO(contact.updated_at), 'MMM d, yyyy h:mm a')}
+                    {new Date(contact.updated_at).toLocaleString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      hour12: true
+                    })}
                     {updatedByName && ` by ${updatedByName}`}
                   </span>
                 </div>

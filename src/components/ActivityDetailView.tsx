@@ -238,7 +238,7 @@ const TaskEditForm: React.FC<TaskEditFormProps> = ({ activity, onSave, onCancel 
             <div>
               <span className="font-medium">Created: </span>
               <span>
-                {format(parseISO(activity.created_at), 'MMM d, yyyy h:mm a')}
+                {new Date(activity.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
                 {createdByName && ` by ${createdByName}`}
               </span>
             </div>
@@ -247,7 +247,7 @@ const TaskEditForm: React.FC<TaskEditFormProps> = ({ activity, onSave, onCancel 
             <div>
               <span className="font-medium">Last Updated: </span>
               <span>
-                {format(parseISO(activity.updated_at), 'MMM d, yyyy h:mm a')}
+                {new Date(activity.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
                 {updatedByName && ` by ${updatedByName}`}
               </span>
             </div>
@@ -635,7 +635,7 @@ const CallEditForm: React.FC<CallEditFormProps> = ({ activity, onSave, onCancel 
             <div>
               <span className="font-medium">Created: </span>
               <span>
-                {format(parseISO(activity.created_at), 'MMM d, yyyy h:mm a')}
+                {new Date(activity.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
                 {createdByName && ` by ${createdByName}`}
               </span>
             </div>
@@ -644,7 +644,7 @@ const CallEditForm: React.FC<CallEditFormProps> = ({ activity, onSave, onCancel 
             <div>
               <span className="font-medium">Last Updated: </span>
               <span>
-                {format(parseISO(activity.updated_at), 'MMM d, yyyy h:mm a')}
+                {new Date(activity.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
                 {updatedByName && ` by ${updatedByName}`}
               </span>
             </div>
@@ -836,7 +836,7 @@ const ActivityReadOnlyView: React.FC<ActivityReadOnlyViewProps> = ({ activity })
           </p>
           {activity.created_at && (
             <p className="text-xs text-gray-500">
-              Created: {format(parseISO(activity.created_at), 'MMM d, yyyy h:mm a')}
+              Created: {new Date(activity.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
             </p>
           )}
         </div>
@@ -850,7 +850,7 @@ const ActivityReadOnlyView: React.FC<ActivityReadOnlyViewProps> = ({ activity })
             <div>
               <span className="font-medium">Created: </span>
               <span>
-                {format(parseISO(activity.created_at), 'MMM d, yyyy h:mm a')}
+                {new Date(activity.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
                 {createdByName && ` by ${createdByName}`}
               </span>
             </div>
@@ -859,7 +859,7 @@ const ActivityReadOnlyView: React.FC<ActivityReadOnlyViewProps> = ({ activity })
             <div>
               <span className="font-medium">Last Updated: </span>
               <span>
-                {format(parseISO(activity.updated_at), 'MMM d, yyyy h:mm a')}
+                {new Date(activity.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
                 {updatedByName && ` by ${updatedByName}`}
               </span>
             </div>
@@ -898,8 +898,8 @@ const EmailReadOnlyView: React.FC<EmailReadOnlyViewProps> = ({ activity }) => {
   
   // Format date
   const emailDate = parsedEmail?.date ||
-    (activity.activity_date ? format(parseISO(activity.activity_date), 'MMM d, yyyy h:mm a') : '') ||
-    (activity.created_at ? format(parseISO(activity.created_at), 'MMM d, yyyy h:mm a') : '');
+    (activity.activity_date ? new Date(activity.activity_date).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : '') ||
+    (activity.created_at ? new Date(activity.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : '');
 
   const formatEmailList = (emails: string[]) => {
     return emails.map(email => {
@@ -1026,7 +1026,7 @@ const EmailReadOnlyView: React.FC<EmailReadOnlyViewProps> = ({ activity }) => {
           {activity.created_at && (
             <div>
               <span className="font-medium">Logged:</span>{' '}
-              {format(parseISO(activity.created_at), 'MMM d, yyyy h:mm a')}
+              {new Date(activity.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
             </div>
           )}
           {activity.owner && (

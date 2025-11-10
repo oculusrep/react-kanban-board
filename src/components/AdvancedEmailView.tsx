@@ -32,8 +32,8 @@ const AdvancedEmailView: React.FC<AdvancedEmailViewProps> = ({ activity }) => {
   
   // Format date
   const emailDate = parsedEmail.headers.date ||
-    (activity.activity_date ? format(parseISO(activity.activity_date), 'MMM d, yyyy h:mm a') : '') ||
-    (activity.created_at ? format(parseISO(activity.created_at), 'MMM d, yyyy h:mm a') : '');
+    (activity.activity_date ? new Date(activity.activity_date).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : '') ||
+    (activity.created_at ? new Date(activity.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : '');
 
   const toggleEmailInThread = (emailId: string) => {
     setShowEmailThread(prev => ({
@@ -204,7 +204,7 @@ const AdvancedEmailView: React.FC<AdvancedEmailViewProps> = ({ activity }) => {
           {activity.created_at && (
             <div>
               <span className="font-medium">Logged:</span>{' '}
-              {format(parseISO(activity.created_at), 'MMM d, yyyy h:mm a')}
+              {new Date(activity.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
             </div>
           )}
           {activity.owner && (
