@@ -138,45 +138,18 @@ const TaskEditForm: React.FC<TaskEditFormProps> = ({ activity, onSave, onCancel 
   const [activityDate, setActivityDate] = useState(
     activity.activity_date ? format(parseISO(activity.activity_date), 'yyyy-MM-dd') : ''
   );
-  const [createdByName, setCreatedByName] = useState<string | null>(null);
-  const [updatedByName, setUpdatedByName] = useState<string | null>(null);
+  // Get user names from relations (already fetched in query)
+  const createdByName = activity.created_by_user
+    ? (activity.created_by_user.name ||
+       `${activity.created_by_user.first_name || ''} ${activity.created_by_user.last_name || ''}`.trim() ||
+       'Unknown User')
+    : null;
 
-  // Fetch user names for created_by and updated_by
-  useEffect(() => {
-    const fetchUserNames = async () => {
-      try {
-        // Fetch created_by user name
-        if (activity.created_by_id) {
-          const { data: createdByUser } = await supabase
-            .from('user')
-            .select('name, first_name, last_name')
-            .or(`id.eq.${activity.created_by_id},auth_user_id.eq.${activity.created_by_id}`)
-            .single();
-
-          if (createdByUser) {
-            setCreatedByName(createdByUser.name || `${createdByUser.first_name} ${createdByUser.last_name}`.trim() || 'Unknown User');
-          }
-        }
-
-        // Fetch updated_by user name
-        if (activity.updated_by_id) {
-          const { data: updatedByUser } = await supabase
-            .from('user')
-            .select('name, first_name, last_name')
-            .or(`id.eq.${activity.updated_by_id},auth_user_id.eq.${activity.updated_by_id}`)
-            .single();
-
-          if (updatedByUser) {
-            setUpdatedByName(updatedByUser.name || `${updatedByUser.first_name} ${updatedByUser.last_name}`.trim() || 'Unknown User');
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching user names:', error);
-      }
-    };
-
-    fetchUserNames();
-  }, [activity.created_by_id, activity.updated_by_id]);
+  const updatedByName = activity.updated_by_user
+    ? (activity.updated_by_user.name ||
+       `${activity.updated_by_user.first_name || ''} ${activity.updated_by_user.last_name || ''}`.trim() ||
+       'Unknown User')
+    : null;
 
   const handleSave = () => {
     // TODO: Implement actual save to database
@@ -295,45 +268,18 @@ const CallEditForm: React.FC<CallEditFormProps> = ({ activity, onSave, onCancel 
   const [isPropertyProspectingCall, setIsPropertyProspectingCall] = useState(activity.is_property_prospecting_call || false);
   const [completedPropertyCall, setCompletedPropertyCall] = useState(activity.completed_property_call || false);
   const [isLoading, setIsLoading] = useState(false);
-  const [createdByName, setCreatedByName] = useState<string | null>(null);
-  const [updatedByName, setUpdatedByName] = useState<string | null>(null);
+  // Get user names from relations (already fetched in query)
+  const createdByName = activity.created_by_user
+    ? (activity.created_by_user.name ||
+       `${activity.created_by_user.first_name || ''} ${activity.created_by_user.last_name || ''}`.trim() ||
+       'Unknown User')
+    : null;
 
-  // Fetch user names for created_by and updated_by
-  useEffect(() => {
-    const fetchUserNames = async () => {
-      try {
-        // Fetch created_by user name
-        if (activity.created_by_id) {
-          const { data: createdByUser } = await supabase
-            .from('user')
-            .select('name, first_name, last_name')
-            .or(`id.eq.${activity.created_by_id},auth_user_id.eq.${activity.created_by_id}`)
-            .single();
-
-          if (createdByUser) {
-            setCreatedByName(createdByUser.name || `${createdByUser.first_name} ${createdByUser.last_name}`.trim() || 'Unknown User');
-          }
-        }
-
-        // Fetch updated_by user name
-        if (activity.updated_by_id) {
-          const { data: updatedByUser } = await supabase
-            .from('user')
-            .select('name, first_name, last_name')
-            .or(`id.eq.${activity.updated_by_id},auth_user_id.eq.${activity.updated_by_id}`)
-            .single();
-
-          if (updatedByUser) {
-            setUpdatedByName(updatedByUser.name || `${updatedByUser.first_name} ${updatedByUser.last_name}`.trim() || 'Unknown User');
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching user names:', error);
-      }
-    };
-
-    fetchUserNames();
-  }, [activity.created_by_id, activity.updated_by_id]);
+  const updatedByName = activity.updated_by_user
+    ? (activity.updated_by_user.name ||
+       `${activity.updated_by_user.first_name || ''} ${activity.updated_by_user.last_name || ''}`.trim() ||
+       'Unknown User')
+    : null;
 
   // Search contacts with debouncing
   useEffect(() => {
@@ -688,45 +634,18 @@ interface ActivityReadOnlyViewProps {
 
 const ActivityReadOnlyView: React.FC<ActivityReadOnlyViewProps> = ({ activity }) => {
   const activityType = activity.activity_type?.name || activity.sf_task_subtype;
-  const [createdByName, setCreatedByName] = useState<string | null>(null);
-  const [updatedByName, setUpdatedByName] = useState<string | null>(null);
+  // Get user names from relations (already fetched in query)
+  const createdByName = activity.created_by_user
+    ? (activity.created_by_user.name ||
+       `${activity.created_by_user.first_name || ''} ${activity.created_by_user.last_name || ''}`.trim() ||
+       'Unknown User')
+    : null;
 
-  // Fetch user names for created_by and updated_by
-  useEffect(() => {
-    const fetchUserNames = async () => {
-      try {
-        // Fetch created_by user name
-        if (activity.created_by_id) {
-          const { data: createdByUser } = await supabase
-            .from('user')
-            .select('name, first_name, last_name')
-            .or(`id.eq.${activity.created_by_id},auth_user_id.eq.${activity.created_by_id}`)
-            .single();
-
-          if (createdByUser) {
-            setCreatedByName(createdByUser.name || `${createdByUser.first_name} ${createdByUser.last_name}`.trim() || 'Unknown User');
-          }
-        }
-
-        // Fetch updated_by user name
-        if (activity.updated_by_id) {
-          const { data: updatedByUser } = await supabase
-            .from('user')
-            .select('name, first_name, last_name')
-            .or(`id.eq.${activity.updated_by_id},auth_user_id.eq.${activity.updated_by_id}`)
-            .single();
-
-          if (updatedByUser) {
-            setUpdatedByName(updatedByUser.name || `${updatedByUser.first_name} ${updatedByUser.last_name}`.trim() || 'Unknown User');
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching user names:', error);
-      }
-    };
-
-    fetchUserNames();
-  }, [activity.created_by_id, activity.updated_by_id]);
+  const updatedByName = activity.updated_by_user
+    ? (activity.updated_by_user.name ||
+       `${activity.updated_by_user.first_name || ''} ${activity.updated_by_user.last_name || ''}`.trim() ||
+       'Unknown User')
+    : null;
 
   return (
     <div className="space-y-4">

@@ -52,12 +52,20 @@ export function useGenericActivities(parentObject: ParentObject | null): UseGene
           owner:user!activity_owner_id_fkey (
             first_name,
             last_name,
-            email
+            email,
+            name
           ),
-          updated_by_user:user!activity_updated_by_fkey (
+          created_by_user:user!activity_created_by_id_fkey (
             first_name,
             last_name,
-            email
+            email,
+            name
+          ),
+          updated_by_user:user!activity_updated_by_id_fkey (
+            first_name,
+            last_name,
+            email,
+            name
           ),
           contact!activity_contact_id_fkey (
             first_name,

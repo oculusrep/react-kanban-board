@@ -17,6 +17,7 @@ export interface ActivityWithRelations extends Activity {
   activity_priority?: ActivityPriority;
   activity_task_type?: ActivityTaskType;
   owner?: User;
+  created_by_user?: User;
   updated_by_user?: User;
   contact?: Contact;
 }
