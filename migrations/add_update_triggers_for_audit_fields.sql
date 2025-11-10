@@ -3,19 +3,56 @@
 -- This ensures complete audit trail without requiring application code changes
 
 -- =====================================================================
--- Create trigger function to update audit fields
+-- Create trigger function to set creator on INSERT
+-- =====================================================================
+
+CREATE OR REPLACE FUNCTION set_creator_fields()
+RETURNS TRIGGER AS $$
+DECLARE
+  current_user_id uuid;
+BEGIN
+  -- Get the user.id for the current authenticated user
+  -- The auth.uid() returns auth_user_id, so we look up user.id
+  IF auth.uid() IS NOT NULL THEN
+    SELECT id INTO current_user_id
+    FROM "user"
+    WHERE auth_user_id = auth.uid()
+    LIMIT 1;
+
+    -- Set created_by_id if we found a matching user and it's not already set
+    IF current_user_id IS NOT NULL AND NEW.created_by_id IS NULL THEN
+      NEW.created_by_id = current_user_id;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- =====================================================================
+-- Create trigger function to update audit fields on UPDATE
 -- =====================================================================
 
 CREATE OR REPLACE FUNCTION update_audit_fields()
 RETURNS TRIGGER AS $$
+DECLARE
+  current_user_id uuid;
 BEGIN
   -- Set updated_at to current timestamp
   NEW.updated_at = NOW();
 
-  -- Set updated_by_id to current authenticated user
-  -- Only update if the column exists and we have an authenticated user
-  IF TG_OP = 'UPDATE' AND auth.uid() IS NOT NULL THEN
-    NEW.updated_by_id = auth.uid();
+  -- Get the user.id for the current authenticated user
+  -- The auth.uid() returns auth_user_id, so we look up user.id
+  IF auth.uid() IS NOT NULL THEN
+    SELECT id INTO current_user_id
+    FROM "user"
+    WHERE auth_user_id = auth.uid()
+    LIMIT 1;
+
+    -- Set updated_by_id if we found a matching user
+    IF current_user_id IS NOT NULL THEN
+      NEW.updated_by_id = current_user_id;
+    END IF;
   END IF;
 
   RETURN NEW;
@@ -137,6 +174,122 @@ CREATE TRIGGER update_activity_audit_fields
   BEFORE UPDATE ON activity
   FOR EACH ROW
   EXECUTE FUNCTION update_audit_fields();
+
+-- =====================================================================
+-- CREATE INSERT TRIGGERS to set created_by_id
+-- =====================================================================
+
+-- Property
+DROP TRIGGER IF EXISTS set_property_creator ON property;
+CREATE TRIGGER set_property_creator
+  BEFORE INSERT ON property
+  FOR EACH ROW
+  EXECUTE FUNCTION set_creator_fields();
+
+-- Site submit
+DROP TRIGGER IF EXISTS set_site_submit_creator ON site_submit;
+CREATE TRIGGER set_site_submit_creator
+  BEFORE INSERT ON site_submit
+  FOR EACH ROW
+  EXECUTE FUNCTION set_creator_fields();
+
+-- Deal
+DROP TRIGGER IF EXISTS set_deal_creator ON deal;
+CREATE TRIGGER set_deal_creator
+  BEFORE INSERT ON deal
+  FOR EACH ROW
+  EXECUTE FUNCTION set_creator_fields();
+
+-- Client
+DROP TRIGGER IF EXISTS set_client_creator ON client;
+CREATE TRIGGER set_client_creator
+  BEFORE INSERT ON client
+  FOR EACH ROW
+  EXECUTE FUNCTION set_creator_fields();
+
+-- Contact
+DROP TRIGGER IF EXISTS set_contact_creator ON contact;
+CREATE TRIGGER set_contact_creator
+  BEFORE INSERT ON contact
+  FOR EACH ROW
+  EXECUTE FUNCTION set_creator_fields();
+
+-- Payment
+DROP TRIGGER IF EXISTS set_payment_creator ON payment;
+CREATE TRIGGER set_payment_creator
+  BEFORE INSERT ON payment
+  FOR EACH ROW
+  EXECUTE FUNCTION set_creator_fields();
+
+-- Assignment
+DROP TRIGGER IF EXISTS set_assignment_creator ON assignment;
+CREATE TRIGGER set_assignment_creator
+  BEFORE INSERT ON assignment
+  FOR EACH ROW
+  EXECUTE FUNCTION set_creator_fields();
+
+-- Property contact
+DROP TRIGGER IF EXISTS set_property_contact_creator ON property_contact;
+CREATE TRIGGER set_property_contact_creator
+  BEFORE INSERT ON property_contact
+  FOR EACH ROW
+  EXECUTE FUNCTION set_creator_fields();
+
+-- Property unit
+DROP TRIGGER IF EXISTS set_property_unit_creator ON property_unit;
+CREATE TRIGGER set_property_unit_creator
+  BEFORE INSERT ON property_unit
+  FOR EACH ROW
+  EXECUTE FUNCTION set_creator_fields();
+
+-- Critical date
+DROP TRIGGER IF EXISTS set_critical_date_creator ON critical_date;
+CREATE TRIGGER set_critical_date_creator
+  BEFORE INSERT ON critical_date
+  FOR EACH ROW
+  EXECUTE FUNCTION set_creator_fields();
+
+-- Commission split
+DROP TRIGGER IF EXISTS set_commission_split_creator ON commission_split;
+CREATE TRIGGER set_commission_split_creator
+  BEFORE INSERT ON commission_split
+  FOR EACH ROW
+  EXECUTE FUNCTION set_creator_fields();
+
+-- Payment split
+DROP TRIGGER IF EXISTS set_payment_split_creator ON payment_split;
+CREATE TRIGGER set_payment_split_creator
+  BEFORE INSERT ON payment_split
+  FOR EACH ROW
+  EXECUTE FUNCTION set_creator_fields();
+
+-- Deal contact
+DROP TRIGGER IF EXISTS set_deal_contact_creator ON deal_contact;
+CREATE TRIGGER set_deal_contact_creator
+  BEFORE INSERT ON deal_contact
+  FOR EACH ROW
+  EXECUTE FUNCTION set_creator_fields();
+
+-- Contact client relation
+DROP TRIGGER IF EXISTS set_contact_client_relation_creator ON contact_client_relation;
+CREATE TRIGGER set_contact_client_relation_creator
+  BEFORE INSERT ON contact_client_relation
+  FOR EACH ROW
+  EXECUTE FUNCTION set_creator_fields();
+
+-- Note
+DROP TRIGGER IF EXISTS set_note_creator ON note;
+CREATE TRIGGER set_note_creator
+  BEFORE INSERT ON note
+  FOR EACH ROW
+  EXECUTE FUNCTION set_creator_fields();
+
+-- Activity
+DROP TRIGGER IF EXISTS set_activity_creator ON activity;
+CREATE TRIGGER set_activity_creator
+  BEFORE INSERT ON activity
+  FOR EACH ROW
+  EXECUTE FUNCTION set_creator_fields();
 
 -- =====================================================================
 -- Conditional triggers for tables that may not exist
