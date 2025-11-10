@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import { useAuth } from '../contexts/AuthContext';
+import RecordMetadata from './RecordMetadata';
 import {
   Activity,
   ActivityInsert,
@@ -14,6 +15,11 @@ import {
   ParentObject,
   RelatedOption
 } from '../types/activity';
+import {
+  PhoneIcon,
+  CheckCircleIcon,
+  EnvelopeIcon
+} from '@heroicons/react/24/outline';
 
 interface AddTaskModalProps {
   isOpen: boolean;
@@ -631,8 +637,37 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
             <>
               {/* Basic Information */}
               <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900 border-b border-gray-200 pb-2">
-                  Task Details
+                <h3 className="text-lg font-medium text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-2">
+                  {(() => {
+                    const activityType = editMode
+                      ? (existingTask?.activity_type?.name || existingTask?.sf_task_subtype)
+                      : activityTypes.find(t => t.id === formData.activity_type_id)?.name;
+
+                    switch (activityType) {
+                      case 'Call':
+                        return (
+                          <>
+                            <PhoneIcon className="w-5 h-5 text-blue-600" />
+                            <span>Call Details</span>
+                          </>
+                        );
+                      case 'Email':
+                      case 'ListEmail':
+                        return (
+                          <>
+                            <EnvelopeIcon className="w-5 h-5 text-purple-600" />
+                            <span>Email Details</span>
+                          </>
+                        );
+                      default:
+                        return (
+                          <>
+                            <CheckCircleIcon className="w-5 h-5 text-green-600" />
+                            <span>Task Details</span>
+                          </>
+                        );
+                    }
+                  })()}
                 </h3>
                 
                 <div>
@@ -650,6 +685,29 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
                   />
                   {errors.subject && (
                     <p className="mt-1 text-sm text-red-600">{errors.subject}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Activity Type *
+                  </label>
+                  <select
+                    value={formData.activity_type_id || ''}
+                    onChange={(e) => updateFormData('activity_type_id', e.target.value || null)}
+                    className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm ${
+                      errors.activity_type_id ? 'border-red-300' : ''
+                    }`}
+                  >
+                    <option value="">Select type...</option>
+                    {activityTypes.map((type) => (
+                      <option key={type.id} value={type.id}>
+                        {type.name}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.activity_type_id && (
+                    <p className="mt-1 text-sm text-red-600">{errors.activity_type_id}</p>
                   )}
                 </div>
 
@@ -781,6 +839,16 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
                 </div>
               </div>
             </>
+          )}
+
+          {/* Record Metadata - only show in edit mode */}
+          {editMode && existingTask && (
+            <RecordMetadata
+              createdAt={existingTask.created_at}
+              createdById={existingTask.created_by_id}
+              updatedAt={existingTask.updated_at}
+              updatedById={existingTask.updated_by_id}
+            />
           )}
         </div>
 

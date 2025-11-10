@@ -109,6 +109,18 @@ const ContactDetailsPage: React.FC = () => {
     setShowDeleteConfirm(false);
 
     try {
+      // First, delete all activities associated with this contact
+      const { error: activitiesError } = await supabase
+        .from('activity')
+        .delete()
+        .eq('contact_id', contactId);
+
+      if (activitiesError) {
+        console.error('Error deleting associated activities:', activitiesError);
+        throw new Error('Failed to delete associated activities');
+      }
+
+      // Then delete the contact
       const { error } = await supabase
         .from('contact')
         .delete()
@@ -116,7 +128,7 @@ const ContactDetailsPage: React.FC = () => {
 
       if (error) throw error;
 
-      showToast('Contact deleted successfully!', { type: 'success' });
+      showToast('Contact and associated activities deleted successfully!', { type: 'success' });
 
       // Navigate after a brief delay to show the toast
       setTimeout(() => {

@@ -55,12 +55,6 @@ export function useGenericActivities(parentObject: ParentObject | null): UseGene
             email,
             name
           ),
-          updated_by_user:user!activity_updated_by_fkey (
-            first_name,
-            last_name,
-            email,
-            name
-          ),
           contact!activity_contact_id_fkey (
             first_name,
             last_name,
