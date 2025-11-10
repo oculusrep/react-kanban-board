@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ActivityWithRelations } from '../hooks/useActivities';
 import { parseEmailDescription, formatEmailAddress, formatEmailBodyForDisplay } from '../utils/emailParser';
 import { supabase } from '../lib/supabaseClient';
@@ -136,8 +136,47 @@ const TaskEditForm: React.FC<TaskEditFormProps> = ({ activity, onSave, onCancel 
   const [subject, setSubject] = useState(activity.subject || '');
   const [description, setDescription] = useState(activity.description || '');
   const [activityDate, setActivityDate] = useState(
-    activity.activity_date ? format(new Date(activity.activity_date), 'yyyy-MM-dd') : ''
+    activity.activity_date ? format(parseISO(activity.activity_date), 'yyyy-MM-dd') : ''
   );
+  const [createdByName, setCreatedByName] = useState<string | null>(null);
+  const [updatedByName, setUpdatedByName] = useState<string | null>(null);
+
+  // Fetch user names for created_by and updated_by
+  useEffect(() => {
+    const fetchUserNames = async () => {
+      try {
+        // Fetch created_by user name
+        if (activity.created_by_id) {
+          const { data: createdByUser } = await supabase
+            .from('user')
+            .select('name, first_name, last_name')
+            .or(`id.eq.${activity.created_by_id},auth_user_id.eq.${activity.created_by_id}`)
+            .single();
+
+          if (createdByUser) {
+            setCreatedByName(createdByUser.name || `${createdByUser.first_name} ${createdByUser.last_name}`.trim() || 'Unknown User');
+          }
+        }
+
+        // Fetch updated_by user name
+        if (activity.updated_by_id) {
+          const { data: updatedByUser } = await supabase
+            .from('user')
+            .select('name, first_name, last_name')
+            .or(`id.eq.${activity.updated_by_id},auth_user_id.eq.${activity.updated_by_id}`)
+            .single();
+
+          if (updatedByUser) {
+            setUpdatedByName(updatedByUser.name || `${updatedByUser.first_name} ${updatedByUser.last_name}`.trim() || 'Unknown User');
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user names:', error);
+      }
+    };
+
+    fetchUserNames();
+  }, [activity.created_by_id, activity.updated_by_id]);
 
   const handleSave = () => {
     // TODO: Implement actual save to database
@@ -191,6 +230,31 @@ const TaskEditForm: React.FC<TaskEditFormProps> = ({ activity, onSave, onCancel 
         />
       </div>
 
+      {/* Record Metadata */}
+      <div className="bg-gray-50 rounded-lg p-4 mt-4">
+        <h4 className="text-sm font-medium text-gray-700 mb-3">Record Information</h4>
+        <div className="space-y-2 text-xs text-gray-600">
+          {activity.created_at && (
+            <div>
+              <span className="font-medium">Created: </span>
+              <span>
+                {format(parseISO(activity.created_at), 'MMM d, yyyy h:mm a')}
+                {createdByName && ` by ${createdByName}`}
+              </span>
+            </div>
+          )}
+          {activity.updated_at && (
+            <div>
+              <span className="font-medium">Last Updated: </span>
+              <span>
+                {format(parseISO(activity.updated_at), 'MMM d, yyyy h:mm a')}
+                {updatedByName && ` by ${updatedByName}`}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="flex gap-2 pt-2">
         <button
           onClick={handleSave}
@@ -231,6 +295,45 @@ const CallEditForm: React.FC<CallEditFormProps> = ({ activity, onSave, onCancel 
   const [isPropertyProspectingCall, setIsPropertyProspectingCall] = useState(activity.is_property_prospecting_call || false);
   const [completedPropertyCall, setCompletedPropertyCall] = useState(activity.completed_property_call || false);
   const [isLoading, setIsLoading] = useState(false);
+  const [createdByName, setCreatedByName] = useState<string | null>(null);
+  const [updatedByName, setUpdatedByName] = useState<string | null>(null);
+
+  // Fetch user names for created_by and updated_by
+  useEffect(() => {
+    const fetchUserNames = async () => {
+      try {
+        // Fetch created_by user name
+        if (activity.created_by_id) {
+          const { data: createdByUser } = await supabase
+            .from('user')
+            .select('name, first_name, last_name')
+            .or(`id.eq.${activity.created_by_id},auth_user_id.eq.${activity.created_by_id}`)
+            .single();
+
+          if (createdByUser) {
+            setCreatedByName(createdByUser.name || `${createdByUser.first_name} ${createdByUser.last_name}`.trim() || 'Unknown User');
+          }
+        }
+
+        // Fetch updated_by user name
+        if (activity.updated_by_id) {
+          const { data: updatedByUser } = await supabase
+            .from('user')
+            .select('name, first_name, last_name')
+            .or(`id.eq.${activity.updated_by_id},auth_user_id.eq.${activity.updated_by_id}`)
+            .single();
+
+          if (updatedByUser) {
+            setUpdatedByName(updatedByUser.name || `${updatedByUser.first_name} ${updatedByUser.last_name}`.trim() || 'Unknown User');
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user names:', error);
+      }
+    };
+
+    fetchUserNames();
+  }, [activity.created_by_id, activity.updated_by_id]);
 
   // Search contacts with debouncing
   useEffect(() => {
@@ -524,6 +627,31 @@ const CallEditForm: React.FC<CallEditFormProps> = ({ activity, onSave, onCancel 
         </div>
       </div>
 
+      {/* Record Metadata */}
+      <div className="bg-gray-50 rounded-lg p-4 mt-4">
+        <h4 className="text-sm font-medium text-gray-700 mb-3">Record Information</h4>
+        <div className="space-y-2 text-xs text-gray-600">
+          {activity.created_at && (
+            <div>
+              <span className="font-medium">Created: </span>
+              <span>
+                {format(parseISO(activity.created_at), 'MMM d, yyyy h:mm a')}
+                {createdByName && ` by ${createdByName}`}
+              </span>
+            </div>
+          )}
+          {activity.updated_at && (
+            <div>
+              <span className="font-medium">Last Updated: </span>
+              <span>
+                {format(parseISO(activity.updated_at), 'MMM d, yyyy h:mm a')}
+                {updatedByName && ` by ${updatedByName}`}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="flex gap-2 pt-2">
         <button
           onClick={handleSave}
@@ -560,7 +688,46 @@ interface ActivityReadOnlyViewProps {
 
 const ActivityReadOnlyView: React.FC<ActivityReadOnlyViewProps> = ({ activity }) => {
   const activityType = activity.activity_type?.name || activity.sf_task_subtype;
-  
+  const [createdByName, setCreatedByName] = useState<string | null>(null);
+  const [updatedByName, setUpdatedByName] = useState<string | null>(null);
+
+  // Fetch user names for created_by and updated_by
+  useEffect(() => {
+    const fetchUserNames = async () => {
+      try {
+        // Fetch created_by user name
+        if (activity.created_by_id) {
+          const { data: createdByUser } = await supabase
+            .from('user')
+            .select('name, first_name, last_name')
+            .or(`id.eq.${activity.created_by_id},auth_user_id.eq.${activity.created_by_id}`)
+            .single();
+
+          if (createdByUser) {
+            setCreatedByName(createdByUser.name || `${createdByUser.first_name} ${createdByUser.last_name}`.trim() || 'Unknown User');
+          }
+        }
+
+        // Fetch updated_by user name
+        if (activity.updated_by_id) {
+          const { data: updatedByUser } = await supabase
+            .from('user')
+            .select('name, first_name, last_name')
+            .or(`id.eq.${activity.updated_by_id},auth_user_id.eq.${activity.updated_by_id}`)
+            .single();
+
+          if (updatedByUser) {
+            setUpdatedByName(updatedByUser.name || `${updatedByUser.first_name} ${updatedByUser.last_name}`.trim() || 'Unknown User');
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user names:', error);
+      }
+    };
+
+    fetchUserNames();
+  }, [activity.created_by_id, activity.updated_by_id]);
+
   return (
     <div className="space-y-4">
       {/* Description */}
@@ -585,7 +752,7 @@ const ActivityReadOnlyView: React.FC<ActivityReadOnlyViewProps> = ({ activity })
             <div>
               <span className="text-sm font-medium text-gray-700">Due Date</span>
               <p className="text-sm text-gray-600">
-                {format(new Date(activity.activity_date), 'MMM d, yyyy')}
+                {format(parseISO(activity.activity_date), 'MMM d, yyyy')}
               </p>
             </div>
           </div>
@@ -669,11 +836,36 @@ const ActivityReadOnlyView: React.FC<ActivityReadOnlyViewProps> = ({ activity })
           </p>
           {activity.created_at && (
             <p className="text-xs text-gray-500">
-              Created: {format(new Date(activity.created_at), 'MMM d, yyyy h:mm a')}
+              Created: {format(parseISO(activity.created_at), 'MMM d, yyyy h:mm a')}
             </p>
           )}
         </div>
       )}
+
+      {/* Record Metadata */}
+      <div className="bg-gray-50 rounded-lg p-4 mt-4">
+        <h4 className="text-sm font-medium text-gray-700 mb-3">Record Information</h4>
+        <div className="space-y-2 text-xs text-gray-600">
+          {activity.created_at && (
+            <div>
+              <span className="font-medium">Created: </span>
+              <span>
+                {format(parseISO(activity.created_at), 'MMM d, yyyy h:mm a')}
+                {createdByName && ` by ${createdByName}`}
+              </span>
+            </div>
+          )}
+          {activity.updated_at && (
+            <div>
+              <span className="font-medium">Last Updated: </span>
+              <span>
+                {format(parseISO(activity.updated_at), 'MMM d, yyyy h:mm a')}
+                {updatedByName && ` by ${updatedByName}`}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
@@ -705,9 +897,9 @@ const EmailReadOnlyView: React.FC<EmailReadOnlyViewProps> = ({ activity }) => {
   const emailSubject = parsedEmail?.subject || activity.subject || 'No Subject';
   
   // Format date
-  const emailDate = parsedEmail?.date || 
-    (activity.activity_date ? format(new Date(activity.activity_date), 'MMM d, yyyy h:mm a') : '') ||
-    (activity.created_at ? format(new Date(activity.created_at), 'MMM d, yyyy h:mm a') : '');
+  const emailDate = parsedEmail?.date ||
+    (activity.activity_date ? format(parseISO(activity.activity_date), 'MMM d, yyyy h:mm a') : '') ||
+    (activity.created_at ? format(parseISO(activity.created_at), 'MMM d, yyyy h:mm a') : '');
 
   const formatEmailList = (emails: string[]) => {
     return emails.map(email => {
@@ -834,7 +1026,7 @@ const EmailReadOnlyView: React.FC<EmailReadOnlyViewProps> = ({ activity }) => {
           {activity.created_at && (
             <div>
               <span className="font-medium">Logged:</span>{' '}
-              {format(new Date(activity.created_at), 'MMM d, yyyy h:mm a')}
+              {format(parseISO(activity.created_at), 'MMM d, yyyy h:mm a')}
             </div>
           )}
           {activity.owner && (

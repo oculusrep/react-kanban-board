@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { formatDistanceToNow, format, isAfter, startOfDay } from 'date-fns';
+import { formatDistanceToNow, format, parseISO, isAfter, startOfDay } from 'date-fns';
 import { ActivityWithRelations } from '../hooks/useActivities';
 import { supabase } from '../lib/supabaseClient';
 import { 
@@ -343,9 +343,15 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
                   {(() => {
                     if (activityType === 'Call' && activity.updated_by_user) {
                       const user = activity.updated_by_user;
-                      return `Updated by: ${user.first_name && user.last_name
+                      const userName = user.first_name && user.last_name
                         ? `${user.first_name} ${user.last_name}`
-                        : user.name || 'Unknown User'}`;
+                        : user.name || 'Unknown User';
+                      const updatedAt = activity.updated_at
+                        ? format(parseISO(activity.updated_at), 'MMM d, yyyy h:mm a')
+                        : '';
+                      return updatedAt
+                        ? `Updated at: ${updatedAt} by ${userName}`
+                        : `Updated by: ${userName}`;
                     } else if (activity.owner) {
                       const user = activity.owner;
                       return `Assigned to: ${user.first_name && user.last_name

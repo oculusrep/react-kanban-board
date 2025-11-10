@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import { useContactForm } from '../hooks/useContactForm';
 import { prepareInsert } from '../lib/supabaseHelpers';
+import { format, parseISO } from 'date-fns';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type ContactInsert = Database['public']['Tables']['contact']['Insert'];
@@ -600,31 +601,19 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             <h4 className="text-sm font-medium text-gray-700 mb-3">Record Information</h4>
             <div className="space-y-2 text-xs text-gray-600">
               {contact.created_at && (
-                <div className="flex justify-between">
-                  <span className="font-medium">Created:</span>
+                <div>
+                  <span className="font-medium">Created: </span>
                   <span>
-                    {new Date(contact.created_at).toLocaleString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: 'numeric',
-                      minute: '2-digit'
-                    })}
+                    {format(parseISO(contact.created_at), 'MMM d, yyyy h:mm a')}
                     {createdByName && ` by ${createdByName}`}
                   </span>
                 </div>
               )}
               {contact.updated_at && (
-                <div className="flex justify-between">
-                  <span className="font-medium">Last Updated:</span>
+                <div>
+                  <span className="font-medium">Last Updated: </span>
                   <span>
-                    {new Date(contact.updated_at).toLocaleString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: 'numeric',
-                      minute: '2-digit'
-                    })}
+                    {format(parseISO(contact.updated_at), 'MMM d, yyyy h:mm a')}
                     {updatedByName && ` by ${updatedByName}`}
                   </span>
                 </div>

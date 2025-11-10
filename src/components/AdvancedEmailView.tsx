@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ActivityWithRelations } from '../hooks/useActivities';
 import { parseProfessionalEmail, formatProfessionalEmailContent, ProfessionalParsedEmail, EmailFragment, ThreadedEmail } from '../utils/professionalEmailParser';
 import { 
@@ -31,9 +31,9 @@ const AdvancedEmailView: React.FC<AdvancedEmailViewProps> = ({ activity }) => {
   const emailSubject = parsedEmail.headers.subject || activity.subject || 'No Subject';
   
   // Format date
-  const emailDate = parsedEmail.headers.date || 
-    (activity.activity_date ? format(new Date(activity.activity_date), 'MMM d, yyyy h:mm a') : '') ||
-    (activity.created_at ? format(new Date(activity.created_at), 'MMM d, yyyy h:mm a') : '');
+  const emailDate = parsedEmail.headers.date ||
+    (activity.activity_date ? format(parseISO(activity.activity_date), 'MMM d, yyyy h:mm a') : '') ||
+    (activity.created_at ? format(parseISO(activity.created_at), 'MMM d, yyyy h:mm a') : '');
 
   const toggleEmailInThread = (emailId: string) => {
     setShowEmailThread(prev => ({
@@ -204,7 +204,7 @@ const AdvancedEmailView: React.FC<AdvancedEmailViewProps> = ({ activity }) => {
           {activity.created_at && (
             <div>
               <span className="font-medium">Logged:</span>{' '}
-              {format(new Date(activity.created_at), 'MMM d, yyyy h:mm a')}
+              {format(parseISO(activity.created_at), 'MMM d, yyyy h:mm a')}
             </div>
           )}
           {activity.owner && (

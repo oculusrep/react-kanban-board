@@ -321,7 +321,6 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
           completed_at: new Date().toISOString(),
           contact_id: formData.contact_id || null,
           owner_id: currentUserId, // Assign to current user
-          updated_by: currentUserId, // Track who updated/logged this call
           is_prospecting_call: formData.is_prospecting_call,
           completed_call: formData.completed_call,
           meeting_held: formData.meeting_held,
@@ -362,7 +361,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
         // Create the call activity
         const { error: insertError } = await supabase
           .from('activity')
-          .insert(prepareInsert([activityData]));
+          .insert(prepareInsert(activityData));
 
         if (insertError) {
           throw insertError;
