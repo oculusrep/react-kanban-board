@@ -20,6 +20,9 @@ import BookedDateModal from "./BookedDateModal";
 import { usePaymentLifecycle } from "../hooks/usePaymentLifecycle";
 import { useAutosave } from "../hooks/useAutosave";
 import AutosaveIndicator from "./AutosaveIndicator";
+import { useToast } from "../hooks/useToast";
+import Toast from "./Toast";
+import RecordMetadata from "./RecordMetadata";
 
 // 🔹 Stage → Default Probability map (integer percent 0..100)
 const STAGE_PROBABILITY: Record<string, number> = {
@@ -68,6 +71,8 @@ interface Deal {
   booked: boolean | null;
   loss_reason: string | null;
   last_stage_change_at: string | null;
+  created_at?: string | null;
+  created_by_id?: string | null;
   updated_by_id?: string | null;
   updated_at?: string | null;
 }
@@ -108,11 +113,18 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
   const [showArchivePaymentsModal, setShowArchivePaymentsModal] = useState(false);
   const [unpaidPaymentCount, setUnpaidPaymentCount] = useState(0);
 
+  // Validation error modal state
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
   const [clientSearch, setClientSearch] = useState("");
   const [clientSuggestions, setClientSuggestions] = useState<{ id: string; label: string }[]>([]);
 
   // Payment lifecycle management hook
   const { archiveUnpaidPayments, restoreArchivedPayments, regeneratePayments, getUnpaidPaymentCount } = usePaymentLifecycle();
+
+  // Toast notification hook
+  const { toast, showToast } = useToast();
 
   // 🔹 UX: validation + change-highlighting states
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -412,13 +424,17 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     console.log('🔧 handleSave called with form:', form);
     const v = validateAll(form);
     setErrors(v);
     console.log('🔍 Validation errors:', v);
     if (Object.keys(v).length > 0) {
       console.log('❌ Validation failed, stopping save');
+      // Show validation modal with errors
+      const errorMessages = Object.values(v);
+      setValidationErrors(errorMessages);
+      setShowValidationModal(true);
       // Notify parent of validation errors
       if (onValidationChange) {
         onValidationChange(v);
@@ -467,15 +483,27 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
     }
 
     await performSave();
-  };
+  }, [form, originalStageId, onValidationChange, showToast, getUnpaidPaymentCount]);
 
-  // Expose handleSave to parent via onSaveRequest callback
+  // Store the latest handleSave in a ref
+  const handleSaveRef = useRef(handleSave);
+  useEffect(() => {
+    handleSaveRef.current = handleSave;
+  }, [handleSave]);
+
+  // Create a stable wrapper function that always calls the latest handleSave
+  const stableHandleSave = useCallback(() => {
+    return handleSaveRef.current();
+  }, []); // Empty deps - this function never changes
+
+  // Expose handleSave to parent via onSaveRequest callback (only once on mount)
   useEffect(() => {
     if (onSaveRequest) {
       console.log('📤 Passing handleSave to parent via onSaveRequest');
-      onSaveRequest(handleSave);
+      onSaveRequest(stableHandleSave);
     }
-  }, [onSaveRequest, handleSave]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
 
   const performSave = async () => {
     console.log('💾 performSave called, form.id:', form.id);
@@ -516,11 +544,11 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       site_percent: form.site_percent,
       deal_percent: form.deal_percent,
       number_of_payments: form.number_of_payments,
-      updated_at: now,
+      // updated_at is handled by database trigger
     };
 
     let data, error;
-    
+
     if (form.id) {
       // Update existing deal
       const result = await supabase
@@ -533,11 +561,16 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       error = result.error;
     } else {
       // Insert new deal
-      dealPayload.created_at = new Date().toISOString();
+      // created_by_id is handled by database trigger, created_at set explicitly
+      const insertPayload = {
+        ...dealPayload,
+        created_at: new Date().toISOString()
+      };
+
       const result = await supabase
         .from("deal")
-        .insert(prepareInsert([dealPayload]))
-        .select()
+        .insert(prepareInsert(insertPayload))
+        .select('*')
         .single();
       data = result.data;
       error = result.error;
@@ -1125,28 +1158,29 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
         </div>
       </Section>
 
+      {/* Record Metadata - only show for existing deals */}
+      {!isNewDeal && deal.id && (
+        <RecordMetadata
+          createdAt={deal.created_at}
+          createdById={deal.created_by_id}
+          updatedAt={deal.updated_at}
+          updatedById={deal.updated_by_id}
+        />
+      )}
+
       {/* Sticky Save Bar */}
       <div className="sticky bottom-0 left-0 right-0 bg-white border-t mt-6 p-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-2 text-xs text-gray-500">
-          {form.updated_at ? (
-            <>
-              <span>Last Updated by</span>
-              <span className="font-medium">{updatedByName || "Unknown"}</span>
-              <span>{new Date(form.updated_at).toLocaleDateString()} {new Date(form.updated_at).toLocaleTimeString()}</span>
-            </>
-          ) : (
-            <span>Not yet saved</span>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
           <span className="text-xs text-gray-500">
             {stageLabel ? `Stage: ${stageLabel}` : "No stage selected"}
           </span>
+        </div>
+        <div className="flex items-center gap-3">
           {/* Only show Save button for new deals - existing deals autosave */}
           {isNewDeal && (
             <button
               onClick={handleSave}
-              disabled={saving || Object.keys(errors).length > 0}
+              disabled={saving}
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60"
             >
               {saving ? "Saving..." : "Save Deal"}
@@ -1212,6 +1246,54 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
           </div>
         </div>
       )}
+
+      {/* Validation Error Modal */}
+      {showValidationModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-start mb-4">
+              <div className="flex-shrink-0">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div className="ml-3 flex-1">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Missing Required Fields
+                </h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Please fix the following errors before saving:
+                </p>
+              </div>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-md p-3 mb-6">
+              <ul className="text-sm text-red-700 list-disc list-inside space-y-1">
+                {validationErrors.map((error, index) => (
+                  <li key={index}>{error}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={() => {
+                  setShowValidationModal(false);
+                  setValidationErrors([]);
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+      />
     </div>
   );
 }
