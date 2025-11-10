@@ -138,18 +138,32 @@ const TaskEditForm: React.FC<TaskEditFormProps> = ({ activity, onSave, onCancel 
   const [activityDate, setActivityDate] = useState(
     activity.activity_date ? format(parseISO(activity.activity_date), 'yyyy-MM-dd') : ''
   );
-  // Get user names from relations (already fetched in query)
-  const createdByName = activity.created_by_user
-    ? (activity.created_by_user.name ||
-       `${activity.created_by_user.first_name || ''} ${activity.created_by_user.last_name || ''}`.trim() ||
-       'Unknown User')
-    : null;
+  const [createdByName, setCreatedByName] = useState<string | null>(null);
 
+  // Get updated_by name from relation (already fetched in query)
   const updatedByName = activity.updated_by_user
     ? (activity.updated_by_user.name ||
        `${activity.updated_by_user.first_name || ''} ${activity.updated_by_user.last_name || ''}`.trim() ||
        'Unknown User')
     : null;
+
+  // Fetch created_by user name (no FK exists, so fetch manually)
+  useEffect(() => {
+    const fetchCreatedBy = async () => {
+      if (!activity.created_by_id) return;
+
+      const { data: user } = await supabase
+        .from('user')
+        .select('name, first_name, last_name')
+        .or(`id.eq.${activity.created_by_id},auth_user_id.eq.${activity.created_by_id}`)
+        .single();
+
+      if (user) {
+        setCreatedByName(user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Unknown User');
+      }
+    };
+    fetchCreatedBy();
+  }, [activity.created_by_id]);
 
   const handleSave = () => {
     // TODO: Implement actual save to database
@@ -268,18 +282,32 @@ const CallEditForm: React.FC<CallEditFormProps> = ({ activity, onSave, onCancel 
   const [isPropertyProspectingCall, setIsPropertyProspectingCall] = useState(activity.is_property_prospecting_call || false);
   const [completedPropertyCall, setCompletedPropertyCall] = useState(activity.completed_property_call || false);
   const [isLoading, setIsLoading] = useState(false);
-  // Get user names from relations (already fetched in query)
-  const createdByName = activity.created_by_user
-    ? (activity.created_by_user.name ||
-       `${activity.created_by_user.first_name || ''} ${activity.created_by_user.last_name || ''}`.trim() ||
-       'Unknown User')
-    : null;
+  const [createdByName, setCreatedByName] = useState<string | null>(null);
 
+  // Get updated_by name from relation (already fetched in query)
   const updatedByName = activity.updated_by_user
     ? (activity.updated_by_user.name ||
        `${activity.updated_by_user.first_name || ''} ${activity.updated_by_user.last_name || ''}`.trim() ||
        'Unknown User')
     : null;
+
+  // Fetch created_by user name (no FK exists, so fetch manually)
+  useEffect(() => {
+    const fetchCreatedBy = async () => {
+      if (!activity.created_by_id) return;
+
+      const { data: user } = await supabase
+        .from('user')
+        .select('name, first_name, last_name')
+        .or(`id.eq.${activity.created_by_id},auth_user_id.eq.${activity.created_by_id}`)
+        .single();
+
+      if (user) {
+        setCreatedByName(user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Unknown User');
+      }
+    };
+    fetchCreatedBy();
+  }, [activity.created_by_id]);
 
   // Search contacts with debouncing
   useEffect(() => {
@@ -634,18 +662,32 @@ interface ActivityReadOnlyViewProps {
 
 const ActivityReadOnlyView: React.FC<ActivityReadOnlyViewProps> = ({ activity }) => {
   const activityType = activity.activity_type?.name || activity.sf_task_subtype;
-  // Get user names from relations (already fetched in query)
-  const createdByName = activity.created_by_user
-    ? (activity.created_by_user.name ||
-       `${activity.created_by_user.first_name || ''} ${activity.created_by_user.last_name || ''}`.trim() ||
-       'Unknown User')
-    : null;
+  const [createdByName, setCreatedByName] = useState<string | null>(null);
 
+  // Get updated_by name from relation (already fetched in query)
   const updatedByName = activity.updated_by_user
     ? (activity.updated_by_user.name ||
        `${activity.updated_by_user.first_name || ''} ${activity.updated_by_user.last_name || ''}`.trim() ||
        'Unknown User')
     : null;
+
+  // Fetch created_by user name (no FK exists, so fetch manually)
+  useEffect(() => {
+    const fetchCreatedBy = async () => {
+      if (!activity.created_by_id) return;
+
+      const { data: user } = await supabase
+        .from('user')
+        .select('name, first_name, last_name')
+        .or(`id.eq.${activity.created_by_id},auth_user_id.eq.${activity.created_by_id}`)
+        .single();
+
+      if (user) {
+        setCreatedByName(user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Unknown User');
+      }
+    };
+    fetchCreatedBy();
+  }, [activity.created_by_id]);
 
   return (
     <div className="space-y-4">
