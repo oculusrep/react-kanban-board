@@ -55,13 +55,13 @@ export function useGenericActivities(parentObject: ParentObject | null): UseGene
             email,
             name
           ),
-          created_by_user:user!activity_created_by_id_fkey (
+          created_by_user:user!created_by_id (
             first_name,
             last_name,
             email,
             name
           ),
-          updated_by_user:user!activity_updated_by_id_fkey (
+          updated_by_user:user!updated_by_id (
             first_name,
             last_name,
             email,
