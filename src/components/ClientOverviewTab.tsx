@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import ParentAccountSelector from './ParentAccountSelector';
+import RecordMetadata from './RecordMetadata';
 
 type Client = Database['public']['Tables']['client']['Row'];
 type ClientInsert = Database['public']['Tables']['client']['Insert'];
@@ -572,6 +573,16 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
         <div className="bg-red-50 border border-red-200 rounded-md p-4">
           <p className="text-sm text-red-600">{errors.submit}</p>
         </div>
+      )}
+
+      {/* Record Metadata - Show for existing clients */}
+      {!isNewClient && client && (
+        <RecordMetadata
+          createdAt={client.created_at}
+          createdById={client.created_by_id}
+          updatedAt={client.updated_at}
+          updatedById={client.updated_by_id}
+        />
       )}
 
       {/* Action Buttons */}

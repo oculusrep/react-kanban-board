@@ -29,6 +29,7 @@ import AutosaveIndicator from '../../AutosaveIndicator';
 import { ResponsiveLine } from '@nivo/line';
 import EmailComposerModal from '../../EmailComposerModal';
 import { useSiteSubmitEmail } from '../../../hooks/useSiteSubmitEmail';
+import RecordMetadata from '../../RecordMetadata';
 
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
@@ -2014,6 +2015,16 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                   Submit Site
                 </button>
               </div>
+            )}
+
+            {/* Record Metadata - Show for existing site submits */}
+            {siteSubmit?.id && !isNewSiteSubmit && (
+              <RecordMetadata
+                createdAt={siteSubmit.created_at}
+                createdById={siteSubmit.created_by_id}
+                updatedAt={siteSubmit.updated_at}
+                updatedById={siteSubmit.updated_by_id}
+              />
             )}
           </div>
         );
