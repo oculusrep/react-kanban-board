@@ -110,35 +110,56 @@ export class DropboxSyncDetectionService {
     try {
       console.log('🔍 Checking sync status for all properties...');
 
-      // Get all properties with Dropbox mappings
-      const { data: properties, error } = await supabase
-        .from('property')
-        .select(`
-          id,
-          property_name,
-          dropbox_mapping!inner (
-            dropbox_folder_path,
-            last_verified_at,
-            sf_id
-          )
-        `);
+      // Get all Dropbox mappings for properties (using the mapping table directly)
+      const { data: mappings, error } = await supabase
+        .from('dropbox_mapping')
+        .select('*')
+        .eq('entity_type', 'property');
 
       if (error) {
-        console.error('Error fetching properties:', error);
+        console.error('Error fetching mappings:', error);
+        return [];
+      }
+
+      if (!mappings || mappings.length === 0) {
+        console.log('No Dropbox mappings found for properties');
+        return [];
+      }
+
+      console.log(`📊 Found ${mappings.length} property mappings...`);
+
+      // Get all properties referenced in the mappings
+      const propertyIds = mappings.map(m => m.entity_id);
+      const { data: properties, error: propError } = await supabase
+        .from('property')
+        .select('id, property_name')
+        .in('id', propertyIds);
+
+      if (propError) {
+        console.error('Error fetching properties:', propError);
         return [];
       }
 
       if (!properties || properties.length === 0) {
-        console.log('No properties with Dropbox mappings found');
+        console.log('No properties found');
         return [];
       }
 
-      console.log(`📊 Checking ${properties.length} properties...`);
+      // Create a map of property ID to property name
+      const propertyMap = new Map(properties.map(p => [p.id, p.property_name]));
 
-      // Check each property's sync status
+      console.log(`📊 Checking ${mappings.length} properties...`);
+
+      // Check each mapping's sync status
       const results = await Promise.all(
-        properties.map(async (property: any) => {
-          const mapping = property.dropbox_mapping[0]; // Get first mapping
+        mappings.map(async (mapping: any) => {
+          const propertyName = propertyMap.get(mapping.entity_id);
+
+          if (!propertyName) {
+            console.warn(`Property not found for mapping: ${mapping.entity_id}`);
+            return null;
+          }
+
           const mappedPath = mapping.dropbox_folder_path;
           const mappedFolderName = mappedPath.split('/').pop() || '';
 
@@ -154,15 +175,15 @@ export class DropboxSyncDetectionService {
           let status: 'in_sync' | 'name_mismatch' | 'folder_not_found';
           if (!folderExists) {
             status = 'folder_not_found';
-          } else if (mappedFolderName !== property.property_name) {
+          } else if (mappedFolderName !== propertyName) {
             status = 'name_mismatch';
           } else {
             status = 'in_sync';
           }
 
           return {
-            propertyId: property.id,
-            propertyName: property.property_name,
+            propertyId: mapping.entity_id,
+            propertyName: propertyName,
             mappedFolderPath: mappedPath,
             mappedFolderName,
             status,
@@ -172,11 +193,22 @@ export class DropboxSyncDetectionService {
         })
       );
 
+      // Filter out null results
+      const validResults = results.filter(r => r !== null) as Array<{
+        propertyId: string;
+        propertyName: string;
+        mappedFolderPath: string;
+        mappedFolderName: string;
+        status: 'in_sync' | 'name_mismatch' | 'folder_not_found';
+        lastVerified: string | null;
+        sfId: string | null;
+      }>;
+
       // Filter to only out-of-sync properties
-      const outOfSync = results.filter(r => r.status !== 'in_sync');
+      const outOfSync = validResults.filter(r => r.status !== 'in_sync');
       console.log(`✅ Found ${outOfSync.length} out-of-sync properties`);
 
-      return results;
+      return validResults;
 
     } catch (error) {
       console.error('Error checking sync status:', error);
