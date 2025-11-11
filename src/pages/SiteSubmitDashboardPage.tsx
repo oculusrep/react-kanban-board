@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { ChevronDown, ChevronUp, Download, X, Filter } from "lucide-react";
 import PinDetailsSlideout from "../components/mapping/slideouts/PinDetailsSlideout";
-import { LayerManagerProvider } from "../components/mapping/layers/LayerManager";
 
 interface SiteSubmitReportRow {
   id: string;
@@ -540,7 +539,6 @@ export default function SiteSubmitDashboardPage() {
   }
 
   return (
-    <LayerManagerProvider>
       <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
@@ -953,6 +951,5 @@ export default function SiteSubmitDashboardPage() {
         onDataUpdate={handleSiteSubmitDataUpdate}
       />
     </div>
-    </LayerManagerProvider>
   );
 }

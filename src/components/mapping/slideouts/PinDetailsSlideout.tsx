@@ -753,7 +753,22 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     sendEmail,
   } = useSiteSubmitEmail();
 
-  const { refreshLayer } = useLayerManager();
+  // Try to get refreshLayer, but handle cases where LayerManager isn't provided (like dashboard pages)
+  let refreshLayer: ((layerId: string) => void) | undefined;
+  try {
+    const layerManager = useLayerManager();
+    refreshLayer = layerManager?.refreshLayer;
+  } catch (e) {
+    // LayerManager not provided - that's ok for non-map pages
+    console.log('📝 LayerManager not available (not on map page)');
+  }
+
+  // Safe wrapper that only calls refreshLayer if it exists
+  const safeRefreshLayer = (layerId: string) => {
+    if (refreshLayer) {
+      refreshLayer(layerId);
+    }
+  };
 
   // Autosave for site submit changes (only for existing site submits, not new ones)
   const siteSubmit = type === 'site_submit' ? (data as SiteSubmit) : null;
@@ -808,7 +823,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       }
 
       // Refresh the layer to show changes on map
-      refreshLayer('site_submits');
+      safeRefreshLayer('site_submits');
     },
     delay: 1500,
     enabled: type === 'site_submit' && !isNewSiteSubmit,
@@ -1424,7 +1439,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         // Update local state immediately to show new stage in dropdown
         setCurrentStageId(newStageId);
         // Trigger refresh of site submit layer to show changes immediately
-        refreshLayer('site_submits');
+        safeRefreshLayer('site_submits');
       }
     } catch (err) {
       console.error('Failed to update stage:', err);
@@ -1576,8 +1591,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
       // Refresh both property and site submit layers to show updated data
       // Site submit layer needs refresh because it caches property data
-      refreshLayer('properties');
-      refreshLayer('site_submits');
+      safeRefreshLayer('properties');
+      safeRefreshLayer('site_submits');
     } catch (err) {
       console.error('💥 Failed to save property:', err);
       alert('Failed to save property changes. Please try again.');
@@ -1708,7 +1723,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
           // Trigger refresh of site submit layer to show new pin
           console.log('🔄 Refreshing site_submits layer...');
-          refreshLayer('site_submits');
+          safeRefreshLayer('site_submits');
 
           showToast('Site submit created successfully!', { type: 'success' });
 
@@ -1771,7 +1786,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           }
 
           // Trigger refresh of site submit layer to show changes immediately
-          refreshLayer('site_submits');
+          safeRefreshLayer('site_submits');
         }
       }
     } catch (err) {
