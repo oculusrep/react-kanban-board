@@ -460,8 +460,9 @@ export default function SiteSubmitDashboardPage() {
   }, []);
 
   const handleDataUpdate = useCallback(async () => {
-    // Refresh data after updates
-    await fetchReportData();
+    // Don't refetch all data on every autosave - causes infinite loop
+    // The slideout manages its own state. Only refetch if user explicitly requests it.
+    console.log('📝 Data updated in slideout (not refetching dashboard data)');
   }, []);
 
   // Handle viewing site submit details from property slideout
@@ -505,8 +506,9 @@ export default function SiteSubmitDashboardPage() {
   }, []);
 
   const handleSiteSubmitDataUpdate = useCallback(async () => {
-    // Refresh data after site submit update
-    await fetchReportData();
+    // Don't refetch all data on every autosave - causes infinite loop
+    // The slideout manages its own state. Only refetch if user explicitly requests it.
+    console.log('📝 Site submit data updated (not refetching dashboard data)');
   }, []);
 
   if (loading) {
