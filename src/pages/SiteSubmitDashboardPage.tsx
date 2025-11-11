@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { ChevronDown, ChevronUp, Download, X, Filter } from "lucide-react";
@@ -269,7 +269,7 @@ export default function SiteSubmitDashboardPage() {
     }
   };
 
-  const applyFiltersAndSort = () => {
+  const applyFiltersAndSort = useCallback(() => {
     let result = [...data];
 
     // Apply quick filter first (button strip)
@@ -316,7 +316,7 @@ export default function SiteSubmitDashboardPage() {
 
     setFilteredData(result);
     setCurrentPage(1); // Reset to first page when filters change
-  };
+  }, [data, selectedStageIds, selectedClientId, sortField, sortDirection, quickFilter]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -453,19 +453,19 @@ export default function SiteSubmitDashboardPage() {
     setIsPinDetailsOpen(true);
   };
 
-  const handlePinDetailsClose = () => {
+  const handlePinDetailsClose = useCallback(() => {
     setIsPinDetailsOpen(false);
     setSelectedPinData(null);
     setSelectedPinType(null);
-  };
+  }, []);
 
-  const handleDataUpdate = async () => {
+  const handleDataUpdate = useCallback(async () => {
     // Refresh data after updates
     await fetchReportData();
-  };
+  }, []);
 
   // Handle viewing site submit details from property slideout
-  const handleViewSiteSubmitDetails = async (siteSubmit: any) => {
+  const handleViewSiteSubmitDetails = useCallback(async (siteSubmit: any) => {
     console.log('📋 Opening site submit details slideout:', siteSubmit);
 
     // Fetch fresh site submit data from database to ensure we have latest values
@@ -497,17 +497,17 @@ export default function SiteSubmitDashboardPage() {
     }
 
     setIsSiteSubmitDetailsOpen(true);
-  };
+  }, []);
 
-  const handleSiteSubmitDetailsClose = () => {
+  const handleSiteSubmitDetailsClose = useCallback(() => {
     setIsSiteSubmitDetailsOpen(false);
     setSelectedSiteSubmitData(null);
-  };
+  }, []);
 
-  const handleSiteSubmitDataUpdate = async () => {
+  const handleSiteSubmitDataUpdate = useCallback(async () => {
     // Refresh data after site submit update
     await fetchReportData();
-  };
+  }, []);
 
   if (loading) {
     return (
