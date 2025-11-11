@@ -149,8 +149,10 @@ const PropertyDetailsSection: React.FC<PropertyDetailsSectionProps> = ({
             <RecordMetadata
               createdAt={property.created_at}
               createdById={property.created_by_id}
+              createdBySfId={(property as any).created_by_sf_id}
               updatedAt={property.updated_at}
               updatedById={property.updated_by_id}
+              updatedBySfId={(property as any).updated_by_sf_id}
             />
           )}
 

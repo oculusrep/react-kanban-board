@@ -4,8 +4,10 @@ import UserByIdDisplay from './shared/UserByIdDisplay';
 interface RecordMetadataProps {
   createdAt?: string | null;
   createdById?: string | null;
+  createdBySfId?: string | null;
   updatedAt?: string | null;
   updatedById?: string | null;
+  updatedBySfId?: string | null;
   updatedByUser?: {
     name?: string | null;
     first_name?: string | null;
@@ -16,8 +18,10 @@ interface RecordMetadataProps {
 const RecordMetadata: React.FC<RecordMetadataProps> = ({
   createdAt,
   createdById,
+  createdBySfId,
   updatedAt,
   updatedById,
+  updatedBySfId,
   updatedByUser
 }) => {
   if (!createdAt && !updatedAt) return null;
@@ -67,7 +71,11 @@ const RecordMetadata: React.FC<RecordMetadataProps> = ({
             <span className="font-medium">Created: </span>
             <span>
               {formatTimestamp(createdAt)}
-              {createdById && <> <UserByIdDisplay userId={createdById} /></>}
+              {createdById ? (
+                <> <UserByIdDisplay userId={createdById} /></>
+              ) : createdBySfId ? (
+                <> by SF User ({createdBySfId})</>
+              ) : null}
             </span>
           </div>
         )}
@@ -78,9 +86,11 @@ const RecordMetadata: React.FC<RecordMetadataProps> = ({
               {formatTimestamp(updatedAt)}
               {updatedByUser ? (
                 getUpdatedByName() && ` by ${getUpdatedByName()}`
-              ) : (
-                updatedById && <UserByIdDisplay userId={updatedById} />
-              )}
+              ) : updatedById ? (
+                <UserByIdDisplay userId={updatedById} />
+              ) : updatedBySfId ? (
+                <> by SF User ({updatedBySfId})</>
+              ) : null}
             </span>
           </div>
         )}
