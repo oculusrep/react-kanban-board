@@ -41,7 +41,39 @@ Extended the RecordMetadata component pattern to Site Submit and Client screens,
 - Only shows for existing site submits (not new ones)
 - Displays after all form fields, before footer actions
 
-### 2. Pin Details Slideout (Map Sidebar)
+### 2. Site Submit Details Page
+
+**File Modified:** `src/pages/SiteSubmitDetailsPage.tsx`
+
+**Changes:**
+- Added `RecordMetadata` import
+- Added state to store metadata fields:
+  ```typescript
+  const [siteSubmitMetadata, setSiteSubmitMetadata] = useState<{
+    created_at?: string;
+    created_by_id?: string;
+    updated_at?: string;
+    updated_by_id?: string;
+  } | null>(null);
+  ```
+- Updated data loading to capture metadata when loading existing site submit
+- Added `RecordMetadata` component at bottom of form (after Notes & Comments section):
+  ```typescript
+  {!isNewSiteSubmit && siteSubmitMetadata && (
+    <RecordMetadata
+      createdAt={siteSubmitMetadata.created_at}
+      createdById={siteSubmitMetadata.created_by_id}
+      updatedAt={siteSubmitMetadata.updated_at}
+      updatedById={siteSubmitMetadata.updated_by_id}
+    />
+  )}
+  ```
+
+**Display Logic:**
+- Only shows for existing site submits (not new ones)
+- Displays after all form sections, before footer elements
+
+### 3. Pin Details Slideout (Map Sidebar)
 
 **File Modified:** `src/components/mapping/slideouts/PinDetailsSlideout.tsx`
 
@@ -63,7 +95,7 @@ Extended the RecordMetadata component pattern to Site Submit and Client screens,
 - Only shows for existing site submits in the Submit tab
 - Displays at bottom of submit form fields, after Submit Site button
 
-### 3. Client Overview Tab
+### 4. Client Overview Tab
 
 **File Modified:** `src/components/ClientOverviewTab.tsx`
 
@@ -139,8 +171,10 @@ The `RecordMetadata` component uses `UserByIdDisplay` which:
 
 ### Code Changes
 - `src/components/SiteSubmitFormModal.tsx`
+- `src/pages/SiteSubmitDetailsPage.tsx`
 - `src/components/mapping/slideouts/PinDetailsSlideout.tsx`
 - `src/components/ClientOverviewTab.tsx`
+- `src/vite-env.d.ts` (TypeScript fix)
 
 ### No Database Changes Required
 - All tables already have metadata columns
