@@ -344,6 +344,27 @@ class DropboxService {
   }
 
   /**
+   * List folders in a directory (non-recursive)
+   * @param folderPath - Path to the directory
+   * @returns Object containing entries array
+   */
+  async listFolders(folderPath: string): Promise<{ entries: any[] }> {
+    this.validatePath(folderPath);
+
+    return this.executeWithTokenRefresh(async () => {
+      const response = await this.dbx.filesListFolder({
+        path: folderPath,
+        recursive: false,
+        include_deleted: false
+      });
+
+      return {
+        entries: response.result.entries
+      };
+    });
+  }
+
+  /**
    * Build folder path for an entity (property, client, deal)
    * @param entityName - Name of the entity
    * @param basePath - Base path (defaults to /Salesforce Documents)

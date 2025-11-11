@@ -24,6 +24,7 @@ import DealCompareToSalesforceReportPage from "./pages/DealCompareToSalesforceRe
 import PropertyDataQualityReportPage from "./pages/PropertyDataQualityReportPage";
 import AssignmentsReportPage from "./pages/AssignmentsReportPage";
 import SiteSubmitDashboardPage from "./pages/SiteSubmitDashboardPage";
+import DropboxSyncAdminPage from "./pages/DropboxSyncAdminPage";
 import TaskDashboardPage from "./pages/TaskDashboardPage";
 import PaymentDashboardPage from "./pages/PaymentDashboardPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
@@ -75,6 +76,7 @@ function App() {
           <Route path="reports/property-data-quality" element={<PropertyDataQualityReportPage />} />
           <Route path="reports/assignments" element={<AssignmentsReportPage />} />
           <Route path="reports/site-submit-dashboard" element={<SiteSubmitDashboardPage />} />
+          <Route path="reports/dropbox-sync-admin" element={<AdminRoute><DropboxSyncAdminPage /></AdminRoute>} />
         </Route>
       </Routes>
     </AuthProvider>

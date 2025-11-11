@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useEffect } from "react";
+import { useAuth } from "../contexts/AuthContext";
 
 interface ReportCard {
   id: string;
@@ -7,10 +8,12 @@ interface ReportCard {
   description: string;
   route: string;
   icon: string;
+  adminOnly?: boolean;
 }
 
 export default function ReportsPage() {
   const navigate = useNavigate();
+  const { userRole } = useAuth();
 
   // Set page title
   useEffect(() => {
@@ -66,8 +69,24 @@ export default function ReportsPage() {
       description: "View and filter site submits with property details, SQFT, and NNN",
       route: "/reports/site-submit-dashboard",
       icon: "📍"
+    },
+    {
+      id: "dropbox-sync-admin",
+      name: "Dropbox Sync Status",
+      description: "Monitor and fix property name sync issues between CRM and Dropbox (Admin Only)",
+      route: "/reports/dropbox-sync-admin",
+      icon: "☁️",
+      adminOnly: true
     }
   ];
+
+  // Filter reports based on user role
+  const visibleReports = reports.filter(report => {
+    if (report.adminOnly) {
+      return userRole === 'admin';
+    }
+    return true;
+  });
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -80,7 +99,7 @@ export default function ReportsPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {reports.map((report) => (
+          {visibleReports.map((report) => (
             <button
               key={report.id}
               onClick={() => navigate(report.route)}
