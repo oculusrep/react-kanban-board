@@ -83,10 +83,14 @@ export default function ReportsPage() {
   // Filter reports based on user role
   const visibleReports = reports.filter(report => {
     if (report.adminOnly) {
+      console.log('🔍 Admin-only report:', report.name, 'User role:', userRole, 'Is admin:', userRole === 'admin');
       return userRole === 'admin';
     }
     return true;
   });
+
+  console.log('👤 Current user role:', userRole);
+  console.log('📊 Total reports:', reports.length, 'Visible reports:', visibleReports.length);
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">

@@ -13,6 +13,7 @@ import { ClientSearchResult } from '../hooks/useClientSearch';
 import { generateSiteSubmitEmailTemplate, PropertyUnitFile } from '../utils/siteSubmitEmailTemplate';
 import DropboxService from '../services/dropboxService';
 import AutosaveIndicator from './AutosaveIndicator';
+import RecordMetadata from './RecordMetadata';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type SiteSubmitInsert = Database['public']['Tables']['site_submit']['Insert'];
@@ -100,6 +101,14 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
   const [emailDefaultData, setEmailDefaultData] = useState<any>(null);
   const [sendingEmail, setSendingEmail] = useState(false);
   const { toast, showToast, hideToast } = useToast();
+
+  // State for metadata display
+  const [siteSubmitMetadata, setSiteSubmitMetadata] = useState<{
+    created_at?: string;
+    created_by_id?: string;
+    updated_at?: string;
+    updated_by_id?: string;
+  } | null>(null);
 
   // Determine if this is a new site submit
   const isNewSiteSubmit = !siteSubmitId;
@@ -208,6 +217,16 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
             `)
             .eq('id', siteSubmitId)
             .single();
+
+          // Store metadata for display
+          if (siteSubmitData) {
+            setSiteSubmitMetadata({
+              created_at: siteSubmitData.created_at,
+              created_by_id: siteSubmitData.created_by_id,
+              updated_at: siteSubmitData.updated_at,
+              updated_by_id: siteSubmitData.updated_by_id
+            });
+          }
 
           if (error) {
             console.error('❌ Error loading site submit:', error);
@@ -968,6 +987,16 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
                   />
                 </div>
               </div>
+
+              {/* Record Metadata - Show for existing site submits */}
+              {!isNewSiteSubmit && siteSubmitMetadata && (
+                <RecordMetadata
+                  createdAt={siteSubmitMetadata.created_at}
+                  createdById={siteSubmitMetadata.created_by_id}
+                  updatedAt={siteSubmitMetadata.updated_at}
+                  updatedById={siteSubmitMetadata.updated_by_id}
+                />
+              )}
             </>
           )}
         </div>
