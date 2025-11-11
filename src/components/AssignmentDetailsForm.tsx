@@ -8,6 +8,7 @@ import ReferralPayeeAutocomplete from "./ReferralPayeeAutocomplete";
 import AssignmentCurrencyField from "./AssignmentCurrencyField";
 import AssignmentPercentField from "./AssignmentPercentField";
 import ConvertToDealModal from "./ConvertToDealModal";
+import RecordMetadata from "./RecordMetadata";
 
 interface Props {
   assignment: Assignment;
@@ -446,6 +447,16 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
           navigate(`/deal/${dealId}`);
         }}
       />
+
+      {/* Record Metadata - Show for existing assignments */}
+      {form.id && form.id !== 'new' && (
+        <RecordMetadata
+          createdAt={assignment.created_at}
+          createdById={assignment.created_by_id}
+          updatedAt={assignment.updated_at}
+          updatedById={assignment.updated_by_id}
+        />
+      )}
 
     </div>
   );
