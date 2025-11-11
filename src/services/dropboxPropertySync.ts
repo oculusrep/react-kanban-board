@@ -39,7 +39,7 @@ export class DropboxPropertySyncService {
       // Get the Dropbox folder mapping for this entity
       console.log('📂 Fetching Dropbox folder mapping...');
       const { data: mapping, error: mappingError } = await supabase
-        .from('dropbox_folder_mapping')
+        .from('dropbox_mapping')
         .select('*')
         .eq('entity_type', entityType)
         .eq('entity_id', entityId)
@@ -87,7 +87,7 @@ export class DropboxPropertySyncService {
 
       // Update the mapping table with the new path
       const { error: updateError } = await supabase
-        .from('dropbox_folder_mapping')
+        .from('dropbox_mapping')
         .update({
           dropbox_folder_path: newPath,
           last_verified_at: new Date().toISOString()
@@ -175,7 +175,7 @@ export class DropboxPropertySyncService {
     try {
       // Get the Dropbox folder mapping for this entity
       const { data: mapping, error: mappingError } = await supabase
-        .from('dropbox_folder_mapping')
+        .from('dropbox_mapping')
         .select('*')
         .eq('entity_type', entityType)
         .eq('entity_id', entityId)
