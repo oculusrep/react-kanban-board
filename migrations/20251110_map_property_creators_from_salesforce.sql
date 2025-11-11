@@ -153,7 +153,11 @@ WHERE p.created_by_id IS NULL
   AND p.created_by_sf_id IS NOT NULL
 LIMIT 10;
 
-RAISE NOTICE '=== Property Creator Mapping Complete ===';
-RAISE NOTICE 'Check the verification queries above to see mapping results';
-RAISE NOTICE 'Properties with created_by_id will show creator names in the UI';
-RAISE NOTICE 'Properties with only created_by_sf_id will show "by SF User (ID)"';
+-- Final summary notice
+DO $$
+BEGIN
+  RAISE NOTICE '=== Property Creator Mapping Complete ===';
+  RAISE NOTICE 'Check the verification queries above to see mapping results';
+  RAISE NOTICE 'Properties with created_by_id will show creator names in the UI';
+  RAISE NOTICE 'Properties with only created_by_sf_id will show "by SF User (ID)"';
+END $$;
