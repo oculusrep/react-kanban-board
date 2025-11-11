@@ -96,7 +96,11 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
           acres,
           building_sqft,
           available_sqft,
-          property_notes
+          property_notes,
+          created_at,
+          created_by_id,
+          updated_at,
+          updated_by_id
         `)
         .or(`property_name.ilike.${searchPattern},address.ilike.${searchPattern},city.ilike.${searchPattern}`)
         .limit(10); // Increase limit before filtering
