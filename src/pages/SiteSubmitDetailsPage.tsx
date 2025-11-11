@@ -18,6 +18,7 @@ import { AssignmentSearchResult } from '../hooks/useAssignmentSearch';
 import AddAssignmentModal from '../components/AddAssignmentModal';
 import AutosaveIndicator from '../components/AutosaveIndicator';
 import { useSiteSubmitEmail } from '../hooks/useSiteSubmitEmail';
+import RecordMetadata from '../components/RecordMetadata';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type SiteSubmitInsert = Database['public']['Tables']['site_submit']['Insert'];
@@ -101,6 +102,14 @@ const SiteSubmitDetailsPage: React.FC = () => {
     nnn?: number | null;
   } | null>(null);
   const [userEditedName, setUserEditedName] = useState(false);
+
+  // State for metadata display
+  const [siteSubmitMetadata, setSiteSubmitMetadata] = useState<{
+    created_at?: string;
+    created_by_id?: string;
+    updated_at?: string;
+    updated_by_id?: string;
+  } | null>(null);
 
   // Email composer hook for site submit emails
   const {
@@ -255,6 +264,15 @@ const SiteSubmitDetailsPage: React.FC = () => {
             console.log('📥 Loaded site submit data:', siteSubmitData);
             console.log('📅 date_submitted value:', siteSubmitData.date_submitted);
             console.log('📋 assignment_id from database:', siteSubmitData.assignment_id);
+
+            // Store metadata for display
+            setSiteSubmitMetadata({
+              created_at: siteSubmitData.created_at,
+              created_by_id: siteSubmitData.created_by_id,
+              updated_at: siteSubmitData.updated_at,
+              updated_by_id: siteSubmitData.updated_by_id
+            });
+
             setFormData({
               site_submit_name: siteSubmitData.site_submit_name || '',
               client_id: siteSubmitData.client_id,
@@ -1017,6 +1035,16 @@ const SiteSubmitDetailsPage: React.FC = () => {
                     />
                   </div>
                 </div>
+
+                {/* Record Metadata - Show for existing site submits */}
+                {!isNewSiteSubmit && siteSubmitMetadata && (
+                  <RecordMetadata
+                    createdAt={siteSubmitMetadata.created_at}
+                    createdById={siteSubmitMetadata.created_by_id}
+                    updatedAt={siteSubmitMetadata.updated_at}
+                    updatedById={siteSubmitMetadata.updated_by_id}
+                  />
+                )}
               </>
             )}
           </div>
