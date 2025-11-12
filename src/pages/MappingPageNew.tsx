@@ -791,6 +791,12 @@ const MappingPageContent: React.FC = () => {
   const handleViewPropertyDetails = async (property: any) => {
     console.log('🏢 Opening property details slideout:', property);
 
+    // Validate property has an ID
+    if (!property || !property.id) {
+      console.error('❌ Cannot open property details: invalid property data', property);
+      return;
+    }
+
     // Fetch fresh property data from database to ensure we have latest values
     try {
       const { data: freshPropertyData, error } = await supabase
@@ -803,17 +809,19 @@ const MappingPageContent: React.FC = () => {
         console.error('❌ Error fetching fresh property data:', error);
         // Fall back to cached data if fetch fails
         setSelectedPropertyData(property);
+        setIsPropertyDetailsOpen(true);
       } else {
         console.log('✅ Fetched fresh property data:', freshPropertyData);
         setSelectedPropertyData(freshPropertyData);
+        // Only open sidebar after data is set
+        setIsPropertyDetailsOpen(true);
       }
     } catch (err) {
       console.error('❌ Exception fetching fresh property data:', err);
       // Fall back to cached data if fetch fails
       setSelectedPropertyData(property);
+      setIsPropertyDetailsOpen(true);
     }
-
-    setIsPropertyDetailsOpen(true);
   };
 
   // Handle data updates from slideout

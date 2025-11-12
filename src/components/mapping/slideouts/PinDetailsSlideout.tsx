@@ -1832,12 +1832,24 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
   // Handle tab click - for site submits, clicking PROPERTY tab opens property sidebar
   const handleTabClick = (tabId: TabType) => {
+    console.log('🔘 Tab clicked:', { tabId, isProperty, type, hasCallback: !!onViewPropertyDetails });
+
     // If it's a site submit and clicking the PROPERTY tab (which has id 'location')
     if (!isProperty && tabId === 'location' && onViewPropertyDetails) {
       const property = siteSubmit?.property || (data as SiteSubmit)?.property;
+      console.log('🏢 Property tab clicked, property data:', {
+        fromSiteSubmit: !!siteSubmit?.property,
+        fromData: !!(data as SiteSubmit)?.property,
+        propertyId: property?.id,
+        propertyName: property?.property_name
+      });
+
       if (property) {
+        console.log('✅ Opening property sidebar for:', property.id);
         onViewPropertyDetails(property);
         return; // Don't switch tabs, open property sidebar instead
+      } else {
+        console.error('❌ No property data available to open property sidebar');
       }
     }
     // Otherwise, normal tab switching
