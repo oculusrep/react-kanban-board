@@ -357,25 +357,47 @@ export class DropboxSyncDetectionService {
 
       console.log(`📦 Loading from cache (max age: ${maxAgeHours} hours, cutoff: ${cutoffTime.toISOString()})...`);
 
-      const { data, error } = await supabase
-        .from('dropbox_sync_cache')
-        .select('*')
-        .eq('entity_type', 'property')
-        .gte('checked_at', cutoffTime.toISOString());
+      // Fetch ALL cache entries with pagination (Supabase has 1000 row limit by default)
+      let allCacheEntries: any[] = [];
+      let offset = 0;
+      const pageSize = 1000;
+      let hasMore = true;
 
-      if (error) {
-        console.error('Error loading cache:', error);
-        return null;
+      while (hasMore) {
+        const { data: cachePage, error } = await supabase
+          .from('dropbox_sync_cache')
+          .select('*')
+          .eq('entity_type', 'property')
+          .gte('checked_at', cutoffTime.toISOString())
+          .range(offset, offset + pageSize - 1);
+
+        if (error) {
+          console.error('Error loading cache:', error);
+          return null;
+        }
+
+        if (cachePage && cachePage.length > 0) {
+          allCacheEntries.push(...cachePage);
+          console.log(`📦 Loaded ${cachePage.length} cache entries (total: ${allCacheEntries.length})...`);
+
+          if (cachePage.length < pageSize) {
+            hasMore = false;
+          } else {
+            offset += pageSize;
+          }
+        } else {
+          hasMore = false;
+        }
       }
 
-      if (!data || data.length === 0) {
+      if (allCacheEntries.length === 0) {
         console.log('📭 Cache is empty or too old');
         return null;
       }
 
-      console.log(`✅ Loaded ${data.length} entries from cache`);
+      console.log(`✅ Loaded ${allCacheEntries.length} entries from cache`);
 
-      return data.map(row => ({
+      return allCacheEntries.map(row => ({
         propertyId: row.entity_id,
         propertyName: row.property_name,
         mappedFolderPath: row.mapped_folder_path,
