@@ -34,6 +34,7 @@ export default function DropboxSyncAdminPage() {
   const [searchingCandidates, setSearchingCandidates] = useState(false);
   const [fixing, setFixing] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     document.title = "Dropbox Sync Status | OVIS Admin";
@@ -210,9 +211,20 @@ export default function DropboxSyncAdminPage() {
     }
   };
 
-  const outOfSyncCount = properties.filter(p => p.status !== 'in_sync').length;
-  const outOfSyncProperties = properties.filter(p => p.status !== 'in_sync');
-  const inSyncProperties = properties.filter(p => p.status === 'in_sync');
+  // Filter properties based on search query
+  const filteredProperties = properties.filter(p => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      p.propertyName.toLowerCase().includes(query) ||
+      p.mappedFolderName.toLowerCase().includes(query) ||
+      p.mappedFolderPath.toLowerCase().includes(query)
+    );
+  });
+
+  const outOfSyncCount = filteredProperties.filter(p => p.status !== 'in_sync').length;
+  const outOfSyncProperties = filteredProperties.filter(p => p.status !== 'in_sync');
+  const inSyncProperties = filteredProperties.filter(p => p.status === 'in_sync');
 
   if (loading) {
     return (
@@ -297,6 +309,33 @@ export default function DropboxSyncAdminPage() {
               <AlertTriangle className="h-12 w-12 text-red-500" />
             </div>
           </div>
+        </div>
+
+        {/* Search Box */}
+        <div className="bg-white rounded-lg shadow mb-6 p-4">
+          <div className="flex items-center gap-2">
+            <Search className="h-5 w-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by property name or Dropbox folder..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          {searchQuery && (
+            <p className="mt-2 text-xs text-gray-500">
+              Showing {filteredProperties.length} of {properties.length} properties
+            </p>
+          )}
         </div>
 
         {/* Out of Sync Table */}
