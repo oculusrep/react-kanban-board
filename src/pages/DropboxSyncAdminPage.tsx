@@ -35,6 +35,7 @@ export default function DropboxSyncAdminPage() {
   const [fixing, setFixing] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedPropertyIds, setSelectedPropertyIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     document.title = "Dropbox Sync Status | OVIS Admin";
@@ -141,6 +142,103 @@ export default function DropboxSyncAdminPage() {
     } catch (error: any) {
       console.error('Error syncing to CRM:', error);
       alert(`Failed to sync: ${error.message}`);
+    } finally {
+      setFixing(false);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    const nameMismatches = outOfSyncProperties.filter(p => p.status === 'name_mismatch');
+
+    if (selectedPropertyIds.size === nameMismatches.length) {
+      // Deselect all
+      setSelectedPropertyIds(new Set());
+    } else {
+      // Select all name mismatches
+      setSelectedPropertyIds(new Set(nameMismatches.map(p => p.propertyId)));
+    }
+  };
+
+  const toggleSelectProperty = (propertyId: string) => {
+    const newSelected = new Set(selectedPropertyIds);
+    if (newSelected.has(propertyId)) {
+      newSelected.delete(propertyId);
+    } else {
+      newSelected.add(propertyId);
+    }
+    setSelectedPropertyIds(newSelected);
+  };
+
+  const bulkFixDropbox = async () => {
+    const selectedProperties = outOfSyncProperties.filter(p =>
+      selectedPropertyIds.has(p.propertyId) && p.status === 'name_mismatch'
+    );
+
+    if (selectedProperties.length === 0) {
+      alert('No properties selected to fix.');
+      return;
+    }
+
+    if (!confirm(`Fix ${selectedProperties.length} selected properties by renaming Dropbox folders to match CRM? (Some may fail if conflicts exist)`)) {
+      return;
+    }
+
+    setFixing(true);
+    const syncService = getDropboxPropertySyncService();
+
+    let successCount = 0;
+    let failureCount = 0;
+    const failures: Array<{ property: string; error: string }> = [];
+
+    try {
+      console.log(`🔄 Bulk fixing ${selectedProperties.length} name mismatches...`);
+
+      for (const property of selectedProperties) {
+        try {
+          console.log(`🔄 Fixing: ${property.propertyName}...`);
+
+          const result = await syncService.syncPropertyName(
+            property.propertyId,
+            property.mappedFolderName,
+            property.propertyName
+          );
+
+          if (result.success) {
+            successCount++;
+            console.log(`✅ Fixed: ${property.propertyName}`);
+          } else {
+            failureCount++;
+            failures.push({ property: property.propertyName, error: result.error || 'Unknown error' });
+            console.log(`❌ Failed: ${property.propertyName} - ${result.error}`);
+          }
+
+          // Small delay to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (error: any) {
+          failureCount++;
+          failures.push({ property: property.propertyName, error: error.message });
+          console.error(`❌ Error fixing ${property.propertyName}:`, error);
+        }
+      }
+
+      // Show summary
+      let message = `✅ Bulk fix complete!\n\nSuccessful: ${successCount}\nFailed: ${failureCount}`;
+
+      if (failures.length > 0 && failures.length <= 10) {
+        message += '\n\nFailures:\n' + failures.map(f => `- ${f.property}: ${f.error}`).join('\n');
+      } else if (failures.length > 10) {
+        message += '\n\nFirst 10 failures:\n' + failures.slice(0, 10).map(f => `- ${f.property}: ${f.error}`).join('\n');
+        message += `\n... and ${failures.length - 10} more`;
+      }
+
+      alert(message);
+
+      // Clear selections and refresh sync status
+      setSelectedPropertyIds(new Set());
+      await checkSyncStatus(true); // Force refresh to get latest state
+    } catch (error: any) {
+      console.error('Error in bulk fix:', error);
+      alert(`Bulk fix error: ${error.message}`);
     } finally {
       setFixing(false);
     }
@@ -357,22 +455,43 @@ export default function DropboxSyncAdminPage() {
         {/* Out of Sync Table */}
         {outOfSyncCount > 0 && (
           <div className="bg-white rounded-lg shadow mb-6">
-            <div className="p-6 border-b border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-900">Out of Sync Properties</h2>
-              <p className="text-sm text-gray-600 mt-1">Properties that need attention</p>
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Out of Sync Properties</h2>
+                <p className="text-sm text-gray-600 mt-1">Properties that need attention</p>
+              </div>
+              {selectedPropertyIds.size > 0 && (
+                <button
+                  onClick={bulkFixDropbox}
+                  disabled={fixing}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-4 w-4 ${fixing ? 'animate-spin' : ''}`} />
+                  {fixing ? 'Fixing...' : `Fix ${selectedPropertyIds.size} Selected`}
+                </button>
+              )}
             </div>
 
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 table-fixed text-xs">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="w-[22%] px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">
+                    <th className="w-[5%] px-2 py-2 text-left">
+                      <input
+                        type="checkbox"
+                        checked={selectedPropertyIds.size > 0 && selectedPropertyIds.size === outOfSyncProperties.filter(p => p.status === 'name_mismatch').length}
+                        onChange={toggleSelectAll}
+                        className="rounded border-gray-300"
+                        title="Select all name mismatches"
+                      />
+                    </th>
+                    <th className="w-[20%] px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">
                       Property Name
                     </th>
-                    <th className="w-[22%] px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">
+                    <th className="w-[20%] px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">
                       Dropbox Folder
                     </th>
-                    <th className="w-[14%] px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">
+                    <th className="w-[13%] px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">
                       Status
                     </th>
                     <th className="w-[42%] px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">
@@ -383,6 +502,18 @@ export default function DropboxSyncAdminPage() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {outOfSyncProperties.map((property) => (
                     <tr key={property.propertyId}>
+                      <td className="px-2 py-2">
+                        {property.status === 'name_mismatch' ? (
+                          <input
+                            type="checkbox"
+                            checked={selectedPropertyIds.has(property.propertyId)}
+                            onChange={() => toggleSelectProperty(property.propertyId)}
+                            className="rounded border-gray-300"
+                          />
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
                       <td className="px-2 py-2">
                         <div className="text-xs font-medium text-gray-900 truncate" title={property.propertyName}>
                           {property.propertyName}
