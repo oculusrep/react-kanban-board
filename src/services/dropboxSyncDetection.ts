@@ -221,8 +221,9 @@ export class DropboxSyncDetectionService {
       console.log(`📊 Checking ${mappings.length} properties...`);
 
       // Check each mapping's sync status
-      // Process in batches to avoid overwhelming Dropbox API
-      const checkBatchSize = 50;
+      // Process in batches to avoid overwhelming Dropbox API and hitting rate limits
+      const checkBatchSize = 10; // Reduced from 50 to 10 to avoid rate limiting
+      const delayBetweenBatches = 1000; // 1 second delay between batches
       const allResults: Array<{
         propertyId: string;
         propertyName: string;
@@ -235,7 +236,9 @@ export class DropboxSyncDetectionService {
 
       for (let i = 0; i < mappings.length; i += checkBatchSize) {
         const batch = mappings.slice(i, i + checkBatchSize);
-        console.log(`🔍 Checking batch ${Math.floor(i / checkBatchSize) + 1}/${Math.ceil(mappings.length / checkBatchSize)}...`);
+        const batchNumber = Math.floor(i / checkBatchSize) + 1;
+        const totalBatches = Math.ceil(mappings.length / checkBatchSize);
+        console.log(`🔍 Checking batch ${batchNumber}/${totalBatches} (${i + 1}-${Math.min(i + checkBatchSize, mappings.length)} of ${mappings.length})...`);
 
         const batchResults = await Promise.all(
           batch.map(async (mapping: any) => {
@@ -282,6 +285,12 @@ export class DropboxSyncDetectionService {
         );
 
         allResults.push(...batchResults);
+
+        // Add delay between batches to avoid rate limiting (except for the last batch)
+        if (i + checkBatchSize < mappings.length) {
+          console.log(`⏳ Waiting ${delayBetweenBatches}ms before next batch...`);
+          await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
+        }
       }
 
       const results = allResults;
