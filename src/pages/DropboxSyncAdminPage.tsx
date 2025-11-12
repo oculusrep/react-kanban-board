@@ -308,19 +308,19 @@ export default function DropboxSyncAdminPage() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+              <table className="min-w-full divide-y divide-gray-200 table-fixed">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="w-1/4 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Property Name (CRM)
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="w-1/4 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Dropbox Folder
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="w-1/6 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="w-1/3 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -328,33 +328,39 @@ export default function DropboxSyncAdminPage() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {outOfSyncProperties.map((property) => (
                     <tr key={property.propertyId}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{property.propertyName}</div>
+                      <td className="px-3 py-3">
+                        <div className="text-sm font-medium text-gray-900 truncate" title={property.propertyName}>
+                          {property.propertyName}
+                        </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{property.mappedFolderName || 'N/A'}</div>
-                        <div className="text-xs text-gray-500">{property.mappedFolderPath}</div>
+                      <td className="px-3 py-3">
+                        <div className="text-sm text-gray-900 truncate" title={property.mappedFolderName || 'N/A'}>
+                          {property.mappedFolderName || 'N/A'}
+                        </div>
+                        <div className="text-xs text-gray-500 truncate" title={property.mappedFolderPath}>
+                          {property.mappedFolderPath}
+                        </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-3">
                         {property.status === 'folder_not_found' && (
-                          <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                            ❌ Folder Not Found
+                          <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800 whitespace-nowrap">
+                            ❌ Not Found
                           </span>
                         )}
                         {property.status === 'name_mismatch' && (
-                          <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                            ⚠️ Name Mismatch
+                          <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 whitespace-nowrap">
+                            ⚠️ Mismatch
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <div className="flex gap-2">
+                      <td className="px-3 py-3 text-sm">
+                        <div className="flex gap-2 flex-wrap">
                           {property.status === 'name_mismatch' && (
                             <>
                               <button
                                 onClick={() => syncCRMToDropbox(property)}
                                 disabled={fixing}
-                                className="text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50"
+                                className="text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50 whitespace-nowrap"
                               >
                                 Fix Dropbox
                               </button>
@@ -362,7 +368,7 @@ export default function DropboxSyncAdminPage() {
                               <button
                                 onClick={() => syncDropboxToCRM(property)}
                                 disabled={fixing}
-                                className="text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50"
+                                className="text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50 whitespace-nowrap"
                               >
                                 Fix CRM
                               </button>
@@ -373,7 +379,7 @@ export default function DropboxSyncAdminPage() {
                               <button
                                 onClick={() => findCandidates(property)}
                                 disabled={searchingCandidates}
-                                className="text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50 flex items-center gap-1"
+                                className="text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50 flex items-center gap-1 whitespace-nowrap"
                               >
                                 <Search className="h-4 w-4" />
                                 Find
@@ -382,7 +388,7 @@ export default function DropboxSyncAdminPage() {
                               <button
                                 onClick={() => removeMapping(property)}
                                 disabled={fixing}
-                                className="text-red-600 hover:text-red-800 font-medium disabled:opacity-50"
+                                className="text-red-600 hover:text-red-800 font-medium disabled:opacity-50 whitespace-nowrap"
                               >
                                 Unlink
                               </button>
