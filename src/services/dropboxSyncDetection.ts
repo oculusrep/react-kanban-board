@@ -69,24 +69,50 @@ export class DropboxSyncDetectionService {
         return [];
       }
 
+      console.log(`📂 Found ${response.entries.length} total entries in directory`);
+
       // Calculate similarity for each folder
-      const candidates = response.entries
-        .filter((entry: any) => entry['.tag'] === 'folder')
+      const folders = response.entries.filter((entry: any) => entry['.tag'] === 'folder');
+      console.log(`📁 Found ${folders.length} folders to analyze`);
+
+      const candidates = folders
         .map((folder: any) => {
           const folderName = folder.name;
           const similarity = this.calculateSimilarity(targetName, folderName);
 
+          // Additional matching strategies for better flexibility
+          const targetLower = targetName.toLowerCase();
+          const folderLower = folderName.toLowerCase();
+
+          // Boost similarity if one contains the other
+          let boostedSimilarity = similarity;
+          if (targetLower.includes(folderLower) || folderLower.includes(targetLower)) {
+            boostedSimilarity = Math.max(similarity, 0.6);
+            console.log(`📍 Substring match found: "${folderName}" (boosted from ${similarity.toFixed(2)} to ${boostedSimilarity.toFixed(2)})`);
+          }
+
+          // Additional boost for starting with the same prefix (first 5 chars)
+          if (targetLower.substring(0, 5) === folderLower.substring(0, 5)) {
+            boostedSimilarity = Math.max(boostedSimilarity, 0.5);
+          }
+
+          console.log(`  📊 "${folderName}": similarity=${similarity.toFixed(2)}, boosted=${boostedSimilarity.toFixed(2)}`);
+
           return {
             name: folderName,
             path: folder.path_display,
-            similarity,
+            similarity: boostedSimilarity,
             modified: folder.client_modified || folder.server_modified
           };
         })
-        .filter((item: any) => item.similarity > 0.5) // Only show 50%+ matches
+        .filter((item: any) => item.similarity > 0.3) // Lowered from 0.5 to 0.3 (30% match)
         .sort((a: any, b: any) => b.similarity - a.similarity);
 
-      console.log(`✅ Found ${candidates.length} similar folders`);
+      console.log(`✅ Found ${candidates.length} similar folders (threshold: 30%)`);
+      candidates.forEach((c: any) => {
+        console.log(`  ✓ ${c.name} (${Math.round(c.similarity * 100)}% match)`);
+      });
+
       return candidates;
 
     } catch (error) {
@@ -312,6 +338,8 @@ export class DropboxSyncDetectionService {
 
       // Get parent directory from old path
       const parentPath = oldPath.split('/').slice(0, -1).join('/');
+      console.log(`📂 Old path: "${oldPath}"`);
+      console.log(`📂 Parent path to search: "${parentPath}"`);
 
       // Strategy 1: Find folders with similar names
       const similarFolders = await this.findSimilarFolders(propertyName, parentPath);
