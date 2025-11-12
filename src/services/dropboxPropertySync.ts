@@ -82,6 +82,17 @@ export class DropboxPropertySyncService {
         };
       }
 
+      // Check if target path already exists (conflict check)
+      const targetExists = await this.dropboxService.folderExists(newPath);
+
+      if (targetExists) {
+        console.warn('⚠️  Target folder already exists:', newPath);
+        return {
+          success: false,
+          error: `A folder named "${cleanNewName}" already exists in this location. Please rename or remove the existing folder first.`
+        };
+      }
+
       // Rename the folder in Dropbox
       await this.dropboxService.renameFolder(oldPath, newPath);
 
