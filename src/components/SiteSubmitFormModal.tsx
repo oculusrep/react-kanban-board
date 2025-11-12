@@ -17,7 +17,6 @@ import RecordMetadata from './RecordMetadata';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type SiteSubmitInsert = Database['public']['Tables']['site_submit']['Insert'];
-type Client = Database['public']['Tables']['client']['Row'];
 type SubmitStage = Database['public']['Tables']['submit_stage']['Row'];
 
 interface SiteSubmitFormModalProps {
@@ -99,7 +98,6 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
   const [userEditedName, setUserEditedName] = useState(false);
   const [showEmailComposer, setShowEmailComposer] = useState(false);
   const [emailDefaultData, setEmailDefaultData] = useState<any>(null);
-  const [sendingEmail, setSendingEmail] = useState(false);
   const { toast, showToast, hideToast } = useToast();
 
   // State for metadata display
@@ -192,12 +190,21 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
 
             // Set selected client for ClientSelector
             if (assignmentData.client) {
-              setSelectedClient({
-                id: assignmentData.client.id,
-                client_name: assignmentData.client.client_name,
-                phone: assignmentData.client.phone,
-                site_submit_count: 0
-              });
+              // Handle client data (can be object or array from Supabase)
+              const clientData = Array.isArray(assignmentData.client)
+                ? assignmentData.client[0]
+                : assignmentData.client;
+
+              if (clientData) {
+                setSelectedClient({
+                  id: clientData.id,
+                  client_name: clientData.client_name || 'Unnamed Client',
+                  type: null,
+                  phone: clientData.phone,
+                  deal_count: 0,
+                  site_submit_count: 0
+                });
+              }
             }
           }
         }
@@ -257,12 +264,21 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
 
             // Set selected client for ClientSelector
             if (siteSubmitData.client) {
-              setSelectedClient({
-                id: siteSubmitData.client.id,
-                client_name: siteSubmitData.client.client_name,
-                phone: siteSubmitData.client.phone,
-                site_submit_count: 0 // Not needed for editing
-              });
+              // Handle client data (can be object or array from Supabase)
+              const clientData = Array.isArray(siteSubmitData.client)
+                ? siteSubmitData.client[0]
+                : siteSubmitData.client;
+
+              if (clientData) {
+                setSelectedClient({
+                  id: clientData.id,
+                  client_name: clientData.client_name || 'Unnamed Client',
+                  type: null,
+                  phone: clientData.phone,
+                  deal_count: 0,
+                  site_submit_count: 0 // Not needed for editing
+                });
+              }
             }
 
             // Mark as user edited since we're loading an existing name
@@ -632,9 +648,8 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
   };
 
   const handleSendEmailFromComposer = async (emailData: EmailData) => {
-    setSendingEmail(true);
     try {
-      const { data: { session, user } } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
 
       if (!session) {
         throw new Error('Not authenticated');
@@ -643,7 +658,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
       const { data: userData } = await supabase
         .from('user')
         .select('email')
-        .eq('id', user?.id)
+        .eq('id', session.user?.id)
         .single();
 
       const response = await fetch(
@@ -657,7 +672,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
           body: JSON.stringify({
             siteSubmitId,
             customEmail: emailData,
-            submitterEmail: userData?.email || user?.email
+            submitterEmail: userData?.email || session.user?.email
           }),
         }
       );
@@ -675,8 +690,6 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
       console.error('Error sending email:', error);
       showToast(`Error sending email: ${error instanceof Error ? error.message : 'Unknown error'}`, { type: 'error' });
       throw error;
-    } finally {
-      setSendingEmail(false);
     }
   };
 
