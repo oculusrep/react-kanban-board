@@ -345,6 +345,7 @@ class DropboxService {
 
   /**
    * List folders in a directory (non-recursive)
+   * Handles pagination to fetch ALL folders, not just the first page
    * @param folderPath - Path to the directory
    * @returns Object containing entries array
    */
@@ -352,14 +353,36 @@ class DropboxService {
     this.validatePath(folderPath);
 
     return this.executeWithTokenRefresh(async () => {
+      let allEntries: any[] = [];
+      let hasMore = true;
+      let cursor: string | undefined = undefined;
+
+      // Initial request
       const response = await this.dbx.filesListFolder({
         path: folderPath,
         recursive: false,
         include_deleted: false
       });
 
+      allEntries.push(...response.result.entries);
+      hasMore = response.result.has_more;
+      cursor = response.result.cursor;
+
+      // Fetch remaining pages if there are more results
+      while (hasMore && cursor) {
+        const continueResponse = await this.dbx.filesListFolderContinue({
+          cursor: cursor
+        });
+
+        allEntries.push(...continueResponse.result.entries);
+        hasMore = continueResponse.result.has_more;
+        cursor = continueResponse.result.cursor;
+      }
+
+      console.log(`📂 listFolders fetched ${allEntries.length} total entries from ${folderPath}`);
+
       return {
-        entries: response.result.entries
+        entries: allEntries
       };
     });
   }
