@@ -762,6 +762,18 @@ const MappingPageContent: React.FC = () => {
 
   // Pin click handlers for slideout
   const handlePinClick = (data: any, type: 'property' | 'site_submit') => {
+    console.log('📍 Pin clicked:', { type, hasData: !!data });
+
+    // Debug: Check if property relationship exists for site submits
+    if (type === 'site_submit') {
+      console.log('🔍 Site submit pin clicked, property data check:', {
+        hasProperty: !!data?.property,
+        propertyId: data?.property?.id,
+        propertyName: data?.property?.property_name,
+        directPropertyId: data?.property_id
+      });
+    }
+
     // Always update the selected data when clicking on a pin
     setSelectedPinData(data);
     setSelectedPinType(type);

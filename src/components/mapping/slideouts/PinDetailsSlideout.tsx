@@ -805,7 +805,30 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           // updated_by_id set automatically by auth.uid() default
         })
         .eq('id', siteSubmit.id)
-        .select()
+        .select(`
+          *,
+          property!site_submit_property_id_fkey (
+            id,
+            property_name,
+            address,
+            city,
+            state,
+            zip,
+            latitude,
+            longitude,
+            verified_latitude,
+            verified_longitude,
+            property_record_type_id
+          ),
+          client!site_submit_client_id_fkey (
+            id,
+            client_name
+          ),
+          submit_stage!site_submit_submit_stage_id_fkey (
+            id,
+            name
+          )
+        `)
         .single();
 
       if (error) throw error;
