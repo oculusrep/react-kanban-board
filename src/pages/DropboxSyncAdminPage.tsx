@@ -41,12 +41,12 @@ export default function DropboxSyncAdminPage() {
     checkSyncStatus();
   }, []);
 
-  const checkSyncStatus = async () => {
+  const checkSyncStatus = async (forceRefresh = false) => {
     setChecking(true);
     try {
-      console.log('🔍 Checking Dropbox sync status...');
+      console.log(`🔍 Checking Dropbox sync status${forceRefresh ? ' (force refresh)' : ' (from cache)'}...`);
       const syncService = getDropboxSyncDetectionService();
-      const results = await syncService.checkAllPropertiesSyncStatus();
+      const results = await syncService.checkAllPropertiesSyncStatus(forceRefresh);
 
       setProperties(results);
       setLastChecked(new Date());
@@ -258,19 +258,35 @@ export default function DropboxSyncAdminPage() {
               </p>
               {lastChecked && (
                 <p className="mt-1 text-sm text-gray-500">
-                  Last checked: {lastChecked.toLocaleTimeString()}
+                  Last checked: {lastChecked.toLocaleString()}
+                  {properties.length > 0 && properties[0]?.lastVerified && (
+                    <span className="ml-2">
+                      (Cache: {new Date(properties[0].lastVerified).toLocaleString()})
+                    </span>
+                  )}
                 </p>
               )}
             </div>
 
-            <button
-              onClick={checkSyncStatus}
-              disabled={checking}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              <RefreshCw className={`h-4 w-4 ${checking ? 'animate-spin' : ''}`} />
-              {checking ? 'Checking...' : 'Refresh'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => checkSyncStatus(false)}
+                disabled={checking}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 ${checking ? 'animate-spin' : ''}`} />
+                {checking ? 'Checking...' : 'Refresh (Cache)'}
+              </button>
+
+              <button
+                onClick={() => checkSyncStatus(true)}
+                disabled={checking}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 ${checking ? 'animate-spin' : ''}`} />
+                {checking ? 'Checking All...' : 'Refresh All'}
+              </button>
+            </div>
           </div>
         </div>
 

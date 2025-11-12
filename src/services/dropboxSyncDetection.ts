@@ -122,9 +122,10 @@ export class DropboxSyncDetectionService {
   }
 
   /**
-   * Check all properties for sync status
+   * Check all properties for sync status (with caching)
+   * @param forceRefresh - If true, bypass cache and check all folders
    */
-  async checkAllPropertiesSyncStatus(): Promise<Array<{
+  async checkAllPropertiesSyncStatus(forceRefresh = false): Promise<Array<{
     propertyId: string;
     propertyName: string;
     mappedFolderPath: string;
@@ -135,6 +136,21 @@ export class DropboxSyncDetectionService {
   }>> {
     try {
       console.log('🔍 Checking sync status for all properties...');
+
+      // Try to load from cache first (unless force refresh requested)
+      if (!forceRefresh) {
+        const cacheAge = 24; // hours
+        const cacheResults = await this.loadFromCache(cacheAge);
+
+        if (cacheResults && cacheResults.length > 0) {
+          console.log(`✅ Loaded ${cacheResults.length} properties from cache (last checked within ${cacheAge} hours)`);
+          return cacheResults;
+        }
+
+        console.log('📭 No valid cache found, performing full sync check...');
+      } else {
+        console.log('🔄 Force refresh requested, bypassing cache...');
+      }
 
       // Get all Dropbox mappings for properties (using the mapping table directly)
       // Note: We need to fetch ALL mappings, not just the first 1000
@@ -310,11 +326,120 @@ export class DropboxSyncDetectionService {
       const outOfSync = validResults.filter(r => r.status !== 'in_sync');
       console.log(`✅ Found ${outOfSync.length} out-of-sync properties`);
 
+      // Save results to cache
+      await this.saveToCache(validResults);
+
       return validResults;
 
     } catch (error) {
       console.error('Error checking sync status:', error);
       return [];
+    }
+  }
+
+  /**
+   * Load sync status from cache
+   * @param maxAgeHours - Maximum age of cache in hours
+   * @returns Cached results or null if cache is too old/empty
+   */
+  private async loadFromCache(maxAgeHours: number): Promise<Array<{
+    propertyId: string;
+    propertyName: string;
+    mappedFolderPath: string;
+    mappedFolderName: string;
+    status: 'in_sync' | 'name_mismatch' | 'folder_not_found';
+    lastVerified: string | null;
+    sfId: string | null;
+  }> | null> {
+    try {
+      const cutoffTime = new Date();
+      cutoffTime.setHours(cutoffTime.getHours() - maxAgeHours);
+
+      console.log(`📦 Loading from cache (max age: ${maxAgeHours} hours, cutoff: ${cutoffTime.toISOString()})...`);
+
+      const { data, error } = await supabase
+        .from('dropbox_sync_cache')
+        .select('*')
+        .eq('entity_type', 'property')
+        .gte('checked_at', cutoffTime.toISOString());
+
+      if (error) {
+        console.error('Error loading cache:', error);
+        return null;
+      }
+
+      if (!data || data.length === 0) {
+        console.log('📭 Cache is empty or too old');
+        return null;
+      }
+
+      console.log(`✅ Loaded ${data.length} entries from cache`);
+
+      return data.map(row => ({
+        propertyId: row.entity_id,
+        propertyName: row.property_name,
+        mappedFolderPath: row.mapped_folder_path,
+        mappedFolderName: row.mapped_folder_name,
+        status: row.status as 'in_sync' | 'name_mismatch' | 'folder_not_found',
+        lastVerified: row.checked_at,
+        sfId: null // sf_id not stored in cache
+      }));
+
+    } catch (error) {
+      console.error('Error loading from cache:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Save sync status to cache (upsert - insert or update)
+   * @param results - Sync check results to cache
+   */
+  private async saveToCache(results: Array<{
+    propertyId: string;
+    propertyName: string;
+    mappedFolderPath: string;
+    mappedFolderName: string;
+    status: 'in_sync' | 'name_mismatch' | 'folder_not_found';
+    lastVerified: string | null;
+    sfId: string | null;
+  }>): Promise<void> {
+    try {
+      console.log(`💾 Saving ${results.length} entries to cache...`);
+
+      // Convert results to cache format
+      const cacheEntries = results.map(result => ({
+        entity_id: result.propertyId,
+        entity_type: 'property' as const,
+        status: result.status,
+        property_name: result.propertyName,
+        mapped_folder_path: result.mappedFolderPath,
+        mapped_folder_name: result.mappedFolderName,
+        checked_at: new Date().toISOString()
+      }));
+
+      // Upsert in batches (Supabase has limits on batch size)
+      const batchSize = 500;
+      for (let i = 0; i < cacheEntries.length; i += batchSize) {
+        const batch = cacheEntries.slice(i, i + batchSize);
+
+        const { error } = await supabase
+          .from('dropbox_sync_cache')
+          .upsert(batch, {
+            onConflict: 'entity_id,entity_type'
+          });
+
+        if (error) {
+          console.error(`Error saving cache batch ${i}-${i + batch.length}:`, error);
+        } else {
+          console.log(`✅ Saved batch ${i + 1}-${Math.min(i + batchSize, cacheEntries.length)} to cache`);
+        }
+      }
+
+      console.log('✅ Cache updated successfully');
+
+    } catch (error) {
+      console.error('Error saving to cache:', error);
     }
   }
 
