@@ -111,15 +111,39 @@ export class DropboxSyncDetectionService {
       console.log('🔍 Checking sync status for all properties...');
 
       // Get all Dropbox mappings for properties (using the mapping table directly)
-      const { data: mappings, error } = await supabase
-        .from('dropbox_mapping')
-        .select('*')
-        .eq('entity_type', 'property');
+      // Note: We need to fetch ALL mappings, not just the first 1000
+      let allMappings: any[] = [];
+      let offset = 0;
+      const pageSize = 1000;
+      let hasMore = true;
 
-      if (error) {
-        console.error('Error fetching mappings:', error);
-        return [];
+      while (hasMore) {
+        const { data: mappingPage, error } = await supabase
+          .from('dropbox_mapping')
+          .select('*')
+          .eq('entity_type', 'property')
+          .range(offset, offset + pageSize - 1);
+
+        if (error) {
+          console.error('Error fetching mappings:', error);
+          break;
+        }
+
+        if (mappingPage && mappingPage.length > 0) {
+          allMappings.push(...mappingPage);
+          console.log(`📄 Fetched ${mappingPage.length} mappings (total: ${allMappings.length})...`);
+
+          if (mappingPage.length < pageSize) {
+            hasMore = false;
+          } else {
+            offset += pageSize;
+          }
+        } else {
+          hasMore = false;
+        }
       }
+
+      const mappings = allMappings;
 
       if (!mappings || mappings.length === 0) {
         console.log('No Dropbox mappings found for properties');
