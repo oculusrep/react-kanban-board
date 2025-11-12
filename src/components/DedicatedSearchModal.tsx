@@ -93,7 +93,10 @@ const DedicatedSearchModal: React.FC<DedicatedSearchModalProps> = ({
             });
           }
         } else if (searchType === 'deal') {
-          // Deal search
+          // Deal search - strip punctuation for flexible matching
+          const cleanQuery = trimmedQuery.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+
+          // Fetch all deals and filter client-side for flexible matching
           const { data: deals, error: dealsError } = await supabase
             .from('deal')
             .select(`
@@ -103,12 +106,26 @@ const DedicatedSearchModal: React.FC<DedicatedSearchModalProps> = ({
               property (property_name, address, city, state)
             `)
             .or(`deal_name.ilike.%${trimmedQuery}%,sf_broker.ilike.%${trimmedQuery}%,sf_address.ilike.%${trimmedQuery}%`)
-            .limit(20);
+            .limit(100);
 
           if (dealsError) throw dealsError;
 
           if (deals) {
-            searchResults = deals.map((deal: any) => {
+            // Filter results client-side with punctuation-stripped comparison
+            const filteredDeals = deals.filter((deal: any) => {
+              const dealName = (deal.deal_name || '').toLowerCase();
+              const cleanDealName = dealName.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+              const broker = (deal.sf_broker || '').toLowerCase();
+              const address = (deal.sf_address || '').toLowerCase();
+
+              // Check if cleanQuery matches cleanDealName (punctuation-insensitive)
+              return cleanDealName.includes(cleanQuery) ||
+                     dealName.includes(trimmedQuery) ||
+                     broker.includes(trimmedQuery) ||
+                     address.includes(trimmedQuery);
+            }).slice(0, 20);
+
+            searchResults = filteredDeals.map((deal: any) => {
               const title = deal.deal_name || 'Unnamed Deal';
               const address = [deal.property?.address, deal.property?.city, deal.property?.state]
                 .filter(Boolean).join(', ');
