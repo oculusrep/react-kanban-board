@@ -129,69 +129,112 @@ export class DropboxSyncDetectionService {
       console.log(`📊 Found ${mappings.length} property mappings...`);
 
       // Get all properties referenced in the mappings
+      // Batch the queries to avoid URL length limits (max ~100 IDs per query)
       const propertyIds = mappings.map(m => m.entity_id);
-      const { data: properties, error: propError } = await supabase
-        .from('property')
-        .select('id, property_name')
-        .in('id', propertyIds);
+      const batchSize = 100;
+      const propertyBatches: string[][] = [];
 
-      if (propError) {
-        console.error('Error fetching properties:', propError);
-        return [];
+      for (let i = 0; i < propertyIds.length; i += batchSize) {
+        propertyBatches.push(propertyIds.slice(i, i + batchSize));
       }
 
-      if (!properties || properties.length === 0) {
+      console.log(`📦 Fetching properties in ${propertyBatches.length} batches...`);
+
+      const allProperties: Array<{ id: string; property_name: string | null }> = [];
+
+      for (const batch of propertyBatches) {
+        const { data: batchProperties, error: propError } = await supabase
+          .from('property')
+          .select('id, property_name')
+          .in('id', batch);
+
+        if (propError) {
+          console.error('Error fetching property batch:', propError);
+          continue;
+        }
+
+        if (batchProperties) {
+          allProperties.push(...batchProperties);
+        }
+      }
+
+      if (allProperties.length === 0) {
         console.log('No properties found');
         return [];
       }
 
+      console.log(`✅ Fetched ${allProperties.length} properties`);
+
       // Create a map of property ID to property name
-      const propertyMap = new Map(properties.map(p => [p.id, p.property_name]));
+      const propertyMap = new Map(allProperties.map(p => [p.id, p.property_name]));
 
       console.log(`📊 Checking ${mappings.length} properties...`);
 
       // Check each mapping's sync status
-      const results = await Promise.all(
-        mappings.map(async (mapping: any) => {
-          const propertyName = propertyMap.get(mapping.entity_id);
+      // Process in batches to avoid overwhelming Dropbox API
+      const checkBatchSize = 50;
+      const allResults: Array<{
+        propertyId: string;
+        propertyName: string;
+        mappedFolderPath: string;
+        mappedFolderName: string;
+        status: 'in_sync' | 'name_mismatch' | 'folder_not_found';
+        lastVerified: string | null;
+        sfId: string | null;
+      } | null> = [];
 
-          if (!propertyName) {
-            console.warn(`Property not found for mapping: ${mapping.entity_id}`);
-            return null;
-          }
+      for (let i = 0; i < mappings.length; i += checkBatchSize) {
+        const batch = mappings.slice(i, i + checkBatchSize);
+        console.log(`🔍 Checking batch ${Math.floor(i / checkBatchSize) + 1}/${Math.ceil(mappings.length / checkBatchSize)}...`);
 
-          const mappedPath = mapping.dropbox_folder_path;
-          const mappedFolderName = mappedPath.split('/').pop() || '';
+        const batchResults = await Promise.all(
+          batch.map(async (mapping: any) => {
+            const propertyName = propertyMap.get(mapping.entity_id);
 
-          // Check if folder exists
-          let folderExists = false;
-          try {
-            folderExists = await this.dropboxService.folderExists(mappedPath);
-          } catch (err) {
-            console.warn(`Could not check folder existence for ${mappedPath}`);
-          }
+            if (!propertyName) {
+              console.warn(`⚠️ Property not found for mapping: ${mapping.entity_id}`);
+              return null;
+            }
 
-          // Determine status
-          let status: 'in_sync' | 'name_mismatch' | 'folder_not_found';
-          if (!folderExists) {
-            status = 'folder_not_found';
-          } else if (mappedFolderName !== propertyName) {
-            status = 'name_mismatch';
-          } else {
-            status = 'in_sync';
-          }
+            const mappedPath = mapping.dropbox_folder_path;
+            const mappedFolderName = mappedPath.split('/').pop() || '';
 
-          return {
-            propertyId: mapping.entity_id,
-            propertyName: propertyName,
-            mappedFolderPath: mappedPath,
-            mappedFolderName,
-            status,
-            lastVerified: mapping.last_verified_at,
-            sfId: mapping.sf_id
-          };
-        })
-      );
+            // Check if folder exists
+            let folderExists = false;
+            try {
+              folderExists = await this.dropboxService.folderExists(mappedPath);
+            } catch (err) {
+              console.warn(`⚠️ Could not check folder existence for ${mappedPath}:`, err);
+            }
+
+            // Determine status
+            let status: 'in_sync' | 'name_mismatch' | 'folder_not_found';
+            if (!folderExists) {
+              status = 'folder_not_found';
+              console.log(`❌ Folder not found: ${propertyName} → ${mappedPath}`);
+            } else if (mappedFolderName !== propertyName) {
+              status = 'name_mismatch';
+              console.log(`⚠️ Name mismatch: CRM="${propertyName}" vs Dropbox="${mappedFolderName}"`);
+            } else {
+              status = 'in_sync';
+            }
+
+            return {
+              propertyId: mapping.entity_id,
+              propertyName: propertyName,
+              mappedFolderPath: mappedPath,
+              mappedFolderName,
+              status,
+              lastVerified: mapping.last_verified_at,
+              sfId: mapping.sf_id
+            };
+          })
+        );
+
+        allResults.push(...batchResults);
+      }
+
+      const results = allResults;
 
       // Filter out null results
       const validResults = results.filter(r => r !== null) as Array<{
