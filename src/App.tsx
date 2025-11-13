@@ -28,6 +28,7 @@ import DropboxSyncAdminPage from "./pages/DropboxSyncAdminPage";
 import TaskDashboardPage from "./pages/TaskDashboardPage";
 import PaymentDashboardPage from "./pages/PaymentDashboardPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
+import UserManagementPage from "./pages/UserManagementPage";
 
 function ProtectedLayout() {
   const location = useLocation();
@@ -77,6 +78,7 @@ function App() {
           <Route path="reports/assignments" element={<AssignmentsReportPage />} />
           <Route path="reports/site-submit-dashboard" element={<SiteSubmitDashboardPage />} />
           <Route path="reports/dropbox-sync-admin" element={<AdminRoute><DropboxSyncAdminPage /></AdminRoute>} />
+          <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
         </Route>
       </Routes>
     </AuthProvider>

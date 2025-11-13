@@ -447,15 +447,26 @@ export default function Navbar() {
                     📊 Reports
                   </button>
                   {userRole === 'admin' && (
-                    <button
-                      onClick={() => {
-                        navigate('/payments');
-                        setIsReportsMenuOpen(false);
-                      }}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
-                    >
-                      💰 Payments
-                    </button>
+                    <>
+                      <button
+                        onClick={() => {
+                          navigate('/payments');
+                          setIsReportsMenuOpen(false);
+                        }}
+                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                      >
+                        💰 Payments
+                      </button>
+                      <button
+                        onClick={() => {
+                          navigate('/admin/users');
+                          setIsReportsMenuOpen(false);
+                        }}
+                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                      >
+                        👥 User Management
+                      </button>
+                    </>
                   )}
                   <button
                     onClick={() => {
@@ -913,15 +924,26 @@ export default function Navbar() {
                   📊 Reports
                 </button>
                 {userRole === 'admin' && (
-                  <button
-                    onClick={() => {
-                      navigate('/payments');
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
-                  >
-                    💰 Payments
-                  </button>
+                  <>
+                    <button
+                      onClick={() => {
+                        navigate('/payments');
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                    >
+                      💰 Payments
+                    </button>
+                    <button
+                      onClick={() => {
+                        navigate('/admin/users');
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                    >
+                      👥 User Management
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={() => {

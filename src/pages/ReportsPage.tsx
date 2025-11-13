@@ -1,6 +1,8 @@
 import { useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { usePermissions } from "../hooks/usePermissions";
+import { RolePermissions } from "../types/permissions";
 
 interface ReportCard {
   id: string;
@@ -9,11 +11,13 @@ interface ReportCard {
   route: string;
   icon: string;
   adminOnly?: boolean;
+  permission?: keyof RolePermissions; // Add permission check
 }
 
 export default function ReportsPage() {
   const navigate = useNavigate();
   const { userRole } = useAuth();
+  const { hasPermission, loading } = usePermissions();
 
   // Set page title
   useEffect(() => {
@@ -26,49 +30,56 @@ export default function ReportsPage() {
       name: "Deal Reconciliation",
       description: "Compare OVIS deals with Salesforce at deal level: values, fees, commission rates, and key dates",
       route: "/reports/deal-reconciliation",
-      icon: "📊"
+      icon: "📊",
+      permission: "can_view_deal_reconciliation"
     },
     {
       id: "payment-reconciliation",
       name: "Payment Reconciliation",
       description: "Compare OVIS payments with Salesforce data, track variances, and reconcile commission splits",
       route: "/reports/payment-reconciliation",
-      icon: "💰"
+      icon: "💰",
+      permission: "can_view_payment_reconciliation"
     },
     {
       id: "deal-compare",
       name: "Deal Compare Report",
       description: "Export all deals with commission details for Salesforce comparison",
       route: "/reports/deal-compare",
-      icon: "💼"
+      icon: "💼",
+      permission: "can_view_deal_compare"
     },
     {
       id: "deal-compare-salesforce",
       name: "Deal Compare to Salesforce",
       description: "Compare CRM deals with Salesforce data side-by-side, highlighting discrepancies",
       route: "/reports/deal-compare-salesforce",
-      icon: "🔍"
+      icon: "🔍",
+      permission: "can_view_deal_compare_salesforce"
     },
     {
       id: "property-data-quality",
       name: "Property Data Quality",
       description: "Review properties with missing location (lat/long) or address data",
       route: "/reports/property-data-quality",
-      icon: "🏢"
+      icon: "🏢",
+      permission: "can_view_property_data_quality"
     },
     {
       id: "assignments",
       name: "Assignments Report",
       description: "View and filter all assignments by client and trade area",
       route: "/reports/assignments",
-      icon: "📋"
+      icon: "📋",
+      permission: "can_view_assignments_report"
     },
     {
       id: "site-submit-dashboard",
       name: "Site Submit Dashboard",
       description: "View and filter site submits with property details, SQFT, and NNN",
       route: "/reports/site-submit-dashboard",
-      icon: "📍"
+      icon: "📍",
+      permission: "can_view_site_submit_dashboard"
     },
     {
       id: "dropbox-sync-admin",
@@ -76,16 +87,24 @@ export default function ReportsPage() {
       description: "Monitor and fix property name sync issues between CRM and Dropbox (Admin Only)",
       route: "/reports/dropbox-sync-admin",
       icon: "☁️",
-      adminOnly: true
+      adminOnly: true,
+      permission: "can_view_dropbox_sync_admin"
     }
   ];
 
-  // Filter reports based on user role
+  // Filter reports based on permissions
   const visibleReports = reports.filter(report => {
-    if (report.adminOnly) {
-      console.log('🔍 Admin-only report:', report.name, 'User role:', userRole, 'Is admin:', userRole === 'admin');
-      return userRole === 'admin';
+    // Keep old adminOnly check for backwards compatibility
+    if (report.adminOnly && userRole !== 'admin') {
+      return false;
     }
+
+    // New: Check granular permission if specified
+    if (report.permission && !loading) {
+      return hasPermission(report.permission);
+    }
+
+    // Default: show if no permission specified
     return true;
   });
 

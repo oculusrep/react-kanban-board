@@ -9813,6 +9813,39 @@ export type Database = {
         }
         Relationships: []
       }
+      role: {
+        Row: {
+          active: boolean | null
+          created_at: string | null
+          description: string | null
+          display_name: string
+          id: string
+          name: string
+          permissions: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          created_at?: string | null
+          description?: string | null
+          display_name: string
+          id?: string
+          name: string
+          permissions?: Json | null
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          created_at?: string | null
+          description?: string | null
+          display_name?: string
+          id?: string
+          name?: string
+          permissions?: Json | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       user: {
         Row: {
           active: boolean | null
