@@ -2816,6 +2816,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         <Toast
           message={toast.message}
           type={toast.type}
+          visible={toast.visible}
           onClose={() => showToast(null)}
         />
       )}
