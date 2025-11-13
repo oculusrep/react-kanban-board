@@ -104,7 +104,7 @@ export function useSiteSubmitEmail() {
       );
 
       if (uniqueContacts.length === 0) {
-        showToast('No Site Selector contacts found for this client with email addresses', { type: 'error' });
+        showToast('No site selectors are associated to this client', { type: 'error' });
         return false;
       }
 
