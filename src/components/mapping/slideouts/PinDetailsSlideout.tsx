@@ -752,7 +752,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     emailDefaultData,
     prepareEmail,
     sendEmail,
-  } = useSiteSubmitEmail();
+  } = useSiteSubmitEmail({ showToast });
 
   // Try to get refreshLayer, but handle cases where LayerManager isn't provided (like dashboard pages)
   let refreshLayer: ((layerId: string) => void) | undefined;

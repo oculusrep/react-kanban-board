@@ -119,7 +119,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
     emailDefaultData,
     prepareEmail,
     sendEmail,
-  } = useSiteSubmitEmail();
+  } = useSiteSubmitEmail({ showToast });
 
   // Collapsible section states
   const [isFinancialExpanded, setIsFinancialExpanded] = useState(false);

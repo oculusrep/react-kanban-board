@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { useToast } from './useToast';
 import { generateSiteSubmitEmailTemplate, PropertyUnitFile } from '../utils/siteSubmitEmailTemplate';
 import DropboxService from '../services/dropboxService';
 import { EmailData } from '../components/EmailComposerModal';
 
-export function useSiteSubmitEmail() {
-  const { showToast } = useToast();
+interface UseSiteSubmitEmailOptions {
+  showToast: (message: string, options?: { type?: 'success' | 'error' | 'info'; duration?: number }) => void;
+}
+
+export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
   const [showEmailComposer, setShowEmailComposer] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailDefaultData, setEmailDefaultData] = useState<{
