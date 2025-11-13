@@ -67,21 +67,6 @@ const PropertyContextMenu: React.FC<PropertyContextMenuProps> = ({
             <span>Verify Pin Location</span>
           </button>
 
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              const coords = property.verified_latitude && property.verified_longitude
-                ? `${property.verified_latitude}, ${property.verified_longitude}`
-                : `${property.latitude}, ${property.longitude}`;
-              navigator.clipboard.writeText(coords);
-              onClose();
-            }}
-            className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
-          >
-            <span>📋</span>
-            <span>Copy Coordinates</span>
-          </button>
-
           {/* Create Site Submit */}
           {onCreateSiteSubmit && (
             <button
