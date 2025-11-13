@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
-import { ChevronDown, ChevronUp, Download, X, Filter } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, X, Filter, Check } from "lucide-react";
 import PinDetailsSlideout from "../components/mapping/slideouts/PinDetailsSlideout";
 
 interface SiteSubmitReportRow {
@@ -81,6 +81,19 @@ export default function SiteSubmitDashboardPage() {
   const [isSiteSubmitDetailsOpen, setIsSiteSubmitDetailsOpen] = useState(false);
   const [selectedSiteSubmitData, setSelectedSiteSubmitData] = useState<any>(null);
 
+  // Bulk selection state
+  const [selectedSiteSubmitIds, setSelectedSiteSubmitIds] = useState<Set<string>>(new Set());
+  const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
+  const [bulkAssignmentId, setBulkAssignmentId] = useState<string>("");
+  const [bulkAssignmentName, setBulkAssignmentName] = useState<string>("");
+  const [assignments, setAssignments] = useState<{ id: string; name: string }[]>([]);
+  const [assignmentQuery, setAssignmentQuery] = useState("");
+  const [showAssignmentDropdown, setShowAssignmentDropdown] = useState(false);
+  const [bulkAssigning, setBulkAssigning] = useState(false);
+
+  const assignmentInputRef = useRef<HTMLInputElement>(null);
+  const assignmentDropdownRef = useRef<HTMLDivElement>(null);
+
   // Set page title
   useEffect(() => {
     document.title = "Site Submit Dashboard | OVIS";
@@ -89,6 +102,7 @@ export default function SiteSubmitDashboardPage() {
   // Load initial data
   useEffect(() => {
     fetchReportData();
+    fetchAssignments();
   }, []);
 
   // Apply filters and sorting when data or filters change
@@ -111,6 +125,13 @@ export default function SiteSubmitDashboardPage() {
         !clientInputRef.current?.contains(event.target as Node)
       ) {
         setShowClientDropdown(false);
+      }
+      if (
+        assignmentDropdownRef.current &&
+        !assignmentDropdownRef.current.contains(event.target as Node) &&
+        !assignmentInputRef.current?.contains(event.target as Node)
+      ) {
+        setShowAssignmentDropdown(false);
       }
     };
 
@@ -510,6 +531,98 @@ export default function SiteSubmitDashboardPage() {
     console.log('📝 Site submit data updated (not refetching dashboard data)');
   }, []);
 
+  const fetchAssignments = async () => {
+    try {
+      const { data: assignmentData, error } = await supabase
+        .from('assignment')
+        .select('id, assignment_name')
+        .order('assignment_name');
+
+      if (error) throw error;
+
+      setAssignments(
+        (assignmentData || []).map(a => ({
+          id: a.id,
+          name: a.assignment_name || 'Unnamed Assignment'
+        }))
+      );
+    } catch (err) {
+      console.error('Error fetching assignments:', err);
+    }
+  };
+
+  // Bulk selection handlers
+  const handleToggleSelect = (siteSubmitId: string) => {
+    setSelectedSiteSubmitIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(siteSubmitId)) {
+        newSet.delete(siteSubmitId);
+      } else {
+        newSet.add(siteSubmitId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedSiteSubmitIds.size === paginatedData.length) {
+      // Deselect all
+      setSelectedSiteSubmitIds(new Set());
+    } else {
+      // Select all on current page
+      setSelectedSiteSubmitIds(new Set(paginatedData.map(row => row.id)));
+    }
+  };
+
+  const handleBulkAssign = async () => {
+    if (!bulkAssignmentId || selectedSiteSubmitIds.size === 0) {
+      alert('Please select an assignment and at least one site submit');
+      return;
+    }
+
+    setBulkAssigning(true);
+    try {
+      const updates = Array.from(selectedSiteSubmitIds).map(siteSubmitId => ({
+        id: siteSubmitId,
+        assignment_id: bulkAssignmentId
+      }));
+
+      const { error } = await supabase
+        .from('site_submit')
+        .upsert(updates, { onConflict: 'id' });
+
+      if (error) throw error;
+
+      // Refresh data to show updated assignments
+      await fetchReportData();
+
+      // Clear selection and close modal
+      setSelectedSiteSubmitIds(new Set());
+      setShowBulkAssignModal(false);
+      setBulkAssignmentId("");
+      setBulkAssignmentName("");
+      setAssignmentQuery("");
+
+      alert(`Successfully assigned ${updates.length} site submit(s) to ${bulkAssignmentName}`);
+    } catch (err) {
+      console.error('Error bulk assigning:', err);
+      alert('Error assigning site submits. Please try again.');
+    } finally {
+      setBulkAssigning(false);
+    }
+  };
+
+  const filteredAssignments = assignments.filter(assignment =>
+    assignment.name.toLowerCase().includes(assignmentQuery.toLowerCase())
+  );
+
+  const handleSelectAssignment = (assignment: { id: string; name: string }) => {
+    setBulkAssignmentId(assignment.id);
+    setBulkAssignmentName(assignment.name);
+    setAssignmentQuery(assignment.name);
+    setShowAssignmentDropdown(false);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -757,6 +870,34 @@ export default function SiteSubmitDashboardPage() {
           </div>
         </div>
 
+        {/* Bulk Actions Bar */}
+        {selectedSiteSubmitIds.size > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Check className="h-5 w-5 text-blue-600" />
+                  <span className="font-medium text-blue-900">
+                    {selectedSiteSubmitIds.size} site submit{selectedSiteSubmitIds.size > 1 ? 's' : ''} selected
+                  </span>
+                </div>
+                <button
+                  onClick={() => setSelectedSiteSubmitIds(new Set())}
+                  className="text-sm text-blue-600 hover:text-blue-800 underline"
+                >
+                  Clear selection
+                </button>
+              </div>
+              <button
+                onClick={() => setShowBulkAssignModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Assign to Assignment
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Results Summary and Export */}
         <div className="flex justify-between items-center mb-4">
           <p className="text-sm text-gray-600">
@@ -778,6 +919,15 @@ export default function SiteSubmitDashboardPage() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-6 py-3 text-left">
+                    <input
+                      type="checkbox"
+                      checked={paginatedData.length > 0 && selectedSiteSubmitIds.size === paginatedData.length}
+                      onChange={handleSelectAll}
+                      className="h-4 w-4 text-blue-600 rounded border-gray-300 cursor-pointer"
+                      aria-label="Select all site submits on this page"
+                    />
+                  </th>
                   <th
                     onClick={() => handleSort("site_submit_name")}
                     className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
@@ -860,6 +1010,16 @@ export default function SiteSubmitDashboardPage() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.map((row) => (
                   <tr key={row.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={selectedSiteSubmitIds.has(row.id)}
+                        onChange={() => handleToggleSelect(row.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-4 w-4 text-blue-600 rounded border-gray-300 cursor-pointer"
+                        aria-label={`Select ${row.site_submit_name || 'unnamed site submit'}`}
+                      />
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <button
                         onClick={() => handleSiteSubmitClick(row)}
@@ -950,6 +1110,125 @@ export default function SiteSubmitDashboardPage() {
         type="site_submit"
         onDataUpdate={handleSiteSubmitDataUpdate}
       />
+
+      {/* Bulk Assignment Modal */}
+      {showBulkAssignModal && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-50"
+            onClick={() => setShowBulkAssignModal(false)}
+          />
+
+          {/* Modal */}
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4">
+              <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+                {/* Header */}
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Assign to Assignment
+                  </h3>
+                  <button
+                    onClick={() => setShowBulkAssignModal(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                {/* Content */}
+                <div className="mb-6">
+                  <p className="text-sm text-gray-600 mb-4">
+                    Assign {selectedSiteSubmitIds.size} selected site submit{selectedSiteSubmitIds.size > 1 ? 's' : ''} to an assignment:
+                  </p>
+
+                  {/* Assignment Autocomplete */}
+                  <div className="relative">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Select Assignment
+                    </label>
+                    <div className="relative">
+                      <input
+                        ref={assignmentInputRef}
+                        type="text"
+                        value={assignmentQuery}
+                        onChange={(e) => {
+                          setAssignmentQuery(e.target.value);
+                          setShowAssignmentDropdown(true);
+                          if (!e.target.value) {
+                            setBulkAssignmentId("");
+                            setBulkAssignmentName("");
+                          }
+                        }}
+                        onFocus={() => setShowAssignmentDropdown(true)}
+                        placeholder="Search assignments..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      {bulkAssignmentId && (
+                        <button
+                          onClick={() => {
+                            setBulkAssignmentId("");
+                            setBulkAssignmentName("");
+                            setAssignmentQuery("");
+                            assignmentInputRef.current?.focus();
+                          }}
+                          className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Assignment Dropdown */}
+                    {showAssignmentDropdown && filteredAssignments.length > 0 && (
+                      <div
+                        ref={assignmentDropdownRef}
+                        className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto"
+                      >
+                        {filteredAssignments.map((assignment) => (
+                          <div
+                            key={assignment.id}
+                            onClick={() => handleSelectAssignment(assignment)}
+                            className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                          >
+                            {assignment.name}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowBulkAssignModal(false)}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
+                    disabled={bulkAssigning}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleBulkAssign}
+                    disabled={!bulkAssignmentId || bulkAssigning}
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {bulkAssigning ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Assigning...
+                      </>
+                    ) : (
+                      <>Assign {selectedSiteSubmitIds.size} Site Submit{selectedSiteSubmitIds.size > 1 ? 's' : ''}</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
