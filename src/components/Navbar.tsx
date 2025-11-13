@@ -522,6 +522,7 @@ export default function Navbar() {
             items={siteSubmitsItems}
             recentItems={getRecentItems('site_submit')}
             onRecentItemClick={handleRecentItemClick}
+            onTitleClick={() => navigate('/reports/site-submit-dashboard')}
             key={`siteSubmits-${refreshTrigger}`}
           />
         </div>
