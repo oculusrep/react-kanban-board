@@ -53,23 +53,6 @@ const SiteSubmitContextMenu: React.FC<SiteSubmitContextMenuProps> = ({
 }) => {
   if (!isVisible || !siteSubmit) return null;
 
-  const getDisplayCoordinates = () => {
-    // Priority: verified site submit coords > property coords
-    if (siteSubmit.verified_latitude && siteSubmit.verified_longitude) {
-      return `${siteSubmit.verified_latitude}, ${siteSubmit.verified_longitude}`;
-    }
-
-    // Fallback to property coordinates
-    const propertyLat = siteSubmit.property?.verified_latitude ?? siteSubmit.property?.latitude;
-    const propertyLng = siteSubmit.property?.verified_longitude ?? siteSubmit.property?.longitude;
-
-    if (propertyLat && propertyLng) {
-      return `${propertyLat}, ${propertyLng}`;
-    }
-
-    return 'No coordinates';
-  };
-
   const isVerifiedLocation = siteSubmit.verified_latitude && siteSubmit.verified_longitude;
 
   // Constrain menu position to viewport to prevent horizontal scrolling
@@ -120,18 +103,6 @@ const SiteSubmitContextMenu: React.FC<SiteSubmitContextMenuProps> = ({
           >
             <span>🎯</span>
             <span>{isVerifiedLocation ? 'Move Pin Location' : 'Verify Pin Location'}</span>
-          </button>
-
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              navigator.clipboard.writeText(getDisplayCoordinates());
-              onClose();
-            }}
-            className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
-          >
-            <span>📋</span>
-            <span>Copy Coordinates</span>
           </button>
 
           {isVerifiedLocation && onResetLocation && (
