@@ -18,6 +18,7 @@ export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
   }>({ subject: '', body: '', recipients: [] });
 
   const prepareEmail = async (siteSubmitId: string) => {
+    console.log('📧 prepareEmail called for site submit:', siteSubmitId);
     try {
       // Fetch site submit data with related information to generate email template
       const { data: siteSubmitData, error: siteSubmitError } = await supabase
@@ -91,6 +92,8 @@ export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
 
       if (contactsError) throw contactsError;
 
+      console.log('📋 Contact roles fetched:', contactRoles);
+
       // Filter for Site Selector role and contacts with email addresses
       const contacts = contactRoles
         ?.filter((item: any) =>
@@ -100,12 +103,17 @@ export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
         .map((item: any) => item.contact)
         || [];
 
+      console.log('👥 Filtered contacts:', contacts);
+
       // Deduplicate contacts by email
       const uniqueContacts = Array.from(
         new Map(contacts.map((c: any) => [c.email, c])).values()
       );
 
+      console.log('✅ Unique contacts:', uniqueContacts);
+
       if (uniqueContacts.length === 0) {
+        console.log('⚠️ No site selectors found - showing toast');
         showToast('No site selectors are associated to this client', { type: 'error' });
         return false;
       }
