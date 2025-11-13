@@ -49,8 +49,8 @@ export const useMasterSearch = () => {
       if (types.includes('deal')) {
         console.log('🔍 Searching deals...');
 
-        // Exact + prefix match on deal_name
-        const { data: exactDeals } = await supabase
+        // Simple, aggressive search - just fetch everything that matches anywhere
+        const { data: allDeals, error: dealsError } = await supabase
           .from('deal')
           .select(`
             *,
@@ -58,67 +58,80 @@ export const useMasterSearch = () => {
             deal_stage (label, sort_order),
             property (property_name, address, city, state)
           `)
-          .ilike('deal_name', trimmedQuery)
-          .limit(5);
-
-        const { data: prefixDeals } = await supabase
-          .from('deal')
-          .select(`
-            *,
-            client!client_id (client_name),
-            deal_stage (label, sort_order),
-            property (property_name, address, city, state)
-          `)
-          .ilike('deal_name', `${trimmedQuery}%`)
-          .limit(15);
-
-        const fuzzyQuery = buildFuzzyOrQuery(['deal_name', 'sf_broker', 'sf_address'], trimmedQuery);
-        const { data: fuzzyDeals, error: dealsError } = await supabase
-          .from('deal')
-          .select(`
-            *,
-            client!client_id (client_name),
-            deal_stage (label, sort_order),
-            property (property_name, address, city, state)
-          `)
-          .or(fuzzyQuery)
-          .limit(30);
+          .ilike('deal_name', `%${trimmedQuery}%`)
+          .limit(100);
 
         if (dealsError) throw dealsError;
 
-        const seenIds = new Set<string>();
-        const allDeals = [];
-        for (const deal of [...(exactDeals || []), ...(prefixDeals || []), ...(fuzzyDeals || [])]) {
-          if (!seenIds.has(deal.id)) {
-            seenIds.add(deal.id);
-            allDeals.push(deal);
-          }
-        }
+        console.log(`📊 Found ${allDeals?.length || 0} deals matching "${trimmedQuery}"`);
 
-        console.log(`📊 Found ${allDeals.length} deals (exact: ${exactDeals?.length || 0}, prefix: ${prefixDeals?.length || 0}, fuzzy: ${fuzzyDeals?.length || 0})`);
-
-        if (allDeals.length > 0) {
+        if (allDeals && allDeals.length > 0) {
           allDeals.forEach((deal: any) => {
             const title = deal.deal_name || 'Unnamed Deal';
 
-            // Calculate relevance score using enhanced scoring
-            let score = calculateRelevanceScore(title, trimmedQuery, true);
-            score += calculateRelevanceScore(deal.sf_broker, trimmedQuery, false) * 0.6;
-            score += calculateRelevanceScore(deal.sf_address, trimmedQuery, false) * 0.4;
+            // Custom relevance scoring for flexible matching
+            let score = 0;
+            const normalizedTitle = title.toLowerCase();
+            const normalizedQuery = trimmedQuery.toLowerCase();
 
-            const address = [deal.property?.address, deal.property?.city, deal.property?.state]
-              .filter(Boolean).join(', ');
+            // Strip special characters and spaces for comparison
+            const cleanTitle = normalizedTitle.replace(/[-\s]/g, '');
+            const cleanQuery = normalizedQuery.replace(/[-\s]/g, '');
 
-            searchResults.push({
-              id: deal.id,
-              type: 'deal',
-              title,
-              subtitle: deal.client?.client_name || 'No Client',
-              description: deal.property?.property_name || address,
-              metadata: deal.deal_stage?.label || 'No Stage',
-              url: `/deal/${deal.id}`,
-              score
+            // 1. Exact match (after cleaning) - highest score
+            if (cleanTitle === cleanQuery) {
+              score += 1000;
+            }
+
+            // 2. Contains exact query (with original spacing) - very high score
+            if (normalizedTitle.includes(normalizedQuery)) {
+              score += 500;
+            }
+
+            // 3. Contains cleaned query (ignores spaces/dashes) - high score
+            if (cleanTitle.includes(cleanQuery)) {
+              score += 300;
+            }
+
+            // 4. All query words appear somewhere (any order)
+            const queryWords = normalizedQuery.split(/[\s-]+/).filter((w: string) => w.length > 0);
+            const titleWords = normalizedTitle.split(/[\s-]+/).filter((w: string) => w.length > 0);
+
+            let matchingWords = 0;
+            queryWords.forEach(qWord => {
+              if (titleWords.some((tWord: string) => tWord.includes(qWord))) {
+                matchingWords++;
+                score += 100; // Bonus for each matching word
+              }
             });
+
+            // 5. Starts with query - bonus points
+            if (normalizedTitle.startsWith(normalizedQuery)) {
+              score += 200;
+            }
+
+            // 6. Position bonus - earlier matches score higher
+            const position = normalizedTitle.indexOf(normalizedQuery);
+            if (position >= 0) {
+              score += Math.max(0, 100 - position);
+            }
+
+            // Only include if at least some words match
+            if (score > 0) {
+              const address = [deal.property?.address, deal.property?.city, deal.property?.state]
+                .filter(Boolean).join(', ');
+
+              searchResults.push({
+                id: deal.id,
+                type: 'deal',
+                title,
+                subtitle: deal.client?.client_name || 'No Client',
+                description: deal.property?.property_name || address,
+                metadata: deal.deal_stage?.label || 'No Stage',
+                url: `/deal/${deal.id}`,
+                score
+              });
+            }
           });
         }
       }

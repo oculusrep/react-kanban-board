@@ -93,10 +93,7 @@ const DedicatedSearchModal: React.FC<DedicatedSearchModalProps> = ({
             });
           }
         } else if (searchType === 'deal') {
-          // Deal search - strip punctuation for flexible matching
-          const cleanQuery = trimmedQuery.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
-
-          // Fetch all deals and filter client-side for flexible matching
+          // Deal search - aggressive matching anywhere in name
           const { data: deals, error: dealsError } = await supabase
             .from('deal')
             .select(`
@@ -105,28 +102,60 @@ const DedicatedSearchModal: React.FC<DedicatedSearchModalProps> = ({
               deal_stage (label),
               property (property_name, address, city, state)
             `)
-            .or(`deal_name.ilike.%${trimmedQuery}%,sf_broker.ilike.%${trimmedQuery}%,sf_address.ilike.%${trimmedQuery}%`)
+            .ilike('deal_name', `%${trimmedQuery}%`)
             .limit(100);
 
           if (dealsError) throw dealsError;
 
           if (deals) {
-            // Filter results client-side with punctuation-stripped comparison
-            const filteredDeals = deals.filter((deal: any) => {
-              const dealName = (deal.deal_name || '').toLowerCase();
-              const cleanDealName = dealName.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
-              const broker = (deal.sf_broker || '').toLowerCase();
-              const address = (deal.sf_address || '').toLowerCase();
-
-              // Check if cleanQuery matches cleanDealName (punctuation-insensitive)
-              return cleanDealName.includes(cleanQuery) ||
-                     dealName.includes(trimmedQuery) ||
-                     broker.includes(trimmedQuery) ||
-                     address.includes(trimmedQuery);
-            }).slice(0, 20);
-
-            searchResults = filteredDeals.map((deal: any) => {
+            // Score and sort results by relevance
+            const scoredDeals = deals.map((deal: any) => {
               const title = deal.deal_name || 'Unnamed Deal';
+              const normalizedTitle = title.toLowerCase();
+              const normalizedQuery = trimmedQuery.toLowerCase();
+
+              // Strip special characters and spaces for comparison
+              const cleanTitle = normalizedTitle.replace(/[-\s]/g, '');
+              const cleanQuery = normalizedQuery.replace(/[-\s]/g, '');
+
+              let score = 0;
+
+              // 1. Exact match (after cleaning) - highest score
+              if (cleanTitle === cleanQuery) {
+                score += 1000;
+              }
+
+              // 2. Contains exact query (with original spacing) - very high score
+              if (normalizedTitle.includes(normalizedQuery)) {
+                score += 500;
+              }
+
+              // 3. Contains cleaned query (ignores spaces/dashes) - high score
+              if (cleanTitle.includes(cleanQuery)) {
+                score += 300;
+              }
+
+              // 4. All query words appear somewhere (any order)
+              const queryWords = normalizedQuery.split(/[\s-]+/).filter((w: string) => w.length > 0);
+              const titleWords = normalizedTitle.split(/[\s-]+/).filter((w: string) => w.length > 0);
+
+              queryWords.forEach(qWord => {
+                if (titleWords.some((tWord: string) => tWord.includes(qWord))) {
+                  score += 100; // Bonus for each matching word
+                }
+              });
+
+              // 5. Starts with query - bonus points
+              if (normalizedTitle.startsWith(normalizedQuery)) {
+                score += 200;
+              }
+
+              // 6. Position bonus - earlier matches score higher
+              const position = normalizedTitle.indexOf(normalizedQuery);
+              if (position >= 0) {
+                score += Math.max(0, 100 - position);
+              }
+
               const address = [deal.property?.address, deal.property?.city, deal.property?.state]
                 .filter(Boolean).join(', ');
 
@@ -137,9 +166,15 @@ const DedicatedSearchModal: React.FC<DedicatedSearchModalProps> = ({
                 subtitle: deal.client?.client_name || 'No Client',
                 description: deal.property?.property_name || address,
                 metadata: deal.deal_stage?.label || 'No Stage',
-                url: `/deal/${deal.id}`
+                url: `/deal/${deal.id}`,
+                score
               };
             });
+
+            // Sort by score (highest first) and limit to 20
+            searchResults = scoredDeals
+              .sort((a, b) => (b.score || 0) - (a.score || 0))
+              .slice(0, 20);
           }
         } else if (searchType === 'property') {
           // Property search
