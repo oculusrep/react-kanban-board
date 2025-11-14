@@ -127,6 +127,7 @@ serve(async (req) => {
 
       // Log activity for custom email send
       try {
+        console.log('📧 Starting activity logging for custom email...')
         // Get the current user's ID from the auth header
         let userId = null
         if (authHeader) {
@@ -135,14 +136,20 @@ serve(async (req) => {
             const { data: { user } } = await supabaseClient.auth.getUser(token)
             if (user?.id) {
               userId = user.id
+              console.log('✅ Got user ID:', userId)
+            } else {
+              console.warn('⚠️ No user found in auth token')
             }
           } catch (error) {
-            console.error('Error getting user ID for activity log:', error)
+            console.error('❌ Error getting user ID for activity log:', error)
           }
+        } else {
+          console.warn('⚠️ No auth header found')
         }
 
+        console.log('📝 Inserting activity record...')
         // Create activity record for the email send
-        const { error: activityError } = await supabaseClient
+        const { data: activityData, error: activityError } = await supabaseClient
           .from('activity')
           .insert({
             activity_type_id: '018c896a-9d0d-7348-b352-c9f5ddf517f2', // Email activity type ID
@@ -154,12 +161,17 @@ serve(async (req) => {
             description: `Custom site submit email sent to ${customEmail.to.length} recipient(s): ${customEmail.to.join(', ')}`,
             sf_status: 'Completed'
           })
+          .select()
 
         if (activityError) {
-          console.error('Error logging activity:', activityError)
+          console.error('❌ Error logging activity:', activityError)
+          console.error('Activity error details:', JSON.stringify(activityError, null, 2))
           // Don't fail the whole request if activity logging fails
+        } else {
+          console.log('✅ Activity logged successfully:', activityData)
         }
 
+        console.log('📝 Updating site_submit metadata...')
         // Update site_submit with email metadata
         const emailSentAt = new Date().toISOString()
         const { error: updateError } = await supabaseClient
@@ -171,11 +183,14 @@ serve(async (req) => {
           .eq('id', siteSubmitId)
 
         if (updateError) {
-          console.error('Error updating site_submit metadata:', updateError)
+          console.error('❌ Error updating site_submit metadata:', updateError)
+          console.error('Update error details:', JSON.stringify(updateError, null, 2))
           // Don't fail the whole request if metadata update fails
+        } else {
+          console.log('✅ Site submit metadata updated successfully')
         }
       } catch (error) {
-        console.error('Error in activity logging:', error)
+        console.error('❌ Error in activity logging:', error)
         // Don't fail the whole request if activity logging fails
       }
 
@@ -313,6 +328,7 @@ serve(async (req) => {
 
     // Log activity for email send
     try {
+      console.log('📧 Starting activity logging for automatic email...')
       // Get the current user's ID from the auth header
       let userId = null
       if (authHeader) {
@@ -321,14 +337,20 @@ serve(async (req) => {
           const { data: { user } } = await supabaseClient.auth.getUser(token)
           if (user?.id) {
             userId = user.id
+            console.log('✅ Got user ID:', userId)
+          } else {
+            console.warn('⚠️ No user found in auth token')
           }
         } catch (error) {
-          console.error('Error getting user ID for activity log:', error)
+          console.error('❌ Error getting user ID for activity log:', error)
         }
+      } else {
+        console.warn('⚠️ No auth header found')
       }
 
+      console.log('📝 Inserting activity record...')
       // Create activity record for the email send
-      const { error: activityError } = await supabaseClient
+      const { data: activityData, error: activityError } = await supabaseClient
         .from('activity')
         .insert({
           activity_type_id: '018c896a-9d0d-7348-b352-c9f5ddf517f2', // Email activity type ID
@@ -340,12 +362,17 @@ serve(async (req) => {
           description: `Site submit email sent to ${results.length} recipient(s): ${uniqueContacts.map((c: any) => c.email).join(', ')}`,
           sf_status: 'Completed'
         })
+        .select()
 
       if (activityError) {
-        console.error('Error logging activity:', activityError)
+        console.error('❌ Error logging activity:', activityError)
+        console.error('Activity error details:', JSON.stringify(activityError, null, 2))
         // Don't fail the whole request if activity logging fails
+      } else {
+        console.log('✅ Activity logged successfully:', activityData)
       }
 
+      console.log('📝 Updating site_submit metadata...')
       // Update site_submit with email metadata (who sent it and when)
       const emailSentAt = new Date().toISOString()
       const { error: updateError } = await supabaseClient
@@ -357,11 +384,14 @@ serve(async (req) => {
         .eq('id', siteSubmitId)
 
       if (updateError) {
-        console.error('Error updating site_submit metadata:', updateError)
+        console.error('❌ Error updating site_submit metadata:', updateError)
+        console.error('Update error details:', JSON.stringify(updateError, null, 2))
         // Don't fail the whole request if metadata update fails
+      } else {
+        console.log('✅ Site submit metadata updated successfully')
       }
     } catch (error) {
-      console.error('Error in activity logging:', error)
+      console.error('❌ Error in activity logging:', error)
       // Don't fail the whole request if activity logging fails
     }
 
