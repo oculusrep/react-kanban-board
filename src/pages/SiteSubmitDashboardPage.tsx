@@ -1220,8 +1220,7 @@ export default function SiteSubmitDashboardPage() {
           isOpen={isFullSiteSubmitOpen}
           onClose={handleFullSiteSubmitClose}
           siteSubmitId={fullSiteSubmitId}
-          propertySlideoutOpen={isPinDetailsOpen || isPropertyDetailsOpen || isSiteSubmitDetailsOpen}
-          propertySlideoutMinimized={false}
+          rightOffset={isPinDetailsOpen || isPropertyDetailsOpen || isSiteSubmitDetailsOpen ? 500 : 0}
         />
       )}
 

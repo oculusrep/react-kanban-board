@@ -7,6 +7,7 @@ interface SiteSubmitSlideOutProps {
   siteSubmitId: string;
   propertySlideoutOpen?: boolean;
   propertySlideoutMinimized?: boolean;
+  rightOffset?: number; // Direct offset override
 }
 
 export default function SiteSubmitSlideOut({
@@ -14,12 +15,15 @@ export default function SiteSubmitSlideOut({
   onClose,
   siteSubmitId,
   propertySlideoutOpen = false,
-  propertySlideoutMinimized = false
+  propertySlideoutMinimized = false,
+  rightOffset: rightOffsetProp
 }: SiteSubmitSlideOutProps) {
-  // Calculate rightOffset based on property slideout state
-  const rightOffset = propertySlideoutOpen
-    ? (propertySlideoutMinimized ? 48 : 900)  // 48px when minimized, 900px when expanded
-    : 0;  // 0 when closed
+  // Calculate rightOffset based on property slideout state or use direct prop
+  const rightOffset = rightOffsetProp !== undefined
+    ? rightOffsetProp
+    : (propertySlideoutOpen
+        ? (propertySlideoutMinimized ? 48 : 900)  // 48px when minimized, 900px when expanded
+        : 0);  // 0 when closed
 
   return (
     <SlideOutPanel
