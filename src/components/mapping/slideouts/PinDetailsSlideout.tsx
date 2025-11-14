@@ -142,6 +142,7 @@ interface PinDetailsSlideoutProps {
   onCreateSiteSubmit?: (propertyId: string) => void; // Callback to create new site submit for property
   submitsRefreshTrigger?: number; // Trigger to refresh submits list
   initialTab?: TabType; // Initial tab to open
+  onOpenFullSiteSubmit?: (siteSubmitId: string) => void; // Callback to open full site submit slideout
 }
 
 type TabType = 'property' | 'submit' | 'location' | 'files' | 'contacts' | 'submits' | 'units';
@@ -609,7 +610,8 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   onViewSiteSubmitDetails,
   onCreateSiteSubmit,
   submitsRefreshTrigger,
-  initialTab
+  initialTab,
+  onOpenFullSiteSubmit
 }) => {
   console.log('PinDetailsSlideout rendering with:', { isOpen, data, type, rightOffset });
   const [activeTab, setActiveTab] = useState<TabType>(
@@ -2490,6 +2492,17 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                   onClick={() => window.open(`/property/${localPropertyData.id}`, '_blank')}
                   className="p-2 bg-blue-500 bg-opacity-80 hover:bg-blue-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
                   title="Open property in new tab"
+                >
+                  <ExternalLink size={16} className="text-white" />
+                </button>
+              )}
+
+              {/* Open Full Site Submit Button - For site submits */}
+              {!isProperty && siteSubmit?.id && !isNewSiteSubmit && onOpenFullSiteSubmit && (
+                <button
+                  onClick={() => onOpenFullSiteSubmit(siteSubmit.id)}
+                  className="p-2 bg-blue-500 bg-opacity-80 hover:bg-blue-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
+                  title="Open full site submit details"
                 >
                   <ExternalLink size={16} className="text-white" />
                 </button>

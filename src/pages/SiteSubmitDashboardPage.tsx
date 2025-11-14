@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { ChevronDown, ChevronUp, Download, X, Filter, Check } from "lucide-react";
 import PinDetailsSlideout from "../components/mapping/slideouts/PinDetailsSlideout";
+import SiteSubmitSlideOut from "../components/SiteSubmitSlideOut";
 
 interface SiteSubmitReportRow {
   id: string;
@@ -87,6 +88,10 @@ export default function SiteSubmitDashboardPage() {
   // Site Submit Details slideout (for viewing site submit from property)
   const [isSiteSubmitDetailsOpen, setIsSiteSubmitDetailsOpen] = useState(false);
   const [selectedSiteSubmitData, setSelectedSiteSubmitData] = useState<any>(null);
+
+  // Full Site Submit slideout (for viewing full site submit record)
+  const [isFullSiteSubmitOpen, setIsFullSiteSubmitOpen] = useState(false);
+  const [fullSiteSubmitId, setFullSiteSubmitId] = useState<string>("");
 
   // Bulk selection state
   const [selectedSiteSubmitIds, setSelectedSiteSubmitIds] = useState<Set<string>>(new Set());
@@ -603,6 +608,17 @@ export default function SiteSubmitDashboardPage() {
     // Don't refetch all data on every autosave - causes infinite loop
     // The slideout manages its own state. Only refetch if user explicitly requests it.
     console.log('📝 Site submit data updated (not refetching dashboard data)');
+  }, []);
+
+  const handleOpenFullSiteSubmit = useCallback((siteSubmitId: string) => {
+    console.log('🔍 Opening full site submit record:', siteSubmitId);
+    setFullSiteSubmitId(siteSubmitId);
+    setIsFullSiteSubmitOpen(true);
+  }, []);
+
+  const handleFullSiteSubmitClose = useCallback(() => {
+    setIsFullSiteSubmitOpen(false);
+    setFullSiteSubmitId("");
   }, []);
 
   const fetchAssignments = async () => {
@@ -1174,7 +1190,8 @@ export default function SiteSubmitDashboardPage() {
         onDataUpdate={handleDataUpdate}
         onViewPropertyDetails={handleViewPropertyDetails}
         onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
-        rightOffset={isPropertyDetailsOpen || isSiteSubmitDetailsOpen ? 500 : 0} // Shift left when property or site submit details is open
+        onOpenFullSiteSubmit={handleOpenFullSiteSubmit}
+        rightOffset={isPropertyDetailsOpen || isSiteSubmitDetailsOpen || isFullSiteSubmitOpen ? 500 : 0} // Shift left when other slideouts are open
       />
 
       {/* Property Details Slideout (for viewing property from site submit) */}
@@ -1196,6 +1213,17 @@ export default function SiteSubmitDashboardPage() {
         type="site_submit"
         onDataUpdate={handleSiteSubmitDataUpdate}
       />
+
+      {/* Full Site Submit Slideout (for viewing full site submit record) */}
+      {fullSiteSubmitId && (
+        <SiteSubmitSlideOut
+          isOpen={isFullSiteSubmitOpen}
+          onClose={handleFullSiteSubmitClose}
+          siteSubmitId={fullSiteSubmitId}
+          propertySlideoutOpen={isPinDetailsOpen || isPropertyDetailsOpen || isSiteSubmitDetailsOpen}
+          propertySlideoutMinimized={false}
+        />
+      )}
 
       {/* Bulk Assignment Modal */}
       {showBulkAssignModal && (
