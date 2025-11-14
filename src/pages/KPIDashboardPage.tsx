@@ -63,31 +63,55 @@ const KPIDashboardPage: React.FC = () => {
       const startOfYear = new Date(now.getFullYear(), 0, 1);
       startOfYear.setHours(0, 0, 0, 0);
 
-      // Fetch site submits for this week
-      const { count: weekCount, error: weekError } = await supabase
+      // Get the "Protected" stage ID to filter it out
+      const { data: protectedStage } = await supabase
+        .from('submit_stage')
+        .select('id')
+        .eq('name', 'Protected')
+        .single();
+
+      const protectedStageId = protectedStage?.id;
+
+      // Fetch site submits for this week (excluding Protected stage)
+      const weekQuery = supabase
         .from('site_submit')
         .select('*', { count: 'exact', head: true })
         .gte('date_submitted', startOfWeek.toISOString())
         .not('date_submitted', 'is', null);
 
+      if (protectedStageId) {
+        weekQuery.neq('submit_stage_id', protectedStageId);
+      }
+
+      const { count: weekCount, error: weekError } = await weekQuery;
       if (weekError) throw weekError;
 
-      // Fetch site submits for this month
-      const { count: monthCount, error: monthError } = await supabase
+      // Fetch site submits for this month (excluding Protected stage)
+      const monthQuery = supabase
         .from('site_submit')
         .select('*', { count: 'exact', head: true })
         .gte('date_submitted', startOfMonth.toISOString())
         .not('date_submitted', 'is', null);
 
+      if (protectedStageId) {
+        monthQuery.neq('submit_stage_id', protectedStageId);
+      }
+
+      const { count: monthCount, error: monthError } = await monthQuery;
       if (monthError) throw monthError;
 
-      // Fetch site submits for this year
-      const { count: yearCount, error: yearError } = await supabase
+      // Fetch site submits for this year (excluding Protected stage)
+      const yearQuery = supabase
         .from('site_submit')
         .select('*', { count: 'exact', head: true })
         .gte('date_submitted', startOfYear.toISOString())
         .not('date_submitted', 'is', null);
 
+      if (protectedStageId) {
+        yearQuery.neq('submit_stage_id', protectedStageId);
+      }
+
+      const { count: yearCount, error: yearError } = await yearQuery;
       if (yearError) throw yearError;
 
       setMetrics({
@@ -131,13 +155,28 @@ const KPIDashboardPage: React.FC = () => {
       console.log('Loading report for period:', period);
       console.log('Start date:', startDate.toISOString());
 
-      // First, get just the site submits without joins
-      const { data, error } = await supabase
+      // Get the "Protected" stage ID to filter it out
+      const { data: protectedStage } = await supabase
+        .from('submit_stage')
+        .select('id')
+        .eq('name', 'Protected')
+        .single();
+
+      const protectedStageId = protectedStage?.id;
+
+      // First, get just the site submits without joins (excluding Protected stage)
+      const query = supabase
         .from('site_submit')
         .select('*')
         .gte('date_submitted', startDate.toISOString())
         .not('date_submitted', 'is', null)
         .order('date_submitted', { ascending: false });
+
+      if (protectedStageId) {
+        query.neq('submit_stage_id', protectedStageId);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error('Error fetching site submits:', error);
