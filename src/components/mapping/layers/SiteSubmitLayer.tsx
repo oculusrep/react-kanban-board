@@ -446,14 +446,20 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
       }
     }
 
-    if (!siteSubmitsToRender.length) return;
-
     console.log('🗺️ Creating markers for site submits...');
+    console.log('📊 Site submits to render:', siteSubmitsToRender.length);
     console.log('📊 Visible stages:', loadingConfig.visibleStages ? Array.from(loadingConfig.visibleStages) : 'all');
     console.log('🎯 Verifying site submit ID:', verifyingSiteSubmitId);
 
-    // Clear existing markers
+    // Clear existing markers (always, even if there are no new markers to create)
     markers.forEach(marker => marker.setMap(null));
+
+    // If no site submits to render, set empty markers array and return
+    if (!siteSubmitsToRender.length) {
+      console.log('🧹 No site submits to render, clearing all markers');
+      setMarkers([]);
+      return;
+    }
 
     const newMarkers: google.maps.Marker[] = siteSubmitsToRender.map(siteSubmit => {
       const coords = getDisplayCoordinates(siteSubmit);
@@ -710,7 +716,9 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
 
   // Create markers when site submits load or stage visibility changes
   useEffect(() => {
-    if (siteSubmits.length > 0 || verifyingSiteSubmit) {
+    // Always call createMarkers, even when siteSubmits is empty
+    // This ensures markers are cleared when filtering results in 0 site submits
+    if (map) {
       createMarkers();
     }
   }, [siteSubmits, map, loadingConfig.visibleStages, verifyingSiteSubmitId, verifyingSiteSubmit]);
