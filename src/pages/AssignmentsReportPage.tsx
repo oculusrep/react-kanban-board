@@ -174,7 +174,7 @@ export default function AssignmentsReportPage() {
       if (transactionTypeIds.length > 0) {
         const { data: transactionTypes } = await supabase
           .from('transaction_type')
-          .select('id, type_name')
+          .select('id, label')
           .in('id', transactionTypeIds);
         transactionTypes?.forEach(t => transactionTypesMap.set(t.id, t));
       }
@@ -228,7 +228,7 @@ export default function AssignmentsReportPage() {
             site_criteria: assignment.site_criteria,
             owner_name: owner?.name || null,
             priority_label: priority?.label || null,
-            transaction_type: transactionType?.type_name || null,
+            transaction_type: transactionType?.label || null,
             trade_areas: tradeAreas,
             site_submit_count: siteSubmits?.length || 0,
             created_at: assignment.created_at

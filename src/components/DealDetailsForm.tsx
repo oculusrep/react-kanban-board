@@ -42,7 +42,6 @@ interface Deal {
   assignment_id: string | null;
   source: string | null;
   transaction_type_id: string | null;
-  deal_type_id: string | null;
   property_id: string | null;
   site_submit_id: string | null;
   property_unit_id: string | null;
@@ -93,7 +92,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
   const [editingField, setEditingField] = useState<string | null>(null);
   const [stageOptions, setStageOptions] = useState<{ id: string; label: string }[]>([]);
   const [teamOptions, setTeamOptions] = useState<{ id: string; label: string }[]>([]);
-  const [dealTypeOptions, setDealTypeOptions] = useState<{ id: string; label: string }[]>([]);
+  const [transactionTypeOptions, setTransactionTypeOptions] = useState<{ id: string; label: string }[]>([]);
   const [updatedByName, setUpdatedByName] = useState<string>("");
   const [dropboxSyncError, setDropboxSyncError] = useState<string | null>(null);
   const [originalDealName, setOriginalDealName] = useState<string>(deal.deal_name);
@@ -164,7 +163,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       property_id: formData.property_id,
       property_unit_id: formData.property_unit_id,
       site_submit_id: formData.site_submit_id,
-      deal_type_id: formData.deal_type_id,
+      transaction_type_id: formData.transaction_type_id,
       deal_value: formData.deal_value,
       commission_percent: formData.commission_percent,
       flat_fee_override: formData.flat_fee_override,
@@ -219,7 +218,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
   useEffect(() => {
     supabase.from("deal_stage").select("id, label").then(({ data }) => data && setStageOptions(data));
     supabase.from("deal_team").select("id, label").then(({ data }) => data && setTeamOptions(data));
-    supabase.from("deal_type").select("id, label").then(({ data }) => data && setDealTypeOptions(data));
+    supabase.from("transaction_type").select("id, label").eq("active", true).order("sort_order").then(({ data }) => data && setTransactionTypeOptions(data));
     // Fetch updated_by user name if exists
     if (deal.updated_by_id) {
       supabase
@@ -316,6 +315,48 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       };
       
       saveCommissionChange();
+    }
+
+    // Auto-update number_of_payments when transaction_type_id changes
+    if (field === "transaction_type_id" && value) {
+      const updatePaymentsBasedOnType = async () => {
+        const { data: transactionType } = await supabase
+          .from('transaction_type')
+          .select('label')
+          .eq('id', value)
+          .single();
+
+        if (transactionType) {
+          const label = transactionType.label?.toLowerCase() || '';
+          let newNumberOfPayments = 1; // Default
+
+          // Lease transactions default to 2 payments
+          if (label.includes('lease')) {
+            newNumberOfPayments = 2;
+          }
+          // Sale of Land or Sale of Building default to 1 payment
+          else if (label.includes('sale of land') || label.includes('sale of building')) {
+            newNumberOfPayments = 1;
+          }
+
+          // Update the form with the new number_of_payments
+          const formWithPayments = { ...updatedForm, number_of_payments: newNumberOfPayments };
+          setForm(formWithPayments);
+
+          // Auto-save if this is an existing deal
+          if (form.id) {
+            await supabase
+              .from("deal")
+              .update(prepareUpdate({
+                transaction_type_id: value,
+                number_of_payments: newNumberOfPayments
+              }))
+              .eq("id", form.id);
+          }
+        }
+      };
+
+      updatePaymentsBasedOnType();
     }
   };
 
@@ -523,7 +564,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       property_id: form.property_id,
       property_unit_id: form.property_unit_id,
       site_submit_id: form.site_submit_id,
-      deal_type_id: form.deal_type_id,
+      transaction_type_id: form.transaction_type_id,
       deal_value: form.deal_value,
       commission_percent: form.commission_percent,
       flat_fee_override: form.flat_fee_override,
@@ -666,7 +707,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       property_id: updatedForm.property_id,
       property_unit_id: updatedForm.property_unit_id,
       site_submit_id: updatedForm.site_submit_id,
-      deal_type_id: updatedForm.deal_type_id,
+      transaction_type_id: updatedForm.transaction_type_id,
       deal_value: updatedForm.deal_value,
       commission_percent: updatedForm.commission_percent,
       flat_fee_override: updatedForm.flat_fee_override,
@@ -758,7 +799,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       property_id: updatedForm.property_id,
       property_unit_id: updatedForm.property_unit_id,
       site_submit_id: updatedForm.site_submit_id,
-      deal_type_id: updatedForm.deal_type_id,
+      transaction_type_id: updatedForm.transaction_type_id,
       deal_value: updatedForm.deal_value,
       commission_percent: updatedForm.commission_percent,
       flat_fee_override: updatedForm.flat_fee_override,
@@ -850,7 +891,7 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       property_id: updatedForm.property_id,
       property_unit_id: updatedForm.property_unit_id,
       site_submit_id: updatedForm.site_submit_id,
-      deal_type_id: updatedForm.deal_type_id,
+      transaction_type_id: updatedForm.transaction_type_id,
       deal_value: updatedForm.deal_value,
       commission_percent: updatedForm.commission_percent,
       flat_fee_override: updatedForm.flat_fee_override,
@@ -1017,13 +1058,13 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
             placeholder="-- Select Deal Team --"
           />
 
-          {/* Row 4: Deal Type (left) + empty (right) */}
+          {/* Row 4: Transaction Type (left) + empty (right) */}
           <CustomSelect
-            label="Deal Type"
-            value={form.deal_type_id}
-            onChange={(v) => updateField("deal_type_id", v)}
-            options={dealTypeOptions}
-            placeholder="-- Select Deal Type --"
+            label="Transaction Type"
+            value={form.transaction_type_id}
+            onChange={(v) => updateField("transaction_type_id", v)}
+            options={transactionTypeOptions}
+            placeholder="-- Select Transaction Type --"
           />
           <div></div>
 

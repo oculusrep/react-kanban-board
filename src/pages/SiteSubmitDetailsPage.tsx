@@ -19,6 +19,7 @@ import AddAssignmentModal from '../components/AddAssignmentModal';
 import AutosaveIndicator from '../components/AutosaveIndicator';
 import { useSiteSubmitEmail } from '../hooks/useSiteSubmitEmail';
 import RecordMetadata from '../components/RecordMetadata';
+import ConvertSiteSubmitToDealModal from '../components/ConvertSiteSubmitToDealModal';
 
 type SiteSubmit = Database['public']['Tables']['site_submit']['Row'];
 type SiteSubmitInsert = Database['public']['Tables']['site_submit']['Insert'];
@@ -86,6 +87,8 @@ const SiteSubmitDetailsPage: React.FC = () => {
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentSearchResult | null>(null);
   const [dealName, setDealName] = useState<string | null>(null);
   const [showAddAssignmentModal, setShowAddAssignmentModal] = useState(false);
+  const [showConvertToDealModal, setShowConvertToDealModal] = useState(false);
+  const [siteSubmitCode, setSiteSubmitCode] = useState<string>('');
   const [submitStages, setSubmitStages] = useState<SubmitStage[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -272,6 +275,9 @@ const SiteSubmitDetailsPage: React.FC = () => {
               updated_at: siteSubmitData.updated_at,
               updated_by_id: siteSubmitData.updated_by_id
             });
+
+            // Store site submit code for convert to deal modal
+            setSiteSubmitCode(siteSubmitData.code || '');
 
             setFormData({
               site_submit_name: siteSubmitData.site_submit_name || '',
@@ -628,6 +634,15 @@ const SiteSubmitDetailsPage: React.FC = () => {
                           Submit Site
                         </>
                       )}
+                    </button>
+                    <button
+                      onClick={() => setShowConvertToDealModal(true)}
+                      className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 border border-transparent rounded hover:bg-green-700 flex items-center gap-1"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Convert to Deal
                     </button>
                     <button
                       onClick={handleDelete}
@@ -1101,6 +1116,44 @@ const SiteSubmitDetailsPage: React.FC = () => {
         }}
         preselectedClientId={selectedClient?.id || null}
       />
+
+      {/* Convert to Deal Modal */}
+      {!isNewSiteSubmit && (
+        <ConvertSiteSubmitToDealModal
+          isOpen={showConvertToDealModal}
+          onClose={() => setShowConvertToDealModal(false)}
+          siteSubmitId={siteSubmitId || ''}
+          siteSubmitCode={siteSubmitCode}
+          siteSubmitName={formData.site_submit_name}
+          clientId={formData.client_id}
+          clientName={selectedClient?.client_name || null}
+          propertyId={formData.property_id}
+          propertyName={propertyName}
+          propertyUnitId={formData.property_unit_id}
+          onSuccess={(dealId) => {
+            showToast('Deal created successfully!', { type: 'success' });
+            setShowConvertToDealModal(false);
+
+            // Navigate to the newly created deal
+            if (isInIframe) {
+              // If in iframe (sidebar), close the sidebar first then navigate to deal
+              window.parent.postMessage({
+                type: 'CLOSE_SLIDEOUT'
+              }, '*');
+              // Small delay to ensure slideout closes before navigation
+              setTimeout(() => {
+                window.parent.postMessage({
+                  type: 'NAVIGATE',
+                  path: `/deal/${dealId}`
+                }, '*');
+              }, 100);
+            } else {
+              // If standalone page, navigate normally
+              navigate(`/deal/${dealId}`);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

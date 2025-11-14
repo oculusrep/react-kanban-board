@@ -7,8 +7,8 @@ import { formatCurrency } from "../utils/format";
 import ReferralPayeeAutocomplete from "./ReferralPayeeAutocomplete";
 import AssignmentCurrencyField from "./AssignmentCurrencyField";
 import AssignmentPercentField from "./AssignmentPercentField";
-import ConvertToDealModal from "./ConvertToDealModal";
 import RecordMetadata from "./RecordMetadata";
+import CustomSelect from "./shared/CustomSelect";
 
 interface Props {
   assignment: Assignment;
@@ -20,10 +20,11 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
   const [form, setForm] = useState<Assignment>(assignment);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [showConvertModal, setShowConvertModal] = useState(false);
-  
+
   // Lookup options
   const [priorityOptions, setPriorityOptions] = useState<AssignmentPriority[]>([]);
+  const [transactionTypeOptions, setTransactionTypeOptions] = useState<{ id: string; label: string }[]>([]);
+  const [dealTeamOptions, setDealTeamOptions] = useState<{ id: string; label: string }[]>([]);
 
   // Search states for autocomplete
   const [clientSearch, setClientSearch] = useState("");
@@ -71,6 +72,23 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
         .order('sort_order');
 
       if (priorities) setPriorityOptions(priorities);
+
+      // Fetch transaction types
+      const { data: transactionTypes } = await supabase
+        .from('transaction_type')
+        .select('id, label')
+        .eq('active', true)
+        .order('sort_order');
+
+      if (transactionTypes) setTransactionTypeOptions(transactionTypes);
+
+      // Fetch deal teams
+      const { data: dealTeams } = await supabase
+        .from('deal_team')
+        .select('id, label')
+        .order('label');
+
+      if (dealTeams) setDealTeamOptions(dealTeams);
     };
 
     fetchLookups();
@@ -132,6 +150,7 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
           client_id: updatedForm.client_id,
           priority_id: updatedForm.priority_id,
           transaction_type_id: updatedForm.transaction_type_id,
+          deal_team_id: updatedForm.deal_team_id,
           due_date: updatedForm.due_date,
           commission: updatedForm.commission,
           fee: updatedForm.fee,
@@ -191,6 +210,7 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
       client_id: form.client_id,
       priority_id: form.priority_id,
       transaction_type_id: form.transaction_type_id,
+      deal_team_id: form.deal_team_id,
       due_date: form.due_date,
       commission: form.commission,
       fee: Math.round(calculatedFee * 100) / 100,
@@ -280,6 +300,24 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
               <p className="mt-1 text-sm text-red-600">{errors.priority_id}</p>
             )}
           </div>
+
+          {/* Transaction Type */}
+          <CustomSelect
+            label="Transaction Type"
+            value={form.transaction_type_id}
+            onChange={(v) => updateField('transaction_type_id', v)}
+            options={transactionTypeOptions}
+            placeholder="-- Select Transaction Type --"
+          />
+
+          {/* Deal Team */}
+          <CustomSelect
+            label="Deal Team"
+            value={form.deal_team_id}
+            onChange={(v) => updateField('deal_team_id', v)}
+            options={dealTeamOptions}
+            placeholder="-- Select Deal Team --"
+          />
 
         </div>
       </div>
@@ -415,38 +453,6 @@ export default function AssignmentDetailsForm({ assignment, onSave }: Props) {
           </button>
         </div>
       )}
-
-      {/* Convert to Deal Button - Only for existing assignments */}
-      {form.id && form.id !== 'new' && (
-        <div className="flex justify-end mt-4">
-          <button
-            onClick={() => setShowConvertModal(true)}
-            className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 flex items-center gap-2"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Convert to Deal
-          </button>
-        </div>
-      )}
-
-      {/* Convert to Deal Modal */}
-      <ConvertToDealModal
-        isOpen={showConvertModal}
-        onClose={() => setShowConvertModal(false)}
-        assignmentId={form.id || ''}
-        assignmentName={form.assignment_name || ''}
-        assignmentValue={form.assignment_value}
-        clientId={form.client_id}
-        commission={form.commission}
-        referralFee={form.referral_fee}
-        referralPayeeId={form.referral_payee_id}
-        onSuccess={(dealId) => {
-          // Navigate to the newly created deal
-          navigate(`/deal/${dealId}`);
-        }}
-      />
 
       {/* Record Metadata - Show for existing assignments */}
       {form.id && form.id !== 'new' && (

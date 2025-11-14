@@ -145,6 +145,7 @@ export interface Assignment {
   client_id: string | null;
   deal_id: string | null;
   owner_id: string | null;
+  deal_team_id: string | null;
   priority_id: string | null;
   transaction_type_id: string | null;
   due_date: string | null;

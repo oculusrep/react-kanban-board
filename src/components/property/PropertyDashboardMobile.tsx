@@ -328,7 +328,7 @@ const PropertyDashboardMobile: React.FC<PropertyDashboardMobileProps> = ({
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">Type:</span>
-                      <span className="font-medium">{deal.deal_type || 'Not specified'}</span>
+                      <span className="font-medium">{deal.transaction_type || 'Not specified'}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">Value:</span>

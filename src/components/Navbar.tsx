@@ -272,11 +272,23 @@ export default function Navbar() {
         console.log('📨 Navbar received message to open property slideout:', requestedPropertyId);
         setPropertyDetailsSlideout({ isOpen: true, propertyId: requestedPropertyId });
       }
+
+      // Handle close slideout message
+      if (event.data.type === 'CLOSE_SLIDEOUT') {
+        console.log('📨 Navbar received message to close slideout');
+        setSiteSubmitSlideout({ isOpen: false, siteSubmitId: null });
+      }
+
+      // Handle navigation message
+      if (event.data.type === 'NAVIGATE' && event.data.path) {
+        console.log('📨 Navbar received message to navigate to:', event.data.path);
+        navigate(event.data.path);
+      }
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [siteSubmitSlideout.isOpen]);
+  }, [siteSubmitSlideout.isOpen, navigate]);
 
   // Track property slideout minimize state
   const [propertyMinimized, setPropertyMinimized] = useState(false);

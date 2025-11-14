@@ -361,7 +361,7 @@ const PropertyDashboard: React.FC<PropertyDashboardProps> = ({
                       <div>
                         <h4 className="font-medium text-gray-900">{deal.deal_name || 'Unnamed Deal'}</h4>
                         <p className="text-sm text-gray-500">
-                          {deal.deal_stage || 'No stage'} • {deal.deal_type || 'No type'}
+                          {deal.deal_stage || 'No stage'} • {deal.transaction_type || 'No type'}
                         </p>
                       </div>
                       <div className="text-right">
