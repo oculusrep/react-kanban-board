@@ -16,7 +16,10 @@ interface SiteSubmitDetail {
   submit_stage_id: string | null;
   submit_stage_name: string | null;
   email_sent_date: string | null;
+  email_description: string | null;
   property_address: string | null;
+  created_by_id: string | null;
+  created_by_name: string | null;
 }
 
 type TimePeriod = 'week' | 'month' | 'year';
@@ -35,6 +38,8 @@ const KPIDashboardPage: React.FC = () => {
   const [reportData, setReportData] = useState<SiteSubmitDetail[]>([]);
   const [reportLoading, setReportLoading] = useState(false);
   const [siteSubmitSlideoutId, setSiteSubmitSlideoutId] = useState<string | null>(null);
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [selectedEmailDescription, setSelectedEmailDescription] = useState<string | null>(null);
 
   useEffect(() => {
     loadMetrics();
@@ -132,9 +137,11 @@ const KPIDashboardPage: React.FC = () => {
           client_id,
           submit_stage_id,
           property_id,
+          created_by_id,
           client:client_id (client_name),
           submit_stage:submit_stage_id (name),
-          property:property_id (address, city, state)
+          property:property_id (address, city, state),
+          created_by:created_by_id (first_name, last_name)
         `)
         .gte('date_submitted', startDate.toISOString())
         .not('date_submitted', 'is', null)
@@ -145,11 +152,11 @@ const KPIDashboardPage: React.FC = () => {
       // Now fetch email data for each site submit
       const siteSubmitIds = data?.map(ss => ss.id) || [];
 
-      let emailData: { [key: string]: string | null } = {};
+      let emailData: { [key: string]: { date: string; description: string } } = {};
       if (siteSubmitIds.length > 0) {
         const { data: activityData, error: activityError } = await supabase
           .from('activity')
-          .select('related_object_id, activity_date')
+          .select('related_object_id, activity_date, description')
           .in('related_object_id', siteSubmitIds)
           .eq('related_object_type', 'site_submit')
           .eq('activity_type_id', '018c896a-9d0d-7348-b352-c9f5ddf517f2') // Email activity type
@@ -159,24 +166,38 @@ const KPIDashboardPage: React.FC = () => {
           // Group by related_object_id and take the most recent email
           activityData.forEach(activity => {
             if (activity.related_object_id && !emailData[activity.related_object_id]) {
-              emailData[activity.related_object_id] = activity.activity_date;
+              emailData[activity.related_object_id] = {
+                date: activity.activity_date,
+                description: activity.description || ''
+              };
             }
           });
         }
       }
 
       // Transform the data
-      const transformedData: SiteSubmitDetail[] = data?.map(item => ({
-        id: item.id,
-        date_submitted: item.date_submitted,
-        client_id: item.client_id,
-        client_name: item.client?.client_name || null,
-        submit_stage_id: item.submit_stage_id,
-        submit_stage_name: item.submit_stage?.name || null,
-        email_sent_date: emailData[item.id] || null,
-        property_address: item.property ?
-          `${item.property.address || ''}, ${item.property.city || ''}, ${item.property.state || ''}`.trim() : null
-      })) || [];
+      const transformedData: SiteSubmitDetail[] = data?.map(item => {
+        const emailInfo = emailData[item.id];
+        const createdBy = item.created_by;
+        const createdByName = createdBy
+          ? `${createdBy.first_name || ''} ${createdBy.last_name || ''}`.trim() || null
+          : null;
+
+        return {
+          id: item.id,
+          date_submitted: item.date_submitted,
+          client_id: item.client_id,
+          client_name: item.client?.client_name || null,
+          submit_stage_id: item.submit_stage_id,
+          submit_stage_name: item.submit_stage?.name || null,
+          email_sent_date: emailInfo?.date || null,
+          email_description: emailInfo?.description || null,
+          property_address: item.property ?
+            `${item.property.address || ''}, ${item.property.city || ''}, ${item.property.state || ''}`.trim() : null,
+          created_by_id: item.created_by_id,
+          created_by_name: createdByName
+        };
+      }) || [];
 
       setReportData(transformedData);
     } catch (err) {
@@ -426,6 +447,9 @@ const KPIDashboardPage: React.FC = () => {
                           Stage
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Submitted By
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Email Sent
                         </th>
                       </tr>
@@ -450,15 +474,24 @@ const KPIDashboardPage: React.FC = () => {
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {submit.submit_stage_name || 'N/A'}
                           </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {submit.created_by_name || 'N/A'}
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             {submit.email_sent_date ? (
-                              <div className="flex items-center text-green-600">
+                              <button
+                                onClick={() => {
+                                  setSelectedEmailDescription(submit.email_description);
+                                  setEmailModalOpen(true);
+                                }}
+                                className="flex items-center text-green-600 hover:text-green-800 hover:underline cursor-pointer"
+                              >
                                 <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
                                   <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
                                   <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
                                 </svg>
                                 {formatDate(submit.email_sent_date)}
-                              </div>
+                              </button>
                             ) : (
                               <span className="text-gray-400">No email sent</span>
                             )}
@@ -475,6 +508,67 @@ const KPIDashboardPage: React.FC = () => {
             <div className="bg-gray-50 px-6 py-4 flex justify-end border-t">
               <button
                 onClick={() => setReportModalOpen(false)}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-md transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email Details Modal */}
+      {emailModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-green-700 to-green-600 text-white px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+                  <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+                </svg>
+                <h2 className="text-xl font-bold">Email Details</h2>
+              </div>
+              <button
+                onClick={() => {
+                  setEmailModalOpen(false);
+                  setSelectedEmailDescription(null);
+                }}
+                className="text-white hover:bg-green-600 p-2 rounded transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="overflow-y-auto max-h-[calc(80vh-120px)] p-6">
+              {selectedEmailDescription ? (
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Recipients and Details:</h3>
+                  <div className="text-sm text-gray-900 whitespace-pre-wrap font-mono">
+                    {selectedEmailDescription}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                  </svg>
+                  <p>No email details available</p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-gray-50 px-6 py-4 flex justify-end border-t">
+              <button
+                onClick={() => {
+                  setEmailModalOpen(false);
+                  setSelectedEmailDescription(null);
+                }}
                 className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-md transition-colors"
               >
                 Close
