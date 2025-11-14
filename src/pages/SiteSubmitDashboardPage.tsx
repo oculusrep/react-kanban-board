@@ -77,6 +77,10 @@ export default function SiteSubmitDashboardPage() {
   const [selectedPinData, setSelectedPinData] = useState<any>(null);
   const [selectedPinType, setSelectedPinType] = useState<'property' | 'site_submit' | null>(null);
 
+  // Property Details slideout (for viewing property from site submit)
+  const [isPropertyDetailsOpen, setIsPropertyDetailsOpen] = useState(false);
+  const [selectedPropertyData, setSelectedPropertyData] = useState<any>(null);
+
   // Site Submit Details slideout (for viewing site submit from property)
   const [isSiteSubmitDetailsOpen, setIsSiteSubmitDetailsOpen] = useState(false);
   const [selectedSiteSubmitData, setSelectedSiteSubmitData] = useState<any>(null);
@@ -489,6 +493,41 @@ export default function SiteSubmitDashboardPage() {
     console.log('📝 Data updated in slideout (not refetching dashboard data)');
   }, []);
 
+  // Handle viewing property details from site submit slideout
+  const handleViewPropertyDetails = useCallback(async (property: any) => {
+    console.log('🏢 Opening property details slideout:', property);
+
+    // Validate property has an ID
+    if (!property || !property.id) {
+      console.error('❌ Cannot open property details: invalid property data', property);
+      return;
+    }
+
+    // Fetch fresh property data from database to ensure we have latest values
+    try {
+      const { data: freshPropertyData, error } = await supabase
+        .from('property')
+        .select('*')
+        .eq('id', property.id)
+        .single();
+
+      if (error) {
+        console.error('❌ Error fetching fresh property data:', error);
+        // Fall back to cached data if fetch fails
+        setSelectedPropertyData(property);
+      } else {
+        console.log('✅ Fetched fresh property data:', freshPropertyData);
+        setSelectedPropertyData(freshPropertyData);
+      }
+    } catch (err) {
+      console.error('❌ Exception fetching fresh property data:', err);
+      // Fall back to cached data if fetch fails
+      setSelectedPropertyData(property);
+    }
+
+    setIsPropertyDetailsOpen(true);
+  }, []);
+
   // Handle viewing site submit details from property slideout
   const handleViewSiteSubmitDetails = useCallback(async (siteSubmit: any) => {
     console.log('📋 Opening site submit details slideout:', siteSubmit);
@@ -522,6 +561,17 @@ export default function SiteSubmitDashboardPage() {
     }
 
     setIsSiteSubmitDetailsOpen(true);
+  }, []);
+
+  const handlePropertyDetailsClose = useCallback(() => {
+    setIsPropertyDetailsOpen(false);
+    setSelectedPropertyData(null);
+  }, []);
+
+  const handlePropertyDataUpdate = useCallback(async () => {
+    // Don't refetch all data on every autosave - causes infinite loop
+    // The slideout manages its own state. Only refetch if user explicitly requests it.
+    console.log('📝 Property data updated (not refetching dashboard data)');
   }, []);
 
   const handleSiteSubmitDetailsClose = useCallback(() => {
@@ -1102,6 +1152,18 @@ export default function SiteSubmitDashboardPage() {
         data={selectedPinData}
         type={selectedPinType}
         onDataUpdate={handleDataUpdate}
+        onViewPropertyDetails={handleViewPropertyDetails}
+        onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
+        rightOffset={isPropertyDetailsOpen || isSiteSubmitDetailsOpen ? 500 : 0} // Shift left when property or site submit details is open
+      />
+
+      {/* Property Details Slideout (for viewing property from site submit) */}
+      <PinDetailsSlideout
+        isOpen={isPropertyDetailsOpen}
+        onClose={handlePropertyDetailsClose}
+        data={selectedPropertyData}
+        type="property"
+        onDataUpdate={handlePropertyDataUpdate}
         onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
         rightOffset={isSiteSubmitDetailsOpen ? 500 : 0} // Shift left when site submit details is open
       />
