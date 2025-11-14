@@ -1191,7 +1191,7 @@ export default function SiteSubmitDashboardPage() {
         onViewPropertyDetails={handleViewPropertyDetails}
         onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
         onOpenFullSiteSubmit={handleOpenFullSiteSubmit}
-        rightOffset={isPropertyDetailsOpen || isSiteSubmitDetailsOpen || isFullSiteSubmitOpen ? 500 : 0} // Shift left when other slideouts are open
+        rightOffset={isFullSiteSubmitOpen ? 800 : (isPropertyDetailsOpen || isSiteSubmitDetailsOpen ? 500 : 0)} // Shift left when full site submit or other slideouts are open
       />
 
       {/* Property Details Slideout (for viewing property from site submit) */}
@@ -1202,7 +1202,7 @@ export default function SiteSubmitDashboardPage() {
         type="property"
         onDataUpdate={handlePropertyDataUpdate}
         onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
-        rightOffset={isSiteSubmitDetailsOpen ? 500 : 0} // Shift left when site submit details is open
+        rightOffset={isFullSiteSubmitOpen ? 800 : (isSiteSubmitDetailsOpen ? 500 : 0)} // Shift left when full site submit or site submit details is open
       />
 
       {/* Site Submit Details Slideout (for viewing site submit from property) */}
@@ -1212,6 +1212,7 @@ export default function SiteSubmitDashboardPage() {
         data={selectedSiteSubmitData}
         type="site_submit"
         onDataUpdate={handleSiteSubmitDataUpdate}
+        rightOffset={isFullSiteSubmitOpen ? 800 : 0} // Shift left when full site submit is open
       />
 
       {/* Full Site Submit Slideout (for viewing full site submit record) */}
@@ -1220,7 +1221,7 @@ export default function SiteSubmitDashboardPage() {
           isOpen={isFullSiteSubmitOpen}
           onClose={handleFullSiteSubmitClose}
           siteSubmitId={fullSiteSubmitId}
-          rightOffset={isPinDetailsOpen || isPropertyDetailsOpen || isSiteSubmitDetailsOpen ? 500 : 0}
+          rightOffset={0} // Always at the right edge
         />
       )}
 
