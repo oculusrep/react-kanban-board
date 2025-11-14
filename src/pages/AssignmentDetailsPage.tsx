@@ -175,6 +175,18 @@ export default function AssignmentDetailsPage() {
     setShowDeleteConfirm(false);
 
     try {
+      // First, set assignment_id to NULL for all related site_submits
+      const { error: siteSubmitError } = await supabase
+        .from('site_submit')
+        .update({ assignment_id: null })
+        .eq('assignment_id', actualAssignmentId);
+
+      if (siteSubmitError) {
+        console.error('Error updating site submits:', siteSubmitError);
+        throw siteSubmitError;
+      }
+
+      // Then delete the assignment
       const { error } = await supabase
         .from('assignment')
         .delete()
