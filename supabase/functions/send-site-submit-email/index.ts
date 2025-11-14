@@ -178,8 +178,15 @@ serve(async (req) => {
         // First, get the current site_submit to check if date_submitted is null
         const { data: siteSubmit } = await supabaseClient
           .from('site_submit')
-          .select('date_submitted')
+          .select('date_submitted, submit_stage_id')
           .eq('id', siteSubmitId)
+          .single()
+
+        // Get the "Submitted-Reviewing" stage ID
+        const { data: submittedReviewingStage } = await supabaseClient
+          .from('submit_stage')
+          .select('id')
+          .eq('name', 'Submitted-Reviewing')
           .single()
 
         // Update site_submit with email metadata
@@ -193,6 +200,12 @@ serve(async (req) => {
         if (!siteSubmit?.date_submitted) {
           updateData.date_submitted = emailSentAt
           console.log('📅 Setting date_submitted to current date since it was null')
+        }
+
+        // If submit_stage_id is not already set, set it to "Submitted-Reviewing"
+        if (!siteSubmit?.submit_stage_id && submittedReviewingStage?.id) {
+          updateData.submit_stage_id = submittedReviewingStage.id
+          console.log('📊 Setting submit_stage to "Submitted-Reviewing" since it was not set')
         }
 
         const { error: updateError } = await supabaseClient
@@ -397,8 +410,15 @@ serve(async (req) => {
       // First, get the current site_submit to check if date_submitted is null
       const { data: siteSubmit } = await supabaseClient
         .from('site_submit')
-        .select('date_submitted')
+        .select('date_submitted, submit_stage_id')
         .eq('id', siteSubmitId)
+        .single()
+
+      // Get the "Submitted-Reviewing" stage ID
+      const { data: submittedReviewingStage } = await supabaseClient
+        .from('submit_stage')
+        .select('id')
+        .eq('name', 'Submitted-Reviewing')
         .single()
 
       // Update site_submit with email metadata (who sent it and when)
@@ -412,6 +432,12 @@ serve(async (req) => {
       if (!siteSubmit?.date_submitted) {
         updateData.date_submitted = emailSentAt
         console.log('📅 Setting date_submitted to current date since it was null')
+      }
+
+      // If submit_stage_id is not already set, set it to "Submitted-Reviewing"
+      if (!siteSubmit?.submit_stage_id && submittedReviewingStage?.id) {
+        updateData.submit_stage_id = submittedReviewingStage.id
+        console.log('📊 Setting submit_stage to "Submitted-Reviewing" since it was not set')
       }
 
       const { error: updateError } = await supabaseClient
