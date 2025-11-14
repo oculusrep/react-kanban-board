@@ -187,6 +187,13 @@ const KPIDashboardPage: React.FC = () => {
       console.log('Site submits fetched:', data?.length || 0);
       console.log('Sample data:', data?.[0]);
 
+      // Check for any records without date_submitted (should not happen due to filter)
+      const recordsWithoutDate = data?.filter(item => !item.date_submitted) || [];
+      if (recordsWithoutDate.length > 0) {
+        console.warn('WARNING: Found records without date_submitted:', recordsWithoutDate.length);
+        console.warn('Sample record without date:', recordsWithoutDate[0]);
+      }
+
       if (!data || data.length === 0) {
         setReportData([]);
         return;
