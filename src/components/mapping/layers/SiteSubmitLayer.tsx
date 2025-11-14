@@ -259,6 +259,14 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
           if (loadingConfig.clientId) {
             console.log(`🔍 Filtering by client: ${loadingConfig.clientId}`);
             query = query.eq('client_id', loadingConfig.clientId);
+          } else {
+            // No client selected - return empty results instead of all site submits
+            console.log('🚫 No client selected, skipping site submit fetch (will return 0 results)');
+            setSiteSubmits([]);
+            onSiteSubmitsLoaded?.(0);
+            onStageCountsUpdate?.({});
+            setIsLoading(false);
+            return; // Exit early
           }
           break;
 

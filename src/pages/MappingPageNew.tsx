@@ -1344,8 +1344,11 @@ const MappingPageContent: React.FC = () => {
   }), []);
 
   // Site submit layer configuration (memoized to prevent infinite re-renders)
+  // When a client is selected, use client-filtered mode
+  // When no client is selected, use client-filtered with null ID (returns 0 results)
+  // This prevents showing random site submits when clearing the client filter
   const siteSubmitLoadingConfig: SiteSubmitLoadingConfig = useMemo(() => ({
-    mode: selectedClient ? 'client-filtered' : 'static-100',
+    mode: 'client-filtered',
     clientId: selectedClient?.id || null,
     visibleStages: visibleStages,
     clusterConfig: clusterConfig
