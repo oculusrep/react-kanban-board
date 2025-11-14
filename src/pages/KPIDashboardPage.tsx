@@ -227,6 +227,9 @@ const KPIDashboardPage: React.FC = () => {
       const propertiesMap = new Map((propertiesData.data || []).map(p => [p.id, p]));
       const usersMap = new Map((usersData.data || []).map(u => [u.id, u]));
 
+      console.log('Activity data fetched:', activityData.data?.length || 0);
+      console.log('Sample activity:', activityData.data?.[0]);
+
       // Create email data map (most recent email per site submit)
       const emailData: { [key: string]: { date: string; description: string } } = {};
       (activityData.data || []).forEach(activity => {
@@ -237,6 +240,9 @@ const KPIDashboardPage: React.FC = () => {
           };
         }
       });
+
+      console.log('Email data map size:', Object.keys(emailData).length);
+      console.log('Sample email data:', Object.entries(emailData)[0]);
 
       // Transform the data
       const transformedData: SiteSubmitDetail[] = data.map(item => {
