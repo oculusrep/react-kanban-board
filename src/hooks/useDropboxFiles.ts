@@ -92,9 +92,19 @@ export function useDropboxFiles(
       console.log('🔍 Mapping result:', { mapping, mappingError });
 
       if (mappingError || !mapping) {
-        // Suppress 406 errors (known Supabase API issue with this table)
-        if (mappingError && mappingError.code !== 'PGRST116') {
-          console.log('🔍 No mapping found, setting error');
+        // Suppress 406 errors (RLS policy issues) and PGRST116 (not found) errors
+        if (mappingError) {
+          // Check if it's a 406 error by examining the error message or status
+          const is406Error = mappingError.message?.includes('406') ||
+                            mappingError.code === '406' ||
+                            mappingError.hint?.includes('Row-level security');
+          const is404Error = mappingError.code === 'PGRST116';
+
+          if (!is406Error && !is404Error) {
+            console.log('🔍 Dropbox mapping error:', mappingError);
+          } else {
+            console.log('🔍 No mapping found or access denied (suppressing error)');
+          }
         }
         // Only update error state if not a silent refresh or if transitioning from no-error to error
         if (!silent) {

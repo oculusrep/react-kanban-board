@@ -105,7 +105,23 @@ const AddAssignmentModal: React.FC<AddAssignmentModalProps> = ({
 
     try {
       // Get current user for owner_id
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+
+      // Look up the user table record by auth_user_id to get the user.id
+      let userId: string | null = null;
+      if (authUser?.id) {
+        const { data: userRecord } = await supabase
+          .from('user')
+          .select('id')
+          .eq('auth_user_id', authUser.id)
+          .single();
+
+        userId = userRecord?.id || null;
+
+        if (!userId) {
+          console.warn('⚠️ Could not find user record for auth user:', authUser.id);
+        }
+      }
 
       const insertData: any = {
         assignment_name: assignmentName,
@@ -114,7 +130,7 @@ const AddAssignmentModal: React.FC<AddAssignmentModalProps> = ({
         due_date: dueDate || null,
         site_criteria: siteCriteria || null,
         priority_id: priorityId || null,
-        owner_id: user?.id || null,
+        owner_id: userId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };

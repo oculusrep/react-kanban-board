@@ -14,6 +14,12 @@ const UserByIdDisplay: React.FC<UserByIdDisplayProps> = ({ userId, prefix = 'by'
   const [userName, setUserName] = useState<string | null>(null);
 
   useEffect(() => {
+    // Don't fetch if userId is null, undefined, or invalid
+    if (!userId || userId === 'undefined' || userId === 'null') {
+      setUserName(null);
+      return;
+    }
+
     const fetchUser = async () => {
       const { data: user } = await supabase
         .from('user')

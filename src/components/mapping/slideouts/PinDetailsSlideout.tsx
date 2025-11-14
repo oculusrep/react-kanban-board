@@ -680,7 +680,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       setUpdatedByName('');
 
       // Fetch created_by user name
-      if (record.created_by_id) {
+      if (record.created_by_id && record.created_by_id !== 'undefined' && record.created_by_id !== 'null') {
         // Look up by both id (for old records) and auth_user_id (for new records)
         const { data: userData, error } = await supabase
           .from('user')
@@ -702,7 +702,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
       }
 
       // Fetch updated_by user name
-      if (record.updated_by_id) {
+      if (record.updated_by_id && record.updated_by_id !== 'undefined' && record.updated_by_id !== 'null') {
         // Look up by both id (for old records) and auth_user_id (for new records)
         const { data: userData, error } = await supabase
           .from('user')
