@@ -131,82 +131,97 @@ const KPIDashboardPage: React.FC = () => {
       console.log('Loading report for period:', period);
       console.log('Start date:', startDate.toISOString());
 
-      // Query site submits with related data
+      // First, get just the site submits without joins
       const { data, error } = await supabase
         .from('site_submit')
-        .select(`
-          id,
-          date_submitted,
-          client_id,
-          submit_stage_id,
-          property_id,
-          created_by_id,
-          client:client_id (client_name),
-          submit_stage:submit_stage_id (name),
-          property:property_id (address, city, state),
-          created_by:created_by_id (first_name, last_name)
-        `)
+        .select('*')
         .gte('date_submitted', startDate.toISOString())
         .not('date_submitted', 'is', null)
         .order('date_submitted', { ascending: false });
 
       if (error) {
         console.error('Error fetching site submits:', error);
+        console.error('Full error object:', JSON.stringify(error, null, 2));
         throw error;
       }
 
       console.log('Site submits fetched:', data?.length || 0);
       console.log('Sample data:', data?.[0]);
 
-      // Now fetch email data for each site submit
-      const siteSubmitIds = data?.map(ss => ss.id) || [];
+      if (!data || data.length === 0) {
+        setReportData([]);
+        return;
+      }
 
-      let emailData: { [key: string]: { date: string; description: string } } = {};
-      if (siteSubmitIds.length > 0) {
-        const { data: activityData, error: activityError } = await supabase
+      // Get unique IDs for related data
+      const siteSubmitIds = data.map(ss => ss.id);
+      const clientIds = [...new Set(data.map(ss => ss.client_id).filter(Boolean))];
+      const stageIds = [...new Set(data.map(ss => ss.submit_stage_id).filter(Boolean))];
+      const propertyIds = [...new Set(data.map(ss => ss.property_id).filter(Boolean))];
+      const userIds = [...new Set(data.map(ss => ss.created_by_id).filter(Boolean))];
+
+      // Fetch related data in parallel
+      const [clientsData, stagesData, propertiesData, usersData, activityData] = await Promise.all([
+        clientIds.length > 0 ? supabase.from('client').select('id, client_name').in('id', clientIds) : { data: [] },
+        stageIds.length > 0 ? supabase.from('submit_stage').select('id, name').in('id', stageIds) : { data: [] },
+        propertyIds.length > 0 ? supabase.from('property').select('id, address, city, state').in('id', propertyIds) : { data: [] },
+        userIds.length > 0 ? supabase.from('user').select('id, first_name, last_name').in('id', userIds) : { data: [] },
+        siteSubmitIds.length > 0 ? supabase
           .from('activity')
           .select('related_object_id, activity_date, description')
           .in('related_object_id', siteSubmitIds)
           .eq('related_object_type', 'site_submit')
-          .eq('activity_type_id', '018c896a-9d0d-7348-b352-c9f5ddf517f2') // Email activity type
-          .order('activity_date', { ascending: false });
+          .eq('activity_type_id', '018c896a-9d0d-7348-b352-c9f5ddf517f2')
+          .order('activity_date', { ascending: false }) : { data: [] }
+      ]);
 
-        if (!activityError && activityData) {
-          // Group by related_object_id and take the most recent email
-          activityData.forEach(activity => {
-            if (activity.related_object_id && !emailData[activity.related_object_id]) {
-              emailData[activity.related_object_id] = {
-                date: activity.activity_date,
-                description: activity.description || ''
-              };
-            }
-          });
+      // Create lookup maps
+      const clientsMap = new Map((clientsData.data || []).map(c => [c.id, c]));
+      const stagesMap = new Map((stagesData.data || []).map(s => [s.id, s]));
+      const propertiesMap = new Map((propertiesData.data || []).map(p => [p.id, p]));
+      const usersMap = new Map((usersData.data || []).map(u => [u.id, u]));
+
+      // Create email data map (most recent email per site submit)
+      const emailData: { [key: string]: { date: string; description: string } } = {};
+      (activityData.data || []).forEach(activity => {
+        if (activity.related_object_id && !emailData[activity.related_object_id]) {
+          emailData[activity.related_object_id] = {
+            date: activity.activity_date,
+            description: activity.description || ''
+          };
         }
-      }
+      });
 
       // Transform the data
-      const transformedData: SiteSubmitDetail[] = data?.map(item => {
+      const transformedData: SiteSubmitDetail[] = data.map(item => {
         const emailInfo = emailData[item.id];
-        const createdBy = item.created_by;
-        const createdByName = createdBy
-          ? `${createdBy.first_name || ''} ${createdBy.last_name || ''}`.trim() || null
+        const client = item.client_id ? clientsMap.get(item.client_id) : null;
+        const stage = item.submit_stage_id ? stagesMap.get(item.submit_stage_id) : null;
+        const property = item.property_id ? propertiesMap.get(item.property_id) : null;
+        const user = item.created_by_id ? usersMap.get(item.created_by_id) : null;
+
+        const createdByName = user
+          ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || null
+          : null;
+
+        const propertyAddress = property
+          ? `${property.address || ''}, ${property.city || ''}, ${property.state || ''}`.trim()
           : null;
 
         return {
           id: item.id,
           date_submitted: item.date_submitted,
           client_id: item.client_id,
-          client_name: item.client?.client_name || null,
+          client_name: client?.client_name || null,
           submit_stage_id: item.submit_stage_id,
-          submit_stage_name: item.submit_stage?.name || null,
+          submit_stage_name: stage?.name || null,
           email_sent_date: emailInfo?.date || null,
           email_description: emailInfo?.description || null,
-          property_address: item.property ?
-            `${item.property.address || ''}, ${item.property.city || ''}, ${item.property.state || ''}`.trim() : null,
+          property_address: propertyAddress,
           created_by_id: item.created_by_id,
           created_by_name: createdByName
         };
-      }) || [];
+      });
 
       console.log('Transformed data count:', transformedData.length);
       console.log('Sample transformed data:', transformedData[0]);
