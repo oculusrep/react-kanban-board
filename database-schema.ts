@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "12.2.3 (519615d)"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       activity: {
@@ -207,6 +232,13 @@ export type Database = {
             referencedColumns: ["contact_id"]
           },
           {
+            foreignKeyName: "activity_created_by_id_fkey"
+            columns: ["created_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["auth_user_id"]
+          },
+          {
             foreignKeyName: "activity_deal_id_fkey"
             columns: ["deal_id"]
             isOneToOne: false
@@ -270,11 +302,11 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "activity_updated_by_fkey"
-            columns: ["updated_by"]
+            foreignKeyName: "activity_updated_by_id_fkey"
+            columns: ["updated_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "activity_user_id_fkey"
@@ -372,13 +404,6 @@ export type Database = {
             columns: ["activity_type_id"]
             isOneToOne: false
             referencedRelation: "activity_type"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_activity_updated_by"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "user"
             referencedColumns: ["id"]
           },
           {
@@ -534,6 +559,7 @@ export type Database = {
           created_at: string | null
           created_by_id: string | null
           deal_id: string | null
+          deal_team_id: string | null
           due_date: string | null
           fee: number | null
           id: string
@@ -570,6 +596,7 @@ export type Database = {
           created_at?: string | null
           created_by_id?: string | null
           deal_id?: string | null
+          deal_team_id?: string | null
           due_date?: string | null
           fee?: number | null
           id?: string
@@ -606,6 +633,7 @@ export type Database = {
           created_at?: string | null
           created_by_id?: string | null
           deal_id?: string | null
+          deal_team_id?: string | null
           due_date?: string | null
           fee?: number | null
           id?: string
@@ -640,7 +668,7 @@ export type Database = {
             columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "assignment_deal_id_fkey"
@@ -654,6 +682,13 @@ export type Database = {
             columns: ["deal_id"]
             isOneToOne: false
             referencedRelation: "deal_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assignment_deal_team_id_fkey"
+            columns: ["deal_team_id"]
+            isOneToOne: false
+            referencedRelation: "deal_team"
             referencedColumns: ["id"]
           },
           {
@@ -682,7 +717,7 @@ export type Database = {
             columns: ["updated_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
         ]
       }
@@ -891,7 +926,7 @@ export type Database = {
             columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "client_owner_id_fkey"
@@ -919,7 +954,7 @@ export type Database = {
             columns: ["updated_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
         ]
       }
@@ -1102,7 +1137,7 @@ export type Database = {
             columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "commission_split_deal_id_fkey"
@@ -1126,11 +1161,11 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "commission_split_updated_by_fkey"
+            foreignKeyName: "commission_split_updated_by_id_fkey"
             columns: ["updated_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
         ]
       }
@@ -1309,7 +1344,7 @@ export type Database = {
             columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "contact_lead_status_id_fkey"
@@ -1344,7 +1379,7 @@ export type Database = {
             columns: ["updated_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "fk_contact_client_id"
@@ -1439,14 +1474,14 @@ export type Database = {
             columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "contact_client_relation_updated_by_id_fkey"
             columns: ["updated_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
         ]
       }
@@ -1521,7 +1556,7 @@ export type Database = {
             columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "contact_client_role_role_id_fkey"
@@ -1535,7 +1570,7 @@ export type Database = {
             columns: ["updated_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
         ]
       }
@@ -1652,7 +1687,7 @@ export type Database = {
             columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "contact_deal_role_deal_id_fkey"
@@ -1680,7 +1715,7 @@ export type Database = {
             columns: ["updated_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
         ]
       }
@@ -1849,7 +1884,7 @@ export type Database = {
             columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "critical_date_deal_id_fkey"
@@ -1870,7 +1905,7 @@ export type Database = {
             columns: ["updated_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
         ]
       }
@@ -2142,7 +2177,7 @@ export type Database = {
             columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "deal_property_id_fkey"
@@ -2198,7 +2233,7 @@ export type Database = {
             columns: ["updated_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "fk_deal_client_id"
@@ -2292,7 +2327,7 @@ export type Database = {
             columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "deal_contact_deal_id_fkey"
@@ -2320,7 +2355,7 @@ export type Database = {
             columns: ["updated_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
         ]
       }
@@ -2504,6 +2539,74 @@ export type Database = {
         }
         Relationships: []
       }
+      dropbox_sync_cache: {
+        Row: {
+          checked_at: string
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+          mapped_folder_name: string
+          mapped_folder_path: string
+          property_name: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          checked_at?: string
+          created_at?: string
+          entity_id: string
+          entity_type?: string
+          id?: string
+          mapped_folder_name: string
+          mapped_folder_path: string
+          property_name: string
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          checked_at?: string
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          mapped_folder_name?: string
+          mapped_folder_path?: string
+          property_name?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dropbox_sync_cache_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "property"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dropbox_sync_cache_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_deal_type"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dropbox_sync_cache_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_stage"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dropbox_sync_cache_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "property_with_type"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_list: {
         Row: {
           id: string
@@ -2618,32 +2721,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_note_created_by"
-            columns: ["created_by"]
+            foreignKeyName: "note_created_by_id_fkey"
+            columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
-            foreignKeyName: "fk_note_updated_by"
-            columns: ["updated_by"]
+            foreignKeyName: "note_updated_by_id_fkey"
+            columns: ["updated_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "note_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "user"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "note_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
         ]
       }
@@ -3246,7 +3335,7 @@ export type Database = {
             columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "payment_deal_id_fkey"
@@ -3263,11 +3352,11 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "payment_updated_by_fkey"
+            foreignKeyName: "payment_updated_by_id_fkey"
             columns: ["updated_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
         ]
       }
@@ -3394,7 +3483,7 @@ export type Database = {
             columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "payment_split_payment_id_fkey"
@@ -3404,11 +3493,11 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "payment_split_updated_by_fkey"
+            foreignKeyName: "payment_split_updated_by_id_fkey"
             columns: ["updated_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
         ]
       }
@@ -3431,6 +3520,7 @@ export type Database = {
           county: string | null
           created_at: string | null
           created_by_id: string | null
+          created_by_sf_id: string | null
           deal_type_id: string | null
           demographics: string | null
           description: string | null
@@ -3464,6 +3554,7 @@ export type Database = {
           traffic_count_2nd: number | null
           updated_at: string | null
           updated_by_id: string | null
+          updated_by_sf_id: string | null
           verified_latitude: number | null
           verified_longitude: number | null
           zip: string | null
@@ -3486,6 +3577,7 @@ export type Database = {
           county?: string | null
           created_at?: string | null
           created_by_id?: string | null
+          created_by_sf_id?: string | null
           deal_type_id?: string | null
           demographics?: string | null
           description?: string | null
@@ -3519,6 +3611,7 @@ export type Database = {
           traffic_count_2nd?: number | null
           updated_at?: string | null
           updated_by_id?: string | null
+          updated_by_sf_id?: string | null
           verified_latitude?: number | null
           verified_longitude?: number | null
           zip?: string | null
@@ -3541,6 +3634,7 @@ export type Database = {
           county?: string | null
           created_at?: string | null
           created_by_id?: string | null
+          created_by_sf_id?: string | null
           deal_type_id?: string | null
           demographics?: string | null
           description?: string | null
@@ -3574,6 +3668,7 @@ export type Database = {
           traffic_count_2nd?: number | null
           updated_at?: string | null
           updated_by_id?: string | null
+          updated_by_sf_id?: string | null
           verified_latitude?: number | null
           verified_longitude?: number | null
           zip?: string | null
@@ -3599,6 +3694,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "property_type"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_created_by_id_fkey"
+            columns: ["created_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["auth_user_id"]
+          },
+          {
+            foreignKeyName: "property_updated_by_id_fkey"
+            columns: ["updated_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["auth_user_id"]
           },
         ]
       }
@@ -3683,14 +3792,14 @@ export type Database = {
             columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "fk_property_contact_updated_by_id"
             columns: ["updated_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "property_contact_contact_id_fkey"
@@ -3705,13 +3814,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_site_selectors_by_client"
             referencedColumns: ["contact_id"]
-          },
-          {
-            foreignKeyName: "property_contact_created_by_id_fkey"
-            columns: ["created_by_id"]
-            isOneToOne: false
-            referencedRelation: "user"
-            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "property_contact_property_id_fkey"
@@ -3739,13 +3841,6 @@ export type Database = {
             columns: ["property_id"]
             isOneToOne: false
             referencedRelation: "property_with_type"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "property_contact_updated_by_id_fkey"
-            columns: ["updated_by_id"]
-            isOneToOne: false
-            referencedRelation: "user"
             referencedColumns: ["id"]
           },
         ]
@@ -3930,7 +4025,7 @@ export type Database = {
             columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "property_unit_deal_id_fkey"
@@ -3979,7 +4074,7 @@ export type Database = {
             columns: ["updated_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
         ]
       }
@@ -4170,6 +4265,39 @@ export type Database = {
             referencedColumns: ["store_no"]
           },
         ]
+      }
+      role: {
+        Row: {
+          active: boolean | null
+          created_at: string | null
+          description: string | null
+          display_name: string
+          id: string
+          name: string
+          permissions: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          created_at?: string | null
+          description?: string | null
+          display_name: string
+          id?: string
+          name: string
+          permissions?: Json | null
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          created_at?: string | null
+          description?: string | null
+          display_name?: string
+          id?: string
+          name?: string
+          permissions?: Json | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       salesforce_Account: {
         Row: {
@@ -9409,6 +9537,8 @@ export type Database = {
           deal_id: string | null
           delivery_date: string | null
           delivery_timeframe: string | null
+          email_sent_at: string | null
+          email_sent_by_id: string | null
           id: string
           loi_date: string | null
           loi_written: boolean | null
@@ -9453,6 +9583,8 @@ export type Database = {
           deal_id?: string | null
           delivery_date?: string | null
           delivery_timeframe?: string | null
+          email_sent_at?: string | null
+          email_sent_by_id?: string | null
           id?: string
           loi_date?: string | null
           loi_written?: boolean | null
@@ -9497,6 +9629,8 @@ export type Database = {
           deal_id?: string | null
           delivery_date?: string | null
           delivery_timeframe?: string | null
+          email_sent_at?: string | null
+          email_sent_by_id?: string | null
           id?: string
           loi_date?: string | null
           loi_written?: boolean | null
@@ -9563,7 +9697,7 @@ export type Database = {
             columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "site_submit_deal_id_fkey"
@@ -9647,7 +9781,7 @@ export type Database = {
             columns: ["updated_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
         ]
       }
@@ -9813,39 +9947,6 @@ export type Database = {
         }
         Relationships: []
       }
-      role: {
-        Row: {
-          active: boolean | null
-          created_at: string | null
-          description: string | null
-          display_name: string
-          id: string
-          name: string
-          permissions: Json | null
-          updated_at: string | null
-        }
-        Insert: {
-          active?: boolean | null
-          created_at?: string | null
-          description?: string | null
-          display_name: string
-          id?: string
-          name: string
-          permissions?: Json | null
-          updated_at?: string | null
-        }
-        Update: {
-          active?: boolean | null
-          created_at?: string | null
-          description?: string | null
-          display_name?: string
-          id?: string
-          name?: string
-          permissions?: Json | null
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
       user: {
         Row: {
           active: boolean | null
@@ -9913,7 +10014,15 @@ export type Database = {
           updated_by_id?: string | null
           updated_by_sf_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_user_ovis_role"
+            columns: ["ovis_role"]
+            isOneToOne: false
+            referencedRelation: "role"
+            referencedColumns: ["name"]
+          },
+        ]
       }
     }
     Views: {
@@ -10011,7 +10120,7 @@ export type Database = {
             columns: ["created_by_id"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "deal_property_id_fkey"
@@ -10067,7 +10176,7 @@ export type Database = {
             columns: ["updated_by"]
             isOneToOne: false
             referencedRelation: "user"
-            referencedColumns: ["id"]
+            referencedColumns: ["auth_user_id"]
           },
           {
             foreignKeyName: "fk_deal_client_id"
@@ -10171,6 +10280,20 @@ export type Database = {
             referencedRelation: "property_type"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "property_created_by_id_fkey"
+            columns: ["created_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["auth_user_id"]
+          },
+          {
+            foreignKeyName: "property_updated_by_id_fkey"
+            columns: ["updated_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["auth_user_id"]
+          },
         ]
       }
       property_with_stage: {
@@ -10252,6 +10375,20 @@ export type Database = {
             referencedRelation: "property_type"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "property_created_by_id_fkey"
+            columns: ["created_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["auth_user_id"]
+          },
+          {
+            foreignKeyName: "property_updated_by_id_fkey"
+            columns: ["updated_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["auth_user_id"]
+          },
         ]
       }
       property_with_type: {
@@ -10332,6 +10469,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "property_type"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_created_by_id_fkey"
+            columns: ["created_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["auth_user_id"]
+          },
+          {
+            foreignKeyName: "property_updated_by_id_fkey"
+            columns: ["updated_by_id"]
+            isOneToOne: false
+            referencedRelation: "user"
+            referencedColumns: ["auth_user_id"]
           },
         ]
       }
@@ -10643,9 +10794,10 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },
 } as const
-A new version of Supabase CLI is available: v2.54.11 (currently installed v2.51.0)
-We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

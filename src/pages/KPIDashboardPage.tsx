@@ -204,21 +204,18 @@ const KPIDashboardPage: React.FC = () => {
       const clientIds = [...new Set(data.map(ss => ss.client_id).filter(Boolean))];
       const stageIds = [...new Set(data.map(ss => ss.submit_stage_id).filter(Boolean))];
       const propertyIds = [...new Set(data.map(ss => ss.property_id).filter(Boolean))];
-      const userIds = [...new Set(data.map(ss => ss.created_by_id).filter(Boolean))];
+
+      // Collect both created_by_id and email_sent_by_id for user lookups
+      const createdByIds = data.map(ss => ss.created_by_id).filter(Boolean);
+      const emailSentByIds = data.map((ss: any) => ss.email_sent_by_id).filter(Boolean);
+      const userIds = [...new Set([...createdByIds, ...emailSentByIds])];
 
       // Fetch related data in parallel
-      const [clientsData, stagesData, propertiesData, usersData, activityData] = await Promise.all([
+      const [clientsData, stagesData, propertiesData, usersData] = await Promise.all([
         clientIds.length > 0 ? supabase.from('client').select('id, client_name').in('id', clientIds) : { data: [] },
         stageIds.length > 0 ? supabase.from('submit_stage').select('id, name').in('id', stageIds) : { data: [] },
         propertyIds.length > 0 ? supabase.from('property').select('id, address, city, state').in('id', propertyIds) : { data: [] },
-        userIds.length > 0 ? supabase.from('user').select('id, first_name, last_name').in('id', userIds) : { data: [] },
-        siteSubmitIds.length > 0 ? supabase
-          .from('activity')
-          .select('related_object_id, activity_date, description')
-          .in('related_object_id', siteSubmitIds)
-          .eq('related_object_type', 'site_submit')
-          .eq('subject', 'Site Submit Email')
-          .order('activity_date', { ascending: false }) : { data: [] }
+        userIds.length > 0 ? supabase.from('user').select('id, first_name, last_name').in('id', userIds) : { data: [] }
       ]);
 
       // Create lookup maps
@@ -227,33 +224,22 @@ const KPIDashboardPage: React.FC = () => {
       const propertiesMap = new Map((propertiesData.data || []).map(p => [p.id, p]));
       const usersMap = new Map((usersData.data || []).map(u => [u.id, u]));
 
-      console.log('Activity data fetched:', activityData.data?.length || 0);
-      console.log('Sample activity:', activityData.data?.[0]);
-
-      // Create email data map (most recent email per site submit)
-      const emailData: { [key: string]: { date: string; description: string } } = {};
-      (activityData.data || []).forEach(activity => {
-        if (activity.related_object_id && !emailData[activity.related_object_id]) {
-          emailData[activity.related_object_id] = {
-            date: activity.activity_date,
-            description: activity.description || ''
-          };
-        }
-      });
-
-      console.log('Email data map size:', Object.keys(emailData).length);
-      console.log('Sample email data:', Object.entries(emailData)[0]);
+      console.log('Site submits with email data:', data.filter((ss: any) => ss.email_sent_at).length);
 
       // Transform the data
-      const transformedData: SiteSubmitDetail[] = data.map(item => {
-        const emailInfo = emailData[item.id];
+      const transformedData: SiteSubmitDetail[] = data.map((item: any) => {
         const client = item.client_id ? clientsMap.get(item.client_id) : null;
         const stage = item.submit_stage_id ? stagesMap.get(item.submit_stage_id) : null;
         const property = item.property_id ? propertiesMap.get(item.property_id) : null;
         const user = item.created_by_id ? usersMap.get(item.created_by_id) : null;
+        const emailSentByUser = item.email_sent_by_id ? usersMap.get(item.email_sent_by_id) : null;
 
         const createdByName = user
           ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || null
+          : null;
+
+        const emailSentByName = emailSentByUser
+          ? `${emailSentByUser.first_name || ''} ${emailSentByUser.last_name || ''}`.trim() || null
           : null;
 
         const propertyAddress = property
@@ -267,8 +253,8 @@ const KPIDashboardPage: React.FC = () => {
           client_name: client?.client_name || null,
           submit_stage_id: item.submit_stage_id,
           submit_stage_name: stage?.name || null,
-          email_sent_date: emailInfo?.date || null,
-          email_description: emailInfo?.description || null,
+          email_sent_date: item.email_sent_at || null,
+          email_description: emailSentByName ? `Sent by ${emailSentByName}` : null,
           property_address: propertyAddress,
           created_by_id: item.created_by_id,
           created_by_name: createdByName

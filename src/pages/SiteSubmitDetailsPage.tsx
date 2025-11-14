@@ -112,6 +112,8 @@ const SiteSubmitDetailsPage: React.FC = () => {
     created_by_id?: string;
     updated_at?: string;
     updated_by_id?: string;
+    email_sent_at?: string;
+    email_sent_by_id?: string;
   } | null>(null);
 
   // Email composer hook for site submit emails
@@ -273,7 +275,9 @@ const SiteSubmitDetailsPage: React.FC = () => {
               created_at: siteSubmitData.created_at,
               created_by_id: siteSubmitData.created_by_id,
               updated_at: siteSubmitData.updated_at,
-              updated_by_id: siteSubmitData.updated_by_id
+              updated_by_id: siteSubmitData.updated_by_id,
+              email_sent_at: (siteSubmitData as any).email_sent_at,
+              email_sent_by_id: (siteSubmitData as any).email_sent_by_id
             });
 
             // Store site submit code for convert to deal modal
@@ -1058,6 +1062,8 @@ const SiteSubmitDetailsPage: React.FC = () => {
                     createdById={siteSubmitMetadata.created_by_id}
                     updatedAt={siteSubmitMetadata.updated_at}
                     updatedById={siteSubmitMetadata.updated_by_id}
+                    emailSentAt={siteSubmitMetadata.email_sent_at}
+                    emailSentById={siteSubmitMetadata.email_sent_by_id}
                   />
                 )}
               </>

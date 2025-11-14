@@ -193,7 +193,9 @@ serve(async (req) => {
         const emailSentAt = new Date().toISOString()
         const updateData: any = {
           updated_at: emailSentAt,
-          updated_by_id: userId
+          updated_by_id: userId,
+          email_sent_at: emailSentAt,
+          email_sent_by_id: userId
         }
 
         // If date_submitted is null, set it to the current date (marking it as "Submitted")
@@ -207,6 +209,8 @@ serve(async (req) => {
           updateData.submit_stage_id = submittedReviewingStage.id
           console.log('📊 Setting submit_stage to "Submitted-Reviewing" since it was not set')
         }
+
+        console.log('📧 Setting email_sent_at and email_sent_by_id to track who sent this email')
 
         const { error: updateError } = await supabaseClient
           .from('site_submit')

@@ -13,6 +13,8 @@ interface RecordMetadataProps {
     first_name?: string | null;
     last_name?: string | null;
   } | null;
+  emailSentAt?: string | null;
+  emailSentById?: string | null;
 }
 
 const RecordMetadata: React.FC<RecordMetadataProps> = ({
@@ -22,9 +24,11 @@ const RecordMetadata: React.FC<RecordMetadataProps> = ({
   updatedAt,
   updatedById,
   updatedBySfId,
-  updatedByUser
+  updatedByUser,
+  emailSentAt,
+  emailSentById
 }) => {
-  if (!createdAt && !updatedAt) return null;
+  if (!createdAt && !updatedAt && !emailSentAt) return null;
 
   const formatTimestamp = (timestamp: string) => {
     // Supabase returns timestamps in format: "2024-01-15T10:30:00.000000+00:00" or "2024-01-15T10:30:00"
@@ -91,6 +95,17 @@ const RecordMetadata: React.FC<RecordMetadataProps> = ({
               ) : updatedBySfId ? (
                 <> by SF User ({updatedBySfId})</>
               ) : null}
+            </span>
+          </div>
+        )}
+        {emailSentAt && (
+          <div>
+            <span className="font-medium">Email Sent: </span>
+            <span>
+              {formatTimestamp(emailSentAt)}
+              {emailSentById && (
+                <> <UserByIdDisplay userId={emailSentById} /></>
+              )}
             </span>
           </div>
         )}
