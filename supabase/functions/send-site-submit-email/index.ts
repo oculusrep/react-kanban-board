@@ -159,6 +159,21 @@ serve(async (req) => {
           console.error('Error logging activity:', activityError)
           // Don't fail the whole request if activity logging fails
         }
+
+        // Update site_submit with email metadata
+        const emailSentAt = new Date().toISOString()
+        const { error: updateError } = await supabaseClient
+          .from('site_submit')
+          .update({
+            updated_at: emailSentAt,
+            updated_by_id: userId
+          })
+          .eq('id', siteSubmitId)
+
+        if (updateError) {
+          console.error('Error updating site_submit metadata:', updateError)
+          // Don't fail the whole request if metadata update fails
+        }
       } catch (error) {
         console.error('Error in activity logging:', error)
         // Don't fail the whole request if activity logging fails
@@ -329,6 +344,21 @@ serve(async (req) => {
       if (activityError) {
         console.error('Error logging activity:', activityError)
         // Don't fail the whole request if activity logging fails
+      }
+
+      // Update site_submit with email metadata (who sent it and when)
+      const emailSentAt = new Date().toISOString()
+      const { error: updateError } = await supabaseClient
+        .from('site_submit')
+        .update({
+          updated_at: emailSentAt,
+          updated_by_id: userId
+        })
+        .eq('id', siteSubmitId)
+
+      if (updateError) {
+        console.error('Error updating site_submit metadata:', updateError)
+        // Don't fail the whole request if metadata update fails
       }
     } catch (error) {
       console.error('Error in activity logging:', error)
