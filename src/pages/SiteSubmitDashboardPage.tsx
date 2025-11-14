@@ -85,10 +85,6 @@ export default function SiteSubmitDashboardPage() {
   const [isPropertyDetailsOpen, setIsPropertyDetailsOpen] = useState(false);
   const [selectedPropertyData, setSelectedPropertyData] = useState<any>(null);
 
-  // Site Submit Details slideout (for viewing site submit from property)
-  const [isSiteSubmitDetailsOpen, setIsSiteSubmitDetailsOpen] = useState(false);
-  const [selectedSiteSubmitData, setSelectedSiteSubmitData] = useState<any>(null);
-
   // Full Site Submit slideout (for viewing full site submit record)
   const [isFullSiteSubmitOpen, setIsFullSiteSubmitOpen] = useState(false);
   const [fullSiteSubmitId, setFullSiteSubmitId] = useState<string>("");
@@ -553,41 +549,6 @@ export default function SiteSubmitDashboardPage() {
     setIsPropertyDetailsOpen(true);
   }, []);
 
-  // Handle viewing site submit details from property slideout
-  const handleViewSiteSubmitDetails = useCallback(async (siteSubmit: any) => {
-    console.log('📋 Opening site submit details slideout:', siteSubmit);
-
-    // Fetch fresh site submit data from database to ensure we have latest values
-    try {
-      const { data: freshSiteSubmitData, error } = await supabase
-        .from('site_submit')
-        .select(`
-          *,
-          client!site_submit_client_id_fkey (id, client_name),
-          submit_stage!site_submit_submit_stage_id_fkey (id, name),
-          property_unit!site_submit_property_unit_id_fkey (property_unit_name),
-          property!site_submit_property_id_fkey (*, property_record_type (*))
-        `)
-        .eq('id', siteSubmit.id)
-        .single();
-
-      if (error) {
-        console.error('❌ Error fetching fresh site submit data:', error);
-        // Fall back to cached data if fetch fails
-        setSelectedSiteSubmitData(siteSubmit);
-      } else {
-        console.log('✅ Fetched fresh site submit data:', freshSiteSubmitData);
-        setSelectedSiteSubmitData(freshSiteSubmitData);
-      }
-    } catch (err) {
-      console.error('❌ Exception fetching fresh site submit data:', err);
-      // Fall back to cached data if fetch fails
-      setSelectedSiteSubmitData(siteSubmit);
-    }
-
-    setIsSiteSubmitDetailsOpen(true);
-  }, []);
-
   const handlePropertyDetailsClose = useCallback(() => {
     setIsPropertyDetailsOpen(false);
     setSelectedPropertyData(null);
@@ -597,17 +558,6 @@ export default function SiteSubmitDashboardPage() {
     // Don't refetch all data on every autosave - causes infinite loop
     // The slideout manages its own state. Only refetch if user explicitly requests it.
     console.log('📝 Property data updated (not refetching dashboard data)');
-  }, []);
-
-  const handleSiteSubmitDetailsClose = useCallback(() => {
-    setIsSiteSubmitDetailsOpen(false);
-    setSelectedSiteSubmitData(null);
-  }, []);
-
-  const handleSiteSubmitDataUpdate = useCallback(async () => {
-    // Don't refetch all data on every autosave - causes infinite loop
-    // The slideout manages its own state. Only refetch if user explicitly requests it.
-    console.log('📝 Site submit data updated (not refetching dashboard data)');
   }, []);
 
   const handleOpenFullSiteSubmit = useCallback((siteSubmitId: string) => {
@@ -1189,9 +1139,8 @@ export default function SiteSubmitDashboardPage() {
         type={selectedPinType}
         onDataUpdate={handleDataUpdate}
         onViewPropertyDetails={handleViewPropertyDetails}
-        onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
         onOpenFullSiteSubmit={handleOpenFullSiteSubmit}
-        rightOffset={isFullSiteSubmitOpen ? 800 : (isPropertyDetailsOpen || isSiteSubmitDetailsOpen ? 500 : 0)} // Shift left when full site submit or other slideouts are open
+        rightOffset={isFullSiteSubmitOpen ? 800 : (isPropertyDetailsOpen ? 500 : 0)} // Shift left when full site submit or property details is open
       />
 
       {/* Property Details Slideout (for viewing property from site submit) */}
@@ -1201,18 +1150,6 @@ export default function SiteSubmitDashboardPage() {
         data={selectedPropertyData}
         type="property"
         onDataUpdate={handlePropertyDataUpdate}
-        onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
-        onOpenFullSiteSubmit={handleOpenFullSiteSubmit}
-        rightOffset={isFullSiteSubmitOpen ? 800 : (isSiteSubmitDetailsOpen ? 500 : 0)} // Shift left when full site submit or site submit details is open
-      />
-
-      {/* Site Submit Details Slideout (for viewing site submit from property) */}
-      <PinDetailsSlideout
-        isOpen={isSiteSubmitDetailsOpen}
-        onClose={handleSiteSubmitDetailsClose}
-        data={selectedSiteSubmitData}
-        type="site_submit"
-        onDataUpdate={handleSiteSubmitDataUpdate}
         onOpenFullSiteSubmit={handleOpenFullSiteSubmit}
         rightOffset={isFullSiteSubmitOpen ? 800 : 0} // Shift left when full site submit is open
       />
