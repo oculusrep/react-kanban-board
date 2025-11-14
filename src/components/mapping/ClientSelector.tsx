@@ -102,6 +102,7 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({
   };
 
   const handleClearSelection = () => {
+    console.log('🧹 ClientSelector: Clearing client selection');
     onClientSelect(null);
     setQuery('');
     setResults([]);
@@ -135,6 +136,7 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({
 
     // Clear everything if input is empty
     if (value === "") {
+      console.log('🧹 ClientSelector: Input cleared, deselecting client');
       onClientSelect(null);
       setResults([]);
       setShowDropdown(false);
@@ -143,16 +145,31 @@ const ClientSelector: React.FC<ClientSelectorProps> = ({
 
   return (
     <div className={`relative ${className}`} ref={searchRef}>
-      <input
-        ref={inputRef}
-        type="text"
-        value={query}
-        onChange={handleInputChange}
-        onFocus={handleInputFocus}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        className="block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-      />
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={handleInputChange}
+          onFocus={handleInputFocus}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          className="block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm pr-8"
+        />
+        {/* Clear button - only show when there's a selected client or query */}
+        {(selectedClient || query) && (
+          <button
+            type="button"
+            onClick={handleClearSelection}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+            aria-label="Clear selection"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </div>
 
       {/* Dropdown with suggestions */}
       {showDropdown && (
