@@ -8,9 +8,16 @@ interface SiteSubmitMetrics {
   thisYear: number;
 }
 
+interface LOIMetrics {
+  thisWeek: number;
+  thisMonth: number;
+  thisYear: number;
+}
+
 interface SiteSubmitDetail {
   id: string;
   date_submitted: string;
+  loi_date?: string | null;
   client_id: string | null;
   client_name: string | null;
   submit_stage_id: string | null;
@@ -31,6 +38,11 @@ const KPIDashboardPage: React.FC = () => {
     thisMonth: 0,
     thisYear: 0
   });
+  const [loiMetrics, setLoiMetrics] = useState<LOIMetrics>({
+    thisWeek: 0,
+    thisMonth: 0,
+    thisYear: 0
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reportModalOpen, setReportModalOpen] = useState(false);
@@ -40,6 +52,7 @@ const KPIDashboardPage: React.FC = () => {
   const [siteSubmitSlideoutId, setSiteSubmitSlideoutId] = useState<string | null>(null);
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [selectedEmailDescription, setSelectedEmailDescription] = useState<string | null>(null);
+  const [reportType, setReportType] = useState<'site_submit' | 'loi'>('site_submit');
 
   useEffect(() => {
     loadMetrics();
@@ -119,6 +132,52 @@ const KPIDashboardPage: React.FC = () => {
         thisMonth: monthCount || 0,
         thisYear: yearCount || 0
       });
+
+      // Fetch LOI metrics based on loi_date
+      const loiWeekQuery = supabase
+        .from('site_submit')
+        .select('*', { count: 'exact', head: true })
+        .gte('loi_date', startOfWeek.toISOString())
+        .not('loi_date', 'is', null);
+
+      if (protectedStageId) {
+        loiWeekQuery.neq('submit_stage_id', protectedStageId);
+      }
+
+      const { count: loiWeekCount, error: loiWeekError } = await loiWeekQuery;
+      if (loiWeekError) throw loiWeekError;
+
+      const loiMonthQuery = supabase
+        .from('site_submit')
+        .select('*', { count: 'exact', head: true })
+        .gte('loi_date', startOfMonth.toISOString())
+        .not('loi_date', 'is', null);
+
+      if (protectedStageId) {
+        loiMonthQuery.neq('submit_stage_id', protectedStageId);
+      }
+
+      const { count: loiMonthCount, error: loiMonthError } = await loiMonthQuery;
+      if (loiMonthError) throw loiMonthError;
+
+      const loiYearQuery = supabase
+        .from('site_submit')
+        .select('*', { count: 'exact', head: true })
+        .gte('loi_date', startOfYear.toISOString())
+        .not('loi_date', 'is', null);
+
+      if (protectedStageId) {
+        loiYearQuery.neq('submit_stage_id', protectedStageId);
+      }
+
+      const { count: loiYearCount, error: loiYearError } = await loiYearQuery;
+      if (loiYearError) throw loiYearError;
+
+      setLoiMetrics({
+        thisWeek: loiWeekCount || 0,
+        thisMonth: loiMonthCount || 0,
+        thisYear: loiYearCount || 0
+      });
     } catch (err) {
       console.error('Error loading metrics:', err);
       setError(err instanceof Error ? err.message : 'Failed to load metrics');
@@ -127,10 +186,11 @@ const KPIDashboardPage: React.FC = () => {
     }
   };
 
-  const loadReportData = async (period: TimePeriod) => {
+  const loadReportData = async (period: TimePeriod, type: 'site_submit' | 'loi' = 'site_submit') => {
     try {
       setReportLoading(true);
       setSelectedPeriod(period);
+      setReportType(type);
       setReportModalOpen(true);
 
       const now = new Date();
@@ -165,12 +225,13 @@ const KPIDashboardPage: React.FC = () => {
       const protectedStageId = protectedStage?.id;
 
       // First, get just the site submits without joins (excluding Protected stage)
+      const dateField = type === 'loi' ? 'loi_date' : 'date_submitted';
       const query = supabase
         .from('site_submit')
         .select('*')
-        .gte('date_submitted', startDate.toISOString())
-        .not('date_submitted', 'is', null)
-        .order('date_submitted', { ascending: false });
+        .gte(dateField, startDate.toISOString())
+        .not(dateField, 'is', null)
+        .order(dateField, { ascending: false });
 
       if (protectedStageId) {
         query.neq('submit_stage_id', protectedStageId);
@@ -249,6 +310,7 @@ const KPIDashboardPage: React.FC = () => {
         return {
           id: item.id,
           date_submitted: item.date_submitted,
+          loi_date: item.loi_date || null,
           client_id: item.client_id,
           client_name: client?.client_name || null,
           submit_stage_id: item.submit_stage_id,
@@ -291,10 +353,11 @@ const KPIDashboardPage: React.FC = () => {
   };
 
   const getPeriodTitle = (): string => {
+    const prefix = reportType === 'loi' ? 'LOIs Written - ' : 'Site Submits - ';
     switch (selectedPeriod) {
-      case 'week': return 'This Week';
-      case 'month': return 'This Month';
-      case 'year': return 'This Year';
+      case 'week': return prefix + 'This Week';
+      case 'month': return prefix + 'This Month';
+      case 'year': return prefix + 'This Year';
       default: return '';
     }
   };
@@ -458,6 +521,72 @@ const KPIDashboardPage: React.FC = () => {
               </p>
             </div>
           </div>
+
+          {/* LOIs Written Card */}
+          <div className="bg-white rounded-lg shadow-lg border-2 border-gray-200 p-8 mt-6">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b">
+              <h2 className="text-2xl font-bold text-gray-900">LOIs Written</h2>
+              <svg className="w-8 h-8 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+
+            <div className="grid grid-cols-3 gap-6">
+              {/* This Week */}
+              <button
+                onClick={() => loadReportData('week', 'loi')}
+                className="group text-center p-6 rounded-lg bg-orange-50 hover:bg-orange-100 border-2 border-orange-200 hover:border-orange-400 transition-all hover:shadow-md"
+              >
+                <div className="flex justify-center mb-3">
+                  <CalendarIcon />
+                </div>
+                <div className="text-4xl font-bold text-orange-600 mb-2 group-hover:scale-110 transition-transform">
+                  {loiMetrics.thisWeek}
+                </div>
+                <div className="text-sm font-medium text-gray-700">This Week</div>
+                <div className="text-xs text-gray-500 mt-1">Click for details</div>
+              </button>
+
+              {/* This Month */}
+              <button
+                onClick={() => loadReportData('month', 'loi')}
+                className="group text-center p-6 rounded-lg bg-teal-50 hover:bg-teal-100 border-2 border-teal-200 hover:border-teal-400 transition-all hover:shadow-md"
+              >
+                <div className="flex justify-center mb-3">
+                  <TrendingUpIcon />
+                </div>
+                <div className="text-4xl font-bold text-teal-600 mb-2 group-hover:scale-110 transition-transform">
+                  {loiMetrics.thisMonth}
+                </div>
+                <div className="text-sm font-medium text-gray-700">This Month</div>
+                <div className="text-xs text-gray-500 mt-1">Click for details</div>
+              </button>
+
+              {/* This Year */}
+              <button
+                onClick={() => loadReportData('year', 'loi')}
+                className="group text-center p-6 rounded-lg bg-indigo-50 hover:bg-indigo-100 border-2 border-indigo-200 hover:border-indigo-400 transition-all hover:shadow-md"
+              >
+                <div className="flex justify-center mb-3">
+                  <ChartBarIcon />
+                </div>
+                <div className="text-4xl font-bold text-indigo-600 mb-2 group-hover:scale-110 transition-transform">
+                  {loiMetrics.thisYear}
+                </div>
+                <div className="text-sm font-medium text-gray-700">This Year</div>
+                <div className="text-xs text-gray-500 mt-1">Click for details</div>
+              </button>
+            </div>
+
+            <div className="mt-6 pt-6 border-t text-sm text-gray-600">
+              <p className="flex items-start">
+                <svg className="w-5 h-5 text-gray-400 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Click on any metric to view a detailed report of LOIs written during that period.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -468,8 +597,8 @@ const KPIDashboardPage: React.FC = () => {
             {/* Modal Header */}
             <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white px-6 py-4 flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-bold">Site Submits Report: {getPeriodTitle()}</h2>
-                <p className="text-slate-300 text-sm mt-1">{reportData.length} site submits found</p>
+                <h2 className="text-xl font-bold">{getPeriodTitle()}</h2>
+                <p className="text-slate-300 text-sm mt-1">{reportData.length} {reportType === 'loi' ? 'LOIs' : 'site submits'} found</p>
               </div>
               <button
                 onClick={() => setReportModalOpen(false)}
@@ -503,7 +632,7 @@ const KPIDashboardPage: React.FC = () => {
                     <thead className="bg-gray-50 sticky top-0">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Date Submitted
+                          {reportType === 'loi' ? 'LOI Date' : 'Date Submitted'}
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Site Submit
@@ -526,7 +655,7 @@ const KPIDashboardPage: React.FC = () => {
                       {reportData.map((submit) => (
                         <tr key={submit.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {formatDate(submit.date_submitted)}
+                            {formatDate(reportType === 'loi' ? submit.loi_date || null : submit.date_submitted)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <button
