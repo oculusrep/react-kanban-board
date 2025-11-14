@@ -296,7 +296,8 @@ const KPIDashboardPage: React.FC = () => {
         day: 'numeric',
         year: 'numeric',
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        timeZone: 'America/New_York' // Display in EST/EDT
       });
     } catch {
       return 'Invalid date';

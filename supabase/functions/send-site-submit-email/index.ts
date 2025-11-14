@@ -175,14 +175,29 @@ serve(async (req) => {
         }
 
         console.log('📝 Updating site_submit metadata...')
+        // First, get the current site_submit to check if date_submitted is null
+        const { data: siteSubmit } = await supabaseClient
+          .from('site_submit')
+          .select('date_submitted')
+          .eq('id', siteSubmitId)
+          .single()
+
         // Update site_submit with email metadata
         const emailSentAt = new Date().toISOString()
+        const updateData: any = {
+          updated_at: emailSentAt,
+          updated_by_id: userId
+        }
+
+        // If date_submitted is null, set it to the current date (marking it as "Submitted")
+        if (!siteSubmit?.date_submitted) {
+          updateData.date_submitted = emailSentAt
+          console.log('📅 Setting date_submitted to current date since it was null')
+        }
+
         const { error: updateError } = await supabaseClient
           .from('site_submit')
-          .update({
-            updated_at: emailSentAt,
-            updated_by_id: userId
-          })
+          .update(updateData)
           .eq('id', siteSubmitId)
 
         if (updateError) {
@@ -379,14 +394,29 @@ serve(async (req) => {
       }
 
       console.log('📝 Updating site_submit metadata...')
+      // First, get the current site_submit to check if date_submitted is null
+      const { data: siteSubmit } = await supabaseClient
+        .from('site_submit')
+        .select('date_submitted')
+        .eq('id', siteSubmitId)
+        .single()
+
       // Update site_submit with email metadata (who sent it and when)
       const emailSentAt = new Date().toISOString()
+      const updateData: any = {
+        updated_at: emailSentAt,
+        updated_by_id: userId
+      }
+
+      // If date_submitted is null, set it to the current date (marking it as "Submitted")
+      if (!siteSubmit?.date_submitted) {
+        updateData.date_submitted = emailSentAt
+        console.log('📅 Setting date_submitted to current date since it was null')
+      }
+
       const { error: updateError } = await supabaseClient
         .from('site_submit')
-        .update({
-          updated_at: emailSentAt,
-          updated_by_id: userId
-        })
+        .update(updateData)
         .eq('id', siteSubmitId)
 
       if (updateError) {
