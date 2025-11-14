@@ -125,6 +125,45 @@ serve(async (req) => {
 
       await res.json()
 
+      // Log activity for custom email send
+      try {
+        // Get the current user's ID from the auth header
+        let userId = null
+        if (authHeader) {
+          try {
+            const token = authHeader.replace('Bearer ', '')
+            const { data: { user } } = await supabaseClient.auth.getUser(token)
+            if (user?.id) {
+              userId = user.id
+            }
+          } catch (error) {
+            console.error('Error getting user ID for activity log:', error)
+          }
+        }
+
+        // Create activity record for the email send
+        const { error: activityError } = await supabaseClient
+          .from('activity')
+          .insert({
+            activity_type_id: '018c896a-9d0d-7348-b352-c9f5ddf517f2', // Email activity type ID
+            related_object_type: 'site_submit',
+            related_object_id: siteSubmitId,
+            activity_date: new Date().toISOString(),
+            created_by_id: userId,
+            owner_id: userId,
+            description: `Custom site submit email sent to ${customEmail.to.length} recipient(s): ${customEmail.to.join(', ')}`,
+            sf_status: 'Completed'
+          })
+
+        if (activityError) {
+          console.error('Error logging activity:', activityError)
+          // Don't fail the whole request if activity logging fails
+        }
+      } catch (error) {
+        console.error('Error in activity logging:', error)
+        // Don't fail the whole request if activity logging fails
+      }
+
       return new Response(
         JSON.stringify({
           success: true,
@@ -256,6 +295,45 @@ serve(async (req) => {
     })
 
     const results = await Promise.all(emailPromises)
+
+    // Log activity for email send
+    try {
+      // Get the current user's ID from the auth header
+      let userId = null
+      if (authHeader) {
+        try {
+          const token = authHeader.replace('Bearer ', '')
+          const { data: { user } } = await supabaseClient.auth.getUser(token)
+          if (user?.id) {
+            userId = user.id
+          }
+        } catch (error) {
+          console.error('Error getting user ID for activity log:', error)
+        }
+      }
+
+      // Create activity record for the email send
+      const { error: activityError } = await supabaseClient
+        .from('activity')
+        .insert({
+          activity_type_id: '018c896a-9d0d-7348-b352-c9f5ddf517f2', // Email activity type ID
+          related_object_type: 'site_submit',
+          related_object_id: siteSubmitId,
+          activity_date: new Date().toISOString(),
+          created_by_id: userId,
+          owner_id: userId,
+          description: `Site submit email sent to ${results.length} recipient(s): ${uniqueContacts.map((c: any) => c.email).join(', ')}`,
+          sf_status: 'Completed'
+        })
+
+      if (activityError) {
+        console.error('Error logging activity:', activityError)
+        // Don't fail the whole request if activity logging fails
+      }
+    } catch (error) {
+      console.error('Error in activity logging:', error)
+      // Don't fail the whole request if activity logging fails
+    }
 
     return new Response(
       JSON.stringify({

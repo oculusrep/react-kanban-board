@@ -13,8 +13,8 @@ interface SiteSubmitDetail {
   date_submitted: string;
   client_id: string | null;
   client_name: string | null;
-  record_type_id: string | null;
-  record_type_name: string | null;
+  submit_stage_id: string | null;
+  submit_stage_name: string | null;
   email_sent_date: string | null;
   property_address: string | null;
 }
@@ -130,10 +130,10 @@ const KPIDashboardPage: React.FC = () => {
           id,
           date_submitted,
           client_id,
-          record_type_id,
+          submit_stage_id,
           property_id,
           client:client_id (client_name),
-          record_type:record_type_id (name),
+          submit_stage:submit_stage_id (name),
           property:property_id (address, city, state)
         `)
         .gte('date_submitted', startDate.toISOString())
@@ -171,8 +171,8 @@ const KPIDashboardPage: React.FC = () => {
         date_submitted: item.date_submitted,
         client_id: item.client_id,
         client_name: item.client?.client_name || null,
-        record_type_id: item.record_type_id,
-        record_type_name: item.record_type?.name || null,
+        submit_stage_id: item.submit_stage_id,
+        submit_stage_name: item.submit_stage?.name || null,
         email_sent_date: emailData[item.id] || null,
         property_address: item.property ?
           `${item.property.address || ''}, ${item.property.city || ''}, ${item.property.state || ''}`.trim() : null
@@ -448,7 +448,7 @@ const KPIDashboardPage: React.FC = () => {
                             {submit.client_name || 'N/A'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {submit.record_type_name || 'N/A'}
+                            {submit.submit_stage_name || 'N/A'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             {submit.email_sent_date ? (
