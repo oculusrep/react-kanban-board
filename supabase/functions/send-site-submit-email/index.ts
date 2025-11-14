@@ -149,15 +149,18 @@ serve(async (req) => {
 
         console.log('📝 Inserting activity record...')
         // Create activity record for the email send
+        // NOTE: activity_type_id is set to NULL because the activity_type table is empty
+        // and the foreign key constraint would fail with a non-existent ID
         const { data: activityData, error: activityError } = await supabaseClient
           .from('activity')
           .insert({
-            activity_type_id: '018c896a-9d0d-7348-b352-c9f5ddf517f2', // Email activity type ID
+            activity_type_id: null, // Set to NULL - activity_type table is currently empty
             related_object_type: 'site_submit',
             related_object_id: siteSubmitId,
             activity_date: new Date().toISOString(),
             created_by_id: userId,
             owner_id: userId,
+            subject: 'Site Submit Email', // Adding subject for better identification
             description: `Custom site submit email sent to ${customEmail.to.length} recipient(s): ${customEmail.to.join(', ')}`,
             sf_status: 'Completed'
           })
@@ -350,15 +353,18 @@ serve(async (req) => {
 
       console.log('📝 Inserting activity record...')
       // Create activity record for the email send
+      // NOTE: activity_type_id is set to NULL because the activity_type table is empty
+      // and the foreign key constraint would fail with a non-existent ID
       const { data: activityData, error: activityError } = await supabaseClient
         .from('activity')
         .insert({
-          activity_type_id: '018c896a-9d0d-7348-b352-c9f5ddf517f2', // Email activity type ID
+          activity_type_id: null, // Set to NULL - activity_type table is currently empty
           related_object_type: 'site_submit',
           related_object_id: siteSubmitId,
           activity_date: new Date().toISOString(),
           created_by_id: userId,
           owner_id: userId,
+          subject: 'Site Submit Email', // Adding subject for better identification
           description: `Site submit email sent to ${results.length} recipient(s): ${uniqueContacts.map((c: any) => c.email).join(', ')}`,
           sf_status: 'Completed'
         })

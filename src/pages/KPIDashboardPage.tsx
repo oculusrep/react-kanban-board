@@ -217,7 +217,7 @@ const KPIDashboardPage: React.FC = () => {
           .select('related_object_id, activity_date, description')
           .in('related_object_id', siteSubmitIds)
           .eq('related_object_type', 'site_submit')
-          .eq('activity_type_id', '018c896a-9d0d-7348-b352-c9f5ddf517f2')
+          .eq('subject', 'Site Submit Email')
           .order('activity_date', { ascending: false }) : { data: [] }
       ]);
 
