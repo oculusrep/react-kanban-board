@@ -31,6 +31,7 @@ interface SiteSubmitReportRow {
   assignment_id: string | null;
   assignment_name: string | null;
   created_at: string | null;
+  date_submitted: string | null;
   // Property data for slideout
   property?: any;
 }
@@ -162,6 +163,7 @@ export default function SiteSubmitDashboardPage() {
           client_id,
           assignment_id,
           created_at,
+          date_submitted,
           property!site_submit_property_id_fkey (
             id,
             property_name,
@@ -258,6 +260,7 @@ export default function SiteSubmitDashboardPage() {
           assignment_id: submit.assignment_id,
           assignment_name: assignment?.assignment_name ?? null,
           created_at: submit.created_at,
+          date_submitted: submit.date_submitted,
           property: property
         };
       });
@@ -470,6 +473,7 @@ export default function SiteSubmitDashboardPage() {
       client_id: row.client_id,
       assignment_id: row.assignment_id,
       created_at: row.created_at,
+      date_submitted: row.date_submitted,
       property: row.property,
       submit_stage: row.submit_stage_name ? { id: row.submit_stage_id!, name: row.submit_stage_name } : undefined,
       client: row.client_name ? { client_name: row.client_name } : undefined,
