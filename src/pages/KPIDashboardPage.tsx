@@ -128,6 +128,9 @@ const KPIDashboardPage: React.FC = () => {
           break;
       }
 
+      console.log('Loading report for period:', period);
+      console.log('Start date:', startDate.toISOString());
+
       // Query site submits with related data
       const { data, error } = await supabase
         .from('site_submit')
@@ -147,7 +150,13 @@ const KPIDashboardPage: React.FC = () => {
         .not('date_submitted', 'is', null)
         .order('date_submitted', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching site submits:', error);
+        throw error;
+      }
+
+      console.log('Site submits fetched:', data?.length || 0);
+      console.log('Sample data:', data?.[0]);
 
       // Now fetch email data for each site submit
       const siteSubmitIds = data?.map(ss => ss.id) || [];
@@ -199,9 +208,14 @@ const KPIDashboardPage: React.FC = () => {
         };
       }) || [];
 
+      console.log('Transformed data count:', transformedData.length);
+      console.log('Sample transformed data:', transformedData[0]);
+
       setReportData(transformedData);
     } catch (err) {
       console.error('Error loading report data:', err);
+      // Show error to user
+      alert(`Error loading report: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setReportLoading(false);
     }
