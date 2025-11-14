@@ -1410,6 +1410,7 @@ const MappingPageContent: React.FC = () => {
 
   // Custom client selection handler that auto-enables site submits and expands legend
   const handleClientSelection = (client: ClientSearchResult | null) => {
+    console.log('🔄 Client selection changed:', client ? client.client_name : 'null');
     setSelectedClient(client);
 
     if (client) {
@@ -1423,11 +1424,9 @@ const MappingPageContent: React.FC = () => {
       setIsLegendExpanded(true);
       console.log('📊 Client selected, expanding legend to show results');
     } else {
-      // When client is cleared, turn off site submits layer and collapse legend
-      if (layerState.site_submits?.isVisible) {
-        console.log('🎯 Client cleared, auto-disabling site submits layer');
-        toggleLayer('site_submits');
-      }
+      // When client is cleared, keep layer visible but it will show 0 results
+      // The SiteSubmitLayer will handle showing no markers when clientId is null
+      console.log('🎯 Client cleared, layer will show 0 site submits');
       setIsLegendExpanded(false);
       console.log('📊 Client cleared, collapsing legend');
     }
