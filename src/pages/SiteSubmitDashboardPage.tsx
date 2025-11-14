@@ -34,6 +34,8 @@ interface SiteSubmitReportRow {
   date_submitted: string | null;
   // Property data for slideout
   property?: any;
+  // Full site submit data for slideout (preserves all fields)
+  _fullSiteSubmit?: any;
 }
 
 type SortField = "site_submit_name" | "property_name" | "display_sqft" | "display_nnn" | "submit_stage_name" | "client_name" | "created_at";
@@ -164,6 +166,18 @@ export default function SiteSubmitDashboardPage() {
           assignment_id,
           created_at,
           date_submitted,
+          year_1_rent,
+          ti,
+          notes,
+          customer_comments,
+          sf_property_unit,
+          loi_written,
+          loi_date,
+          delivery_date,
+          delivery_timeframe,
+          created_by_id,
+          updated_at,
+          updated_by_id,
           property!site_submit_property_id_fkey (
             id,
             property_name,
@@ -261,7 +275,8 @@ export default function SiteSubmitDashboardPage() {
           assignment_name: assignment?.assignment_name ?? null,
           created_at: submit.created_at,
           date_submitted: submit.date_submitted,
-          property: property
+          property: property,
+          _fullSiteSubmit: submit // Store the full original object
         };
       });
 
@@ -463,8 +478,9 @@ export default function SiteSubmitDashboardPage() {
   };
 
   const handleSiteSubmitClick = (row: SiteSubmitReportRow) => {
-    // Construct full site submit object for slideout
-    const siteSubmitData = {
+    // Use the full site submit object which preserves all fields from the database
+    const siteSubmitData = row._fullSiteSubmit || {
+      // Fallback if _fullSiteSubmit is not available
       id: row.id,
       site_submit_name: row.site_submit_name,
       property_id: row.property_id,
