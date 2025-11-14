@@ -177,19 +177,29 @@ const ContactDetailsPage: React.FC = () => {
     ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Contact'
     : 'New Contact';
 
+  const ContactIcon = () => (
+    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+    </svg>
+  );
+
   return (
     <>
       <div className="min-h-screen bg-gray-50">
         {/* Contact Header Bar */}
-        <div className="bg-white border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center py-6 md:justify-start md:space-x-10">
-              <div className="flex justify-start lg:w-0 lg:flex-1">
-                <h1 className="text-2xl font-bold text-gray-900">
+        <div className="bg-gradient-to-r from-slate-800 to-slate-700 border-b border-slate-600 text-white px-6 py-4">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-600 rounded-lg">
+                  <ContactIcon />
+                  <span className="text-white text-sm font-medium">Contact</span>
+                </div>
+                <h1 className="text-xl font-bold leading-tight">
                   {contactName}
                 </h1>
                 {contact?.company && (
-                  <span className="ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-600 text-white">
                     {contact.company}
                   </span>
                 )}

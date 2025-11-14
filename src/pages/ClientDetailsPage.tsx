@@ -157,40 +157,54 @@ const ClientDetailsPage: React.FC = () => {
     { id: 'files', name: 'Files' }
   ];
 
+  const ClientIcon = () => (
+    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+    </svg>
+  );
+
   return (
     <>
-      <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 transition-all duration-300 ${
-        !isSidebarMinimized ? 'mr-[500px]' : 'mr-12'
-      }`}>
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                {isNewClient ? 'New Client' : client?.client_name || 'Unnamed Client'}
-              </h1>
-              {client?.type && (
-                <p className="text-sm text-gray-500 mt-1">
-                  {client.type}
-                </p>
-              )}
-            </div>
-            <div className="flex items-center space-x-3">
-              {!isNewClient && clientId && (
-                <button
-                  onClick={handleDelete}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md transition-colors"
-                  title="Delete Client"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                  Delete
-                </button>
-              )}
+      <div className="min-h-screen bg-gray-50">
+        {/* Client Header Bar */}
+        <div className="bg-gradient-to-r from-slate-800 to-slate-700 border-b border-slate-600 text-white px-6 py-4">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-600 rounded-lg">
+                  <ClientIcon />
+                  <span className="text-white text-sm font-medium">Client</span>
+                </div>
+                <h1 className="text-xl font-bold leading-tight">
+                  {isNewClient ? 'New Client' : client?.client_name || 'Unnamed Client'}
+                </h1>
+                {client?.type && (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-600 text-white">
+                    {client.type}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center space-x-3">
+                {!isNewClient && clientId && (
+                  <button
+                    onClick={handleDelete}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md transition-colors"
+                    title="Delete Client"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
+
+        <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 transition-all duration-300 ${
+          !isSidebarMinimized ? 'mr-[500px]' : 'mr-12'
+        }`}>
 
       {/* Tab Navigation */}
       <div className="border-b border-gray-200 mb-6">
@@ -255,7 +269,8 @@ const ClientDetailsPage: React.FC = () => {
           </>
         )}
       </div>
-    </div>
+        </div>
+      </div>
 
       {/* Client Sidebar */}
       {clientId && clientId !== 'new' && (
