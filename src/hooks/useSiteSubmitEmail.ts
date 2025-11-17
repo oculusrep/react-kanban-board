@@ -163,6 +163,51 @@ export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
         }
       }
 
+      // Fetch property-level files if property_id exists but property_unit_id does not
+      let propertyFiles: PropertyUnitFile[] = [];
+      if (siteSubmitData.property_id && !siteSubmitData.property_unit_id) {
+        try {
+          const { data: dropboxMapping } = await supabase
+            .from('dropbox_mapping')
+            .select('dropbox_folder_path')
+            .eq('entity_type', 'property')
+            .eq('entity_id', siteSubmitData.property_id)
+            .single();
+
+          if (dropboxMapping?.dropbox_folder_path) {
+            const dropboxService = new DropboxService(
+              import.meta.env.VITE_DROPBOX_ACCESS_TOKEN || '',
+              import.meta.env.VITE_DROPBOX_REFRESH_TOKEN || '',
+              import.meta.env.VITE_DROPBOX_APP_KEY || '',
+              import.meta.env.VITE_DROPBOX_APP_SECRET || ''
+            );
+
+            const contents = await dropboxService.listFolderContents(dropboxMapping.dropbox_folder_path);
+
+            // Filter to only include files (not subfolders like "Units/")
+            const filePromises = contents
+              .filter(item => item.type === 'file')
+              .map(async (file) => {
+                try {
+                  const sharedLink = await dropboxService.getSharedLink(file.path);
+                  return {
+                    name: file.name,
+                    sharedLink: sharedLink
+                  };
+                } catch (error) {
+                  console.error(`Failed to get shared link for ${file.name}:`, error);
+                  return null;
+                }
+              });
+
+            const filesWithLinks = await Promise.all(filePromises);
+            propertyFiles = filesWithLinks.filter((file): file is PropertyUnitFile => file !== null);
+          }
+        } catch (error) {
+          console.error('Error fetching property files:', error);
+        }
+      }
+
       // Generate default email template
       const defaultSubject = `New site for Review – ${siteSubmitData.property?.property_name || 'Untitled'} – ${siteSubmitData.client?.client_name || 'N/A'}`;
       const defaultBody = generateSiteSubmitEmailTemplate({
@@ -172,6 +217,7 @@ export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
         contacts: uniqueContacts,
         userData,
         propertyUnitFiles,
+        propertyFiles,
       });
 
       // Set email default data and show composer modal

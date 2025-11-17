@@ -16,11 +16,12 @@ export interface SiteSubmitEmailData {
   propertyUnit: any;
   contacts: any[];
   userData: any;
-  propertyUnitFiles?: PropertyUnitFile[]; // Array of files with shared links
+  propertyUnitFiles?: PropertyUnitFile[]; // Array of property unit files with shared links
+  propertyFiles?: PropertyUnitFile[]; // Array of property-level files with shared links
 }
 
 export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): string {
-  const { siteSubmit, property, propertyUnit, contacts, userData, propertyUnitFiles } = data;
+  const { siteSubmit, property, propertyUnit, contacts, userData, propertyUnitFiles, propertyFiles } = data;
 
   // Helper: Format currency
   const formatCurrency = (value: number | null | undefined) => {
@@ -117,10 +118,20 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
 
   // Supporting Files Section
   const hasPropertyUnitFiles = propertyUnitFiles && propertyUnitFiles.length > 0;
-  const hasFiles = property?.marketing_materials || property?.site_plan || property?.demographics || hasPropertyUnitFiles;
+  const hasPropertyFiles = propertyFiles && propertyFiles.length > 0;
+  const hasFiles = property?.marketing_materials || property?.site_plan || property?.demographics || hasPropertyUnitFiles || hasPropertyFiles;
   if (hasFiles) {
     emailHtml += `<br/>`;
     emailHtml += `<p><strong>Supporting Files:</strong><br/>`;
+
+    // For property-level site submits: show both property Dropbox files AND generic links
+    if (hasPropertyFiles) {
+      propertyFiles.forEach(file => {
+        emailHtml += `<a href="${file.sharedLink}">${file.name}</a><br/>`;
+      });
+    }
+
+    // Always show generic property-level links if they exist
     if (property?.marketing_materials) {
       emailHtml += `<a href="${property.marketing_materials}">Marketing Materials</a><br/>`;
     }
@@ -130,7 +141,8 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
     if (property?.demographics) {
       emailHtml += `<a href="${property.demographics}">Demographics</a><br/>`;
     }
-    // Add individual property unit files
+
+    // Add individual property unit files (for property unit site submits)
     if (hasPropertyUnitFiles) {
       propertyUnitFiles.forEach(file => {
         emailHtml += `<a href="${file.sharedLink}">${file.name}</a><br/>`;
