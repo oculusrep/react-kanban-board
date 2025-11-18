@@ -291,6 +291,12 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
     console.log('Call contact for property:', propertyId);
   };
 
+  const handleOpenMap = () => {
+    if (!propertyId) return;
+    const mapUrl = `/mapping?property=${propertyId}&verify=true`;
+    window.open(mapUrl, '_blank');
+  };
+
   const handleDealClick = (dealId: string) => {
     navigate(`/deal/${dealId}`);
   };
@@ -366,6 +372,7 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
           handleFieldUpdate('longitude', coords.lng);
         })}
         onCallContact={handleCallContact}
+        onOpenMap={handleOpenMap}
         onDelete={onDelete}
       />
 

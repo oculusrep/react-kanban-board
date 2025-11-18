@@ -18,6 +18,7 @@ interface PropertyHeaderProps {
   onGetLocation?: () => void;
   onCallContact?: () => void;
   onDelete?: () => void;
+  onOpenMap?: () => void;
 }
 
 const PropertyHeader: React.FC<PropertyHeaderProps> = ({
@@ -27,7 +28,8 @@ const PropertyHeader: React.FC<PropertyHeaderProps> = ({
   onBack,
   onGetLocation,
   onCallContact,
-  onDelete
+  onDelete,
+  onOpenMap
 }) => {
   const getStageColor = (stageLabel?: string): string => {
     if (!stageLabel) return 'bg-gray-100 text-gray-800 border-gray-200';
@@ -91,6 +93,18 @@ const PropertyHeader: React.FC<PropertyHeaderProps> = ({
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                </svg>
+              </button>
+            )}
+
+            {onOpenMap && property.id && (
+              <button
+                onClick={onOpenMap}
+                className="flex items-center justify-center w-10 h-10 rounded-lg bg-purple-600 hover:bg-purple-700 transition-colors"
+                title="Open on map"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
                 </svg>
               </button>
             )}

@@ -277,6 +277,60 @@ const MappingPageContent: React.FC = () => {
     }
   }, [location.search, mapInstance, layerState.site_submits?.isVisible, toggleLayer, setVerifyingSiteSubmitId]);
 
+  // Handle property verification from URL parameter
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const propertyId = params.get('property');
+    const verifyMode = params.get('verify') === 'true';
+
+    if (propertyId && verifyMode && mapInstance) {
+      console.log('📍 Property verification requested:', propertyId);
+
+      // Fetch the FULL property data
+      supabase
+        .from('property')
+        .select('*')
+        .eq('id', propertyId)
+        .single()
+        .then(({ data, error }) => {
+          if (error || !data) {
+            console.error('Failed to fetch property:', error);
+            showToast('Property not found', { type: 'error' });
+            return;
+          }
+
+          // Determine coordinates to use (priority: verified coords > regular coords)
+          const lat = data.verified_latitude ?? data.latitude;
+          const lng = data.verified_longitude ?? data.longitude;
+
+          if (lat && lng) {
+            // Zoom to the location
+            mapInstance.setCenter({ lat, lng });
+            mapInstance.setZoom(18);
+
+            // Enable properties layer if not already visible (so pin is visible)
+            if (!layerState.properties?.isVisible) {
+              console.log('🎯 Verify mode: auto-enabling properties layer');
+              toggleLayer('properties');
+            }
+
+            // Set verifying state so the PropertyLayer makes the marker draggable
+            setVerifyingPropertyId(propertyId);
+
+            // Open the pin details slideout for this property
+            setSelectedPinData(data);
+            setSelectedPinType('property');
+            setPinDetailsInitialTab('details');
+            setIsPinDetailsOpen(true);
+
+            showToast(`Zoomed to ${data.property_name || data.address || 'Property'} - Drag the pin to verify location`, { type: 'success' });
+          } else {
+            showToast('This property has no coordinates. Please add coordinates first.', { type: 'info' });
+          }
+        });
+    }
+  }, [location.search, mapInstance, layerState.properties?.isVisible, toggleLayer, setVerifyingPropertyId]);
+
   const handleMapLoad = (map: google.maps.Map) => {
     setMapInstance(map);
     console.log('Map loaded successfully:', map);
