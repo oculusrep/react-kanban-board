@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import { useToast } from '../hooks/useToast';
-import { useAuth } from '../contexts/AuthContext';
 import { useAutosave } from '../hooks/useAutosave';
 import Toast from './Toast';
 import ConfirmDialog from './ConfirmDialog';
@@ -75,7 +74,9 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [emailToggleKey, setEmailToggleKey] = useState(0); // Counter to track email toggle changes
   const { toast, showToast, hideToast} = useToast();
-  const { userTableId } = useAuth();
+  // Note: We intentionally don't use userTableId here.
+  // The created_by_id and updated_by_id fields use database defaults (auth.uid())
+  // because the FK constraint references user(auth_user_id), not user(id).
 
   // Form data - single state object to prevent multiple re-renders
   const [formData, setFormData] = useState({
@@ -175,6 +176,8 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
       throw new Error('Please specify how many days prior to send the email reminder');
     }
 
+    // Note: updated_by_id is NOT set here - it uses database default (auth.uid())
+    // This is important because the FK constraint references user(auth_user_id), not user(id)
     const payload: any = {
       deal_id: dealId,
       subject: finalSubject,
@@ -182,8 +185,7 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
       description: data.description.trim() || null,
       send_email: data.sendEmail,
       send_email_days_prior: data.sendEmail && data.sendEmailDaysPrior ? parseInt(data.sendEmailDaysPrior) : null,
-      updated_at: new Date().toISOString(),
-      updated_by_id: userTableId || null
+      updated_at: new Date().toISOString()
     };
 
     if (criticalDateId) {
@@ -200,10 +202,10 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
       console.log('🔍 Checking sync conditions - is_timeline_linked:', criticalDate?.is_timeline_linked, 'deal_field_name:', criticalDate?.deal_field_name);
       if (criticalDate?.is_timeline_linked && criticalDate?.deal_field_name) {
         console.log('🔄 Syncing timeline-linked date to deal field:', criticalDate.deal_field_name);
+        // Note: updated_by_id is NOT set here - it uses database default (auth.uid())
         const dealUpdatePayload: any = {
           [criticalDate.deal_field_name]: data.criticalDateValue || null,
-          updated_at: new Date().toISOString(),
-          updated_by_id: userTableId || null
+          updated_at: new Date().toISOString()
         };
         console.log('📤 Deal update payload:', dealUpdatePayload);
 
@@ -224,8 +226,9 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
       onUpdate?.(criticalDateId, payload);
     } else {
       // Create new
+      // Note: created_by_id and updated_by_id are NOT set here - they use database defaults (auth.uid())
+      // This is important because the FK constraint references user(auth_user_id), not user(id)
       payload.created_at = new Date().toISOString();
-      payload.created_by_id = userTableId || null;
       payload.is_default = false;
 
       const { error, data: newData } = await supabase
@@ -241,7 +244,7 @@ const CriticalDateSidebar: React.FC<CriticalDateSidebarProps> = ({
         setCriticalDate(newData);
       }
     }
-  }, [dealId, criticalDateId, userTableId, criticalDate]);
+  }, [dealId, criticalDateId, criticalDate]);
 
   // Autosave hook - does NOT call onSave to avoid infinite loop
   // The real-time subscription in CriticalDatesTab handles table refresh
