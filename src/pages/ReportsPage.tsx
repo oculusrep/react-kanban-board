@@ -89,6 +89,14 @@ export default function ReportsPage() {
       icon: "☁️",
       adminOnly: true,
       permission: "can_view_dropbox_sync_admin"
+    },
+    {
+      id: "rob-report",
+      name: "Rob Report",
+      description: "Deal pipeline and commission summary by stage with broker net breakdowns",
+      route: "/reports/rob-report",
+      icon: "📈",
+      permission: "can_view_rob_report"
     }
   ];
 

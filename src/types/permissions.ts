@@ -59,6 +59,7 @@ export interface RolePermissions {
   can_view_assignments_report?: boolean;
   can_view_site_submit_dashboard?: boolean;
   can_view_dropbox_sync_admin?: boolean;
+  can_view_rob_report?: boolean;
 
   // Tab-Level Visibility (Deal Page)
   can_view_deal_commission_tab?: boolean;
@@ -359,6 +360,13 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     key: 'can_view_dropbox_sync_admin',
     label: 'Dropbox Sync Admin',
     description: 'Access dropbox sync administration (admin only)',
+    category: 'reporting',
+    defaultValue: false,
+  },
+  {
+    key: 'can_view_rob_report',
+    label: 'Rob Report',
+    description: 'View the Rob Report (deal pipeline and commission summary)',
     category: 'reporting',
     defaultValue: false,
   },

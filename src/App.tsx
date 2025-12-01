@@ -30,6 +30,7 @@ import PaymentDashboardPage from "./pages/PaymentDashboardPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import UserManagementPage from "./pages/UserManagementPage";
 import KPIDashboardPage from "./pages/KPIDashboardPage";
+import RobReportPage from "./pages/RobReportPage";
 
 function ProtectedLayout() {
   const location = useLocation();
@@ -79,6 +80,7 @@ function App() {
           <Route path="reports/assignments" element={<AssignmentsReportPage />} />
           <Route path="reports/site-submit-dashboard" element={<SiteSubmitDashboardPage />} />
           <Route path="reports/dropbox-sync-admin" element={<AdminRoute><DropboxSyncAdminPage /></AdminRoute>} />
+          <Route path="reports/rob-report" element={<RobReportPage />} />
           <Route path="kpi-dashboard" element={<KPIDashboardPage />} />
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
         </Route>
