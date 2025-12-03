@@ -40,6 +40,7 @@ interface PaymentDetail {
   deal_id: string;
   deal_name: string;
   payment_name: string;
+  invoice_number: string | null;
   gci: number;               // payment_amount
   agci: number;
   house: number;
@@ -196,6 +197,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
           payment_received_date,
           payment_date_estimated,
           payment_received,
+          orep_invoice,
           deal:deal_id (
             deal_name,
             stage_id,
@@ -342,6 +344,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
             deal_id: p.deal_id,
             deal_name: (p.deal as any)?.deal_name || 'Unnamed Deal',
             payment_name: p.payment_name || 'Unnamed Payment',
+            invoice_number: p.orep_invoice || null,
             gci,
             agci: p.agci || 0,
             house,
@@ -963,7 +966,12 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                                 {payment.deal_name}
                               </button>
                             )}
-                            <span className="text-xs text-gray-500">{payment.payment_name}</span>
+                            <span className="text-xs text-gray-500">
+                              {payment.payment_name}
+                              {payment.invoice_number && (
+                                <span className="ml-2 text-green-600 font-medium">{payment.invoice_number}</span>
+                              )}
+                            </span>
                           </div>
                         </td>
                         <td className="px-4 py-2 text-sm text-right text-gray-600">
