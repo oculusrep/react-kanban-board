@@ -88,7 +88,11 @@ interface PaymentSplitData {
   split_broker_total: number;
 }
 
-export default function RobReport() {
+interface RobReportProps {
+  readOnly?: boolean;
+}
+
+export default function RobReport({ readOnly = false }: RobReportProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reportData, setReportData] = useState<ReportRow[]>([]);
@@ -579,7 +583,7 @@ export default function RobReport() {
                         </svg>
                       )}
                       {row.category}
-                      {row.missingSplitsCount > 0 && (
+                      {!readOnly && row.missingSplitsCount > 0 && (
                         <span className="text-orange-500 text-xs font-normal">
                           ⚠️ {row.missingSplitsCount}
                         </span>
@@ -618,7 +622,7 @@ export default function RobReport() {
                       <tr
                         key={deal.id}
                         className={`border-l-4 ${
-                          deal.hasSplits
+                          readOnly || deal.hasSplits
                             ? 'bg-gray-50 border-blue-400'
                             : 'bg-orange-50 border-orange-400'
                         }`}
@@ -626,31 +630,39 @@ export default function RobReport() {
                         <td className="px-4 py-2 text-sm text-gray-600 pl-10">
                           <div className="flex items-start justify-between">
                             <div className="flex flex-col">
+                              {readOnly ? (
+                                <span className="font-medium text-gray-900">
+                                  {deal.deal_name}
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedDealId(deal.id);
+                                  }}
+                                  className="font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
+                                >
+                                  {!deal.hasSplits && <span className="text-orange-500 mr-1">⚠️</span>}
+                                  {deal.deal_name}
+                                </button>
+                              )}
+                              <span className="text-xs text-gray-500">{deal.stage_label}</span>
+                            </div>
+                            {!readOnly && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setSelectedDealId(deal.id);
+                                  setSelectedDealForSplits({ id: deal.id, name: deal.deal_name });
                                 }}
-                                className="font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
+                                className={`ml-2 text-xs px-2 py-0.5 rounded ${
+                                  deal.hasSplits
+                                    ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                                }`}
                               >
-                                {!deal.hasSplits && <span className="text-orange-500 mr-1">⚠️</span>}
-                                {deal.deal_name}
+                                {deal.hasSplits ? 'Edit Splits' : '+ Add Splits'}
                               </button>
-                              <span className="text-xs text-gray-500">{deal.stage_label}</span>
-                            </div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedDealForSplits({ id: deal.id, name: deal.deal_name });
-                              }}
-                              className={`ml-2 text-xs px-2 py-0.5 rounded ${
-                                deal.hasSplits
-                                  ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                  : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
-                              }`}
-                            >
-                              {deal.hasSplits ? 'Edit Splits' : '+ Add Splits'}
-                            </button>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-2 text-sm text-right text-gray-600">
@@ -717,7 +729,7 @@ export default function RobReport() {
             <tr className="bg-gray-800 text-white font-semibold">
               <td className="px-4 py-3 text-sm">
                 TOTALS
-                {dealTotals.missingSplitsCount > 0 && (
+                {!readOnly && dealTotals.missingSplitsCount > 0 && (
                   <span className="ml-2 text-orange-300 text-xs font-normal">
                     ⚠️ {dealTotals.missingSplitsCount}
                   </span>
@@ -815,13 +827,13 @@ export default function RobReport() {
           <p><strong>Pipeline 50%+:</strong> All deals in Negotiating LOI or At Lease/PSA stages</p>
           <p><strong>Collected:</strong> Payments received in {currentYear}</p>
           <p><strong>Invoiced Payments:</strong> Pending payments on Booked or Executed Payable deals</p>
-          <p><strong>⚠️ Missing:</strong> Deals with no commission splits assigned - click to add splits</p>
+          {!readOnly && <p><strong>⚠️ Missing:</strong> Deals with no commission splits assigned - click to add splits</p>}
           <p><strong># Deals:</strong> Deal count does not include any of Greg's deals</p>
         </div>
       </div>
 
-      {/* Quick Commission Split Modal */}
-      {selectedDealForSplits && (
+      {/* Quick Commission Split Modal - only in edit mode */}
+      {!readOnly && selectedDealForSplits && (
         <QuickCommissionSplitModal
           isOpen={!!selectedDealForSplits}
           onClose={() => setSelectedDealForSplits(null)}
@@ -831,13 +843,15 @@ export default function RobReport() {
         />
       )}
 
-      {/* Deal Details Slideout */}
-      <DealDetailsSlideout
-        dealId={selectedDealId}
-        isOpen={!!selectedDealId}
-        onClose={() => setSelectedDealId(null)}
-        onDealUpdated={fetchReportData}
-      />
+      {/* Deal Details Slideout - only in edit mode */}
+      {!readOnly && (
+        <DealDetailsSlideout
+          dealId={selectedDealId}
+          isOpen={!!selectedDealId}
+          onClose={() => setSelectedDealId(null)}
+          onDealUpdated={fetchReportData}
+        />
+      )}
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { AuthProvider } from "./contexts/AuthContext";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminRoute from "./components/AdminRoute";
+import CoachRoute from "./components/CoachRoute";
+import CoachNavbar from "./components/CoachNavbar";
 import KanbanBoard from "./components/KanbanBoard";
 import DealDetailsPage from "./pages/DealDetailsPage";
 import PropertyDetailsPage from "./pages/PropertyDetailsPage";
@@ -31,17 +33,35 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 import UserManagementPage from "./pages/UserManagementPage";
 import KPIDashboardPage from "./pages/KPIDashboardPage";
 import RobReportPage from "./pages/RobReportPage";
+import CoachDashboardPage from "./pages/CoachDashboardPage";
 
 function ProtectedLayout() {
   const location = useLocation();
+  const { userRole } = useAuth();
   const searchParams = new URLSearchParams(location.search);
   const isEmbedded = searchParams.get('embedded') === 'true';
 
+  // Coach users get a simplified navbar
+  const NavbarComponent = userRole === 'coach' ? CoachNavbar : Navbar;
+
   return (
     <ProtectedRoute>
-      {!isEmbedded && <Navbar />}
+      {!isEmbedded && <NavbarComponent />}
     </ProtectedRoute>
   );
+}
+
+// Smart redirect based on user role
+function RoleBasedRedirect() {
+  const { userRole } = useAuth();
+
+  // Coach users go to coach dashboard
+  if (userRole === 'coach') {
+    return <Navigate to="/coach-dashboard" replace />;
+  }
+
+  // All other users go to master pipeline
+  return <Navigate to="/master-pipeline" replace />;
 }
 
 function App() {
@@ -53,35 +73,38 @@ function App() {
 
         {/* All other routes are protected */}
         <Route path="/" element={<ProtectedLayout />}>
-          <Route index element={<Navigate to="/master-pipeline" replace />} />
-          <Route path="master-pipeline" element={<KanbanBoard />} />
-          <Route path="tasks" element={<TaskDashboardPage />} />
+          <Route index element={<RoleBasedRedirect />} />
+          {/* Coach-only route */}
+          <Route path="coach-dashboard" element={<CoachDashboardPage />} />
+          {/* All routes below are blocked for coach users */}
+          <Route path="master-pipeline" element={<CoachRoute><KanbanBoard /></CoachRoute>} />
+          <Route path="tasks" element={<CoachRoute><TaskDashboardPage /></CoachRoute>} />
           <Route path="payments" element={<AdminRoute><PaymentDashboardPage /></AdminRoute>} />
-          <Route path="deal/new" element={<DealDetailsPage />} />
-          <Route path="deal/:dealId" element={<DealDetailsPage />} />
-          <Route path="assignment/new" element={<AssignmentDetailsPage />} />
-          <Route path="assignment/:assignmentId" element={<AssignmentDetailsPage />} />
-          <Route path="property/new" element={<NewPropertyPage />} />
-          <Route path="property/:propertyId" element={<PropertyDetailsPage />} />
-          <Route path="contact/:contactId" element={<ContactDetailsPage />} />
-          <Route path="client/:clientId" element={<ClientDetailsPage />} />
-          <Route path="site-submit/:siteSubmitId" element={<SiteSubmitDetailsPage />} />
-          <Route path="search-test" element={<SearchTestPage />} />
-          <Route path="search-debug" element={<SearchDebugPage />} />
-          <Route path="notes-debug" element={<NotesDebugPage />} />
-          <Route path="mapping" element={<MappingPageNew />} />
-          <Route path="mapping-old" element={<MappingPage />} />
-          <Route path="reports" element={<ReportsPage />} />
-          <Route path="reports/deal-reconciliation" element={<DealReconciliationPage />} />
-          <Route path="reports/payment-reconciliation" element={<PaymentReconciliationPage />} />
-          <Route path="reports/deal-compare" element={<DealCompareReportPage />} />
-          <Route path="reports/deal-compare-salesforce" element={<DealCompareToSalesforceReportPage />} />
-          <Route path="reports/property-data-quality" element={<PropertyDataQualityReportPage />} />
-          <Route path="reports/assignments" element={<AssignmentsReportPage />} />
-          <Route path="reports/site-submit-dashboard" element={<SiteSubmitDashboardPage />} />
+          <Route path="deal/new" element={<CoachRoute><DealDetailsPage /></CoachRoute>} />
+          <Route path="deal/:dealId" element={<CoachRoute><DealDetailsPage /></CoachRoute>} />
+          <Route path="assignment/new" element={<CoachRoute><AssignmentDetailsPage /></CoachRoute>} />
+          <Route path="assignment/:assignmentId" element={<CoachRoute><AssignmentDetailsPage /></CoachRoute>} />
+          <Route path="property/new" element={<CoachRoute><NewPropertyPage /></CoachRoute>} />
+          <Route path="property/:propertyId" element={<CoachRoute><PropertyDetailsPage /></CoachRoute>} />
+          <Route path="contact/:contactId" element={<CoachRoute><ContactDetailsPage /></CoachRoute>} />
+          <Route path="client/:clientId" element={<CoachRoute><ClientDetailsPage /></CoachRoute>} />
+          <Route path="site-submit/:siteSubmitId" element={<CoachRoute><SiteSubmitDetailsPage /></CoachRoute>} />
+          <Route path="search-test" element={<CoachRoute><SearchTestPage /></CoachRoute>} />
+          <Route path="search-debug" element={<CoachRoute><SearchDebugPage /></CoachRoute>} />
+          <Route path="notes-debug" element={<CoachRoute><NotesDebugPage /></CoachRoute>} />
+          <Route path="mapping" element={<CoachRoute><MappingPageNew /></CoachRoute>} />
+          <Route path="mapping-old" element={<CoachRoute><MappingPage /></CoachRoute>} />
+          <Route path="reports" element={<CoachRoute><ReportsPage /></CoachRoute>} />
+          <Route path="reports/deal-reconciliation" element={<CoachRoute><DealReconciliationPage /></CoachRoute>} />
+          <Route path="reports/payment-reconciliation" element={<CoachRoute><PaymentReconciliationPage /></CoachRoute>} />
+          <Route path="reports/deal-compare" element={<CoachRoute><DealCompareReportPage /></CoachRoute>} />
+          <Route path="reports/deal-compare-salesforce" element={<CoachRoute><DealCompareToSalesforceReportPage /></CoachRoute>} />
+          <Route path="reports/property-data-quality" element={<CoachRoute><PropertyDataQualityReportPage /></CoachRoute>} />
+          <Route path="reports/assignments" element={<CoachRoute><AssignmentsReportPage /></CoachRoute>} />
+          <Route path="reports/site-submit-dashboard" element={<CoachRoute><SiteSubmitDashboardPage /></CoachRoute>} />
           <Route path="reports/dropbox-sync-admin" element={<AdminRoute><DropboxSyncAdminPage /></AdminRoute>} />
-          <Route path="reports/rob-report" element={<RobReportPage />} />
-          <Route path="kpi-dashboard" element={<KPIDashboardPage />} />
+          <Route path="reports/rob-report" element={<CoachRoute><RobReportPage /></CoachRoute>} />
+          <Route path="kpi-dashboard" element={<CoachRoute><KPIDashboardPage /></CoachRoute>} />
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
         </Route>
       </Routes>
