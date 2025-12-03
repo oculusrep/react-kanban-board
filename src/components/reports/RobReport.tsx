@@ -1027,6 +1027,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
           <p><strong>Collected:</strong> Payments received in {currentYear}</p>
           <p><strong>Invoiced Payments:</strong> Pending payments on Booked or Executed Payable deals</p>
           <p><strong>GCI (Payments):</strong> Payment Amount - Referral Fee</p>
+          <p><strong>AGCI:</strong> GCI - House Cut</p>
           {!readOnly && <p><strong>⚠️ Missing:</strong> Deals with no commission splits assigned - click to add splits</p>}
           <p><strong># Deals:</strong> Deal count does not include any of Greg's deals</p>
         </div>
