@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import QuickCommissionSplitModal from './QuickCommissionSplitModal';
+import DealDetailsSlideout from '../DealDetailsSlideout';
 
 // Broker IDs for the three principals
 const BROKER_IDS = {
@@ -95,6 +96,7 @@ export default function RobReport() {
     id: string;
     name: string;
   } | null>(null);
+  const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
 
   const currentYear = new Date().getFullYear();
   const currentYearStart = `${currentYear}-01-01`;
@@ -612,10 +614,16 @@ export default function RobReport() {
                         <td className="px-4 py-2 text-sm text-gray-600 pl-10">
                           <div className="flex items-start justify-between">
                             <div className="flex flex-col">
-                              <span className="font-medium text-gray-800">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedDealId(deal.id);
+                                }}
+                                className="font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
+                              >
                                 {!deal.hasSplits && <span className="text-orange-500 mr-1">⚠️</span>}
                                 {deal.deal_name}
-                              </span>
+                              </button>
                               <span className="text-xs text-gray-500">{deal.stage_label}</span>
                             </div>
                             <button
@@ -823,6 +831,14 @@ export default function RobReport() {
           onSplitsUpdated={fetchReportData}
         />
       )}
+
+      {/* Deal Details Slideout */}
+      <DealDetailsSlideout
+        dealId={selectedDealId}
+        isOpen={!!selectedDealId}
+        onClose={() => setSelectedDealId(null)}
+        onDealUpdated={fetchReportData}
+      />
     </div>
   );
 }
