@@ -226,11 +226,14 @@ export default function RobReport() {
         }).length;
       };
 
-      // Helper to count deals with NO commission splits at all
+      // Helper to count deals with NO commission splits or all $0 splits
       const countDealsWithoutSplits = (dealIds: string[]): number => {
         return dealIds.filter(dealId => {
           const splits = splitsByDeal.get(dealId) || [];
-          return splits.length === 0;
+          if (splits.length === 0) return true;
+          // Also flag deals where all splits have $0 totals
+          const totalSplitValue = splits.reduce((sum, s) => sum + (s.split_broker_total || 0), 0);
+          return totalSplitValue === 0;
         }).length;
       };
 
@@ -245,7 +248,9 @@ export default function RobReport() {
       const buildDealDetails = (dealList: any[]): DealDetail[] => {
         return dealList.map(d => {
           const dealSplits = splitsByDeal.get(d.id) || [];
-          const hasSplits = dealSplits.length > 0;
+          // hasSplits is false if no splits OR all splits have $0 totals
+          const totalSplitValue = dealSplits.reduce((sum, s) => sum + (s.split_broker_total || 0), 0);
+          const hasSplits = dealSplits.length > 0 && totalSplitValue > 0;
 
           return {
             id: d.id,
