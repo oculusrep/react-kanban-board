@@ -969,7 +969,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                             <span className="text-xs text-gray-500">
                               {payment.payment_name}
                               {payment.invoice_number && (
-                                <span className="ml-2 text-green-600 font-medium">{payment.invoice_number}</span>
+                                <span className="ml-2 text-green-600 font-medium">INV {payment.invoice_number}</span>
                               )}
                             </span>
                           </div>
