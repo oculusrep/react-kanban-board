@@ -41,7 +41,8 @@ interface PaymentDetail {
   deal_name: string;
   payment_name: string;
   invoice_number: string | null;
-  gci: number;               // payment_amount
+  paymentAmount: number;     // raw payment_amount before deductions
+  gci: number;               // payment_amount - referral_fee
   agci: number;
   house: number;
   mikeNet: number;
@@ -54,6 +55,7 @@ interface PaymentDetail {
 
 interface ReportRow {
   category: string;
+  paymentAmount: number;     // sum of raw payment_amount (only for payment rows)
   gci: number;
   agci: number;
   house: number;
@@ -334,8 +336,9 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         return paymentList.map(p => {
           const housePercent = (p.deal as any)?.house_percent || 0;
           const house = (p.agci || 0) * (housePercent / 100);
+          const paymentAmount = p.payment_amount || 0;
           // GCI = payment_amount - referral_fee_usd
-          const gci = (p.payment_amount || 0) - (p.referral_fee_usd || 0);
+          const gci = paymentAmount - (p.referral_fee_usd || 0);
           // Check if payment due date is null or before today
           const isOverdueOrMissing = !p.payment_date_estimated || p.payment_date_estimated < today;
 
@@ -345,6 +348,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
             deal_name: (p.deal as any)?.deal_name || 'Unnamed Deal',
             payment_name: p.payment_name || 'Unnamed Payment',
             invoice_number: p.orep_invoice || null,
+            paymentAmount,
             gci,
             agci: p.agci || 0,
             house,
@@ -369,6 +373,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
 
       const bookedClosedRow: ReportRow = {
         category: 'Booked/Closed',
+        paymentAmount: 0,  // N/A for deal rows
         gci: bookedClosedDeals.reduce((sum, d) => sum + (d.gci || 0), 0),
         agci: bookedClosedDeals.reduce((sum, d) => sum + (d.agci || 0), 0),
         house: bookedClosedDeals.reduce((sum, d) => sum + (d.house_usd || 0), 0),
@@ -390,6 +395,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
 
       const ucContingentRow: ReportRow = {
         category: 'UC / Contingent',
+        paymentAmount: 0,  // N/A for deal rows
         gci: ucContingentDeals.reduce((sum, d) => sum + (d.gci || 0), 0),
         agci: ucContingentDeals.reduce((sum, d) => sum + (d.agci || 0), 0),
         house: ucContingentDeals.reduce((sum, d) => sum + (d.house_usd || 0), 0),
@@ -412,6 +418,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
 
       const pipelineRow: ReportRow = {
         category: 'Pipeline 50%+',
+        paymentAmount: 0,  // N/A for deal rows
         gci: pipelineDeals.reduce((sum, d) => sum + (d.gci || 0), 0),
         agci: pipelineDeals.reduce((sum, d) => sum + (d.agci || 0), 0),
         house: pipelineDeals.reduce((sum, d) => sum + (d.house_usd || 0), 0),
@@ -445,6 +452,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
 
       const collectedRow: ReportRow = {
         category: 'Collected',
+        paymentAmount: collectedPayments.reduce((sum, p) => sum + (p.payment_amount || 0), 0),
         // GCI = payment_amount - referral_fee_usd
         gci: collectedPayments.reduce((sum, p) => sum + ((p.payment_amount || 0) - (p.referral_fee_usd || 0)), 0),
         agci: collectedPayments.reduce((sum, p) => sum + (p.agci || 0), 0),
@@ -489,6 +497,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
 
       const invoicedRow: ReportRow = {
         category: 'Invoiced Payments',
+        paymentAmount: invoicedPayments.reduce((sum, p) => sum + (p.payment_amount || 0), 0),
         // GCI = payment_amount - referral_fee_usd
         gci: invoicedPayments.reduce((sum, p) => sum + ((p.payment_amount || 0) - (p.referral_fee_usd || 0)), 0),
         agci: invoicedPayments.reduce((sum, p) => sum + (p.agci || 0), 0),
@@ -569,6 +578,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
   // Calculate totals for payment rows
   const paymentTotals = useMemo(() => {
     return paymentRows.reduce((acc, row) => ({
+      paymentAmount: acc.paymentAmount + row.paymentAmount,
       gci: acc.gci + row.gci,
       agci: acc.agci + row.agci,
       house: acc.house + row.house,
@@ -576,6 +586,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
       artyNet: acc.artyNet + row.artyNet,
       gregNet: acc.gregNet + row.gregNet,
     }), {
+      paymentAmount: 0,
       gci: 0,
       agci: 0,
       house: 0,
@@ -863,6 +874,9 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                 Category
               </th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Payment Amt
+              </th>
+              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 GCI
               </th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -911,6 +925,9 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                         </span>
                       )}
                     </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right text-gray-700">
+                    {formatCurrency(row.paymentAmount)}
                   </td>
                   <td className="px-4 py-3 text-sm text-right text-gray-700">
                     {formatCurrency(row.gci)}
@@ -973,6 +990,9 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                               )}
                             </span>
                           </div>
+                        </td>
+                        <td className="px-4 py-2 text-sm text-right text-gray-600">
+                          {formatCurrency(payment.paymentAmount)}
                         </td>
                         <td className="px-4 py-2 text-sm text-right text-gray-600">
                           {formatCurrency(payment.gci)}
@@ -1046,6 +1066,9 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                         Subtotal ({row.payments.length} payments)
                       </td>
                       <td className="px-4 py-2 text-sm text-right text-gray-700">
+                        {formatCurrency(row.payments.reduce((sum, p) => sum + p.paymentAmount, 0))}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-right text-gray-700">
                         {formatCurrency(row.payments.reduce((sum, p) => sum + p.gci, 0))}
                       </td>
                       <td className="px-4 py-2 text-sm text-right text-gray-700">
@@ -1074,6 +1097,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
             {/* Payment Totals Row */}
             <tr className="bg-gray-800 text-white font-semibold">
               <td className="px-4 py-3 text-sm">TOTALS</td>
+              <td className="px-4 py-3 text-sm text-right">{formatCurrency(paymentTotals.paymentAmount)}</td>
               <td className="px-4 py-3 text-sm text-right">{formatCurrency(paymentTotals.gci)}</td>
               <td className="px-4 py-3 text-sm text-right">{formatCurrency(paymentTotals.agci)}</td>
               <td className="px-4 py-3 text-sm text-right">{formatCurrency(paymentTotals.house)}</td>
