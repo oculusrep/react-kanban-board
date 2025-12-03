@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import QuickCommissionSplitModal from './QuickCommissionSplitModal';
 
 // Broker IDs for the three principals
 const BROKER_IDS = {
@@ -29,6 +30,8 @@ interface DealDetail {
   artyNet: number;
   gregNet: number;
   dealValue: number;
+  hasSplits: boolean;        // true if deal has any commission_split rows
+  splitCount: number;        // number of broker splits assigned
 }
 
 interface ReportRow {
@@ -42,6 +45,7 @@ interface ReportRow {
   dealCount: number | null;
   volume: number | null;
   deals?: DealDetail[];
+  missingSplitsCount: number;  // count of deals with zero commission_split rows
 }
 
 interface DealData {
@@ -87,6 +91,10 @@ export default function RobReport() {
   const [error, setError] = useState<string | null>(null);
   const [reportData, setReportData] = useState<ReportRow[]>([]);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const [selectedDealForSplits, setSelectedDealForSplits] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const currentYear = new Date().getFullYear();
   const currentYearStart = `${currentYear}-01-01`;
@@ -216,6 +224,14 @@ export default function RobReport() {
         }).length;
       };
 
+      // Helper to count deals with NO commission splits at all
+      const countDealsWithoutSplits = (dealIds: string[]): number => {
+        return dealIds.filter(dealId => {
+          const splits = splitsByDeal.get(dealId) || [];
+          return splits.length === 0;
+        }).length;
+      };
+
       // Helper to get broker split for a single deal
       const getBrokerSplitForDeal = (dealId: string, brokerId: string): number => {
         const splits = splitsByDeal.get(dealId) || [];
@@ -225,18 +241,25 @@ export default function RobReport() {
 
       // Helper to build deal details array
       const buildDealDetails = (dealList: any[]): DealDetail[] => {
-        return dealList.map(d => ({
-          id: d.id,
-          deal_name: d.deal_name || 'Unnamed Deal',
-          stage_label: (d.stage as any)?.label || '',
-          gci: d.gci || 0,
-          agci: d.agci || 0,
-          house: d.house_usd || 0,
-          mikeNet: getBrokerSplitForDeal(d.id, BROKER_IDS.mike),
-          artyNet: getBrokerSplitForDeal(d.id, BROKER_IDS.arty),
-          gregNet: getBrokerSplitForDeal(d.id, BROKER_IDS.greg),
-          dealValue: d.deal_value || 0,
-        }));
+        return dealList.map(d => {
+          const dealSplits = splitsByDeal.get(d.id) || [];
+          const hasSplits = dealSplits.length > 0;
+
+          return {
+            id: d.id,
+            deal_name: d.deal_name || 'Unnamed Deal',
+            stage_label: (d.stage as any)?.label || '',
+            gci: d.gci || 0,
+            agci: d.agci || 0,
+            house: d.house_usd || 0,
+            mikeNet: getBrokerSplitForDeal(d.id, BROKER_IDS.mike),
+            artyNet: getBrokerSplitForDeal(d.id, BROKER_IDS.arty),
+            gregNet: getBrokerSplitForDeal(d.id, BROKER_IDS.greg),
+            dealValue: d.deal_value || 0,
+            hasSplits,
+            splitCount: dealSplits.length,
+          };
+        });
       };
 
       // Row 1: Booked/Closed (Booked, Executed Payable, Closed Paid with booked_date in current year)
@@ -259,6 +282,7 @@ export default function RobReport() {
         dealCount: countDealsWithoutGregSplit(bookedClosedIds),
         volume: bookedClosedDeals.reduce((sum, d) => sum + (d.deal_value || 0), 0),
         deals: buildDealDetails(bookedClosedDeals),
+        missingSplitsCount: countDealsWithoutSplits(bookedClosedIds),
       };
 
       // Row 2: UC/Contingent (Under Contract / Contingent stage, no date filter)
@@ -278,6 +302,7 @@ export default function RobReport() {
         dealCount: countDealsWithoutGregSplit(ucContingentIds),
         volume: ucContingentDeals.reduce((sum, d) => sum + (d.deal_value || 0), 0),
         deals: buildDealDetails(ucContingentDeals),
+        missingSplitsCount: countDealsWithoutSplits(ucContingentIds),
       };
 
       // Row 3: Pipeline 50%+ (Negotiating LOI, At Lease/PSA, no date filter)
@@ -298,6 +323,7 @@ export default function RobReport() {
         dealCount: countDealsWithoutGregSplit(pipelineIds),
         volume: pipelineDeals.reduce((sum, d) => sum + (d.deal_value || 0), 0),
         deals: buildDealDetails(pipelineDeals),
+        missingSplitsCount: countDealsWithoutSplits(pipelineIds),
       };
 
       // Row 4: Collected (payments with payment_received_date in current year)
@@ -323,6 +349,7 @@ export default function RobReport() {
         gregNet: sumBrokerSplitsForPayments(collectedPaymentIds, BROKER_IDS.greg),
         dealCount: null,
         volume: null,
+        missingSplitsCount: 0,  // N/A for payment rows
       };
 
       // Row 5: Invoiced Payments (pending payments on Booked or Executed Payable deals)
@@ -353,6 +380,7 @@ export default function RobReport() {
         gregNet: sumBrokerSplitsForPayments(invoicedPaymentIds, BROKER_IDS.greg),
         dealCount: null,
         volume: null,
+        missingSplitsCount: 0,  // N/A for payment rows
       };
 
       setReportData([
@@ -398,6 +426,7 @@ export default function RobReport() {
       gregNet: acc.gregNet + row.gregNet,
       dealCount: acc.dealCount + (row.dealCount || 0),
       volume: acc.volume + (row.volume || 0),
+      missingSplitsCount: acc.missingSplitsCount + (row.missingSplitsCount || 0),
     }), {
       gci: 0,
       agci: 0,
@@ -407,6 +436,7 @@ export default function RobReport() {
       gregNet: 0,
       dealCount: 0,
       volume: 0,
+      missingSplitsCount: 0,
     });
   }, [dealRows]);
 
@@ -502,6 +532,9 @@ export default function RobReport() {
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider bg-purple-50">
                 Greg Net
               </th>
+              <th className="px-4 py-3 text-right text-xs font-semibold text-orange-600 uppercase tracking-wider bg-orange-50">
+                ⚠️ Missing
+              </th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 # Deals
               </th>
@@ -550,6 +583,13 @@ export default function RobReport() {
                   <td className="px-4 py-3 text-sm text-right text-gray-700 bg-purple-50">
                     {formatCurrency(row.gregNet)}
                   </td>
+                  <td className="px-4 py-3 text-sm text-right bg-orange-50">
+                    {row.missingSplitsCount > 0 ? (
+                      <span className="text-orange-600 font-medium">{row.missingSplitsCount}</span>
+                    ) : (
+                      <span className="text-green-600">✓</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-sm text-right text-gray-700">
                     {row.dealCount !== null ? row.dealCount : '-'}
                   </td>
@@ -561,11 +601,36 @@ export default function RobReport() {
                 {expandedRows.has(idx) && row.deals && (
                   <>
                     {row.deals.map((deal) => (
-                      <tr key={deal.id} className="bg-gray-50 border-l-4 border-blue-400">
+                      <tr
+                        key={deal.id}
+                        className={`border-l-4 ${
+                          deal.hasSplits
+                            ? 'bg-gray-50 border-blue-400'
+                            : 'bg-orange-50 border-orange-400'
+                        }`}
+                      >
                         <td className="px-4 py-2 text-sm text-gray-600 pl-10">
-                          <div className="flex flex-col">
-                            <span className="font-medium text-gray-800">{deal.deal_name}</span>
-                            <span className="text-xs text-gray-500">{deal.stage_label}</span>
+                          <div className="flex items-start justify-between">
+                            <div className="flex flex-col">
+                              <span className="font-medium text-gray-800">
+                                {!deal.hasSplits && <span className="text-orange-500 mr-1">⚠️</span>}
+                                {deal.deal_name}
+                              </span>
+                              <span className="text-xs text-gray-500">{deal.stage_label}</span>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedDealForSplits({ id: deal.id, name: deal.deal_name });
+                              }}
+                              className={`ml-2 text-xs px-2 py-0.5 rounded ${
+                                deal.hasSplits
+                                  ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                  : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                              }`}
+                            >
+                              {deal.hasSplits ? 'Edit Splits' : '+ Add Splits'}
+                            </button>
                           </div>
                         </td>
                         <td className="px-4 py-2 text-sm text-right text-gray-600">
@@ -577,14 +642,21 @@ export default function RobReport() {
                         <td className="px-4 py-2 text-sm text-right text-gray-600">
                           {formatCurrency(deal.house)}
                         </td>
-                        <td className="px-4 py-2 text-sm text-right text-gray-600 bg-blue-50/50">
-                          {formatCurrency(deal.mikeNet)}
+                        <td className={`px-4 py-2 text-sm text-right ${deal.hasSplits ? 'text-gray-600 bg-blue-50/50' : 'text-orange-400'}`}>
+                          {deal.hasSplits ? formatCurrency(deal.mikeNet) : '—'}
                         </td>
-                        <td className="px-4 py-2 text-sm text-right text-gray-600 bg-green-50/50">
-                          {formatCurrency(deal.artyNet)}
+                        <td className={`px-4 py-2 text-sm text-right ${deal.hasSplits ? 'text-gray-600 bg-green-50/50' : 'text-orange-400'}`}>
+                          {deal.hasSplits ? formatCurrency(deal.artyNet) : '—'}
                         </td>
-                        <td className="px-4 py-2 text-sm text-right text-gray-600 bg-purple-50/50">
-                          {formatCurrency(deal.gregNet)}
+                        <td className={`px-4 py-2 text-sm text-right ${deal.hasSplits ? 'text-gray-600 bg-purple-50/50' : 'text-orange-400'}`}>
+                          {deal.hasSplits ? formatCurrency(deal.gregNet) : '—'}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-right">
+                          {!deal.hasSplits ? (
+                            <span className="text-orange-500 text-xs">No splits</span>
+                          ) : (
+                            <span className="text-green-600">✓</span>
+                          )}
                         </td>
                         <td className="px-4 py-2 text-sm text-right text-gray-600">
                           -
@@ -617,6 +689,13 @@ export default function RobReport() {
                       <td className="px-4 py-2 text-sm text-right text-gray-700 bg-purple-100">
                         {formatCurrency(row.deals.reduce((sum, d) => sum + d.gregNet, 0))}
                       </td>
+                      <td className="px-4 py-2 text-sm text-right bg-orange-100">
+                        {row.deals.filter(d => !d.hasSplits).length > 0 ? (
+                          <span className="text-orange-600">{row.deals.filter(d => !d.hasSplits).length}</span>
+                        ) : (
+                          <span className="text-green-600">✓</span>
+                        )}
+                      </td>
                       <td className="px-4 py-2 text-sm text-right text-gray-700">
                         {row.deals.length}
                       </td>
@@ -637,6 +716,13 @@ export default function RobReport() {
               <td className="px-4 py-3 text-sm text-right bg-blue-900">{formatCurrency(dealTotals.mikeNet)}</td>
               <td className="px-4 py-3 text-sm text-right bg-green-900">{formatCurrency(dealTotals.artyNet)}</td>
               <td className="px-4 py-3 text-sm text-right bg-purple-900">{formatCurrency(dealTotals.gregNet)}</td>
+              <td className="px-4 py-3 text-sm text-right bg-orange-700">
+                {dealTotals.missingSplitsCount > 0 ? (
+                  <span className="text-orange-200">{dealTotals.missingSplitsCount}</span>
+                ) : (
+                  <span className="text-green-300">✓</span>
+                )}
+              </td>
               <td className="px-4 py-3 text-sm text-right">{dealTotals.dealCount}</td>
               <td className="px-4 py-3 text-sm text-right">{formatCurrency(dealTotals.volume)}</td>
             </tr>
@@ -723,8 +809,20 @@ export default function RobReport() {
           <p><strong>Pipeline 50%+:</strong> All deals in Negotiating LOI or At Lease/PSA stages</p>
           <p><strong>Collected:</strong> Payments received in {currentYear}</p>
           <p><strong>Invoiced Payments:</strong> Pending payments on Booked or Executed Payable deals</p>
+          <p><strong>⚠️ Missing:</strong> Deals with no commission splits assigned - click to add splits</p>
         </div>
       </div>
+
+      {/* Quick Commission Split Modal */}
+      {selectedDealForSplits && (
+        <QuickCommissionSplitModal
+          isOpen={!!selectedDealForSplits}
+          onClose={() => setSelectedDealForSplits(null)}
+          dealId={selectedDealForSplits.id}
+          dealName={selectedDealForSplits.name}
+          onSplitsUpdated={fetchReportData}
+        />
+      )}
     </div>
   );
 }
