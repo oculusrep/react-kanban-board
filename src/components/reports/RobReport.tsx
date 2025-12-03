@@ -48,6 +48,7 @@ interface PaymentDetail {
   gregNet: number;
   payment_received_date: string | null;
   payment_due_date: string | null;
+  isOverdueOrMissing: boolean;  // true if payment_due_date is null or before today
 }
 
 interface ReportRow {
@@ -63,6 +64,7 @@ interface ReportRow {
   deals?: DealDetail[];
   payments?: PaymentDetail[];
   missingSplitsCount: number;  // count of deals with zero commission_split rows
+  overduePaymentsCount: number;  // count of payments with null or past due date
 }
 
 interface CommissionSplitData {
@@ -299,6 +301,9 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         return brokerSplit?.split_broker_total || 0;
       };
 
+      // Helper to check if payment is overdue or missing date
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+
       // Helper to build payment details array
       const buildPaymentDetails = (paymentList: any[]): PaymentDetail[] => {
         return paymentList.map(p => {
@@ -306,6 +311,8 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
           const house = (p.agci || 0) * (housePercent / 100);
           // GCI = payment_amount - referral_fee_usd
           const gci = (p.payment_amount || 0) - (p.referral_fee_usd || 0);
+          // Check if payment due date is null or before today
+          const isOverdueOrMissing = !p.payment_date_estimated || p.payment_date_estimated < today;
 
           return {
             id: p.id,
@@ -320,6 +327,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
             gregNet: getBrokerSplitForPayment(p.id, BROKER_IDS.greg),
             payment_received_date: p.payment_received_date,
             payment_due_date: p.payment_date_estimated,
+            isOverdueOrMissing,
           };
         });
       };
@@ -345,6 +353,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         volume: bookedClosedDeals.reduce((sum, d) => sum + (d.deal_value || 0), 0),
         deals: buildDealDetails(bookedClosedDeals),
         missingSplitsCount: countDealsWithoutSplits(bookedClosedIds),
+        overduePaymentsCount: 0,  // N/A for deal rows
       };
 
       // Row 2: UC/Contingent (Under Contract / Contingent stage, no date filter)
@@ -365,6 +374,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         volume: ucContingentDeals.reduce((sum, d) => sum + (d.deal_value || 0), 0),
         deals: buildDealDetails(ucContingentDeals),
         missingSplitsCount: countDealsWithoutSplits(ucContingentIds),
+        overduePaymentsCount: 0,  // N/A for deal rows
       };
 
       // Row 3: Pipeline 50%+ (Negotiating LOI, At Lease/PSA, no date filter)
@@ -386,6 +396,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         volume: pipelineDeals.reduce((sum, d) => sum + (d.deal_value || 0), 0),
         deals: buildDealDetails(pipelineDeals),
         missingSplitsCount: countDealsWithoutSplits(pipelineIds),
+        overduePaymentsCount: 0,  // N/A for deal rows
       };
 
       // Row 4: Collected (payments with payment_received_date in current year)
@@ -419,6 +430,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         volume: null,
         payments: buildPaymentDetails(collectedPayments),
         missingSplitsCount: 0,  // N/A for payment rows
+        overduePaymentsCount: 0,  // N/A for collected payments
       };
 
       // Row 5: Invoiced Payments (pending payments on Booked or Executed Payable deals)
@@ -444,6 +456,11 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         return sum + ((p.agci || 0) * (housePercent / 100));
       }, 0);
 
+      // Count overdue or missing estimated dates for invoiced payments
+      const overdueInvoicedCount = invoicedPayments.filter(p =>
+        !p.payment_date_estimated || p.payment_date_estimated < today
+      ).length;
+
       const invoicedRow: ReportRow = {
         category: 'Invoiced Payments',
         // GCI = payment_amount - referral_fee_usd
@@ -457,6 +474,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         volume: null,
         payments: buildPaymentDetails(invoicedPayments),
         missingSplitsCount: 0,  // N/A for payment rows
+        overduePaymentsCount: overdueInvoicedCount,
       };
 
       setReportData([
@@ -861,6 +879,11 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                         </svg>
                       )}
                       {row.category}
+                      {!readOnly && row.overduePaymentsCount > 0 && (
+                        <span className="text-orange-500 text-xs font-normal">
+                          ⚠️ {row.overduePaymentsCount}
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm text-right text-gray-700">
@@ -888,10 +911,17 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                 {/* Expanded payment details */}
                 {expandedPaymentRows.has(idx) && row.payments && (
                   <>
-                    {row.payments.map((payment) => (
+                    {row.payments.map((payment) => {
+                      // Only show overdue warning for Invoiced Payments, not Collected
+                      const isOverdue = row.category === 'Invoiced Payments' && payment.isOverdueOrMissing;
+                      return (
                       <tr
                         key={payment.id}
-                        className="bg-gray-50 border-l-4 border-blue-400"
+                        className={`border-l-4 ${
+                          isOverdue && !readOnly
+                            ? 'bg-orange-50 border-orange-400'
+                            : 'bg-gray-50 border-blue-400'
+                        }`}
                       >
                         <td className="px-4 py-2 text-sm text-gray-600 pl-10">
                           <div className="flex flex-col">
@@ -906,6 +936,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                                 }}
                                 className="font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
                               >
+                                {isOverdue && <span className="text-orange-500 mr-1">⚠️</span>}
                                 {payment.deal_name}
                               </button>
                             )}
@@ -930,13 +961,13 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                         <td className="px-4 py-2 text-sm text-right text-gray-600 bg-purple-50/50">
                           {formatCurrency(payment.gregNet)}
                         </td>
-                        <td className="px-4 py-2 text-sm text-right text-gray-600">
+                        <td className={`px-4 py-2 text-sm text-right ${isOverdue && !readOnly ? 'text-orange-600 font-medium' : 'text-gray-600'}`}>
                           {row.category === 'Collected'
                             ? formatDate(payment.payment_received_date)
                             : formatDate(payment.payment_due_date)}
                         </td>
                       </tr>
-                    ))}
+                    );})}
                     {/* Subtotal row for expanded section */}
                     <tr className="bg-gray-200 border-l-4 border-blue-400 font-medium">
                       <td className="px-4 py-2 text-sm text-gray-700 pl-10">
@@ -994,6 +1025,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
           <p><strong>GCI (Payments):</strong> Payment Amount - Referral Fee</p>
           <p><strong>AGCI:</strong> GCI - House Cut</p>
           {!readOnly && <p><strong>⚠️ Missing:</strong> Deals with no commission splits assigned - click to add splits</p>}
+          {!readOnly && <p><strong>⚠️ Overdue:</strong> Invoiced payments with no estimated date or past due</p>}
           <p><strong># Deals:</strong> Deal count does not include any of Greg's deals</p>
         </div>
       </div>
