@@ -28,8 +28,8 @@ export default function GoalDashboard({ isAdmin = false }: GoalDashboardProps) {
   const [bookedGci, setBookedGci] = useState(0);
   const [bookedDealCount, setBookedDealCount] = useState(0);
   const [pipelineGci, setPipelineGci] = useState(0);
-  const [lastYearGci, setLastYearGci] = useState(0);
-  const [lastYearDealCount, setLastYearDealCount] = useState(0);
+  const [priorYearGci, setPriorYearGci] = useState(0);
+  const [priorYearDealCount, setPriorYearDealCount] = useState(0);
 
   // Edit state for admin
   const [editingGci, setEditingGci] = useState(false);
@@ -38,70 +38,86 @@ export default function GoalDashboard({ isAdmin = false }: GoalDashboardProps) {
   const [dealTarget, setDealTarget] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Year selection (admin only)
   const currentYear = new Date().getFullYear();
-  const lastYear = currentYear - 1;
-  const currentYearStart = `${currentYear}-01-01`;
-  const lastYearStart = `${lastYear}-01-01`;
-  const lastYearEnd = `${lastYear}-12-31`;
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const isCurrentYear = selectedYear === currentYear;
+
+  // Generate year options (current year back to 2020, plus next year for planning)
+  const yearOptions = [];
+  for (let y = currentYear + 1; y >= 2020; y--) {
+    yearOptions.push(y);
+  }
+
+  const priorYear = selectedYear - 1;
+  const selectedYearStart = `${selectedYear}-01-01`;
+  const selectedYearEnd = `${selectedYear}-12-31`;
+  const priorYearStart = `${priorYear}-01-01`;
+  const priorYearEnd = `${priorYear}-12-31`;
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [selectedYear]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch goals for current year
+      // Fetch goals for selected year
       const { data: goalsData } = await supabase
         .from('goal')
         .select('*')
-        .eq('year', currentYear);
+        .eq('year', selectedYear);
 
       setGoals(goalsData || []);
 
       // Set form values from goals
       const gciGoal = goalsData?.find(g => g.goal_type === 'gci');
       const dealGoal = goalsData?.find(g => g.goal_type === 'deal_count');
-      if (gciGoal) setGciTarget(gciGoal.target_value.toString());
-      if (dealGoal) setDealTarget(dealGoal.target_value.toString());
+      setGciTarget(gciGoal?.target_value.toString() || '');
+      setDealTarget(dealGoal?.target_value.toString() || '');
 
-      // Fetch current year booked/closed deals
-      const { data: currentDeals } = await supabase
+      // Fetch selected year booked/closed deals
+      const { data: yearDeals } = await supabase
         .from('deal')
         .select('id, gci, booked_date, stage_id')
         .in('stage_id', [STAGE_IDS.booked, STAGE_IDS.executedPayable, STAGE_IDS.closedPaid])
-        .gte('booked_date', currentYearStart);
+        .gte('booked_date', selectedYearStart)
+        .lte('booked_date', selectedYearEnd);
 
-      const currentBookedGci = (currentDeals || []).reduce((sum, d) => sum + (d.gci || 0), 0);
-      const currentDealCount = (currentDeals || []).length;
-      setBookedGci(currentBookedGci);
-      setBookedDealCount(currentDealCount);
+      const yearBookedGci = (yearDeals || []).reduce((sum, d) => sum + (d.gci || 0), 0);
+      const yearDealCount = (yearDeals || []).length;
+      setBookedGci(yearBookedGci);
+      setBookedDealCount(yearDealCount);
 
-      // Fetch pipeline deals (UC/Contingent + Pipeline 50%+)
-      const { data: pipelineDeals } = await supabase
-        .from('deal')
-        .select('id, gci, stage_id')
-        .in('stage_id', [
-          STAGE_IDS.underContractContingent,
-          STAGE_IDS.negotiatingLOI,
-          STAGE_IDS.atLeasePSA,
-        ]);
+      // Fetch pipeline deals (UC/Contingent + Pipeline 50%+) - only relevant for current year
+      if (isCurrentYear) {
+        const { data: pipelineDeals } = await supabase
+          .from('deal')
+          .select('id, gci, stage_id')
+          .in('stage_id', [
+            STAGE_IDS.underContractContingent,
+            STAGE_IDS.negotiatingLOI,
+            STAGE_IDS.atLeasePSA,
+          ]);
 
-      const pipelineTotal = (pipelineDeals || []).reduce((sum, d) => sum + (d.gci || 0), 0);
-      setPipelineGci(pipelineTotal);
+        const pipelineTotal = (pipelineDeals || []).reduce((sum, d) => sum + (d.gci || 0), 0);
+        setPipelineGci(pipelineTotal);
+      } else {
+        setPipelineGci(0);
+      }
 
-      // Fetch last year's data for comparison
-      const { data: lastYearDeals } = await supabase
+      // Fetch prior year's data for comparison
+      const { data: priorYearDeals } = await supabase
         .from('deal')
         .select('id, gci, booked_date, stage_id')
         .in('stage_id', [STAGE_IDS.booked, STAGE_IDS.executedPayable, STAGE_IDS.closedPaid])
-        .gte('booked_date', lastYearStart)
-        .lte('booked_date', lastYearEnd);
+        .gte('booked_date', priorYearStart)
+        .lte('booked_date', priorYearEnd);
 
-      const lastYearBookedGci = (lastYearDeals || []).reduce((sum, d) => sum + (d.gci || 0), 0);
-      const lastYearDealsCount = (lastYearDeals || []).length;
-      setLastYearGci(lastYearBookedGci);
-      setLastYearDealCount(lastYearDealsCount);
+      const priorYearBookedGci = (priorYearDeals || []).reduce((sum, d) => sum + (d.gci || 0), 0);
+      const priorYearDealsCount = (priorYearDeals || []).length;
+      setPriorYearGci(priorYearBookedGci);
+      setPriorYearDealCount(priorYearDealsCount);
 
     } catch (err) {
       console.error('Error fetching goal data:', err);
@@ -123,7 +139,7 @@ export default function GoalDashboard({ isAdmin = false }: GoalDashboardProps) {
       } else {
         await supabase
           .from('goal')
-          .insert({ year: currentYear, goal_type: goalType, target_value: value });
+          .insert({ year: selectedYear, goal_type: goalType, target_value: value });
       }
 
       await fetchData();
@@ -145,9 +161,9 @@ export default function GoalDashboard({ isAdmin = false }: GoalDashboardProps) {
   const dealsRemaining = dealGoal ? dealGoal.target_value - bookedDealCount : 0;
   const pipelineCoverage = gciRemaining > 0 ? pipelineGci / gciRemaining : 0;
 
-  // Calculate year-over-year comparison (same point in year)
+  // Calculate year progress (only meaningful for current year)
   const dayOfYear = Math.floor((Date.now() - new Date(currentYear, 0, 1).getTime()) / (1000 * 60 * 60 * 24));
-  const yearProgress = dayOfYear / 365;
+  const yearProgress = isCurrentYear ? dayOfYear / 365 : 1; // Past years are 100% complete
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -191,9 +207,33 @@ export default function GoalDashboard({ isAdmin = false }: GoalDashboardProps) {
       <div className="px-6 py-4 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">{currentYear} Goals</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-bold text-gray-900">
+                {isAdmin ? (
+                  <select
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                    className="text-xl font-bold text-gray-900 border-none bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 rounded cursor-pointer pr-8"
+                  >
+                    {yearOptions.map(year => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                ) : (
+                  currentYear
+                )} Goals
+              </h2>
+              {!isCurrentYear && (
+                <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded">
+                  Historical
+                </span>
+              )}
+            </div>
             <p className="text-sm text-gray-500">
-              {Math.round(yearProgress * 100)}% of year complete
+              {isCurrentYear
+                ? `${Math.round(yearProgress * 100)}% of year complete`
+                : `Final results for ${selectedYear}`
+              }
             </p>
           </div>
           <button
@@ -342,38 +382,40 @@ export default function GoalDashboard({ isAdmin = false }: GoalDashboardProps) {
           )}
         </div>
 
-        {/* Pipeline Coverage */}
-        <div className="border border-gray-200 rounded-lg p-4">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Pipeline Coverage</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-500">Pipeline GCI</p>
-              <p className="text-2xl font-bold text-gray-900">{formatCurrency(pipelineGci)}</p>
-              <p className="text-xs text-gray-400">UC/Contingent + Pipeline 50%+</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Coverage Ratio</p>
-              <p className={`text-2xl font-bold ${pipelineCoverage >= 1.5 ? 'text-green-600' : pipelineCoverage >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>
-                {pipelineCoverage.toFixed(1)}x
-              </p>
-              <p className="text-xs text-gray-400">Pipeline / Remaining Goal</p>
+        {/* Pipeline Coverage - only show for current year */}
+        {isCurrentYear && (
+          <div className="border border-gray-200 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Pipeline Coverage</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-gray-500">Pipeline GCI</p>
+                <p className="text-2xl font-bold text-gray-900">{formatCurrency(pipelineGci)}</p>
+                <p className="text-xs text-gray-400">UC/Contingent + Pipeline 50%+</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Coverage Ratio</p>
+                <p className={`text-2xl font-bold ${pipelineCoverage >= 1.5 ? 'text-green-600' : pipelineCoverage >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>
+                  {pipelineCoverage.toFixed(1)}x
+                </p>
+                <p className="text-xs text-gray-400">Pipeline / Remaining Goal</p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Year-over-Year Comparison */}
         <div className="border border-gray-200 rounded-lg p-4">
-          <h3 className="text-lg font-semibold text-gray-900 mb-3">vs. {lastYear} (Full Year)</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">vs. {priorYear} (Full Year)</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-gray-500">GCI</p>
               <div className="flex items-baseline gap-2">
                 <p className="text-xl font-bold text-gray-900">{formatCurrency(bookedGci)}</p>
-                <p className="text-sm text-gray-500">vs {formatCurrency(lastYearGci)}</p>
+                <p className="text-sm text-gray-500">vs {formatCurrency(priorYearGci)}</p>
               </div>
-              {lastYearGci > 0 && (
-                <p className={`text-sm ${bookedGci >= lastYearGci ? 'text-green-600' : 'text-red-600'}`}>
-                  {bookedGci >= lastYearGci ? '+' : ''}{Math.round(((bookedGci - lastYearGci) / lastYearGci) * 100)}%
+              {priorYearGci > 0 && (
+                <p className={`text-sm ${bookedGci >= priorYearGci ? 'text-green-600' : 'text-red-600'}`}>
+                  {bookedGci >= priorYearGci ? '+' : ''}{Math.round(((bookedGci - priorYearGci) / priorYearGci) * 100)}%
                 </p>
               )}
             </div>
@@ -381,11 +423,11 @@ export default function GoalDashboard({ isAdmin = false }: GoalDashboardProps) {
               <p className="text-sm text-gray-500">Deals Booked</p>
               <div className="flex items-baseline gap-2">
                 <p className="text-xl font-bold text-gray-900">{bookedDealCount}</p>
-                <p className="text-sm text-gray-500">vs {lastYearDealCount}</p>
+                <p className="text-sm text-gray-500">vs {priorYearDealCount}</p>
               </div>
-              {lastYearDealCount > 0 && (
-                <p className={`text-sm ${bookedDealCount >= lastYearDealCount ? 'text-green-600' : 'text-red-600'}`}>
-                  {bookedDealCount >= lastYearDealCount ? '+' : ''}{Math.round(((bookedDealCount - lastYearDealCount) / lastYearDealCount) * 100)}%
+              {priorYearDealCount > 0 && (
+                <p className={`text-sm ${bookedDealCount >= priorYearDealCount ? 'text-green-600' : 'text-red-600'}`}>
+                  {bookedDealCount >= priorYearDealCount ? '+' : ''}{Math.round(((bookedDealCount - priorYearDealCount) / priorYearDealCount) * 100)}%
                 </p>
               )}
             </div>
@@ -395,8 +437,8 @@ export default function GoalDashboard({ isAdmin = false }: GoalDashboardProps) {
 
       {/* Footer */}
       <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
-        <p><strong>GCI Target:</strong> Based on Booked/Closed deals with booked date in {currentYear}</p>
-        <p><strong>Pipeline Coverage:</strong> Ratio of pipeline GCI to remaining goal (1.5x+ is healthy)</p>
+        <p><strong>GCI Target:</strong> Based on Booked/Closed deals with booked date in {selectedYear}</p>
+        {isCurrentYear && <p><strong>Pipeline Coverage:</strong> Ratio of pipeline GCI to remaining goal (1.5x+ is healthy)</p>}
       </div>
     </div>
   );
