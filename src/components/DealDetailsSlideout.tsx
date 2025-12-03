@@ -51,24 +51,27 @@ interface DealDetailsSlideoutProps {
   isOpen: boolean;
   onClose: () => void;
   onDealUpdated?: () => void;
+  initialTab?: 'overview' | 'commission' | 'payments' | 'activity' | 'files';
 }
 
 export default function DealDetailsSlideout({
   dealId,
   isOpen,
   onClose,
-  onDealUpdated
+  onDealUpdated,
+  initialTab = 'overview'
 }: DealDetailsSlideoutProps) {
   const [deal, setDeal] = useState<Deal | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   useEffect(() => {
     if (dealId && isOpen) {
       fetchDeal();
+      setActiveTab(initialTab);
     }
-  }, [dealId, isOpen]);
+  }, [dealId, isOpen, initialTab]);
 
   const fetchDeal = async () => {
     if (!dealId) return;

@@ -122,6 +122,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
     name: string;
   } | null>(null);
   const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
+  const [selectedDealInitialTab, setSelectedDealInitialTab] = useState<'overview' | 'payments'>('overview');
 
   const currentYear = new Date().getFullYear();
   const currentYearStart = `${currentYear}-01-01`;
@@ -923,7 +924,20 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                       >
                         <td className="px-4 py-2 text-sm text-gray-600 pl-10">
                           <div className="flex flex-col">
-                            <span className="font-medium text-gray-900">{payment.deal_name}</span>
+                            {readOnly ? (
+                              <span className="font-medium text-gray-900">{payment.deal_name}</span>
+                            ) : (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedDealInitialTab('payments');
+                                  setSelectedDealId(payment.deal_id);
+                                }}
+                                className="font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
+                              >
+                                {payment.deal_name}
+                              </button>
+                            )}
                             <span className="text-xs text-gray-500">{payment.payment_name}</span>
                           </div>
                         </td>
@@ -1027,8 +1041,12 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         <DealDetailsSlideout
           dealId={selectedDealId}
           isOpen={!!selectedDealId}
-          onClose={() => setSelectedDealId(null)}
+          onClose={() => {
+            setSelectedDealId(null);
+            setSelectedDealInitialTab('overview');
+          }}
           onDealUpdated={fetchReportData}
+          initialTab={selectedDealInitialTab}
         />
       )}
     </div>
