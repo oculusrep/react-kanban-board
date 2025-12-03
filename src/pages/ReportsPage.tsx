@@ -97,6 +97,14 @@ export default function ReportsPage() {
       route: "/reports/rob-report",
       icon: "📈",
       permission: "can_view_rob_report"
+    },
+    {
+      id: "goal-management",
+      name: "Goal Management",
+      description: "Set and track annual GCI and deal count goals (Admin Only)",
+      route: "/reports/goals",
+      icon: "🎯",
+      adminOnly: true
     }
   ];
 
