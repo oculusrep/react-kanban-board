@@ -432,8 +432,9 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         overduePaymentsCount: 0,  // N/A for deal rows
       };
 
-      // Row 4: Collected (payments with payment_received_date in current year)
+      // Row 4: Collected (payments with payment_received=true AND payment_received_date in current year)
       const collectedPayments = (payments || []).filter(p =>
+        p.payment_received === true &&
         p.payment_received_date &&
         p.payment_received_date >= currentYearStart
       ).sort((a, b) => {
