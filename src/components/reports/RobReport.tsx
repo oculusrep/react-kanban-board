@@ -534,9 +534,6 @@ export default function RobReport() {
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider bg-purple-50">
                 Greg Net
               </th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-orange-600 uppercase tracking-wider bg-orange-50">
-                ⚠️ Missing
-              </th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 # Deals
               </th>
@@ -565,6 +562,11 @@ export default function RobReport() {
                         </svg>
                       )}
                       {row.category}
+                      {row.missingSplitsCount > 0 && (
+                        <span className="text-orange-500 text-xs font-normal">
+                          ⚠️ {row.missingSplitsCount}
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm text-right text-gray-700">
@@ -584,13 +586,6 @@ export default function RobReport() {
                   </td>
                   <td className="px-4 py-3 text-sm text-right text-gray-700 bg-purple-50">
                     {formatCurrency(row.gregNet)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-right bg-orange-50">
-                    {row.missingSplitsCount > 0 ? (
-                      <span className="text-orange-600 font-medium">{row.missingSplitsCount}</span>
-                    ) : (
-                      <span className="text-green-600">✓</span>
-                    )}
                   </td>
                   <td className="px-4 py-3 text-sm text-right text-gray-700">
                     {row.dealCount !== null ? row.dealCount : '-'}
@@ -659,13 +654,6 @@ export default function RobReport() {
                         <td className={`px-4 py-2 text-sm text-right ${deal.hasSplits ? 'text-gray-600 bg-purple-50/50' : 'text-orange-400'}`}>
                           {deal.hasSplits ? formatCurrency(deal.gregNet) : '—'}
                         </td>
-                        <td className="px-4 py-2 text-sm text-right">
-                          {!deal.hasSplits ? (
-                            <span className="text-orange-500 text-xs">No splits</span>
-                          ) : (
-                            <span className="text-green-600">✓</span>
-                          )}
-                        </td>
                         <td className="px-4 py-2 text-sm text-right text-gray-600">
                           -
                         </td>
@@ -697,13 +685,6 @@ export default function RobReport() {
                       <td className="px-4 py-2 text-sm text-right text-gray-700 bg-purple-100">
                         {formatCurrency(row.deals.reduce((sum, d) => sum + d.gregNet, 0))}
                       </td>
-                      <td className="px-4 py-2 text-sm text-right bg-orange-100">
-                        {row.deals.filter(d => !d.hasSplits).length > 0 ? (
-                          <span className="text-orange-600">{row.deals.filter(d => !d.hasSplits).length}</span>
-                        ) : (
-                          <span className="text-green-600">✓</span>
-                        )}
-                      </td>
                       <td className="px-4 py-2 text-sm text-right text-gray-700">
                         {row.deals.length}
                       </td>
@@ -717,20 +698,20 @@ export default function RobReport() {
             ))}
             {/* Deal Totals Row */}
             <tr className="bg-gray-800 text-white font-semibold">
-              <td className="px-4 py-3 text-sm">TOTALS</td>
+              <td className="px-4 py-3 text-sm">
+                TOTALS
+                {dealTotals.missingSplitsCount > 0 && (
+                  <span className="ml-2 text-orange-300 text-xs font-normal">
+                    ⚠️ {dealTotals.missingSplitsCount}
+                  </span>
+                )}
+              </td>
               <td className="px-4 py-3 text-sm text-right">{formatCurrency(dealTotals.gci)}</td>
               <td className="px-4 py-3 text-sm text-right">{formatCurrency(dealTotals.agci)}</td>
               <td className="px-4 py-3 text-sm text-right">{formatCurrency(dealTotals.house)}</td>
               <td className="px-4 py-3 text-sm text-right bg-blue-900">{formatCurrency(dealTotals.mikeNet)}</td>
               <td className="px-4 py-3 text-sm text-right bg-green-900">{formatCurrency(dealTotals.artyNet)}</td>
               <td className="px-4 py-3 text-sm text-right bg-purple-900">{formatCurrency(dealTotals.gregNet)}</td>
-              <td className="px-4 py-3 text-sm text-right bg-orange-700">
-                {dealTotals.missingSplitsCount > 0 ? (
-                  <span className="text-orange-200">{dealTotals.missingSplitsCount}</span>
-                ) : (
-                  <span className="text-green-300">✓</span>
-                )}
-              </td>
               <td className="px-4 py-3 text-sm text-right">{dealTotals.dealCount}</td>
               <td className="px-4 py-3 text-sm text-right">{formatCurrency(dealTotals.volume)}</td>
             </tr>
