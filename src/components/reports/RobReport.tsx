@@ -552,24 +552,7 @@ export default function RobReport() {
                 Greg Net
               </th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                <div className="flex items-center justify-end gap-1">
-                  # Deals
-                  <div className="relative group">
-                    <svg
-                      className="h-4 w-4 text-gray-400 cursor-help"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block z-50">
-                      <div className="bg-gray-900 text-white text-xs rounded py-1 px-2 whitespace-nowrap">
-                        Deal count does not include any of Greg's Deals
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                # Deals
               </th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 Volume
@@ -833,6 +816,7 @@ export default function RobReport() {
           <p><strong>Collected:</strong> Payments received in {currentYear}</p>
           <p><strong>Invoiced Payments:</strong> Pending payments on Booked or Executed Payable deals</p>
           <p><strong>⚠️ Missing:</strong> Deals with no commission splits assigned - click to add splits</p>
+          <p><strong># Deals:</strong> Deal count does not include any of Greg's deals</p>
         </div>
       </div>
 
