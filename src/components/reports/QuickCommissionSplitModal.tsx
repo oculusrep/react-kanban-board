@@ -128,7 +128,7 @@ export default function QuickCommissionSplitModal({
     return broker ? broker.name : 'Unknown Broker';
   };
 
-  // Quick setup - add all three principal brokers with default percentages
+  // Quick setup - add Mike and Arty with default percentages
   const handleQuickSetup = async () => {
     if (!dealId) return;
     setSaving(true);
@@ -138,7 +138,6 @@ export default function QuickCommissionSplitModal({
       const principalBrokerIds = [
         PRINCIPAL_BROKER_IDS.mike,
         PRINCIPAL_BROKER_IDS.arty,
-        PRINCIPAL_BROKER_IDS.greg,
       ];
 
       // Check which brokers are already added
@@ -301,11 +300,10 @@ export default function QuickCommissionSplitModal({
     broker => !commissionSplits.some(split => split.broker_id === broker.id)
   );
 
-  // Check if principal brokers are all added
+  // Check if principal brokers (Mike and Arty) are already added
   const hasPrincipalBrokers = [
     PRINCIPAL_BROKER_IDS.mike,
     PRINCIPAL_BROKER_IDS.arty,
-    PRINCIPAL_BROKER_IDS.greg,
   ].every(id => commissionSplits.some(s => s.broker_id === id));
 
   if (!isOpen) return null;
@@ -400,7 +398,7 @@ export default function QuickCommissionSplitModal({
                       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
-                      Quick Setup (Add Mike, Arty, Greg)
+                      Quick Setup (Add Mike & Arty)
                     </button>
                   )}
 
