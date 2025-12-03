@@ -95,6 +95,8 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
   } | null>(null);
   const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
   const [selectedDealInitialTab, setSelectedDealInitialTab] = useState<'overview' | 'payments'>('overview');
+  const [editingPaymentDate, setEditingPaymentDate] = useState<string | null>(null);
+  const [savingPaymentDate, setSavingPaymentDate] = useState<string | null>(null);
 
   const currentYear = new Date().getFullYear();
   const currentYearStart = `${currentYear}-01-01`;
@@ -126,6 +128,27 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
   useEffect(() => {
     fetchReportData();
   }, []);
+
+  // Update payment estimated date
+  const updatePaymentDate = async (paymentId: string, newDate: string | null) => {
+    setSavingPaymentDate(paymentId);
+    try {
+      const { error } = await supabase
+        .from('payment')
+        .update({ payment_date_estimated: newDate || null })
+        .eq('id', paymentId);
+
+      if (error) throw error;
+
+      // Refresh data after update
+      await fetchReportData();
+    } catch (err) {
+      console.error('Error updating payment date:', err);
+    } finally {
+      setSavingPaymentDate(null);
+      setEditingPaymentDate(null);
+    }
+  };
 
   const fetchReportData = async () => {
     setLoading(true);
@@ -962,9 +985,50 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                           {formatCurrency(payment.gregNet)}
                         </td>
                         <td className={`px-4 py-2 text-sm text-right ${isOverdue && !readOnly ? 'text-orange-600 font-medium' : 'text-gray-600'}`}>
-                          {row.category === 'Collected'
-                            ? formatDate(payment.payment_received_date)
-                            : formatDate(payment.payment_due_date)}
+                          {row.category === 'Collected' ? (
+                            formatDate(payment.payment_received_date)
+                          ) : readOnly ? (
+                            formatDate(payment.payment_due_date)
+                          ) : editingPaymentDate === payment.id ? (
+                            <input
+                              type="date"
+                              defaultValue={payment.payment_due_date || ''}
+                              autoFocus
+                              className="w-32 px-1 py-0.5 text-sm border border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              onBlur={(e) => {
+                                const newDate = e.target.value;
+                                if (newDate !== (payment.payment_due_date || '')) {
+                                  updatePaymentDate(payment.id, newDate);
+                                } else {
+                                  setEditingPaymentDate(null);
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.currentTarget.blur();
+                                } else if (e.key === 'Escape') {
+                                  setEditingPaymentDate(null);
+                                }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingPaymentDate(payment.id);
+                              }}
+                              disabled={savingPaymentDate === payment.id}
+                              className={`hover:bg-gray-100 px-1 py-0.5 rounded ${savingPaymentDate === payment.id ? 'opacity-50' : ''}`}
+                              title="Click to edit date"
+                            >
+                              {savingPaymentDate === payment.id ? (
+                                <span className="text-gray-400">Saving...</span>
+                              ) : (
+                                formatDate(payment.payment_due_date)
+                              )}
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );})}
