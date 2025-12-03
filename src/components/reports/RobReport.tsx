@@ -65,41 +65,10 @@ interface ReportRow {
   missingSplitsCount: number;  // count of deals with zero commission_split rows
 }
 
-interface DealData {
-  id: string;
-  deal_name: string | null;
-  gci: number;
-  agci: number;
-  house_usd: number;
-  house_percent: number;
-  deal_value: number;
-  stage_id: string;
-  booked_date: string | null;
-  house_only: boolean | null;
-  stage?: { label: string };
-}
-
 interface CommissionSplitData {
   deal_id: string;
   broker_id: string;
   split_broker_total: number;
-}
-
-interface PaymentData {
-  id: string;
-  deal_id: string;
-  payment_name: string | null;
-  payment_amount: number;
-  referral_fee_usd: number | null;
-  agci: number;
-  payment_received_date: string | null;
-  payment_date_estimated: string | null;
-  payment_received: boolean;
-  deal: {
-    deal_name: string | null;
-    stage_id: string;
-    house_percent: number;
-  };
 }
 
 interface PaymentSplitData {
@@ -512,10 +481,6 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(value);
-  };
-
-  const formatNumber = (value: number) => {
-    return new Intl.NumberFormat('en-US').format(value);
   };
 
   const formatDate = (dateString: string | null) => {
