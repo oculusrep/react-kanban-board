@@ -90,6 +90,7 @@ interface PaymentData {
   deal_id: string;
   payment_name: string | null;
   payment_amount: number;
+  referral_fee_usd: number | null;
   agci: number;
   payment_received_date: string | null;
   payment_date_estimated: string | null;
@@ -196,6 +197,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
           deal_id,
           payment_name,
           payment_amount,
+          referral_fee_usd,
           agci,
           payment_received_date,
           payment_date_estimated,
@@ -333,13 +335,15 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         return paymentList.map(p => {
           const housePercent = (p.deal as any)?.house_percent || 0;
           const house = (p.agci || 0) * (housePercent / 100);
+          // GCI = payment_amount - referral_fee_usd
+          const gci = (p.payment_amount || 0) - (p.referral_fee_usd || 0);
 
           return {
             id: p.id,
             deal_id: p.deal_id,
             deal_name: (p.deal as any)?.deal_name || 'Unnamed Deal',
             payment_name: p.payment_name || 'Unnamed Payment',
-            gci: p.payment_amount || 0,
+            gci,
             agci: p.agci || 0,
             house,
             mikeNet: getBrokerSplitForPayment(p.id, BROKER_IDS.mike),
@@ -435,7 +439,8 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
 
       const collectedRow: ReportRow = {
         category: 'Collected',
-        gci: collectedPayments.reduce((sum, p) => sum + (p.payment_amount || 0), 0),
+        // GCI = payment_amount - referral_fee_usd
+        gci: collectedPayments.reduce((sum, p) => sum + ((p.payment_amount || 0) - (p.referral_fee_usd || 0)), 0),
         agci: collectedPayments.reduce((sum, p) => sum + (p.agci || 0), 0),
         house: collectedHouse,
         mikeNet: sumBrokerSplitsForPayments(collectedPaymentIds, BROKER_IDS.mike),
@@ -472,7 +477,8 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
 
       const invoicedRow: ReportRow = {
         category: 'Invoiced Payments',
-        gci: invoicedPayments.reduce((sum, p) => sum + (p.payment_amount || 0), 0),
+        // GCI = payment_amount - referral_fee_usd
+        gci: invoicedPayments.reduce((sum, p) => sum + ((p.payment_amount || 0) - (p.referral_fee_usd || 0)), 0),
         agci: invoicedPayments.reduce((sum, p) => sum + (p.agci || 0), 0),
         house: invoicedHouse,
         mikeNet: sumBrokerSplitsForPayments(invoicedPaymentIds, BROKER_IDS.mike),
@@ -1020,6 +1026,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
           <p><strong>Pipeline 50%+:</strong> All deals in Negotiating LOI or At Lease/PSA stages</p>
           <p><strong>Collected:</strong> Payments received in {currentYear}</p>
           <p><strong>Invoiced Payments:</strong> Pending payments on Booked or Executed Payable deals</p>
+          <p><strong>GCI (Payments):</strong> Payment Amount - Referral Fee</p>
           {!readOnly && <p><strong>⚠️ Missing:</strong> Deals with no commission splits assigned - click to add splits</p>}
           <p><strong># Deals:</strong> Deal count does not include any of Greg's deals</p>
         </div>
