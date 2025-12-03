@@ -491,6 +491,15 @@ export default function Navbar() {
                   </button>
                   <button
                     onClick={() => {
+                      navigate('/coach-dashboard');
+                      setIsReportsMenuOpen(false);
+                    }}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                  >
+                    🏋️ Coach Dashboard
+                  </button>
+                  <button
+                    onClick={() => {
                       navigate('/notes-debug');
                       setIsReportsMenuOpen(false);
                     }}
@@ -974,6 +983,15 @@ export default function Navbar() {
                   className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                 >
                   📈 KPI Dashboard
+                </button>
+                <button
+                  onClick={() => {
+                    navigate('/coach-dashboard');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                >
+                  🏋️ Coach Dashboard
                 </button>
                 <button
                   onClick={() => {
