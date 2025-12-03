@@ -29,6 +29,7 @@ interface DealData {
   origination_percent: number | null;
   site_percent: number | null;
   deal_percent: number | null;
+  house_only: boolean | null;
   stage?: { label: string };
 }
 
@@ -58,6 +59,7 @@ export default function QuickCommissionSplitModal({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [houseOnly, setHouseOnly] = useState(false);
 
   // Use the commission calculations hook
   const { baseAmounts, totals } = useCommissionCalculations(deal, commissionSplits);
@@ -87,6 +89,7 @@ export default function QuickCommissionSplitModal({
           origination_percent,
           site_percent,
           deal_percent,
+          house_only,
           stage:stage_id(label)
         `)
         .eq('id', dealId)
@@ -94,6 +97,7 @@ export default function QuickCommissionSplitModal({
 
       if (dealError) throw dealError;
       setDeal(dealData);
+      setHouseOnly(dealData?.house_only || false);
 
       // Fetch existing commission splits
       const { data: splitsData, error: splitsError } = await supabase
@@ -289,6 +293,22 @@ export default function QuickCommissionSplitModal({
     }
   };
 
+  // Toggle house_only flag
+  const toggleHouseOnly = async (value: boolean) => {
+    try {
+      const { error: updateError } = await supabase
+        .from('deal')
+        .update(prepareUpdate({ house_only: value }))
+        .eq('id', dealId);
+
+      if (updateError) throw updateError;
+      setHouseOnly(value);
+    } catch (err) {
+      console.error('Error updating house_only:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update house only flag');
+    }
+  };
+
   // Handle close
   const handleClose = () => {
     onSplitsUpdated();
@@ -380,6 +400,24 @@ export default function QuickCommissionSplitModal({
                     </div>
                   </div>
                 )}
+
+                {/* House Only Checkbox */}
+                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={houseOnly}
+                      onChange={(e) => toggleHouseOnly(e.target.checked)}
+                      className="w-4 h-4 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500"
+                    />
+                    <div>
+                      <span className="font-medium text-gray-900">House Only Deal</span>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Check this if the deal has no broker splits (100% house). This will prevent the "missing splits" warning.
+                      </p>
+                    </div>
+                  </label>
+                </div>
 
                 {error && (
                   <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">

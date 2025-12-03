@@ -19,7 +19,9 @@ A deal is flagged as missing splits if:
 - **No commission_split rows exist** for the deal, OR
 - **All commission_split rows have $0 totals** (e.g., splits were added but percentages are all zero)
 
-This ensures deals like referral fees that have $0 broker splits are still flagged for review.
+**Exception:** Deals marked as "House Only" are never flagged as missing splits, even if they have no broker splits. This is for deals where 100% goes to the house (e.g., referral fees).
+
+This ensures deals like referral fees that have $0 broker splits are still flagged for review, unless explicitly marked as house-only.
 
 ---
 
@@ -95,9 +97,13 @@ interface ReportRow {
 ### Helper Functions
 
 ```typescript
-// Count deals with NO commission splits or all $0 splits
+// Count deals with NO commission splits or all $0 splits (excluding house_only deals)
 const countDealsWithoutSplits = (dealIds: string[]): number => {
   return dealIds.filter(dealId => {
+    const deal = dealsById.get(dealId);
+    // Don't flag house_only deals as missing splits
+    if (deal?.house_only === true) return false;
+
     const splits = splitsByDeal.get(dealId) || [];
     if (splits.length === 0) return true;
     // Also flag deals where all splits have $0 totals
@@ -110,9 +116,11 @@ const countDealsWithoutSplits = (dealIds: string[]): number => {
 const buildDealDetails = (dealList: any[]): DealDetail[] => {
   return dealList.map(d => {
     const dealSplits = splitsByDeal.get(d.id) || [];
-    // hasSplits is false if no splits OR all splits have $0 totals
+    // hasSplits is true if:
+    // 1. Deal is marked as house_only, OR
+    // 2. Has splits with non-zero totals
     const totalSplitValue = dealSplits.reduce((sum, s) => sum + (s.split_broker_total || 0), 0);
-    const hasSplits = dealSplits.length > 0 && totalSplitValue > 0;
+    const hasSplits = d.house_only === true || (dealSplits.length > 0 && totalSplitValue > 0);
     // ...
   });
 };
@@ -149,13 +157,23 @@ interface QuickCommissionSplitModalProps {
 ### Features
 
 1. **Deal Context Header** - Shows deal name, stage, AGCI, and Fee
-2. **Quick Setup Button** - Adds Mike and Arty (not Greg) with 0% default percentages
-3. **Broker Dropdown** - Add any available broker not already assigned
-4. **Split Percentage Inputs** - Origination %, Site %, Deal % for each broker
-5. **Real-time Totals** - Shows calculated USD amounts per broker
-6. **Validation Warnings** - Alerts when percentages don't total 100%
-7. **Delete Split** - Remove individual broker splits
-8. **Auto-refresh** - Triggers report refresh when modal closes
+2. **House Only Checkbox** - Mark deals as 100% house (no broker splits needed)
+3. **Quick Setup Button** - Adds Mike and Arty (not Greg) with 0% default percentages
+4. **Broker Dropdown** - Add any available broker not already assigned
+5. **Split Percentage Inputs** - Origination %, Site %, Deal % for each broker
+6. **Real-time Totals** - Shows calculated USD amounts per broker
+7. **Validation Warnings** - Alerts when percentages don't total 100%
+8. **Delete Split** - Remove individual broker splits
+9. **Auto-refresh** - Triggers report refresh when modal closes
+
+### House Only Checkbox
+
+The "House Only Deal" checkbox:
+- Appears at the top of the modal, below the deal info
+- When checked, marks the deal as `house_only = true` in the database
+- Prevents the deal from being flagged as "missing splits" in the report
+- Use this for referral fees or other deals where 100% goes to the house
+- The checkbox state persists immediately when toggled
 
 ### Quick Setup Behavior
 
@@ -206,6 +224,13 @@ Clicking on a deal name in the expanded rows opens the full DealDetailsSlideout,
 - [x] Slideout loads deal data correctly
 - [x] Report refreshes when slideout closes
 
+### House Only Feature - COMPLETED
+- [x] `house_only` column added to deal table
+- [x] QuickCommissionSplitModal fetches and displays house_only checkbox
+- [x] Checking house_only saves immediately to database
+- [x] RobReport excludes house_only deals from missing splits count
+- [x] house_only deals show as "has splits" (not flagged with warning)
+
 ---
 
 ## Future Enhancements
@@ -241,6 +266,7 @@ Clicking on a deal name in the expanded rows opens the full DealDetailsSlideout,
 | Dec 2024 | Moved missing count from separate column to inline with category |
 | Dec 2024 | Added $0 split detection (treats all-zero splits as missing) |
 | Dec 2024 | Added DealDetailsSlideout integration |
+| Dec 2024 | Added "House Only" checkbox to exclude deals from missing splits warning |
 
 ---
 

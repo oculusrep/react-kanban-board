@@ -59,6 +59,7 @@ interface DealData {
   deal_value: number;
   stage_id: string;
   booked_date: string | null;
+  house_only: boolean | null;
   stage?: { label: string };
 }
 
@@ -135,6 +136,7 @@ export default function RobReport() {
           deal_value,
           stage_id,
           booked_date,
+          house_only,
           stage:stage_id(label)
         `)
         .neq('stage_id', '0e318cd6-a738-400a-98af-741479585057'); // Exclude Lost
@@ -226,9 +228,17 @@ export default function RobReport() {
         }).length;
       };
 
-      // Helper to count deals with NO commission splits or all $0 splits
+      // Build a map of deal IDs to deal data for easy lookup
+      const dealsById = new Map<string, any>();
+      (deals || []).forEach(d => dealsById.set(d.id, d));
+
+      // Helper to count deals with NO commission splits or all $0 splits (excluding house_only deals)
       const countDealsWithoutSplits = (dealIds: string[]): number => {
         return dealIds.filter(dealId => {
+          const deal = dealsById.get(dealId);
+          // Don't flag house_only deals as missing splits
+          if (deal?.house_only === true) return false;
+
           const splits = splitsByDeal.get(dealId) || [];
           if (splits.length === 0) return true;
           // Also flag deals where all splits have $0 totals
@@ -248,9 +258,11 @@ export default function RobReport() {
       const buildDealDetails = (dealList: any[]): DealDetail[] => {
         return dealList.map(d => {
           const dealSplits = splitsByDeal.get(d.id) || [];
-          // hasSplits is false if no splits OR all splits have $0 totals
+          // hasSplits is true if:
+          // 1. Deal is marked as house_only, OR
+          // 2. Has splits with non-zero totals
           const totalSplitValue = dealSplits.reduce((sum, s) => sum + (s.split_broker_total || 0), 0);
-          const hasSplits = dealSplits.length > 0 && totalSplitValue > 0;
+          const hasSplits = d.house_only === true || (dealSplits.length > 0 && totalSplitValue > 0);
 
           return {
             id: d.id,
