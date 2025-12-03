@@ -418,7 +418,12 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
       const collectedPayments = (payments || []).filter(p =>
         p.payment_received_date &&
         p.payment_received_date >= currentYearStart
-      );
+      ).sort((a, b) => {
+        // Sort by payment_received_date ascending
+        const dateA = a.payment_received_date || '';
+        const dateB = b.payment_received_date || '';
+        return dateA.localeCompare(dateB);
+      });
       const collectedPaymentIds = collectedPayments.map(p => p.id);
 
       // For collected payments, House $ = payment.agci * deal.house_percent
@@ -450,6 +455,11 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
           p.payment_received === false &&
           invoicedStages.includes(dealStageId)
         );
+      }).sort((a, b) => {
+        // Sort by payment_date_estimated ascending
+        const dateA = a.payment_date_estimated || '';
+        const dateB = b.payment_date_estimated || '';
+        return dateA.localeCompare(dateB);
       });
       const invoicedPaymentIds = invoicedPayments.map(p => p.id);
 
