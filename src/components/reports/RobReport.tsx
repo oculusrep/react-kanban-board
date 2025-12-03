@@ -35,6 +35,21 @@ interface DealDetail {
   splitCount: number;        // number of broker splits assigned
 }
 
+interface PaymentDetail {
+  id: string;
+  deal_id: string;
+  deal_name: string;
+  payment_name: string;
+  gci: number;               // payment_amount
+  agci: number;
+  house: number;
+  mikeNet: number;
+  artyNet: number;
+  gregNet: number;
+  payment_received_date: string | null;
+  payment_due_date: string | null;
+}
+
 interface ReportRow {
   category: string;
   gci: number;
@@ -46,6 +61,7 @@ interface ReportRow {
   dealCount: number | null;
   volume: number | null;
   deals?: DealDetail[];
+  payments?: PaymentDetail[];
   missingSplitsCount: number;  // count of deals with zero commission_split rows
 }
 
@@ -72,11 +88,14 @@ interface CommissionSplitData {
 interface PaymentData {
   id: string;
   deal_id: string;
+  payment_name: string | null;
   payment_amount: number;
   agci: number;
   payment_received_date: string | null;
+  payment_due_date: string | null;
   payment_received: boolean;
   deal: {
+    deal_name: string | null;
     stage_id: string;
     house_percent: number;
   };
@@ -97,6 +116,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
   const [error, setError] = useState<string | null>(null);
   const [reportData, setReportData] = useState<ReportRow[]>([]);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const [expandedPaymentRows, setExpandedPaymentRows] = useState<Set<number>>(new Set());
   const [selectedDealForSplits, setSelectedDealForSplits] = useState<{
     id: string;
     name: string;
@@ -108,6 +128,18 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
 
   const toggleRowExpanded = (idx: number) => {
     setExpandedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(idx)) {
+        newSet.delete(idx);
+      } else {
+        newSet.add(idx);
+      }
+      return newSet;
+    });
+  };
+
+  const togglePaymentRowExpanded = (idx: number) => {
+    setExpandedPaymentRows(prev => {
       const newSet = new Set(prev);
       if (newSet.has(idx)) {
         newSet.delete(idx);
@@ -161,11 +193,14 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         .select(`
           id,
           deal_id,
+          payment_name,
           payment_amount,
           agci,
           payment_received_date,
+          payment_due_date,
           payment_received,
           deal:deal_id (
+            deal_name,
             stage_id,
             house_percent
           )
@@ -285,6 +320,36 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         });
       };
 
+      // Helper to get broker split for a single payment
+      const getBrokerSplitForPayment = (paymentId: string, brokerId: string): number => {
+        const splits = splitsByPayment.get(paymentId) || [];
+        const brokerSplit = splits.find(s => s.broker_id === brokerId);
+        return brokerSplit?.split_broker_total || 0;
+      };
+
+      // Helper to build payment details array
+      const buildPaymentDetails = (paymentList: any[]): PaymentDetail[] => {
+        return paymentList.map(p => {
+          const housePercent = (p.deal as any)?.house_percent || 0;
+          const house = (p.agci || 0) * (housePercent / 100);
+
+          return {
+            id: p.id,
+            deal_id: p.deal_id,
+            deal_name: (p.deal as any)?.deal_name || 'Unnamed Deal',
+            payment_name: p.payment_name || 'Unnamed Payment',
+            gci: p.payment_amount || 0,
+            agci: p.agci || 0,
+            house,
+            mikeNet: getBrokerSplitForPayment(p.id, BROKER_IDS.mike),
+            artyNet: getBrokerSplitForPayment(p.id, BROKER_IDS.arty),
+            gregNet: getBrokerSplitForPayment(p.id, BROKER_IDS.greg),
+            payment_received_date: p.payment_received_date,
+            payment_due_date: p.payment_due_date,
+          };
+        });
+      };
+
       // Row 1: Booked/Closed (Booked, Executed Payable, Closed Paid with booked_date in current year)
       const bookedClosedStages = [STAGE_IDS.booked, STAGE_IDS.executedPayable, STAGE_IDS.closedPaid];
       const bookedClosedDeals = (deals || []).filter(d =>
@@ -372,6 +437,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         gregNet: sumBrokerSplitsForPayments(collectedPaymentIds, BROKER_IDS.greg),
         dealCount: null,
         volume: null,
+        payments: buildPaymentDetails(collectedPayments),
         missingSplitsCount: 0,  // N/A for payment rows
       };
 
@@ -403,6 +469,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         gregNet: sumBrokerSplitsForPayments(invoicedPaymentIds, BROKER_IDS.greg),
         dealCount: null,
         volume: null,
+        payments: buildPaymentDetails(invoicedPayments),
         missingSplitsCount: 0,  // N/A for payment rows
       };
 
@@ -432,6 +499,16 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
 
   const formatNumber = (value: number) => {
     return new Intl.NumberFormat('en-US').format(value);
+  };
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return '—';
+    const date = new Date(dateString + 'T00:00:00'); // Prevent timezone issues
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
   };
 
   // Split data into deal rows and payment rows
@@ -777,33 +854,124 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider bg-purple-50">
                 Greg Net
               </th>
+              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Date
+              </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {paymentRows.map((row, idx) => (
-              <tr key={idx} className="hover:bg-gray-50">
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                  {row.category}
-                </td>
-                <td className="px-4 py-3 text-sm text-right text-gray-700">
-                  {formatCurrency(row.gci)}
-                </td>
-                <td className="px-4 py-3 text-sm text-right text-gray-700">
-                  {formatCurrency(row.agci)}
-                </td>
-                <td className="px-4 py-3 text-sm text-right text-gray-700">
-                  {formatCurrency(row.house)}
-                </td>
-                <td className="px-4 py-3 text-sm text-right text-gray-700 bg-blue-50">
-                  {formatCurrency(row.mikeNet)}
-                </td>
-                <td className="px-4 py-3 text-sm text-right text-gray-700 bg-green-50">
-                  {formatCurrency(row.artyNet)}
-                </td>
-                <td className="px-4 py-3 text-sm text-right text-gray-700 bg-purple-50">
-                  {formatCurrency(row.gregNet)}
-                </td>
-              </tr>
+              <React.Fragment key={idx}>
+                <tr
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => row.payments && row.payments.length > 0 && togglePaymentRowExpanded(idx)}
+                >
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                    <div className="flex items-center gap-2">
+                      {row.payments && row.payments.length > 0 && (
+                        <svg
+                          className={`h-4 w-4 text-gray-500 transition-transform ${expandedPaymentRows.has(idx) ? 'rotate-90' : ''}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      )}
+                      {row.category}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right text-gray-700">
+                    {formatCurrency(row.gci)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right text-gray-700">
+                    {formatCurrency(row.agci)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right text-gray-700">
+                    {formatCurrency(row.house)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right text-gray-700 bg-blue-50">
+                    {formatCurrency(row.mikeNet)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right text-gray-700 bg-green-50">
+                    {formatCurrency(row.artyNet)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right text-gray-700 bg-purple-50">
+                    {formatCurrency(row.gregNet)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right text-gray-700">
+                    -
+                  </td>
+                </tr>
+                {/* Expanded payment details */}
+                {expandedPaymentRows.has(idx) && row.payments && (
+                  <>
+                    {row.payments.map((payment) => (
+                      <tr
+                        key={payment.id}
+                        className="bg-gray-50 border-l-4 border-blue-400"
+                      >
+                        <td className="px-4 py-2 text-sm text-gray-600 pl-10">
+                          <div className="flex flex-col">
+                            <span className="font-medium text-gray-900">{payment.deal_name}</span>
+                            <span className="text-xs text-gray-500">{payment.payment_name}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 text-sm text-right text-gray-600">
+                          {formatCurrency(payment.gci)}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-right text-gray-600">
+                          {formatCurrency(payment.agci)}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-right text-gray-600">
+                          {formatCurrency(payment.house)}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-right text-gray-600 bg-blue-50/50">
+                          {formatCurrency(payment.mikeNet)}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-right text-gray-600 bg-green-50/50">
+                          {formatCurrency(payment.artyNet)}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-right text-gray-600 bg-purple-50/50">
+                          {formatCurrency(payment.gregNet)}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-right text-gray-600">
+                          {row.category === 'Collected'
+                            ? formatDate(payment.payment_received_date)
+                            : formatDate(payment.payment_due_date)}
+                        </td>
+                      </tr>
+                    ))}
+                    {/* Subtotal row for expanded section */}
+                    <tr className="bg-gray-200 border-l-4 border-blue-400 font-medium">
+                      <td className="px-4 py-2 text-sm text-gray-700 pl-10">
+                        Subtotal ({row.payments.length} payments)
+                      </td>
+                      <td className="px-4 py-2 text-sm text-right text-gray-700">
+                        {formatCurrency(row.payments.reduce((sum, p) => sum + p.gci, 0))}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-right text-gray-700">
+                        {formatCurrency(row.payments.reduce((sum, p) => sum + p.agci, 0))}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-right text-gray-700">
+                        {formatCurrency(row.payments.reduce((sum, p) => sum + p.house, 0))}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-right text-gray-700 bg-blue-100">
+                        {formatCurrency(row.payments.reduce((sum, p) => sum + p.mikeNet, 0))}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-right text-gray-700 bg-green-100">
+                        {formatCurrency(row.payments.reduce((sum, p) => sum + p.artyNet, 0))}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-right text-gray-700 bg-purple-100">
+                        {formatCurrency(row.payments.reduce((sum, p) => sum + p.gregNet, 0))}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-right text-gray-700">
+                        -
+                      </td>
+                    </tr>
+                  </>
+                )}
+              </React.Fragment>
             ))}
             {/* Payment Totals Row */}
             <tr className="bg-gray-800 text-white font-semibold">
@@ -814,6 +982,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
               <td className="px-4 py-3 text-sm text-right bg-blue-900">{formatCurrency(paymentTotals.mikeNet)}</td>
               <td className="px-4 py-3 text-sm text-right bg-green-900">{formatCurrency(paymentTotals.artyNet)}</td>
               <td className="px-4 py-3 text-sm text-right bg-purple-900">{formatCurrency(paymentTotals.gregNet)}</td>
+              <td className="px-4 py-3 text-sm text-right">-</td>
             </tr>
           </tbody>
         </table>
