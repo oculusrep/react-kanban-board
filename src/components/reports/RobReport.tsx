@@ -92,7 +92,7 @@ interface PaymentData {
   payment_amount: number;
   agci: number;
   payment_received_date: string | null;
-  payment_due_date: string | null;
+  due_date: string | null;
   payment_received: boolean;
   deal: {
     deal_name: string | null;
@@ -197,7 +197,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
           payment_amount,
           agci,
           payment_received_date,
-          payment_due_date,
+          due_date,
           payment_received,
           deal:deal_id (
             deal_name,
@@ -345,7 +345,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
             artyNet: getBrokerSplitForPayment(p.id, BROKER_IDS.arty),
             gregNet: getBrokerSplitForPayment(p.id, BROKER_IDS.greg),
             payment_received_date: p.payment_received_date,
-            payment_due_date: p.payment_due_date,
+            payment_due_date: p.due_date,
           };
         });
       };
