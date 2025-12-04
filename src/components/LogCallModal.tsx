@@ -39,6 +39,7 @@ interface FollowUpState {
   show: boolean;
   contactId: string | null;
   contactName: string;
+  contactCompany: string;
   relatedObjectId: string | null;
   relatedObjectType: string;
 }
@@ -78,9 +79,11 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
     show: false,
     contactId: null,
     contactName: '',
+    contactCompany: '',
     relatedObjectId: null,
     relatedObjectType: ''
   });
+  const [selectedContactCompany, setSelectedContactCompany] = useState<string>('');
   const [isCreatingFollowUp, setIsCreatingFollowUp] = useState(false);
   const [customFollowUpDate, setCustomFollowUpDate] = useState('');
   const [followUpSubject, setFollowUpSubject] = useState('');
@@ -220,9 +223,11 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
         show: false,
         contactId: null,
         contactName: '',
+        contactCompany: '',
         relatedObjectId: null,
         relatedObjectType: ''
       });
+      setSelectedContactCompany('');
       setCustomFollowUpDate('');
       setFollowUpSubject('');
 
@@ -409,14 +414,21 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
         // Show follow-up prompt if we have a contact
         if (formData.contact_id || formData.related_object_type === 'contact') {
           const contactId = formData.contact_id || formData.related_object_id;
+          const contactName = contactSearch || 'this contact';
+          const company = selectedContactCompany;
           setFollowUp({
             show: true,
             contactId: contactId,
-            contactName: contactSearch || 'this contact',
+            contactName: contactName,
+            contactCompany: company,
             relatedObjectId: formData.related_object_id,
             relatedObjectType: formData.related_object_type
           });
-          setFollowUpSubject(`Follow-up: ${formData.subject}`);
+          // Default subject: "Follow-up with Contact Name - Company" or just "Follow-up with Contact Name"
+          const defaultSubject = company
+            ? `Follow-up with ${contactName} - ${company}`
+            : `Follow-up with ${contactName}`;
+          setFollowUpSubject(defaultSubject);
         } else {
           // No contact, just close
           onCallLogged?.();
@@ -528,9 +540,10 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
     onClose();
   };
 
-  const selectContact = (contact: RelatedOption) => {
+  const selectContact = (contact: RelatedOption & { company?: string }) => {
     setFormData(prev => ({ ...prev, contact_id: contact.id }));
     setContactSearch(contact.label);
+    setSelectedContactCompany(contact.company || '');
     setShowContactDropdown(false);
   };
 
