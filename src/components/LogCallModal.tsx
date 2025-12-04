@@ -183,6 +183,11 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
         let label: string;
         if (parentObject.type === 'contact') {
           label = `${objectData.first_name || ''} ${objectData.last_name || ''}`.trim();
+          // When opening from a contact, set the contact search and company
+          setContactSearch(label);
+          setSelectedContactCompany(objectData.company || '');
+          // Also set the contact_id in the form
+          setFormData(prev => ({ ...prev, contact_id: objectData.id }));
         } else {
           label = objectData[labelField as keyof typeof objectData] as string;
         }
@@ -279,8 +284,11 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
       if (existingActivity?.contact) {
         const contactName = `${existingActivity.contact.first_name || ''} ${existingActivity.contact.last_name || ''}`.trim();
         setContactSearch(contactName);
-      } else {
+        setSelectedContactCompany(existingActivity.contact.company || '');
+      } else if (!parentObject || parentObject.type !== 'contact') {
+        // Only reset if not opening from a contact (contact data is set in fetchParentObjectData)
         setContactSearch('');
+        setSelectedContactCompany('');
       }
 
       setErrors({});
