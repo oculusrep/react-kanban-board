@@ -146,7 +146,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
   // Fetch parent object data to populate name
   useEffect(() => {
     const fetchParentObjectData = async () => {
-      if (!parentObject?.id || !parentObject.type) return;
+      if (!isOpen || !parentObject?.id || !parentObject.type) return;
 
       try {
         let query: any;
@@ -205,7 +205,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
     };
 
     fetchParentObjectData();
-  }, [parentObject]);
+  }, [isOpen, parentObject]);
 
   // Reset form when modal opens and load users for auto-assignment
   useEffect(() => {
@@ -232,9 +232,9 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
         relatedObjectId: null,
         relatedObjectType: ''
       });
-      setSelectedContactCompany('');
       setCustomFollowUpDate('');
       setFollowUpSubject('');
+      // Note: selectedContactCompany is reset below based on context
 
       // Load users for auto-assignment
       const loadUsers = async () => {
