@@ -61,7 +61,7 @@ export default function ProspectingDashboard() {
           status_id,
           contact_id,
           activity_type_id,
-          activity_status(id, name, is_closed),
+          activity_status!fk_activity_status_id(id, name, is_closed),
           contact(
             id,
             first_name,
