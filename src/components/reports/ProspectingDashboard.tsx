@@ -9,7 +9,10 @@ interface ProspectingActivity {
   is_prospecting_call: boolean | null;
   completed_call: boolean | null;
   meeting_held: boolean | null;
-  status: {
+  status_id: string | null;
+  contact_id: string | null;
+  activity_type_id: string | null;
+  activity_status: {
     id: string;
     name: string;
     is_closed: boolean;
@@ -18,7 +21,8 @@ interface ProspectingActivity {
     id: string;
     first_name: string | null;
     last_name: string | null;
-    primary_client: {
+    client_id: string | null;
+    client: {
       id: string;
       name: string;
     } | null;
@@ -58,14 +62,18 @@ export default function ProspectingDashboard() {
           is_prospecting_call,
           completed_call,
           meeting_held,
-          status:activity_status(id, name, is_closed),
-          contact:contact(
+          status_id,
+          contact_id,
+          activity_type_id,
+          activity_status(id, name, is_closed),
+          contact(
             id,
             first_name,
             last_name,
-            primary_client:client(id, name)
+            client_id,
+            client:client(id, name)
           ),
-          activity_type:activity_type(id, name)
+          activity_type(id, name)
         `)
         .or('is_prospecting_call.eq.true,completed_call.eq.true,meeting_held.eq.true')
         .gte('completed_at', yearStart)
@@ -73,9 +81,11 @@ export default function ProspectingDashboard() {
 
       if (error) {
         console.error('Error fetching prospecting activities:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
         return;
       }
 
+      console.log('Fetched activities:', data?.length, data);
       setActivities(data || []);
     } catch (err) {
       console.error('Error:', err);
@@ -102,8 +112,8 @@ export default function ProspectingDashboard() {
   };
 
   const getCompanyName = (contact: ProspectingActivity['contact']) => {
-    if (!contact?.primary_client?.name) return '-';
-    return contact.primary_client.name;
+    if (!contact?.client?.name) return '-';
+    return contact.client.name;
   };
 
   const handleSort = (field: typeof sortField) => {
@@ -305,9 +315,9 @@ export default function ProspectingDashboard() {
                     {formatDate(activity.completed_at)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {activity.contact?.primary_client ? (
+                    {activity.contact?.client ? (
                       <button
-                        onClick={() => navigate(`/client/${activity.contact?.primary_client?.id}`)}
+                        onClick={() => navigate(`/client/${activity.contact?.client?.id}`)}
                         className="text-blue-600 hover:text-blue-800 hover:underline"
                       >
                         {getCompanyName(activity.contact)}
@@ -336,11 +346,11 @@ export default function ProspectingDashboard() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                      activity.status?.is_closed
+                      activity.activity_status?.is_closed
                         ? 'bg-green-100 text-green-800'
                         : 'bg-blue-100 text-blue-800'
                     }`}>
-                      {activity.status?.name || '-'}
+                      {activity.activity_status?.name || '-'}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-center">
