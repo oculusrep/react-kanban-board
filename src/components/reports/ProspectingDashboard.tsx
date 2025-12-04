@@ -68,7 +68,7 @@ export default function ProspectingDashboard() {
             last_name,
             company
           ),
-          activity_type(id, name)
+          activity_type!fk_activity_type_id(id, name)
         `)
         .or('is_prospecting_call.eq.true,completed_call.eq.true,meeting_held.eq.true')
         .gte('completed_at', yearStart)
