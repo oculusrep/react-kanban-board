@@ -70,3 +70,4 @@ test-*.js
 debug-*.js
 
 .vercel
+scripts/setUserPassword.js

@@ -474,7 +474,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         const dealStageId = (p.deal as any)?.stage_id;
         return (
           !p.payment_received_date &&
-          p.payment_received === false &&
+          (p.payment_received === false || p.payment_received === null) &&
           invoicedStages.includes(dealStageId)
         );
       }).sort((a, b) => {
