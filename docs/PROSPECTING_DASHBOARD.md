@@ -18,7 +18,7 @@ The dashboard queries the `activity` table with the following criteria:
 - `is_prospecting_call = true` OR
 - `completed_call = true` OR
 - `meeting_held = true`
-- AND `completed_at >= January 1st of current year`
+- AND `completed_at >= January 1st of current year` (adjustable via date filter)
 
 ### Displayed Fields
 | Column | Description |
@@ -26,12 +26,13 @@ The dashboard queries the `activity` table with the following criteria:
 | Completed | Date the activity was completed |
 | Company | Company name from the linked contact |
 | Contact | Contact name (clickable link to contact page) |
-| Source Type | Activity type (e.g., Call, Email, Meeting) |
+| Source Type | Contact's source type (from contact.source_type field) |
 | Subject | Activity subject line |
 | Status | Activity status with color coding (green = closed, blue = open) |
 | Prospecting | Checkmark if `is_prospecting_call = true` |
 | Completed | Checkmark if `completed_call = true` |
 | Meeting | Checkmark if `meeting_held = true` |
+| Actions | "Log New" button to create follow-up activity for the contact |
 
 ## Features
 
@@ -42,6 +43,26 @@ The header displays four key metrics:
 - **Completed Calls**: Count where `completed_call = true`
 - **Meetings Held**: Count where `meeting_held = true`
 
+### Conversion Funnel (Expandable)
+Click "Show Funnel" to reveal a visual conversion funnel showing:
+- Prospecting Calls → Completed Calls → Meetings Held
+- Conversion rates between each stage
+- Visual bar chart representation
+
+### Date Range Filter
+Filter activities by time period:
+- **YTD** (default): Year to date
+- **Last 30 Days**: Rolling 30-day window
+- **Last 90 Days**: Rolling 90-day window
+- **All Time**: No date restriction
+- **Custom**: Pick specific start and end dates
+
+### Search
+Real-time search filters activities by:
+- Contact name (first or last)
+- Company name
+- Subject line
+
 ### Sorting
 Click any column header to sort:
 - Completed date (default: descending)
@@ -49,8 +70,11 @@ Click any column header to sort:
 - Contact name
 - Subject
 
-### Refresh
-Click the "Refresh" button to reload data from the database.
+### Quick Actions
+- **Log Call**: Opens modal to create a new prospecting call
+- **Log New** (per row): Opens modal pre-populated with that row's contact to log a follow-up
+- **Row Click**: Opens the activity in a slideout for editing
+- **Refresh**: Reload data from the database
 
 ## Database Schema
 
@@ -77,118 +101,158 @@ The activity table has duplicate foreign key constraints. The query uses explici
 - Page: `src/pages/ProspectingDashboardPage.tsx`
 - Route: `src/App.tsx` (line ~109)
 - Menu: `src/components/Navbar.tsx` (desktop ~510-520, mobile ~1005-1015)
+- Log Call Modal: `src/components/LogCallModal.tsx`
 
-## Future Enhancement Ideas
+---
 
-See the "Interactive Prospecting Machine" section below for potential enhancements.
+# Follow-Up Prompt Feature
+
+## Overview
+
+When logging a new call via the LogCallModal, users are prompted to schedule a follow-up task after successfully saving. This feature helps maintain consistent follow-up cadence with prospects.
+
+## How It Works
+
+1. User logs a call with an associated contact
+2. After successful save, instead of closing the modal, a follow-up prompt appears
+3. User can:
+   - **Quick schedule**: Tomorrow, In 3 Days, In 1 Week, In 2 Weeks
+   - **Custom date**: Pick a specific date
+   - **Skip**: Close without scheduling
+
+## Default Subject Line
+
+The follow-up subject defaults to:
+- `Follow-up with {Contact Name} - {Company}` (if company exists)
+- `Follow-up with {Contact Name}` (if no company)
+
+The subject is editable before scheduling.
+
+## Technical Details
+
+### Activity Type
+Follow-ups are created as **Task** activities (not Call), allowing them to appear in task lists.
+
+### Status
+Follow-ups are created with an **Open** or **Not Started** status.
+
+### Linked Data
+The follow-up inherits:
+- `contact_id` from the original call
+- Related object (deal, property, client, etc.) if one was linked
+
+### State Management
+Key state variables in LogCallModal:
+- `followUp`: Object containing show flag, contact info, related object info
+- `selectedContactCompany`: Tracks the contact's company for the subject line
+- `followUpSubject`: The editable subject line
+- `customFollowUpDate`: For custom date picker
+
+### Race Condition Fix (Dec 2024)
+Fixed issue where contact company wasn't populating:
+1. Removed unconditional reset of `selectedContactCompany` in follow-up state reset
+2. Added `isOpen` to fetchParentObjectData dependencies
+3. Ensured fetch runs each time modal opens, not just when parentObject changes
+
+### Files
+- `src/components/LogCallModal.tsx` - Main implementation
 
 ---
 
 # Interactive Prospecting Machine - Enhancement Ideas
 
-## Phase 1: Core Interactivity
+## Implemented Features ✅
 
-### 1. Quick Activity Creation
-- **Add New Prospecting Activity Button**: Opens a modal to quickly log a call/meeting
+### 1. Quick Activity Creation ✅
+- **Log Call button**: Opens LogCallModal from Prospecting Dashboard
 - **Pre-populated fields**: Current date, logged-in user as owner
-- **Required fields**: Contact, activity type, one prospecting flag checked
+- **"Log New" per row**: Create follow-up for specific contact
 
-### 2. Inline Editing
-- Click a row to open activity slideout for full editing
-- Quick toggle buttons for prospecting flags directly in the table
-- Inline status updates (dropdown to change status)
+### 2. Inline Editing ✅
+- **Row click**: Opens LogCallModal in edit mode for that activity
 
-### 3. Filters & Search
-- **Date range filter**: Custom date range beyond current year
-- **Contact/Company search**: Filter by name
-- **Activity type filter**: Show only calls, emails, meetings, etc.
-- **Status filter**: Open vs. Closed activities
-- **Flag filters**: Show only prospecting calls, only completed calls, only meetings
+### 3. Filters & Search ✅
+- **Date range filter**: YTD, Last 30/90 days, All Time, Custom
+- **Contact/Company/Subject search**: Real-time filtering
+- (Not yet: Activity type filter, Status filter, Flag filters)
 
-## Phase 2: Pipeline & Conversion Tracking
+### 4. Conversion Funnel ✅
+- Visual bar chart showing Prospecting → Completed → Meetings
+- Conversion rates between stages
+- Expandable/collapsible
 
-### 4. Conversion Funnel
-Visual funnel showing:
-```
-Prospecting Calls → Completed Calls → Meetings Held → Deals Created
-      100              45                 20              5
-```
+### 5. Follow-Up Prompts ✅
+- After logging a call, prompt to schedule follow-up
+- Quick buttons for common intervals
+- Custom date picker
+- Editable subject defaulting to "Follow-up with Contact - Company"
 
-### 5. Contact Journey Timeline
+## Future Enhancements (Not Yet Implemented)
+
+### Contact Journey Timeline
 - Click a contact to see their full prospecting history
 - Timeline view of all touchpoints
 - Days between activities
 - Next suggested action
 
-### 6. Link to Deals
+### Link to Deals
 - Show if a contact has associated deals
 - Track which prospecting activities led to deals
 - Calculate prospecting-to-deal conversion rate
 
-## Phase 3: Productivity & Gamification
-
-### 7. Daily/Weekly Goals
+### Daily/Weekly Goals
 - Set targets: "10 prospecting calls per day"
 - Progress bar showing completion
 - Streak tracking (consecutive days hitting goals)
 
-### 8. Leaderboard (Multi-user)
+### Leaderboard (Multi-user)
 - If multiple users prospect, show rankings
 - Metrics: calls made, meetings booked, deals closed
 
-### 9. Activity Reminders
+### Activity Reminders
 - "You haven't called [Contact] in 30 days"
 - Suggested follow-up list
 - Overdue follow-up alerts
 
-## Phase 4: Intelligence & Automation
-
-### 10. Best Time to Call
+### Best Time to Call
 - Analyze when completed calls are most successful
 - Suggest optimal calling windows
 
-### 11. Contact Prioritization
+### Contact Prioritization
 - Score contacts based on engagement
 - Highlight "hot" prospects (recent activity, multiple touchpoints)
 - Flag "cold" contacts needing re-engagement
 
-### 12. Email Integration
+### Email Integration
 - Log email opens/clicks as activities
 - Auto-create activities from sent emails
 - Template library for follow-ups
 
-## Phase 5: Reporting & Analytics
-
-### 13. Trend Charts
+### Trend Charts
 - Weekly/monthly prospecting activity trends
 - Comparison to previous periods
 - Seasonality analysis
 
-### 14. Pipeline Velocity
+### Pipeline Velocity
 - Average time from first contact to deal
 - Identify bottlenecks in the sales process
 
-### 15. Export & Sharing
+### Export & Sharing
 - Export to CSV/Excel
 - Scheduled email reports
 - Shareable dashboard links
 
-## Implementation Priority Recommendation
+---
 
-**Start with these high-impact, low-effort features:**
+# Known Issues / Bugs
 
-1. **Inline row click → Activity slideout** (leverages existing component)
-2. **Date range filter** (simple UI addition)
-3. **Contact/Company search** (filtering existing data)
-4. **Quick Add Activity button** (uses existing activity form)
-5. **Conversion funnel visualization** (compelling visual, data already exists)
+## Contact Company Not Populating (Fixed Dec 2024)
+**Issue**: When logging a call from a contact page, the contact's company wasn't being captured for the follow-up subject line.
 
-**Medium-term:**
-6. Daily goals with progress tracking
-7. Contact journey timeline
-8. Link activities to deals
+**Root Cause**: Race condition between two useEffect hooks:
+1. `fetchParentObjectData` effect was only triggered by `[parentObject]` changes
+2. Reset effect was unconditionally clearing `selectedContactCompany`
 
-**Long-term:**
-9. Email integration
-10. AI-powered suggestions
-11. Leaderboards and gamification
+**Fix**:
+- Added `isOpen` to fetchParentObjectData dependencies
+- Moved company reset to context-aware section (only reset when not opening from contact)

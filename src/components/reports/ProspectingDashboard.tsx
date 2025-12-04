@@ -37,6 +37,7 @@ interface ProspectingActivity {
     first_name: string | null;
     last_name: string | null;
     company: string | null;
+    source_type: string | null;
   } | null;
   activity_type: {
     id: string;
@@ -119,7 +120,8 @@ export default function ProspectingDashboard() {
             id,
             first_name,
             last_name,
-            company
+            company,
+            source_type
           ),
           activity_type!fk_activity_type_id(id, name)
         `)
@@ -628,7 +630,7 @@ export default function ProspectingDashboard() {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {activity.activity_type?.name || '-'}
+                      {activity.contact?.source_type || '-'}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate" title={activity.subject || ''}>
                       {activity.subject || '-'}
