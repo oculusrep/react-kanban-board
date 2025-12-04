@@ -21,11 +21,7 @@ interface ProspectingActivity {
     id: string;
     first_name: string | null;
     last_name: string | null;
-    client_id: string | null;
-    client: {
-      id: string;
-      name: string;
-    } | null;
+    company: string | null;
   } | null;
   activity_type: {
     id: string;
@@ -70,8 +66,7 @@ export default function ProspectingDashboard() {
             id,
             first_name,
             last_name,
-            client_id,
-            client:client(id, name)
+            company
           ),
           activity_type(id, name)
         `)
@@ -112,8 +107,8 @@ export default function ProspectingDashboard() {
   };
 
   const getCompanyName = (contact: ProspectingActivity['contact']) => {
-    if (!contact?.client?.name) return '-';
-    return contact.client.name;
+    if (!contact?.company) return '-';
+    return contact.company;
   };
 
   const handleSort = (field: typeof sortField) => {
@@ -315,16 +310,7 @@ export default function ProspectingDashboard() {
                     {formatDate(activity.completed_at)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {activity.contact?.client ? (
-                      <button
-                        onClick={() => navigate(`/client/${activity.contact?.client?.id}`)}
-                        className="text-blue-600 hover:text-blue-800 hover:underline"
-                      >
-                        {getCompanyName(activity.contact)}
-                      </button>
-                    ) : (
-                      <span className="text-gray-400">-</span>
-                    )}
+                    {getCompanyName(activity.contact)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {activity.contact ? (
