@@ -35,6 +35,7 @@ import KPIDashboardPage from "./pages/KPIDashboardPage";
 import RobReportPage from "./pages/RobReportPage";
 import CoachDashboardPage from "./pages/CoachDashboardPage";
 import GoalManagementPage from "./pages/GoalManagementPage";
+import ProspectingDashboardPage from "./pages/ProspectingDashboardPage";
 
 function ProtectedLayout() {
   const location = useLocation();
@@ -106,6 +107,7 @@ function App() {
           <Route path="reports/dropbox-sync-admin" element={<AdminRoute><DropboxSyncAdminPage /></AdminRoute>} />
           <Route path="reports/rob-report" element={<CoachRoute><RobReportPage /></CoachRoute>} />
           <Route path="reports/goals" element={<AdminRoute><GoalManagementPage /></AdminRoute>} />
+          <Route path="prospecting" element={<AdminRoute><ProspectingDashboardPage /></AdminRoute>} />
           <Route path="kpi-dashboard" element={<CoachRoute><KPIDashboardPage /></CoachRoute>} />
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
         </Route>
