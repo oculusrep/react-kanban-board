@@ -854,6 +854,14 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
 
         {/* Footer Actions */}
         <div className="border-t border-gray-200 p-4 bg-gray-50">
+          {/* Show associated contact info */}
+          {selectedRelatedObject && selectedRelatedObject.type === 'contact' && (
+            <div className="mb-3 px-3 py-2 bg-blue-50 rounded-md">
+              <p className="text-sm text-blue-800">
+                <span className="font-medium">Associated Contact:</span> {selectedRelatedObject.label}
+              </p>
+            </div>
+          )}
           <div className="flex justify-end space-x-3">
             <button
               type="button"
