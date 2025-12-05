@@ -9,8 +9,10 @@ import {
   XMarkIcon,
   ArrowPathIcon,
   ChevronDownIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
+import { ExclamationCircleIcon } from '@heroicons/react/24/solid';
 
 interface ProspectingActivity {
   id: string;
@@ -54,7 +56,7 @@ export default function ProspectingDashboard() {
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
-  const [dateRange, setDateRange] = useState<'ytd' | 'last30' | 'last90' | 'all' | 'custom'>('ytd');
+  const [dateRange, setDateRange] = useState<'today' | 'thisWeek' | 'last3Weeks' | 'ytd' | 'last30' | 'last90' | 'all' | 'custom'>('ytd');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
@@ -66,12 +68,29 @@ export default function ProspectingDashboard() {
   // Funnel expanded state
   const [funnelExpanded, setFunnelExpanded] = useState(true);
 
+  // Follow-up status tracking: contactId -> { hasFollowUp: boolean, isOverdue: boolean }
+  const [contactFollowUpStatus, setContactFollowUpStatus] = useState<Record<string, { hasFollowUp: boolean; isOverdue: boolean }>>({});
+
   const currentYear = new Date().getFullYear();
 
   // Calculate date filter
   const getDateFilter = () => {
     const now = new Date();
     switch (dateRange) {
+      case 'today':
+        const today = new Date(now);
+        today.setHours(0, 0, 0, 0);
+        return today.toISOString();
+      case 'thisWeek':
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); // Sunday
+        startOfWeek.setHours(0, 0, 0, 0);
+        return startOfWeek.toISOString();
+      case 'last3Weeks':
+        const threeWeeksAgo = new Date(now);
+        threeWeeksAgo.setDate(threeWeeksAgo.getDate() - 21);
+        threeWeeksAgo.setHours(0, 0, 0, 0);
+        return threeWeeksAgo.toISOString();
       case 'ytd':
         return `${currentYear}-01-01T00:00:00`;
       case 'last30':
@@ -144,10 +163,74 @@ export default function ProspectingDashboard() {
       }
 
       setActivities(data || []);
+
+      // Fetch follow-up status for all unique contacts
+      if (data && data.length > 0) {
+        const contactIds = [...new Set(data.filter(a => a.contact_id).map(a => a.contact_id as string))];
+        await fetchFollowUpStatus(contactIds);
+      }
     } catch (err) {
       console.error('Error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch follow-up status for contacts
+  const fetchFollowUpStatus = async (contactIds: string[]) => {
+    if (contactIds.length === 0) return;
+
+    try {
+      const today = new Date().toISOString().split('T')[0];
+
+      // Get all open (not closed) activities for these contacts with future or past dates
+      const { data: followUps, error } = await supabase
+        .from('activity')
+        .select(`
+          contact_id,
+          activity_date,
+          activity_status!fk_activity_status_id(is_closed)
+        `)
+        .in('contact_id', contactIds)
+        .eq('activity_status.is_closed', false);
+
+      if (error) {
+        console.error('Error fetching follow-up status:', error);
+        return;
+      }
+
+      // Build status map for each contact
+      const statusMap: Record<string, { hasFollowUp: boolean; isOverdue: boolean }> = {};
+
+      // Initialize all contacts as having no follow-up
+      contactIds.forEach(id => {
+        statusMap[id] = { hasFollowUp: false, isOverdue: false };
+      });
+
+      // Process follow-ups
+      if (followUps) {
+        followUps.forEach(followUp => {
+          if (!followUp.contact_id || !followUp.activity_status) return;
+
+          const contactId = followUp.contact_id;
+          const activityDate = followUp.activity_date;
+
+          if (activityDate) {
+            const dateStr = activityDate.split('T')[0];
+            if (dateStr >= today) {
+              // Has a future follow-up
+              statusMap[contactId] = { hasFollowUp: true, isOverdue: false };
+            } else if (!statusMap[contactId].hasFollowUp) {
+              // Has an overdue follow-up (and no future ones yet found)
+              statusMap[contactId] = { hasFollowUp: true, isOverdue: true };
+            }
+          }
+        });
+      }
+
+      setContactFollowUpStatus(statusMap);
+    } catch (err) {
+      console.error('Error fetching follow-up status:', err);
     }
   };
 
@@ -309,6 +392,9 @@ export default function ProspectingDashboard() {
   // Get date range label
   const getDateRangeLabel = () => {
     switch (dateRange) {
+      case 'today': return 'Today';
+      case 'thisWeek': return 'This Week';
+      case 'last3Weeks': return 'Last 3 Weeks';
       case 'ytd': return `Year to Date (${currentYear})`;
       case 'last30': return 'Last 30 Days';
       case 'last90': return 'Last 90 Days';
@@ -333,17 +419,63 @@ export default function ProspectingDashboard() {
     <div className="space-y-4">
       {/* Conversion Funnel */}
       <div className="bg-white rounded-lg shadow">
-        <button
-          onClick={() => setFunnelExpanded(!funnelExpanded)}
-          className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
-        >
-          <h3 className="text-lg font-semibold text-gray-900">Prospecting Funnel</h3>
-          {funnelExpanded ? (
-            <ChevronDownIcon className="w-5 h-5 text-gray-500" />
-          ) : (
-            <ChevronRightIcon className="w-5 h-5 text-gray-500" />
-          )}
-        </button>
+        <div className="px-6 py-4 flex items-center justify-between">
+          <button
+            onClick={() => setFunnelExpanded(!funnelExpanded)}
+            className="flex items-center gap-2 hover:bg-gray-50 rounded px-2 py-1 -ml-2 transition-colors"
+          >
+            <h3 className="text-lg font-semibold text-gray-900">Prospecting Funnel</h3>
+            {funnelExpanded ? (
+              <ChevronDownIcon className="w-5 h-5 text-gray-500" />
+            ) : (
+              <ChevronRightIcon className="w-5 h-5 text-gray-500" />
+            )}
+          </button>
+
+          {/* Date filter buttons for funnel */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setDateRange('today')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                dateRange === 'today'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Today
+            </button>
+            <button
+              onClick={() => setDateRange('thisWeek')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                dateRange === 'thisWeek'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              This Week
+            </button>
+            <button
+              onClick={() => setDateRange('last3Weeks')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                dateRange === 'last3Weeks'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Last 3 Weeks
+            </button>
+            <button
+              onClick={() => setDateRange('ytd')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                dateRange === 'ytd'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              This Year
+            </button>
+          </div>
+        </div>
 
         {funnelExpanded && (
           <div className="px-6 pb-6">
@@ -581,8 +713,8 @@ export default function ProspectingDashboard() {
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Meeting
                 </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
+                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
+                  <PhoneIcon className="w-4 h-4 mx-auto" title="Log Call" />
                 </th>
               </tr>
             </thead>
@@ -612,15 +744,37 @@ export default function ProspectingDashboard() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {activity.contact ? (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/contact/${activity.contact?.id}`);
-                          }}
-                          className="text-blue-600 hover:text-blue-800 hover:underline"
-                        >
-                          {getContactName(activity.contact)}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/contact/${activity.contact?.id}`);
+                            }}
+                            className="text-blue-600 hover:text-blue-800 hover:underline"
+                          >
+                            {getContactName(activity.contact)}
+                          </button>
+                          {/* Follow-up warning icons */}
+                          {activity.contact_id && contactFollowUpStatus[activity.contact_id] && (
+                            contactFollowUpStatus[activity.contact_id].isOverdue ? (
+                              <ExclamationCircleIcon
+                                className="w-4 h-4 text-red-500 flex-shrink-0"
+                                title="Overdue follow-up activity"
+                              />
+                            ) : !contactFollowUpStatus[activity.contact_id].hasFollowUp ? (
+                              <ExclamationTriangleIcon
+                                className="w-4 h-4 text-yellow-500 flex-shrink-0"
+                                title="No scheduled follow-up"
+                              />
+                            ) : null
+                          )}
+                          {activity.contact_id && !contactFollowUpStatus[activity.contact_id] && (
+                            <ExclamationTriangleIcon
+                              className="w-4 h-4 text-yellow-500 flex-shrink-0"
+                              title="No scheduled follow-up"
+                            />
+                          )}
+                        </div>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
@@ -653,11 +807,10 @@ export default function ProspectingDashboard() {
                       {activity.contact && (
                         <button
                           onClick={(e) => handleLogAnother(e, activity)}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded transition-colors"
-                          title={`Log another call with ${getContactName(activity.contact)}`}
+                          className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors"
+                          title={`Log new call with ${getContactName(activity.contact)}`}
                         >
-                          <PhoneIcon className="w-3 h-3" />
-                          Log New
+                          <PhoneIcon className="w-4 h-4" />
                         </button>
                       )}
                     </td>
