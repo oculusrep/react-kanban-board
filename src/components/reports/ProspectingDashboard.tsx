@@ -347,15 +347,14 @@ export default function ProspectingDashboard() {
 
         {funnelExpanded && (
           <div className="px-6 pb-6">
-            <div className="flex items-end justify-center gap-4 h-40">
+            <div className="flex items-end justify-center gap-4 h-48">
               {/* Prospecting Calls */}
               <div className="flex flex-col items-center">
+                <span className="text-blue-600 font-bold text-xl mb-1">{prospectingCalls}</span>
                 <div
-                  className="w-24 bg-blue-500 rounded-t-lg flex items-end justify-center text-white font-bold text-xl pb-2"
-                  style={{ height: `${Math.max(20, (prospectingCalls / Math.max(prospectingCalls, 1)) * 120)}px` }}
-                >
-                  {prospectingCalls}
-                </div>
+                  className="w-24 bg-blue-500 rounded-t-lg"
+                  style={{ height: `${Math.max(20, (prospectingCalls / Math.max(prospectingCalls, 1)) * 100)}px` }}
+                />
                 <p className="text-xs text-gray-600 mt-2 text-center">Prospecting<br/>Calls</p>
               </div>
 
@@ -364,12 +363,11 @@ export default function ProspectingDashboard() {
 
               {/* Completed Calls */}
               <div className="flex flex-col items-center">
+                <span className="text-green-600 font-bold text-xl mb-1">{completedCalls}</span>
                 <div
-                  className="w-24 bg-green-500 rounded-t-lg flex items-end justify-center text-white font-bold text-xl pb-2"
-                  style={{ height: `${Math.max(20, (completedCalls / Math.max(prospectingCalls, 1)) * 120)}px` }}
-                >
-                  {completedCalls}
-                </div>
+                  className="w-24 bg-green-500 rounded-t-lg"
+                  style={{ height: `${Math.max(20, (completedCalls / Math.max(prospectingCalls, 1)) * 100)}px` }}
+                />
                 <p className="text-xs text-gray-600 mt-2 text-center">Completed<br/>Calls</p>
               </div>
 
@@ -378,12 +376,11 @@ export default function ProspectingDashboard() {
 
               {/* Meetings Held */}
               <div className="flex flex-col items-center">
+                <span className="text-purple-600 font-bold text-xl mb-1">{meetingsHeld}</span>
                 <div
-                  className="w-24 bg-purple-500 rounded-t-lg flex items-end justify-center text-white font-bold text-xl pb-2"
-                  style={{ height: `${Math.max(20, (meetingsHeld / Math.max(prospectingCalls, 1)) * 120)}px` }}
-                >
-                  {meetingsHeld}
-                </div>
+                  className="w-24 bg-purple-500 rounded-t-lg"
+                  style={{ height: `${Math.max(20, (meetingsHeld / Math.max(prospectingCalls, 1)) * 100)}px` }}
+                />
                 <p className="text-xs text-gray-600 mt-2 text-center">Meetings<br/>Held</p>
               </div>
 
@@ -392,12 +389,11 @@ export default function ProspectingDashboard() {
 
               {/* Unique Contacts with Meetings */}
               <div className="flex flex-col items-center">
+                <span className="text-orange-600 font-bold text-xl mb-1">{contactsWithMeetings.size}</span>
                 <div
-                  className="w-24 bg-orange-500 rounded-t-lg flex items-end justify-center text-white font-bold text-xl pb-2"
-                  style={{ height: `${Math.max(20, (contactsWithMeetings.size / Math.max(prospectingCalls, 1)) * 120)}px` }}
-                >
-                  {contactsWithMeetings.size}
-                </div>
+                  className="w-24 bg-orange-500 rounded-t-lg"
+                  style={{ height: `${Math.max(20, (contactsWithMeetings.size / Math.max(prospectingCalls, 1)) * 100)}px` }}
+                />
                 <p className="text-xs text-gray-600 mt-2 text-center">Unique<br/>Contacts</p>
               </div>
             </div>
