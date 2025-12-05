@@ -13,7 +13,8 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   ExclamationTriangleIcon,
-  ClipboardDocumentListIcon
+  ClipboardDocumentListIcon,
+  CalendarDaysIcon
 } from '@heroicons/react/24/outline';
 
 interface ProspectingActivity {
@@ -847,8 +848,8 @@ export default function ProspectingDashboard() {
                                       }}
                                       className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-b-md"
                                     >
-                                      <PlusIcon className="w-4 h-4" />
-                                      + Follow-up
+                                      <CalendarDaysIcon className="w-4 h-4" />
+                                      Follow-up
                                     </button>
                                   </div>
                                 )}
