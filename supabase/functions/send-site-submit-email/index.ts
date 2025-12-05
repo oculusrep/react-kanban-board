@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { getUserIdFromAuthHeader } from '../_shared/jwt.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -44,27 +45,29 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
 
-    // Get the authenticated user's ID from the JWT token
+    // Get the authenticated user's ID from the JWT token using local verification
     const authHeader = req.headers.get('Authorization')
     let userEmail = submitterEmail
+    let authUserId: string | null = null
 
-    // If submitter email is not provided, fetch it from the user table
-    if (!userEmail && authHeader) {
+    // Always try to get authUserId from JWT for activity logging
+    if (authHeader) {
       try {
-        const token = authHeader.replace('Bearer ', '')
-        const { data: { user } } = await supabaseClient.auth.getUser(token)
+        // Use local JWT verification instead of network call to auth.getUser()
+        authUserId = await getUserIdFromAuthHeader(authHeader)
 
-        if (user?.id) {
+        // If submitter email is not provided, fetch it from the user table
+        if (!userEmail && authUserId) {
           const { data: userData } = await supabaseClient
             .from('user')
             .select('email')
-            .eq('id', user.id)
+            .eq('auth_user_id', authUserId)
             .single()
 
-          userEmail = userData?.email || user.email
+          userEmail = userData?.email
         }
       } catch (error) {
-        console.error('Error fetching user email:', error)
+        console.error('Error fetching user data:', error)
       }
     }
 
@@ -128,23 +131,23 @@ serve(async (req) => {
       // Log activity for custom email send
       try {
         console.log('📧 Starting activity logging for custom email...')
-        // Get the current user's ID from the auth header
+        // Get the current user's ID from the user table using auth_user_id
         let userId = null
-        if (authHeader) {
-          try {
-            const token = authHeader.replace('Bearer ', '')
-            const { data: { user } } = await supabaseClient.auth.getUser(token)
-            if (user?.id) {
-              userId = user.id
-              console.log('✅ Got user ID:', userId)
-            } else {
-              console.warn('⚠️ No user found in auth token')
-            }
-          } catch (error) {
-            console.error('❌ Error getting user ID for activity log:', error)
+        if (authUserId) {
+          const { data: userData } = await supabaseClient
+            .from('user')
+            .select('id')
+            .eq('auth_user_id', authUserId)
+            .single()
+
+          if (userData?.id) {
+            userId = userData.id
+            console.log('✅ Got user ID:', userId)
+          } else {
+            console.warn('⚠️ No user found for auth_user_id:', authUserId)
           }
         } else {
-          console.warn('⚠️ No auth header found')
+          console.warn('⚠️ No auth user ID available')
         }
 
         console.log('📝 Inserting activity record...')
@@ -364,23 +367,23 @@ serve(async (req) => {
     // Log activity for email send
     try {
       console.log('📧 Starting activity logging for automatic email...')
-      // Get the current user's ID from the auth header
+      // Get the current user's ID from the user table using auth_user_id
       let userId = null
-      if (authHeader) {
-        try {
-          const token = authHeader.replace('Bearer ', '')
-          const { data: { user } } = await supabaseClient.auth.getUser(token)
-          if (user?.id) {
-            userId = user.id
-            console.log('✅ Got user ID:', userId)
-          } else {
-            console.warn('⚠️ No user found in auth token')
-          }
-        } catch (error) {
-          console.error('❌ Error getting user ID for activity log:', error)
+      if (authUserId) {
+        const { data: userData } = await supabaseClient
+          .from('user')
+          .select('id')
+          .eq('auth_user_id', authUserId)
+          .single()
+
+        if (userData?.id) {
+          userId = userData.id
+          console.log('✅ Got user ID:', userId)
+        } else {
+          console.warn('⚠️ No user found for auth_user_id:', authUserId)
         }
       } else {
-        console.warn('⚠️ No auth header found')
+        console.warn('⚠️ No auth user ID available')
       }
 
       console.log('📝 Inserting activity record...')
