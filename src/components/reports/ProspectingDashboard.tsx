@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import LogCallModal from '../LogCallModal';
+import AddTaskModal from '../AddTaskModal';
 import {
   MagnifyingGlassIcon,
   PlusIcon,
@@ -10,7 +11,8 @@ import {
   ArrowPathIcon,
   ChevronDownIcon,
   ChevronRightIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  ClipboardDocumentListIcon
 } from '@heroicons/react/24/outline';
 
 interface ProspectingActivity {
@@ -61,8 +63,13 @@ export default function ProspectingDashboard() {
 
   // Modal states
   const [isLogCallModalOpen, setIsLogCallModalOpen] = useState(false);
+  const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<ProspectingActivity | null>(null);
   const [logCallForContact, setLogCallForContact] = useState<{ id: string; name: string; company: string | null } | null>(null);
+
+  // Warning icon dropdown state
+  const [warningDropdownContactId, setWarningDropdownContactId] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Funnel expanded state
   const [funnelExpanded, setFunnelExpanded] = useState(true);
@@ -112,6 +119,18 @@ export default function ProspectingDashboard() {
   useEffect(() => {
     fetchActivities();
   }, [dateRange, customStartDate, customEndDate]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setWarningDropdownContactId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const fetchActivities = async () => {
     setLoading(true);
@@ -688,6 +707,9 @@ export default function ProspectingDashboard() {
                     <SortIcon field="contact" />
                   </div>
                 </th>
+                <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
+                  <PhoneIcon className="w-4 h-4 mx-auto" title="Log Call" />
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Source Type
                 </th>
@@ -711,9 +733,6 @@ export default function ProspectingDashboard() {
                 </th>
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Meeting
-                </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
-                  <PhoneIcon className="w-4 h-4 mx-auto" title="Log Call" />
                 </th>
               </tr>
             </thead>
@@ -753,29 +772,83 @@ export default function ProspectingDashboard() {
                           >
                             {getContactName(activity.contact)}
                           </button>
-                          {/* Follow-up warning icons */}
-                          {activity.contact_id && contactFollowUpStatus[activity.contact_id] && (
-                            contactFollowUpStatus[activity.contact_id].isOverdue ? (
-                              <ExclamationTriangleIcon
-                                className="w-4 h-4 text-red-500 flex-shrink-0"
-                                title="Overdue follow-up activity"
-                              />
-                            ) : !contactFollowUpStatus[activity.contact_id].hasFollowUp ? (
-                              <ExclamationTriangleIcon
-                                className="w-4 h-4 text-yellow-500 flex-shrink-0"
-                                title="No scheduled follow-up"
-                              />
-                            ) : null
-                          )}
-                          {activity.contact_id && !contactFollowUpStatus[activity.contact_id] && (
-                            <ExclamationTriangleIcon
-                              className="w-4 h-4 text-yellow-500 flex-shrink-0"
-                              title="No scheduled follow-up"
-                            />
-                          )}
+                          {/* Follow-up warning icons - clickable with dropdown */}
+                          {activity.contact_id && (() => {
+                            const status = contactFollowUpStatus[activity.contact_id];
+                            const showWarning = !status || !status.hasFollowUp || status.isOverdue;
+                            const isOverdue = status?.isOverdue;
+
+                            if (!showWarning) return null;
+
+                            return (
+                              <div className="relative" ref={warningDropdownContactId === activity.contact_id ? dropdownRef : undefined}>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setWarningDropdownContactId(
+                                      warningDropdownContactId === activity.contact_id ? null : activity.contact_id
+                                    );
+                                  }}
+                                  className={`p-0.5 rounded hover:bg-gray-100 transition-colors ${
+                                    isOverdue ? 'text-red-500 hover:text-red-600' : 'text-yellow-500 hover:text-yellow-600'
+                                  }`}
+                                  title={isOverdue ? 'Overdue follow-up - Click to schedule' : 'No scheduled follow-up - Click to schedule'}
+                                >
+                                  <ExclamationTriangleIcon className="w-5 h-5" />
+                                </button>
+
+                                {/* Dropdown menu */}
+                                {warningDropdownContactId === activity.contact_id && (
+                                  <div className="absolute left-0 top-full mt-1 w-40 bg-white rounded-md shadow-lg border border-gray-200 z-50">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setWarningDropdownContactId(null);
+                                        handleLogAnother(e, activity);
+                                      }}
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-t-md"
+                                    >
+                                      <PhoneIcon className="w-4 h-4" />
+                                      Log Call
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setWarningDropdownContactId(null);
+                                        if (activity.contact) {
+                                          setLogCallForContact({
+                                            id: activity.contact.id,
+                                            name: getContactName(activity.contact),
+                                            company: activity.contact.company
+                                          });
+                                          setIsAddTaskModalOpen(true);
+                                        }
+                                      }}
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-b-md"
+                                    >
+                                      <ClipboardDocumentListIcon className="w-4 h-4" />
+                                      Add Task
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       ) : (
                         <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    {/* Phone icon cell - Log new call */}
+                    <td className="px-3 py-4 whitespace-nowrap text-center">
+                      {activity.contact && (
+                        <button
+                          onClick={(e) => handleLogAnother(e, activity)}
+                          className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors"
+                          title={`Log new call with ${getContactName(activity.contact)}`}
+                        >
+                          <PhoneIcon className="w-4 h-4" />
+                        </button>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -802,17 +875,6 @@ export default function ProspectingDashboard() {
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <CheckIcon checked={activity.meeting_held} />
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      {activity.contact && (
-                        <button
-                          onClick={(e) => handleLogAnother(e, activity)}
-                          className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors"
-                          title={`Log new call with ${getContactName(activity.contact)}`}
-                        >
-                          <PhoneIcon className="w-4 h-4" />
-                        </button>
-                      )}
-                    </td>
                   </tr>
                 ))
               )}
@@ -835,6 +897,25 @@ export default function ProspectingDashboard() {
         onClose={handleModalClose}
         onCallLogged={handleActivitySaved}
         existingActivity={selectedActivity}
+        parentObject={logCallForContact ? {
+          id: logCallForContact.id,
+          type: 'contact',
+          name: logCallForContact.name
+        } : undefined}
+      />
+
+      {/* Add Task Modal */}
+      <AddTaskModal
+        isOpen={isAddTaskModalOpen}
+        onClose={() => {
+          setIsAddTaskModalOpen(false);
+          setLogCallForContact(null);
+        }}
+        onSave={() => {
+          setIsAddTaskModalOpen(false);
+          setLogCallForContact(null);
+          fetchActivities();
+        }}
         parentObject={logCallForContact ? {
           id: logCallForContact.id,
           type: 'contact',
