@@ -12,7 +12,9 @@ import {
   ExclamationTriangleIcon,
   MagnifyingGlassIcon,
   CheckCircleIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  XMarkIcon,
+  CheckIcon
 } from '@heroicons/react/24/outline';
 import {
   ProspectingTargetView,
@@ -172,6 +174,50 @@ export default function TodaysPlan() {
     fetchTodaysData();
   };
 
+  // Dismiss an overdue activity (mark as closed without completing)
+  const dismissActivity = async (activityId: string) => {
+    // Get a closed status
+    const { data: closedStatus } = await supabase
+      .from('activity_status')
+      .select('id')
+      .eq('is_closed', true)
+      .limit(1)
+      .single();
+
+    if (closedStatus) {
+      await supabase
+        .from('activity')
+        .update({
+          status_id: closedStatus.id,
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', activityId);
+      fetchTodaysData();
+    }
+  };
+
+  // Complete an activity
+  const completeActivity = async (activityId: string) => {
+    // Get a completed/closed status
+    const { data: completedStatus } = await supabase
+      .from('activity_status')
+      .select('id')
+      .or('name.eq.Completed,name.eq.Closed')
+      .limit(1)
+      .single();
+
+    if (completedStatus) {
+      await supabase
+        .from('activity')
+        .update({
+          status_id: completedStatus.id,
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', activityId);
+      fetchTodaysData();
+    }
+  };
+
   if (loading) {
     return (
       <div className="animate-pulse space-y-4">
@@ -322,7 +368,7 @@ export default function TodaysPlan() {
                         {followUp.contact?.company || 'No company'}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2 ml-4">
+                    <div className="flex items-center gap-1 ml-4">
                       <button
                         onClick={() => followUp.contact && handleLogCall({
                           id: followUp.contact.id,
@@ -344,6 +390,20 @@ export default function TodaysPlan() {
                         title="Reschedule"
                       >
                         <CalendarDaysIcon className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => completeActivity(followUp.id)}
+                        className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"
+                        title="Mark Complete"
+                      >
+                        <CheckIcon className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => dismissActivity(followUp.id)}
+                        className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg"
+                        title="Dismiss"
+                      >
+                        <XMarkIcon className="w-5 h-5" />
                       </button>
                     </div>
                   </div>
