@@ -12,7 +12,6 @@ import {
   ChevronRightIcon,
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
-import { ExclamationCircleIcon } from '@heroicons/react/24/solid';
 
 interface ProspectingActivity {
   id: string;
@@ -757,7 +756,7 @@ export default function ProspectingDashboard() {
                           {/* Follow-up warning icons */}
                           {activity.contact_id && contactFollowUpStatus[activity.contact_id] && (
                             contactFollowUpStatus[activity.contact_id].isOverdue ? (
-                              <ExclamationCircleIcon
+                              <ExclamationTriangleIcon
                                 className="w-4 h-4 text-red-500 flex-shrink-0"
                                 title="Overdue follow-up activity"
                               />
