@@ -102,6 +102,8 @@ The activity table has duplicate foreign key constraints. The query uses explici
 - Route: `src/App.tsx` (line ~109)
 - Menu: `src/components/Navbar.tsx` (desktop ~510-520, mobile ~1005-1015)
 - Log Call Modal: `src/components/LogCallModal.tsx`
+- Follow-Up Modal: `src/components/FollowUpModal.tsx`
+- Add Task Modal: `src/components/AddTaskModal.tsx`
 
 ---
 
@@ -186,6 +188,29 @@ Fixed issue where contact company wasn't populating:
 - Quick buttons for common intervals
 - Custom date picker
 - Editable subject defaulting to "Follow-up with Contact - Company"
+
+### 6. Warning Icons with Action Dropdown ✅ (Dec 2024)
+- **Yellow triangle**: Contact has no scheduled follow-up
+- **Red triangle**: Contact has overdue follow-up
+- **Clickable icons**: Click to open dropdown menu with actions:
+  - **Log Call**: Opens LogCallModal for the contact
+  - **Add Task**: Opens AddTaskModal for the contact
+  - **Follow-up**: Opens FollowUpModal to quickly schedule a follow-up task
+- Icons are larger (w-5 h-5) for better visibility
+- Dropdown closes when clicking outside
+
+### 7. Standalone Follow-Up Modal ✅ (Dec 2024)
+- Reusable `FollowUpModal` component extracted for use outside LogCallModal
+- Same UI as post-call follow-up prompt
+- Quick schedule buttons: Tomorrow, In 3 Days, In 1 Week, In 2 Weeks
+- Custom date picker option
+- Editable subject with smart defaults
+- Creates Task activity type with Open status
+- File: `src/components/FollowUpModal.tsx`
+
+### 8. Contact Name in Add Task Modal ✅ (Dec 2024)
+- When opening AddTaskModal from Prospecting Dashboard, shows associated contact name
+- Blue info box in modal footer: "Associated Contact: {name}"
 
 ## Future Enhancements (Not Yet Implemented)
 
