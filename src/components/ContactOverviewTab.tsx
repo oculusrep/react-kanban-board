@@ -49,6 +49,15 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
     'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'
   ];
 
+  // Reset form when switching to new contact mode or when contact changes
+  useEffect(() => {
+    if (isNewContact) {
+      resetForm();
+    } else if (contact) {
+      resetForm(contact);
+    }
+  }, [isNewContact, contact?.id]);
+
   // Load dropdown data (clients and contacts for lookups)
   useEffect(() => {
     const loadData = async () => {

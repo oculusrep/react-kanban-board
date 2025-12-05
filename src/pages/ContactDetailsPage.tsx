@@ -29,10 +29,12 @@ const ContactDetailsPage: React.FC = () => {
   const isNewContact = contactId === 'new';
   console.log('ContactDetailsPage - isNewContact:', isNewContact);
 
-  // Clear error state when navigating to new contact
+  // Reset state when navigating to new contact
   useEffect(() => {
     if (isNewContact) {
       setError(null);
+      setContact(null);
+      setActiveTab('overview');
     }
   }, [isNewContact]);
 
