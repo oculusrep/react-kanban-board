@@ -157,7 +157,7 @@ const FollowUpModal: React.FC<FollowUpModalProps> = ({
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-[70]" onClick={onClose} />
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-[70]" onMouseDown={onClose} />
 
       {/* Modal */}
       <div className="fixed inset-0 flex items-center justify-center z-[70] p-4">
