@@ -34,6 +34,10 @@ export default function TargetList() {
   const [researchNotes, setResearchNotes] = useState('');
   const [contactsFound, setContactsFound] = useState(0);
   const [expandedTargetId, setExpandedTargetId] = useState<string | null>(null);
+  const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
+  const [editingResearchId, setEditingResearchId] = useState<string | null>(null);
+  const [editNotesValue, setEditNotesValue] = useState('');
+  const [editResearchValue, setEditResearchValue] = useState('');
 
   useEffect(() => {
     fetchTargets();
@@ -154,6 +158,66 @@ export default function TargetList() {
     setEditingTarget(target);
     setResearchNotes(target.research_notes || '');
     setContactsFound(target.contacts_found || 0);
+  };
+
+  const startEditingNotes = (target: ProspectingTargetView) => {
+    setEditingNotesId(target.id);
+    setEditNotesValue(target.notes || '');
+    setEditingResearchId(null);
+  };
+
+  const startEditingResearch = (target: ProspectingTargetView) => {
+    setEditingResearchId(target.id);
+    setEditResearchValue(target.research_notes || '');
+    setEditingNotesId(null);
+  };
+
+  const saveNotes = async (targetId: string) => {
+    let userId = null;
+    if (user?.email) {
+      const { data: userData } = await supabase
+        .from('user')
+        .select('id')
+        .eq('email', user.email)
+        .single();
+      userId = userData?.id;
+    }
+
+    await supabase
+      .from('prospecting_target')
+      .update({
+        notes: editNotesValue,
+        updated_by_id: userId
+      })
+      .eq('id', targetId);
+
+    setEditingNotesId(null);
+    setEditNotesValue('');
+    fetchTargets();
+  };
+
+  const saveResearchNotes = async (targetId: string) => {
+    let userId = null;
+    if (user?.email) {
+      const { data: userData } = await supabase
+        .from('user')
+        .select('id')
+        .eq('email', user.email)
+        .single();
+      userId = userData?.id;
+    }
+
+    await supabase
+      .from('prospecting_target')
+      .update({
+        research_notes: editResearchValue,
+        updated_by_id: userId
+      })
+      .eq('id', targetId);
+
+    setEditingResearchId(null);
+    setEditResearchValue('');
+    fetchTargets();
   };
 
   const formatDate = (dateString: string) => {
@@ -476,26 +540,104 @@ export default function TargetList() {
                             )}
 
                             {/* Notes */}
-                            {target.notes && (
-                              <div className="flex items-start gap-2">
-                                <DocumentTextIcon className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                                <div>
+                            <div className="flex items-start gap-2">
+                              <DocumentTextIcon className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between">
                                   <span className="text-xs font-medium text-gray-500 uppercase">Notes</span>
-                                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{target.notes}</p>
+                                  {editingNotesId !== target.id && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); startEditingNotes(target); }}
+                                      className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                    >
+                                      <PencilIcon className="w-3 h-3" />
+                                      Edit
+                                    </button>
+                                  )}
                                 </div>
+                                {editingNotesId === target.id ? (
+                                  <div className="mt-1 space-y-2">
+                                    <textarea
+                                      value={editNotesValue}
+                                      onChange={(e) => setEditNotesValue(e.target.value)}
+                                      rows={3}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                      placeholder="Add notes about this target..."
+                                      onClick={(e) => e.stopPropagation()}
+                                      autoFocus
+                                    />
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); saveNotes(target.id); }}
+                                        className="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700"
+                                      >
+                                        Save
+                                      </button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setEditingNotesId(null); }}
+                                        className="px-3 py-1 text-xs text-gray-600 hover:text-gray-800"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-gray-700 whitespace-pre-wrap mt-1">
+                                    {target.notes || <span className="text-gray-400 italic">No notes yet</span>}
+                                  </p>
+                                )}
                               </div>
-                            )}
+                            </div>
 
                             {/* Research Notes */}
-                            {target.research_notes && (
-                              <div className="flex items-start gap-2">
-                                <DocumentTextIcon className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
-                                <div>
+                            <div className="flex items-start gap-2">
+                              <DocumentTextIcon className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between">
                                   <span className="text-xs font-medium text-gray-500 uppercase">Research Notes</span>
-                                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{target.research_notes}</p>
+                                  {editingResearchId !== target.id && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); startEditingResearch(target); }}
+                                      className="text-xs text-green-600 hover:text-green-800 flex items-center gap-1"
+                                    >
+                                      <PencilIcon className="w-3 h-3" />
+                                      Edit
+                                    </button>
+                                  )}
                                 </div>
+                                {editingResearchId === target.id ? (
+                                  <div className="mt-1 space-y-2">
+                                    <textarea
+                                      value={editResearchValue}
+                                      onChange={(e) => setEditResearchValue(e.target.value)}
+                                      rows={4}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                      placeholder="Add research findings, contact names, talking points..."
+                                      onClick={(e) => e.stopPropagation()}
+                                      autoFocus
+                                    />
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); saveResearchNotes(target.id); }}
+                                        className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700"
+                                      >
+                                        Save
+                                      </button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setEditingResearchId(null); }}
+                                        className="px-3 py-1 text-xs text-gray-600 hover:text-gray-800"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-gray-700 whitespace-pre-wrap mt-1">
+                                    {target.research_notes || <span className="text-gray-400 italic">No research notes yet</span>}
+                                  </p>
+                                )}
                               </div>
-                            )}
+                            </div>
 
                             {/* Metadata */}
                             <div className="flex items-center gap-6 pt-2 border-t border-gray-200 text-xs text-gray-500">
@@ -510,10 +652,6 @@ export default function TargetList() {
                               )}
                             </div>
 
-                            {/* No content message */}
-                            {!target.website && !target.notes && !target.research_notes && (
-                              <p className="text-sm text-gray-400 italic">No additional details available</p>
-                            )}
                           </div>
                         </td>
                       </tr>
