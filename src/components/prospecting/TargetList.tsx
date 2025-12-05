@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
 import AddTargetModal from './AddTargetModal';
@@ -10,7 +10,11 @@ import {
   XMarkIcon,
   PencilIcon,
   TrashIcon,
-  GlobeAltIcon
+  GlobeAltIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  LinkIcon,
+  DocumentTextIcon
 } from '@heroicons/react/24/outline';
 import {
   ProspectingTargetView,
@@ -29,6 +33,7 @@ export default function TargetList() {
   const [editingTarget, setEditingTarget] = useState<ProspectingTargetView | null>(null);
   const [researchNotes, setResearchNotes] = useState('');
   const [contactsFound, setContactsFound] = useState(0);
+  const [expandedTargetId, setExpandedTargetId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchTargets();
@@ -343,108 +348,179 @@ export default function TargetList() {
                 </td>
               </tr>
             ) : (
-              filteredTargets.map((target) => (
-                <tr key={target.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">
-                    <div>
-                      <div className="font-medium text-gray-900">{target.company_name}</div>
-                      {target.website && (
-                        <a
-                          href={target.website.startsWith('http') ? target.website : `https://${target.website}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-blue-600 hover:text-blue-800"
-                        >
-                          {target.website}
-                        </a>
-                      )}
-                      {target.notes && (
-                        <p className="text-xs text-gray-500 truncate max-w-xs" title={target.notes}>
-                          {target.notes}
-                        </p>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                      PROSPECTING_STATUS_CONFIG[target.status]?.bgColor || 'bg-gray-100'
-                    } ${PROSPECTING_STATUS_CONFIG[target.status]?.color || 'text-gray-700'}`}>
-                      {PROSPECTING_STATUS_CONFIG[target.status]?.label || target.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`text-sm font-medium ${PRIORITY_CONFIG[target.priority]?.color || 'text-gray-500'}`}>
-                      {PRIORITY_CONFIG[target.priority]?.label || 'Medium'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {target.source || '-'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {target.contacts_found || 0}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatDate(target.created_at)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {target.status === 'needs_research' && (
-                        <button
-                          onClick={() => startResearching(target)}
-                          className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700"
-                        >
-                          Research
-                        </button>
-                      )}
-                      {target.status === 'researching' && (
-                        <button
-                          onClick={() => {
-                            setEditingTarget(target);
-                            setResearchNotes(target.research_notes || '');
-                            setContactsFound(target.contacts_found || 0);
-                          }}
-                          className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700"
-                        >
-                          Complete
-                        </button>
-                      )}
-                      {target.status === 'ready' && (
-                        <button
-                          onClick={() => updateTargetStatus(target.id, 'calling')}
-                          className="px-3 py-1.5 text-xs font-medium text-white bg-purple-600 rounded hover:bg-purple-700"
-                        >
-                          Start Calling
-                        </button>
-                      )}
-                      {(target.status === 'calling' || target.status === 'ready') && (
-                        <>
+              filteredTargets.map((target) => {
+                const isExpanded = expandedTargetId === target.id;
+                return (
+                  <React.Fragment key={target.id}>
+                    <tr
+                      className={`hover:bg-gray-50 cursor-pointer ${isExpanded ? 'bg-blue-50' : ''}`}
+                      onClick={() => setExpandedTargetId(isExpanded ? null : target.id)}
+                    >
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          {isExpanded ? (
+                            <ChevronDownIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          ) : (
+                            <ChevronRightIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          )}
+                          <div className="min-w-0">
+                            <div className="font-medium text-gray-900">{target.company_name}</div>
+                            {target.website && (
+                              <span className="text-xs text-blue-600 truncate block max-w-[200px]">
+                                {target.website}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                          PROSPECTING_STATUS_CONFIG[target.status]?.bgColor || 'bg-gray-100'
+                        } ${PROSPECTING_STATUS_CONFIG[target.status]?.color || 'text-gray-700'}`}>
+                          {PROSPECTING_STATUS_CONFIG[target.status]?.label || target.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`text-sm font-medium ${PRIORITY_CONFIG[target.priority]?.color || 'text-gray-500'}`}>
+                          {PRIORITY_CONFIG[target.priority]?.label || 'Medium'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {target.source || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {target.contacts_found || 0}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {formatDate(target.created_at)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-2">
+                          {target.status === 'needs_research' && (
+                            <button
+                              onClick={() => startResearching(target)}
+                              className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700"
+                            >
+                              Research
+                            </button>
+                          )}
+                          {target.status === 'researching' && (
+                            <button
+                              onClick={() => {
+                                setEditingTarget(target);
+                                setResearchNotes(target.research_notes || '');
+                                setContactsFound(target.contacts_found || 0);
+                              }}
+                              className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700"
+                            >
+                              Complete
+                            </button>
+                          )}
+                          {target.status === 'ready' && (
+                            <button
+                              onClick={() => updateTargetStatus(target.id, 'calling')}
+                              className="px-3 py-1.5 text-xs font-medium text-white bg-purple-600 rounded hover:bg-purple-700"
+                            >
+                              Start Calling
+                            </button>
+                          )}
+                          {(target.status === 'calling' || target.status === 'ready') && (
+                            <>
+                              <button
+                                onClick={() => updateTargetStatus(target.id, 'converted')}
+                                className="p-1.5 text-green-600 hover:bg-green-50 rounded"
+                                title="Mark Converted"
+                              >
+                                <CheckIcon className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => updateTargetStatus(target.id, 'disqualified')}
+                                className="p-1.5 text-gray-500 hover:bg-gray-100 rounded"
+                                title="Disqualify"
+                              >
+                                <XMarkIcon className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
                           <button
-                            onClick={() => updateTargetStatus(target.id, 'converted')}
-                            className="p-1.5 text-green-600 hover:bg-green-50 rounded"
-                            title="Mark Converted"
+                            onClick={() => deleteTarget(target.id)}
+                            className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                            title="Delete"
                           >
-                            <CheckIcon className="w-4 h-4" />
+                            <TrashIcon className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => updateTargetStatus(target.id, 'disqualified')}
-                            className="p-1.5 text-gray-500 hover:bg-gray-100 rounded"
-                            title="Disqualify"
-                          >
-                            <XMarkIcon className="w-4 h-4" />
-                          </button>
-                        </>
-                      )}
-                      <button
-                        onClick={() => deleteTarget(target.id)}
-                        className="p-1.5 text-red-500 hover:bg-red-50 rounded"
-                        title="Delete"
-                      >
-                        <TrashIcon className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+                        </div>
+                      </td>
+                    </tr>
+                    {/* Expanded Details Row */}
+                    {isExpanded && (
+                      <tr className="bg-gray-50">
+                        <td colSpan={7} className="px-6 py-4">
+                          <div className="ml-6 space-y-3">
+                            {/* Website */}
+                            {target.website && (
+                              <div className="flex items-start gap-2">
+                                <LinkIcon className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                                <div>
+                                  <span className="text-xs font-medium text-gray-500 uppercase">Website</span>
+                                  <a
+                                    href={target.website.startsWith('http') ? target.website : `https://${target.website}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="block text-sm text-blue-600 hover:text-blue-800 hover:underline break-all"
+                                  >
+                                    {target.website}
+                                  </a>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Notes */}
+                            {target.notes && (
+                              <div className="flex items-start gap-2">
+                                <DocumentTextIcon className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                                <div>
+                                  <span className="text-xs font-medium text-gray-500 uppercase">Notes</span>
+                                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{target.notes}</p>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Research Notes */}
+                            {target.research_notes && (
+                              <div className="flex items-start gap-2">
+                                <DocumentTextIcon className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                                <div>
+                                  <span className="text-xs font-medium text-gray-500 uppercase">Research Notes</span>
+                                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{target.research_notes}</p>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Metadata */}
+                            <div className="flex items-center gap-6 pt-2 border-t border-gray-200 text-xs text-gray-500">
+                              {target.owner_name && (
+                                <span>Owner: {target.owner_name}</span>
+                              )}
+                              {target.researched_at && (
+                                <span>Researched: {formatDate(target.researched_at)}</span>
+                              )}
+                              {target.contacts_found > 0 && (
+                                <span>Contacts Found: {target.contacts_found}</span>
+                              )}
+                            </div>
+
+                            {/* No content message */}
+                            {!target.website && !target.notes && !target.research_notes && (
+                              <p className="text-sm text-gray-400 italic">No additional details available</p>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })
             )}
           </tbody>
         </table>
