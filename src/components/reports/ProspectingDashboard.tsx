@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import LogCallModal from '../LogCallModal';
 import AddTaskModal from '../AddTaskModal';
+import FollowUpModal from '../FollowUpModal';
 import {
   MagnifyingGlassIcon,
   PlusIcon,
@@ -70,6 +71,9 @@ export default function ProspectingDashboard() {
   // Warning icon dropdown state
   const [warningDropdownContactId, setWarningDropdownContactId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Follow-up modal state
+  const [followUpContact, setFollowUpContact] = useState<{ id: string; name: string; company: string | null } | null>(null);
 
   // Funnel expanded state
   const [funnelExpanded, setFunnelExpanded] = useState(true);
@@ -824,10 +828,27 @@ export default function ProspectingDashboard() {
                                           setIsAddTaskModalOpen(true);
                                         }
                                       }}
-                                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-b-md"
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
                                     >
                                       <ClipboardDocumentListIcon className="w-4 h-4" />
                                       Add Task
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setWarningDropdownContactId(null);
+                                        if (activity.contact) {
+                                          setFollowUpContact({
+                                            id: activity.contact.id,
+                                            name: getContactName(activity.contact),
+                                            company: activity.contact.company
+                                          });
+                                        }
+                                      }}
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-b-md"
+                                    >
+                                      <PlusIcon className="w-4 h-4" />
+                                      + Follow-up
                                     </button>
                                   </div>
                                 )}
@@ -921,6 +942,19 @@ export default function ProspectingDashboard() {
           type: 'contact',
           name: logCallForContact.name
         } : undefined}
+      />
+
+      {/* Follow-up Modal */}
+      <FollowUpModal
+        isOpen={!!followUpContact}
+        onClose={() => setFollowUpContact(null)}
+        onFollowUpCreated={() => {
+          setFollowUpContact(null);
+          fetchActivities();
+        }}
+        contactId={followUpContact?.id || ''}
+        contactName={followUpContact?.name || ''}
+        contactCompany={followUpContact?.company || undefined}
       />
     </div>
   );
