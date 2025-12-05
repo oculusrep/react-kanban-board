@@ -134,7 +134,7 @@ export default function TodaysPlan() {
 
       if (!statsError && todayActivities) {
         setTodayStats({
-          calls: todayActivities.filter(a => a.completed_call).length,
+          calls: todayActivities.filter(a => a.is_prospecting_call || a.completed_call || a.meeting_held).length,
           meetings: todayActivities.filter(a => a.meeting_held).length
         });
       }
