@@ -81,25 +81,35 @@ export default function TodaysPlan() {
         setFollowUpsDue(todayFollowUps as FollowUpDue[]);
       }
 
-      // Fetch overdue follow-ups
-      const { data: overdue, error: overdueError } = await supabase
-        .from('activity')
-        .select(`
-          id,
-          subject,
-          activity_date,
-          contact_id,
-          contact!fk_activity_contact_id(id, first_name, last_name, company),
-          activity_status!fk_activity_status_id(is_closed)
-        `)
-        .lt('activity_date', todayStart)
-        .eq('activity_status.is_closed', false)
-        .not('contact_id', 'is', null)
-        .order('activity_date', { ascending: true })
-        .limit(10);
+      // Fetch overdue follow-ups - get open statuses first
+      const { data: openStatuses } = await supabase
+        .from('activity_status')
+        .select('id')
+        .eq('is_closed', false);
 
-      if (!overdueError && overdue) {
-        setOverdueFollowUps(overdue as FollowUpDue[]);
+      const openStatusIds = openStatuses?.map(s => s.id) || [];
+
+      if (openStatusIds.length > 0) {
+        const { data: overdue, error: overdueError } = await supabase
+          .from('activity')
+          .select(`
+            id,
+            subject,
+            activity_date,
+            contact_id,
+            contact!fk_activity_contact_id(id, first_name, last_name, company)
+          `)
+          .lt('activity_date', todayStart)
+          .in('status_id', openStatusIds)
+          .not('contact_id', 'is', null)
+          .order('activity_date', { ascending: true })
+          .limit(10);
+
+        if (!overdueError && overdue) {
+          setOverdueFollowUps(overdue as FollowUpDue[]);
+        }
+      } else {
+        setOverdueFollowUps([]);
       }
 
       // Fetch ready-to-call targets
@@ -176,23 +186,39 @@ export default function TodaysPlan() {
 
   // Dismiss an overdue activity (mark as closed without completing)
   const dismissActivity = async (activityId: string) => {
-    // Get a closed status
-    const { data: closedStatus } = await supabase
-      .from('activity_status')
-      .select('id')
-      .eq('is_closed', true)
-      .limit(1)
-      .single();
+    try {
+      // Get a closed status
+      const { data: closedStatus, error: statusError } = await supabase
+        .from('activity_status')
+        .select('id')
+        .eq('is_closed', true)
+        .limit(1)
+        .single();
 
-    if (closedStatus) {
-      await supabase
-        .from('activity')
-        .update({
-          status_id: closedStatus.id,
-          completed_at: new Date().toISOString()
-        })
-        .eq('id', activityId);
-      fetchTodaysData();
+      if (statusError) {
+        console.error('Error getting closed status:', statusError);
+        return;
+      }
+
+      if (closedStatus) {
+        const { error: updateError } = await supabase
+          .from('activity')
+          .update({
+            status_id: closedStatus.id,
+            completed_at: new Date().toISOString()
+          })
+          .eq('id', activityId);
+
+        if (updateError) {
+          console.error('Error updating activity:', updateError);
+          return;
+        }
+
+        console.log('✅ Activity dismissed:', activityId);
+        fetchTodaysData();
+      }
+    } catch (err) {
+      console.error('Error dismissing activity:', err);
     }
   };
 
