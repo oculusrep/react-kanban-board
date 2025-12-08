@@ -35,14 +35,22 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
 
-    <!-- Eruda Mobile Console for iPad/Mobile Debugging -->
-    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+    <!-- Eruda Mobile Console for iPad/Mobile Debugging - only load in development -->
     <script>
-      // Only load Eruda in development mode
-      if (window.location.hostname === 'localhost' || window.location.hostname.includes('github') || window.location.hostname.includes('codespaces')) {
-        eruda.init();
-        console.log('📱 Eruda mobile console loaded - tap the green icon in bottom-right to open');
-      }
+      (function() {
+        var isDev = window.location.hostname === 'localhost' ||
+                    window.location.hostname.includes('github') ||
+                    window.location.hostname.includes('codespaces');
+        if (isDev) {
+          var script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/eruda';
+          script.onload = function() {
+            eruda.init();
+            console.log('📱 Eruda mobile console loaded - tap the green icon in bottom-right to open');
+          };
+          document.body.appendChild(script);
+        }
+      })();
     </script>
   </body>
 </html>
