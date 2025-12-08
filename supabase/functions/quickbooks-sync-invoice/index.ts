@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { getUserIdFromAuthHeader } from '../_shared/jwt.ts'
 import {
   getQBConnection,
   refreshTokenIfNeeded,
@@ -30,12 +29,7 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    )
-
-    // Verify user is authenticated
+    // Create Supabase client with the user's auth token for RLS
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return new Response(
@@ -44,13 +38,32 @@ serve(async (req) => {
       )
     }
 
-    const authUserId = await getUserIdFromAuthHeader(authHeader)
-    if (!authUserId) {
+    // Create client with user's token to verify auth
+    const supabaseUserClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: { Authorization: authHeader }
+        }
+      }
+    )
+
+    // Verify the user is authenticated by getting their info
+    const { data: { user }, error: userError } = await supabaseUserClient.auth.getUser()
+    if (userError || !user) {
+      console.error('Auth error:', userError)
       return new Response(
         JSON.stringify({ error: 'Invalid authorization token' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       )
     }
+
+    // Use service role client for database operations (bypasses RLS)
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    )
 
     // Get request body
     const { paymentId, sendEmail } = await req.json() as SyncInvoiceRequest
