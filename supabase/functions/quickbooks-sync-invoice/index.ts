@@ -32,7 +32,6 @@ serve(async (req) => {
     // Create Supabase client with the user's auth token for RLS
     const authHeader = req.headers.get('Authorization')
     console.log('Auth header present:', !!authHeader)
-    console.log('Auth header starts with Bearer:', authHeader?.startsWith('Bearer '))
 
     if (!authHeader) {
       return new Response(
@@ -41,23 +40,18 @@ serve(async (req) => {
       )
     }
 
-    // Extract token and verify with Supabase auth
+    // Extract the JWT token
     const token = authHeader.replace('Bearer ', '')
-    console.log('Token length:', token?.length)
 
-    // Create client with user's token to verify auth
-    const supabaseUserClient = createClient(
+    // Use service role client for all database operations
+    const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: authHeader }
-        }
-      }
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
 
-    // Verify the user is authenticated by getting their info
-    const { data: { user }, error: userError } = await supabaseUserClient.auth.getUser()
+    // Verify the token by checking if it's a valid JWT and getting user info
+    // Use the service role client to verify the token
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
     console.log('User verified:', !!user, 'Error:', userError?.message)
 
     if (userError || !user) {
@@ -67,12 +61,6 @@ serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       )
     }
-
-    // Use service role client for database operations (bypasses RLS)
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    )
 
     // Get request body
     const { paymentId, sendEmail } = await req.json() as SyncInvoiceRequest
