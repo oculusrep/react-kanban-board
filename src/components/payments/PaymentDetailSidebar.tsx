@@ -72,8 +72,12 @@ const PaymentDetailSidebar: React.FC<PaymentDetailSidebarProps> = ({
         return;
       }
 
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quickbooks-sync-invoice`;
+      console.log('QuickBooks sync - URL:', functionUrl);
+      console.log('QuickBooks sync - Payment ID:', payment.payment_id);
+
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quickbooks-sync-invoice`,
+        functionUrl,
         {
           method: 'POST',
           headers: {
