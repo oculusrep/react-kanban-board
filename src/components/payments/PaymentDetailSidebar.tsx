@@ -1,9 +1,10 @@
 // Payment Detail Sidebar
 // src/components/payments/PaymentDetailSidebar.tsx
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PaymentDashboardRow } from '../../types/payment-dashboard';
+import { supabase } from '../../lib/supabaseClient';
 
 interface PaymentDetailSidebarProps {
   payment: PaymentDashboardRow | null;
@@ -19,6 +20,8 @@ const PaymentDetailSidebar: React.FC<PaymentDetailSidebarProps> = ({
   onUpdate,
 }) => {
   const navigate = useNavigate();
+  const [syncingToQB, setSyncingToQB] = useState(false);
+  const [qbSyncMessage, setQbSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Close on Escape key
   useEffect(() => {
@@ -48,6 +51,64 @@ const PaymentDetailSidebar: React.FC<PaymentDetailSidebarProps> = ({
       day: 'numeric',
       year: 'numeric',
     });
+  };
+
+  // Clear message when payment changes
+  useEffect(() => {
+    setQbSyncMessage(null);
+  }, [payment?.payment_id]);
+
+  const handleSyncToQuickBooks = async (sendEmail: boolean = false) => {
+    if (!payment) return;
+
+    setSyncingToQB(true);
+    setQbSyncMessage(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        setQbSyncMessage({ type: 'error', text: 'You must be logged in to sync to QuickBooks' });
+        return;
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quickbooks-sync-invoice`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            paymentId: payment.payment_id,
+            sendEmail
+          })
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        setQbSyncMessage({ type: 'error', text: result.error || 'Failed to sync invoice' });
+        return;
+      }
+
+      setQbSyncMessage({
+        type: 'success',
+        text: result.emailSent
+          ? `Invoice ${result.qbInvoiceNumber} created and sent!`
+          : `Invoice ${result.qbInvoiceNumber} created in QuickBooks`
+      });
+
+      // Refresh the data
+      onUpdate();
+    } catch (error: any) {
+      console.error('QuickBooks sync error:', error);
+      setQbSyncMessage({ type: 'error', text: error.message || 'Failed to sync to QuickBooks' });
+    } finally {
+      setSyncingToQB(false);
+    }
   };
 
   if (!payment) return null;
@@ -255,6 +316,65 @@ const PaymentDetailSidebar: React.FC<PaymentDetailSidebarProps> = ({
                 </div>
               </div>
             )}
+
+            {/* QuickBooks Integration */}
+            <div className="mb-6">
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                QuickBooks
+              </h3>
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                {payment.qb_invoice_id ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                        Synced
+                      </span>
+                      <span className="text-sm text-gray-600">
+                        Invoice #{payment.qb_invoice_number || payment.qb_invoice_id}
+                      </span>
+                    </div>
+                    {payment.qb_last_sync && (
+                      <div className="text-xs text-gray-500">
+                        Last synced: {formatDate(payment.qb_last_sync)}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-600">
+                        Not Synced
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleSyncToQuickBooks(false)}
+                        disabled={syncingToQB}
+                        className="flex-1 px-3 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {syncingToQB ? 'Syncing...' : 'Create Invoice'}
+                      </button>
+                      <button
+                        onClick={() => handleSyncToQuickBooks(true)}
+                        disabled={syncingToQB}
+                        className="flex-1 px-3 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {syncingToQB ? 'Syncing...' : 'Create & Send'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {qbSyncMessage && (
+                  <div className={`mt-3 p-2 rounded text-sm ${
+                    qbSyncMessage.type === 'success'
+                      ? 'bg-green-50 text-green-700 border border-green-200'
+                      : 'bg-red-50 text-red-700 border border-red-200'
+                  }`}>
+                    {qbSyncMessage.text}
+                  </div>
+                )}
+              </div>
+            </div>
 
             {/* Payment Summary */}
             <div className="mb-6">

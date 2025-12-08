@@ -106,6 +106,7 @@ export const usePaymentData = (dealId: string): PaymentDataResult => {
           sf_payment_date_received,
           sf_payment_invoice_date,
           qb_invoice_id,
+          qb_invoice_number,
           qb_payment_id,
           qb_sync_status,
           qb_last_sync,

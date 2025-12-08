@@ -23,6 +23,12 @@ export interface PaymentDashboardRow {
   payment_invoice_date: string | null;
   orep_invoice: string | null;
 
+  // QuickBooks sync info
+  qb_invoice_id: string | null;
+  qb_invoice_number: string | null;
+  qb_sync_status: string | null;
+  qb_last_sync: string | null;
+
   // Referral fee info
   referral_fee_usd: number | null;
   referral_payee_name: string | null;

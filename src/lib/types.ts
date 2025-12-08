@@ -243,6 +243,7 @@ export interface Payment {
   
   // QuickBooks integration
   qb_invoice_id: string | null;
+  qb_invoice_number: string | null;
   qb_payment_id: string | null;
   qb_sync_status?: string | null;
   qb_last_sync?: string | null;
