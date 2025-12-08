@@ -65,36 +65,25 @@ const PaymentDetailSidebar: React.FC<PaymentDetailSidebarProps> = ({
     setQbSyncMessage(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      console.log('QuickBooks sync - Payment ID:', payment.payment_id);
 
-      if (!session?.access_token) {
-        setQbSyncMessage({ type: 'error', text: 'You must be logged in to sync to QuickBooks' });
+      // Use Supabase client's functions.invoke instead of raw fetch
+      const { data: result, error } = await supabase.functions.invoke('quickbooks-sync-invoice', {
+        body: {
+          paymentId: payment.payment_id,
+          sendEmail
+        }
+      });
+
+      console.log('QuickBooks sync - Response:', result, error);
+
+      if (error) {
+        setQbSyncMessage({ type: 'error', text: error.message || 'Failed to sync invoice' });
         return;
       }
 
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quickbooks-sync-invoice`;
-      console.log('QuickBooks sync - URL:', functionUrl);
-      console.log('QuickBooks sync - Payment ID:', payment.payment_id);
-
-      const response = await fetch(
-        functionUrl,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
-          },
-          body: JSON.stringify({
-            paymentId: payment.payment_id,
-            sendEmail
-          })
-        }
-      );
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        setQbSyncMessage({ type: 'error', text: result.error || 'Failed to sync invoice' });
+      if (!result?.success) {
+        setQbSyncMessage({ type: 'error', text: result?.error || 'Failed to sync invoice' });
         return;
       }
 
