@@ -65,9 +65,18 @@ const PaymentDetailSidebar: React.FC<PaymentDetailSidebarProps> = ({
     setQbSyncMessage(null);
 
     try {
+      // Get the current session to verify we have a token
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('QuickBooks sync - Has session:', !!session, 'Has token:', !!session?.access_token);
       console.log('QuickBooks sync - Payment ID:', payment.payment_id);
 
-      // Use Supabase client's functions.invoke instead of raw fetch
+      if (!session?.access_token) {
+        setQbSyncMessage({ type: 'error', text: 'You must be logged in to sync to QuickBooks' });
+        setSyncingToQB(false);
+        return;
+      }
+
+      // Use Supabase client's functions.invoke - it should auto-include the auth token
       const { data: result, error } = await supabase.functions.invoke('quickbooks-sync-invoice', {
         body: {
           paymentId: payment.payment_id,
