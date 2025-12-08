@@ -1,8 +1,8 @@
 # QuickBooks Online Integration Specification
 
 **Document Created:** December 5, 2025
-**Status:** In Progress - Developer Setup Complete
-**Last Step Completed:** Sandbox company created in Intuit Developer Portal
+**Status:** In Progress - OAuth Flow Ready
+**Last Step Completed:** OAuth Edge Functions created, database tables created
 
 ---
 
@@ -204,24 +204,30 @@ These fields need to be added to the Deal entity:
 - [x] App created in Intuit Developer Portal (name: "OVIS" or similar)
 - [x] Scope selected: Accounting
 - [x] Sandbox company created
+- [x] Client ID and Client Secret retrieved
+- [x] Credentials stored in Supabase secrets
+- [x] Database tables created (qb_connection, qb_sync_log, qb_expense)
+- [x] OAuth Edge Functions created (quickbooks-connect, quickbooks-callback)
+- [x] bill_to fields added to deal table
+- [x] qb_invoice_number field added to payment table
 
 ### Credentials Obtained
-- [ ] Client ID — *Available in app dashboard*
-- [ ] Client Secret — *Available in app dashboard*
+- [x] Client ID — Stored in Supabase secrets
+- [x] Client Secret — Stored in Supabase secrets
 
 ### Next Steps
-1. Retrieve Client ID and Client Secret from Intuit Developer Portal
-2. Configure OAuth redirect URI in Intuit app settings
-3. Store credentials in OVIS environment variables
-4. Build OAuth flow in OVIS (connect button, callback handler)
-5. Create database tables for QBO sync tracking
-6. Build Supabase Edge Functions for QBO API calls
-7. Implement invoice sync logic
-8. Build "Send Invoice" button functionality
-9. Implement expense import and sync
-10. Create Budget & P&L Module UI
-11. Build admin sync status page
-12. Add error handling and notifications
+1. **Configure OAuth redirect URI in Intuit Developer Portal:**
+   ```
+   https://rqbvcvwbziilnycqtmnc.supabase.co/functions/v1/quickbooks-callback
+   ```
+2. Deploy Edge Functions to Supabase
+3. Build frontend QuickBooks settings/admin page
+4. Implement invoice sync logic (Edge Function)
+5. Build "Send Invoice" button functionality
+6. Implement expense import and sync
+7. Create Budget & P&L Module UI
+8. Build admin sync status page
+9. Add error handling and notifications
 
 ---
 
@@ -230,8 +236,16 @@ These fields need to be added to the Deal entity:
 ```
 QUICKBOOKS_CLIENT_ID=<from Intuit Developer Portal>
 QUICKBOOKS_CLIENT_SECRET=<from Intuit Developer Portal>
-QUICKBOOKS_REDIRECT_URI=<your callback URL>
 QUICKBOOKS_ENVIRONMENT=sandbox  # Change to 'production' when ready
+FRONTEND_URL=https://ovis.oculusrep.com  # For OAuth callback redirects
+```
+
+### OAuth Redirect URI
+
+Configure this in Intuit Developer Portal under your app's settings:
+
+```
+https://rqbvcvwbziilnycqtmnc.supabase.co/functions/v1/quickbooks-callback
 ```
 
 ---
@@ -308,12 +322,13 @@ Stores imported expenses from QBO.
 
 ## Resume Point
 
-**Where we left off:** Developer setup is complete. Sandbox company is created.
+**Where we left off:** OAuth flow backend is complete. Database tables created.
 
 **Next session should start with:**
-1. Retrieving Client ID and Client Secret from the Intuit Developer Portal
-2. Setting up OAuth redirect URI
-3. Beginning implementation of the OAuth connection flow
+1. Configure OAuth redirect URI in Intuit Developer Portal (see above)
+2. Deploy Edge Functions: `npx supabase functions deploy quickbooks-connect` and `npx supabase functions deploy quickbooks-callback`
+3. Build the frontend QuickBooks settings page with Connect button
+4. Test the OAuth flow end-to-end
 
 ---
 

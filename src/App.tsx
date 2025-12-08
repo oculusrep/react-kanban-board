@@ -36,6 +36,7 @@ import RobReportPage from "./pages/RobReportPage";
 import CoachDashboardPage from "./pages/CoachDashboardPage";
 import GoalManagementPage from "./pages/GoalManagementPage";
 import ProspectingDashboardPage from "./pages/ProspectingDashboardPage";
+import QuickBooksAdminPage from "./pages/QuickBooksAdminPage";
 
 function ProtectedLayout() {
   const location = useLocation();
@@ -110,6 +111,7 @@ function App() {
           <Route path="prospecting" element={<AdminRoute><ProspectingDashboardPage /></AdminRoute>} />
           <Route path="kpi-dashboard" element={<CoachRoute><KPIDashboardPage /></CoachRoute>} />
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
+          <Route path="admin/quickbooks" element={<AdminRoute><QuickBooksAdminPage /></AdminRoute>} />
         </Route>
       </Routes>
     </AuthProvider>
