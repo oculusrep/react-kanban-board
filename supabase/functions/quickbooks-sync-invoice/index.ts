@@ -31,12 +31,19 @@ serve(async (req) => {
   try {
     // Create Supabase client with the user's auth token for RLS
     const authHeader = req.headers.get('Authorization')
+    console.log('Auth header present:', !!authHeader)
+    console.log('Auth header starts with Bearer:', authHeader?.startsWith('Bearer '))
+
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: 'Authorization required' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       )
     }
+
+    // Extract token and verify with Supabase auth
+    const token = authHeader.replace('Bearer ', '')
+    console.log('Token length:', token?.length)
 
     // Create client with user's token to verify auth
     const supabaseUserClient = createClient(
@@ -51,10 +58,12 @@ serve(async (req) => {
 
     // Verify the user is authenticated by getting their info
     const { data: { user }, error: userError } = await supabaseUserClient.auth.getUser()
+    console.log('User verified:', !!user, 'Error:', userError?.message)
+
     if (userError || !user) {
       console.error('Auth error:', userError)
       return new Response(
-        JSON.stringify({ error: 'Invalid authorization token' }),
+        JSON.stringify({ error: 'Invalid authorization token', details: userError?.message }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       )
     }

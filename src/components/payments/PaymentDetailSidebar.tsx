@@ -85,9 +85,22 @@ const PaymentDetailSidebar: React.FC<PaymentDetailSidebarProps> = ({
       });
 
       console.log('QuickBooks sync - Response:', result, error);
+      console.log('QuickBooks sync - Error details:', error?.context, error?.name);
 
       if (error) {
-        setQbSyncMessage({ type: 'error', text: error.message || 'Failed to sync invoice' });
+        // Try to get more error details
+        let errorMessage = error.message || 'Failed to sync invoice';
+        if (error.context?.body) {
+          try {
+            const body = typeof error.context.body === 'string'
+              ? JSON.parse(error.context.body)
+              : error.context.body;
+            errorMessage = body.error || body.details || errorMessage;
+          } catch (e) {
+            // ignore parse error
+          }
+        }
+        setQbSyncMessage({ type: 'error', text: errorMessage });
         return;
       }
 
