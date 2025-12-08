@@ -76,30 +76,29 @@ const PaymentDetailSidebar: React.FC<PaymentDetailSidebarProps> = ({
         return;
       }
 
-      // Use Supabase client's functions.invoke - it should auto-include the auth token
-      const { data: result, error } = await supabase.functions.invoke('quickbooks-sync-invoice', {
-        body: {
+      // Call Edge Function directly with JWT anon key (required for Edge Functions)
+      // The sb_publishable_* format doesn't work with Edge Functions
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/quickbooks-sync-invoice`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': anonKey
+        },
+        body: JSON.stringify({
           paymentId: payment.payment_id,
           sendEmail
-        }
+        })
       });
 
-      console.log('QuickBooks sync - Response:', result, error);
-      console.log('QuickBooks sync - Error details:', error?.context, error?.name);
+      const result = await response.json();
+      console.log('QuickBooks sync - Response:', result, 'Status:', response.status);
 
-      if (error) {
-        // Try to get more error details
-        let errorMessage = error.message || 'Failed to sync invoice';
-        if (error.context?.body) {
-          try {
-            const body = typeof error.context.body === 'string'
-              ? JSON.parse(error.context.body)
-              : error.context.body;
-            errorMessage = body.error || body.details || errorMessage;
-          } catch (e) {
-            // ignore parse error
-          }
-        }
+      if (!response.ok) {
+        const errorMessage = result.error || result.details || 'Failed to sync invoice';
         setQbSyncMessage({ type: 'error', text: errorMessage });
         return;
       }
