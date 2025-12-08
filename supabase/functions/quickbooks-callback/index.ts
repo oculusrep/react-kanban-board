@@ -20,7 +20,7 @@ serve(async (req) => {
     if (error) {
       console.error('QuickBooks OAuth error:', error, errorDescription)
       return Response.redirect(
-        `${FRONTEND_URL}/settings/integrations?qb_error=${encodeURIComponent(errorDescription || error)}`,
+        `${FRONTEND_URL}/admin/quickbooks?qb_error=${encodeURIComponent(errorDescription || error)}`,
         302
       )
     }
@@ -29,7 +29,7 @@ serve(async (req) => {
     if (!code || !state || !realmId) {
       console.error('Missing required OAuth parameters:', { code: !!code, state: !!state, realmId: !!realmId })
       return Response.redirect(
-        `${FRONTEND_URL}/settings/integrations?qb_error=${encodeURIComponent('Missing required OAuth parameters')}`,
+        `${FRONTEND_URL}/admin/quickbooks?qb_error=${encodeURIComponent('Missing required OAuth parameters')}`,
         302
       )
     }
@@ -57,7 +57,7 @@ serve(async (req) => {
       stateData = JSON.parse(atob(state))
     } catch {
       return Response.redirect(
-        `${FRONTEND_URL}/settings/integrations?qb_error=${encodeURIComponent('Invalid state parameter')}`,
+        `${FRONTEND_URL}/admin/quickbooks?qb_error=${encodeURIComponent('Invalid state parameter')}`,
         302
       )
     }
@@ -66,7 +66,7 @@ serve(async (req) => {
     const stateAge = Date.now() - stateData.timestamp
     if (stateAge > 10 * 60 * 1000) {
       return Response.redirect(
-        `${FRONTEND_URL}/settings/integrations?qb_error=${encodeURIComponent('Authorization request expired. Please try again.')}`,
+        `${FRONTEND_URL}/admin/quickbooks?qb_error=${encodeURIComponent('Authorization request expired. Please try again.')}`,
         302
       )
     }
@@ -82,7 +82,7 @@ serve(async (req) => {
 
     if (!stateRecord) {
       return Response.redirect(
-        `${FRONTEND_URL}/settings/integrations?qb_error=${encodeURIComponent('Invalid or expired authorization request')}`,
+        `${FRONTEND_URL}/admin/quickbooks?qb_error=${encodeURIComponent('Invalid or expired authorization request')}`,
         302
       )
     }
@@ -115,7 +115,7 @@ serve(async (req) => {
       const errorText = await tokenResponse.text()
       console.error('Token exchange failed:', errorText)
       return Response.redirect(
-        `${FRONTEND_URL}/settings/integrations?qb_error=${encodeURIComponent('Failed to complete QuickBooks authorization')}`,
+        `${FRONTEND_URL}/admin/quickbooks?qb_error=${encodeURIComponent('Failed to complete QuickBooks authorization')}`,
         302
       )
     }
@@ -154,7 +154,7 @@ serve(async (req) => {
       if (updateError) {
         console.error('Failed to update QBO connection:', updateError)
         return Response.redirect(
-          `${FRONTEND_URL}/settings/integrations?qb_error=${encodeURIComponent('Failed to save connection')}`,
+          `${FRONTEND_URL}/admin/quickbooks?qb_error=${encodeURIComponent('Failed to save connection')}`,
           302
         )
       }
@@ -176,7 +176,7 @@ serve(async (req) => {
       if (insertError) {
         console.error('Failed to save QBO connection:', insertError)
         return Response.redirect(
-          `${FRONTEND_URL}/settings/integrations?qb_error=${encodeURIComponent('Failed to save connection')}`,
+          `${FRONTEND_URL}/admin/quickbooks?qb_error=${encodeURIComponent('Failed to save connection')}`,
           302
         )
       }
@@ -197,14 +197,14 @@ serve(async (req) => {
 
     // Redirect to frontend with success
     return Response.redirect(
-      `${FRONTEND_URL}/settings/integrations?qb_connected=true`,
+      `${FRONTEND_URL}/admin/quickbooks?qb_connected=true`,
       302
     )
 
   } catch (error) {
     console.error('QuickBooks callback error:', error)
     return Response.redirect(
-      `${FRONTEND_URL}/settings/integrations?qb_error=${encodeURIComponent('An unexpected error occurred')}`,
+      `${FRONTEND_URL}/admin/quickbooks?qb_error=${encodeURIComponent('An unexpected error occurred')}`,
       302
     )
   }
