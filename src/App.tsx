@@ -37,6 +37,7 @@ import CoachDashboardPage from "./pages/CoachDashboardPage";
 import GoalManagementPage from "./pages/GoalManagementPage";
 import ProspectingDashboardPage from "./pages/ProspectingDashboardPage";
 import QuickBooksAdminPage from "./pages/QuickBooksAdminPage";
+import QuickBooksCustomerMappingPage from "./pages/QuickBooksCustomerMappingPage";
 
 function ProtectedLayout() {
   const location = useLocation();
@@ -112,6 +113,7 @@ function App() {
           <Route path="kpi-dashboard" element={<CoachRoute><KPIDashboardPage /></CoachRoute>} />
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
           <Route path="admin/quickbooks" element={<AdminRoute><QuickBooksAdminPage /></AdminRoute>} />
+          <Route path="admin/quickbooks/customers" element={<AdminRoute><QuickBooksCustomerMappingPage /></AdminRoute>} />
         </Route>
       </Routes>
     </AuthProvider>

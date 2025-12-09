@@ -144,11 +144,12 @@ serve(async (req) => {
       )
     }
 
+    // Fetch client with qb_customer_id
     const clients = await postgrestQuery(
       supabaseUrl,
       secretKey,
       'client',
-      `select=id,client_name&id=eq.${deal.client_id}`
+      `select=id,client_name,qb_customer_id&id=eq.${deal.client_id}`
     )
 
     if (!clients || clients.length === 0) {
@@ -174,22 +175,37 @@ serve(async (req) => {
       }
     }
 
-    // Find or create customer in QuickBooks
-    const customerId = await findOrCreateCustomer(
-      connection,
-      client.client_name,
-      deal.bill_to_email,  // Client table doesn't have email, use deal's bill_to_email
-      {
-        companyName: deal.bill_to_company_name || client.client_name,
-        contactName: deal.bill_to_contact_name,
-        email: deal.bill_to_email,
-        street: deal.bill_to_address_street,
-        city: deal.bill_to_address_city,
-        state: deal.bill_to_address_state,
-        zip: deal.bill_to_address_zip,
-        phone: deal.bill_to_phone
-      }
-    )
+    // Get or create customer in QuickBooks
+    let customerId: string
+
+    if (client.qb_customer_id) {
+      // Use the stored QB customer ID
+      customerId = client.qb_customer_id
+      console.log('Using stored QB customer ID:', customerId)
+    } else {
+      // Find or create customer in QuickBooks (legacy behavior)
+      customerId = await findOrCreateCustomer(
+        connection,
+        client.client_name,
+        deal.bill_to_email,
+        {
+          companyName: deal.bill_to_company_name || client.client_name,
+          contactName: deal.bill_to_contact_name,
+          email: deal.bill_to_email,
+          street: deal.bill_to_address_street,
+          city: deal.bill_to_address_city,
+          state: deal.bill_to_address_state,
+          zip: deal.bill_to_address_zip,
+          phone: deal.bill_to_phone
+        }
+      )
+
+      // Store the QB customer ID for future use
+      await postgrestUpdate(supabaseUrl, secretKey, 'client', `id=eq.${client.id}`, {
+        qb_customer_id: customerId
+      })
+      console.log('Created/found and stored QB customer ID:', customerId)
+    }
 
     // Find or create the service item (Brokerage Fee)
     const serviceItemId = await findOrCreateServiceItem(connection, 'Brokerage Fee')

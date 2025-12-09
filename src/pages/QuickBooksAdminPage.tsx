@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
-import { ArrowLeft, CheckCircle, XCircle, RefreshCw, Link2, Unlink } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, RefreshCw, Link2, Unlink, Users } from "lucide-react";
 
 interface QBConnection {
   id: string;
@@ -344,6 +344,34 @@ export default function QuickBooksAdminPage() {
             )}
           </div>
         </div>
+
+        {/* Customer Mapping Card */}
+        {connection && (
+          <div className="bg-white rounded-lg shadow mb-6">
+            <div className="p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-full bg-blue-100">
+                    <Users className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Customer Mapping</h3>
+                    <p className="text-sm text-gray-600">
+                      Link OVIS clients to QuickBooks customers for accurate invoice syncing.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => navigate('/admin/quickbooks/customers')}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  <Link2 className="h-4 w-4" />
+                  Manage Mapping
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Sync History */}
         <div className="bg-white rounded-lg shadow">
