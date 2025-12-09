@@ -830,6 +830,7 @@ export type Database = {
           owner_id: string | null
           parent_id: string | null
           phone: string | null
+          qb_customer_id: string | null
           sf_account_source: string | null
           sf_client_type: string | null
           sf_created_by_id: string | null
@@ -863,6 +864,7 @@ export type Database = {
           owner_id?: string | null
           parent_id?: string | null
           phone?: string | null
+          qb_customer_id?: string | null
           sf_account_source?: string | null
           sf_client_type?: string | null
           sf_created_by_id?: string | null
@@ -896,6 +898,7 @@ export type Database = {
           owner_id?: string | null
           parent_id?: string | null
           phone?: string | null
+          qb_customer_id?: string | null
           sf_account_source?: string | null
           sf_client_type?: string | null
           sf_created_by_id?: string | null

@@ -497,6 +497,37 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
         </div>
       </div>
 
+      {/* QuickBooks Integration - Read-only display for existing clients */}
+      {!isNewClient && client && (
+        <div className="bg-white shadow rounded-lg p-6">
+          <h3 className="text-lg font-medium text-gray-900 mb-6">QuickBooks</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                QB Customer ID
+              </label>
+              <div className="flex items-center gap-2">
+                {client.qb_customer_id ? (
+                  <>
+                    <span className="inline-flex items-center px-3 py-2 rounded-md bg-green-50 text-green-800 text-sm font-mono">
+                      {client.qb_customer_id}
+                    </span>
+                    <span className="text-xs text-green-600">Linked</span>
+                  </>
+                ) : (
+                  <span className="text-sm text-gray-500 italic">
+                    Not linked to QuickBooks
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Managed via Admin → QuickBooks → Customer Mapping
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Billing Address */}
       <div className="bg-white shadow rounded-lg p-6">
         <h3 className="text-lg font-medium text-gray-900 mb-6">Billing Address</h3>

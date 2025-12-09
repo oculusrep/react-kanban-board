@@ -199,6 +199,181 @@ Required Supabase secrets (set via `npx supabase secrets set`):
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key for DB access |
 
+## Customer Mapping
+
+### Overview
+
+OVIS clients can be linked to QuickBooks customers to ensure invoices are created under the correct customer account. The Customer Mapping page (`/admin/quickbooks/customers`) provides a comprehensive interface for managing these relationships.
+
+### Database Schema
+
+#### Client Table Extensions
+The `client` table includes QuickBooks-related fields:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `qb_customer_id` | text | QuickBooks Customer ID |
+| `parent_id` | uuid | Parent client reference (for sub-customers) |
+| `is_active_client` | boolean | Whether client is active |
+
+### Edge Functions
+
+#### 1. `quickbooks-list-customers`
+Fetches all customers from QuickBooks for the mapping modal.
+
+**Endpoint:** `POST /functions/v1/quickbooks-list-customers`
+
+**Request:**
+```json
+{
+  "search": "optional search term",
+  "maxResults": 1000
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "customers": [
+    {
+      "id": "123",
+      "displayName": "Acme Corp",
+      "companyName": "Acme Corporation",
+      "email": "billing@acme.com",
+      "isSubCustomer": false,
+      "parentId": null,
+      "parentName": null,
+      "fullyQualifiedName": "Acme Corp",
+      "active": true
+    }
+  ],
+  "count": 1
+}
+```
+
+#### 2. `quickbooks-sync-customer`
+Creates or updates a customer in QuickBooks from an OVIS client.
+
+**Endpoint:** `POST /functions/v1/quickbooks-sync-customer`
+
+**Request:**
+```json
+{
+  "clientId": "uuid"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "action": "created | updated | linked",
+  "qbCustomerId": "123",
+  "qbDisplayName": "Client Name",
+  "message": "Customer created in QuickBooks: Client Name"
+}
+```
+
+**Actions:**
+1. Checks if client is already linked to a QB customer
+2. If linked, updates the existing QB customer with OVIS data
+3. If not linked, searches QB for exact name match
+4. If match found, links to existing QB customer
+5. If no match, creates new QB customer
+6. Handles parent/sub-customer relationships via `ParentRef`
+7. Logs sync operation
+
+#### 3. `quickbooks-link-customer`
+Manually links an OVIS client to an existing QuickBooks customer.
+
+**Endpoint:** `POST /functions/v1/quickbooks-link-customer`
+
+**Request:**
+```json
+{
+  "clientId": "uuid",
+  "qbCustomerId": "123",
+  "qbDisplayName": "Customer Name"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Linked \"OVIS Client\" to QuickBooks customer \"QB Customer\"",
+  "clientId": "uuid",
+  "clientName": "OVIS Client",
+  "qbCustomerId": "123"
+}
+```
+
+### Parent/Sub-Customer Relationships
+
+QuickBooks supports hierarchical customer relationships. OVIS mirrors this through the `parent_id` field:
+
+1. **Setting a Parent in OVIS:**
+   - If the child client is linked to QB, the child's QB customer is updated with `ParentRef`
+   - If the parent is not yet in QB, it's automatically created first
+   - The child is then synced with the parent reference
+
+2. **Removing a Parent:**
+   - Note: QuickBooks API doesn't support removing parent relationships
+   - The OVIS relationship is updated, but QB may retain the hierarchy
+
+3. **Sync Discrepancy Detection:**
+   - The UI compares OVIS client data with QB customer data
+   - Checks: name mismatch, parent relationship mismatch
+   - Shows "Sync Changes" button only when discrepancies exist
+
+### Customer Mapping Page Features
+
+#### Active Client Management
+- Checkbox to toggle `is_active_client` status
+- "Show inactive" filter with count of inactive clients
+- Inactive clients shown with visual indicator
+
+#### Parent Assignment
+- Dropdown to set/change parent client
+- Only top-level active clients available as parents
+- Changes auto-sync to QuickBooks when applicable
+- Auto-creates parent in QB if not already linked
+
+#### Smart Link Suggestions
+The UI intelligently suggests actions based on potential matches:
+
+| Scenario | Primary Action | Secondary Action |
+|----------|---------------|------------------|
+| Exact match found in QB | "Link to QB" | "Create New" |
+| Close match found in QB | "Link to QB" | "Create New" |
+| Partial match (may be parent) | "Create in QB" | "Search QB" |
+| No match found in QB | "Create in QB" | "Search QB" |
+
+**Match Types:**
+- **Exact match**: QB customer name exactly equals OVIS client name
+- **Close match**: QB customer name contains the full OVIS client name (e.g., QB: "Acme Corp - Main" contains OVIS: "Acme Corp")
+- **Partial match**: OVIS client name contains the QB customer name (e.g., OVIS: "Cheeky Monkeys - Nicki Patel" contains QB: "Cheeky Monkeys") - this typically indicates a parent/child relationship where the parent exists but the child doesn't
+
+#### Discrepancy Detection
+For linked clients, the system compares:
+- Client name vs QB DisplayName
+- Parent relationship (OVIS parent_id vs QB ParentRef)
+
+Visual indicators:
+- **Green checkmark + "Synced"**: Data matches between OVIS and QB
+- **Orange refresh + "Linked (needs sync)"**: Discrepancy detected
+- **Orange "Sync Changes" button**: Appears only when sync is needed
+
+### Deployment
+
+Deploy customer-related Edge Functions:
+```bash
+npx supabase functions deploy quickbooks-list-customers --no-verify-jwt
+npx supabase functions deploy quickbooks-sync-customer --no-verify-jwt
+npx supabase functions deploy quickbooks-link-customer --no-verify-jwt
+```
+
 ## UI Components
 
 ### QuickBooksAdminPage (`src/pages/QuickBooksAdminPage.tsx`)
@@ -206,7 +381,18 @@ Admin settings page for managing QuickBooks connection:
 - Shows connection status
 - Connect/Disconnect buttons
 - Last sync timestamp
+- Link to Customer Mapping page
 - Sync logs table
+
+### QuickBooksCustomerMappingPage (`src/pages/QuickBooksCustomerMappingPage.tsx`)
+Customer mapping management page:
+- List of all OVIS clients with QB link status
+- Active/inactive toggle checkboxes
+- Parent client dropdown (with auto-sync to QB)
+- Smart action buttons based on QB match detection
+- Discrepancy detection with conditional sync button
+- Modal for searching and linking to QB customers
+- Stats showing total/linked/unlinked counts
 
 ### PaymentSummaryRow (`src/components/payments/PaymentSummaryRow.tsx`)
 Shows QuickBooks sync status in payment list:
@@ -216,6 +402,13 @@ Shows QuickBooks sync status in payment list:
 ### PaymentDetailPanel (`src/components/payments/PaymentDetailPanel.tsx`)
 Full QuickBooks management when payment is expanded:
 - **Not Synced:** "Create Invoice" and "Create & Send" buttons
+
+### ClientOverviewTab (`src/components/ClientOverviewTab.tsx`)
+Client detail page shows QuickBooks integration status:
+- **QB Customer ID**: Read-only display of linked QuickBooks customer ID
+- Shows "Linked" badge when connected, "Not linked to QuickBooks" when not
+- Helper text directs users to Customer Mapping page for changes
+- Field is intentionally read-only to prevent accidental sync issues
 - **Synced:** Shows invoice number, "Sent" badge if emailed
 - **Actions:** "Send Invoice" button (if not sent), "Delete Invoice" button
 - Success/error messages after operations
@@ -292,6 +485,9 @@ Potential future features:
 - [ ] Sync payments received back from QuickBooks
 - [ ] Batch invoice creation for multiple payments
 - [ ] Invoice PDF download
-- [ ] Customer sync (bidirectional)
+- [x] Customer sync (OVIS → QuickBooks) - Completed
+- [ ] Customer sync (QuickBooks → OVIS) - Inbound sync
 - [ ] Expense/bill sync for broker payments
 - [ ] Webhook integration for real-time updates
+- [ ] Automatic sync on client name change in OVIS
+- [ ] Bulk customer sync operation
