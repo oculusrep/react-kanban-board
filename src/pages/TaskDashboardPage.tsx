@@ -108,7 +108,7 @@ const TaskDashboardPage: React.FC = () => {
         taskTypesResult
       ] = await Promise.all([
         loadTasks(),
-        supabase.from('user').select('*').order('first_name, last_name'),
+        supabase.from('user').select('*').or('active.eq.true,active.is.null').in('ovis_role', ['admin', 'broker_full', 'va', 'testing']).order('first_name, last_name'),
         supabase.from('activity_status').select('*').eq('active', true).order('sort_order'),
         supabase.from('activity_priority').select('*').eq('active', true).order('sort_order'),
         supabase.from('activity_task_type').select('*').eq('active', true).order('sort_order')
