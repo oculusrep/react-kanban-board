@@ -1,11 +1,78 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // QuickBooks OAuth token endpoint
 const QBO_TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer'
 
 // Frontend URL to redirect after OAuth completion
 const FRONTEND_URL = Deno.env.get('FRONTEND_URL') || 'https://ovis.oculusrep.com'
+
+// Helper function to make PostgREST API calls with new format secret key
+async function postgrestQuery(supabaseUrl: string, secretKey: string, table: string, params: string): Promise<any> {
+  const response = await fetch(`${supabaseUrl}/rest/v1/${table}?${params}`, {
+    headers: {
+      'apikey': secretKey,
+      'Authorization': `Bearer ${secretKey}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    }
+  })
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`PostgREST error: ${response.status} - ${error}`)
+  }
+  return response.json()
+}
+
+async function postgrestInsert(supabaseUrl: string, secretKey: string, table: string, data: any): Promise<any> {
+  const response = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: {
+      'apikey': secretKey,
+      'Authorization': `Bearer ${secretKey}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: JSON.stringify(data)
+  })
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`PostgREST insert error: ${response.status} - ${error}`)
+  }
+  return response.json()
+}
+
+async function postgrestUpdate(supabaseUrl: string, secretKey: string, table: string, params: string, data: any): Promise<any> {
+  const response = await fetch(`${supabaseUrl}/rest/v1/${table}?${params}`, {
+    method: 'PATCH',
+    headers: {
+      'apikey': secretKey,
+      'Authorization': `Bearer ${secretKey}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: JSON.stringify(data)
+  })
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`PostgREST update error: ${response.status} - ${error}`)
+  }
+  return response.json()
+}
+
+async function postgrestDelete(supabaseUrl: string, secretKey: string, table: string, params: string): Promise<void> {
+  const response = await fetch(`${supabaseUrl}/rest/v1/${table}?${params}`, {
+    method: 'DELETE',
+    headers: {
+      'apikey': secretKey,
+      'Authorization': `Bearer ${secretKey}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`PostgREST delete error: ${response.status} - ${error}`)
+  }
+}
 
 serve(async (req) => {
   try {
@@ -38,18 +105,19 @@ serve(async (req) => {
     const clientId = Deno.env.get('QUICKBOOKS_CLIENT_ID')
     const clientSecret = Deno.env.get('QUICKBOOKS_CLIENT_SECRET')
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    // Use the new format secret key for database operations
+    const secretKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
     if (!clientId || !clientSecret) {
       throw new Error('QuickBooks credentials not configured')
     }
 
-    if (!supabaseUrl || !serviceRoleKey) {
+    if (!supabaseUrl || !secretKey) {
+      console.error('Missing config - URL:', !!supabaseUrl, 'Key:', !!secretKey)
       throw new Error('Supabase configuration missing')
     }
 
-    // Create Supabase client with service role
-    const supabaseClient = createClient(supabaseUrl, serviceRoleKey)
+    console.log('Secret key present:', !!secretKey, 'starts with sb_:', secretKey?.startsWith('sb_'))
 
     // Decode and validate state parameter
     let stateData: { userId: string; nonce: string; timestamp: number }
@@ -72,26 +140,24 @@ serve(async (req) => {
     }
 
     // Verify state exists in our database (CSRF protection)
-    const { data: stateRecord } = await supabaseClient
-      .from('qb_sync_log')
-      .select('id')
-      .eq('entity_type', 'oauth_state')
-      .eq('qb_entity_id', state)
-      .eq('status', 'pending')
-      .single()
+    const stateRecords = await postgrestQuery(
+      supabaseUrl,
+      secretKey,
+      'qb_sync_log',
+      `select=id&entity_type=eq.oauth_state&qb_entity_id=eq.${encodeURIComponent(state)}&status=eq.pending`
+    )
 
-    if (!stateRecord) {
+    if (!stateRecords || stateRecords.length === 0) {
       return Response.redirect(
         `${FRONTEND_URL}/admin/quickbooks?qb_error=${encodeURIComponent('Invalid or expired authorization request')}`,
         302
       )
     }
 
+    const stateRecord = stateRecords[0]
+
     // Delete the used state record
-    await supabaseClient
-      .from('qb_sync_log')
-      .delete()
-      .eq('id', stateRecord.id)
+    await postgrestDelete(supabaseUrl, secretKey, 'qb_sync_log', `id=eq.${stateRecord.id}`)
 
     // Build the redirect URI (must match what was sent in the authorization request)
     const redirectUri = `${supabaseUrl}/functions/v1/quickbooks-callback`
@@ -130,63 +196,52 @@ serve(async (req) => {
     const refreshTokenExpiresAt = new Date(now.getTime() + (100 * 24 * 60 * 60 * 1000)) // 100 days
 
     // Check if there's an existing connection and update or insert
-    const { data: existingConnection } = await supabaseClient
-      .from('qb_connection')
-      .select('id')
-      .eq('realm_id', realmId)
-      .single()
+    const existingConnections = await postgrestQuery(
+      supabaseUrl,
+      secretKey,
+      'qb_connection',
+      `select=id&realm_id=eq.${realmId}`
+    )
 
-    if (existingConnection) {
-      // Update existing connection
-      const { error: updateError } = await supabaseClient
-        .from('qb_connection')
-        .update({
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
-          access_token_expires_at: accessTokenExpiresAt.toISOString(),
-          refresh_token_expires_at: refreshTokenExpiresAt.toISOString(),
-          connected_by: stateData.userId,
-          connected_at: now.toISOString(),
-          status: 'connected'
-        })
-        .eq('id', existingConnection.id)
+    const connectionData = {
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      access_token_expires_at: accessTokenExpiresAt.toISOString(),
+      refresh_token_expires_at: refreshTokenExpiresAt.toISOString(),
+      connected_by: stateData.userId,
+      connected_at: now.toISOString(),
+      status: 'connected'
+    }
 
-      if (updateError) {
-        console.error('Failed to update QBO connection:', updateError)
-        return Response.redirect(
-          `${FRONTEND_URL}/admin/quickbooks?qb_error=${encodeURIComponent('Failed to save connection')}`,
-          302
+    try {
+      if (existingConnections && existingConnections.length > 0) {
+        // Update existing connection
+        await postgrestUpdate(
+          supabaseUrl,
+          secretKey,
+          'qb_connection',
+          `id=eq.${existingConnections[0].id}`,
+          connectionData
         )
-      }
-    } else {
-      // Insert new connection
-      const { error: insertError } = await supabaseClient
-        .from('qb_connection')
-        .insert({
+      } else {
+        // Insert new connection
+        await postgrestInsert(supabaseUrl, secretKey, 'qb_connection', {
           realm_id: realmId,
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
-          access_token_expires_at: accessTokenExpiresAt.toISOString(),
-          refresh_token_expires_at: refreshTokenExpiresAt.toISOString(),
-          connected_by: stateData.userId,
-          connected_at: now.toISOString(),
-          status: 'connected'
+          ...connectionData
         })
-
-      if (insertError) {
-        console.error('Failed to save QBO connection:', insertError)
-        return Response.redirect(
-          `${FRONTEND_URL}/admin/quickbooks?qb_error=${encodeURIComponent('Failed to save connection')}`,
-          302
-        )
       }
+    } catch (dbError: any) {
+      console.error('Failed to save QBO connection:', dbError)
+      return Response.redirect(
+        `${FRONTEND_URL}/admin/quickbooks?qb_error=${encodeURIComponent('Failed to save connection: ' + dbError.message)}`,
+        302
+      )
     }
 
     // Log successful connection
-    await supabaseClient
-      .from('qb_sync_log')
-      .insert({
-        sync_type: 'customer', // Using customer as placeholder for connection events
+    try {
+      await postgrestInsert(supabaseUrl, secretKey, 'qb_sync_log', {
+        sync_type: 'customer',
         direction: 'inbound',
         status: 'success',
         entity_id: stateData.userId,
@@ -194,6 +249,10 @@ serve(async (req) => {
         qb_entity_id: realmId,
         error_message: null
       })
+    } catch (logError) {
+      console.error('Failed to log connection:', logError)
+      // Don't fail the whole operation for logging errors
+    }
 
     // Redirect to frontend with success
     return Response.redirect(

@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   getQBConnection,
   refreshTokenIfNeeded,
@@ -8,6 +7,9 @@ import {
   createInvoice,
   sendInvoice,
   logSync,
+  updateConnectionLastSync,
+  postgrestQuery,
+  postgrestUpdate,
   QBInvoice,
   QBInvoiceLine
 } from '../_shared/quickbooks.ts'
@@ -29,7 +31,7 @@ serve(async (req) => {
   }
 
   try {
-    // Create Supabase client with the user's auth token for RLS
+    // Verify authorization header is present
     const authHeader = req.headers.get('Authorization')
     console.log('Auth header present:', !!authHeader)
 
@@ -40,28 +42,15 @@ serve(async (req) => {
       )
     }
 
-    // Extract the JWT token
-    const token = authHeader.replace('Bearer ', '')
+    // Get environment variables for direct PostgREST calls
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+    const secretKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 
-    // Use service role client for all database operations
-    // Note: Using SERVICE_ROLE_JWT because SUPABASE_SERVICE_ROLE_KEY uses new format
-    // that doesn't work with the Supabase client
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SERVICE_ROLE_JWT') ?? '',
-    )
+    console.log('SUPABASE_URL:', supabaseUrl)
+    console.log('SUPABASE_SERVICE_ROLE_KEY present:', !!secretKey)
 
-    // Verify the token by checking if it's a valid JWT and getting user info
-    // Use the service role client to verify the token
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
-    console.log('User verified:', !!user, 'Error:', userError?.message)
-
-    if (userError || !user) {
-      console.error('Auth error:', userError)
-      return new Response(
-        JSON.stringify({ error: 'Invalid authorization token', details: userError?.message }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
-      )
+    if (!supabaseUrl || !secretKey) {
+      throw new Error('Supabase configuration missing')
     }
 
     // Get request body
@@ -74,8 +63,11 @@ serve(async (req) => {
       )
     }
 
-    // Get the QBO connection
-    let connection = await getQBConnection(supabaseClient)
+    // Get the QBO connection using direct PostgREST
+    console.log('Attempting to get QBO connection...')
+    let connection = await getQBConnection(supabaseUrl, secretKey)
+    console.log('getQBConnection result:', connection ? 'found' : 'null')
+
     if (!connection) {
       return new Response(
         JSON.stringify({ error: 'QuickBooks is not connected. Please connect in Settings.' }),
@@ -84,55 +76,27 @@ serve(async (req) => {
     }
 
     // Refresh token if needed
-    connection = await refreshTokenIfNeeded(supabaseClient, connection)
+    connection = await refreshTokenIfNeeded(supabaseUrl, secretKey, connection)
 
-    // Fetch payment with related data
-    const { data: payment, error: paymentError } = await supabaseClient
-      .from('payment')
-      .select(`
-        id,
-        payment_name,
-        payment_amount,
-        payment_date_estimated,
-        payment_invoice_date,
-        qb_invoice_id,
-        qb_invoice_number,
-        deal:deal_id (
-          id,
-          deal_name,
-          bill_to_contact_name,
-          bill_to_company_name,
-          bill_to_email,
-          bill_to_address_street,
-          bill_to_address_city,
-          bill_to_address_state,
-          bill_to_address_zip,
-          bill_to_phone,
-          client:client_id (
-            id,
-            client_name,
-            email
-          ),
-          property:property_id (
-            id,
-            property_name,
-            address,
-            city,
-            state,
-            zip
-          )
-        )
-      `)
-      .eq('id', paymentId)
-      .single()
+    // Fetch payment with related data using PostgREST
+    // Note: PostgREST uses different syntax for nested selects
+    const paymentSelect = 'id,payment_name,payment_amount,payment_date_estimated,payment_invoice_date,qb_invoice_id,qb_invoice_number,deal_id'
+    const payments = await postgrestQuery(
+      supabaseUrl,
+      secretKey,
+      'payment',
+      `select=${paymentSelect}&id=eq.${paymentId}`
+    )
 
-    if (paymentError || !payment) {
-      console.error('Payment not found:', paymentError)
+    if (!payments || payments.length === 0) {
+      console.error('Payment not found')
       return new Response(
         JSON.stringify({ error: 'Payment not found' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
       )
     }
+
+    const payment = payments[0]
 
     // Check if already synced
     if (payment.qb_invoice_id) {
@@ -147,26 +111,78 @@ serve(async (req) => {
       )
     }
 
-    const deal = payment.deal as any
-    const client = deal?.client
-    const property = deal?.property
+    // Fetch the deal with client and property
+    if (!payment.deal_id) {
+      return new Response(
+        JSON.stringify({ error: 'Payment must have a deal associated' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
+    }
 
-    if (!client) {
+    const dealSelect = 'id,deal_name,bill_to_contact_name,bill_to_company_name,bill_to_email,bill_to_address_street,bill_to_address_city,bill_to_address_state,bill_to_address_zip,bill_to_phone,client_id,property_id'
+    const deals = await postgrestQuery(
+      supabaseUrl,
+      secretKey,
+      'deal',
+      `select=${dealSelect}&id=eq.${payment.deal_id}`
+    )
+
+    if (!deals || deals.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'Deal not found' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+      )
+    }
+
+    const deal = deals[0]
+
+    // Fetch the client
+    if (!deal.client_id) {
       return new Response(
         JSON.stringify({ error: 'Payment must have a client associated via deal' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       )
     }
 
+    const clients = await postgrestQuery(
+      supabaseUrl,
+      secretKey,
+      'client',
+      `select=id,client_name&id=eq.${deal.client_id}`
+    )
+
+    if (!clients || clients.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'Client not found' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+      )
+    }
+
+    const client = clients[0]
+
+    // Optionally fetch property if exists
+    let property = null
+    if (deal.property_id) {
+      const properties = await postgrestQuery(
+        supabaseUrl,
+        secretKey,
+        'property',
+        `select=id,property_name,address,city,state,zip&id=eq.${deal.property_id}`
+      )
+      if (properties && properties.length > 0) {
+        property = properties[0]
+      }
+    }
+
     // Find or create customer in QuickBooks
     const customerId = await findOrCreateCustomer(
       connection,
       client.client_name,
-      client.email,
+      deal.bill_to_email,  // Client table doesn't have email, use deal's bill_to_email
       {
         companyName: deal.bill_to_company_name || client.client_name,
         contactName: deal.bill_to_contact_name,
-        email: deal.bill_to_email || client.email,
+        email: deal.bill_to_email,
         street: deal.bill_to_address_street,
         city: deal.bill_to_address_city,
         state: deal.bill_to_address_state,
@@ -217,8 +233,8 @@ serve(async (req) => {
     }
 
     // Add bill-to email for sending
-    if (deal.bill_to_email || client.email) {
-      invoice.BillEmail = { Address: deal.bill_to_email || client.email }
+    if (deal.bill_to_email) {
+      invoice.BillEmail = { Address: deal.bill_to_email }
     }
 
     // Add memo with deal/property info
@@ -234,24 +250,22 @@ serve(async (req) => {
     console.log('Created QBO invoice:', qbInvoice)
 
     // Update payment with QBO invoice info
-    const { error: updateError } = await supabaseClient
-      .from('payment')
-      .update({
+    try {
+      await postgrestUpdate(supabaseUrl, secretKey, 'payment', `id=eq.${paymentId}`, {
         qb_invoice_id: qbInvoice.Id,
         qb_invoice_number: qbInvoice.DocNumber,
         qb_sync_status: 'synced',
         qb_last_sync: new Date().toISOString()
       })
-      .eq('id', paymentId)
-
-    if (updateError) {
+    } catch (updateError: any) {
       console.error('Failed to update payment with QBO info:', updateError)
       // Log sync but don't fail - invoice was created
     }
 
     // Log successful sync
     await logSync(
-      supabaseClient,
+      supabaseUrl,
+      secretKey,
       'invoice',
       'outbound',
       'success',
@@ -262,24 +276,22 @@ serve(async (req) => {
 
     // Optionally send the invoice via email
     let emailSent = false
-    if (sendEmail && (deal.bill_to_email || client.email)) {
+    if (sendEmail && deal.bill_to_email) {
       try {
-        await sendInvoice(connection, qbInvoice.Id, deal.bill_to_email || client.email)
+        await sendInvoice(connection, qbInvoice.Id, deal.bill_to_email)
         emailSent = true
 
         // Update payment to mark invoice as sent
-        await supabaseClient
-          .from('payment')
-          .update({
-            invoice_sent: true,
-            sf_invoice_sent_date: new Date().toISOString().split('T')[0]
-          })
-          .eq('id', paymentId)
+        await postgrestUpdate(supabaseUrl, secretKey, 'payment', `id=eq.${paymentId}`, {
+          invoice_sent: true,
+          sf_invoice_sent_date: new Date().toISOString().split('T')[0]
+        })
       } catch (emailError: any) {
         console.error('Failed to send invoice email:', emailError)
         // Don't fail the whole operation, just log it
         await logSync(
-          supabaseClient,
+          supabaseUrl,
+          secretKey,
           'invoice',
           'outbound',
           'failed',
@@ -292,10 +304,7 @@ serve(async (req) => {
     }
 
     // Update last_sync_at on connection
-    await supabaseClient
-      .from('qb_connection')
-      .update({ last_sync_at: new Date().toISOString() })
-      .eq('id', connection.id)
+    await updateConnectionLastSync(supabaseUrl, secretKey, connection.id)
 
     return new Response(
       JSON.stringify({

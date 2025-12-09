@@ -1,11 +1,62 @@
 // Shared QuickBooks Online API utilities for Supabase Edge Functions
 
-import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
 // QBO API Base URLs
 const QBO_SANDBOX_API_URL = 'https://sandbox-quickbooks.api.intuit.com'
 const QBO_PRODUCTION_API_URL = 'https://quickbooks.api.intuit.com'
 const QBO_TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer'
+
+// PostgREST API helpers for new format secret key
+export async function postgrestQuery(supabaseUrl: string, secretKey: string, table: string, params: string): Promise<any> {
+  const response = await fetch(`${supabaseUrl}/rest/v1/${table}?${params}`, {
+    headers: {
+      'apikey': secretKey,
+      'Authorization': `Bearer ${secretKey}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    }
+  })
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`PostgREST error: ${response.status} - ${error}`)
+  }
+  return response.json()
+}
+
+export async function postgrestInsert(supabaseUrl: string, secretKey: string, table: string, data: any): Promise<any> {
+  const response = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: {
+      'apikey': secretKey,
+      'Authorization': `Bearer ${secretKey}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: JSON.stringify(data)
+  })
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`PostgREST insert error: ${response.status} - ${error}`)
+  }
+  return response.json()
+}
+
+export async function postgrestUpdate(supabaseUrl: string, secretKey: string, table: string, params: string, data: any): Promise<any> {
+  const response = await fetch(`${supabaseUrl}/rest/v1/${table}?${params}`, {
+    method: 'PATCH',
+    headers: {
+      'apikey': secretKey,
+      'Authorization': `Bearer ${secretKey}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: JSON.stringify(data)
+  })
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`PostgREST update error: ${response.status} - ${error}`)
+  }
+  return response.json()
+}
 
 export interface QBConnection {
   id: string
@@ -63,26 +114,33 @@ export interface QBInvoice {
 /**
  * Get the active QBO connection from the database
  */
-export async function getQBConnection(supabaseClient: SupabaseClient): Promise<QBConnection | null> {
-  const { data, error } = await supabaseClient
-    .from('qb_connection')
-    .select('*')
-    .eq('status', 'connected')
-    .single()
+export async function getQBConnection(supabaseUrl: string, secretKey: string): Promise<QBConnection | null> {
+  try {
+    const connections = await postgrestQuery(
+      supabaseUrl,
+      secretKey,
+      'qb_connection',
+      'select=*&status=eq.connected&limit=1'
+    )
 
-  if (error || !data) {
-    console.error('No active QBO connection found:', error)
+    if (!connections || connections.length === 0) {
+      console.error('No active QBO connection found')
+      return null
+    }
+
+    return connections[0] as QBConnection
+  } catch (error) {
+    console.error('Error fetching QBO connection:', error)
     return null
   }
-
-  return data as QBConnection
 }
 
 /**
  * Refresh the access token if expired
  */
 export async function refreshTokenIfNeeded(
-  supabaseClient: SupabaseClient,
+  supabaseUrl: string,
+  secretKey: string,
   connection: QBConnection
 ): Promise<QBConnection> {
   const expiresAt = new Date(connection.access_token_expires_at)
@@ -120,10 +178,7 @@ export async function refreshTokenIfNeeded(
     console.error('Token refresh failed:', errorText)
 
     // Mark connection as expired
-    await supabaseClient
-      .from('qb_connection')
-      .update({ status: 'expired' })
-      .eq('id', connection.id)
+    await postgrestUpdate(supabaseUrl, secretKey, 'qb_connection', `id=eq.${connection.id}`, { status: 'expired' })
 
     throw new Error('Failed to refresh QuickBooks token. Please reconnect.')
   }
@@ -134,20 +189,12 @@ export async function refreshTokenIfNeeded(
   const newAccessTokenExpiresAt = new Date(now.getTime() + (tokens.expires_in * 1000))
   const newRefreshTokenExpiresAt = new Date(now.getTime() + (100 * 24 * 60 * 60 * 1000)) // 100 days
 
-  const { error: updateError } = await supabaseClient
-    .from('qb_connection')
-    .update({
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      access_token_expires_at: newAccessTokenExpiresAt.toISOString(),
-      refresh_token_expires_at: newRefreshTokenExpiresAt.toISOString()
-    })
-    .eq('id', connection.id)
-
-  if (updateError) {
-    console.error('Failed to save refreshed tokens:', updateError)
-    throw new Error('Failed to save refreshed tokens')
-  }
+  await postgrestUpdate(supabaseUrl, secretKey, 'qb_connection', `id=eq.${connection.id}`, {
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    access_token_expires_at: newAccessTokenExpiresAt.toISOString(),
+    refresh_token_expires_at: newRefreshTokenExpiresAt.toISOString()
+  })
 
   return {
     ...connection,
@@ -342,10 +389,48 @@ export async function sendInvoice(
 }
 
 /**
+ * Get an invoice from QuickBooks (needed to get SyncToken for delete)
+ */
+export async function getInvoice(
+  connection: QBConnection,
+  invoiceId: string
+): Promise<{ Id: string; SyncToken: string; DocNumber: string }> {
+  const result = await qbApiRequest<{ Invoice: { Id: string; SyncToken: string; DocNumber: string } }>(
+    connection,
+    'GET',
+    `invoice/${invoiceId}`
+  )
+  return result.Invoice
+}
+
+/**
+ * Delete (void) an invoice in QuickBooks
+ * Note: QuickBooks doesn't truly delete invoices - it voids them
+ */
+export async function deleteInvoice(
+  connection: QBConnection,
+  invoiceId: string,
+  syncToken: string
+): Promise<void> {
+  // QuickBooks requires the full invoice object with SyncToken to delete
+  await qbApiRequest(
+    connection,
+    'POST',
+    'invoice?operation=delete',
+    {
+      Id: invoiceId,
+      SyncToken: syncToken
+    }
+  )
+  console.log('Invoice deleted/voided in QBO:', invoiceId)
+}
+
+/**
  * Log a sync operation
  */
 export async function logSync(
-  supabaseClient: SupabaseClient,
+  supabaseUrl: string,
+  secretKey: string,
   syncType: 'invoice' | 'payment' | 'expense' | 'customer' | 'vendor' | 'bill',
   direction: 'inbound' | 'outbound',
   status: 'success' | 'failed' | 'pending',
@@ -354,15 +439,26 @@ export async function logSync(
   qbEntityId?: string,
   errorMessage?: string
 ): Promise<void> {
-  await supabaseClient
-    .from('qb_sync_log')
-    .insert({
-      sync_type: syncType,
-      direction,
-      status,
-      entity_id: entityId,
-      entity_type: entityType,
-      qb_entity_id: qbEntityId,
-      error_message: errorMessage
-    })
+  await postgrestInsert(supabaseUrl, secretKey, 'qb_sync_log', {
+    sync_type: syncType,
+    direction,
+    status,
+    entity_id: entityId,
+    entity_type: entityType,
+    qb_entity_id: qbEntityId,
+    error_message: errorMessage
+  })
+}
+
+/**
+ * Update the last_sync_at timestamp on the connection
+ */
+export async function updateConnectionLastSync(
+  supabaseUrl: string,
+  secretKey: string,
+  connectionId: string
+): Promise<void> {
+  await postgrestUpdate(supabaseUrl, secretKey, 'qb_connection', `id=eq.${connectionId}`, {
+    last_sync_at: new Date().toISOString()
+  })
 }

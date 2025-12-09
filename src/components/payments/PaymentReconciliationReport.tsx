@@ -652,6 +652,10 @@ const PaymentReconciliationReport: React.FC = () => {
         invoice_sent: payment.invoice_sent || false,
         payment_invoice_date: payment.payment_invoice_date,
         orep_invoice: payment.orep_invoice,
+        qb_invoice_id: payment.qb_invoice_id,
+        qb_invoice_number: payment.qb_invoice_number,
+        qb_sync_status: payment.qb_sync_status,
+        qb_last_sync: payment.qb_last_sync,
         referral_fee_usd: payment.referral_fee_usd,
         referral_payee_name: payment.referral_payee_name,
         referral_payee_client_id: payment.referral_payee_client_id,
@@ -1120,9 +1124,28 @@ const PaymentReconciliationReport: React.FC = () => {
           setShowPaymentSidebar(false);
           setSelectedPayment(null);
         }}
-        onUpdate={() => {
+        onUpdate={async () => {
           // Refresh the reconciliation data when payment is updated
           fetchReconciliationData();
+
+          // Also refetch the payment data to update the sidebar with latest QB sync status
+          if (selectedPayment) {
+            const { data: payment } = await supabase
+              .from('payment')
+              .select('*')
+              .eq('id', selectedPayment.payment_id)
+              .single();
+
+            if (payment) {
+              setSelectedPayment(prev => prev ? {
+                ...prev,
+                qb_invoice_id: payment.qb_invoice_id,
+                qb_invoice_number: payment.qb_invoice_number,
+                qb_sync_status: payment.qb_sync_status,
+                qb_last_sync: payment.qb_last_sync,
+              } : null);
+            }
+          }
         }}
       />
 

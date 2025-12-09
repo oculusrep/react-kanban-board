@@ -122,18 +122,26 @@ export default function QuickBooksAdminPage() {
         return;
       }
 
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      console.log('QuickBooks connect - anonKey present:', !!anonKey, 'starts with eyJ:', anonKey?.startsWith('eyJ'));
+      console.log('QuickBooks connect - session.access_token present:', !!session.access_token);
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quickbooks-connect`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
+            'Authorization': `Bearer ${session.access_token}`,
+            'apikey': anonKey
           }
         }
       );
 
+      console.log('QuickBooks connect - response status:', response.status);
+
       const result = await response.json();
+      console.log('QuickBooks connect - response body:', result);
 
       if (!response.ok) {
         setMessage({ type: 'error', text: result.error || 'Failed to initiate connection' });

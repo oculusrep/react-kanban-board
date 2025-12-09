@@ -42,6 +42,14 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
   useEffect(() => {
     const sorted = sortPayments([...payments], sortField, sortDirection);
     setLocalPayments(sorted);
+
+    // Also update selectedPayment if it exists, to reflect any changes (e.g., QB sync status)
+    if (selectedPayment) {
+      const updatedPayment = payments.find(p => p.payment_id === selectedPayment.payment_id);
+      if (updatedPayment) {
+        setSelectedPayment(updatedPayment);
+      }
+    }
   }, [payments, sortField, sortDirection]);
 
   const sortPayments = (
