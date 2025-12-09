@@ -16,7 +16,7 @@ import AddTaskModal from '../components/AddTaskModal';
 
 interface TaskFilters {
   status: 'all' | 'open' | 'completed';
-  assignedTo: string | 'all';
+  assignedTo: string | 'all' | 'unassigned';
   priority: string | 'all';
   taskType: string | 'all';
   relatedTo: string | 'all';
@@ -190,10 +190,15 @@ const TaskDashboardPage: React.FC = () => {
         .eq('activity_type_id', taskTypeData.id)
         .in('status_id', openStatusIds);
 
-      // Apply owner filter if "My Tasks" is selected
+      // Apply owner filter
       if (filters.assignedTo === 'me' && currentUserId) {
         query = query.eq('owner_id', currentUserId);
-      } else if (filters.assignedTo !== 'all' && filters.assignedTo !== 'me') {
+      } else if (filters.assignedTo === 'unassigned') {
+        query = query.is('owner_id', null);
+      } else if (filters.assignedTo === 'all') {
+        // When viewing "all", exclude unassigned tasks by default
+        query = query.not('owner_id', 'is', null);
+      } else if (filters.assignedTo !== 'me') {
         query = query.eq('owner_id', filters.assignedTo);
       }
 
@@ -329,10 +334,15 @@ const TaskDashboardPage: React.FC = () => {
           `)
           .eq('activity_type_id', taskTypeData.id);
 
-        // Apply owner filter if "My Tasks" is selected
+        // Apply owner filter
         if (filters.assignedTo === 'me' && currentUserId) {
           query = query.eq('owner_id', currentUserId);
-        } else if (filters.assignedTo !== 'all' && filters.assignedTo !== 'me') {
+        } else if (filters.assignedTo === 'unassigned') {
+          query = query.is('owner_id', null);
+        } else if (filters.assignedTo === 'all') {
+          // When viewing "all", exclude unassigned tasks by default
+          query = query.not('owner_id', 'is', null);
+        } else if (filters.assignedTo !== 'me') {
           query = query.eq('owner_id', filters.assignedTo);
         }
 
@@ -504,10 +514,15 @@ const TaskDashboardPage: React.FC = () => {
           `)
           .eq('activity_type_id', taskTypeData.id);
 
-        // Apply owner filter if specified
+        // Apply owner filter
         if (filters.assignedTo === 'me' && currentUserId) {
           query = query.eq('owner_id', currentUserId);
-        } else if (filters.assignedTo !== 'all' && filters.assignedTo !== 'me') {
+        } else if (filters.assignedTo === 'unassigned') {
+          query = query.is('owner_id', null);
+        } else if (filters.assignedTo === 'all') {
+          // When viewing "all", exclude unassigned tasks by default
+          query = query.not('owner_id', 'is', null);
+        } else if (filters.assignedTo !== 'me') {
           query = query.eq('owner_id', filters.assignedTo);
         }
 
@@ -686,15 +701,18 @@ const TaskDashboardPage: React.FC = () => {
     }
 
     // Assigned to filter
-    if (filters.assignedTo !== 'all') {
-      if (filters.assignedTo === 'me' && user?.email) {
-        const currentUser = users.find(u => u.email?.toLowerCase() === user.email?.toLowerCase());
-        if (currentUser) {
-          filtered = filtered.filter(task => task.owner_id === currentUser.id);
-        }
-      } else {
-        filtered = filtered.filter(task => task.owner_id === filters.assignedTo);
+    if (filters.assignedTo === 'me' && user?.email) {
+      const currentUser = users.find(u => u.email?.toLowerCase() === user.email?.toLowerCase());
+      if (currentUser) {
+        filtered = filtered.filter(task => task.owner_id === currentUser.id);
       }
+    } else if (filters.assignedTo === 'unassigned') {
+      filtered = filtered.filter(task => !task.owner_id);
+    } else if (filters.assignedTo === 'all') {
+      // Exclude unassigned tasks when viewing "all"
+      filtered = filtered.filter(task => task.owner_id);
+    } else if (filters.assignedTo !== 'me') {
+      filtered = filtered.filter(task => task.owner_id === filters.assignedTo);
     }
 
     // Priority filter
@@ -1300,8 +1318,9 @@ const TaskDashboardPage: React.FC = () => {
                     onChange={(e) => setFilters({ ...filters, assignedTo: e.target.value })}
                     className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                   >
-                    <option value="all">All Users</option>
+                    <option value="all">All Users (assigned only)</option>
                     <option value="me">My Tasks</option>
+                    <option value="unassigned">Unassigned Tasks</option>
                     {users.map(user => (
                       <option key={user.id} value={user.id}>
                         {user.first_name} {user.last_name}

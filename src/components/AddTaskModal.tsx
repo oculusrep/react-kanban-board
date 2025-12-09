@@ -127,7 +127,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
           prioritiesResult,
           statusesResult
         ] = await Promise.all([
-          supabase.from('user').select('id, first_name, last_name, email').eq('is_active', true).order('first_name').order('last_name'),
+          supabase.from('user').select('id, first_name, last_name, email, is_active').or('is_active.eq.true,is_active.is.null').order('first_name').order('last_name'),
           supabase.from('activity_type').select('*').eq('active', true).order('name'),
           supabase.from('activity_task_type').select('*').eq('active', true).order('name'),
           supabase.from('activity_priority').select('*').eq('active', true).order('name'),
@@ -440,6 +440,9 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
     if (!formData.activity_type_id) {
       newErrors.activity_type_id = 'Task type is required';
     }
+    if (!formData.owner_id) {
+      newErrors.owner_id = 'Assigned To is required';
+    }
     if (!formData.status_id) {
       newErrors.status_id = 'Status is required';
     }
@@ -713,12 +716,14 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Assigned To
+                    Assigned To *
                   </label>
                   <select
                     value={formData.owner_id || ''}
                     onChange={(e) => updateFormData('owner_id', e.target.value || null)}
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                    className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm ${
+                      errors.owner_id ? 'border-red-300' : ''
+                    }`}
                   >
                     <option value="">Select user...</option>
                     {users.map((user) => (
@@ -727,6 +732,9 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
                       </option>
                     ))}
                   </select>
+                  {errors.owner_id && (
+                    <p className="mt-1 text-sm text-red-600">{errors.owner_id}</p>
+                  )}
                 </div>
 
                 <div>
