@@ -127,7 +127,7 @@ const AddTaskModal: React.FC<AddTaskModalProps> = ({
           prioritiesResult,
           statusesResult
         ] = await Promise.all([
-          supabase.from('user').select('id, first_name, last_name, email, is_active').or('is_active.eq.true,is_active.is.null').order('first_name').order('last_name'),
+          supabase.from('user').select('id, first_name, last_name, email, active').or('active.eq.true,active.is.null').order('first_name').order('last_name'),
           supabase.from('activity_type').select('*').eq('active', true).order('name'),
           supabase.from('activity_task_type').select('*').eq('active', true).order('name'),
           supabase.from('activity_priority').select('*').eq('active', true).order('name'),
