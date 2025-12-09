@@ -102,8 +102,7 @@ export default function TodaysPlan() {
           .lt('activity_date', todayStart)
           .in('status_id', openStatusIds)
           .not('contact_id', 'is', null)
-          .order('activity_date', { ascending: true })
-          .limit(10);
+          .order('activity_date', { ascending: true });
 
         if (!overdueError && overdue) {
           setOverdueFollowUps(overdue as FollowUpDue[]);
