@@ -1,61 +1,129 @@
 // Shared QuickBooks Online API utilities for Supabase Edge Functions
 
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
 // QBO API Base URLs
 const QBO_SANDBOX_API_URL = 'https://sandbox-quickbooks.api.intuit.com'
 const QBO_PRODUCTION_API_URL = 'https://quickbooks.api.intuit.com'
 const QBO_TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer'
 
-// PostgREST API helpers for new format secret key
-export async function postgrestQuery(supabaseUrl: string, secretKey: string, table: string, params: string): Promise<any> {
-  const response = await fetch(`${supabaseUrl}/rest/v1/${table}?${params}`, {
-    headers: {
-      'apikey': secretKey,
-      'Authorization': `Bearer ${secretKey}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation'
+// Create a Supabase client for Edge Functions
+// Uses the new secret key format (sb_secret_*)
+export function createSupabaseClient(): SupabaseClient {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  return createClient(supabaseUrl, supabaseKey)
+}
+
+// Database helpers using Supabase client (works with new key format)
+export async function dbQuery(supabase: SupabaseClient, table: string, select: string, filters?: Record<string, any>): Promise<any[]> {
+  let query = supabase.from(table).select(select)
+
+  if (filters) {
+    for (const [key, value] of Object.entries(filters)) {
+      query = query.eq(key, value)
     }
-  })
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`PostgREST error: ${response.status} - ${error}`)
   }
-  return response.json()
+
+  const { data, error } = await query
+  if (error) {
+    throw new Error(`Database query error: ${error.message}`)
+  }
+  return data || []
+}
+
+export async function dbInsert(supabase: SupabaseClient, table: string, data: any): Promise<any[]> {
+  const { data: result, error } = await supabase
+    .from(table)
+    .insert(data)
+    .select()
+
+  if (error) {
+    throw new Error(`Database insert error: ${error.message}`)
+  }
+  return result || []
+}
+
+export async function dbUpdate(supabase: SupabaseClient, table: string, filters: Record<string, any>, data: any): Promise<any[]> {
+  let query = supabase.from(table).update(data)
+
+  for (const [key, value] of Object.entries(filters)) {
+    query = query.eq(key, value)
+  }
+
+  const { data: result, error } = await query.select()
+
+  if (error) {
+    throw new Error(`Database update error: ${error.message}`)
+  }
+  return result || []
+}
+
+// Legacy PostgREST helpers (kept for backwards compatibility but deprecated)
+export async function postgrestQuery(supabaseUrl: string, secretKey: string, table: string, params: string): Promise<any> {
+  // Use the new Supabase client approach instead
+  const supabase = createSupabaseClient()
+
+  // Parse params to extract select and filters
+  const urlParams = new URLSearchParams(params)
+  const select = urlParams.get('select') || '*'
+
+  let query = supabase.from(table).select(select)
+
+  // Handle eq filters
+  for (const [key, value] of urlParams.entries()) {
+    if (key !== 'select' && key !== 'limit') {
+      // Parse "column=eq.value" format
+      if (value.startsWith('eq.')) {
+        query = query.eq(key, value.substring(3))
+      }
+    }
+  }
+
+  const limitStr = urlParams.get('limit')
+  if (limitStr) {
+    query = query.limit(parseInt(limitStr))
+  }
+
+  const { data, error } = await query
+  if (error) {
+    throw new Error(`PostgREST error: ${error.message}`)
+  }
+  return data || []
 }
 
 export async function postgrestInsert(supabaseUrl: string, secretKey: string, table: string, data: any): Promise<any> {
-  const response = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
-    method: 'POST',
-    headers: {
-      'apikey': secretKey,
-      'Authorization': `Bearer ${secretKey}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation'
-    },
-    body: JSON.stringify(data)
-  })
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`PostgREST insert error: ${response.status} - ${error}`)
+  const supabase = createSupabaseClient()
+  const { data: result, error } = await supabase
+    .from(table)
+    .insert(data)
+    .select()
+
+  if (error) {
+    throw new Error(`PostgREST insert error: ${error.message}`)
   }
-  return response.json()
+  return result || []
 }
 
 export async function postgrestUpdate(supabaseUrl: string, secretKey: string, table: string, params: string, data: any): Promise<any> {
-  const response = await fetch(`${supabaseUrl}/rest/v1/${table}?${params}`, {
-    method: 'PATCH',
-    headers: {
-      'apikey': secretKey,
-      'Authorization': `Bearer ${secretKey}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation'
-    },
-    body: JSON.stringify(data)
-  })
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`PostgREST update error: ${response.status} - ${error}`)
+  const supabase = createSupabaseClient()
+
+  // Parse params to extract filters (e.g., "id=eq.uuid")
+  const urlParams = new URLSearchParams(params)
+  let query = supabase.from(table).update(data)
+
+  for (const [key, value] of urlParams.entries()) {
+    if (value.startsWith('eq.')) {
+      query = query.eq(key, value.substring(3))
+    }
   }
-  return response.json()
+
+  const { data: result, error } = await query.select()
+
+  if (error) {
+    throw new Error(`PostgREST update error: ${error.message}`)
+  }
+  return result || []
 }
 
 export interface QBConnection {

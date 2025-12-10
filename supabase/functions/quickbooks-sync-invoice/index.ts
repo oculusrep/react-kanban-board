@@ -42,7 +42,8 @@ serve(async (req) => {
       )
     }
 
-    // Get environment variables for direct PostgREST calls
+    // Get environment variables for Supabase client
+    // Using SUPABASE_SERVICE_ROLE_KEY (new sb_secret_* format) with Supabase JS client
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const secretKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 
