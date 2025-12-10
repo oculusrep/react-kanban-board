@@ -105,7 +105,7 @@ Handles OAuth callback from QuickBooks after user authorization.
 - Redirects to settings page with success/error message
 
 #### 3. `quickbooks-sync-invoice`
-Creates a new invoice in QuickBooks for a payment.
+Creates or updates an invoice in QuickBooks for a payment.
 
 **Endpoint:** `POST /functions/v1/quickbooks-sync-invoice`
 
@@ -113,9 +113,17 @@ Creates a new invoice in QuickBooks for a payment.
 ```json
 {
   "paymentId": "uuid",
-  "sendEmail": false
+  "sendEmail": false,
+  "forceResync": false
 }
 ```
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `paymentId` | string | Required. The payment UUID |
+| `sendEmail` | boolean | Optional. Send invoice via email after sync |
+| `forceResync` | boolean | Optional. Update existing invoice instead of skipping |
 
 **Response:**
 ```json
@@ -123,18 +131,31 @@ Creates a new invoice in QuickBooks for a payment.
   "success": true,
   "qbInvoiceId": "123",
   "qbInvoiceNumber": "1001",
-  "emailSent": false
+  "emailSent": false,
+  "wasUpdate": false
 }
 ```
 
+**Response Fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | boolean | Whether the operation succeeded |
+| `qbInvoiceId` | string | QuickBooks Invoice ID |
+| `qbInvoiceNumber` | string | Invoice number (e.g., "1001") |
+| `emailSent` | boolean | Whether invoice was emailed |
+| `wasUpdate` | boolean | True if existing invoice was updated |
+
 **Actions:**
 1. Fetches payment, deal, client, and property data
-2. Finds or creates customer in QuickBooks
-3. Finds or creates service item in QuickBooks
-4. Creates invoice with line items
-5. Optionally sends invoice via email
-6. Updates payment record with QB invoice info
-7. Logs sync operation
+2. Checks if invoice already exists (`qb_invoice_id`)
+3. If exists and `forceResync=false`, returns existing invoice info
+4. If exists and `forceResync=true`, fetches SyncToken and updates invoice
+5. If new, finds or creates customer in QuickBooks
+6. Finds or creates service item in QuickBooks
+7. Creates or updates invoice with line items
+8. Optionally sends invoice via email
+9. Updates payment record with QB invoice info
+10. Logs sync operation
 
 #### 4. `quickbooks-send-invoice`
 Sends an existing QuickBooks invoice via email.
@@ -206,11 +227,20 @@ Deletes (voids) an invoice in QuickBooks.
 - `findOrCreateCustomer()` - Full hierarchy creation (parent + sub-customer)
 - `findOrCreateServiceItem()` - Find or create QB service item
 - `createInvoice()` - Create QB invoice
+- `updateInvoice()` - Update existing invoice (sparse update with SyncToken)
 - `sendInvoice()` - Send invoice via email
 - `getInvoice()` - Get invoice (for SyncToken)
 - `deleteInvoice()` - Delete/void invoice
 - `logSync()` - Log sync operation
 - `updateConnectionLastSync()` - Update connection timestamp
+
+### Frontend QuickBooks Service
+
+`src/services/quickbooksService.ts` provides frontend utilities:
+
+- `resyncInvoice(paymentId, sendEmail?)` - Resync a single payment's invoice
+- `resyncDealInvoices(dealId)` - Resync all invoices for a deal
+- `hasQBInvoice(paymentId)` - Check if payment has a synced invoice
 
 ## Environment Variables
 
@@ -479,6 +509,7 @@ Shows QuickBooks sync status in payment list:
 ### PaymentDetailPanel (`src/components/payments/PaymentDetailPanel.tsx`)
 Full QuickBooks management when payment is expanded:
 - **Not Synced:** "Create Invoice" and "Create & Send" buttons
+- **Synced:** Shows invoice number, "Resync Invoice", "Send Invoice" (if not sent), "Delete Invoice" buttons
 
 ### BillToSection (`src/components/BillToSection.tsx`)
 Collapsible section in PaymentTab for managing invoice billing info:
@@ -680,6 +711,65 @@ npx supabase functions deploy quickbooks-send-invoice --no-verify-jwt
 npx supabase functions deploy quickbooks-delete-invoice --no-verify-jwt
 ```
 
+## Automatic Invoice Resync
+
+Invoices are automatically resynced to QuickBooks when relevant data changes in OVIS. This ensures QuickBooks always has the latest information without manual intervention.
+
+### Triggers
+
+| Trigger Location | Fields Monitored | Behavior |
+|-----------------|------------------|----------|
+| BillToSection | All bill-to fields | Resyncs all invoices for the deal |
+| PaymentAmountOverrideModal | payment_amount | Resyncs the specific payment's invoice |
+| PaymentTab | payment_amount, payment_invoice_date, payment_date_estimated | Resyncs the specific payment's invoice |
+
+### How It Works
+
+1. **Bill-To Field Changes** (`BillToSection.tsx`)
+   - When any bill-to field is saved (company, contact, email, CC, BCC)
+   - Calls `resyncDealInvoices(dealId)` to update all invoices for the deal
+   - Runs in the background without blocking the UI
+
+2. **Payment Amount Override** (`PaymentAmountOverrideModal.tsx`)
+   - When payment amount is manually overridden
+   - Checks if payment has a QB invoice via `hasQBInvoice()`
+   - If yes, calls `resyncInvoice(paymentId)`
+
+3. **Payment Field Updates** (`PaymentTab.tsx`)
+   - Monitors changes to: `payment_amount`, `payment_invoice_date`, `payment_date_estimated`
+   - If payment has `qb_invoice_id`, automatically resyncs
+
+### Manual Resync
+
+Users can manually trigger a resync via the **"Resync Invoice"** button in PaymentDetailPanel. This is useful when:
+- Automatic resync failed
+- Testing invoice updates
+- Forcing a refresh after external changes
+
+### Implementation Details
+
+```typescript
+// Frontend service (src/services/quickbooksService.ts)
+await resyncInvoice(paymentId);           // Single invoice
+await resyncDealInvoices(dealId);         // All invoices for a deal
+const hasInvoice = await hasQBInvoice(paymentId);  // Check if synced
+
+// Edge function call
+POST /functions/v1/quickbooks-sync-invoice
+{
+  "paymentId": "uuid",
+  "forceResync": true  // Required to update existing invoice
+}
+```
+
+### Error Handling
+
+- Auto-resync errors are logged to console but don't block the UI
+- Failed resyncs can be manually retried via the "Resync Invoice" button
+- Sync status and errors are logged to `qb_sync_log` table
+
+---
+
 ## Future Enhancements
 
 Potential future features:
@@ -692,3 +782,4 @@ Potential future features:
 - [ ] Webhook integration for real-time updates
 - [ ] Automatic sync on client name change in OVIS
 - [ ] Bulk customer sync operation
+- [ ] Automatic document attachments on invoices
