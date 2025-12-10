@@ -21,87 +21,42 @@ const BillToSection: React.FC<BillToSectionProps> = ({
   const [isExpanded, setIsExpanded] = useState(true);
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
-  const initializedRef = useRef(false);
-  const lastDealIdRef = useRef<string | null>(null);
+  const initializedForDealId = useRef<string | null>(null);
 
-  // Local form state
-  const [billToCompany, setBillToCompany] = useState(deal.bill_to_company_name || '');
-  const [billToContact, setBillToContact] = useState(deal.bill_to_contact_name || '');
-  const [billToEmails, setBillToEmails] = useState(deal.bill_to_email || '');
-  const [billToCcEmails, setBillToCcEmails] = useState(deal.bill_to_cc_emails || '');
-  const [billToBccEmails, setBillToBccEmails] = useState(deal.bill_to_bcc_emails || DEFAULT_BCC_EMAIL);
+  // Local form state - initialized from deal
+  const [billToCompany, setBillToCompany] = useState('');
+  const [billToContact, setBillToContact] = useState('');
+  const [billToEmails, setBillToEmails] = useState('');
+  const [billToCcEmails, setBillToCcEmails] = useState('');
+  const [billToBccEmails, setBillToBccEmails] = useState('');
 
-  // Calculate default CC emails from deal team members (brokers on commission splits)
-  // Broker emails are enriched from user table by FK relationship in PaymentTab
-  // Include all team members in CC (mike@oculusrep.com will also be in BCC for records)
+  // Calculate default CC emails from deal team members
   const defaultCcEmails = useMemo(() => {
     const brokerIds = commissionSplits.map(cs => cs.broker_id);
     const teamEmails = brokers
       .filter(b => brokerIds.includes(b.id) && b.email)
       .map(b => b.email!);
-
     return teamEmails.join(', ');
   }, [commissionSplits, brokers]);
 
-  // Initialize form state when deal changes or on first load
+  // Initialize form state ONLY when deal.id changes
   useEffect(() => {
-    // Only re-initialize if the deal ID changed
-    if (lastDealIdRef.current === deal.id) {
+    // Skip if already initialized for this deal
+    if (initializedForDealId.current === deal.id) {
       return;
     }
-    lastDealIdRef.current = deal.id;
+    initializedForDealId.current = deal.id;
 
     setBillToCompany(deal.bill_to_company_name || '');
     setBillToContact(deal.bill_to_contact_name || '');
     setBillToEmails(deal.bill_to_email || '');
-    setBillToCcEmails(deal.bill_to_cc_emails || '');
     setBillToBccEmails(deal.bill_to_bcc_emails || DEFAULT_BCC_EMAIL);
-    initializedRef.current = false;
-  }, [deal.id, deal.bill_to_company_name, deal.bill_to_contact_name, deal.bill_to_email, deal.bill_to_cc_emails, deal.bill_to_bcc_emails]);
+    setBillToCcEmails(deal.bill_to_cc_emails || '');
+  }, [deal.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-populate CC with team emails if empty (only once when data is loaded)
-  useEffect(() => {
-    if (initializedRef.current) return;
-    if (!deal.id || !defaultCcEmails) return;
-
-    // Only auto-populate if:
-    // 1. CC emails field is empty in the database
-    // 2. There are team members with emails
-    // 3. Component hasn't already initialized
-    if (!deal.bill_to_cc_emails && defaultCcEmails && commissionSplits.length > 0) {
-      initializedRef.current = true;
-      setBillToCcEmails(defaultCcEmails);
-      // Save to database silently
-      saveFieldSilently('bill_to_cc_emails', defaultCcEmails);
-    } else {
-      initializedRef.current = true;
-    }
-  }, [deal.id, deal.bill_to_cc_emails, defaultCcEmails, commissionSplits.length]);
-
-  // Save field without updating parent state (prevents re-render flickering)
-  const saveFieldSilently = async (field: string, value: string) => {
+  // Save field on blur - no parent callback, just direct DB update
+  const handleBlur = async (field: string, value: string) => {
     if (!deal.id) return;
-
-    try {
-      const { error } = await supabase
-        .from('deal')
-        .update(prepareUpdate({ [field]: value || null }))
-        .eq('id', deal.id);
-
-      if (error) {
-        console.error(`Error saving ${field}:`, error);
-      }
-    } catch (err) {
-      console.error(`Error saving ${field}:`, err);
-    }
-  };
-
-  // Save individual field with visual feedback
-  const handleSaveField = async (field: string, value: string, currentDbValue: string | null | undefined) => {
-    if (!deal.id) return;
-
-    // Skip save if value hasn't changed
-    if (value === (currentDbValue || '')) return;
 
     setSaving(true);
     try {
@@ -111,7 +66,6 @@ const BillToSection: React.FC<BillToSectionProps> = ({
         .eq('id', deal.id);
 
       if (error) throw error;
-
       setLastSaved(new Date().toLocaleTimeString());
     } catch (err) {
       console.error(`Error saving ${field}:`, err);
@@ -120,26 +74,21 @@ const BillToSection: React.FC<BillToSectionProps> = ({
     }
   };
 
-  // Handle blur - save only if changed
-  const handleBlur = (field: string, value: string, currentDbValue: string | null | undefined) => {
-    handleSaveField(field, value, currentDbValue);
-  };
-
-  // Manual populate CC button - use silent save to avoid re-render loops
-  const handlePopulateCc = () => {
-    if (defaultCcEmails && billToCcEmails !== defaultCcEmails) {
+  // Manual populate CC button
+  const handlePopulateCc = async () => {
+    if (defaultCcEmails) {
       setBillToCcEmails(defaultCcEmails);
-      saveFieldSilently('bill_to_cc_emails', defaultCcEmails);
+      await handleBlur('bill_to_cc_emails', defaultCcEmails);
     }
   };
 
-  // Ensure BCC always has mike@oculusrep.com - use silent save to avoid re-render loops
-  const handleEnsureBcc = () => {
+  // Add default BCC
+  const handleEnsureBcc = async () => {
     let bcc = billToBccEmails.trim();
     if (!bcc.toLowerCase().includes(DEFAULT_BCC_EMAIL.toLowerCase())) {
       bcc = bcc ? `${bcc}, ${DEFAULT_BCC_EMAIL}` : DEFAULT_BCC_EMAIL;
       setBillToBccEmails(bcc);
-      saveFieldSilently('bill_to_bcc_emails', bcc);
+      await handleBlur('bill_to_bcc_emails', bcc);
     }
   };
 
@@ -185,7 +134,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                 type="text"
                 value={billToCompany}
                 onChange={(e) => setBillToCompany(e.target.value)}
-                onBlur={() => handleBlur('bill_to_company_name', billToCompany, deal.bill_to_company_name)}
+                onBlur={() => handleBlur('bill_to_company_name', billToCompany)}
                 placeholder="e.g., Fuqua Development"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
               />
@@ -201,7 +150,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                 type="text"
                 value={billToContact}
                 onChange={(e) => setBillToContact(e.target.value)}
-                onBlur={() => handleBlur('bill_to_contact_name', billToContact, deal.bill_to_contact_name)}
+                onBlur={() => handleBlur('bill_to_contact_name', billToContact)}
                 placeholder="e.g., Jim Ackerman"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
               />
@@ -222,7 +171,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                 type="text"
                 value={billToEmails}
                 onChange={(e) => setBillToEmails(e.target.value)}
-                onBlur={() => handleBlur('bill_to_email', billToEmails, deal.bill_to_email)}
+                onBlur={() => handleBlur('bill_to_email', billToEmails)}
                 placeholder="e.g., jim@company.com, accounting@company.com"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
               />
@@ -237,7 +186,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                 <label className="block text-sm font-medium text-gray-700">
                   CC Email(s)
                 </label>
-                {defaultCcEmails && billToCcEmails !== defaultCcEmails && (
+                {defaultCcEmails && (
                   <button
                     type="button"
                     onClick={handlePopulateCc}
@@ -251,7 +200,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                 type="text"
                 value={billToCcEmails}
                 onChange={(e) => setBillToCcEmails(e.target.value)}
-                onBlur={() => handleBlur('bill_to_cc_emails', billToCcEmails, deal.bill_to_cc_emails)}
+                onBlur={() => handleBlur('bill_to_cc_emails', billToCcEmails)}
                 placeholder="e.g., broker1@company.com, broker2@company.com"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
               />
@@ -282,7 +231,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                 type="text"
                 value={billToBccEmails}
                 onChange={(e) => setBillToBccEmails(e.target.value)}
-                onBlur={() => handleBlur('bill_to_bcc_emails', billToBccEmails, deal.bill_to_bcc_emails)}
+                onBlur={() => handleBlur('bill_to_bcc_emails', billToBccEmails)}
                 placeholder={DEFAULT_BCC_EMAIL}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
               />
@@ -313,4 +262,22 @@ const BillToSection: React.FC<BillToSectionProps> = ({
   );
 };
 
-export default BillToSection;
+// Memoize to prevent re-renders when parent re-renders due to real-time updates
+// Only re-render when deal.id, commissionSplits, or brokers actually change
+export default React.memo(BillToSection, (prevProps, nextProps) => {
+  // Return true if props are equal (should NOT re-render)
+  // Return false if props are different (should re-render)
+
+  // Always re-render if deal.id changes
+  if (prevProps.deal.id !== nextProps.deal.id) return false;
+
+  // Re-render if commission splits change (for defaultCcEmails calculation)
+  if (prevProps.commissionSplits.length !== nextProps.commissionSplits.length) return false;
+  if (prevProps.commissionSplits.some((cs, i) => cs.broker_id !== nextProps.commissionSplits[i]?.broker_id)) return false;
+
+  // Re-render if brokers change
+  if (prevProps.brokers.length !== nextProps.brokers.length) return false;
+
+  // Don't re-render for bill_to field changes - we manage those locally
+  return true;
+});
