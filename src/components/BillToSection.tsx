@@ -32,18 +32,13 @@ const BillToSection: React.FC<BillToSectionProps> = ({
   const [billToBccEmails, setBillToBccEmails] = useState(deal.bill_to_bcc_emails || DEFAULT_BCC_EMAIL);
 
   // Calculate default CC emails from deal team members (brokers on commission splits)
-  // Get email from broker.email or broker.user.email (linked user account)
+  // Broker emails are enriched from user table by name matching in PaymentTab
   const defaultCcEmails = useMemo(() => {
     const brokerIds = commissionSplits.map(cs => cs.broker_id);
     const teamEmails = brokers
-      .filter(b => brokerIds.includes(b.id))
-      .map(b => {
-        // Try broker's direct email first, then fall back to linked user's email
-        const brokerEmail = b.email;
-        const userEmail = (b as any).user?.email;
-        return brokerEmail || userEmail || null;
-      })
-      .filter((email): email is string => !!email && email.toLowerCase() !== DEFAULT_BCC_EMAIL.toLowerCase());
+      .filter(b => brokerIds.includes(b.id) && b.email)
+      .map(b => b.email!)
+      .filter(email => email.toLowerCase() !== DEFAULT_BCC_EMAIL.toLowerCase());
 
     return teamEmails.join(', ');
   }, [commissionSplits, brokers]);

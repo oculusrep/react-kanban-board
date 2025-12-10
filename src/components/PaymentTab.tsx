@@ -154,10 +154,10 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
           .select('*')
           .eq('deal_id', deal.id),
         
-        // All brokers (include email from linked user for CC population)
+        // All brokers with linked user email
         supabase
           .from('broker')
-          .select('id, name, email, user:user_id(email)')
+          .select('id, name, user:user_id(email)')
           .order('name'),
         
         // Clients (with error handling)
@@ -174,8 +174,14 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
 
       const paymentsData = paymentsResult.data || [];
       const commissionSplitsData = commissionSplitsResult.data || [];
-      const brokersData = brokersResult.data || [];
+      const rawBrokersData = brokersResult.data || [];
       const clientsData = clientsResult.data || [];
+
+      // Extract email from joined user object
+      const brokersData = rawBrokersData.map((broker: any) => ({
+        ...broker,
+        email: broker.user?.email || null
+      }));
 
       // Fetch payment splits only if we have payments (conditional query)
       let paymentSplitsData: PaymentSplit[] = [];
