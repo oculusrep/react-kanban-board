@@ -154,10 +154,10 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
           .select('*')
           .eq('deal_id', deal.id),
         
-        // All brokers (lighter query)
+        // All brokers (include email for CC population)
         supabase
           .from('broker')
-          .select('id, name')
+          .select('id, name, email')
           .order('name'),
         
         // Clients (with error handling)
