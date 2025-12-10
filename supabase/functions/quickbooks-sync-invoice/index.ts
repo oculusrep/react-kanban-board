@@ -145,12 +145,12 @@ serve(async (req) => {
       )
     }
 
-    // Fetch client with qb_customer_id and email
+    // Fetch client with qb_customer_id (client table doesn't have email column)
     const clients = await postgrestQuery(
       supabaseUrl,
       secretKey,
       'client',
-      `select=id,client_name,email,qb_customer_id&id=eq.${deal.client_id}`
+      `select=id,client_name,qb_customer_id&id=eq.${deal.client_id}`
     )
 
     if (!clients || clients.length === 0) {
@@ -178,15 +178,16 @@ serve(async (req) => {
 
     // Find or create customer hierarchy in QuickBooks (Parent Client + Sub-customer Deal)
     // The sub-customer will be named "Client - Deal" and will have the bill-to company info
+    // Note: client table doesn't have email - use deal.bill_to_email for all email needs
     const customerId = await findOrCreateCustomer(
       connection,
       client.client_name,
       deal.deal_name || 'Deal',  // Deal name for sub-customer
-      client.email,
+      deal.bill_to_email,  // Use deal's bill-to email (client table has no email column)
       {
         companyName: deal.bill_to_company_name || client.client_name,
         contactName: deal.bill_to_contact_name,
-        email: deal.bill_to_email || client.email,
+        email: deal.bill_to_email,
         street: deal.bill_to_address_street,
         city: deal.bill_to_address_city,
         state: deal.bill_to_address_state,
@@ -256,8 +257,8 @@ serve(async (req) => {
     }
 
     // Add bill-to email for sending (primary TO recipients)
-    if (deal.bill_to_email || client.email) {
-      invoice.BillEmail = { Address: deal.bill_to_email || client.email }
+    if (deal.bill_to_email) {
+      invoice.BillEmail = { Address: deal.bill_to_email }
     }
 
     // Add CC emails if provided
@@ -309,9 +310,9 @@ serve(async (req) => {
 
     // Optionally send the invoice via email
     let emailSent = false
-    if (sendEmail && (deal.bill_to_email || client.email)) {
+    if (sendEmail && deal.bill_to_email) {
       try {
-        await sendInvoice(connection, qbInvoice.Id, deal.bill_to_email || client.email)
+        await sendInvoice(connection, qbInvoice.Id, deal.bill_to_email)
         emailSent = true
 
         // Update payment to mark invoice as sent
