@@ -543,6 +543,9 @@ export async function createInvoice(
   connection: QBConnection,
   invoice: QBInvoice
 ): Promise<{ Id: string; DocNumber: string }> {
+  // Log the invoice payload for debugging
+  console.log('Creating invoice with payload:', JSON.stringify(invoice, null, 2))
+
   const result = await qbApiRequest<{ Invoice: { Id: string; DocNumber: string } }>(
     connection,
     'POST',

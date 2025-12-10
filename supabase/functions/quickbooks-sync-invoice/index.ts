@@ -80,7 +80,7 @@ serve(async (req) => {
     connection = await refreshTokenIfNeeded(supabaseUrl, secretKey, connection)
 
     // Fetch payment with related data using PostgREST
-    const paymentSelect = 'id,payment_name,payment_amount,payment_date_estimated,payment_invoice_date,qb_invoice_id,qb_invoice_number,deal_id'
+    const paymentSelect = 'id,payment_name,payment_amount,payment_date_estimated,payment_invoice_date,qb_invoice_id,qb_invoice_number,deal_id,payment_sequence,total_payments'
     const payments = await postgrestQuery(
       supabaseUrl,
       secretKey,
@@ -202,17 +202,23 @@ serve(async (req) => {
     const serviceItemId = await findOrCreateServiceItem(connection, 'Brokerage Fee')
 
     // Build invoice description
-    // Format: "{payment_name} Now Due for Commission related to procuring cause of Lease Agreement with {client_name} - in {property.city}, {property.state}."
+    // Format: "Payment X of Y Now Due for Commission related to procuring cause of Lease Agreement with {client_name} - in {property.city}, {property.state}."
     const propertyLocation = property
       ? `${property.city || ''}${property.city && property.state ? ', ' : ''}${property.state || ''}`
       : ''
-    const invoiceDescription = `${payment.payment_name || 'Payment'} Now Due for Commission related to procuring cause of Lease Agreement with ${client.client_name}${propertyLocation ? ` - in ${propertyLocation}` : ''}.`
+    // Use "Payment X of Y" format matching the frontend display
+    const paymentLabel = payment.payment_sequence && payment.total_payments
+      ? `Payment ${payment.payment_sequence} of ${payment.total_payments}`
+      : payment.payment_name || 'Payment'
+    const invoiceDescription = `${paymentLabel} Now Due for Commission related to procuring cause of Lease Agreement with ${client.client_name}${propertyLocation ? ` - in ${propertyLocation}` : ''}.`
 
     // Invoice date - use payment_invoice_date or today
     const invoiceDate = payment.payment_invoice_date || new Date().toISOString().split('T')[0]
 
     // Service date - use deal's contract_signed_date
     const serviceDate = deal.contract_signed_date || undefined
+    console.log('Invoice date:', invoiceDate)
+    console.log('Service date (contract_signed_date):', serviceDate)
 
     // Build invoice line with service date
     const invoiceLine: QBInvoiceLine = {
