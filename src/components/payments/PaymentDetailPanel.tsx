@@ -54,6 +54,16 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
     setSyncingToQB(true);
     setQbSyncMessage(null);
 
+    // Require estimated payment date before creating a new invoice
+    if (!forceResync && !payment.qb_invoice_id && !payment.payment_date_estimated) {
+      setQbSyncMessage({
+        type: 'error',
+        text: 'Estimated payment date is required before creating an invoice. Please set it in Payment Details.'
+      });
+      setSyncingToQB(false);
+      return;
+    }
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
 

@@ -889,6 +889,201 @@ The broker line uses QuickBooks' `DescriptionOnly` line type:
 
 ---
 
+## Invoice Send Behavior
+
+When an invoice is sent via the "Send Invoice" button, the following occurs:
+
+### Automatic Field Updates
+
+| Field | Value Set | Description |
+|-------|-----------|-------------|
+| `invoice_sent` | `true` | Marks the invoice as sent |
+| `payment_invoice_date` | Today's date | Sets the invoice date to when it was sent |
+
+### How It Works
+
+1. User clicks "Send Invoice" button in PaymentDetailPanel
+2. Edge function `quickbooks-send-invoice` is called
+3. QuickBooks API sends the invoice email to `bill_to_email`
+4. Payment record is updated with `invoice_sent=true` and `payment_invoice_date=today`
+5. Sync operation is logged to `qb_sync_log`
+
+### Code Reference
+
+```typescript
+// In quickbooks-send-invoice/index.ts
+const today = new Date().toISOString().split('T')[0]
+await postgrestUpdate(supabaseUrl, secretKey, 'payment', `id=eq.${paymentId}`, {
+  invoice_sent: true,
+  payment_invoice_date: today
+})
+```
+
+---
+
+## Invoice Creation Validation
+
+Before creating a new invoice, the system validates that required fields are present.
+
+### Required Fields
+
+| Field | Table | Validation |
+|-------|-------|------------|
+| `payment_date_estimated` | payment | Must be set before creating invoice |
+
+### Validation Behavior
+
+- Validation occurs in the frontend (`PaymentDetailPanel.tsx`)
+- Only applies to NEW invoice creation, not resyncing existing invoices
+- User sees error message: *"Estimated payment date is required before creating an invoice. Please set it in Payment Details."*
+
+### Why This Validation Exists
+
+The estimated payment date is used as the invoice **Due Date** in QuickBooks. Without it:
+- The invoice would have no due date
+- Payment tracking would be inaccurate
+- Collections workflows would be affected
+
+### Code Reference
+
+```typescript
+// In PaymentDetailPanel.tsx handleSyncToQuickBooks()
+if (!forceResync && !payment.qb_invoice_id && !payment.payment_date_estimated) {
+  setQbSyncMessage({
+    type: 'error',
+    text: 'Estimated payment date is required before creating an invoice. Please set it in Payment Details.'
+  });
+  return;
+}
+```
+
+---
+
+## Moving to Production
+
+This section covers the steps to migrate from QuickBooks Sandbox to Production.
+
+### Prerequisites
+
+1. **Intuit Developer Account**: Must have a production-ready app in the Intuit Developer Portal
+2. **App Review**: Intuit may require app review before production access
+3. **Production Credentials**: Obtain production Client ID and Client Secret
+
+### Step 1: Create Production App (or Update Existing)
+
+1. Go to [Intuit Developer Portal](https://developer.intuit.com/)
+2. Navigate to your app or create a new one
+3. Under "Keys & credentials", switch to **Production** tab
+4. Note the **Client ID** and **Client Secret**
+5. Add production redirect URI (same as sandbox, typically):
+   ```
+   https://rqbvcvwbziilnycqtmnc.supabase.co/functions/v1/quickbooks-callback
+   ```
+
+### Step 2: Update Supabase Secrets
+
+```bash
+# Update environment to production
+npx supabase secrets set QUICKBOOKS_ENVIRONMENT=production
+
+# Update with production credentials
+npx supabase secrets set QUICKBOOKS_CLIENT_ID=your_production_client_id
+npx supabase secrets set QUICKBOOKS_CLIENT_SECRET=your_production_client_secret
+
+# Redirect URI typically stays the same
+npx supabase secrets set QUICKBOOKS_REDIRECT_URI=https://rqbvcvwbziilnycqtmnc.supabase.co/functions/v1/quickbooks-callback
+```
+
+### Step 3: Redeploy Edge Functions
+
+After updating secrets, redeploy all QuickBooks Edge Functions:
+
+```bash
+npx supabase functions deploy quickbooks-connect --no-verify-jwt
+npx supabase functions deploy quickbooks-callback --no-verify-jwt
+npx supabase functions deploy quickbooks-sync-invoice --no-verify-jwt
+npx supabase functions deploy quickbooks-send-invoice --no-verify-jwt
+npx supabase functions deploy quickbooks-delete-invoice --no-verify-jwt
+npx supabase functions deploy quickbooks-list-customers --no-verify-jwt
+npx supabase functions deploy quickbooks-sync-customer --no-verify-jwt
+npx supabase functions deploy quickbooks-link-customer --no-verify-jwt
+```
+
+### Step 4: Reconnect to QuickBooks
+
+1. Go to Settings > QuickBooks in OVIS
+2. Click "Disconnect" if currently connected to sandbox
+3. Click "Connect to QuickBooks"
+4. Log in with your **production** QuickBooks Online account
+5. Authorize the application
+6. Verify connection shows "Connected" status
+
+### Step 5: Verify Production Connection
+
+1. **Check API URL**: The `getQBApiUrl()` function in `quickbooks.ts` returns:
+   - Sandbox: `https://sandbox-quickbooks.api.intuit.com`
+   - Production: `https://quickbooks.api.intuit.com`
+
+2. **Test Invoice Creation**: Create a test invoice on a real deal
+3. **Verify in QuickBooks**: Log into QuickBooks Online and confirm the invoice appears
+4. **Test Email Send**: Send a test invoice (use your own email first)
+
+### Step 6: Remap Customers (Important!)
+
+QuickBooks sandbox and production are completely separate. Customer IDs from sandbox **will not exist** in production.
+
+1. Go to Admin > QuickBooks > Customer Mapping
+2. All clients will show as "Not Linked"
+3. For each client:
+   - Click "Create in QB" to create new, OR
+   - Click "Search QB" to find and link to existing production customer
+
+### Production Checklist
+
+- [ ] Production app created in Intuit Developer Portal
+- [ ] Production Client ID and Secret obtained
+- [ ] `QUICKBOOKS_ENVIRONMENT` set to `production`
+- [ ] `QUICKBOOKS_CLIENT_ID` updated with production value
+- [ ] `QUICKBOOKS_CLIENT_SECRET` updated with production value
+- [ ] All Edge Functions redeployed
+- [ ] Disconnected from sandbox
+- [ ] Connected to production QuickBooks account
+- [ ] Test invoice created successfully
+- [ ] Test email sent successfully
+- [ ] Customer mappings recreated for production
+
+### Rollback to Sandbox
+
+If you need to return to sandbox for testing:
+
+```bash
+npx supabase secrets set QUICKBOOKS_ENVIRONMENT=sandbox
+npx supabase secrets set QUICKBOOKS_CLIENT_ID=your_sandbox_client_id
+npx supabase secrets set QUICKBOOKS_CLIENT_SECRET=your_sandbox_client_secret
+```
+
+Then redeploy Edge Functions and reconnect to sandbox QuickBooks account.
+
+### Environment Differences
+
+| Aspect | Sandbox | Production |
+|--------|---------|------------|
+| API URL | `sandbox-quickbooks.api.intuit.com` | `quickbooks.api.intuit.com` |
+| Data | Test data only | Real business data |
+| Emails | Not delivered | Delivered to real recipients |
+| Rate Limits | More lenient | Standard limits apply |
+| Customer IDs | Sandbox-specific | Production-specific |
+
+### Security Considerations for Production
+
+1. **Never commit credentials**: Keep Client ID/Secret in Supabase secrets only
+2. **Monitor sync logs**: Review `qb_sync_log` for failed operations
+3. **Token expiration**: Refresh tokens expire after 100 days - set calendar reminder
+4. **Email recipients**: Double-check `bill_to_email` before sending invoices
+5. **Test thoroughly**: Use a test deal before sending real invoices
+
+---
+
 ## Future Enhancements
 
 Potential future features:

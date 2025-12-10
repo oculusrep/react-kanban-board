@@ -117,10 +117,11 @@ serve(async (req) => {
     // Send the invoice via QuickBooks
     await sendInvoice(connection, payment.qb_invoice_id, deal.bill_to_email)
 
-    // Update payment to mark invoice as sent
+    // Update payment to mark invoice as sent and set invoice date
+    const today = new Date().toISOString().split('T')[0]
     await postgrestUpdate(supabaseUrl, secretKey, 'payment', `id=eq.${paymentId}`, {
       invoice_sent: true,
-      sf_invoice_sent_date: new Date().toISOString().split('T')[0]
+      payment_invoice_date: today
     })
 
     // Log successful send
