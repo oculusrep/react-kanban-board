@@ -62,6 +62,18 @@ export interface Deal {
   loss_reason?: string | null;
   last_stage_change_at?: string | null;
 
+  // Bill-To fields for QuickBooks invoicing
+  bill_to_company_name?: string | null;
+  bill_to_contact_name?: string | null;
+  bill_to_email?: string | null;  // Primary email(s) - comma-separated
+  bill_to_cc_emails?: string | null;  // CC emails - comma-separated
+  bill_to_bcc_emails?: string | null;  // BCC emails - comma-separated
+  bill_to_address_street?: string | null;
+  bill_to_address_city?: string | null;
+  bill_to_address_state?: string | null;
+  bill_to_address_zip?: string | null;
+  bill_to_phone?: string | null;
+
   // Metadata
   created_at?: string;
   updated_at?: string;

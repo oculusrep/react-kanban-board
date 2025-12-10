@@ -70,8 +70,11 @@ export interface QBConnection {
 
 export interface QBCustomer {
   Id?: string
+  SyncToken?: string
   DisplayName: string
   CompanyName?: string
+  GivenName?: string  // First name of contact
+  FamilyName?: string  // Last name of contact
   PrimaryEmailAddr?: { Address: string }
   BillAddr?: {
     Line1?: string
@@ -80,6 +83,10 @@ export interface QBCustomer {
     PostalCode?: string
   }
   PrimaryPhone?: { FreeFormNumber: string }
+  // Sub-customer support
+  Job?: boolean  // True if this is a sub-customer (job)
+  ParentRef?: { value: string }  // Reference to parent customer
+  PrintOnCheckName?: string  // Name to print on checks
 }
 
 export interface QBInvoiceLine {
@@ -89,6 +96,7 @@ export interface QBInvoiceLine {
     ItemRef: { value: string; name?: string }
     Qty?: number
     UnitPrice?: number
+    ServiceDate?: string  // Service date for the line item (YYYY-MM-DD)
   }
   Description?: string
 }
@@ -99,9 +107,12 @@ export interface QBInvoice {
   CustomerRef: { value: string; name?: string }
   Line: QBInvoiceLine[]
   DueDate?: string
-  TxnDate?: string
+  TxnDate?: string  // Invoice date
+  SalesTermRef?: { value: string; name?: string }  // Payment terms (e.g., "Due on receipt")
   CustomerMemo?: { value: string }
   BillEmail?: { Address: string }
+  BillEmailCc?: { Address: string }  // CC recipients
+  BillEmailBcc?: { Address: string }  // BCC recipients
   BillAddr?: {
     Line1?: string
     City?: string
@@ -250,11 +261,146 @@ export async function qbApiRequest<T>(
 }
 
 /**
- * Find or create a customer in QuickBooks
+ * Find or create a parent customer (Client) in QuickBooks
+ * This is the top-level customer that sub-customers are organized under
+ */
+export async function findOrCreateParentCustomer(
+  connection: QBConnection,
+  clientName: string,
+  email?: string
+): Promise<string> {
+  // Search for existing parent customer by name
+  const searchQuery = `SELECT * FROM Customer WHERE DisplayName = '${clientName.replace(/'/g, "\\'")}'`
+  const searchResult = await qbApiRequest<{ QueryResponse: { Customer?: QBCustomer[] } }>(
+    connection,
+    'GET',
+    `query?query=${encodeURIComponent(searchQuery)}`
+  )
+
+  if (searchResult.QueryResponse.Customer && searchResult.QueryResponse.Customer.length > 0) {
+    console.log('Found existing parent customer:', clientName, searchResult.QueryResponse.Customer[0].Id)
+    return searchResult.QueryResponse.Customer[0].Id!
+  }
+
+  // Create new parent customer (Client)
+  const newCustomer: QBCustomer = {
+    DisplayName: clientName,
+    CompanyName: clientName
+  }
+
+  if (email) {
+    newCustomer.PrimaryEmailAddr = { Address: email }
+  }
+
+  const createResult = await qbApiRequest<{ Customer: QBCustomer }>(
+    connection,
+    'POST',
+    'customer',
+    newCustomer
+  )
+
+  console.log('Created new parent customer:', clientName, createResult.Customer.Id)
+  return createResult.Customer.Id!
+}
+
+/**
+ * Find or create a sub-customer (Deal) in QuickBooks under a parent customer
+ * Sub-customers use the format "Client - Deal" as DisplayName
+ * The bill-to company and contact are stored on the sub-customer
+ */
+export async function findOrCreateSubCustomer(
+  connection: QBConnection,
+  parentCustomerId: string,
+  clientName: string,
+  dealName: string,
+  billTo?: {
+    companyName?: string
+    contactName?: string
+    email?: string
+    street?: string
+    city?: string
+    state?: string
+    zip?: string
+    phone?: string
+  }
+): Promise<string> {
+  // Sub-customer display name format: "Client - Deal"
+  const subCustomerDisplayName = `${clientName} - ${dealName}`
+
+  // Search for existing sub-customer by name
+  const searchQuery = `SELECT * FROM Customer WHERE DisplayName = '${subCustomerDisplayName.replace(/'/g, "\\'")}'`
+  const searchResult = await qbApiRequest<{ QueryResponse: { Customer?: QBCustomer[] } }>(
+    connection,
+    'GET',
+    `query?query=${encodeURIComponent(searchQuery)}`
+  )
+
+  if (searchResult.QueryResponse.Customer && searchResult.QueryResponse.Customer.length > 0) {
+    console.log('Found existing sub-customer:', subCustomerDisplayName, searchResult.QueryResponse.Customer[0].Id)
+    return searchResult.QueryResponse.Customer[0].Id!
+  }
+
+  // Parse contact name into first/last if provided
+  let givenName: string | undefined
+  let familyName: string | undefined
+  if (billTo?.contactName) {
+    const nameParts = billTo.contactName.trim().split(/\s+/)
+    if (nameParts.length >= 2) {
+      givenName = nameParts[0]
+      familyName = nameParts.slice(1).join(' ')
+    } else {
+      familyName = billTo.contactName
+    }
+  }
+
+  // Create new sub-customer (Deal)
+  const newSubCustomer: QBCustomer = {
+    DisplayName: subCustomerDisplayName,
+    CompanyName: billTo?.companyName || clientName,
+    Job: true,  // Mark as sub-customer/job
+    ParentRef: { value: parentCustomerId },
+    PrintOnCheckName: clientName  // Use client name on checks
+  }
+
+  if (givenName) newSubCustomer.GivenName = givenName
+  if (familyName) newSubCustomer.FamilyName = familyName
+
+  if (billTo?.email) {
+    newSubCustomer.PrimaryEmailAddr = { Address: billTo.email }
+  }
+
+  if (billTo?.street || billTo?.city) {
+    newSubCustomer.BillAddr = {
+      Line1: billTo?.street,
+      City: billTo?.city,
+      CountrySubDivisionCode: billTo?.state,
+      PostalCode: billTo?.zip
+    }
+  }
+
+  if (billTo?.phone) {
+    newSubCustomer.PrimaryPhone = { FreeFormNumber: billTo.phone }
+  }
+
+  const createResult = await qbApiRequest<{ Customer: QBCustomer }>(
+    connection,
+    'POST',
+    'customer',
+    newSubCustomer
+  )
+
+  console.log('Created new sub-customer:', subCustomerDisplayName, createResult.Customer.Id)
+  return createResult.Customer.Id!
+}
+
+/**
+ * Find or create a customer hierarchy in QuickBooks (Parent + Sub-customer)
+ * Returns the sub-customer ID which is used for invoicing
  */
 export async function findOrCreateCustomer(
   connection: QBConnection,
   clientName: string,
+  dealName: string,
   email?: string,
   billTo?: {
     companyName?: string
@@ -267,50 +413,20 @@ export async function findOrCreateCustomer(
     phone?: string
   }
 ): Promise<string> {
-  // Search for existing customer by name
-  const searchQuery = `SELECT * FROM Customer WHERE DisplayName = '${clientName.replace(/'/g, "\\'")}'`
-  const searchResult = await qbApiRequest<{ QueryResponse: { Customer?: QBCustomer[] } }>(
+  // Step 1: Find or create parent customer (Client)
+  const parentCustomerId = await findOrCreateParentCustomer(connection, clientName, email)
+
+  // Step 2: Find or create sub-customer (Deal)
+  const subCustomerId = await findOrCreateSubCustomer(
     connection,
-    'GET',
-    `query?query=${encodeURIComponent(searchQuery)}`
+    parentCustomerId,
+    clientName,
+    dealName,
+    billTo
   )
 
-  if (searchResult.QueryResponse.Customer && searchResult.QueryResponse.Customer.length > 0) {
-    return searchResult.QueryResponse.Customer[0].Id!
-  }
-
-  // Create new customer
-  const newCustomer: QBCustomer = {
-    DisplayName: clientName,
-    CompanyName: billTo?.companyName || clientName
-  }
-
-  if (billTo?.email || email) {
-    newCustomer.PrimaryEmailAddr = { Address: billTo?.email || email! }
-  }
-
-  if (billTo?.street || billTo?.city) {
-    newCustomer.BillAddr = {
-      Line1: billTo?.street,
-      City: billTo?.city,
-      CountrySubDivisionCode: billTo?.state,
-      PostalCode: billTo?.zip
-    }
-  }
-
-  if (billTo?.phone) {
-    newCustomer.PrimaryPhone = { FreeFormNumber: billTo.phone }
-  }
-
-  const createResult = await qbApiRequest<{ Customer: QBCustomer }>(
-    connection,
-    'POST',
-    'customer',
-    newCustomer
-  )
-
-  console.log('Created new QBO customer:', createResult.Customer.Id)
-  return createResult.Customer.Id!
+  // Return the sub-customer ID for invoicing
+  return subCustomerId
 }
 
 /**

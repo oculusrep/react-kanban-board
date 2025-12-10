@@ -79,7 +79,6 @@ serve(async (req) => {
     connection = await refreshTokenIfNeeded(supabaseUrl, secretKey, connection)
 
     // Fetch payment with related data using PostgREST
-    // Note: PostgREST uses different syntax for nested selects
     const paymentSelect = 'id,payment_name,payment_amount,payment_date_estimated,payment_invoice_date,qb_invoice_id,qb_invoice_number,deal_id'
     const payments = await postgrestQuery(
       supabaseUrl,
@@ -119,7 +118,8 @@ serve(async (req) => {
       )
     }
 
-    const dealSelect = 'id,deal_name,bill_to_contact_name,bill_to_company_name,bill_to_email,bill_to_address_street,bill_to_address_city,bill_to_address_state,bill_to_address_zip,bill_to_phone,client_id,property_id'
+    // Fetch deal with all bill-to fields including CC/BCC emails and contract_signed_date
+    const dealSelect = 'id,deal_name,contract_signed_date,bill_to_contact_name,bill_to_company_name,bill_to_email,bill_to_cc_emails,bill_to_bcc_emails,bill_to_address_street,bill_to_address_city,bill_to_address_state,bill_to_address_zip,bill_to_phone,client_id,property_id'
     const deals = await postgrestQuery(
       supabaseUrl,
       secretKey,
@@ -144,12 +144,12 @@ serve(async (req) => {
       )
     }
 
-    // Fetch client with qb_customer_id
+    // Fetch client with qb_customer_id and email
     const clients = await postgrestQuery(
       supabaseUrl,
       secretKey,
       'client',
-      `select=id,client_name,qb_customer_id&id=eq.${deal.client_id}`
+      `select=id,client_name,email,qb_customer_id&id=eq.${deal.client_id}`
     )
 
     if (!clients || clients.length === 0) {
@@ -175,51 +175,54 @@ serve(async (req) => {
       }
     }
 
-    // Get or create customer in QuickBooks
-    let customerId: string
+    // Find or create customer hierarchy in QuickBooks (Parent Client + Sub-customer Deal)
+    // The sub-customer will be named "Client - Deal" and will have the bill-to company info
+    const customerId = await findOrCreateCustomer(
+      connection,
+      client.client_name,
+      deal.deal_name || 'Deal',  // Deal name for sub-customer
+      client.email,
+      {
+        companyName: deal.bill_to_company_name || client.client_name,
+        contactName: deal.bill_to_contact_name,
+        email: deal.bill_to_email || client.email,
+        street: deal.bill_to_address_street,
+        city: deal.bill_to_address_city,
+        state: deal.bill_to_address_state,
+        zip: deal.bill_to_address_zip,
+        phone: deal.bill_to_phone
+      }
+    )
 
-    if (client.qb_customer_id) {
-      // Use the stored QB customer ID
-      customerId = client.qb_customer_id
-      console.log('Using stored QB customer ID:', customerId)
-    } else {
-      // Find or create customer in QuickBooks (legacy behavior)
-      customerId = await findOrCreateCustomer(
-        connection,
-        client.client_name,
-        deal.bill_to_email,
-        {
-          companyName: deal.bill_to_company_name || client.client_name,
-          contactName: deal.bill_to_contact_name,
-          email: deal.bill_to_email,
-          street: deal.bill_to_address_street,
-          city: deal.bill_to_address_city,
-          state: deal.bill_to_address_state,
-          zip: deal.bill_to_address_zip,
-          phone: deal.bill_to_phone
-        }
-      )
-
-      // Store the QB customer ID for future use
-      await postgrestUpdate(supabaseUrl, secretKey, 'client', `id=eq.${client.id}`, {
-        qb_customer_id: customerId
-      })
-      console.log('Created/found and stored QB customer ID:', customerId)
-    }
+    console.log('Using QB customer ID (sub-customer):', customerId)
 
     // Find or create the service item (Brokerage Fee)
     const serviceItemId = await findOrCreateServiceItem(connection, 'Brokerage Fee')
 
-    // Build invoice line
+    // Build invoice description
+    // Format: "{payment_name} Now Due for Commission related to procuring cause of Lease Agreement with {client_name} - in {property.city}, {property.state}."
+    const propertyLocation = property
+      ? `${property.city || ''}${property.city && property.state ? ', ' : ''}${property.state || ''}`
+      : ''
+    const invoiceDescription = `${payment.payment_name || 'Payment'} Now Due for Commission related to procuring cause of Lease Agreement with ${client.client_name}${propertyLocation ? ` - in ${propertyLocation}` : ''}.`
+
+    // Invoice date - use payment_invoice_date or today
+    const invoiceDate = payment.payment_invoice_date || new Date().toISOString().split('T')[0]
+
+    // Service date - use deal's contract_signed_date
+    const serviceDate = deal.contract_signed_date || undefined
+
+    // Build invoice line with service date
     const invoiceLine: QBInvoiceLine = {
       Amount: Number(payment.payment_amount),
       DetailType: 'SalesItemLineDetail',
       SalesItemLineDetail: {
         ItemRef: { value: serviceItemId, name: 'Brokerage Fee' },
         Qty: 1,
-        UnitPrice: Number(payment.payment_amount)
+        UnitPrice: Number(payment.payment_amount),
+        ServiceDate: serviceDate  // Contract signed date as service date
       },
-      Description: deal.deal_name || `Brokerage services - ${client.client_name}`
+      Description: invoiceDescription
     }
 
     // Build property address memo if available
@@ -231,11 +234,14 @@ serve(async (req) => {
     }
 
     // Build the invoice
+    // CustomerRef uses the sub-customer ID (Client - Deal format)
+    const subCustomerDisplayName = `${client.client_name} - ${deal.deal_name || 'Deal'}`
     const invoice: QBInvoice = {
-      CustomerRef: { value: customerId, name: client.client_name },
+      CustomerRef: { value: customerId, name: subCustomerDisplayName },
       Line: [invoiceLine],
-      TxnDate: payment.payment_invoice_date || new Date().toISOString().split('T')[0],
-      DueDate: payment.payment_date_estimated || undefined
+      TxnDate: invoiceDate,  // Invoice date from payment
+      DueDate: invoiceDate,  // Due date = Invoice date (Due on receipt)
+      SalesTermRef: { value: '1', name: 'Due on receipt' }  // Standard QBO term ID for "Due on receipt"
     }
 
     // Add bill-to address if available
@@ -248,9 +254,19 @@ serve(async (req) => {
       }
     }
 
-    // Add bill-to email for sending
-    if (deal.bill_to_email) {
-      invoice.BillEmail = { Address: deal.bill_to_email }
+    // Add bill-to email for sending (primary TO recipients)
+    if (deal.bill_to_email || client.email) {
+      invoice.BillEmail = { Address: deal.bill_to_email || client.email }
+    }
+
+    // Add CC emails if provided
+    if (deal.bill_to_cc_emails) {
+      invoice.BillEmailCc = { Address: deal.bill_to_cc_emails }
+    }
+
+    // Add BCC emails if provided (always ensure mike@oculusrep.com is included)
+    if (deal.bill_to_bcc_emails) {
+      invoice.BillEmailBcc = { Address: deal.bill_to_bcc_emails }
     }
 
     // Add memo with deal/property info
@@ -292,9 +308,9 @@ serve(async (req) => {
 
     // Optionally send the invoice via email
     let emailSent = false
-    if (sendEmail && deal.bill_to_email) {
+    if (sendEmail && (deal.bill_to_email || client.email)) {
       try {
-        await sendInvoice(connection, qbInvoice.Id, deal.bill_to_email)
+        await sendInvoice(connection, qbInvoice.Id, deal.bill_to_email || client.email)
         emailSent = true
 
         // Update payment to mark invoice as sent

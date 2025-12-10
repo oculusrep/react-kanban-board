@@ -7,6 +7,7 @@ import PaymentGenerationSection from './PaymentGenerationSection';
 import PaymentListSection from './payments/PaymentListSection';
 import PaymentStatusCard from './PaymentStatusCard';
 import CommissionBreakdownBar from './CommissionBreakdownBar';
+import BillToSection from './BillToSection';
 import { usePaymentStatus } from '../hooks/usePaymentStatus';
 import { useToast } from '../hooks/useToast';
 import Toast from './Toast';
@@ -601,6 +602,14 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
         deal={deal}
         commissionSplits={commissionSplits}
         className="mb-6"
+      />
+
+      {/* Bill-To Section for QuickBooks Invoicing */}
+      <BillToSection
+        deal={deal}
+        commissionSplits={commissionSplits}
+        brokers={brokers}
+        onDealUpdate={onDealUpdate}
       />
 
       {/* Payment Generation Section */}
