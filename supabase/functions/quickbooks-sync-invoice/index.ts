@@ -198,33 +198,43 @@ serve(async (req) => {
     }
 
     // Fetch commission splits and broker names for the deal team
+    // Only includes brokers from THIS deal's commission_split records
     let brokerNames: string[] = []
     try {
+      console.log('Fetching commission splits for deal_id:', payment.deal_id)
       const commissionSplits = await postgrestQuery(
         supabaseUrl,
         secretKey,
         'commission_split',
         `select=broker_id&deal_id=eq.${payment.deal_id}`
       )
+      console.log('Commission splits found:', JSON.stringify(commissionSplits))
 
       if (commissionSplits && commissionSplits.length > 0) {
         const brokerIds = commissionSplits.map((cs: { broker_id: string }) => cs.broker_id)
+        console.log('Broker IDs from splits:', brokerIds)
+
         // Fetch broker names - use 'in' filter for multiple IDs
         // Note: broker table uses 'name' column, not 'broker_name'
+        const brokerQuery = `select=id,name&id=in.(${brokerIds.join(',')})`
+        console.log('Broker query:', brokerQuery)
         const brokers = await postgrestQuery(
           supabaseUrl,
           secretKey,
           'broker',
-          `select=id,name&id=in.(${brokerIds.join(',')})`
+          brokerQuery
         )
+        console.log('Brokers fetched:', JSON.stringify(brokers))
 
         if (brokers && brokers.length > 0) {
           // Filter out any null/empty names or placeholder "Unknown Broker" entries
           brokerNames = brokers
             .map((b: { name: string }) => b.name)
             .filter((name: string) => name && name.trim() && name !== 'Unknown Broker')
-          console.log('Deal team brokers:', brokerNames)
+          console.log('Final broker names for invoice:', brokerNames)
         }
+      } else {
+        console.log('No commission splits found for this deal')
       }
     } catch (brokerErr: any) {
       console.error('Error fetching brokers:', brokerErr.message)
