@@ -50,7 +50,7 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
     return client?.client_name || null;
   };
 
-  const handleSyncToQuickBooks = async (sendEmail: boolean = false) => {
+  const handleSyncToQuickBooks = async (sendEmail: boolean = false, forceResync: boolean = false) => {
     setSyncingToQB(true);
     setQbSyncMessage(null);
 
@@ -75,7 +75,8 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
         },
         body: JSON.stringify({
           paymentId: payment.id,
-          sendEmail
+          sendEmail,
+          forceResync
         })
       });
 
@@ -92,11 +93,12 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
         return;
       }
 
+      const action = result.wasUpdate ? 'updated' : 'created';
       setQbSyncMessage({
         type: 'success',
         text: result.emailSent
-          ? `Invoice ${result.qbInvoiceNumber} created and sent!`
-          : `Invoice ${result.qbInvoiceNumber} created in QuickBooks`
+          ? `Invoice ${result.qbInvoiceNumber} ${action} and sent!`
+          : `Invoice ${result.qbInvoiceNumber} ${action} in QuickBooks`
       });
 
       // Refresh the data
@@ -373,6 +375,14 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
           {/* Action buttons when invoice is synced */}
           {payment.qb_invoice_id && (
             <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
+              <button
+                onClick={() => handleSyncToQuickBooks(false, true)}
+                disabled={syncingToQB}
+                className="px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Update the invoice in QuickBooks with current data"
+              >
+                {syncingToQB ? 'Syncing...' : 'Resync Invoice'}
+              </button>
               {!payment.invoice_sent && (
                 <button
                   onClick={handleSendQBInvoice}

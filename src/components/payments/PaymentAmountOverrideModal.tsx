@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { resyncInvoice, hasQBInvoice } from '../../services/quickbooksService';
 
 interface PaymentAmountOverrideModalProps {
   isOpen: boolean;
@@ -108,6 +109,21 @@ const PaymentAmountOverrideModal: React.FC<PaymentAmountOverrideModalProps> = ({
       }
 
       console.log('[Override] Update successful, refreshing data...');
+
+      // Auto-resync QuickBooks invoice if one exists
+      hasQBInvoice(paymentId).then(hasInvoice => {
+        if (hasInvoice) {
+          console.log('[Override] Auto-resyncing QB invoice after amount change');
+          resyncInvoice(paymentId).then(result => {
+            if (result.success) {
+              console.log('[Override] QB invoice resynced successfully');
+            } else {
+              console.error('[Override] QB resync failed:', result.error);
+            }
+          });
+        }
+      });
+
       // Close modal and trigger refresh callback
       onClose();
       if (onSuccess) {

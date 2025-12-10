@@ -12,6 +12,7 @@ import { usePaymentStatus } from '../hooks/usePaymentStatus';
 import { useToast } from '../hooks/useToast';
 import Toast from './Toast';
 import ConfirmDialog from './ConfirmDialog';
+import { resyncInvoice } from '../services/quickbooksService';
 
 // Add caching for payment data
 const paymentDataCache = new Map<string, {
@@ -402,6 +403,9 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
     }
   };
 
+  // Fields that affect QuickBooks invoice and should trigger auto-resync
+  const QB_INVOICE_FIELDS = ['payment_amount', 'payment_invoice_date', 'payment_date_estimated'];
+
   // Update payment in database
   const updatePayment = async (paymentId: string, updates: Partial<Payment>) => {
     try {
@@ -413,9 +417,27 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
       if (error) throw error;
 
       // Update local state
-      setPayments(prev => prev.map(p => 
+      setPayments(prev => prev.map(p =>
         p.id === paymentId ? { ...p, ...updates } : p
       ));
+
+      // Auto-resync QuickBooks invoice if QB-relevant fields changed
+      const changedFields = Object.keys(updates);
+      const hasQBRelevantChanges = changedFields.some(field => QB_INVOICE_FIELDS.includes(field));
+      const payment = payments.find(p => p.id === paymentId);
+
+      if (hasQBRelevantChanges && payment?.qb_invoice_id) {
+        console.log('Auto-resyncing QB invoice after payment field change:', changedFields);
+        resyncInvoice(paymentId).then(result => {
+          if (result.success) {
+            console.log('QB invoice auto-resynced successfully');
+          } else {
+            console.error('QB auto-resync failed:', result.error);
+          }
+        }).catch(err => {
+          console.error('Error auto-resyncing QB invoice:', err);
+        });
+      }
 
     } catch (err) {
       console.error('Error updating payment:', err);

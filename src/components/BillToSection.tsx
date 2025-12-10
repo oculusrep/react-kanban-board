@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Broker, CommissionSplit } from '../lib/types';
 import { supabase } from '../lib/supabaseClient';
 import { prepareUpdate } from '../lib/supabaseHelpers';
+import { resyncDealInvoices } from '../services/quickbooksService';
 
 interface BillToSectionProps {
   dealId: string;
@@ -101,6 +102,16 @@ const BillToSection: React.FC<BillToSectionProps> = ({
           .eq('id', dealId);
 
         if (error) throw error;
+
+        // Auto-resync QuickBooks invoices when bill-to fields change
+        // This runs in the background and doesn't block the UI
+        resyncDealInvoices(dealId).then(results => {
+          if (results.length > 0) {
+            console.log('Auto-resynced QB invoices after bill-to change:', results);
+          }
+        }).catch(err => {
+          console.error('Error auto-resyncing QB invoices:', err);
+        });
       } catch (err) {
         console.error('Error saving bill-to fields:', err);
       } finally {
