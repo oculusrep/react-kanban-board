@@ -559,6 +559,97 @@ Common errors and resolutions:
 | "Payment not found" | Invalid payment ID | Check payment exists |
 | "Invoice already exists" | Re-syncing same payment | Delete existing invoice first |
 
+## Troubleshooting
+
+### Issue: "Invalid authorization token - Legacy API keys are disabled" (December 2025)
+
+**Symptoms:**
+- Invoice creation fails with error: `"Invalid authorization token"`
+- Console shows: `"Legacy API keys are disabled"`
+- Error occurred after Supabase disabled legacy JWT keys on October 23, 2025
+
+**Root Cause:**
+Supabase migrated to a new API key format in late 2025:
+- **Legacy format (deprecated):** JWT tokens starting with `eyJ...`
+- **New format:** Keys starting with `sb_secret_*` or `sb_publishable_*`
+
+The Edge Functions were using direct PostgREST calls with legacy JWT keys, which stopped working after the deprecation.
+
+**Solution:**
+Migrated the shared utilities (`supabase/functions/_shared/quickbooks.ts`) to use the Supabase JS client instead of direct PostgREST calls:
+
+```typescript
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+// Create a Supabase client for Edge Functions
+// Uses the new secret key format (sb_secret_*)
+export function createSupabaseClient(): SupabaseClient {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  return createClient(supabaseUrl, supabaseKey)
+}
+```
+
+The legacy helper functions (`postgrestQuery`, `postgrestInsert`, `postgrestUpdate`) were updated to internally use the Supabase client while maintaining their existing signatures for backward compatibility.
+
+**Key Changes:**
+1. Added `createSupabaseClient()` function
+2. Added new `dbQuery`, `dbInsert`, `dbUpdate` helpers using Supabase client
+3. Modified legacy PostgREST helpers to internally use the Supabase client
+4. All Edge Functions now use `SUPABASE_SERVICE_ROLE_KEY` (new `sb_secret_*` format)
+
+**Environment Variable:**
+Ensure `SUPABASE_SERVICE_ROLE_KEY` is set in Supabase secrets with the new format key:
+```bash
+npx supabase secrets set SUPABASE_SERVICE_ROLE_KEY=sb_secret_xxxxx
+```
+
+---
+
+### Issue: "column client.email does not exist" (December 2025)
+
+**Symptoms:**
+- Invoice creation fails with PostgREST error
+- Error message: `column client.email does not exist`
+
+**Root Cause:**
+The `client` table does not have an `email` column. The code was incorrectly referencing `client.email` in several places.
+
+**Solution:**
+All invoice email needs should use the deal's bill-to fields instead:
+- Use `deal.bill_to_email` for the primary invoice recipient
+- Use `deal.bill_to_cc_emails` for CC recipients
+- Use `deal.bill_to_bcc_emails` for BCC recipients
+
+**Code Fix in `quickbooks-sync-invoice/index.ts`:**
+```typescript
+// INCORRECT - client table has no email column
+// const clients = await postgrestQuery(..., `select=id,client_name,email,qb_customer_id...`)
+
+// CORRECT - client table only has id, client_name, qb_customer_id
+const clients = await postgrestQuery(
+  supabaseUrl,
+  secretKey,
+  'client',
+  `select=id,client_name,qb_customer_id&id=eq.${deal.client_id}`
+)
+
+// Use deal.bill_to_email for invoice recipients
+const customerId = await findOrCreateCustomer(
+  connection,
+  client.client_name,
+  deal.deal_name || 'Deal',
+  deal.bill_to_email,  // Use deal's bill-to email, NOT client.email
+  { ... }
+)
+```
+
+**Schema Reference:**
+- The `client` table contains: `id`, `client_name`, `qb_customer_id`, `parent_id`, `is_active_client`
+- Email fields are on the `deal` table: `bill_to_email`, `bill_to_cc_emails`, `bill_to_bcc_emails`
+
+---
+
 ## Security Considerations
 
 1. **OAuth Tokens:** Stored in database, accessed only via service role key
