@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Broker, CommissionSplit } from '../lib/types';
 import { supabase } from '../lib/supabaseClient';
 import { prepareUpdate } from '../lib/supabaseHelpers';
-import { useAutosave, AutosaveStatus } from '../hooks/useAutosave';
 
 interface BillToSectionProps {
   dealId: string;
@@ -13,15 +12,6 @@ interface BillToSectionProps {
 
 const DEFAULT_BCC_EMAIL = 'mike@oculusrep.com';
 
-// Bill-to form data structure
-interface BillToFormData {
-  bill_to_company_name: string;
-  bill_to_contact_name: string;
-  bill_to_email: string;
-  bill_to_cc_emails: string;
-  bill_to_bcc_emails: string;
-}
-
 const BillToSection: React.FC<BillToSectionProps> = ({
   dealId,
   clientId,
@@ -29,17 +19,16 @@ const BillToSection: React.FC<BillToSectionProps> = ({
   brokers
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const fetchedForDealId = useRef<string | null>(null);
 
-  // Form data as single object for useAutosave
-  const [formData, setFormData] = useState<BillToFormData>({
-    bill_to_company_name: '',
-    bill_to_contact_name: '',
-    bill_to_email: '',
-    bill_to_cc_emails: '',
-    bill_to_bcc_emails: DEFAULT_BCC_EMAIL
-  });
+  // Local form state
+  const [billToCompany, setBillToCompany] = useState('');
+  const [billToContact, setBillToContact] = useState('');
+  const [billToEmails, setBillToEmails] = useState('');
+  const [billToCcEmails, setBillToCcEmails] = useState('');
+  const [billToBccEmails, setBillToBccEmails] = useState('');
 
   // Calculate default CC emails from deal team members
   const defaultCcEmails = useMemo(() => {
@@ -50,101 +39,126 @@ const BillToSection: React.FC<BillToSectionProps> = ({
     return teamEmails.join(', ');
   }, [commissionSplits, brokers]);
 
-  // Save handler - wrapped in useCallback with stable reference
-  const handleSave = useCallback(async (data: BillToFormData) => {
-    if (!dealId) return;
-
-    const { error } = await supabase
-      .from('deal')
-      .update(prepareUpdate({
-        bill_to_company_name: data.bill_to_company_name || null,
-        bill_to_contact_name: data.bill_to_contact_name || null,
-        bill_to_email: data.bill_to_email || null,
-        bill_to_cc_emails: data.bill_to_cc_emails || null,
-        bill_to_bcc_emails: data.bill_to_bcc_emails || null
-      }))
-      .eq('id', dealId);
-
-    if (error) throw error;
-  }, [dealId]);
-
-  // Use autosave hook with debouncing (saves 1.5s after last change)
-  const { status: autosaveStatus } = useAutosave({
-    data: formData,
-    onSave: handleSave,
-    delay: 1500,
-    enabled: !loading && !!dealId
-  });
-
   // Fetch bill-to data directly from DB on mount
-  const fetchBillToData = useCallback(async () => {
+  useEffect(() => {
     if (!dealId || fetchedForDealId.current === dealId) return;
 
     fetchedForDealId.current = dealId;
     setLoading(true);
 
-    try {
-      const { data, error } = await supabase
-        .from('deal')
-        .select('bill_to_company_name, bill_to_contact_name, bill_to_email, bill_to_cc_emails, bill_to_bcc_emails')
-        .eq('id', dealId)
-        .single();
-
-      if (error) throw error;
-
-      if (data) {
-        setFormData({
-          bill_to_company_name: data.bill_to_company_name || '',
-          bill_to_contact_name: data.bill_to_contact_name || '',
-          bill_to_email: data.bill_to_email || '',
-          bill_to_cc_emails: data.bill_to_cc_emails || '',
-          bill_to_bcc_emails: data.bill_to_bcc_emails || DEFAULT_BCC_EMAIL
-        });
-      }
-    } catch (err) {
-      console.error('Error fetching bill-to data:', err);
-    } finally {
-      setLoading(false);
-    }
+    supabase
+      .from('deal')
+      .select('bill_to_company_name, bill_to_contact_name, bill_to_email, bill_to_cc_emails, bill_to_bcc_emails')
+      .eq('id', dealId)
+      .single()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Error fetching bill-to data:', error);
+        } else if (data) {
+          setBillToCompany(data.bill_to_company_name || '');
+          setBillToContact(data.bill_to_contact_name || '');
+          setBillToEmails(data.bill_to_email || '');
+          setBillToCcEmails(data.bill_to_cc_emails || '');
+          setBillToBccEmails(data.bill_to_bcc_emails || DEFAULT_BCC_EMAIL);
+        }
+        setLoading(false);
+      });
   }, [dealId]);
 
-  // Fetch on mount
-  useEffect(() => {
-    fetchBillToData();
-  }, [fetchBillToData]);
+  // Save a single field - debounced via timeout ref
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingSaveRef = useRef<Record<string, string>>({});
 
-  // Update a single field
-  const updateField = useCallback((field: keyof BillToFormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const saveField = useCallback((field: string, value: string) => {
+    if (!dealId) return;
+
+    // Queue the field for saving
+    pendingSaveRef.current[field] = value;
+
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Debounce: save after 800ms of no changes
+    saveTimeoutRef.current = setTimeout(async () => {
+      const fieldsToSave = { ...pendingSaveRef.current };
+      pendingSaveRef.current = {};
+
+      if (Object.keys(fieldsToSave).length === 0) return;
+
+      setSaving(true);
+      try {
+        // Convert empty strings to null
+        const updateData: Record<string, string | null> = {};
+        for (const [key, val] of Object.entries(fieldsToSave)) {
+          updateData[key] = val || null;
+        }
+
+        const { error } = await supabase
+          .from('deal')
+          .update(prepareUpdate(updateData))
+          .eq('id', dealId);
+
+        if (error) throw error;
+      } catch (err) {
+        console.error('Error saving bill-to fields:', err);
+      } finally {
+        setSaving(false);
+      }
+    }, 800);
+  }, [dealId]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
   }, []);
 
+  // Field change handlers that trigger debounced save
+  const handleCompanyChange = (value: string) => {
+    setBillToCompany(value);
+    saveField('bill_to_company_name', value);
+  };
+
+  const handleContactChange = (value: string) => {
+    setBillToContact(value);
+    saveField('bill_to_contact_name', value);
+  };
+
+  const handleEmailsChange = (value: string) => {
+    setBillToEmails(value);
+    saveField('bill_to_email', value);
+  };
+
+  const handleCcChange = (value: string) => {
+    setBillToCcEmails(value);
+    saveField('bill_to_cc_emails', value);
+  };
+
+  const handleBccChange = (value: string) => {
+    setBillToBccEmails(value);
+    saveField('bill_to_bcc_emails', value);
+  };
+
   // Manual populate CC button
-  const handlePopulateCc = useCallback(() => {
+  const handlePopulateCc = () => {
     if (defaultCcEmails) {
-      setFormData(prev => ({ ...prev, bill_to_cc_emails: defaultCcEmails }));
+      setBillToCcEmails(defaultCcEmails);
+      saveField('bill_to_cc_emails', defaultCcEmails);
     }
-  }, [defaultCcEmails]);
+  };
 
   // Ensure BCC has default email
-  const handleEnsureBcc = useCallback(() => {
-    const currentBcc = formData.bill_to_bcc_emails.trim();
+  const handleEnsureBcc = () => {
+    const currentBcc = billToBccEmails.trim();
     if (!currentBcc.toLowerCase().includes(DEFAULT_BCC_EMAIL.toLowerCase())) {
       const newBcc = currentBcc ? `${currentBcc}, ${DEFAULT_BCC_EMAIL}` : DEFAULT_BCC_EMAIL;
-      setFormData(prev => ({ ...prev, bill_to_bcc_emails: newBcc }));
-    }
-  }, [formData.bill_to_bcc_emails]);
-
-  // Status display
-  const getStatusDisplay = () => {
-    switch (autosaveStatus) {
-      case 'saving':
-        return <span className="text-xs text-blue-600">Saving...</span>;
-      case 'saved':
-        return <span className="text-xs text-green-600">Saved</span>;
-      case 'error':
-        return <span className="text-xs text-red-600">Error saving</span>;
-      default:
-        return null;
+      setBillToBccEmails(newBcc);
+      saveField('bill_to_bcc_emails', newBcc);
     }
   };
 
@@ -168,7 +182,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
           <span className="text-xs text-gray-500">(for QuickBooks)</span>
         </div>
         <div className="flex items-center gap-2">
-          {getStatusDisplay()}
+          {saving && <span className="text-xs text-blue-600">Saving...</span>}
         </div>
       </button>
 
@@ -187,8 +201,8 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={formData.bill_to_company_name}
-                    onChange={(e) => updateField('bill_to_company_name', e.target.value)}
+                    value={billToCompany}
+                    onChange={(e) => handleCompanyChange(e.target.value)}
                     placeholder="e.g., Fuqua Development"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
                   />
@@ -202,8 +216,8 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={formData.bill_to_contact_name}
-                    onChange={(e) => updateField('bill_to_contact_name', e.target.value)}
+                    value={billToContact}
+                    onChange={(e) => handleContactChange(e.target.value)}
                     placeholder="e.g., Jim Ackerman"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
                   />
@@ -222,8 +236,8 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={formData.bill_to_email}
-                    onChange={(e) => updateField('bill_to_email', e.target.value)}
+                    value={billToEmails}
+                    onChange={(e) => handleEmailsChange(e.target.value)}
                     placeholder="e.g., jim@company.com, accounting@company.com"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
                   />
@@ -250,8 +264,8 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                   </div>
                   <input
                     type="text"
-                    value={formData.bill_to_cc_emails}
-                    onChange={(e) => updateField('bill_to_cc_emails', e.target.value)}
+                    value={billToCcEmails}
+                    onChange={(e) => handleCcChange(e.target.value)}
                     placeholder="e.g., broker1@company.com, broker2@company.com"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
                   />
@@ -268,7 +282,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                     <label className="block text-sm font-medium text-gray-700">
                       BCC Email(s)
                     </label>
-                    {!formData.bill_to_bcc_emails.toLowerCase().includes(DEFAULT_BCC_EMAIL.toLowerCase()) && (
+                    {!billToBccEmails.toLowerCase().includes(DEFAULT_BCC_EMAIL.toLowerCase()) && (
                       <button
                         type="button"
                         onClick={handleEnsureBcc}
@@ -280,8 +294,8 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                   </div>
                   <input
                     type="text"
-                    value={formData.bill_to_bcc_emails}
-                    onChange={(e) => updateField('bill_to_bcc_emails', e.target.value)}
+                    value={billToBccEmails}
+                    onChange={(e) => handleBccChange(e.target.value)}
                     placeholder={DEFAULT_BCC_EMAIL}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
                   />
@@ -314,5 +328,5 @@ const BillToSection: React.FC<BillToSectionProps> = ({
   );
 };
 
-// Simple memo - only re-render when primitive props change
+// Memo with simple prop comparison - dealId and clientId are primitives
 export default React.memo(BillToSection);
