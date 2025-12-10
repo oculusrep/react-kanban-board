@@ -576,18 +576,53 @@ export async function sendInvoice(
 }
 
 /**
- * Get an invoice from QuickBooks (needed to get SyncToken for delete)
+ * Get an invoice from QuickBooks (needed to get SyncToken for update/delete)
  */
 export async function getInvoice(
   connection: QBConnection,
   invoiceId: string
-): Promise<{ Id: string; SyncToken: string; DocNumber: string }> {
-  const result = await qbApiRequest<{ Invoice: { Id: string; SyncToken: string; DocNumber: string } }>(
+): Promise<QBInvoice & { Id: string; SyncToken: string; DocNumber: string }> {
+  const result = await qbApiRequest<{ Invoice: QBInvoice & { Id: string; SyncToken: string; DocNumber: string } }>(
     connection,
     'GET',
     `invoice/${invoiceId}`
   )
   return result.Invoice
+}
+
+/**
+ * Update an existing invoice in QuickBooks
+ * Requires the SyncToken from the current invoice state
+ * Uses sparse update - only updates the fields provided
+ */
+export async function updateInvoice(
+  connection: QBConnection,
+  invoiceId: string,
+  syncToken: string,
+  updates: Partial<QBInvoice>
+): Promise<{ Id: string; DocNumber: string; SyncToken: string }> {
+  // QuickBooks requires Id and SyncToken for updates
+  const invoiceUpdate = {
+    Id: invoiceId,
+    SyncToken: syncToken,
+    sparse: true,  // Only update fields that are provided
+    ...updates
+  }
+
+  console.log('Updating invoice with payload:', JSON.stringify(invoiceUpdate, null, 2))
+
+  const result = await qbApiRequest<{ Invoice: { Id: string; DocNumber: string; SyncToken: string } }>(
+    connection,
+    'POST',
+    'invoice',
+    invoiceUpdate
+  )
+
+  return {
+    Id: result.Invoice.Id,
+    DocNumber: result.Invoice.DocNumber,
+    SyncToken: result.Invoice.SyncToken
+  }
 }
 
 /**

@@ -5,6 +5,8 @@ import {
   findOrCreateCustomer,
   findOrCreateServiceItem,
   createInvoice,
+  updateInvoice,
+  getInvoice,
   sendInvoice,
   logSync,
   updateConnectionLastSync,
@@ -22,6 +24,7 @@ const corsHeaders = {
 interface SyncInvoiceRequest {
   paymentId: string
   sendEmail?: boolean  // If true, also send the invoice via QBO email
+  forceResync?: boolean  // If true, update existing invoice instead of skipping
 }
 
 serve(async (req) => {
@@ -55,7 +58,7 @@ serve(async (req) => {
     }
 
     // Get request body
-    const { paymentId, sendEmail } = await req.json() as SyncInvoiceRequest
+    const { paymentId, sendEmail, forceResync } = await req.json() as SyncInvoiceRequest
 
     if (!paymentId) {
       return new Response(
@@ -98,8 +101,9 @@ serve(async (req) => {
 
     const payment = payments[0]
 
-    // Check if already synced
-    if (payment.qb_invoice_id) {
+    // Check if already synced - if forceResync is not set, return existing invoice info
+    const existingInvoiceId = payment.qb_invoice_id
+    if (existingInvoiceId && !forceResync) {
       return new Response(
         JSON.stringify({
           success: true,
@@ -109,6 +113,11 @@ serve(async (req) => {
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
+    }
+
+    // If resyncing, log that we're updating
+    if (existingInvoiceId && forceResync) {
+      console.log('Resyncing existing invoice:', existingInvoiceId)
     }
 
     // Fetch the deal with client and property
@@ -285,10 +294,29 @@ Please make checks payable to:
 Oculus Real Estate Partners, LLC`
     }
 
-    // Create the invoice in QuickBooks
-    const qbInvoice = await createInvoice(connection, invoice)
+    // Either create new invoice or update existing one
+    let qbInvoice: { Id: string; DocNumber: string }
+    let isUpdate = false
 
-    console.log('Created QBO invoice:', qbInvoice)
+    if (existingInvoiceId) {
+      // Update existing invoice - get current SyncToken first
+      const existingQbInvoice = await getInvoice(connection, existingInvoiceId)
+      console.log('Updating existing invoice, SyncToken:', existingQbInvoice.SyncToken)
+
+      const updateResult = await updateInvoice(
+        connection,
+        existingInvoiceId,
+        existingQbInvoice.SyncToken,
+        invoice
+      )
+      qbInvoice = { Id: updateResult.Id, DocNumber: updateResult.DocNumber }
+      isUpdate = true
+      console.log('Updated QBO invoice:', qbInvoice)
+    } else {
+      // Create new invoice
+      qbInvoice = await createInvoice(connection, invoice)
+      console.log('Created QBO invoice:', qbInvoice)
+    }
 
     // Update payment with QBO invoice info
     try {
@@ -300,7 +328,7 @@ Oculus Real Estate Partners, LLC`
       })
     } catch (updateError: any) {
       console.error('Failed to update payment with QBO info:', updateError)
-      // Log sync but don't fail - invoice was created
+      // Log sync but don't fail - invoice was created/updated
     }
 
     // Log successful sync
@@ -311,7 +339,7 @@ Oculus Real Estate Partners, LLC`
       'outbound',
       'success',
       paymentId,
-      'payment',
+      isUpdate ? 'payment_update' : 'payment',
       qbInvoice.Id
     )
 
@@ -351,11 +379,12 @@ Oculus Real Estate Partners, LLC`
       JSON.stringify({
         success: true,
         message: emailSent
-          ? 'Invoice created and sent via QuickBooks'
-          : 'Invoice created in QuickBooks',
+          ? `Invoice ${isUpdate ? 'updated' : 'created'} and sent via QuickBooks`
+          : `Invoice ${isUpdate ? 'updated' : 'created'} in QuickBooks`,
         qbInvoiceId: qbInvoice.Id,
         qbInvoiceNumber: qbInvoice.DocNumber,
-        emailSent
+        emailSent,
+        wasUpdate: isUpdate
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
