@@ -43,6 +43,30 @@ Audit log of all sync operations.
 | `error_message` | text | Error details if failed |
 | `created_at` | timestamptz | Log entry timestamp |
 
+#### Broker Table Extensions
+The `broker` table includes a link to user accounts for email lookup:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `user_id` | uuid | Foreign key to `user` table for email lookup |
+
+This enables the BillToSection to auto-populate CC emails from deal team brokers via their linked user accounts.
+
+**Migration:** `supabase/migrations/20251210_add_broker_user_fk.sql`
+
+#### Deal Table Extensions
+The `deal` table includes bill-to fields for QuickBooks invoicing:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `bill_to_company_name` | text | Company name on invoice |
+| `bill_to_contact_name` | text | Contact person name |
+| `bill_to_email` | text | Primary invoice recipient(s) |
+| `bill_to_cc_emails` | text | CC recipients (comma-separated) |
+| `bill_to_bcc_emails` | text | BCC recipients (defaults to mike@oculusrep.com) |
+
+These fields are managed via the BillToSection component in the Payment tab.
+
 #### Payment Table Extensions
 The `payment` table includes QuickBooks-related fields:
 
@@ -177,7 +201,9 @@ Deletes (voids) an invoice in QuickBooks.
 - `refreshTokenIfNeeded()` - Refresh OAuth token if expired
 - `getQBApiUrl()` - Get API URL (sandbox vs production)
 - `qbApiRequest()` - Make authenticated QB API requests
-- `findOrCreateCustomer()` - Find or create QB customer
+- `findOrCreateParentCustomer()` - Find or create parent QB customer (Client)
+- `findOrCreateSubCustomer()` - Find or create sub-customer (Deal) under parent
+- `findOrCreateCustomer()` - Full hierarchy creation (parent + sub-customer)
 - `findOrCreateServiceItem()` - Find or create QB service item
 - `createInvoice()` - Create QB invoice
 - `sendInvoice()` - Send invoice via email
@@ -198,6 +224,57 @@ Required Supabase secrets (set via `npx supabase secrets set`):
 | `QUICKBOOKS_ENVIRONMENT` | 'sandbox' or 'production' |
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key for DB access |
+
+## Customer Hierarchy (Client → Deal)
+
+### Overview
+
+QuickBooks customers are organized in a **two-level hierarchy**:
+1. **Parent Customer** = OVIS Client (e.g., "Fuqua Development")
+2. **Sub-Customer (Job)** = OVIS Deal (e.g., "Fuqua Development - 1234 Main St")
+
+This structure allows:
+- Multiple deals per client to be tracked separately
+- Bill-to information to be stored at the deal level
+- Reports to be grouped by client in QuickBooks
+
+### Automatic Customer Creation
+
+When syncing an invoice, the system automatically:
+1. Finds or creates the **parent customer** (Client)
+2. Finds or creates the **sub-customer** (Deal) under that parent
+3. Associates bill-to information with the sub-customer
+
+### Sub-Customer Display Name Format
+```
+{Client Name} - {Deal Name}
+```
+Example: `Fuqua Development - 1234 Main Street`
+
+### Bill-To Information on Sub-Customers
+
+The sub-customer stores deal-specific billing information:
+- **CompanyName**: Bill-to company (from deal's `bill_to_company_name`)
+- **GivenName/FamilyName**: Contact name parsed from `bill_to_contact_name`
+- **PrimaryEmailAddr**: Bill-to email for invoices
+- **BillAddr**: Billing address (street, city, state, zip)
+- **PrimaryPhone**: Contact phone number
+- **PrintOnCheckName**: Set to client name for check printing
+
+### Shared Utilities for Customer Hierarchy
+
+```typescript
+// Find or create parent customer (Client level)
+findOrCreateParentCustomer(connection, clientName, email?)
+
+// Find or create sub-customer (Deal level) under a parent
+findOrCreateSubCustomer(connection, parentCustomerId, clientName, dealName, billTo?)
+
+// Complete hierarchy creation (calls both above)
+findOrCreateCustomer(connection, clientName, dealName, email?, billTo?)
+```
+
+---
 
 ## Customer Mapping
 
@@ -403,6 +480,30 @@ Shows QuickBooks sync status in payment list:
 Full QuickBooks management when payment is expanded:
 - **Not Synced:** "Create Invoice" and "Create & Send" buttons
 
+### BillToSection (`src/components/BillToSection.tsx`)
+Collapsible section in PaymentTab for managing invoice billing info:
+- **Bill-To Company**: Company name that appears on the invoice
+- **Bill-To Contact**: Contact person name
+- **Invoice Email (TO)**: Primary recipient(s), comma-separated
+- **CC Emails**: Carbon copy recipients with "Add deal team emails" button
+- **BCC Emails**: Blind copy with default `mike@oculusrep.com`
+
+**Features:**
+- Auto-saves with 800ms debounce (no save button needed)
+- Fetches its own data to avoid re-render loops
+- "Add deal team emails" auto-populates CC from broker emails
+- Displays QuickBooks info box explaining field usage
+
+**Props:**
+```typescript
+interface BillToSectionProps {
+  dealId: string;
+  clientId?: string;
+  commissionSplits: CommissionSplit[];
+  brokers: Broker[];
+}
+```
+
 ### ClientOverviewTab (`src/components/ClientOverviewTab.tsx`)
 Client detail page shows QuickBooks integration status:
 - **QB Customer ID**: Read-only display of linked QuickBooks customer ID
@@ -419,14 +520,23 @@ When creating an invoice, data is mapped as follows:
 
 | QuickBooks Field | OVIS Source |
 |------------------|-------------|
-| Customer | Client name (creates if not exists) |
+| Customer | Sub-customer (Deal) under parent (Client) - auto-created |
 | Invoice Amount | Payment amount |
 | Due Date | Payment estimated date |
 | Transaction Date | Current date |
 | Memo | Deal name + Property address |
-| Bill Email | Deal's bill_to_email |
-| Bill Address | Deal's bill_to_* fields |
+| Bill Email (TO) | Deal's `bill_to_email` |
+| Bill Email (CC) | Deal's `bill_to_cc_emails` |
+| Bill Email (BCC) | Deal's `bill_to_bcc_emails` |
+| Bill Address | Deal's `bill_to_*` fields |
 | Line Item | "Consulting Services" service item |
+
+### Invoice Email Recipients
+
+Invoices can be sent to multiple recipients:
+- **TO**: Primary recipient(s) from `bill_to_email`
+- **CC**: Deal team members from `bill_to_cc_emails` (can auto-populate from brokers)
+- **BCC**: Internal tracking via `bill_to_bcc_emails` (defaults to `mike@oculusrep.com`)
 
 ## Token Refresh Flow
 
