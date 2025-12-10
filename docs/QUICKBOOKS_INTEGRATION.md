@@ -215,7 +215,7 @@ Deletes (voids) an invoice in QuickBooks.
 
 `supabase/functions/_shared/quickbooks.ts` contains shared functions:
 
-- `postgrestQuery()` - Query database via PostgREST
+- `postgrestQuery()` - Query database via PostgREST (supports `eq.` and `in.()` filters)
 - `postgrestInsert()` - Insert records via PostgREST
 - `postgrestUpdate()` - Update records via PostgREST
 - `getQBConnection()` - Get active QuickBooks connection
@@ -847,6 +847,45 @@ To update a document (e.g., new W9 for the year):
   "attachmentsUploaded": 3
 }
 ```
+
+---
+
+## Broker Attribution Line
+
+Each invoice includes a second line item that lists the brokers involved in the deal. This line has no dollar amount - it's purely informational.
+
+### Format
+
+The broker line appears as:
+- Single broker: `Brokers: Mike Minihan`
+- Two brokers: `Brokers: Mike Minihan and Arty Santos`
+- Three+ brokers: `Brokers: Mike Minihan, Arty Santos, and Greg Bennett`
+
+### How It Works
+
+1. **Fetch Commission Splits**: Query the `commission_split` table for all splits associated with the deal
+2. **Get Broker Names**: Fetch broker names from the `broker` table using the broker IDs from the splits
+3. **Filter Invalid Names**: Remove any null, empty, or "Unknown Broker" entries
+4. **Add Description Line**: Add a `DescriptionOnly` line type to the invoice with the formatted broker list
+
+### Technical Details
+
+The broker line uses QuickBooks' `DescriptionOnly` line type:
+```typescript
+{
+  Amount: 0,
+  DetailType: 'DescriptionOnly',
+  DescriptionLineDetail: {},
+  Description: 'Brokers: Mike Minihan and Arty Santos'
+}
+```
+
+### Important Notes
+
+- Broker names come from the `broker.name` column (not `broker_name`)
+- Only brokers with commission splits on the specific deal are included
+- The `postgrestQuery` function must support `in.()` filters for this to work correctly
+- Resyncing an invoice will update the broker line if the deal team changes
 
 ---
 
