@@ -80,7 +80,7 @@ serve(async (req) => {
     connection = await refreshTokenIfNeeded(supabaseUrl, secretKey, connection)
 
     // Fetch payment with related data using PostgREST
-    const paymentSelect = 'id,payment_name,payment_amount,payment_date_estimated,payment_invoice_date,qb_invoice_id,qb_invoice_number,deal_id,payment_sequence,total_payments'
+    const paymentSelect = 'id,payment_name,payment_amount,payment_date_estimated,payment_invoice_date,qb_invoice_id,qb_invoice_number,deal_id,payment_sequence'
     const payments = await postgrestQuery(
       supabaseUrl,
       secretKey,
@@ -118,6 +118,15 @@ serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       )
     }
+
+    // Count total payments for this deal (to display "Payment X of Y")
+    const allDealPayments = await postgrestQuery(
+      supabaseUrl,
+      secretKey,
+      'payment',
+      `select=id&deal_id=eq.${payment.deal_id}`
+    )
+    const totalPayments = allDealPayments?.length || 1
 
     // Fetch deal with all bill-to fields including CC/BCC emails and contract_signed_date
     const dealSelect = 'id,deal_name,contract_signed_date,bill_to_contact_name,bill_to_company_name,bill_to_email,bill_to_cc_emails,bill_to_bcc_emails,bill_to_address_street,bill_to_address_city,bill_to_address_state,bill_to_address_zip,bill_to_phone,client_id,property_id'
@@ -207,8 +216,8 @@ serve(async (req) => {
       ? `${property.city || ''}${property.city && property.state ? ', ' : ''}${property.state || ''}`
       : ''
     // Use "Payment X of Y" format matching the frontend display
-    const paymentLabel = payment.payment_sequence && payment.total_payments
-      ? `Payment ${payment.payment_sequence} of ${payment.total_payments}`
+    const paymentLabel = payment.payment_sequence
+      ? `Payment ${payment.payment_sequence} of ${totalPayments}`
       : payment.payment_name || 'Payment'
     const invoiceDescription = `${paymentLabel} Now Due for Commission related to procuring cause of Lease Agreement with ${client.client_name}${propertyLocation ? ` - in ${propertyLocation}` : ''}.`
 
