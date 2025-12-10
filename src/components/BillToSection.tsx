@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Deal, Broker, CommissionSplit } from '../lib/types';
 import { supabase } from '../lib/supabaseClient';
 import { prepareUpdate } from '../lib/supabaseHelpers';
@@ -21,6 +21,8 @@ const BillToSection: React.FC<BillToSectionProps> = ({
   const [isExpanded, setIsExpanded] = useState(true);
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const initializedRef = useRef(false);
+  const lastDealIdRef = useRef<string | null>(null);
 
   // Local form state
   const [billToCompany, setBillToCompany] = useState(deal.bill_to_company_name || '');
@@ -40,36 +42,65 @@ const BillToSection: React.FC<BillToSectionProps> = ({
     return teamEmails.join(', ');
   }, [commissionSplits, brokers]);
 
-  // Sync from deal props when they change
+  // Initialize form state when deal changes or on first load
   useEffect(() => {
+    // Only re-initialize if the deal ID changed
+    if (lastDealIdRef.current === deal.id) {
+      return;
+    }
+    lastDealIdRef.current = deal.id;
+
     setBillToCompany(deal.bill_to_company_name || '');
     setBillToContact(deal.bill_to_contact_name || '');
     setBillToEmails(deal.bill_to_email || '');
     setBillToCcEmails(deal.bill_to_cc_emails || '');
     setBillToBccEmails(deal.bill_to_bcc_emails || DEFAULT_BCC_EMAIL);
-  }, [deal.id]); // Only re-sync when deal ID changes
+    initializedRef.current = false;
+  }, [deal.id, deal.bill_to_company_name, deal.bill_to_contact_name, deal.bill_to_email, deal.bill_to_cc_emails, deal.bill_to_bcc_emails]);
 
-  // Auto-populate CC with team emails if empty
-  const handlePopulateCc = () => {
-    if (defaultCcEmails) {
+  // Auto-populate CC with team emails if empty (only once when data is loaded)
+  useEffect(() => {
+    if (initializedRef.current) return;
+    if (!deal.id || !defaultCcEmails) return;
+
+    // Only auto-populate if:
+    // 1. CC emails field is empty in the database
+    // 2. There are team members with emails
+    // 3. Component hasn't already initialized
+    if (!deal.bill_to_cc_emails && defaultCcEmails && commissionSplits.length > 0) {
+      initializedRef.current = true;
       setBillToCcEmails(defaultCcEmails);
-      handleSaveField('bill_to_cc_emails', defaultCcEmails);
+      // Save to database silently
+      saveFieldSilently('bill_to_cc_emails', defaultCcEmails);
+    } else {
+      initializedRef.current = true;
     }
-  };
+  }, [deal.id, deal.bill_to_cc_emails, defaultCcEmails, commissionSplits.length]);
 
-  // Ensure BCC always has mike@oculusrep.com
-  const handleEnsureBcc = () => {
-    let bcc = billToBccEmails.trim();
-    if (!bcc.toLowerCase().includes(DEFAULT_BCC_EMAIL.toLowerCase())) {
-      bcc = bcc ? `${bcc}, ${DEFAULT_BCC_EMAIL}` : DEFAULT_BCC_EMAIL;
-      setBillToBccEmails(bcc);
-      handleSaveField('bill_to_bcc_emails', bcc);
-    }
-  };
-
-  // Save individual field
-  const handleSaveField = async (field: string, value: string) => {
+  // Save field without updating parent state (prevents re-render flickering)
+  const saveFieldSilently = async (field: string, value: string) => {
     if (!deal.id) return;
+
+    try {
+      const { error } = await supabase
+        .from('deal')
+        .update(prepareUpdate({ [field]: value || null }))
+        .eq('id', deal.id);
+
+      if (error) {
+        console.error(`Error saving ${field}:`, error);
+      }
+    } catch (err) {
+      console.error(`Error saving ${field}:`, err);
+    }
+  };
+
+  // Save individual field with visual feedback
+  const handleSaveField = async (field: string, value: string, currentDbValue: string | null | undefined) => {
+    if (!deal.id) return;
+
+    // Skip save if value hasn't changed
+    if (value === (currentDbValue || '')) return;
 
     setSaving(true);
     try {
@@ -81,9 +112,6 @@ const BillToSection: React.FC<BillToSectionProps> = ({
       if (error) throw error;
 
       setLastSaved(new Date().toLocaleTimeString());
-
-      // Also update parent state
-      await onDealUpdate({ [field]: value || null });
     } catch (err) {
       console.error(`Error saving ${field}:`, err);
     } finally {
@@ -91,9 +119,27 @@ const BillToSection: React.FC<BillToSectionProps> = ({
     }
   };
 
-  // Debounced save on blur
-  const handleBlur = (field: string, value: string) => {
-    handleSaveField(field, value);
+  // Handle blur - save only if changed
+  const handleBlur = (field: string, value: string, currentDbValue: string | null | undefined) => {
+    handleSaveField(field, value, currentDbValue);
+  };
+
+  // Manual populate CC button
+  const handlePopulateCc = () => {
+    if (defaultCcEmails) {
+      setBillToCcEmails(defaultCcEmails);
+      handleSaveField('bill_to_cc_emails', defaultCcEmails, deal.bill_to_cc_emails);
+    }
+  };
+
+  // Ensure BCC always has mike@oculusrep.com
+  const handleEnsureBcc = () => {
+    let bcc = billToBccEmails.trim();
+    if (!bcc.toLowerCase().includes(DEFAULT_BCC_EMAIL.toLowerCase())) {
+      bcc = bcc ? `${bcc}, ${DEFAULT_BCC_EMAIL}` : DEFAULT_BCC_EMAIL;
+      setBillToBccEmails(bcc);
+      handleSaveField('bill_to_bcc_emails', bcc, deal.bill_to_bcc_emails);
+    }
   };
 
   return (
@@ -138,7 +184,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                 type="text"
                 value={billToCompany}
                 onChange={(e) => setBillToCompany(e.target.value)}
-                onBlur={() => handleBlur('bill_to_company_name', billToCompany)}
+                onBlur={() => handleBlur('bill_to_company_name', billToCompany, deal.bill_to_company_name)}
                 placeholder="e.g., Fuqua Development"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
               />
@@ -154,7 +200,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                 type="text"
                 value={billToContact}
                 onChange={(e) => setBillToContact(e.target.value)}
-                onBlur={() => handleBlur('bill_to_contact_name', billToContact)}
+                onBlur={() => handleBlur('bill_to_contact_name', billToContact, deal.bill_to_contact_name)}
                 placeholder="e.g., Jim Ackerman"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
               />
@@ -175,7 +221,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                 type="text"
                 value={billToEmails}
                 onChange={(e) => setBillToEmails(e.target.value)}
-                onBlur={() => handleBlur('bill_to_email', billToEmails)}
+                onBlur={() => handleBlur('bill_to_email', billToEmails, deal.bill_to_email)}
                 placeholder="e.g., jim@company.com, accounting@company.com"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
               />
@@ -190,7 +236,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                 <label className="block text-sm font-medium text-gray-700">
                   CC Email(s)
                 </label>
-                {defaultCcEmails && (
+                {defaultCcEmails && billToCcEmails !== defaultCcEmails && (
                   <button
                     type="button"
                     onClick={handlePopulateCc}
@@ -204,7 +250,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                 type="text"
                 value={billToCcEmails}
                 onChange={(e) => setBillToCcEmails(e.target.value)}
-                onBlur={() => handleBlur('bill_to_cc_emails', billToCcEmails)}
+                onBlur={() => handleBlur('bill_to_cc_emails', billToCcEmails, deal.bill_to_cc_emails)}
                 placeholder="e.g., broker1@company.com, broker2@company.com"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
               />
@@ -235,7 +281,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                 type="text"
                 value={billToBccEmails}
                 onChange={(e) => setBillToBccEmails(e.target.value)}
-                onBlur={() => handleBlur('bill_to_bcc_emails', billToBccEmails)}
+                onBlur={() => handleBlur('bill_to_bcc_emails', billToBccEmails, deal.bill_to_bcc_emails)}
                 placeholder={DEFAULT_BCC_EMAIL}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
               />
