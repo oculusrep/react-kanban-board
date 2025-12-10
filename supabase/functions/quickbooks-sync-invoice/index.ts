@@ -219,7 +219,10 @@ serve(async (req) => {
         )
 
         if (brokers && brokers.length > 0) {
-          brokerNames = brokers.map((b: { name: string }) => b.name)
+          // Filter out any null/empty names or placeholder "Unknown Broker" entries
+          brokerNames = brokers
+            .map((b: { name: string }) => b.name)
+            .filter((name: string) => name && name.trim() && name !== 'Unknown Broker')
           console.log('Deal team brokers:', brokerNames)
         }
       }
