@@ -280,7 +280,9 @@ serve(async (req) => {
 
     // Add standard customer memo (Note to Customer) - always the same on every invoice
     invoice.CustomerMemo = {
-      value: 'Thank you for your business!\nPlease make checks payable to:\nOculus Real Estate Partners, LLC'
+      value: `Thank you for your business!
+Please make checks payable to:
+Oculus Real Estate Partners, LLC`
     }
 
     // Create the invoice in QuickBooks
