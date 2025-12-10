@@ -612,10 +612,10 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
 
       {/* Bill-To Section for QuickBooks Invoicing */}
       <BillToSection
-        deal={deal}
+        dealId={deal.id}
+        clientId={deal.client_id}
         commissionSplits={commissionSplits}
         brokers={brokers}
-        onDealUpdate={onDealUpdate}
       />
 
       {/* Payment Generation Section */}

@@ -1,29 +1,39 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Deal, Broker, CommissionSplit } from '../lib/types';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Broker, CommissionSplit } from '../lib/types';
 import { supabase } from '../lib/supabaseClient';
 import { prepareUpdate } from '../lib/supabaseHelpers';
 
 interface BillToSectionProps {
-  deal: Deal;
+  dealId: string;
+  clientId?: string;
   commissionSplits: CommissionSplit[];
   brokers: Broker[];
-  onDealUpdate: (updates: Partial<Deal>) => Promise<void>;
 }
 
 const DEFAULT_BCC_EMAIL = 'mike@oculusrep.com';
 
+// Bill-to fields we manage locally
+interface BillToData {
+  bill_to_company_name: string;
+  bill_to_contact_name: string;
+  bill_to_email: string;
+  bill_to_cc_emails: string;
+  bill_to_bcc_emails: string;
+}
+
 const BillToSection: React.FC<BillToSectionProps> = ({
-  deal,
+  dealId,
+  clientId,
   commissionSplits,
-  brokers,
-  onDealUpdate
+  brokers
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
-  const initializedForDealId = useRef<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const fetchedForDealId = useRef<string | null>(null);
 
-  // Local form state - initialized from deal
+  // Local form state - fetched independently from DB
   const [billToCompany, setBillToCompany] = useState('');
   const [billToContact, setBillToContact] = useState('');
   const [billToEmails, setBillToEmails] = useState('');
@@ -39,31 +49,51 @@ const BillToSection: React.FC<BillToSectionProps> = ({
     return teamEmails.join(', ');
   }, [commissionSplits, brokers]);
 
-  // Initialize form state ONLY when deal.id changes
-  useEffect(() => {
-    // Skip if already initialized for this deal
-    if (initializedForDealId.current === deal.id) {
-      return;
+  // Fetch bill-to data directly from DB - completely independent of parent's deal state
+  const fetchBillToData = useCallback(async () => {
+    if (!dealId || fetchedForDealId.current === dealId) return;
+
+    fetchedForDealId.current = dealId;
+    setLoading(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('deal')
+        .select('bill_to_company_name, bill_to_contact_name, bill_to_email, bill_to_cc_emails, bill_to_bcc_emails')
+        .eq('id', dealId)
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        setBillToCompany(data.bill_to_company_name || '');
+        setBillToContact(data.bill_to_contact_name || '');
+        setBillToEmails(data.bill_to_email || '');
+        setBillToCcEmails(data.bill_to_cc_emails || '');
+        setBillToBccEmails(data.bill_to_bcc_emails || DEFAULT_BCC_EMAIL);
+      }
+    } catch (err) {
+      console.error('Error fetching bill-to data:', err);
+    } finally {
+      setLoading(false);
     }
-    initializedForDealId.current = deal.id;
+  }, [dealId]);
 
-    setBillToCompany(deal.bill_to_company_name || '');
-    setBillToContact(deal.bill_to_contact_name || '');
-    setBillToEmails(deal.bill_to_email || '');
-    setBillToBccEmails(deal.bill_to_bcc_emails || DEFAULT_BCC_EMAIL);
-    setBillToCcEmails(deal.bill_to_cc_emails || '');
-  }, [deal.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Fetch on mount and when dealId changes
+  useEffect(() => {
+    fetchBillToData();
+  }, [fetchBillToData]);
 
-  // Save field on blur - no parent callback, just direct DB update
-  const handleBlur = async (field: string, value: string) => {
-    if (!deal.id) return;
+  // Save field on blur - direct DB update, no parent involvement
+  const handleBlur = useCallback(async (field: string, value: string) => {
+    if (!dealId) return;
 
     setSaving(true);
     try {
       const { error } = await supabase
         .from('deal')
         .update(prepareUpdate({ [field]: value || null }))
-        .eq('id', deal.id);
+        .eq('id', dealId);
 
       if (error) throw error;
       setLastSaved(new Date().toLocaleTimeString());
@@ -72,7 +102,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
     } finally {
       setSaving(false);
     }
-  };
+  }, [dealId]);
 
   // Manual populate CC button
   const handlePopulateCc = async () => {
@@ -251,7 +281,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                 <p className="font-medium">QuickBooks Invoice Setup</p>
                 <p className="mt-1 text-blue-700">
                   This information is used when syncing invoices to QuickBooks. The Bill-To Company appears as the billing entity on the invoice,
-                  while the Client name ({deal.client_id ? 'linked' : 'not linked'}) is used for customer tracking in QBO.
+                  while the Client name ({clientId ? 'linked' : 'not linked'}) is used for customer tracking in QBO.
                 </p>
               </div>
             </div>
@@ -262,22 +292,5 @@ const BillToSection: React.FC<BillToSectionProps> = ({
   );
 };
 
-// Memoize to prevent re-renders when parent re-renders due to real-time updates
-// Only re-render when deal.id, commissionSplits, or brokers actually change
-export default React.memo(BillToSection, (prevProps, nextProps) => {
-  // Return true if props are equal (should NOT re-render)
-  // Return false if props are different (should re-render)
-
-  // Always re-render if deal.id changes
-  if (prevProps.deal.id !== nextProps.deal.id) return false;
-
-  // Re-render if commission splits change (for defaultCcEmails calculation)
-  if (prevProps.commissionSplits.length !== nextProps.commissionSplits.length) return false;
-  if (prevProps.commissionSplits.some((cs, i) => cs.broker_id !== nextProps.commissionSplits[i]?.broker_id)) return false;
-
-  // Re-render if brokers change
-  if (prevProps.brokers.length !== nextProps.brokers.length) return false;
-
-  // Don't re-render for bill_to field changes - we manage those locally
-  return true;
-});
+// Simple memo - only re-render when dealId, commissionSplits, or brokers change
+export default React.memo(BillToSection);
