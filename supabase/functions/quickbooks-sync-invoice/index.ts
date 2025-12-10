@@ -242,14 +242,6 @@ serve(async (req) => {
       Description: invoiceDescription
     }
 
-    // Build property address memo if available
-    let propertyMemo = ''
-    if (property) {
-      propertyMemo = [property.property_name, property.address, property.city, property.state]
-        .filter(Boolean)
-        .join(', ')
-    }
-
     // Build the invoice
     // CustomerRef uses the sub-customer ID (Client - Deal format)
     const subCustomerDisplayName = `${client.client_name} - ${deal.deal_name || 'Deal'}`
@@ -286,11 +278,9 @@ serve(async (req) => {
       invoice.BillEmailBcc = { Address: deal.bill_to_bcc_emails }
     }
 
-    // Add memo with deal/property info
-    if (propertyMemo || deal.deal_name) {
-      invoice.CustomerMemo = {
-        value: [deal.deal_name, propertyMemo].filter(Boolean).join(' - ')
-      }
+    // Add standard customer memo (Note to Customer) - always the same on every invoice
+    invoice.CustomerMemo = {
+      value: 'Thank you for your business!\nPlease make checks payable to:\nOculus Real Estate Partners, LLC'
     }
 
     // Create the invoice in QuickBooks
