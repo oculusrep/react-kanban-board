@@ -254,6 +254,10 @@ Required Supabase secrets (set via `npx supabase secrets set`):
 | `QUICKBOOKS_ENVIRONMENT` | 'sandbox' or 'production' |
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key for DB access |
+| `DROPBOX_ACCESS_TOKEN` | Dropbox API access token (for invoice attachments) |
+| `DROPBOX_REFRESH_TOKEN` | Dropbox refresh token for auto-renewal |
+| `DROPBOX_APP_KEY` | Dropbox app key |
+| `DROPBOX_APP_SECRET` | Dropbox app secret |
 
 ## Customer Hierarchy (Client → Deal)
 
@@ -770,6 +774,82 @@ POST /functions/v1/quickbooks-sync-invoice
 
 ---
 
+## Automatic Invoice Attachments
+
+When a new invoice is created in QuickBooks, standard documents are automatically attached. These documents are downloaded from Dropbox and uploaded to QuickBooks via the Attachable API.
+
+### Attached Documents
+
+The following documents are attached to every new invoice:
+
+| Document | Description |
+|----------|-------------|
+| `W9-Oculus REP - CURRENT.pdf` | Current W9 tax form |
+| `OCULUS WIRING INSTRUCTIONS.PDF` | Wire transfer instructions |
+| `ACH_eCHECK INSTRUCTIONS.PDF` | ACH/eCheck payment instructions |
+
+### Dropbox Storage
+
+Documents are stored in Dropbox at:
+```
+/Salesforce Documents/Invoice Attachments/
+├── W9-Oculus REP - CURRENT.pdf
+├── OCULUS WIRING INSTRUCTIONS.PDF
+└── ACH_eCHECK INSTRUCTIONS.PDF
+```
+
+### How It Works
+
+1. **New Invoice Creation Only**: Attachments are added only when a NEW invoice is created, not when resyncing/updating an existing invoice
+2. **Download from Dropbox**: Files are downloaded from the configured Dropbox folder
+3. **Upload to QuickBooks**: Each file is uploaded via the QuickBooks Attachable API
+4. **Linked to Invoice**: Attachments are automatically linked to the newly created invoice
+
+### Updating Documents
+
+To update a document (e.g., new W9 for the year):
+1. Upload the new file to Dropbox with the exact same filename
+2. Delete/replace the old file
+3. New invoices will automatically use the updated document
+
+**Note**: Existing invoices retain their original attachments. To update attachments on an existing invoice, delete the invoice in QuickBooks and recreate it.
+
+### Shared Utilities
+
+`supabase/functions/_shared/dropbox.ts` provides Dropbox integration:
+
+- `getDropboxCredentials()` - Get Dropbox API credentials from environment
+- `downloadFile(path)` - Download a single file from Dropbox
+- `downloadFiles(paths)` - Download multiple files
+- `downloadInvoiceAttachments()` - Download all standard invoice attachments
+- `getInvoiceAttachmentPaths()` - Get paths to standard attachment files
+
+`supabase/functions/_shared/quickbooks.ts` attachment functions:
+
+- `uploadAttachment(connection, fileData, fileName, contentType, entityType?, entityId?)` - Upload file to QuickBooks
+- `linkAttachmentToEntity(connection, attachableId, syncToken, entityType, entityId)` - Link existing attachment to entity
+
+### Error Handling
+
+- Attachment failures don't block invoice creation
+- Each attachment is uploaded independently - if one fails, others continue
+- Errors are logged but invoice is still created successfully
+- Response includes `attachmentsUploaded` count
+
+### Response Format
+
+```json
+{
+  "success": true,
+  "message": "Invoice created in QuickBooks with 3 attachments",
+  "qbInvoiceId": "123",
+  "qbInvoiceNumber": "1001",
+  "attachmentsUploaded": 3
+}
+```
+
+---
+
 ## Future Enhancements
 
 Potential future features:
@@ -782,4 +862,4 @@ Potential future features:
 - [ ] Webhook integration for real-time updates
 - [ ] Automatic sync on client name change in OVIS
 - [ ] Bulk customer sync operation
-- [ ] Automatic document attachments on invoices
+- [x] Automatic document attachments on invoices - Completed

@@ -684,3 +684,166 @@ export async function updateConnectionLastSync(
     last_sync_at: new Date().toISOString()
   })
 }
+
+// ============================================================================
+// Attachment API Functions
+// ============================================================================
+
+export interface QBAttachable {
+  Id?: string
+  SyncToken?: string
+  FileName: string
+  ContentType: string
+  AttachableRef?: Array<{
+    EntityRef: {
+      type: string
+      value: string
+    }
+  }>
+}
+
+/**
+ * Upload a file attachment to QuickBooks and optionally link it to an entity
+ * Uses multipart/form-data as required by the QuickBooks Attachable API
+ *
+ * @param connection - QBO connection
+ * @param fileData - The file content as Uint8Array
+ * @param fileName - Name of the file
+ * @param contentType - MIME type (e.g., 'application/pdf')
+ * @param entityType - Optional: Type of entity to link to (e.g., 'Invoice')
+ * @param entityId - Optional: ID of entity to link to
+ * @returns The created attachable object with Id
+ */
+export async function uploadAttachment(
+  connection: QBConnection,
+  fileData: Uint8Array,
+  fileName: string,
+  contentType: string,
+  entityType?: string,
+  entityId?: string
+): Promise<{ Id: string; FileName: string }> {
+  const baseUrl = getQBApiUrl()
+  const url = `${baseUrl}/v3/company/${connection.realm_id}/upload`
+
+  // Build the metadata object
+  const attachableMetadata: QBAttachable = {
+    FileName: fileName,
+    ContentType: contentType
+  }
+
+  // If linking to an entity, add the reference
+  if (entityType && entityId) {
+    attachableMetadata.AttachableRef = [{
+      EntityRef: {
+        type: entityType,
+        value: entityId
+      }
+    }]
+  }
+
+  // QuickBooks expects multipart/form-data with:
+  // 1. "file_metadata_01" - JSON metadata about the attachment
+  // 2. "file_content_01" - The actual file content
+  const boundary = `----QBBoundary${Date.now()}`
+
+  // Build multipart body manually
+  const encoder = new TextEncoder()
+  const metadataJson = JSON.stringify(attachableMetadata)
+
+  const parts: Uint8Array[] = []
+
+  // Part 1: File metadata (JSON)
+  const metadataPart = encoder.encode(
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="file_metadata_01"\r\n` +
+    `Content-Type: application/json\r\n\r\n` +
+    `${metadataJson}\r\n`
+  )
+  parts.push(metadataPart)
+
+  // Part 2: File content
+  const fileHeader = encoder.encode(
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="file_content_01"; filename="${fileName}"\r\n` +
+    `Content-Type: ${contentType}\r\n\r\n`
+  )
+  parts.push(fileHeader)
+  parts.push(fileData)
+  parts.push(encoder.encode('\r\n'))
+
+  // End boundary
+  parts.push(encoder.encode(`--${boundary}--\r\n`))
+
+  // Combine all parts
+  const totalLength = parts.reduce((sum, part) => sum + part.length, 0)
+  const body = new Uint8Array(totalLength)
+  let offset = 0
+  for (const part of parts) {
+    body.set(part, offset)
+    offset += part.length
+  }
+
+  console.log(`Uploading attachment: ${fileName} (${fileData.length} bytes)`)
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${connection.access_token}`,
+      'Accept': 'application/json',
+      'Content-Type': `multipart/form-data; boundary=${boundary}`
+    },
+    body: body
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    console.error(`QBO Upload error (${response.status}):`, errorText)
+    throw new Error(`QBO Upload error: ${response.status} - ${errorText}`)
+  }
+
+  const result = await response.json()
+  console.log('Attachment uploaded successfully:', result.AttachableResponse?.[0]?.Attachable?.Id)
+
+  // QuickBooks returns an array of responses
+  const attachable = result.AttachableResponse?.[0]?.Attachable
+  if (!attachable) {
+    throw new Error('Invalid response from QuickBooks upload API')
+  }
+
+  return {
+    Id: attachable.Id,
+    FileName: attachable.FileName
+  }
+}
+
+/**
+ * Link an existing attachment to an entity (e.g., Invoice)
+ * Use this if you uploaded a file without linking it initially
+ */
+export async function linkAttachmentToEntity(
+  connection: QBConnection,
+  attachableId: string,
+  syncToken: string,
+  entityType: string,
+  entityId: string
+): Promise<void> {
+  const attachableUpdate = {
+    Id: attachableId,
+    SyncToken: syncToken,
+    AttachableRef: [{
+      EntityRef: {
+        type: entityType,
+        value: entityId
+      }
+    }]
+  }
+
+  await qbApiRequest(
+    connection,
+    'POST',
+    'attachable',
+    attachableUpdate
+  )
+
+  console.log(`Linked attachment ${attachableId} to ${entityType} ${entityId}`)
+}

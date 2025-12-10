@@ -8,6 +8,7 @@ import {
   updateInvoice,
   getInvoice,
   sendInvoice,
+  uploadAttachment,
   logSync,
   updateConnectionLastSync,
   postgrestQuery,
@@ -15,6 +16,7 @@ import {
   QBInvoice,
   QBInvoiceLine
 } from '../_shared/quickbooks.ts'
+import { downloadInvoiceAttachments } from '../_shared/dropbox.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -297,6 +299,7 @@ Oculus Real Estate Partners, LLC`
     // Either create new invoice or update existing one
     let qbInvoice: { Id: string; DocNumber: string }
     let isUpdate = false
+    let attachmentsUploaded = 0
 
     if (existingInvoiceId) {
       // Update existing invoice - get current SyncToken first
@@ -316,6 +319,37 @@ Oculus Real Estate Partners, LLC`
       // Create new invoice
       qbInvoice = await createInvoice(connection, invoice)
       console.log('Created QBO invoice:', qbInvoice)
+
+      // Attach standard documents to newly created invoices only
+      // Downloads W9, wiring instructions, and ACH instructions from Dropbox
+      try {
+        console.log('Downloading invoice attachments from Dropbox...')
+        const attachments = await downloadInvoiceAttachments()
+
+        for (const attachment of attachments) {
+          try {
+            console.log(`Uploading attachment to QuickBooks: ${attachment.name}`)
+            await uploadAttachment(
+              connection,
+              attachment.data,
+              attachment.name,
+              'application/pdf',
+              'Invoice',
+              qbInvoice.Id
+            )
+            attachmentsUploaded++
+            console.log(`Successfully attached ${attachment.name} to invoice ${qbInvoice.Id}`)
+          } catch (attachErr: any) {
+            console.error(`Failed to attach ${attachment.name}:`, attachErr.message)
+            // Continue with other attachments - don't fail the whole operation
+          }
+        }
+
+        console.log(`Attached ${attachmentsUploaded}/${attachments.length} documents to invoice`)
+      } catch (dropboxErr: any) {
+        console.error('Failed to download attachments from Dropbox:', dropboxErr.message)
+        // Don't fail invoice creation - attachments are optional
+      }
     }
 
     // Update payment with QBO invoice info
@@ -375,16 +409,24 @@ Oculus Real Estate Partners, LLC`
     // Update last_sync_at on connection
     await updateConnectionLastSync(supabaseUrl, secretKey, connection.id)
 
+    // Build response message
+    let message = `Invoice ${isUpdate ? 'updated' : 'created'} in QuickBooks`
+    if (attachmentsUploaded > 0) {
+      message += ` with ${attachmentsUploaded} attachment${attachmentsUploaded > 1 ? 's' : ''}`
+    }
+    if (emailSent) {
+      message += ' and sent via email'
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
-        message: emailSent
-          ? `Invoice ${isUpdate ? 'updated' : 'created'} and sent via QuickBooks`
-          : `Invoice ${isUpdate ? 'updated' : 'created'} in QuickBooks`,
+        message,
         qbInvoiceId: qbInvoice.Id,
         qbInvoiceNumber: qbInvoice.DocNumber,
         emailSent,
-        wasUpdate: isUpdate
+        wasUpdate: isUpdate,
+        attachmentsUploaded
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
