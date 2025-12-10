@@ -70,12 +70,18 @@ export async function postgrestQuery(supabaseUrl: string, secretKey: string, tab
 
   let query = supabase.from(table).select(select)
 
-  // Handle eq filters
+  // Handle filters (eq, in, etc.)
   for (const [key, value] of urlParams.entries()) {
     if (key !== 'select' && key !== 'limit') {
       // Parse "column=eq.value" format
       if (value.startsWith('eq.')) {
         query = query.eq(key, value.substring(3))
+      }
+      // Parse "column=in.(value1,value2,...)" format
+      else if (value.startsWith('in.(') && value.endsWith(')')) {
+        const valuesStr = value.substring(4, value.length - 1) // Extract between "in.(" and ")"
+        const values = valuesStr.split(',').map(v => v.trim())
+        query = query.in(key, values)
       }
     }
   }
