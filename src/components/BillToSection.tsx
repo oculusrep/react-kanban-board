@@ -125,21 +125,21 @@ const BillToSection: React.FC<BillToSectionProps> = ({
     handleSaveField(field, value, currentDbValue);
   };
 
-  // Manual populate CC button
+  // Manual populate CC button - use silent save to avoid re-render loops
   const handlePopulateCc = () => {
-    if (defaultCcEmails) {
+    if (defaultCcEmails && billToCcEmails !== defaultCcEmails) {
       setBillToCcEmails(defaultCcEmails);
-      handleSaveField('bill_to_cc_emails', defaultCcEmails, deal.bill_to_cc_emails);
+      saveFieldSilently('bill_to_cc_emails', defaultCcEmails);
     }
   };
 
-  // Ensure BCC always has mike@oculusrep.com
+  // Ensure BCC always has mike@oculusrep.com - use silent save to avoid re-render loops
   const handleEnsureBcc = () => {
     let bcc = billToBccEmails.trim();
     if (!bcc.toLowerCase().includes(DEFAULT_BCC_EMAIL.toLowerCase())) {
       bcc = bcc ? `${bcc}, ${DEFAULT_BCC_EMAIL}` : DEFAULT_BCC_EMAIL;
       setBillToBccEmails(bcc);
-      handleSaveField('bill_to_bcc_emails', bcc, deal.bill_to_bcc_emails);
+      saveFieldSilently('bill_to_bcc_emails', bcc);
     }
   };
 
