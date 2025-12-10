@@ -14,7 +14,8 @@ import {
   postgrestQuery,
   postgrestUpdate,
   QBInvoice,
-  QBInvoiceLine
+  QBInvoiceLine,
+  QBDescriptionLine
 } from '../_shared/quickbooks.ts'
 import { downloadInvoiceAttachments } from '../_shared/dropbox.ts'
 
@@ -196,6 +197,37 @@ serve(async (req) => {
       }
     }
 
+    // Fetch commission splits and broker names for the deal team
+    let brokerNames: string[] = []
+    try {
+      const commissionSplits = await postgrestQuery(
+        supabaseUrl,
+        secretKey,
+        'commission_split',
+        `select=broker_id&deal_id=eq.${payment.deal_id}`
+      )
+
+      if (commissionSplits && commissionSplits.length > 0) {
+        const brokerIds = commissionSplits.map((cs: { broker_id: string }) => cs.broker_id)
+        // Fetch broker names - use 'in' filter for multiple IDs
+        // Note: broker table uses 'name' column, not 'broker_name'
+        const brokers = await postgrestQuery(
+          supabaseUrl,
+          secretKey,
+          'broker',
+          `select=id,name&id=in.(${brokerIds.join(',')})`
+        )
+
+        if (brokers && brokers.length > 0) {
+          brokerNames = brokers.map((b: { name: string }) => b.name)
+          console.log('Deal team brokers:', brokerNames)
+        }
+      }
+    } catch (brokerErr: any) {
+      console.error('Error fetching brokers:', brokerErr.message)
+      // Continue without broker info - not critical
+    }
+
     // Find or create customer hierarchy in QuickBooks (Parent Client + Sub-customer Deal)
     // The sub-customer will be named "Client - Deal" and will have the bill-to company info
     // Note: client table doesn't have email - use deal.bill_to_email for all email needs
@@ -253,12 +285,39 @@ serve(async (req) => {
       Description: invoiceDescription
     }
 
+    // Build invoice lines array
+    const invoiceLines: (QBInvoiceLine | QBDescriptionLine)[] = [invoiceLine]
+
+    // Add broker attribution line if we have broker names
+    if (brokerNames.length > 0) {
+      // Format: "Brokers: Name1 and Name2" or "Brokers: Name1, Name2, and Name3"
+      let brokerText: string
+      if (brokerNames.length === 1) {
+        brokerText = `Brokers: ${brokerNames[0]}`
+      } else if (brokerNames.length === 2) {
+        brokerText = `Brokers: ${brokerNames[0]} and ${brokerNames[1]}`
+      } else {
+        const lastBroker = brokerNames[brokerNames.length - 1]
+        const otherBrokers = brokerNames.slice(0, -1).join(', ')
+        brokerText = `Brokers: ${otherBrokers}, and ${lastBroker}`
+      }
+
+      const brokerLine: QBDescriptionLine = {
+        Amount: 0,
+        DetailType: 'DescriptionOnly',
+        DescriptionLineDetail: {},
+        Description: brokerText
+      }
+      invoiceLines.push(brokerLine)
+      console.log('Added broker line:', brokerText)
+    }
+
     // Build the invoice
     // CustomerRef uses the sub-customer ID (Client - Deal format)
     const subCustomerDisplayName = `${client.client_name} - ${deal.deal_name || 'Deal'}`
     const invoice: QBInvoice = {
       CustomerRef: { value: customerId, name: subCustomerDisplayName },
-      Line: [invoiceLine],
+      Line: invoiceLines,
       TxnDate: invoiceDate,  // Invoice date from payment
       DueDate: invoiceDate,  // Due date = Invoice date (Due on receipt)
       SalesTermRef: { value: '1', name: 'Due on receipt' }  // Standard QBO term ID for "Due on receipt"

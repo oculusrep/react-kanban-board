@@ -169,11 +169,21 @@ export interface QBInvoiceLine {
   Description?: string
 }
 
+// Description-only line (no product, no amount) - used for broker attribution
+export interface QBDescriptionLine {
+  Amount: number  // Must be 0 for description-only lines
+  DetailType: 'DescriptionOnly'
+  DescriptionLineDetail: {
+    ServiceDate?: string
+  }
+  Description: string
+}
+
 export interface QBInvoice {
   Id?: string
   DocNumber?: string
   CustomerRef: { value: string; name?: string }
-  Line: QBInvoiceLine[]
+  Line: (QBInvoiceLine | QBDescriptionLine)[]
   DueDate?: string
   TxnDate?: string  // Invoice date
   SalesTermRef?: { value: string; name?: string }  // Payment terms (e.g., "Due on receipt")
@@ -699,6 +709,7 @@ export interface QBAttachable {
       type: string
       value: string
     }
+    IncludeOnSend?: boolean  // When true, attachment is auto-selected for email
   }>
 }
 
@@ -712,6 +723,7 @@ export interface QBAttachable {
  * @param contentType - MIME type (e.g., 'application/pdf')
  * @param entityType - Optional: Type of entity to link to (e.g., 'Invoice')
  * @param entityId - Optional: ID of entity to link to
+ * @param includeOnSend - Optional: If true, attachment is auto-selected when sending invoice via email (default: true)
  * @returns The created attachable object with Id
  */
 export async function uploadAttachment(
@@ -720,7 +732,8 @@ export async function uploadAttachment(
   fileName: string,
   contentType: string,
   entityType?: string,
-  entityId?: string
+  entityId?: string,
+  includeOnSend: boolean = true
 ): Promise<{ Id: string; FileName: string }> {
   const baseUrl = getQBApiUrl()
   const url = `${baseUrl}/v3/company/${connection.realm_id}/upload`
@@ -731,13 +744,14 @@ export async function uploadAttachment(
     ContentType: contentType
   }
 
-  // If linking to an entity, add the reference
+  // If linking to an entity, add the reference with IncludeOnSend flag
   if (entityType && entityId) {
     attachableMetadata.AttachableRef = [{
       EntityRef: {
         type: entityType,
         value: entityId
-      }
+      },
+      IncludeOnSend: includeOnSend  // Auto-select attachment for email when true
     }]
   }
 
