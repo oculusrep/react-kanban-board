@@ -512,35 +512,10 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
       })
       .subscribe();
 
-    // Subscribe to deal changes - only refetch for payment-relevant fields
-    const dealSubscription = supabase
-      .channel(`deal-changes-${deal.id}`)
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'deal',
-        filter: `id=eq.${deal.id}`
-      }, (payload) => {
-        // Ignore bill_to field changes - BillToSection manages those independently
-        const newData = payload.new as any;
-        const oldData = payload.old as any;
-        const billToFields = ['bill_to_company_name', 'bill_to_contact_name', 'bill_to_email', 'bill_to_cc_emails', 'bill_to_bcc_emails'];
-
-        // Check if ONLY bill_to fields changed
-        const changedFields = Object.keys(newData).filter(key => newData[key] !== oldData[key]);
-        const onlyBillToChanged = changedFields.every(field => billToFields.includes(field));
-
-        if (onlyBillToChanged && changedFields.length > 0) {
-          console.log('💼 Deal change detected (bill_to only) - ignoring');
-          return;
-        }
-
-        console.log('💼 Deal change detected - refetching');
-        // Clear cache and refetch
-        paymentDataCache.delete(deal.id);
-        fetchPaymentData();
-      })
-      .subscribe();
+    // NOTE: We intentionally do NOT subscribe to deal changes here.
+    // The parent DealDetailsPage handles deal updates via its own subscription.
+    // Adding a deal subscription here caused infinite refetch loops when
+    // bill_to fields were updated (BillToSection manages those independently).
 
     // Cleanup subscriptions when component unmounts or deal changes
     return () => {
@@ -548,7 +523,6 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
       supabase.removeChannel(paymentSubscription);
       supabase.removeChannel(paymentSplitSubscription);
       supabase.removeChannel(commissionSplitSubscription);
-      supabase.removeChannel(dealSubscription);
     };
   }, [deal.id, fetchPaymentData]);
 
