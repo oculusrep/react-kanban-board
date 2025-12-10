@@ -64,6 +64,23 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
       return;
     }
 
+    // Require bill-to fields before creating a new invoice
+    if (!forceResync && !payment.qb_invoice_id) {
+      const missingFields: string[] = [];
+      if (!deal.bill_to_company_name) missingFields.push('Bill-To Company');
+      if (!deal.bill_to_contact_name) missingFields.push('Bill-To Contact');
+      if (!deal.bill_to_email) missingFields.push('Bill-To Email');
+
+      if (missingFields.length > 0) {
+        setQbSyncMessage({
+          type: 'error',
+          text: `Missing required fields: ${missingFields.join(', ')}. Please fill these in the Bill-To section.`
+        });
+        setSyncingToQB(false);
+        return;
+      }
+    }
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
 

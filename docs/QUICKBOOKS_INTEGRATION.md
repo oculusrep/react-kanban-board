@@ -930,30 +930,58 @@ Before creating a new invoice, the system validates that required fields are pre
 | Field | Table | Validation |
 |-------|-------|------------|
 | `payment_date_estimated` | payment | Must be set before creating invoice |
+| `bill_to_company_name` | deal | Must be set before creating invoice |
+| `bill_to_contact_name` | deal | Must be set before creating invoice |
+| `bill_to_email` | deal | Must be set before creating invoice |
 
 ### Validation Behavior
 
 - Validation occurs in the frontend (`PaymentDetailPanel.tsx`)
 - Only applies to NEW invoice creation, not resyncing existing invoices
-- User sees error message: *"Estimated payment date is required before creating an invoice. Please set it in Payment Details."*
+- User sees error messages:
+  - *"Estimated payment date is required before creating an invoice. Please set it in Payment Details."*
+  - *"Missing required fields: Bill-To Company, Bill-To Contact, Bill-To Email. Please fill these in the Bill-To section."*
 
 ### Why This Validation Exists
 
-The estimated payment date is used as the invoice **Due Date** in QuickBooks. Without it:
+**Estimated Payment Date**: Used as the invoice **Due Date** in QuickBooks. Without it:
 - The invoice would have no due date
 - Payment tracking would be inaccurate
 - Collections workflows would be affected
+
+**Bill-To Fields**: Used for the QuickBooks customer and invoice delivery:
+- `bill_to_company_name` - Displayed on the invoice as the billing company
+- `bill_to_contact_name` - Contact name on the invoice
+- `bill_to_email` - Required for sending the invoice via email
 
 ### Code Reference
 
 ```typescript
 // In PaymentDetailPanel.tsx handleSyncToQuickBooks()
+
+// Estimated payment date validation
 if (!forceResync && !payment.qb_invoice_id && !payment.payment_date_estimated) {
   setQbSyncMessage({
     type: 'error',
     text: 'Estimated payment date is required before creating an invoice. Please set it in Payment Details.'
   });
   return;
+}
+
+// Bill-to fields validation
+if (!forceResync && !payment.qb_invoice_id) {
+  const missingFields: string[] = [];
+  if (!deal.bill_to_company_name) missingFields.push('Bill-To Company');
+  if (!deal.bill_to_contact_name) missingFields.push('Bill-To Contact');
+  if (!deal.bill_to_email) missingFields.push('Bill-To Email');
+
+  if (missingFields.length > 0) {
+    setQbSyncMessage({
+      type: 'error',
+      text: `Missing required fields: ${missingFields.join(', ')}. Please fill these in the Bill-To section.`
+    });
+    return;
+  }
 }
 ```
 
