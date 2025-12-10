@@ -512,7 +512,7 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
       })
       .subscribe();
 
-    // Subscribe to deal changes
+    // Subscribe to deal changes - only refetch for payment-relevant fields
     const dealSubscription = supabase
       .channel(`deal-changes-${deal.id}`)
       .on('postgres_changes', {
@@ -521,7 +521,21 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
         table: 'deal',
         filter: `id=eq.${deal.id}`
       }, (payload) => {
-        console.log('💼 Deal change detected');
+        // Ignore bill_to field changes - BillToSection manages those independently
+        const newData = payload.new as any;
+        const oldData = payload.old as any;
+        const billToFields = ['bill_to_company_name', 'bill_to_contact_name', 'bill_to_email', 'bill_to_cc_emails', 'bill_to_bcc_emails'];
+
+        // Check if ONLY bill_to fields changed
+        const changedFields = Object.keys(newData).filter(key => newData[key] !== oldData[key]);
+        const onlyBillToChanged = changedFields.every(field => billToFields.includes(field));
+
+        if (onlyBillToChanged && changedFields.length > 0) {
+          console.log('💼 Deal change detected (bill_to only) - ignoring');
+          return;
+        }
+
+        console.log('💼 Deal change detected - refetching');
         // Clear cache and refetch
         paymentDataCache.delete(deal.id);
         fetchPaymentData();
