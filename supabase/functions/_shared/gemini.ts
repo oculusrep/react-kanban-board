@@ -25,7 +25,7 @@ export interface CRMContext {
   }>;
   deals: Array<{
     id: string;
-    name: string;
+    deal_name: string;
     property_id?: string;
     client_id?: string;
   }>;
@@ -181,6 +181,8 @@ Rules:
 5. Consider the full context: subject line AND body text
 6. Confidence scores: 0.9+ for explicit mentions, 0.7-0.9 for strong implications, 0.5-0.7 for weak associations
 7. If the email appears to be spam, marketing, or personal (not business related), mark is_business_relevant as false
+8. IMPORTANT: Deal names often contain location names (e.g., "JJ - Milledgeville - Amos"). If an email mentions a city like "Milledgeville", look for deals containing that location.
+9. IMPORTANT: When the email subject or body mentions a location/city, ALWAYS check if any deal names contain that location and link to them.
 
 Output Format (JSON only):
 {
@@ -248,7 +250,7 @@ ${context.clients.slice(0, 30).map(c =>
 
 ### Deals (active transactions)
 ${context.deals.slice(0, 30).map(d =>
-  `- ID: ${d.id} | ${d.name}`
+  `- ID: ${d.id} | ${d.deal_name}`
 ).join('\n')}
 
 ### Properties (real estate)
@@ -275,7 +277,7 @@ export async function analyzeEmailForTags(
 
   try {
     const result = await geminiRequest<TriageResult>(
-      'gemini-1.5-flash',
+      'gemini-1.5-pro', // Use Pro for better reasoning on CRM matching
       apiKey,
       userPrompt,
       systemPrompt
@@ -292,6 +294,13 @@ export async function analyzeEmailForTags(
     };
   } catch (error) {
     console.error('Error analyzing email:', error);
+    console.error('Email subject:', email.subject);
+    console.error('Context size:', {
+      contacts: context.contacts.length,
+      clients: context.clients.length,
+      deals: context.deals.length,
+      properties: context.properties.length,
+    });
     // Return empty result on error - don't fail the whole process
     return {
       tags: [],

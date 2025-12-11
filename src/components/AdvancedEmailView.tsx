@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { ActivityWithRelations } from '../hooks/useActivities';
 import { parseProfessionalEmail, formatProfessionalEmailContent, ProfessionalParsedEmail, EmailFragment, ThreadedEmail } from '../utils/professionalEmailParser';
-import { 
+import AIReasoningTrace from './AIReasoningTrace';
+import {
   EnvelopeIcon,
   ChevronDownIcon,
   ChevronUpIcon,
@@ -224,6 +225,11 @@ const AdvancedEmailView: React.FC<AdvancedEmailViewProps> = ({ activity }) => {
           )}
         </div>
       </div>
+
+      {/* AI Classification Trace */}
+      {(activity as any).email_id && (
+        <AIReasoningTrace emailId={(activity as any).email_id} />
+      )}
     </div>
   );
 };
@@ -254,6 +260,11 @@ const SimpleEmailFallback: React.FC<{ activity: ActivityWithRelations }> = ({ ac
           )}
         </div>
       </div>
+
+      {/* AI Classification Trace */}
+      {(activity as any).email_id && (
+        <AIReasoningTrace emailId={(activity as any).email_id} />
+      )}
     </div>
   );
 };

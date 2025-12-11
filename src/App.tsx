@@ -39,6 +39,9 @@ import ProspectingDashboardPage from "./pages/ProspectingDashboardPage";
 import QuickBooksAdminPage from "./pages/QuickBooksAdminPage";
 import GmailSettingsPage from "./pages/GmailSettingsPage";
 import SuggestedContactsPage from "./pages/SuggestedContactsPage";
+import AgentRulesPage from "./pages/AgentRulesPage";
+import EmailClassificationReviewPage from "./pages/EmailClassificationReviewPage";
+import FlaggedEmailQueuePage from "./pages/FlaggedEmailQueuePage";
 
 function ProtectedLayout() {
   const location = useLocation();
@@ -115,6 +118,9 @@ function App() {
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
           <Route path="admin/quickbooks" element={<AdminRoute><QuickBooksAdminPage /></AdminRoute>} />
           <Route path="admin/gmail" element={<AdminRoute><GmailSettingsPage /></AdminRoute>} />
+          <Route path="admin/agent-rules" element={<AdminRoute><AgentRulesPage /></AdminRoute>} />
+          <Route path="admin/email-review" element={<AdminRoute><EmailClassificationReviewPage /></AdminRoute>} />
+          <Route path="admin/flagged-emails" element={<AdminRoute><FlaggedEmailQueuePage /></AdminRoute>} />
           <Route path="contacts/suggested" element={<SuggestedContactsPage />} />
         </Route>
       </Routes>
