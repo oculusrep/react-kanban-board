@@ -149,11 +149,11 @@ async function gmailRequest<T>(
 
 /**
  * List messages using history API (incremental sync)
+ * Gets all new messages since last sync, regardless of label
  */
 export async function listMessageHistory(
   accessToken: string,
-  startHistoryId: string,
-  labelIds: string[] = ['INBOX', 'SENT']
+  startHistoryId: string
 ): Promise<{
   messages: Array<{ id: string; threadId: string }>;
   historyId: string;
@@ -163,9 +163,7 @@ export async function listMessageHistory(
     historyTypes: 'messageAdded',
   });
 
-  // Add each label as a separate parameter
-  labelIds.forEach(label => params.append('labelId', label));
-
+  // Don't filter by label - get ALL new messages
   const response = await gmailRequest<{
     history?: Array<{
       id: string;
@@ -195,20 +193,22 @@ export async function listMessageHistory(
 
 /**
  * List recent messages (full sync fallback)
+ * Fetches all recent messages without label filtering to capture:
+ * - INBOX, SENT
+ * - Custom labels like ![MIKE], [Properties], [Prospecting], etc.
+ * - Archived emails
  */
 export async function listMessages(
   accessToken: string,
-  maxResults: number = 50,
-  labelIds: string[] = ['INBOX', 'SENT']
+  maxResults: number = 50
 ): Promise<{
   messages: Array<{ id: string; threadId: string }>;
   resultSizeEstimate: number;
 }> {
+  // Query without label filters to get ALL recent messages
   const params = new URLSearchParams({
     maxResults: maxResults.toString(),
   });
-
-  labelIds.forEach(label => params.append('labelIds', label));
 
   const response = await gmailRequest<{
     messages?: Array<{ id: string; threadId: string }>;
@@ -218,7 +218,7 @@ export async function listMessages(
 
   return {
     messages: response.messages || [],
-    resultSizeEstimate: response.resultSizeEstimate,
+    resultSizeEstimate: response.resultSizeEstimate || 0,
   };
 }
 

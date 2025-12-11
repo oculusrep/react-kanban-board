@@ -248,7 +248,7 @@ const GmailSettingsPage: React.FC = () => {
         throw new Error(data.error || 'Sync failed');
       }
 
-      setSuccessMessage(`Synced ${data.synced_count || 0} emails`);
+      setSuccessMessage(`Synced ${data.total_synced || 0} emails (${data.total_new || 0} new)`);
       await fetchConnections();
     } catch (err: any) {
       console.error('Error syncing:', err);
