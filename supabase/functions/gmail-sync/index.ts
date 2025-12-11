@@ -43,7 +43,6 @@ interface SyncResult {
   duplicate_emails: number;
   errors: string[];
   is_full_sync: boolean;
-  debug?: any;
 }
 
 serve(async (req) => {
@@ -142,12 +141,6 @@ serve(async (req) => {
           : connection;
         const syncResult = await syncEmailsForConnection(connectionForSync, accessToken);
         result.is_full_sync = syncResult.isFullSync;
-        result.debug = syncResult.debug;
-
-        console.log(
-          `${connection.google_email}: Found ${syncResult.messages.length} messages ` +
-          `(${result.is_full_sync ? 'full sync' : 'incremental'})`
-        );
 
         // Process messages (limit to avoid timeout)
         const messagesToProcess = syncResult.messages.slice(0, MAX_MESSAGES_PER_SYNC);

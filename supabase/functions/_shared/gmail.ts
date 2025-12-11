@@ -204,81 +204,34 @@ export async function listMessages(
 ): Promise<{
   messages: Array<{ id: string; threadId: string }>;
   resultSizeEstimate: number;
-  debug?: any;
 }> {
-  // Query without label filters to get ALL recent messages
   const params = new URLSearchParams({
     maxResults: maxResults.toString(),
   });
 
-  const url = `${GMAIL_API_BASE}/users/me/messages?${params}`;
-  console.log(`[listMessages] Calling URL: ${url}`);
-
-  // Make raw fetch to capture full response
-  const rawResponse = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  const responseText = await rawResponse.text();
-  console.log(`[listMessages] Raw response status: ${rawResponse.status}`);
-  console.log(`[listMessages] Raw response body: ${responseText.substring(0, 500)}`);
-
-  if (!rawResponse.ok) {
-    throw new Error(`Gmail API error (${rawResponse.status}): ${responseText}`);
-  }
-
-  const response = JSON.parse(responseText);
-  console.log(`[listMessages] Gmail API returned: ${response.messages?.length || 0} messages, estimate: ${response.resultSizeEstimate}`);
+  const response = await gmailRequest<{
+    messages?: Array<{ id: string; threadId: string }>;
+    resultSizeEstimate?: number;
+  }>(`/users/me/messages?${params}`, accessToken);
 
   return {
     messages: response.messages || [],
     resultSizeEstimate: response.resultSizeEstimate || 0,
-    debug: {
-      url,
-      status: rawResponse.status,
-      rawKeys: Object.keys(response),
-      messagesType: typeof response.messages,
-      messagesIsArray: Array.isArray(response.messages),
-    },
   };
 }
 
 /**
  * Get a single message with full content
- * Falls back to RAW format if FULL fails (scope issue workaround)
  */
 export async function getMessage(
   accessToken: string,
   messageId: string,
-  format: 'full' | 'metadata' | 'minimal' | 'raw' = 'full'
+  format: 'full' | 'metadata' | 'minimal' = 'full'
 ): Promise<GmailMessage> {
-  try {
-    return await gmailRequest<GmailMessage>(
-      `/users/me/messages/${messageId}?format=${format}`,
-      accessToken
-    );
-  } catch (error: any) {
-    // If format=full fails with 403, try format=raw which also requires gmail.readonly
-    // This helps diagnose if it's a scope vs format issue
-    if (error.status === 403 && format === 'full') {
-      console.log(`[getMessage] format=full failed with 403 for ${messageId}, trying raw...`);
-      try {
-        const rawResponse = await gmailRequest<any>(
-          `/users/me/messages/${messageId}?format=raw`,
-          accessToken
-        );
-        console.log(`[getMessage] raw format succeeded - this is a scope issue`);
-        // Convert raw to full-like structure for compatibility
-        return rawResponse;
-      } catch (rawError: any) {
-        console.log(`[getMessage] raw format also failed: ${rawError.message}`);
-      }
-    }
-    throw error;
-  }
+  return await gmailRequest<GmailMessage>(
+    `/users/me/messages/${messageId}?format=${format}`,
+    accessToken
+  );
 }
 
 /**
@@ -477,60 +430,37 @@ export async function syncEmailsForConnection(
   messages: Array<{ id: string; threadId: string }>;
   newHistoryId: string;
   isFullSync: boolean;
-  debug?: any;
 }> {
-  console.log(`[syncEmailsForConnection] Starting sync for ${connection.google_email}, last_history_id: ${connection.last_history_id}`);
-
   // Try incremental sync if we have a history ID
   if (connection.last_history_id) {
     try {
-      console.log(`[syncEmailsForConnection] Attempting incremental sync from history ID ${connection.last_history_id}`);
       const historyResult = await listMessageHistory(
         accessToken,
         connection.last_history_id
       );
-      console.log(`[syncEmailsForConnection] Incremental sync returned ${historyResult.messages.length} messages`);
       return {
         messages: historyResult.messages,
         newHistoryId: historyResult.historyId,
         isFullSync: false,
-        debug: { syncType: 'incremental', lastHistoryId: connection.last_history_id },
       };
     } catch (error: any) {
       if (error.status === 404) {
         // History ID expired or invalid - fall through to full sync
-        console.log(`[syncEmailsForConnection] History ID expired for ${connection.google_email}, performing full resync`);
+        console.log(`History ID expired for ${connection.google_email}, performing full resync`);
       } else {
-        console.error(`[syncEmailsForConnection] Error in incremental sync:`, error);
         throw error;
       }
     }
   }
 
   // Full sync: fetch recent messages
-  console.log(`[syncEmailsForConnection] Performing full sync`);
-
-  // First verify the token works by getting profile
   const profile = await getGmailProfile(accessToken);
-  console.log(`[syncEmailsForConnection] Profile: email=${profile.emailAddress}, messagesTotal=${profile.messagesTotal}, threadsTotal=${profile.threadsTotal}, historyId=${profile.historyId}`);
-
   const messagesResult = await listMessages(accessToken, 50);
-  console.log(`[syncEmailsForConnection] Full sync returned ${messagesResult.messages.length} messages`);
 
   return {
     messages: messagesResult.messages,
     newHistoryId: profile.historyId,
     isFullSync: true,
-    debug: {
-      syncType: 'full',
-      profile: {
-        email: profile.emailAddress,
-        messagesTotal: profile.messagesTotal,
-        threadsTotal: profile.threadsTotal,
-        historyId: profile.historyId,
-      },
-      listMessagesDebug: messagesResult.debug,
-    },
   };
 }
 
