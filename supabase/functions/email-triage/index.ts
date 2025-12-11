@@ -28,6 +28,8 @@ interface TriageResult {
   tags_added: number;
   flagged_for_review: boolean;
   is_relevant: boolean;
+  action: 'keep' | 'delete';
+  rule_override: boolean;
   tool_calls: number;
   summary: string;
   error?: string;
@@ -101,11 +103,16 @@ serve(async (req) => {
         tags_added: 0,
         flagged_for_review: false,
         is_relevant: true,
+        action: 'keep',
+        rule_override: false,
         tool_calls: 0,
         summary: '',
       };
 
       try {
+        // Extract gmail_connection_id from email_visibility for RLS
+        const gmailConnectionId = email.email_visibility?.[0]?.gmail_connection_id;
+
         // Run the autonomous AI agent
         // The agent will:
         // 1. Search for relevant CRM objects
@@ -123,6 +130,7 @@ serve(async (req) => {
             sender_name: email.sender_name,
             recipient_list: email.recipient_list || [],
             direction: email.direction || 'INBOUND',
+            gmail_connection_id: gmailConnectionId,
           },
           GEMINI_API_KEY
         );
@@ -133,46 +141,77 @@ serve(async (req) => {
         result.tags_added = agentResult.links_created;
         result.flagged_for_review = agentResult.flagged_for_review;
         result.is_relevant = agentResult.is_relevant;
+        result.action = agentResult.action;
+        result.rule_override = agentResult.rule_override;
 
-        // Create activity record if tags were added
-        if (agentResult.tags.length > 0 && emailActivityTypeId) {
-          const dealTag = agentResult.tags.find((t) => t.object_type === 'deal');
-          const contactTag = agentResult.tags.find((t) => t.object_type === 'contact');
-          const propertyTag = agentResult.tags.find((t) => t.object_type === 'property');
+        // HARD DELETE: If agent says delete, remove the email entirely
+        if (agentResult.action === 'delete') {
+          console.log(`[DELETE] Removing non-business email: ${email.subject}`);
 
-          const activityData: any = {
-            activity_type_id: emailActivityTypeId,
-            subject: email.subject || 'Email',
-            description: email.snippet || email.body_text?.substring(0, 500),
-            activity_date: email.received_at,
-            email_id: email.id,
-            direction: email.direction,
-            sf_status: 'Completed',
-          };
-
-          if (dealTag) activityData.deal_id = dealTag.object_id;
-          if (contactTag) activityData.contact_id = contactTag.object_id;
-          if (propertyTag) activityData.property_id = propertyTag.object_id;
-
-          try {
-            await supabase.from('activity').insert(activityData);
-          } catch (actError: any) {
-            console.error('Error creating activity:', actError);
+          // Store message_id hash to prevent re-fetching during Gmail sync
+          if (email.message_id) {
+            try {
+              await supabase.from('processed_message_ids').upsert(
+                {
+                  message_id: email.message_id,
+                  gmail_connection_id: gmailConnectionId,
+                  action: 'deleted',
+                  processed_at: new Date().toISOString(),
+                },
+                { onConflict: 'message_id' }
+              );
+            } catch (hashErr) {
+              // Table might not exist yet - that's OK, just log it
+              console.log('[DELETE] Could not store message_id hash:', hashErr);
+            }
           }
-        }
 
-        // Mark email as processed
-        await supabase
-          .from('emails')
-          .update({
-            ai_processed: true,
-            ai_processed_at: new Date().toISOString(),
-          })
-          .eq('id', email.id);
+          // Delete the email row (cascade will handle related records)
+          await supabase.from('emails').delete().eq('id', email.id);
+
+          console.log(`[DELETE] Email deleted: ${email.subject}`);
+        } else {
+          // KEEP: Create activity record if tags were added
+          if (agentResult.tags.length > 0 && emailActivityTypeId) {
+            const dealTag = agentResult.tags.find((t) => t.object_type === 'deal');
+            const contactTag = agentResult.tags.find((t) => t.object_type === 'contact');
+            const propertyTag = agentResult.tags.find((t) => t.object_type === 'property');
+
+            const activityData: any = {
+              activity_type_id: emailActivityTypeId,
+              subject: email.subject || 'Email',
+              description: email.snippet || email.body_text?.substring(0, 500),
+              activity_date: email.received_at,
+              email_id: email.id,
+              direction: email.direction,
+              sf_status: 'Completed',
+            };
+
+            if (dealTag) activityData.deal_id = dealTag.object_id;
+            if (contactTag) activityData.contact_id = contactTag.object_id;
+            if (propertyTag) activityData.property_id = propertyTag.object_id;
+
+            try {
+              await supabase.from('activity').insert(activityData);
+            } catch (actError: any) {
+              console.error('Error creating activity:', actError);
+            }
+          }
+
+          // Mark email as processed
+          await supabase
+            .from('emails')
+            .update({
+              ai_processed: true,
+              ai_processed_at: new Date().toISOString(),
+            })
+            .eq('id', email.id);
+        }
 
         console.log(
           `Processed: ${email.subject} - ${result.tags_added} tags, ` +
-          `${result.tool_calls} tool calls, flagged=${result.flagged_for_review}, relevant=${result.is_relevant}`
+          `${result.tool_calls} tool calls, flagged=${result.flagged_for_review}, ` +
+          `relevant=${result.is_relevant}, action=${result.action}, rule_override=${result.rule_override}`
         );
       } catch (emailError: any) {
         console.error(`Error processing email ${email.id}:`, emailError);
@@ -195,11 +234,13 @@ serve(async (req) => {
     const totalTags = results.reduce((sum, r) => sum + r.tags_added, 0);
     const totalToolCalls = results.reduce((sum, r) => sum + r.tool_calls, 0);
     const flaggedCount = results.filter((r) => r.flagged_for_review).length;
-    const irrelevantCount = results.filter((r) => !r.is_relevant).length;
+    const deletedCount = results.filter((r) => r.action === 'delete').length;
+    const ruleOverrideCount = results.filter((r) => r.rule_override).length;
 
     console.log(
       `Agent triage complete in ${duration}ms: ${results.length} emails, ` +
-      `${totalTags} tags, ${totalToolCalls} tool calls, ${flaggedCount} flagged, ${irrelevantCount} irrelevant`
+      `${totalTags} tags, ${totalToolCalls} tool calls, ${flaggedCount} flagged, ` +
+      `${deletedCount} deleted, ${ruleOverrideCount} rule overrides`
     );
 
     return new Response(
@@ -210,7 +251,8 @@ serve(async (req) => {
         total_tags: totalTags,
         total_tool_calls: totalToolCalls,
         flagged_for_review: flaggedCount,
-        not_relevant: irrelevantCount,
+        deleted: deletedCount,
+        rule_overrides: ruleOverrideCount,
         results,
       }),
       {

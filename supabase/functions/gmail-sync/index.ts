@@ -41,6 +41,7 @@ interface SyncResult {
   synced_count: number;
   new_emails: number;
   duplicate_emails: number;
+  skipped_deleted: number;
   errors: string[];
   is_full_sync: boolean;
 }
@@ -106,6 +107,7 @@ serve(async (req) => {
         synced_count: 0,
         new_emails: 0,
         duplicate_emails: 0,
+        skipped_deleted: 0,
         errors: [],
         is_full_sync: false,
       };
@@ -150,6 +152,20 @@ serve(async (req) => {
             // Get full message content
             const fullMessage = await getMessage(accessToken, msgRef.id);
             const parsedEmail = parseGmailMessage(fullMessage, connection.google_email);
+
+            // Check if this message was previously processed/deleted
+            const { data: wasProcessed } = await supabase
+              .from('processed_message_ids')
+              .select('id, action')
+              .eq('message_id', parsedEmail.messageId)
+              .single();
+
+            if (wasProcessed) {
+              // Skip this email - it was previously deleted/processed
+              console.log(`Skipping previously ${wasProcessed.action} email: ${parsedEmail.subject}`);
+              result.skipped_deleted++;
+              continue;
+            }
 
             // Try to insert email (may already exist from another user's sync)
             const { data: existingEmail, error: lookupError } = await supabase

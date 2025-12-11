@@ -240,8 +240,13 @@ export const OVIS_TOOLS = [
           type: 'boolean',
           description: 'Whether this email is business-relevant (false = spam/marketing/personal)',
         },
+        action: {
+          type: 'string',
+          enum: ['keep', 'delete'],
+          description: 'Action to take: "keep" for business emails, "delete" for spam/marketing/personal emails that should be removed from the database',
+        },
       },
-      required: ['summary', 'is_business_relevant'],
+      required: ['summary', 'is_business_relevant', 'action'],
     },
   },
 ];
@@ -522,7 +527,8 @@ export async function flagForReview(
   reason: string,
   suggestedName?: string,
   suggestedCompany?: string,
-  possibleMatches?: string[]
+  possibleMatches?: string[],
+  gmailConnectionId?: string
 ): Promise<FlagResult> {
   // Get email details
   const { data: email } = await supabase
@@ -532,6 +538,7 @@ export async function flagForReview(
     .single();
 
   // Insert into unmatched_email_queue for human review
+  // Include gmail_connection_id for RLS visibility
   const { error } = await supabase.from('unmatched_email_queue').upsert(
     {
       email_id: emailId,
@@ -543,6 +550,7 @@ export async function flagForReview(
       suggested_company: suggestedCompany,
       match_reason: reason,
       status: 'pending',
+      gmail_connection_id: gmailConnectionId,
     },
     { onConflict: 'email_id' }
   );
@@ -563,7 +571,8 @@ export async function executeToolCall(
   emailId: string,
   senderEmail: string,
   toolName: string,
-  args: Record<string, any>
+  args: Record<string, any>,
+  gmailConnectionId?: string
 ): Promise<any> {
   switch (toolName) {
     case 'search_deals':
@@ -599,7 +608,8 @@ export async function executeToolCall(
         args.reason,
         args.suggested_name,
         args.suggested_company,
-        args.possible_matches
+        args.possible_matches,
+        gmailConnectionId
       );
 
     case 'search_rules':
@@ -628,8 +638,10 @@ export interface AgentResult {
   links_created: number;
   flagged_for_review: boolean;
   is_relevant: boolean;
+  action: 'keep' | 'delete';
   summary: string;
   tool_calls: number;
+  rule_override: boolean;
   tags: Array<{
     object_type: string;
     object_id: string;
@@ -648,6 +660,7 @@ export async function runEmailTriageAgent(
     sender_name: string | null;
     direction: string;
     recipient_list?: string[];
+    gmail_connection_id?: string;
   },
   apiKey: string,
   maxIterations: number = 5
@@ -656,10 +669,76 @@ export async function runEmailTriageAgent(
     links_created: 0,
     flagged_for_review: false,
     is_relevant: true,
+    action: 'keep',
     summary: '',
     tool_calls: 0,
+    rule_override: false,
     tags: [],
   };
+
+  // ========================================================================
+  // RULE HARD-OVERRIDE: Check for matching rules BEFORE calling the AI
+  // If a rule specifies a target object, link immediately and skip the agent
+  // ========================================================================
+  console.log(`[Agent] Checking rules for sender: ${email.sender_email}`);
+
+  // Extract keywords from subject for rule matching
+  const subjectKeywords = email.subject
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(w => w.length > 3);
+
+  const matchingRules = await searchRules(
+    supabase,
+    email.sender_email,
+    subjectKeywords
+  );
+
+  if (matchingRules.length > 0) {
+    console.log(`[Agent] Found ${matchingRules.length} matching rules`);
+
+    // Process rules in priority order (already sorted)
+    for (const rule of matchingRules) {
+      // Check for exclusion rules first (rule_type = 'exclusion')
+      if (rule.rule_type === 'exclusion') {
+        console.log(`[Agent] RULE OVERRIDE: Exclusion rule matched - "${rule.rule_text}"`);
+        result.is_relevant = false;
+        result.action = 'delete';
+        result.summary = `Rule override: ${rule.rule_text}`;
+        result.rule_override = true;
+        return result;
+      }
+
+      // Check if rule has a specific target object to link
+      if (rule.target_object_type && rule.target_object_id) {
+        console.log(`[Agent] RULE OVERRIDE: Linking to ${rule.target_object_type} ${rule.target_object_id}`);
+
+        // Execute the link
+        const linkResult = await linkObject(
+          supabase,
+          email.id,
+          rule.target_object_type as 'deal' | 'contact' | 'property' | 'client',
+          rule.target_object_id,
+          1.0, // Rule matches are 100% confidence
+          `Rule override: ${rule.rule_text}`
+        );
+
+        if (linkResult.success) {
+          result.links_created++;
+          result.tags.push({
+            object_type: rule.target_object_type,
+            object_id: rule.target_object_id,
+            confidence: 1.0,
+          });
+        }
+
+        result.summary = `Rule override: Linked to ${rule.target_object_type} via rule "${rule.rule_text}"`;
+        result.rule_override = true;
+        result.action = 'keep';
+        return result;
+      }
+    }
+  }
 
   // THE BRAIN - System prompt that defines agent behavior
   const systemPrompt = `Role: You are the OVIS Autonomous Assistant for a commercial real estate brokerage. Your task is to intelligently classify incoming emails by linking them to the correct CRM objects.
@@ -689,8 +768,20 @@ PROTOCOL (Follow this order):
    - If confidence 0.7-0.9: Call link_object with that confidence score.
    - If confidence < 0.7 but email seems business-relevant: Call flag_for_review.
    - If sender unknown but email discusses business topics: Call flag_for_review with suggested_name/company.
-   - If email is spam/marketing/personal: Call done with is_business_relevant=false.
-6. FINISH: Always call done() with a summary of actions taken.
+   - If email is spam/marketing/personal: Call done with is_business_relevant=false and action="delete".
+6. FINISH: Always call done() with:
+   - summary: What was found/linked/flagged
+   - is_business_relevant: true/false
+   - action: "keep" for business emails, "delete" for spam/marketing/personal emails
+
+IMPORTANT - DELETE POLICY:
+- Business emails with CRM links → action: "keep"
+- Business emails flagged for review → action: "keep"
+- Personal emails (school, family, subscriptions) → action: "delete"
+- Spam/marketing/promotional emails → action: "delete"
+- Package tracking (UPS, FedEx, USPS) → action: "delete"
+- Social media notifications → action: "delete"
+- If no business connection found and sender unknown → action: "delete"
 
 IMPORTANT:
 - One email can link to MULTIPLE objects (deal AND contact AND property).
@@ -749,7 +840,8 @@ ${email.body_text || email.snippet}`;
         email.id,
         email.sender_email,
         name,
-        args || {}
+        args || {},
+        email.gmail_connection_id
       );
 
       console.log(`[Agent] Result: ${JSON.stringify(toolResult).substring(0, 300)}`);
@@ -764,10 +856,12 @@ ${email.body_text || email.snippet}`;
         });
       } else if (name === 'flag_for_review' && toolResult.success) {
         result.flagged_for_review = true;
+        result.action = 'keep'; // Flagged emails are kept for review
       } else if (name === 'done') {
         result.summary = args.summary || '';
         result.is_relevant = args.is_business_relevant !== false;
-        console.log(`[Agent] Done: ${result.summary}`);
+        result.action = args.action === 'delete' ? 'delete' : 'keep';
+        console.log(`[Agent] Done: ${result.summary} (action: ${result.action})`);
         return result;
       }
 
