@@ -54,6 +54,21 @@ export default function useKanbanData() {
           clientMap.set(client.id, client.client_name);
         });
 
+        // Fetch deal synopses for alert levels
+        const { data: synopsisData, error: synopsisError } = await supabase
+          .from('deal_synopsis')
+          .select('deal_id, alert_level');
+
+        if (synopsisError) {
+          console.warn('⚠️ Synopsis error (non-fatal):', synopsisError);
+        }
+
+        // Create synopsis alert level lookup map
+        const synopsisMap = new Map<string, 'green' | 'yellow' | 'red' | null>();
+        synopsisData?.forEach(synopsis => {
+          synopsisMap.set(synopsis.deal_id, synopsis.alert_level);
+        });
+
         // Transform deals using central DealCard type
         const transformedCards: DealCard[] = dealData.map(deal => ({
           id: deal.id,
@@ -66,6 +81,7 @@ export default function useKanbanData() {
           client_name: deal.client_id ? clientMap.get(deal.client_id) || null : null,
           created_at: deal.created_at,
           last_stage_change_at: deal.last_stage_change_at,
+          synopsis_alert_level: synopsisMap.get(deal.id) || null,
         }));
 
         // Create a map of stage labels for filtering

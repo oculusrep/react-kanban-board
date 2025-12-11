@@ -11,7 +11,9 @@ import {
   ExclamationTriangleIcon,
   ChevronDownIcon,
   ChevronRightIcon,
-  PencilIcon
+  PencilIcon,
+  ArrowDownLeftIcon,
+  ArrowUpRightIcon
 } from '@heroicons/react/24/outline';
 import {
   PhoneIcon as PhoneIconSolid,
@@ -30,25 +32,44 @@ interface ActivityItemProps {
 const getActivityIcon = (activity: ActivityWithRelations, onToggleComplete?: () => void) => {
   const isCompleted = activity.activity_status?.is_closed || activity.completed_call || activity.sf_is_closed;
   const iconClass = "w-5 h-5";
-  
+
   // Determine icon based on activity type or Salesforce subtype
   const activityType = activity.activity_type?.name || activity.sf_task_subtype;
-  
+
+  // Check for email direction (from synced Gmail emails)
+  const emailDirection = (activity as any).direction as 'INBOUND' | 'OUTBOUND' | undefined;
+
   const iconElement = (() => {
     switch (activityType) {
       case 'Call':
-        return isCompleted ? 
-          <PhoneIconSolid className={`${iconClass} text-green-500`} /> : 
+        return isCompleted ?
+          <PhoneIconSolid className={`${iconClass} text-green-500`} /> :
           <PhoneIcon className={`${iconClass} text-blue-500`} />;
       case 'Email':
       case 'ListEmail':
-        return isCompleted ? 
-          <EnvelopeIconSolid className={`${iconClass} text-green-500`} /> : 
+        // Show direction indicator for synced emails
+        if (emailDirection === 'INBOUND') {
+          return (
+            <div className="relative">
+              <EnvelopeIcon className={`${iconClass} text-blue-500`} />
+              <ArrowDownLeftIcon className="w-3 h-3 text-green-600 absolute -bottom-1 -right-1" />
+            </div>
+          );
+        } else if (emailDirection === 'OUTBOUND') {
+          return (
+            <div className="relative">
+              <EnvelopeIcon className={`${iconClass} text-blue-500`} />
+              <ArrowUpRightIcon className="w-3 h-3 text-orange-500 absolute -bottom-1 -right-1" />
+            </div>
+          );
+        }
+        return isCompleted ?
+          <EnvelopeIconSolid className={`${iconClass} text-green-500`} /> :
           <EnvelopeIcon className={`${iconClass} text-blue-500`} />;
       case 'Task':
       default:
-        return isCompleted ? 
-          <CheckCircleIconSolid className={`${iconClass} text-green-500`} /> : 
+        return isCompleted ?
+          <CheckCircleIconSolid className={`${iconClass} text-green-500`} /> :
           <CheckCircleIcon className={`${iconClass} text-gray-400 hover:text-gray-600`} />;
     }
   })();
@@ -317,9 +338,9 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
             </div>
           </div>
           
-          {/* Description - Hide for emails and calls, show for tasks only */}
-          {activity.description && !['Email', 'ListEmail', 'Call'].includes(activityType || '') && (
-            <p className="text-sm text-gray-600 mb-2 line-clamp-2">
+          {/* Description - Hide for calls, show snippet for emails */}
+          {activity.description && activityType !== 'Call' && (
+            <p className={`text-sm text-gray-600 mb-2 ${activityType === 'Email' || activityType === 'ListEmail' ? 'line-clamp-1 italic' : 'line-clamp-2'}`}>
               {activity.description}
             </p>
           )}

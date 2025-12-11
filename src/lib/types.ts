@@ -76,6 +76,8 @@ export interface DealCard {
   probability: number | null;
   client_name?: string | null;
   property_name?: string | null;
+  // AI synopsis alert level for Kanban indicators
+  synopsis_alert_level?: 'green' | 'yellow' | 'red' | null;
 }
 
 export interface Client {

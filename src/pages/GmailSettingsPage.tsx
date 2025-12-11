@@ -1,0 +1,552 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabaseClient';
+
+interface GmailConnection {
+  id: string;
+  user_id: string;
+  google_email: string;
+  last_sync_at: string | null;
+  last_history_id: string | null;
+  is_active: boolean;
+  sync_error: string | null;
+  sync_error_at: string | null;
+  created_at: string;
+  updated_at: string;
+  user?: {
+    first_name: string;
+    last_name: string;
+    email: string;
+  };
+}
+
+interface SyncStats {
+  total_emails: number;
+  emails_today: number;
+  unprocessed_emails: number;
+  pending_suggestions: number;
+}
+
+const GmailSettingsPage: React.FC = () => {
+  const { user, userRole } = useAuth();
+  const [connections, setConnections] = useState<GmailConnection[]>([]);
+  const [stats, setStats] = useState<SyncStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Check URL params for OAuth callback status
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('status');
+    const email = params.get('email');
+    const message = params.get('message');
+
+    if (status === 'success' && email) {
+      setSuccessMessage(`Successfully connected ${email}`);
+      // Clear URL params
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (status === 'error') {
+      setError(`Failed to connect Gmail: ${message || 'Unknown error'}`);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  const fetchConnections = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Admins can see all connections, users only their own
+      let query = supabase
+        .from('gmail_connection')
+        .select(`
+          *,
+          user:user_id (
+            first_name,
+            last_name,
+            email
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (userRole !== 'admin') {
+        const { data: currentUser } = await supabase
+          .from('user')
+          .select('id')
+          .eq('email', user?.email)
+          .single();
+
+        if (currentUser) {
+          query = query.eq('user_id', currentUser.id);
+        }
+      }
+
+      const { data, error: fetchError } = await query;
+
+      if (fetchError) throw fetchError;
+      setConnections(data || []);
+
+      // Fetch stats
+      await fetchStats();
+    } catch (err: any) {
+      console.error('Error fetching connections:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.email, userRole]);
+
+  const fetchStats = async () => {
+    try {
+      // Get total emails visible to current user
+      const { count: totalEmails } = await supabase
+        .from('email_visibility')
+        .select('*', { count: 'exact', head: true });
+
+      // Get emails from today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const { count: emailsToday } = await supabase
+        .from('emails')
+        .select('*', { count: 'exact', head: true })
+        .gte('received_at', today.toISOString());
+
+      // Get unprocessed emails
+      const { count: unprocessed } = await supabase
+        .from('emails')
+        .select('*', { count: 'exact', head: true })
+        .eq('ai_processed', false);
+
+      // Get pending suggestions
+      const { count: pending } = await supabase
+        .from('unmatched_email_queue')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+
+      setStats({
+        total_emails: totalEmails || 0,
+        emails_today: emailsToday || 0,
+        unprocessed_emails: unprocessed || 0,
+        pending_suggestions: pending || 0,
+      });
+    } catch (err) {
+      console.error('Error fetching stats:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchConnections();
+  }, [fetchConnections]);
+
+  const handleConnect = async () => {
+    try {
+      setConnecting(true);
+      setError(null);
+
+      const session = await supabase.auth.getSession();
+      if (!session.data.session) {
+        throw new Error('Not authenticated');
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gmail-connect`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.data.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to initiate connection');
+      }
+
+      // Redirect to Google OAuth
+      window.location.href = data.auth_url;
+    } catch (err: any) {
+      console.error('Error connecting Gmail:', err);
+      setError(err.message);
+      setConnecting(false);
+    }
+  };
+
+  const handleDisconnect = async (connectionId: string, googleEmail: string) => {
+    if (!confirm(`Are you sure you want to disconnect ${googleEmail}?`)) {
+      return;
+    }
+
+    try {
+      setDisconnecting(connectionId);
+      setError(null);
+
+      const session = await supabase.auth.getSession();
+      if (!session.data.session) {
+        throw new Error('Not authenticated');
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gmail-disconnect`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.data.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ delete_emails: false }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to disconnect');
+      }
+
+      setSuccessMessage(`Disconnected ${googleEmail}`);
+      await fetchConnections();
+    } catch (err: any) {
+      console.error('Error disconnecting:', err);
+      setError(err.message);
+    } finally {
+      setDisconnecting(null);
+    }
+  };
+
+  const handleSyncNow = async (connectionId: string) => {
+    try {
+      setSyncing(connectionId);
+      setError(null);
+
+      const session = await supabase.auth.getSession();
+      if (!session.data.session) {
+        throw new Error('Not authenticated');
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gmail-sync`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.data.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ connection_id: connectionId }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Sync failed');
+      }
+
+      setSuccessMessage(`Synced ${data.synced_count || 0} emails`);
+      await fetchConnections();
+    } catch (err: any) {
+      console.error('Error syncing:', err);
+      setError(err.message);
+    } finally {
+      setSyncing(null);
+    }
+  };
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return 'Never';
+    return new Date(dateString).toLocaleString();
+  };
+
+  const getStatusBadge = (connection: GmailConnection) => {
+    if (!connection.is_active) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+          Inactive
+        </span>
+      );
+    }
+    if (connection.sync_error) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+          Error
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+        Active
+      </span>
+    );
+  };
+
+  // Check if current user has a connection
+  const currentUserHasConnection = connections.some(
+    (c) => c.user?.email === user?.email && c.is_active
+  );
+
+  return (
+    <div className="max-w-6xl mx-auto p-6">
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-gray-900">Gmail Integration</h1>
+        <p className="mt-1 text-sm text-gray-600">
+          Connect Gmail accounts to automatically sync and tag emails to CRM objects.
+        </p>
+      </div>
+
+      {/* Status Messages */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+            <div className="ml-auto">
+              <button onClick={() => setError(null)} className="text-red-400 hover:text-red-500">
+                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-md">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-green-700">{successMessage}</p>
+            </div>
+            <div className="ml-auto">
+              <button onClick={() => setSuccessMessage(null)} className="text-green-400 hover:text-green-500">
+                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stats Cards */}
+      {stats && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <div className="bg-white rounded-lg border p-4">
+            <div className="text-sm font-medium text-gray-500">Total Emails</div>
+            <div className="mt-1 text-2xl font-semibold text-gray-900">{stats.total_emails}</div>
+          </div>
+          <div className="bg-white rounded-lg border p-4">
+            <div className="text-sm font-medium text-gray-500">Emails Today</div>
+            <div className="mt-1 text-2xl font-semibold text-gray-900">{stats.emails_today}</div>
+          </div>
+          <div className="bg-white rounded-lg border p-4">
+            <div className="text-sm font-medium text-gray-500">Awaiting AI Processing</div>
+            <div className="mt-1 text-2xl font-semibold text-gray-900">{stats.unprocessed_emails}</div>
+          </div>
+          <div className="bg-white rounded-lg border p-4">
+            <div className="text-sm font-medium text-gray-500">Pending Suggestions</div>
+            <div className="mt-1 text-2xl font-semibold text-blue-600">{stats.pending_suggestions}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Connect Button */}
+      {!currentUserHasConnection && (
+        <div className="mb-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-medium text-blue-900">Connect Your Gmail</h3>
+              <p className="mt-1 text-sm text-blue-700">
+                Connect your Gmail account to start syncing emails automatically.
+              </p>
+            </div>
+            <button
+              onClick={handleConnect}
+              disabled={connecting}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+            >
+              {connecting ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Connecting...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20.283 10.356h-8.327v3.451h4.792c-.446 2.193-2.313 3.453-4.792 3.453a5.27 5.27 0 0 1-5.279-5.28 5.27 5.27 0 0 1 5.279-5.279c1.259 0 2.397.447 3.29 1.178l2.6-2.599c-1.584-1.381-3.615-2.233-5.89-2.233a8.908 8.908 0 0 0-8.934 8.934 8.907 8.907 0 0 0 8.934 8.934c4.467 0 8.529-3.249 8.529-8.934 0-.528-.081-1.097-.202-1.625z"/>
+                  </svg>
+                  Connect Gmail
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Connections Table */}
+      <div className="bg-white rounded-lg border overflow-hidden">
+        <div className="px-4 py-5 sm:px-6 border-b">
+          <h3 className="text-lg font-medium text-gray-900">Connected Accounts</h3>
+        </div>
+
+        {loading ? (
+          <div className="p-8 text-center">
+            <svg className="animate-spin h-8 w-8 text-blue-600 mx-auto" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <p className="mt-2 text-sm text-gray-500">Loading connections...</p>
+          </div>
+        ) : connections.length === 0 ? (
+          <div className="p-8 text-center">
+            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No Gmail accounts connected</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Connect a Gmail account to start syncing emails.
+            </p>
+          </div>
+        ) : (
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Account
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  User
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Last Sync
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {connections.map((connection) => (
+                <tr key={connection.id}>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0 h-10 w-10">
+                        <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+                          <svg className="h-6 w-6 text-red-600" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20.283 10.356h-8.327v3.451h4.792c-.446 2.193-2.313 3.453-4.792 3.453a5.27 5.27 0 0 1-5.279-5.28 5.27 5.27 0 0 1 5.279-5.279c1.259 0 2.397.447 3.29 1.178l2.6-2.599c-1.584-1.381-3.615-2.233-5.89-2.233a8.908 8.908 0 0 0-8.934 8.934 8.907 8.907 0 0 0 8.934 8.934c4.467 0 8.529-3.249 8.529-8.934 0-.528-.081-1.097-.202-1.625z"/>
+                          </svg>
+                        </div>
+                      </div>
+                      <div className="ml-4">
+                        <div className="text-sm font-medium text-gray-900">
+                          {connection.google_email}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          Connected {formatDate(connection.created_at)}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      {connection.user?.first_name} {connection.user?.last_name}
+                    </div>
+                    <div className="text-sm text-gray-500">{connection.user?.email}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {getStatusBadge(connection)}
+                    {connection.sync_error && (
+                      <div className="mt-1 text-xs text-red-600 max-w-xs truncate" title={connection.sync_error}>
+                        {connection.sync_error}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {formatDate(connection.last_sync_at)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <div className="flex justify-end space-x-2">
+                      {connection.is_active && (
+                        <button
+                          onClick={() => handleSyncNow(connection.id)}
+                          disabled={syncing === connection.id}
+                          className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          {syncing === connection.id ? (
+                            <>
+                              <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              Syncing...
+                            </>
+                          ) : (
+                            'Sync Now'
+                          )}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDisconnect(connection.id, connection.google_email)}
+                        disabled={disconnecting === connection.id}
+                        className="inline-flex items-center px-3 py-1.5 border border-red-300 text-xs font-medium rounded text-red-700 bg-white hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {disconnecting === connection.id ? 'Disconnecting...' : 'Disconnect'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Info Section */}
+      <div className="mt-8 bg-gray-50 rounded-lg p-6">
+        <h3 className="text-sm font-medium text-gray-900 mb-4">How Gmail Integration Works</h3>
+        <div className="space-y-3 text-sm text-gray-600">
+          <div className="flex items-start">
+            <span className="flex-shrink-0 h-5 w-5 text-blue-500 mr-2">1.</span>
+            <span>Emails are synced automatically every 5 minutes from your INBOX and SENT folders.</span>
+          </div>
+          <div className="flex items-start">
+            <span className="flex-shrink-0 h-5 w-5 text-blue-500 mr-2">2.</span>
+            <span>AI analyzes each email to identify related Contacts, Clients, Deals, and Properties.</span>
+          </div>
+          <div className="flex items-start">
+            <span className="flex-shrink-0 h-5 w-5 text-blue-500 mr-2">3.</span>
+            <span>Tagged emails appear in the Activity tab of related CRM records.</span>
+          </div>
+          <div className="flex items-start">
+            <span className="flex-shrink-0 h-5 w-5 text-blue-500 mr-2">4.</span>
+            <span>Unknown senders discussing your business are added to "Suggested Contacts" for review.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default GmailSettingsPage;

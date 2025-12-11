@@ -527,6 +527,25 @@ export default function KanbanBoard() {
                                 snapshot.isDragging ? "bg-yellow-100" : ""
                               }`}
                             >
+                              {/* AI Synopsis Status Indicator */}
+                              {card.synopsis_alert_level && (
+                                <div
+                                  className={`absolute top-2 left-2 w-2 h-2 rounded-full ${
+                                    card.synopsis_alert_level === 'green'
+                                      ? 'bg-green-500'
+                                      : card.synopsis_alert_level === 'yellow'
+                                      ? 'bg-yellow-500'
+                                      : 'bg-red-500'
+                                  }`}
+                                  title={`AI Synopsis: ${
+                                    card.synopsis_alert_level === 'green'
+                                      ? 'On Track'
+                                      : card.synopsis_alert_level === 'yellow'
+                                      ? 'Needs Attention'
+                                      : 'Action Required'
+                                  }`}
+                                />
+                              )}
                               {/* Dropdown Menu Button */}
                               <div className="absolute top-2 right-2">
                                 <button
@@ -567,7 +586,7 @@ export default function KanbanBoard() {
                                 )}
                               </div>
 
-                              <div className="font-semibold pr-6">
+                              <div className={`font-semibold pr-6 ${card.synopsis_alert_level ? 'pl-4' : ''}`}>
                                 <Link
                                   to={`/deal/${card.id}`}
                                   className="text-blue-600 hover:underline"

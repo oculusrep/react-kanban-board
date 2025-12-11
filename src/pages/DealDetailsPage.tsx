@@ -15,6 +15,7 @@ import { LayerManagerProvider } from '../components/mapping/layers/LayerManager'
 import FileManager from '../components/FileManager/FileManager';
 import Toast from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
+import DealSynopsis from '../components/DealSynopsis';
 import { useToast } from '../hooks/useToast';
 import { useTrackPageView, useRecentlyViewed } from '../hooks/useRecentlyViewed';
 
@@ -517,7 +518,14 @@ export default function DealDetailsPage() {
 
             {/* Tab Content */}
             {activeTab === 'overview' && (
-              <DealDetailsForm
+              <>
+                {/* AI Deal Synopsis - only show for existing deals */}
+                {!isNewDeal && deal.id && (
+                  <div className="mb-6">
+                    <DealSynopsis dealId={deal.id} />
+                  </div>
+                )}
+                <DealDetailsForm
                 deal={deal}
                 isNewDeal={isNewDeal}
                 onSave={handleDealUpdate}
@@ -535,6 +543,7 @@ export default function DealDetailsPage() {
                   }
                 }}
               />
+              </>
             )}
 
             {activeTab === 'commission' && (

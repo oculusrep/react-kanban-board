@@ -347,8 +347,12 @@ export default function Navbar() {
       action: () => navigate('/contact/new')
     },
     {
-      label: "Search Contacts", 
+      label: "Search Contacts",
       action: () => setSearchModals(prev => ({ ...prev, contacts: true }))
+    },
+    {
+      label: "Suggested Contacts",
+      action: () => navigate('/contacts/suggested')
     }
   ];
 
@@ -527,6 +531,17 @@ export default function Navbar() {
                       className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
                     >
                       📗 QuickBooks
+                    </button>
+                  )}
+                  {userRole === 'admin' && (
+                    <button
+                      onClick={() => {
+                        navigate('/admin/gmail');
+                        setIsReportsMenuOpen(false);
+                      }}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                    >
+                      📧 Gmail Integration
                     </button>
                   )}
                 </div>
@@ -1044,6 +1059,17 @@ export default function Navbar() {
                     className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                   >
                     📗 QuickBooks
+                  </button>
+                )}
+                {userRole === 'admin' && (
+                  <button
+                    onClick={() => {
+                      navigate('/admin/gmail');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                  >
+                    📧 Gmail Integration
                   </button>
                 )}
               </div>

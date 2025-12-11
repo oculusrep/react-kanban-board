@@ -1,0 +1,3 @@
+# Allow unauthenticated access for OAuth callback
+# This endpoint is called by Google's redirect, not by our authenticated frontend
+verify_jwt = false
