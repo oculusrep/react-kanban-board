@@ -220,7 +220,7 @@ const GmailSettingsPage: React.FC = () => {
     }
   };
 
-  const handleSyncNow = async (connectionId: string) => {
+  const handleSyncNow = async (connectionId: string, forceFullSync = false) => {
     try {
       setSyncing(connectionId);
       setError(null);
@@ -238,7 +238,10 @@ const GmailSettingsPage: React.FC = () => {
             'Authorization': `Bearer ${session.data.session.access_token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ connection_id: connectionId }),
+          body: JSON.stringify({
+            connection_id: connectionId,
+            force_full_sync: forceFullSync,
+          }),
         }
       );
 
@@ -248,7 +251,8 @@ const GmailSettingsPage: React.FC = () => {
         throw new Error(data.error || 'Sync failed');
       }
 
-      setSuccessMessage(`Synced ${data.total_synced || 0} emails (${data.total_new || 0} new)`);
+      const syncType = data.results?.[0]?.is_full_sync ? 'Full sync' : 'Incremental sync';
+      setSuccessMessage(`${syncType}: Synced ${data.total_synced || 0} emails (${data.total_new || 0} new)`);
       await fetchConnections();
     } catch (err: any) {
       console.error('Error syncing:', err);
@@ -489,23 +493,33 @@ const GmailSettingsPage: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex justify-end space-x-2">
                       {connection.is_active && (
-                        <button
-                          onClick={() => handleSyncNow(connection.id)}
-                          disabled={syncing === connection.id}
-                          className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-                        >
-                          {syncing === connection.id ? (
-                            <>
-                              <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                              </svg>
-                              Syncing...
-                            </>
-                          ) : (
-                            'Sync Now'
-                          )}
-                        </button>
+                        <>
+                          <button
+                            onClick={() => handleSyncNow(connection.id, false)}
+                            disabled={syncing === connection.id}
+                            className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            {syncing === connection.id ? (
+                              <>
+                                <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                </svg>
+                                Syncing...
+                              </>
+                            ) : (
+                              'Sync Now'
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleSyncNow(connection.id, true)}
+                            disabled={syncing === connection.id}
+                            className="inline-flex items-center px-3 py-1.5 border border-blue-300 text-xs font-medium rounded text-blue-700 bg-white hover:bg-blue-50 disabled:opacity-50"
+                            title="Re-fetch last 50 emails regardless of history"
+                          >
+                            Full Sync
+                          </button>
+                        </>
                       )}
                       <button
                         onClick={() => handleDisconnect(connection.id, connection.google_email)}

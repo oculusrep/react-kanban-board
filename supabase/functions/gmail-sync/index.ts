@@ -63,12 +63,16 @@ serve(async (req) => {
 
     // Check if this is a manual trigger for a specific connection
     let targetConnectionId: string | null = null;
+    let forceFullSync = false;
     try {
       const body = await req.json();
       targetConnectionId = body.connection_id || null;
+      forceFullSync = body.force_full_sync === true;
     } catch {
       // No body - CRON trigger for all connections
     }
+
+    console.log(`Sync request: connection=${targetConnectionId}, forceFullSync=${forceFullSync}`);
 
     // Fetch active connections
     let query = supabase
@@ -132,7 +136,11 @@ serve(async (req) => {
         }
 
         // Sync emails (handles 404 fallback internally)
-        const syncResult = await syncEmailsForConnection(connection, accessToken);
+        // If forceFullSync is requested, temporarily clear the history ID
+        const connectionForSync = forceFullSync
+          ? { ...connection, last_history_id: null }
+          : connection;
+        const syncResult = await syncEmailsForConnection(connectionForSync, accessToken);
         result.is_full_sync = syncResult.isFullSync;
         result.debug = syncResult.debug;
 
