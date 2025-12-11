@@ -248,16 +248,37 @@ export async function listMessages(
 
 /**
  * Get a single message with full content
+ * Falls back to RAW format if FULL fails (scope issue workaround)
  */
 export async function getMessage(
   accessToken: string,
   messageId: string,
-  format: 'full' | 'metadata' | 'minimal' = 'full'
+  format: 'full' | 'metadata' | 'minimal' | 'raw' = 'full'
 ): Promise<GmailMessage> {
-  return await gmailRequest<GmailMessage>(
-    `/users/me/messages/${messageId}?format=${format}`,
-    accessToken
-  );
+  try {
+    return await gmailRequest<GmailMessage>(
+      `/users/me/messages/${messageId}?format=${format}`,
+      accessToken
+    );
+  } catch (error: any) {
+    // If format=full fails with 403, try format=raw which also requires gmail.readonly
+    // This helps diagnose if it's a scope vs format issue
+    if (error.status === 403 && format === 'full') {
+      console.log(`[getMessage] format=full failed with 403 for ${messageId}, trying raw...`);
+      try {
+        const rawResponse = await gmailRequest<any>(
+          `/users/me/messages/${messageId}?format=raw`,
+          accessToken
+        );
+        console.log(`[getMessage] raw format succeeded - this is a scope issue`);
+        // Convert raw to full-like structure for compatibility
+        return rawResponse;
+      } catch (rawError: any) {
+        console.log(`[getMessage] raw format also failed: ${rawError.message}`);
+      }
+    }
+    throw error;
+  }
 }
 
 /**

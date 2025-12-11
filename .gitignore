@@ -71,3 +71,6 @@ debug-*.js
 
 .vercel
 scripts/setUserPassword.js
+
+# Local Netlify folder
+.netlify

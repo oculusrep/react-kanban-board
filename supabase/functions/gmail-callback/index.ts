@@ -93,6 +93,17 @@ serve(async (req) => {
 
     const tokens: TokenResponse = await tokenResponse.json();
 
+    // Log the scopes actually granted by Google
+    console.log('Scopes granted by Google:', tokens.scope);
+
+    // Verify gmail.readonly scope was granted
+    if (!tokens.scope?.includes('gmail.readonly')) {
+      console.error('gmail.readonly scope not granted! Received:', tokens.scope);
+      return Response.redirect(
+        `${FRONTEND_ERROR_URL}&message=missing_gmail_readonly_scope`
+      );
+    }
+
     if (!tokens.refresh_token) {
       console.error('No refresh token received - user may need to revoke access and retry');
       return Response.redirect(`${FRONTEND_ERROR_URL}&message=no_refresh_token`);

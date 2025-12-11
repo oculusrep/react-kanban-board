@@ -50,7 +50,12 @@ const GmailSettingsPage: React.FC = () => {
       // Clear URL params
       window.history.replaceState({}, '', window.location.pathname);
     } else if (status === 'error') {
-      setError(`Failed to connect Gmail: ${message || 'Unknown error'}`);
+      let errorMsg = message || 'Unknown error';
+      // Provide helpful guidance for scope issues
+      if (message === 'missing_gmail_readonly_scope') {
+        errorMsg = 'Google did not grant full email access. Please go to Google Cloud Console > OAuth consent screen and add "gmail.readonly" to the scopes, then try connecting again.';
+      }
+      setError(`Failed to connect Gmail: ${errorMsg}`);
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
