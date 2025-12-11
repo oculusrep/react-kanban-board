@@ -43,6 +43,7 @@ interface SyncResult {
   duplicate_emails: number;
   errors: string[];
   is_full_sync: boolean;
+  debug?: any;
 }
 
 serve(async (req) => {
@@ -133,6 +134,7 @@ serve(async (req) => {
         // Sync emails (handles 404 fallback internally)
         const syncResult = await syncEmailsForConnection(connection, accessToken);
         result.is_full_sync = syncResult.isFullSync;
+        result.debug = syncResult.debug;
 
         console.log(
           `${connection.google_email}: Found ${syncResult.messages.length} messages ` +

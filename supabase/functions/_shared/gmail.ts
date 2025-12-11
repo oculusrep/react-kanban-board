@@ -204,25 +204,45 @@ export async function listMessages(
 ): Promise<{
   messages: Array<{ id: string; threadId: string }>;
   resultSizeEstimate: number;
+  debug?: any;
 }> {
   // Query without label filters to get ALL recent messages
   const params = new URLSearchParams({
     maxResults: maxResults.toString(),
   });
 
-  console.log(`[listMessages] Fetching messages with maxResults=${maxResults}`);
+  const url = `${GMAIL_API_BASE}/users/me/messages?${params}`;
+  console.log(`[listMessages] Calling URL: ${url}`);
 
-  const response = await gmailRequest<{
-    messages?: Array<{ id: string; threadId: string }>;
-    resultSizeEstimate: number;
-    nextPageToken?: string;
-  }>(`/users/me/messages?${params}`, accessToken);
+  // Make raw fetch to capture full response
+  const rawResponse = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
 
+  const responseText = await rawResponse.text();
+  console.log(`[listMessages] Raw response status: ${rawResponse.status}`);
+  console.log(`[listMessages] Raw response body: ${responseText.substring(0, 500)}`);
+
+  if (!rawResponse.ok) {
+    throw new Error(`Gmail API error (${rawResponse.status}): ${responseText}`);
+  }
+
+  const response = JSON.parse(responseText);
   console.log(`[listMessages] Gmail API returned: ${response.messages?.length || 0} messages, estimate: ${response.resultSizeEstimate}`);
 
   return {
     messages: response.messages || [],
     resultSizeEstimate: response.resultSizeEstimate || 0,
+    debug: {
+      url,
+      status: rawResponse.status,
+      rawKeys: Object.keys(response),
+      messagesType: typeof response.messages,
+      messagesIsArray: Array.isArray(response.messages),
+    },
   };
 }
 
@@ -436,6 +456,7 @@ export async function syncEmailsForConnection(
   messages: Array<{ id: string; threadId: string }>;
   newHistoryId: string;
   isFullSync: boolean;
+  debug?: any;
 }> {
   console.log(`[syncEmailsForConnection] Starting sync for ${connection.google_email}, last_history_id: ${connection.last_history_id}`);
 
@@ -452,6 +473,7 @@ export async function syncEmailsForConnection(
         messages: historyResult.messages,
         newHistoryId: historyResult.historyId,
         isFullSync: false,
+        debug: { syncType: 'incremental', lastHistoryId: connection.last_history_id },
       };
     } catch (error: any) {
       if (error.status === 404) {
@@ -466,17 +488,28 @@ export async function syncEmailsForConnection(
 
   // Full sync: fetch recent messages
   console.log(`[syncEmailsForConnection] Performing full sync`);
+
+  // First verify the token works by getting profile
+  const profile = await getGmailProfile(accessToken);
+  console.log(`[syncEmailsForConnection] Profile: email=${profile.emailAddress}, messagesTotal=${profile.messagesTotal}, threadsTotal=${profile.threadsTotal}, historyId=${profile.historyId}`);
+
   const messagesResult = await listMessages(accessToken, 50);
   console.log(`[syncEmailsForConnection] Full sync returned ${messagesResult.messages.length} messages`);
-
-  // Get the current history ID from the profile
-  const profile = await getGmailProfile(accessToken);
-  console.log(`[syncEmailsForConnection] Got profile historyId: ${profile.historyId}`);
 
   return {
     messages: messagesResult.messages,
     newHistoryId: profile.historyId,
     isFullSync: true,
+    debug: {
+      syncType: 'full',
+      profile: {
+        email: profile.emailAddress,
+        messagesTotal: profile.messagesTotal,
+        threadsTotal: profile.threadsTotal,
+        historyId: profile.historyId,
+      },
+      listMessagesDebug: messagesResult.debug,
+    },
   };
 }
 
