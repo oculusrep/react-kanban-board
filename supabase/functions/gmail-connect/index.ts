@@ -17,10 +17,9 @@ const corsHeaders = {
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID')!;
 const GOOGLE_REDIRECT_URI = Deno.env.get('GOOGLE_REDIRECT_URI')!;
 
-// Gmail scopes needed
+// Gmail scopes needed (gmail.readonly is a superset of gmail.metadata, don't request both)
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
-  'https://www.googleapis.com/auth/gmail.metadata',
   'https://www.googleapis.com/auth/userinfo.email',
 ].join(' ');
 
