@@ -495,43 +495,43 @@ const GmailSettingsPage: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {formatDate(connection.last_sync_at)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div className="flex justify-end space-x-2">
+                  <td className="px-6 py-4 text-right text-sm font-medium">
+                    <div className="flex flex-wrap justify-end gap-2">
                       {connection.is_active && (
                         <>
                           <button
                             onClick={() => handleSyncNow(connection.id, false)}
                             disabled={syncing === connection.id}
-                            className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                            className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
                           >
                             {syncing === connection.id ? (
                               <>
-                                <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
+                                <svg className="animate-spin -ml-0.5 mr-1 h-3 w-3" fill="none" viewBox="0 0 24 24">
                                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                                 </svg>
-                                Syncing...
+                                Syncing
                               </>
                             ) : (
-                              'Sync Now'
+                              'Sync'
                             )}
                           </button>
                           <button
                             onClick={() => handleSyncNow(connection.id, true)}
                             disabled={syncing === connection.id}
-                            className="inline-flex items-center px-3 py-1.5 border border-blue-300 text-xs font-medium rounded text-blue-700 bg-white hover:bg-blue-50 disabled:opacity-50"
+                            className="inline-flex items-center px-2 py-1 border border-blue-300 text-xs font-medium rounded text-blue-700 bg-white hover:bg-blue-50 disabled:opacity-50"
                             title="Re-fetch last 50 emails regardless of history"
                           >
-                            Full Sync
+                            Full
                           </button>
                         </>
                       )}
                       <button
                         onClick={() => handleDisconnect(connection.id, connection.google_email)}
                         disabled={disconnecting === connection.id}
-                        className="inline-flex items-center px-3 py-1.5 border border-red-300 text-xs font-medium rounded text-red-700 bg-white hover:bg-red-50 disabled:opacity-50"
+                        className="inline-flex items-center px-2 py-1 border border-red-300 text-xs font-medium rounded text-red-700 bg-white hover:bg-red-50 disabled:opacity-50"
                       >
-                        {disconnecting === connection.id ? 'Disconnecting...' : 'Disconnect'}
+                        {disconnecting === connection.id ? '...' : 'X'}
                       </button>
                     </div>
                   </td>

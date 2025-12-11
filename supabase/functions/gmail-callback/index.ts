@@ -146,7 +146,7 @@ serve(async (req) => {
       return Response.redirect(`${FRONTEND_ERROR_URL}&message=gmail_already_connected`);
     }
 
-    // Upsert the Gmail connection (store granted scopes in sync_error for debugging)
+    // Upsert the Gmail connection
     const { error: upsertError } = await supabase
       .from('gmail_connection')
       .upsert(
@@ -159,7 +159,7 @@ serve(async (req) => {
           is_active: true,
           last_history_id: null, // Will be set on first sync
           last_sync_at: null,
-          sync_error: `SCOPES: ${tokens.scope}`, // Store scopes for debugging
+          sync_error: null,
           sync_error_at: null,
           updated_at: new Date().toISOString(),
         },
