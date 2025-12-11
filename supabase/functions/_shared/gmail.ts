@@ -210,11 +210,15 @@ export async function listMessages(
     maxResults: maxResults.toString(),
   });
 
+  console.log(`[listMessages] Fetching messages with maxResults=${maxResults}`);
+
   const response = await gmailRequest<{
     messages?: Array<{ id: string; threadId: string }>;
     resultSizeEstimate: number;
     nextPageToken?: string;
   }>(`/users/me/messages?${params}`, accessToken);
+
+  console.log(`[listMessages] Gmail API returned: ${response.messages?.length || 0} messages, estimate: ${response.resultSizeEstimate}`);
 
   return {
     messages: response.messages || [],
@@ -433,13 +437,17 @@ export async function syncEmailsForConnection(
   newHistoryId: string;
   isFullSync: boolean;
 }> {
+  console.log(`[syncEmailsForConnection] Starting sync for ${connection.google_email}, last_history_id: ${connection.last_history_id}`);
+
   // Try incremental sync if we have a history ID
   if (connection.last_history_id) {
     try {
+      console.log(`[syncEmailsForConnection] Attempting incremental sync from history ID ${connection.last_history_id}`);
       const historyResult = await listMessageHistory(
         accessToken,
         connection.last_history_id
       );
+      console.log(`[syncEmailsForConnection] Incremental sync returned ${historyResult.messages.length} messages`);
       return {
         messages: historyResult.messages,
         newHistoryId: historyResult.historyId,
@@ -448,18 +456,22 @@ export async function syncEmailsForConnection(
     } catch (error: any) {
       if (error.status === 404) {
         // History ID expired or invalid - fall through to full sync
-        console.log(`History ID expired for ${connection.google_email}, performing full resync`);
+        console.log(`[syncEmailsForConnection] History ID expired for ${connection.google_email}, performing full resync`);
       } else {
+        console.error(`[syncEmailsForConnection] Error in incremental sync:`, error);
         throw error;
       }
     }
   }
 
   // Full sync: fetch recent messages
+  console.log(`[syncEmailsForConnection] Performing full sync`);
   const messagesResult = await listMessages(accessToken, 50);
+  console.log(`[syncEmailsForConnection] Full sync returned ${messagesResult.messages.length} messages`);
 
   // Get the current history ID from the profile
   const profile = await getGmailProfile(accessToken);
+  console.log(`[syncEmailsForConnection] Got profile historyId: ${profile.historyId}`);
 
   return {
     messages: messagesResult.messages,
