@@ -78,6 +78,66 @@ export interface AgentRule {
   priority: number;
 }
 
+export interface PastCorrection {
+  id: string;
+  email_id: string;
+  incorrect_object_type: string | null;
+  incorrect_object_id: string | null;
+  correct_object_type: string;
+  correct_object_id: string;
+  feedback_text: string | null;
+  sender_email: string | null;
+  email_subject: string | null;
+  created_at: string;
+  // Resolved names for display
+  incorrect_object_name?: string;
+  correct_object_name?: string;
+}
+
+// ============================================================================
+// PUBLIC DOMAIN EXCLUSION LIST - For Active Learning
+// ============================================================================
+
+const PUBLIC_EMAIL_DOMAINS = new Set([
+  // Major providers
+  'gmail.com', 'googlemail.com', 'google.com',
+  'yahoo.com', 'yahoo.co.uk', 'ymail.com', 'rocketmail.com',
+  'outlook.com', 'hotmail.com', 'live.com', 'msn.com',
+  'icloud.com', 'me.com', 'mac.com',
+  'aol.com', 'aim.com',
+  'protonmail.com', 'proton.me',
+  'zoho.com', 'zohomail.com',
+  'mail.com', 'email.com',
+  'gmx.com', 'gmx.net',
+  'yandex.com', 'yandex.ru',
+  'fastmail.com', 'fastmail.fm',
+  'tutanota.com', 'tuta.io',
+  // ISP providers
+  'comcast.net', 'xfinity.com',
+  'att.net', 'sbcglobal.net', 'bellsouth.net',
+  'verizon.net',
+  'charter.net', 'spectrum.net',
+  'cox.net',
+  'earthlink.net',
+  // Regional/international
+  'qq.com', '163.com', '126.com',
+  'naver.com', 'daum.net',
+  'web.de', 'freenet.de', 't-online.de',
+  'libero.it', 'virgilio.it',
+  'orange.fr', 'free.fr', 'laposte.net',
+  'btinternet.com', 'sky.com', 'talktalk.net',
+]);
+
+/**
+ * Check if an email domain is a public/generic provider
+ * Returns false for corporate/private domains that are safe for domain-level learning
+ */
+function isPublicEmailDomain(email: string): boolean {
+  const domain = email.split('@')[1]?.toLowerCase();
+  if (!domain) return true; // Treat malformed as public (no domain learning)
+  return PUBLIC_EMAIL_DOMAINS.has(domain);
+}
+
 // ============================================================================
 // TOOL DEFINITIONS - Exposed to Gemini
 // ============================================================================
@@ -410,6 +470,226 @@ export async function searchRules(
     target_object_id: r.target_object_id,
     priority: r.priority,
   }));
+}
+
+/**
+ * ACTIVE LEARNING: Retrieve relevant past corrections from agent_corrections table
+ *
+ * Retrieval Priority:
+ * 1. Exact sender email match (highest priority)
+ * 2. Domain match (only for private/corporate domains, NOT gmail/yahoo/etc.)
+ * 3. Subject keyword match (distinct terms like addresses, file numbers)
+ *
+ * Returns top 5 most recent relevant corrections to inject into the system prompt.
+ */
+export async function getRelevantCorrections(
+  supabase: SupabaseClient,
+  senderEmail: string,
+  emailSubject: string
+): Promise<PastCorrection[]> {
+  const corrections: PastCorrection[] = [];
+  const seenIds = new Set<string>();
+  const MAX_CORRECTIONS = 5;
+
+  // Extract domain for domain-level matching
+  const senderDomain = senderEmail.split('@')[1]?.toLowerCase() || '';
+  const isPublicDomain = isPublicEmailDomain(senderEmail);
+
+  // Extract distinct keywords from subject (3+ chars, exclude common words)
+  const commonWords = new Set(['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'has', 'have', 'been', 'will', 'your', 'from', 'they', 'this', 'that', 'with', 'what', 'there', 'about', 'would', 'their', 'which', 'could', 'other', 'these', 'then', 'than', 'some', 'into', 'them', 'just', 'only', 'come', 'made', 'find', 'here', 'know', 'take', 'want', 'does', 'going', 'thing']);
+  const subjectKeywords = emailSubject
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length >= 3 && !commonWords.has(w));
+
+  // ========================================================================
+  // PRIORITY 1: Exact sender email match
+  // ========================================================================
+  const { data: senderMatches } = await supabase
+    .from('agent_corrections')
+    .select('*')
+    .eq('sender_email', senderEmail.toLowerCase())
+    .order('created_at', { ascending: false })
+    .limit(MAX_CORRECTIONS);
+
+  if (senderMatches) {
+    for (const c of senderMatches) {
+      if (!seenIds.has(c.id) && corrections.length < MAX_CORRECTIONS) {
+        seenIds.add(c.id);
+        corrections.push(c);
+      }
+    }
+  }
+
+  // ========================================================================
+  // PRIORITY 2: Domain match (only for private/corporate domains)
+  // ========================================================================
+  if (!isPublicDomain && corrections.length < MAX_CORRECTIONS) {
+    const { data: domainMatches } = await supabase
+      .from('agent_corrections')
+      .select('*')
+      .ilike('sender_email', `%@${senderDomain}`)
+      .order('created_at', { ascending: false })
+      .limit(MAX_CORRECTIONS);
+
+    if (domainMatches) {
+      for (const c of domainMatches) {
+        if (!seenIds.has(c.id) && corrections.length < MAX_CORRECTIONS) {
+          seenIds.add(c.id);
+          corrections.push(c);
+        }
+      }
+    }
+  }
+
+  // ========================================================================
+  // PRIORITY 3: Subject keyword match (distinct terms only)
+  // ========================================================================
+  if (subjectKeywords.length > 0 && corrections.length < MAX_CORRECTIONS) {
+    // Only use distinctive keywords (likely proper nouns, addresses, file numbers)
+    // Look for words that might be: city names, addresses, company names, file numbers
+    const distinctiveKeywords = subjectKeywords.filter(kw =>
+      // Capitalized in original (proper nouns)
+      emailSubject.includes(kw.charAt(0).toUpperCase() + kw.slice(1)) ||
+      // Contains numbers (file numbers, addresses)
+      /\d/.test(kw) ||
+      // Long enough to be distinctive
+      kw.length >= 6
+    );
+
+    for (const keyword of distinctiveKeywords.slice(0, 3)) { // Only check top 3 keywords
+      if (corrections.length >= MAX_CORRECTIONS) break;
+
+      const { data: keywordMatches } = await supabase
+        .from('agent_corrections')
+        .select('*')
+        .ilike('email_subject', `%${keyword}%`)
+        .order('created_at', { ascending: false })
+        .limit(MAX_CORRECTIONS - corrections.length);
+
+      if (keywordMatches) {
+        for (const c of keywordMatches) {
+          if (!seenIds.has(c.id) && corrections.length < MAX_CORRECTIONS) {
+            seenIds.add(c.id);
+            corrections.push(c);
+          }
+        }
+      }
+    }
+  }
+
+  // ========================================================================
+  // RESOLVE OBJECT NAMES for readable prompt injection
+  // ========================================================================
+  for (const correction of corrections) {
+    // Resolve incorrect object name
+    if (correction.incorrect_object_type && correction.incorrect_object_type !== 'none' && correction.incorrect_object_id) {
+      const name = await resolveObjectName(supabase, correction.incorrect_object_type, correction.incorrect_object_id);
+      correction.incorrect_object_name = name;
+    }
+
+    // Resolve correct object name
+    if (correction.correct_object_type && correction.correct_object_type !== 'none' &&
+        correction.correct_object_id !== '00000000-0000-0000-0000-000000000000') {
+      const name = await resolveObjectName(supabase, correction.correct_object_type, correction.correct_object_id);
+      correction.correct_object_name = name;
+    }
+  }
+
+  return corrections;
+}
+
+/**
+ * Helper to resolve a CRM object ID to a human-readable name
+ */
+async function resolveObjectName(
+  supabase: SupabaseClient,
+  objectType: string,
+  objectId: string
+): Promise<string> {
+  try {
+    switch (objectType) {
+      case 'contact': {
+        const { data } = await supabase
+          .from('contact')
+          .select('first_name, last_name')
+          .eq('id', objectId)
+          .single();
+        return data ? `${data.first_name || ''} ${data.last_name || ''}`.trim() : objectId;
+      }
+      case 'deal': {
+        const { data } = await supabase
+          .from('deal')
+          .select('deal_name')
+          .eq('id', objectId)
+          .single();
+        return data?.deal_name || objectId;
+      }
+      case 'client': {
+        const { data } = await supabase
+          .from('client')
+          .select('client_name')
+          .eq('id', objectId)
+          .single();
+        return data?.client_name || objectId;
+      }
+      case 'property': {
+        const { data } = await supabase
+          .from('property')
+          .select('property_name, address')
+          .eq('id', objectId)
+          .single();
+        return data?.property_name || data?.address || objectId;
+      }
+      default:
+        return objectId;
+    }
+  } catch {
+    return objectId;
+  }
+}
+
+/**
+ * Format corrections for injection into the system prompt
+ */
+export function formatCorrectionsForPrompt(corrections: PastCorrection[]): string {
+  if (corrections.length === 0) return '';
+
+  const lines = corrections.map(c => {
+    const date = new Date(c.created_at).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric'
+    });
+
+    const senderInfo = c.sender_email || 'unknown sender';
+    const subjectSnippet = c.email_subject
+      ? `"${c.email_subject.substring(0, 50)}${c.email_subject.length > 50 ? '...' : ''}"`
+      : 'unknown subject';
+
+    // Determine the type of correction
+    if (c.correct_object_type === 'none') {
+      // User removed an AI link (AI shouldn't have linked)
+      const incorrectName = c.incorrect_object_name || c.incorrect_object_id;
+      return `- On ${date}: User REMOVED link to ${c.incorrect_object_type} "${incorrectName}" for email from ${senderInfo}. ${c.feedback_text || 'AI should not have made this link.'}`;
+    } else if (c.incorrect_object_type === 'none' || !c.incorrect_object_type) {
+      // User added a link AI missed
+      const correctName = c.correct_object_name || c.correct_object_id;
+      return `- On ${date}: User ADDED link to ${c.correct_object_type} "${correctName}" for email from ${senderInfo} (subject: ${subjectSnippet}). ${c.feedback_text || 'AI missed this link.'}`;
+    } else {
+      // User corrected AI's choice to a different object
+      const incorrectName = c.incorrect_object_name || c.incorrect_object_id;
+      const correctName = c.correct_object_name || c.correct_object_id;
+      return `- On ${date}: User CORRECTED ${c.incorrect_object_type} "${incorrectName}" → ${c.correct_object_type} "${correctName}" for ${senderInfo}. ${c.feedback_text || ''}`;
+    }
+  });
+
+  return `### RELEVANT PAST CORRECTIONS (USER FEEDBACK)
+The following are past mistakes you made that the user corrected. Learn from these to avoid repeating errors:
+
+${lines.join('\n')}
+
+IMPORTANT: Apply these corrections to similar emails. If the sender or context matches, use the user's preferred classification.`;
 }
 
 /**
@@ -799,8 +1079,27 @@ export async function runEmailTriageAgent(
     console.log(`[Agent] Contact auto-matched, continuing to AI for deal/property analysis`);
   }
 
+  // ========================================================================
+  // ACTIVE LEARNING: Fetch relevant past corrections before calling AI
+  // ========================================================================
+  console.log(`[Agent] Fetching relevant past corrections for: ${email.sender_email}`);
+
+  const relevantCorrections = await getRelevantCorrections(
+    supabase,
+    email.sender_email,
+    email.subject
+  );
+
+  const correctionsPrompt = formatCorrectionsForPrompt(relevantCorrections);
+
+  if (relevantCorrections.length > 0) {
+    console.log(`[Agent] Found ${relevantCorrections.length} relevant past corrections`);
+  }
+
   // THE BRAIN - System prompt that defines agent behavior
   const systemPrompt = `Role: You are the OVIS Autonomous Assistant for a commercial real estate brokerage. Your task is to intelligently classify incoming emails by linking them to the correct CRM objects.
+
+${correctionsPrompt}
 
 AVAILABLE TOOLS:
 - search_rules: ALWAYS call this FIRST to check for user-defined rules for this sender or topic.
