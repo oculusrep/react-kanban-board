@@ -516,8 +516,8 @@ const SuggestedContactsPage: React.FC = () => {
                               </span>
                             )}
                           </div>
-                          {/* Email on second line - FULL, no truncation */}
-                          <div className="text-sm text-gray-500">
+                          {/* Email on second line - FULL, with word break */}
+                          <div className="text-sm text-gray-500 break-all">
                             {item.sender_email}
                           </div>
                           {/* Subject on third line */}
@@ -682,23 +682,6 @@ const SuggestedContactsPage: React.FC = () => {
                           </button>
                         </div>
 
-                        {/* Feedback reasoning */}
-                        {itemPendingLinks.length > 0 && (
-                          <div className="mt-4">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              <SparklesIcon className="w-4 h-4 inline mr-1" />
-                              Teach the AI (optional)
-                            </label>
-                            <textarea
-                              placeholder="Explain why you linked these objects so the AI can learn..."
-                              value={feedbackReasoning[item.id] || ''}
-                              onChange={(e) => setFeedbackReasoning(prev => ({ ...prev, [item.id]: e.target.value }))}
-                              className="w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                              rows={2}
-                            />
-                          </div>
-                        )}
-
                         {/* Save button */}
                         {itemPendingLinks.length > 0 && (
                           <div className="mt-4 flex justify-end">
@@ -712,6 +695,75 @@ const SuggestedContactsPage: React.FC = () => {
                             </button>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* AI Training / Feedback Section - Always visible for pending items */}
+                    {item.status === 'pending' && (
+                      <div className="mb-4 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
+                        <div className="flex items-start gap-3">
+                          <SparklesIcon className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <h4 className="text-sm font-medium text-purple-900 mb-2">
+                              Train the AI
+                            </h4>
+                            <p className="text-xs text-purple-700 mb-3">
+                              Help the AI learn from this example. Your feedback improves future classifications.
+                            </p>
+
+                            {/* Quick feedback buttons */}
+                            <div className="flex flex-wrap gap-2 mb-3">
+                              <button
+                                onClick={() => setFeedbackReasoning(prev => ({
+                                  ...prev,
+                                  [item.id]: `This person (${item.sender_email}) is a known contact in our CRM. The AI should recognize contacts by their email address.`
+                                }))}
+                                className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-purple-700 bg-purple-100 rounded-full hover:bg-purple-200 transition-colors"
+                              >
+                                Already in contacts
+                              </button>
+                              <button
+                                onClick={() => setFeedbackReasoning(prev => ({
+                                  ...prev,
+                                  [item.id]: `This sender works for a company that is already a client in our CRM. Link emails from this domain to the client.`
+                                }))}
+                                className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-purple-700 bg-purple-100 rounded-full hover:bg-purple-200 transition-colors"
+                              >
+                                Works for existing client
+                              </button>
+                              <button
+                                onClick={() => setFeedbackReasoning(prev => ({
+                                  ...prev,
+                                  [item.id]: `This email is related to an active deal. The subject/content mentions the property or client.`
+                                }))}
+                                className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-purple-700 bg-purple-100 rounded-full hover:bg-purple-200 transition-colors"
+                              >
+                                Related to a deal
+                              </button>
+                              <button
+                                onClick={() => setFeedbackReasoning(prev => ({
+                                  ...prev,
+                                  [item.id]: `This is a new business contact who should be added to the CRM. They are a potential lead.`
+                                }))}
+                                className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-purple-700 bg-purple-100 rounded-full hover:bg-purple-200 transition-colors"
+                              >
+                                New business lead
+                              </button>
+                            </div>
+
+                            {/* Detailed feedback textarea */}
+                            <textarea
+                              placeholder="Add details about why this email should be linked this way. For example: 'Noree works for Oculus and handles our property inquiries' or 'This domain is our accounting firm'..."
+                              value={feedbackReasoning[item.id] || ''}
+                              onChange={(e) => setFeedbackReasoning(prev => ({ ...prev, [item.id]: e.target.value }))}
+                              className="w-full px-3 py-2 border border-purple-200 rounded-md text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
+                              rows={3}
+                            />
+                            <p className="mt-1 text-xs text-purple-600">
+                              Tip: Explain relationships (who works where, which deals they're involved in) to help the AI make better connections.
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     )}
 

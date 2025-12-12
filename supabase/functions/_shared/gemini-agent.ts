@@ -740,6 +740,65 @@ export async function runEmailTriageAgent(
     }
   }
 
+  // ========================================================================
+  // AUTO-MATCH: Check if sender email exists in contacts BEFORE calling AI
+  // This catches known contacts that the AI might miss
+  // ========================================================================
+  console.log(`[Agent] Checking for existing contact by email: ${email.sender_email}`);
+
+  const { data: existingContact } = await supabase
+    .from('contact')
+    .select('id, first_name, last_name, email, company, client_id')
+    .eq('email', email.sender_email.toLowerCase())
+    .single();
+
+  if (existingContact) {
+    console.log(`[Agent] AUTO-MATCH: Found existing contact: ${existingContact.first_name} ${existingContact.last_name}`);
+
+    // Link to the contact
+    const contactLinkResult = await linkObject(
+      supabase,
+      email.id,
+      'contact',
+      existingContact.id,
+      1.0,
+      `Auto-matched by sender email: ${email.sender_email}`
+    );
+
+    if (contactLinkResult.success) {
+      result.links_created++;
+      result.tags.push({
+        object_type: 'contact',
+        object_id: existingContact.id,
+        confidence: 1.0,
+      });
+    }
+
+    // If contact has a client, link to that too
+    if (existingContact.client_id) {
+      const clientLinkResult = await linkObject(
+        supabase,
+        email.id,
+        'client',
+        existingContact.client_id,
+        0.95,
+        `Auto-linked via contact's company association`
+      );
+
+      if (clientLinkResult.success) {
+        result.links_created++;
+        result.tags.push({
+          object_type: 'client',
+          object_id: existingContact.client_id,
+          confidence: 0.95,
+        });
+      }
+    }
+
+    // Still run AI to find deals/properties, but we've already linked the contact
+    console.log(`[Agent] Contact auto-matched, continuing to AI for deal/property analysis`);
+  }
+
   // THE BRAIN - System prompt that defines agent behavior
   const systemPrompt = `Role: You are the OVIS Autonomous Assistant for a commercial real estate brokerage. Your task is to intelligently classify incoming emails by linking them to the correct CRM objects.
 
