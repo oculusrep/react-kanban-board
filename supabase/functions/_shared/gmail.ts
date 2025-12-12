@@ -256,16 +256,49 @@ function getHeader(headers: Array<{ name: string; value: string }>, name: string
 
 /**
  * Parse email address from "Name <email@example.com>" format
+ * Handles various formats:
+ * - "Name <email@domain.com>"
+ * - '"Name" <email@domain.com>'
+ * - "email@domain.com"
+ * - "Company | Location <email@domain.com>"
  */
 function parseEmailAddress(raw: string): { email: string; name: string | null } {
-  const match = raw.match(/^(?:"?([^"]*)"?\s*)?<?([^<>]+@[^<>]+)>?$/);
-  if (match) {
+  if (!raw) return { email: '', name: null };
+
+  raw = raw.trim();
+
+  // Pattern 1: 'Name <email@domain.com>' or '"Name" <email@domain.com>'
+  // The key fix: require the angle brackets to be present for the name<email> format
+  const angleMatch = raw.match(/^(?:"?(.+?)"?\s+)?<([^<>]+@[^<>]+)>$/);
+  if (angleMatch) {
     return {
-      name: match[1]?.trim() || null,
-      email: match[2].trim().toLowerCase(),
+      name: angleMatch[1]?.trim() || null,
+      email: angleMatch[2].trim().toLowerCase(),
     };
   }
-  return { email: raw.trim().toLowerCase(), name: null };
+
+  // Pattern 2: Plain email 'email@domain.com' (no angle brackets, no name)
+  const plainMatch = raw.match(/^([^\s<>]+@[^\s<>]+)$/);
+  if (plainMatch) {
+    return {
+      name: null,
+      email: plainMatch[1].trim().toLowerCase(),
+    };
+  }
+
+  // Fallback: try to extract any email-like pattern from malformed input
+  const emailMatch = raw.match(/([^\s<>]+@[^\s<>]+)/);
+  if (emailMatch) {
+    const email = emailMatch[1].toLowerCase();
+    // Everything before the email (minus angle brackets and quotes) is the name
+    const namePart = raw.substring(0, raw.indexOf(emailMatch[0])).replace(/[<>"]/g, '').trim();
+    return {
+      name: namePart || null,
+      email: email,
+    };
+  }
+
+  return { email: raw.toLowerCase(), name: null };
 }
 
 /**
