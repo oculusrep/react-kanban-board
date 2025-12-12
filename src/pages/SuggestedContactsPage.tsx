@@ -109,18 +109,32 @@ const SuggestedContactsPage: React.FC = () => {
     fetchItems();
     // Get current user ID from user table for feedback logging
     // Note: user.id may differ from auth.uid(), so we look up by email
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user?.email) {
-        supabase
-          .from('user')
-          .select('id')
-          .eq('email', data.user.email)
-          .single()
-          .then(({ data: userData }) => {
-            if (userData) setCurrentUserId(userData.id);
-          });
+    const loadUserId = async () => {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData.user?.email) {
+          const { data: userData, error } = await supabase
+            .from('user')
+            .select('id')
+            .eq('email', authData.user.email)
+            .single();
+
+          if (error) {
+            console.error('[User Lookup] Error fetching user:', error);
+          } else if (userData) {
+            console.log('[User Lookup] Found user ID:', userData.id);
+            setCurrentUserId(userData.id);
+          } else {
+            console.warn('[User Lookup] No user found for email:', authData.user.email);
+          }
+        } else {
+          console.warn('[User Lookup] No auth user email available');
+        }
+      } catch (err) {
+        console.error('[User Lookup] Exception:', err);
       }
-    });
+    };
+    loadUserId();
   }, [fetchItems]);
 
   const handleSearch = async (query: string) => {
@@ -244,21 +258,28 @@ const SuggestedContactsPage: React.FC = () => {
         }
       }
 
-      // Log the correction for AI learning (only if we have user_id)
-      if (reasoning && currentUserId) {
-        const { error: logError } = await supabase.from('ai_correction_log').insert({
-          user_id: currentUserId,
-          email_id: item.email_id,
-          correction_type: 'added_tag',
-          object_type: links[0].type,
-          correct_object_id: links[0].id,
-          email_snippet: item.snippet,
-          sender_email: item.sender_email,
-          reasoning_hint: reasoning,
-        });
-        if (logError) {
-          console.error('Error logging AI correction:', logError);
-          // Don't throw - this is non-critical
+      // Log the correction for AI learning (only if we have reasoning text)
+      if (reasoning) {
+        if (!currentUserId) {
+          console.warn('[AI Feedback] Cannot log - user ID not loaded yet');
+        } else {
+          console.log('[AI Feedback] Logging correction with user_id:', currentUserId, 'email_id:', item.email_id);
+          const { error: logError } = await supabase.from('ai_correction_log').insert({
+            user_id: currentUserId,
+            email_id: item.email_id,
+            correction_type: 'added_tag',
+            object_type: links[0].type,
+            correct_object_id: links[0].id,
+            email_snippet: item.snippet,
+            sender_email: item.sender_email,
+            reasoning_hint: reasoning,
+          });
+          if (logError) {
+            console.error('[AI Feedback] Error logging correction:', logError.message, logError.details, logError.hint);
+            // Don't throw - this is non-critical
+          } else {
+            console.log('[AI Feedback] Correction logged successfully');
+          }
         }
       }
 
