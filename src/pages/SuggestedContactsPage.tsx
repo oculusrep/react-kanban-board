@@ -289,16 +289,20 @@ const SuggestedContactsPage: React.FC = () => {
         throw ruleError;
       }
 
-      // Store message_id to prevent re-fetch
+      // Store message_id to prevent re-fetch (ignore errors - table may not exist)
       if (item.email?.message_id) {
-        await supabase.from('processed_message_ids').upsert(
-          {
-            message_id: item.email.message_id,
-            action: 'deleted',
-            processed_at: new Date().toISOString(),
-          },
-          { onConflict: 'message_id' }
-        ).catch(() => {});
+        try {
+          await supabase.from('processed_message_ids').upsert(
+            {
+              message_id: item.email.message_id,
+              action: 'deleted',
+              processed_at: new Date().toISOString(),
+            },
+            { onConflict: 'message_id' }
+          );
+        } catch {
+          // Ignore - this is optional tracking
+        }
       }
 
       // Delete the queue entry
