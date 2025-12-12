@@ -198,12 +198,32 @@ const EmailClassificationReviewPage: React.FC = () => {
 
     setProcessingId(linkId);
     try {
+      // Find the email and link for logging
+      const email = emails.find(e => e.id === emailId);
+      const link = email?.links.find(l => l.id === linkId);
+
+      // Delete the link
       const { error } = await supabase
         .from('email_object_link')
         .delete()
         .eq('id', linkId);
 
       if (error) throw error;
+
+      // Log removal as training data (AI was wrong to add this)
+      if (email && link && link.link_source === 'ai_agent') {
+        await supabase.from('agent_corrections').insert({
+          email_id: emailId,
+          incorrect_link_id: linkId,
+          incorrect_object_type: link.object_type,
+          incorrect_object_id: link.object_id,
+          correct_object_type: 'none', // Indicates removal - should not have been linked
+          correct_object_id: '00000000-0000-0000-0000-000000000000', // Null UUID placeholder
+          feedback_text: `AI incorrectly linked to ${link.object_type} "${link.object_name}" - user removed this link`,
+          sender_email: email.sender_email,
+          email_subject: email.subject,
+        }).then(() => {}).catch(err => console.error('Failed to log removal:', err));
+      }
 
       // Update local state
       setEmails(prev =>
@@ -301,6 +321,9 @@ const EmailClassificationReviewPage: React.FC = () => {
   const handleAddLink = async (emailId: string, object: CRMObject) => {
     setProcessingId(emailId);
     try {
+      // Find the email for logging
+      const email = emails.find(e => e.id === emailId);
+
       const { data, error } = await supabase
         .from('email_object_link')
         .insert({
@@ -315,6 +338,21 @@ const EmailClassificationReviewPage: React.FC = () => {
         .single();
 
       if (error) throw error;
+
+      // Log addition as training data (AI missed this link)
+      if (email && email.ai_processed) {
+        await supabase.from('agent_corrections').insert({
+          email_id: emailId,
+          incorrect_link_id: null, // No incorrect link - this is a missed classification
+          incorrect_object_type: 'none', // AI didn't link to anything (missed it)
+          incorrect_object_id: '00000000-0000-0000-0000-000000000000',
+          correct_object_type: object.type,
+          correct_object_id: object.id,
+          feedback_text: `AI missed linking to ${object.type} "${object.name}" - user manually added this link`,
+          sender_email: email.sender_email,
+          email_subject: email.subject,
+        }).then(() => {}).catch(err => console.error('Failed to log addition:', err));
+      }
 
       // Update local state with the new link
       const newLink: EmailObjectLink = {
