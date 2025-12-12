@@ -290,12 +290,37 @@ serve(async (req) => {
 
     console.log(`Sync complete in ${duration}ms: ${totalSynced} emails (${totalNew} new)`);
 
+    // Automatically trigger email-triage if there are new emails to process
+    let triageTriggered = false;
+    if (totalNew > 0) {
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+        console.log(`Triggering email-triage for ${totalNew} new emails...`);
+
+        // Call email-triage function (fire and forget - don't wait for completion)
+        fetch(`${supabaseUrl}/functions/v1/email-triage`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+            'Content-Type': 'application/json',
+          },
+        }).catch(err => console.error('Failed to trigger email-triage:', err));
+
+        triageTriggered = true;
+      } catch (triageError) {
+        console.error('Error triggering email-triage:', triageError);
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
         duration_ms: duration,
         total_synced: totalSynced,
         total_new: totalNew,
+        triage_triggered: triageTriggered,
         results,
       }),
       {
