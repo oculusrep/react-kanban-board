@@ -107,10 +107,18 @@ const SuggestedContactsPage: React.FC = () => {
 
   useEffect(() => {
     fetchItems();
-    // Get current user ID for feedback logging (use auth.uid directly for RLS compatibility)
+    // Get current user ID from user table for feedback logging
+    // Note: user.id may differ from auth.uid(), so we look up by email
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        setCurrentUserId(data.user.id);
+      if (data.user?.email) {
+        supabase
+          .from('user')
+          .select('id')
+          .eq('email', data.user.email)
+          .single()
+          .then(({ data: userData }) => {
+            if (userData) setCurrentUserId(userData.id);
+          });
       }
     });
   }, [fetchItems]);
