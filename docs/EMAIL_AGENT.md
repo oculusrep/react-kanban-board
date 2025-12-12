@@ -256,15 +256,30 @@ Orchestrates batch processing:
 - processed_at: TIMESTAMPTZ
 ```
 
-**ai_correction_log** (User feedback for learning)
+**agent_corrections** (User feedback for Active Learning)
 ```sql
-- email_id: UUID
-- correction_type: 'added_tag' | 'removed_tag' | 'wrong_object'
-- object_type: text
-- correct_object_id: UUID
-- sender_email: text
-- reasoning_hint: text (user's explanation)
+CREATE TABLE agent_corrections (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email_id UUID NOT NULL REFERENCES emails(id) ON DELETE CASCADE,
+  incorrect_link_id UUID,                    -- The AI link that was wrong (null if AI missed)
+  incorrect_object_type VARCHAR(50),         -- What AI linked to (or 'none' if missed)
+  incorrect_object_id UUID,                  -- ID of wrong object
+  correct_object_type VARCHAR(50) NOT NULL,  -- Correct object type (or 'none' if removal)
+  correct_object_id UUID NOT NULL,           -- Correct object ID (null UUID if removal)
+  feedback_text TEXT,                        -- User's explanation
+  sender_email VARCHAR(255),                 -- For pattern matching
+  email_subject TEXT,                        -- For keyword matching
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  created_by_user_id UUID REFERENCES "user"(id)
+);
 ```
+
+**Three types of corrections captured:**
+| Action | incorrect_object_type | correct_object_type | Meaning |
+|--------|----------------------|---------------------|---------|
+| Correct (pencil) | Original AI type | New correct type | AI linked to wrong object |
+| Remove (trash) | Original AI type | `'none'` | AI shouldn't have linked |
+| Add (plus) | `'none'` | New correct type | AI missed this link |
 
 ### 5. Feedback Loop UI
 
@@ -305,6 +320,317 @@ const body = {
   generationConfig: { temperature: 0.1, maxOutputTokens: 2048 },
 };
 ```
+
+## Phase 2: Active Learning Feedback Loop (Completed)
+
+### Overview
+
+The AI agent now learns from user corrections by querying the `agent_corrections` table before classifying each email. This creates a true feedback loop where human corrections improve future AI decisions.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    User Correction Actions                          │
+│  EmailClassificationReviewPage.tsx                                  │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                 │
+│  │ Correct (✏️) │  │ Remove (🗑️) │  │  Add (+)    │                 │
+│  │ AI → Right  │  │ AI → None   │  │ None → Right│                 │
+│  └─────────────┘  └─────────────┘  └─────────────┘                 │
+│           │              │              │                           │
+│           └──────────────┼──────────────┘                           │
+│                          ▼                                          │
+│              ┌───────────────────────┐                              │
+│              │   agent_corrections   │                              │
+│              │   table (training     │                              │
+│              │   data store)         │                              │
+│              └───────────────────────┘                              │
+└─────────────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                  Active Learning Retrieval                          │
+│  getRelevantCorrections() - "The Librarian"                        │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │ PRIORITY 1: Exact Sender Match                               │   │
+│  │ SELECT * FROM agent_corrections                              │   │
+│  │ WHERE sender_email = 'john@acme.com'                        │   │
+│  │ ORDER BY created_at DESC LIMIT 5                            │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                          │                                          │
+│                          ▼                                          │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │ PRIORITY 2: Domain Match (Corporate Only)                    │   │
+│  │ ⚠️ EXCLUDES: gmail.com, yahoo.com, outlook.com, icloud.com  │   │
+│  │ SELECT * FROM agent_corrections                              │   │
+│  │ WHERE sender_email ILIKE '%@acme.com'                       │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                          │                                          │
+│                          ▼                                          │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │ PRIORITY 3: Subject Keyword Match                            │   │
+│  │ Only distinctive keywords: proper nouns, addresses, numbers │   │
+│  │ SELECT * FROM agent_corrections                              │   │
+│  │ WHERE email_subject ILIKE '%milledgeville%'                 │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                          │                                          │
+│                          ▼                                          │
+│              ┌───────────────────────┐                              │
+│              │  Max 5 Corrections    │                              │
+│              │  (context limit)      │                              │
+│              └───────────────────────┘                              │
+└─────────────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Prompt Injection                                 │
+│  formatCorrectionsForPrompt()                                       │
+│                                                                     │
+│  ### RELEVANT PAST CORRECTIONS (USER FEEDBACK)                     │
+│  The following are past mistakes you made that the user corrected. │
+│  Learn from these to avoid repeating errors:                       │
+│                                                                     │
+│  - On Dec 12: User REMOVED link to contact "John Smith" for email  │
+│    from spam@example.com. AI should not have made this link.       │
+│  - On Dec 11: User ADDED link to deal "JJ - Milledgeville" for     │
+│    email from broker@realty.com (subject: "Re: Milledgeville, GA").│
+│    AI missed this link.                                            │
+│  - On Dec 10: User CORRECTED contact "John Doe" → client "Acme     │
+│    Corp" for sales@acme.com.                                       │
+│                                                                     │
+│  IMPORTANT: Apply these corrections to similar emails.             │
+└─────────────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Gemini System Prompt                             │
+│  Role: OVIS Autonomous Assistant...                                │
+│                                                                     │
+│  ${correctionsPrompt}   <-- Injected here                          │
+│                                                                     │
+│  AVAILABLE TOOLS:                                                  │
+│  - search_rules...                                                 │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Details
+
+#### 1. Training Data Collection (`EmailClassificationReviewPage.tsx`)
+
+Three user actions now log to `agent_corrections`:
+
+**handleRemoveLink** - When user removes an AI link:
+```typescript
+if (email && link && link.link_source === 'ai_agent') {
+  await supabase.from('agent_corrections').insert({
+    email_id: emailId,
+    incorrect_link_id: linkId,
+    incorrect_object_type: link.object_type,
+    incorrect_object_id: link.object_id,
+    correct_object_type: 'none',  // Indicates removal
+    correct_object_id: '00000000-0000-0000-0000-000000000000',
+    feedback_text: `AI incorrectly linked to ${link.object_type} "${link.object_name}"`,
+    sender_email: email.sender_email,
+    email_subject: email.subject,
+  });
+}
+```
+
+**handleAddLink** - When user adds a link AI missed:
+```typescript
+if (email && email.ai_processed) {
+  await supabase.from('agent_corrections').insert({
+    email_id: emailId,
+    incorrect_object_type: 'none',  // AI didn't link
+    incorrect_object_id: '00000000-0000-0000-0000-000000000000',
+    correct_object_type: object.type,
+    correct_object_id: object.id,
+    feedback_text: `AI missed linking to ${object.type} "${object.name}"`,
+    sender_email: email.sender_email,
+    email_subject: email.subject,
+  });
+}
+```
+
+**handleSaveCorrection** - When user corrects an AI link to different object:
+```typescript
+await supabase.from('agent_corrections').insert({
+  email_id: emailId,
+  incorrect_link_id: originalLinkId,
+  incorrect_object_type: originalLink.object_type,
+  incorrect_object_id: originalLink.object_id,
+  correct_object_type: newObject.type,
+  correct_object_id: newObject.id,
+  feedback_text: userFeedback,
+  sender_email: email.sender_email,
+  email_subject: email.subject,
+});
+```
+
+#### 2. Public Domain Exclusion List (`gemini-agent.ts`)
+
+To prevent polluting the context with irrelevant domain matches, public email providers are excluded from domain-level retrieval:
+
+```typescript
+const PUBLIC_EMAIL_DOMAINS = new Set([
+  // Major providers
+  'gmail.com', 'googlemail.com', 'google.com',
+  'yahoo.com', 'yahoo.co.uk', 'ymail.com', 'rocketmail.com',
+  'outlook.com', 'hotmail.com', 'live.com', 'msn.com',
+  'icloud.com', 'me.com', 'mac.com',
+  'aol.com', 'aim.com',
+  'protonmail.com', 'proton.me',
+  'zoho.com', 'zohomail.com',
+  'mail.com', 'email.com',
+  'gmx.com', 'gmx.net',
+  'yandex.com', 'yandex.ru',
+  'fastmail.com', 'fastmail.fm',
+  'tutanota.com', 'tuta.io',
+  // ISP providers
+  'comcast.net', 'xfinity.com',
+  'att.net', 'sbcglobal.net', 'bellsouth.net',
+  'verizon.net',
+  'charter.net', 'spectrum.net',
+  'cox.net',
+  'earthlink.net',
+  // Regional/international
+  'qq.com', '163.com', '126.com',
+  'naver.com', 'daum.net',
+  'web.de', 'freenet.de', 't-online.de',
+  'libero.it', 'virgilio.it',
+  'orange.fr', 'free.fr', 'laposte.net',
+  'btinternet.com', 'sky.com', 'talktalk.net',
+]);
+```
+
+#### 3. Correction Retrieval Function (`getRelevantCorrections`)
+
+```typescript
+export async function getRelevantCorrections(
+  supabase: SupabaseClient,
+  senderEmail: string,
+  emailSubject: string
+): Promise<PastCorrection[]>
+```
+
+**Retrieval Logic:**
+1. **Priority 1 - Sender Match**: Always fetches corrections for exact sender email
+2. **Priority 2 - Domain Match**: Only for private/corporate domains (checks `isPublicEmailDomain()`)
+3. **Priority 3 - Subject Keywords**: Filters for distinctive terms:
+   - Proper nouns (capitalized in original)
+   - Contains numbers (addresses, file numbers)
+   - 6+ characters (likely meaningful)
+
+**Context Limit:** Max 5 corrections retrieved to prevent prompt bloat
+
+**Name Resolution:** Object IDs are resolved to human-readable names:
+```typescript
+async function resolveObjectName(
+  supabase: SupabaseClient,
+  objectType: string,
+  objectId: string
+): Promise<string>
+```
+
+#### 4. Prompt Formatting Function (`formatCorrectionsForPrompt`)
+
+Formats corrections for clear injection into the system prompt:
+
+```typescript
+export function formatCorrectionsForPrompt(corrections: PastCorrection[]): string {
+  // Returns formatted string or empty string if no corrections
+  // Format: "- On [Date]: User [ACTION] [details]"
+}
+```
+
+**Output Example:**
+```
+### RELEVANT PAST CORRECTIONS (USER FEEDBACK)
+The following are past mistakes you made that the user corrected. Learn from these to avoid repeating errors:
+
+- On Dec 12: User REMOVED link to contact "John Smith" for email from spam@example.com. AI should not have made this link.
+- On Dec 11: User ADDED link to deal "JJ - Milledgeville" for email from broker@realty.com (subject: "Re: Milledgeville, GA"). AI missed this link.
+- On Dec 10: User CORRECTED contact "John Doe" → client "Acme Corp" for sales@acme.com. Person works for Acme.
+
+IMPORTANT: Apply these corrections to similar emails. If the sender or context matches, use the user's preferred classification.
+```
+
+#### 5. Integration in Agent Loop (`runEmailTriageAgent`)
+
+Corrections are fetched and injected before the AI processes each email:
+
+```typescript
+// ACTIVE LEARNING: Fetch relevant past corrections before calling AI
+console.log(`[Agent] Fetching relevant past corrections for: ${email.sender_email}`);
+
+const relevantCorrections = await getRelevantCorrections(
+  supabase,
+  email.sender_email,
+  email.subject
+);
+
+const correctionsPrompt = formatCorrectionsForPrompt(relevantCorrections);
+
+if (relevantCorrections.length > 0) {
+  console.log(`[Agent] Found ${relevantCorrections.length} relevant past corrections`);
+}
+
+// THE BRAIN - System prompt with corrections injected
+const systemPrompt = `Role: You are the OVIS Autonomous Assistant...
+
+${correctionsPrompt}
+
+AVAILABLE TOOLS:
+...`;
+```
+
+### Key Design Decisions
+
+1. **Retrieval Guardrails**: The "Librarian" approach prevents context pollution by:
+   - Limiting to 5 corrections max
+   - Excluding public domains from domain matching
+   - Using distinctive keywords only (not common words)
+
+2. **Human-Readable Format**: Object IDs are resolved to names so the AI can understand context (e.g., "John Smith" instead of a UUID)
+
+3. **Section Header**: Using `### RELEVANT PAST CORRECTIONS (USER FEEDBACK)` makes it clear to the AI where the learned context comes from
+
+4. **Action Types**: Three distinct formats (REMOVED, ADDED, CORRECTED) give the AI precise guidance on what went wrong
+
+5. **Non-Blocking**: If correction retrieval fails, the agent continues without them (graceful degradation)
+
+### Testing the Active Learning Loop
+
+1. **Create a correction:**
+   - Go to Email Classification Review
+   - Find an AI-processed email
+   - Add, remove, or correct a link
+
+2. **Trigger a new email from same sender:**
+   - Sync a new email from the same sender
+   - Or reset an email for reprocessing:
+   ```sql
+   UPDATE emails SET ai_processed = false, ai_processed_at = NULL
+   WHERE sender_email = 'test@example.com';
+   ```
+
+3. **Check Edge Function logs:**
+   - Look for: `[Agent] Found X relevant past corrections`
+   - Verify the correction was applied
+
+4. **Query corrections table:**
+   ```sql
+   SELECT
+     sender_email,
+     incorrect_object_type,
+     correct_object_type,
+     feedback_text,
+     created_at
+   FROM agent_corrections
+   ORDER BY created_at DESC
+   LIMIT 10;
+   ```
 
 ## Test Results
 
@@ -449,21 +775,17 @@ GEMINI_API_KEY=your-gemini-api-key  # In Supabase Edge Function secrets
 
 ## Next Steps (Proposed)
 
-### Phase 2: Enhanced Rule System
+### Phase 3: Enhanced Rule System
 1. Auto-rule creation when users correct classifications
 2. Semantic rule matching with embeddings
 3. Rule testing preview
 4. Rule analytics (trigger counts)
 
-### Phase 3: Learning from Feedback
-1. Use `ai_correction_log` to improve prompts
-2. Confidence calibration based on correction rates
-3. Pattern detection for auto-rule suggestions
-
 ### Phase 4: Advanced Features
 1. Email threading (link entire threads)
 2. Attachment analysis (PDFs, images)
 3. Proactive suggestions (create task, update deal stage)
+4. Confidence calibration based on correction rates
 
 ### Phase 5: Observability
 1. Agent dashboard with metrics
@@ -473,6 +795,7 @@ GEMINI_API_KEY=your-gemini-api-key  # In Supabase Edge Function secrets
 
 ---
 
-*Document updated: December 11, 2025*
+*Document updated: December 12, 2025*
 *Phase 1 improvements completed*
+*Phase 2 Active Learning completed*
 *System: OVIS CRM with Gemini 2.5 Flash autonomous agent*

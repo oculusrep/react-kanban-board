@@ -61,6 +61,7 @@ const SuggestedContactsPage: React.FC = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -106,6 +107,20 @@ const SuggestedContactsPage: React.FC = () => {
 
   useEffect(() => {
     fetchItems();
+    // Get current user ID for feedback logging
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) {
+        // Get the internal user ID from our user table
+        supabase
+          .from('user')
+          .select('id')
+          .eq('email', data.user.email)
+          .single()
+          .then(({ data: userData }) => {
+            if (userData) setCurrentUserId(userData.id);
+          });
+      }
+    });
   }, [fetchItems]);
 
   const handleSearch = async (query: string) => {
@@ -229,9 +244,10 @@ const SuggestedContactsPage: React.FC = () => {
         }
       }
 
-      // Log the correction for AI learning
-      if (reasoning) {
-        await supabase.from('ai_correction_log').insert({
+      // Log the correction for AI learning (only if we have user_id)
+      if (reasoning && currentUserId) {
+        const { error: logError } = await supabase.from('ai_correction_log').insert({
+          user_id: currentUserId,
           email_id: item.email_id,
           correction_type: 'added_tag',
           object_type: links[0].type,
@@ -240,6 +256,10 @@ const SuggestedContactsPage: React.FC = () => {
           sender_email: item.sender_email,
           reasoning_hint: reasoning,
         });
+        if (logError) {
+          console.error('Error logging AI correction:', logError);
+          // Don't throw - this is non-critical
+        }
       }
 
       // Update the queue item
