@@ -112,6 +112,8 @@ const SuggestedContactsPage: React.FC = () => {
     const loadUserId = async () => {
       try {
         const { data: authData } = await supabase.auth.getUser();
+        console.log('[User Lookup] Auth user:', authData.user?.id, authData.user?.email);
+
         if (authData.user?.email) {
           const { data: userData, error } = await supabase
             .from('user')
@@ -121,14 +123,28 @@ const SuggestedContactsPage: React.FC = () => {
 
           if (error) {
             console.error('[User Lookup] Error fetching user:', error);
+            // Fallback to auth.uid() if user table lookup fails
+            if (authData.user?.id) {
+              console.log('[User Lookup] Using auth.uid() as fallback:', authData.user.id);
+              setCurrentUserId(authData.user.id);
+            }
           } else if (userData) {
             console.log('[User Lookup] Found user ID:', userData.id);
             setCurrentUserId(userData.id);
           } else {
             console.warn('[User Lookup] No user found for email:', authData.user.email);
+            // Fallback to auth.uid()
+            if (authData.user?.id) {
+              console.log('[User Lookup] Using auth.uid() as fallback:', authData.user.id);
+              setCurrentUserId(authData.user.id);
+            }
           }
+        } else if (authData.user?.id) {
+          // No email but we have auth.uid(), use that
+          console.log('[User Lookup] No email, using auth.uid():', authData.user.id);
+          setCurrentUserId(authData.user.id);
         } else {
-          console.warn('[User Lookup] No auth user email available');
+          console.warn('[User Lookup] No auth user available');
         }
       } catch (err) {
         console.error('[User Lookup] Exception:', err);
