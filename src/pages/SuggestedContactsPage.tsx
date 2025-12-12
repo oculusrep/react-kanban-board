@@ -125,11 +125,27 @@ const SuggestedContactsPage: React.FC = () => {
         .limit(5);
       results.push(...(deals || []).map(d => ({ id: d.id, type: 'deal', name: d.deal_name })));
 
-      const { data: contacts } = await supabase
+      // Split query into words to search across first_name + last_name
+      const queryWords = query.trim().split(/\s+/);
+      let contactQuery = supabase
         .from('contact')
-        .select('id, first_name, last_name, email')
-        .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,email.ilike.%${query}%`)
-        .limit(5);
+        .select('id, first_name, last_name, email');
+
+      if (queryWords.length >= 2) {
+        // Multi-word search: try first word as first_name, rest as last_name
+        const firstName = queryWords[0];
+        const lastName = queryWords.slice(1).join(' ');
+        contactQuery = contactQuery.or(
+          `first_name.ilike.%${firstName}%,last_name.ilike.%${lastName}%,email.ilike.%${query}%,and(first_name.ilike.%${firstName}%,last_name.ilike.%${lastName}%)`
+        );
+      } else {
+        // Single word: search in any field
+        contactQuery = contactQuery.or(
+          `first_name.ilike.%${query}%,last_name.ilike.%${query}%,email.ilike.%${query}%`
+        );
+      }
+
+      const { data: contacts } = await contactQuery.limit(10);
       results.push(...(contacts || []).map(c => ({
         id: c.id,
         type: 'contact',

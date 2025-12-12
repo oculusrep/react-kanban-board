@@ -15,6 +15,7 @@ import {
   SparklesIcon,
   ArrowPathIcon,
   FunnelIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 
 interface EmailWithLinks {
@@ -48,6 +49,15 @@ interface CRMObject {
   name: string;
 }
 
+// Correction modal state
+interface CorrectionModalState {
+  isOpen: boolean;
+  email: EmailWithLinks | null;
+  incorrectLink: EmailObjectLink | null;
+  correctObject: CRMObject | null;
+  feedbackText: string;
+}
+
 const EmailClassificationReviewPage: React.FC = () => {
   const [emails, setEmails] = useState<EmailWithLinks[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,6 +69,19 @@ const EmailClassificationReviewPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<CRMObject[]>([]);
   const [searching, setSearching] = useState(false);
+  const [feedbackReasoning, setFeedbackReasoning] = useState<Record<string, string>>({});
+
+  // Correction modal state
+  const [correctionModal, setCorrectionModal] = useState<CorrectionModalState>({
+    isOpen: false,
+    email: null,
+    incorrectLink: null,
+    correctObject: null,
+    feedbackText: '',
+  });
+  const [correctionSearchQuery, setCorrectionSearchQuery] = useState('');
+  const [correctionSearchResults, setCorrectionSearchResults] = useState<CRMObject[]>([]);
+  const [correctionSearching, setCorrectionSearching] = useState(false);
 
   const fetchEmails = useCallback(async () => {
     try {
@@ -217,11 +240,27 @@ const EmailClassificationReviewPage: React.FC = () => {
       }
 
       if (types.includes('contact')) {
-        const { data: contacts } = await supabase
+        // Smart contact search: split query into words to search across first_name + last_name
+        const queryWords = query.trim().split(/\s+/);
+        let contactQuery = supabase
           .from('contact')
-          .select('id, first_name, last_name, email')
-          .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,email.ilike.%${query}%`)
-          .limit(5);
+          .select('id, first_name, last_name, email');
+
+        if (queryWords.length >= 2) {
+          // Multi-word search: first word as first_name, rest as last_name
+          const firstName = queryWords[0];
+          const lastName = queryWords.slice(1).join(' ');
+          contactQuery = contactQuery.or(
+            `and(first_name.ilike.%${firstName}%,last_name.ilike.%${lastName}%),email.ilike.%${query}%`
+          );
+        } else {
+          // Single word: search in any field
+          contactQuery = contactQuery.or(
+            `first_name.ilike.%${query}%,last_name.ilike.%${query}%,email.ilike.%${query}%`
+          );
+        }
+
+        const { data: contacts } = await contactQuery.limit(10);
         results.push(...(contacts || []).map(c => ({
           id: c.id,
           type: 'contact',
@@ -324,6 +363,209 @@ const EmailClassificationReviewPage: React.FC = () => {
       alert('Rule created successfully! The AI will use this for future emails.');
     } catch (err: any) {
       alert('Error creating rule: ' + err.message);
+    }
+  };
+
+  const handleSaveFeedback = async (email: EmailWithLinks) => {
+    const reasoning = feedbackReasoning[email.id];
+    if (!reasoning?.trim()) {
+      alert('Please enter feedback before saving.');
+      return;
+    }
+
+    setProcessingId(email.id);
+    try {
+      // Log the correction for AI learning
+      const { error } = await supabase.from('ai_correction_log').insert({
+        email_id: email.id,
+        correction_type: 'feedback',
+        email_snippet: email.snippet || email.body_text?.substring(0, 200),
+        sender_email: email.sender_email,
+        reasoning_hint: reasoning,
+      });
+
+      if (error) throw error;
+
+      // Clear the feedback
+      setFeedbackReasoning(prev => {
+        const { [email.id]: _, ...rest } = prev;
+        return rest;
+      });
+
+      alert('Feedback saved! The AI will use this to improve future classifications.');
+    } catch (err: any) {
+      alert('Error saving feedback: ' + err.message);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  // Open correction modal for an AI link
+  const openCorrectionModal = (email: EmailWithLinks, link: EmailObjectLink) => {
+    setCorrectionModal({
+      isOpen: true,
+      email,
+      incorrectLink: link,
+      correctObject: null,
+      feedbackText: '',
+    });
+    setCorrectionSearchQuery('');
+    setCorrectionSearchResults([]);
+  };
+
+  // Close correction modal
+  const closeCorrectionModal = () => {
+    setCorrectionModal({
+      isOpen: false,
+      email: null,
+      incorrectLink: null,
+      correctObject: null,
+      feedbackText: '',
+    });
+    setCorrectionSearchQuery('');
+    setCorrectionSearchResults([]);
+  };
+
+  // Search for correct object in correction modal
+  const handleCorrectionSearch = async (query: string) => {
+    if (query.length < 2) {
+      setCorrectionSearchResults([]);
+      return;
+    }
+
+    setCorrectionSearching(true);
+    try {
+      const results: CRMObject[] = [];
+
+      // Search deals
+      const { data: deals } = await supabase
+        .from('deal')
+        .select('id, deal_name')
+        .ilike('deal_name', `%${query}%`)
+        .limit(5);
+      results.push(...(deals || []).map(d => ({ id: d.id, type: 'deal', name: d.deal_name })));
+
+      // Smart contact search
+      const queryWords = query.trim().split(/\s+/);
+      let contactQuery = supabase.from('contact').select('id, first_name, last_name, email');
+      if (queryWords.length >= 2) {
+        const firstName = queryWords[0];
+        const lastName = queryWords.slice(1).join(' ');
+        contactQuery = contactQuery.or(
+          `and(first_name.ilike.%${firstName}%,last_name.ilike.%${lastName}%),email.ilike.%${query}%`
+        );
+      } else {
+        contactQuery = contactQuery.or(
+          `first_name.ilike.%${query}%,last_name.ilike.%${query}%,email.ilike.%${query}%`
+        );
+      }
+      const { data: contacts } = await contactQuery.limit(10);
+      results.push(...(contacts || []).map(c => ({
+        id: c.id,
+        type: 'contact',
+        name: `${c.first_name || ''} ${c.last_name || ''}`.trim() + (c.email ? ` (${c.email})` : ''),
+      })));
+
+      // Search clients
+      const { data: clients } = await supabase
+        .from('client')
+        .select('id, client_name')
+        .ilike('client_name', `%${query}%`)
+        .limit(5);
+      results.push(...(clients || []).map(c => ({ id: c.id, type: 'client', name: c.client_name })));
+
+      // Search properties
+      const { data: properties } = await supabase
+        .from('property')
+        .select('id, property_name, address')
+        .or(`property_name.ilike.%${query}%,address.ilike.%${query}%`)
+        .limit(5);
+      results.push(...(properties || []).map(p => ({
+        id: p.id,
+        type: 'property',
+        name: p.property_name || p.address || 'Unknown',
+      })));
+
+      setCorrectionSearchResults(results);
+    } catch (err) {
+      console.error('Correction search error:', err);
+    } finally {
+      setCorrectionSearching(false);
+    }
+  };
+
+  // Save correction - the main transaction
+  const handleSaveCorrection = async () => {
+    const { email, incorrectLink, correctObject, feedbackText } = correctionModal;
+
+    if (!email || !incorrectLink || !correctObject) {
+      alert('Please select the correct object.');
+      return;
+    }
+
+    setProcessingId(incorrectLink.id);
+    try {
+      // 1. Log the correction to agent_corrections table
+      const { error: logError } = await supabase.from('agent_corrections').insert({
+        email_id: email.id,
+        incorrect_link_id: incorrectLink.id,
+        incorrect_object_type: incorrectLink.object_type,
+        incorrect_object_id: incorrectLink.object_id,
+        correct_object_type: correctObject.type,
+        correct_object_id: correctObject.id,
+        feedback_text: feedbackText || `Corrected from ${incorrectLink.object_type} to ${correctObject.type}`,
+        sender_email: email.sender_email,
+        email_subject: email.subject,
+      });
+
+      if (logError) throw logError;
+
+      // 2. Delete the old AI link
+      const { error: deleteError } = await supabase
+        .from('email_object_link')
+        .delete()
+        .eq('id', incorrectLink.id);
+
+      if (deleteError) throw deleteError;
+
+      // 3. Insert the new manual link
+      const { data: newLink, error: insertError } = await supabase
+        .from('email_object_link')
+        .insert({
+          email_id: email.id,
+          object_type: correctObject.type,
+          object_id: correctObject.id,
+          link_source: 'manual',
+          confidence_score: 1.0,
+          reasoning_log: feedbackText || `Manually corrected from AI classification`,
+        })
+        .select()
+        .single();
+
+      if (insertError && insertError.code !== '23505') throw insertError; // Ignore duplicate key
+
+      // 4. Update local state
+      setEmails(prev =>
+        prev.map(e => {
+          if (e.id !== email.id) return e;
+          const updatedLinks = e.links.filter(l => l.id !== incorrectLink.id);
+          if (newLink) {
+            updatedLinks.push({
+              ...newLink,
+              object_name: correctObject.name,
+            });
+          }
+          return { ...e, links: updatedLinks };
+        })
+      );
+
+      // 5. Close modal and show success
+      closeCorrectionModal();
+      alert('Correction saved! This will help train the AI for future classifications.');
+    } catch (err: any) {
+      alert('Error saving correction: ' + err.message);
+    } finally {
+      setProcessingId(null);
     }
   };
 
@@ -580,6 +822,16 @@ const EmailClassificationReviewPage: React.FC = () => {
                               )}
                             </div>
                             <div className="flex items-center gap-2 ml-4">
+                              {/* Correct button - only for AI links */}
+                              {link.link_source === 'ai_agent' && (
+                                <button
+                                  onClick={() => openCorrectionModal(email, link)}
+                                  className="p-1 text-gray-400 hover:text-blue-600"
+                                  title="Correct this AI classification"
+                                >
+                                  <PencilIcon className="w-4 h-4" />
+                                </button>
+                              )}
                               <button
                                 onClick={() => handleCreateRule(email, link)}
                                 className="p-1 text-gray-400 hover:text-purple-600"
@@ -602,14 +854,244 @@ const EmailClassificationReviewPage: React.FC = () => {
                     )}
                   </div>
 
+                  {/* AI Training / Feedback Section */}
+                  <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
+                    <div className="flex items-start gap-3">
+                      <SparklesIcon className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-purple-900 mb-2">
+                          Train the AI
+                        </h4>
+                        <p className="text-xs text-purple-700 mb-3">
+                          Provide feedback to help the AI learn from this example.
+                        </p>
+
+                        {/* Quick feedback buttons */}
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          <button
+                            onClick={() => setFeedbackReasoning(prev => ({
+                              ...prev,
+                              [email.id]: `This classification is correct. The AI made the right connections.`
+                            }))}
+                            className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-green-700 bg-green-100 rounded-full hover:bg-green-200 transition-colors"
+                          >
+                            <CheckCircleIcon className="w-3 h-3 mr-1" />
+                            Correct
+                          </button>
+                          <button
+                            onClick={() => setFeedbackReasoning(prev => ({
+                              ...prev,
+                              [email.id]: `This person (${email.sender_email}) is a known contact in our CRM. The AI should recognize contacts by their email address.`
+                            }))}
+                            className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-purple-700 bg-purple-100 rounded-full hover:bg-purple-200 transition-colors"
+                          >
+                            Already in contacts
+                          </button>
+                          <button
+                            onClick={() => setFeedbackReasoning(prev => ({
+                              ...prev,
+                              [email.id]: `This sender works for a company that is already a client in our CRM. Link emails from this domain to the client.`
+                            }))}
+                            className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-purple-700 bg-purple-100 rounded-full hover:bg-purple-200 transition-colors"
+                          >
+                            Works for existing client
+                          </button>
+                          <button
+                            onClick={() => setFeedbackReasoning(prev => ({
+                              ...prev,
+                              [email.id]: `The classification is wrong. This email should NOT be linked to these objects.`
+                            }))}
+                            className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-red-700 bg-red-100 rounded-full hover:bg-red-200 transition-colors"
+                          >
+                            <XCircleIcon className="w-3 h-3 mr-1" />
+                            Wrong
+                          </button>
+                        </div>
+
+                        {/* Detailed feedback textarea */}
+                        <textarea
+                          placeholder="Add details about the correct classification. For example: 'This person works for Oculus' or 'This should be linked to the Milledgeville deal'..."
+                          value={feedbackReasoning[email.id] || ''}
+                          onChange={(e) => setFeedbackReasoning(prev => ({ ...prev, [email.id]: e.target.value }))}
+                          className="w-full px-3 py-2 border border-purple-200 rounded-md text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
+                          rows={2}
+                        />
+
+                        {feedbackReasoning[email.id] && (
+                          <div className="mt-2 flex justify-end">
+                            <button
+                              onClick={() => handleSaveFeedback(email)}
+                              disabled={processingId === email.id}
+                              className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white bg-purple-600 rounded-md hover:bg-purple-700 disabled:opacity-50"
+                            >
+                              <CheckCircleIcon className="w-4 h-4 mr-1" />
+                              Save Feedback
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Processing Info */}
-                  <div className="text-xs text-gray-500 border-t pt-3">
+                  <div className="text-xs text-gray-500 border-t pt-3 mt-4">
                     Processed: {formatDate(email.ai_processed_at)}
                   </div>
                 </div>
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Correction Modal */}
+      {correctionModal.isOpen && correctionModal.email && correctionModal.incorrectLink && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Correct AI Classification
+              </h3>
+              <button
+                onClick={closeCorrectionModal}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XMarkIcon className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="px-6 py-4 space-y-4">
+              {/* Current (incorrect) classification */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Current AI Classification (Incorrect)
+                </label>
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 text-xs font-medium rounded ${getObjectTypeColor(correctionModal.incorrectLink.object_type)}`}>
+                      {correctionModal.incorrectLink.object_type}
+                    </span>
+                    <span className="font-medium text-gray-900">
+                      {correctionModal.incorrectLink.object_name}
+                    </span>
+                    <span className="text-xs text-red-600">
+                      ({Math.round(correctionModal.incorrectLink.confidence_score * 100)}% confidence)
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Select correct object */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Correct Object
+                </label>
+                {correctionModal.correctObject ? (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 text-xs font-medium rounded ${getObjectTypeColor(correctionModal.correctObject.type)}`}>
+                          {correctionModal.correctObject.type}
+                        </span>
+                        <span className="font-medium text-gray-900">
+                          {correctionModal.correctObject.name}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => setCorrectionModal(prev => ({ ...prev, correctObject: null }))}
+                        className="text-gray-400 hover:text-gray-600"
+                      >
+                        <XMarkIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Search for the correct deal, contact, client, or property..."
+                      value={correctionSearchQuery}
+                      onChange={(e) => {
+                        setCorrectionSearchQuery(e.target.value);
+                        handleCorrectionSearch(e.target.value);
+                      }}
+                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      autoFocus
+                    />
+                    {correctionSearching && (
+                      <div className="text-sm text-gray-500">Searching...</div>
+                    )}
+                    {correctionSearchResults.length > 0 && (
+                      <div className="border rounded-md divide-y max-h-48 overflow-y-auto">
+                        {correctionSearchResults.map((result) => (
+                          <button
+                            key={`${result.type}-${result.id}`}
+                            onClick={() => {
+                              setCorrectionModal(prev => ({ ...prev, correctObject: result }));
+                              setCorrectionSearchQuery('');
+                              setCorrectionSearchResults([]);
+                            }}
+                            className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50"
+                          >
+                            <span className="flex items-center gap-2">
+                              <span className={`inline-block px-1.5 py-0.5 text-xs font-medium rounded ${getObjectTypeColor(result.type)}`}>
+                                {result.type}
+                              </span>
+                              <span className="truncate">{result.name}</span>
+                            </span>
+                            <PlusIcon className="w-4 h-4 text-gray-400" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Feedback text */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Why was the AI wrong? (Optional)
+                </label>
+                <textarea
+                  placeholder="e.g., 'Wrong address match' or 'This person works for a different company'..."
+                  value={correctionModal.feedbackText}
+                  onChange={(e) => setCorrectionModal(prev => ({ ...prev, feedbackText: e.target.value }))}
+                  className="w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  rows={3}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  This feedback helps train the AI to avoid similar mistakes.
+                </p>
+              </div>
+
+              {/* Email context */}
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs font-medium text-gray-500 mb-1">Email Context:</p>
+                <p className="text-sm text-gray-700 font-medium">{correctionModal.email.subject}</p>
+                <p className="text-xs text-gray-500">{correctionModal.email.sender_email}</p>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t bg-gray-50">
+              <button
+                onClick={closeCorrectionModal}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveCorrection}
+                disabled={!correctionModal.correctObject || processingId === correctionModal.incorrectLink.id}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {processingId === correctionModal.incorrectLink.id ? 'Saving...' : 'Save Correction'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
