@@ -105,13 +105,23 @@ const SuggestedContactsPage: React.FC = () => {
     }
   }, [filter]);
 
+  // Fetch items when filter changes
   useEffect(() => {
     fetchItems();
-    // Get current user ID from user table for feedback logging
-    // Note: user.id may differ from auth.uid(), so we look up by email
+  }, [fetchItems]);
+
+  // Load current user ID on mount (separate from fetchItems to avoid re-running)
+  useEffect(() => {
     const loadUserId = async () => {
+      console.log('[User Lookup] Starting user ID lookup...');
       try {
-        const { data: authData } = await supabase.auth.getUser();
+        const { data: authData, error: authError } = await supabase.auth.getUser();
+
+        if (authError) {
+          console.error('[User Lookup] Auth error:', authError);
+          return;
+        }
+
         console.log('[User Lookup] Auth user:', authData.user?.id, authData.user?.email);
 
         if (authData.user?.email) {
@@ -151,7 +161,7 @@ const SuggestedContactsPage: React.FC = () => {
       }
     };
     loadUserId();
-  }, [fetchItems]);
+  }, []); // Only run once on mount
 
   const handleSearch = async (query: string) => {
     if (query.length < 2) {
