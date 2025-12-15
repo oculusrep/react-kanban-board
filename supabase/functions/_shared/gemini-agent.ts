@@ -933,6 +933,7 @@ export async function runEmailTriageAgent(
   supabase: SupabaseClient,
   email: {
     id: string;
+    thread_id?: string | null;
     subject: string;
     body_text: string;
     snippet: string;
@@ -1016,6 +1017,70 @@ export async function runEmailTriageAgent(
         result.rule_override = true;
         result.action = 'keep';
         return result;
+      }
+    }
+  }
+
+  // ========================================================================
+  // THREAD INHERITANCE: If this email is part of a thread where other emails
+  // have already been tagged, inherit those tags automatically
+  // ========================================================================
+  if (email.thread_id) {
+    console.log(`[Agent] Checking thread ${email.thread_id} for existing tags`);
+
+    // Find other emails in the same thread that have been tagged
+    const { data: threadEmails } = await supabase
+      .from('emails')
+      .select('id')
+      .eq('thread_id', email.thread_id)
+      .neq('id', email.id);
+
+    if (threadEmails && threadEmails.length > 0) {
+      const threadEmailIds = threadEmails.map(e => e.id);
+
+      // Get all tags from emails in this thread
+      const { data: threadTags } = await supabase
+        .from('email_object_link')
+        .select('object_type, object_id, reason')
+        .in('email_id', threadEmailIds);
+
+      if (threadTags && threadTags.length > 0) {
+        console.log(`[Agent] THREAD INHERITANCE: Found ${threadTags.length} tags from thread`);
+
+        // Get unique tags (dedupe by object_type + object_id)
+        const uniqueTags = new Map<string, { object_type: string; object_id: string; reason: string }>();
+        for (const tag of threadTags) {
+          const key = `${tag.object_type}:${tag.object_id}`;
+          if (!uniqueTags.has(key)) {
+            uniqueTags.set(key, tag);
+          }
+        }
+
+        // Apply each unique tag to this email
+        for (const [key, tag] of uniqueTags) {
+          const linkResult = await linkObject(
+            supabase,
+            email.id,
+            tag.object_type as 'deal' | 'contact' | 'property' | 'client',
+            tag.object_id,
+            0.95,
+            `Thread inheritance: Same conversation as tagged email`
+          );
+
+          if (linkResult.success) {
+            result.links_created++;
+            result.tags.push({
+              object_type: tag.object_type as 'deal' | 'contact' | 'property' | 'client',
+              object_id: tag.object_id,
+              confidence: 0.95,
+            });
+            console.log(`[Agent] THREAD: Inherited ${tag.object_type} tag: ${tag.object_id}`);
+          }
+        }
+
+        if (result.links_created > 0) {
+          console.log(`[Agent] Thread inheritance: Applied ${result.links_created} tags from thread`);
+        }
       }
     }
   }

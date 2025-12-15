@@ -70,6 +70,7 @@ serve(async (req) => {
         id,
         message_id,
         gmail_id,
+        thread_id,
         subject,
         body_text,
         snippet,
@@ -138,6 +139,7 @@ serve(async (req) => {
           supabase,
           {
             id: email.id,
+            thread_id: email.thread_id || null,
             subject: email.subject || '',
             body_text: email.body_text || '',
             snippet: email.snippet || '',
