@@ -471,6 +471,38 @@ const EmailClassificationReviewPage: React.FC = () => {
         }).then(() => {}).catch(err => console.error('Failed to log addition:', err));
       }
 
+      // Create activity record if linking to a deal (so it shows in deal timeline)
+      if (object.type === 'deal' && email) {
+        // Get the Email activity type ID
+        const { data: emailActivityType } = await supabase
+          .from('activity_type')
+          .select('id')
+          .eq('name', 'Email')
+          .single();
+
+        if (emailActivityType) {
+          const { error: activityError } = await supabase.from('activity').insert({
+            activity_type_id: emailActivityType.id,
+            subject: email.subject || 'Email',
+            description: email.snippet || email.body_text?.substring(0, 500),
+            activity_date: email.received_at,
+            email_id: emailId,
+            direction: email.direction,
+            sf_status: 'Completed',
+            deal_id: object.id,
+          });
+
+          if (activityError) {
+            // Ignore duplicate key errors
+            if (activityError.code !== '23505') {
+              console.error('Failed to create activity:', activityError);
+            }
+          } else {
+            console.log('[Manual Link] Created activity for deal:', object.id);
+          }
+        }
+      }
+
       // Update local state with the new link and mark as having pending changes
       // Don't auto-remove from list - let user add more links/feedback before marking reviewed
       const newLink: EmailObjectLink = {

@@ -171,30 +171,62 @@ serve(async (req) => {
 
           console.log(`[DELETE] Email deleted: ${email.subject}`);
         } else {
-          // KEEP: Create activity record if tags were added
+          // KEEP: Create activity records if tags were added
+          // Create one activity per deal (so email shows in each deal's timeline)
           if (agentResult.tags.length > 0 && emailActivityTypeId) {
-            const dealTag = agentResult.tags.find((t) => t.object_type === 'deal');
+            const dealTags = agentResult.tags.filter((t) => t.object_type === 'deal');
             const contactTag = agentResult.tags.find((t) => t.object_type === 'contact');
             const propertyTag = agentResult.tags.find((t) => t.object_type === 'property');
 
-            const activityData: any = {
-              activity_type_id: emailActivityTypeId,
-              subject: email.subject || 'Email',
-              description: email.snippet || email.body_text?.substring(0, 500),
-              activity_date: email.received_at,
-              email_id: email.id,
-              direction: email.direction,
-              sf_status: 'Completed',
-            };
+            // If we have deal tags, create an activity for EACH deal
+            if (dealTags.length > 0) {
+              for (const dealTag of dealTags) {
+                const activityData: any = {
+                  activity_type_id: emailActivityTypeId,
+                  subject: email.subject || 'Email',
+                  description: email.snippet || email.body_text?.substring(0, 500),
+                  activity_date: email.received_at,
+                  email_id: email.id,
+                  direction: email.direction,
+                  sf_status: 'Completed',
+                  deal_id: dealTag.object_id,
+                };
 
-            if (dealTag) activityData.deal_id = dealTag.object_id;
-            if (contactTag) activityData.contact_id = contactTag.object_id;
-            if (propertyTag) activityData.property_id = propertyTag.object_id;
+                if (contactTag) activityData.contact_id = contactTag.object_id;
+                if (propertyTag) activityData.property_id = propertyTag.object_id;
 
-            try {
-              await supabase.from('activity').insert(activityData);
-            } catch (actError: any) {
-              console.error('Error creating activity:', actError);
+                try {
+                  await supabase.from('activity').insert(activityData);
+                  console.log(`[Activity] Created email activity for deal: ${dealTag.object_id}`);
+                } catch (actError: any) {
+                  // Ignore duplicate key errors (activity might already exist)
+                  if (actError.code !== '23505') {
+                    console.error('Error creating activity:', actError);
+                  }
+                }
+              }
+            } else {
+              // No deals - create a single activity linked to contact/property only
+              const activityData: any = {
+                activity_type_id: emailActivityTypeId,
+                subject: email.subject || 'Email',
+                description: email.snippet || email.body_text?.substring(0, 500),
+                activity_date: email.received_at,
+                email_id: email.id,
+                direction: email.direction,
+                sf_status: 'Completed',
+              };
+
+              if (contactTag) activityData.contact_id = contactTag.object_id;
+              if (propertyTag) activityData.property_id = propertyTag.object_id;
+
+              try {
+                await supabase.from('activity').insert(activityData);
+              } catch (actError: any) {
+                if (actError.code !== '23505') {
+                  console.error('Error creating activity:', actError);
+                }
+              }
             }
           }
 
