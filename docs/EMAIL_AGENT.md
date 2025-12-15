@@ -743,12 +743,14 @@ WHERE processed_at < NOW() - INTERVAL '30 days';
 ```
 supabase/functions/
 ├── _shared/
-│   ├── gemini-agent.ts    # Autonomous agent with tools + rule override
-│   └── gmail.ts           # Gmail API helpers
+│   ├── gemini-agent.ts    # Autonomous agent with tools + rule override + thread inheritance
+│   └── gmail.ts           # Gmail API helpers + label management
 ├── email-triage/
-│   └── index.ts           # Edge function with delete logic
-└── gmail-sync/
-    └── index.ts           # Gmail sync with skip-deleted logic
+│   └── index.ts           # Edge function with delete logic + Gmail labels
+├── gmail-sync/
+│   └── index.ts           # Gmail sync with skip-deleted logic
+└── backfill-gmail-labels/
+    └── index.ts           # Apply OVIS-Linked labels to existing emails
 
 supabase/migrations/
 ├── 20251211_gmail_gemini_integration.sql  # Base schema
@@ -756,7 +758,8 @@ supabase/migrations/
 
 src/
 ├── components/
-│   └── AIReasoningTrace.tsx    # Per-email classification display
+│   ├── AIReasoningTrace.tsx    # Per-email classification display
+│   └── EmailDetailModal.tsx    # Email view with tag management
 └── pages/
     ├── AgentRulesPage.tsx              # Rule management
     ├── EmailClassificationReviewPage.tsx # Review/correct AI
@@ -773,21 +776,335 @@ docs/
 GEMINI_API_KEY=your-gemini-api-key  # In Supabase Edge Function secrets
 ```
 
+## Phase 3: Enhanced Email Intelligence (Completed)
+
+### Overview
+
+Phase 3 introduces several major enhancements to make the email agent smarter and more user-friendly:
+
+1. **Recipient Auto-Tagging** - All email recipients (To, CC, BCC) are matched to contacts
+2. **Thread-Based Tag Inheritance** - Replies automatically inherit tags from earlier emails in the conversation
+3. **Gmail Label Write-Back** - Emails linked in OVIS get an "OVIS-Linked" label in Gmail
+4. **Enhanced Deal Name Matching** - Stronger subject/body scanning for deal references
+5. **Tag Management in Email Detail Modal** - Users can add/remove tags directly from email view
+
+### 1. Recipient Auto-Tagging
+
+**Problem:** Only the sender was being matched to contacts. Recipients (To, CC, BCC) were ignored.
+
+**Solution:** The agent now iterates through all recipients and matches them to contacts:
+
+```typescript
+// In gemini-agent.ts - runEmailTriageAgent()
+if (email.recipient_list && email.recipient_list.length > 0) {
+  const direction = email.direction || 'INBOUND';
+
+  for (const recipient of email.recipient_list) {
+    const recipientEmail = recipient.email?.toLowerCase();
+    if (!recipientEmail) continue;
+
+    // Skip internal domains for inbound emails
+    if (direction === 'INBOUND') {
+      const internalDomains = ['ovisre.com', 'ovis.com'];
+      const emailDomain = recipientEmail.split('@')[1];
+      if (internalDomains.some(d => emailDomain === d)) continue;
+    }
+
+    // Match recipient to contact and create link
+    const { data: contactMatch } = await supabase
+      .from('contact')
+      .select('id, first_name, last_name')
+      .ilike('email', recipientEmail)
+      .limit(1)
+      .single();
+
+    if (contactMatch) {
+      // Create email_object_link for this contact
+    }
+  }
+}
+```
+
+**Behavior:**
+- **Inbound emails**: Skip internal domains (ovisre.com, ovis.com) to avoid tagging internal recipients
+- **Outbound emails**: Tag all external recipients to track who was contacted
+- **Deduplication**: Checks for existing links before creating new ones
+
+### 2. Thread-Based Tag Inheritance
+
+**Problem:** When replying to an email thread, users had to manually re-tag each email even though they're all part of the same conversation.
+
+**Solution:** Before AI processing, check if other emails in the same Gmail thread have been tagged, and inherit those tags:
+
+```typescript
+// In gemini-agent.ts - runEmailTriageAgent()
+if (email.thread_id) {
+  // Find other emails in the same thread that have been tagged
+  const { data: threadEmails } = await supabase
+    .from('emails')
+    .select('id')
+    .eq('thread_id', email.thread_id)
+    .neq('id', email.id);
+
+  if (threadEmails && threadEmails.length > 0) {
+    const threadEmailIds = threadEmails.map(e => e.id);
+
+    // Get all tags from emails in this thread
+    const { data: threadTags } = await supabase
+      .from('email_object_link')
+      .select('object_type, object_id, reason')
+      .in('email_id', threadEmailIds);
+
+    if (threadTags && threadTags.length > 0) {
+      console.log(`[Thread Inheritance] Found ${threadTags.length} tags from ${threadEmails.length} thread emails`);
+
+      // Apply unique tags to this email
+      const uniqueTags = new Map<string, any>();
+      for (const tag of threadTags) {
+        const key = `${tag.object_type}:${tag.object_id}`;
+        if (!uniqueTags.has(key)) {
+          uniqueTags.set(key, tag);
+        }
+      }
+
+      // Insert inherited tags
+      for (const [key, tag] of uniqueTags) {
+        await supabase.from('email_object_link').upsert({
+          email_id: email.id,
+          object_type: tag.object_type,
+          object_id: tag.object_id,
+          confidence_score: 0.95,
+          reasoning_log: `Inherited from thread: ${tag.reason || 'Previous email in thread was linked'}`,
+          link_source: 'thread_inheritance',
+        }, { onConflict: 'email_id,object_type,object_id' });
+      }
+    }
+  }
+}
+```
+
+**Key Points:**
+- Uses Gmail's `thread_id` to identify conversation threads
+- High confidence (0.95) since thread membership is reliable
+- Link source marked as `thread_inheritance` for tracking
+- Deduplicates tags from multiple thread emails
+
+### 3. Gmail Label Write-Back
+
+**Problem:** Users couldn't tell from Gmail which emails had been processed and linked in OVIS.
+
+**Solution:** After successfully linking an email, apply an "OVIS-Linked" label in Gmail:
+
+```typescript
+// In email-triage/index.ts
+const OVIS_LINKED_LABEL = 'OVIS-Linked';
+
+// After successful tagging
+if (agentResult.links_created > 0 && email.gmail_id && gmailConnectionId) {
+  const { data: connection } = await supabase
+    .from('gmail_connection')
+    .select('*')
+    .eq('id', gmailConnectionId)
+    .single();
+
+  if (connection) {
+    // Refresh token if needed
+    let accessToken = connection.access_token;
+    if (isTokenExpired(connection.token_expires_at)) {
+      const newTokens = await refreshAccessToken(
+        connection.refresh_token,
+        GOOGLE_CLIENT_ID,
+        GOOGLE_CLIENT_SECRET
+      );
+      accessToken = newTokens.access_token;
+      // Update token in database
+    }
+
+    // Apply the OVIS-Linked label
+    const labelResult = await applyLabelToMessage(
+      accessToken,
+      email.gmail_id,
+      OVIS_LINKED_LABEL
+    );
+
+    result.gmail_label_applied = labelResult.success;
+  }
+}
+```
+
+**New Gmail Label Functions** (`_shared/gmail.ts`):
+- `listLabels()` - List all Gmail labels
+- `createLabel()` - Create a new label
+- `findLabelByName()` - Find label by name (case-insensitive)
+- `getOrCreateLabel()` - Get existing or create new label
+- `modifyMessageLabels()` - Add/remove labels from a message
+- `applyLabelToMessage()` - High-level helper that handles errors gracefully
+
+**Permissions:** Requires `gmail.modify` scope. Falls back gracefully if not available.
+
+**Backfill Function:** A `backfill-gmail-labels` edge function is available to apply labels to previously processed emails.
+
+### 4. Enhanced Deal Name Matching
+
+**Problem:** AI was missing deals mentioned in email subject lines and body text because it wasn't scanning thoroughly.
+
+**Solution:** Enhanced the system prompt with explicit instructions to scan for deal references:
+
+```typescript
+const systemPrompt = `
+CRITICAL - DEAL NAME MATCHING:
+- ALWAYS extract keywords from the email subject AND body before finishing.
+- Deal names in OVIS often contain location information (city, state, street name, area).
+- When you see a location in the subject or body, search for deals containing that location.
+- Search by partial name: If subject says "Milledgeville", search_deals("Milledgeville").
+- Search by city: If email mentions "Atlanta project", search_deals("Atlanta").
+- Search by street: If email mentions "123 Main St", search_deals("Main").
+- Multiple search calls are OK - make sure to search for each distinct keyword.
+- NEVER skip deal search just because you found a contact match - deals are equally important.
+- If an email discusses a property, lease, LOI, or transaction, ALWAYS search for deals.
+
+COMMON MISTAKES TO AVOID:
+- DO NOT assume an email is spam just because sender is unknown
+- DO NOT skip deal search because you already found contacts
+- DO NOT finish without searching both contacts AND deals
+- DO NOT ignore location names in the subject line
+`;
+```
+
+### 5. Tag Management in Email Detail Modal
+
+**Problem:** Users could only view tags in the email detail modal. To add or remove tags, they had to go to the Email Classification Review page.
+
+**Solution:** Added full tag management directly in `EmailDetailModal.tsx`:
+
+**UI Components:**
+- **"Add Tag" button** - Opens search interface
+- **Search input** - Searches deals, contacts, clients, properties
+- **Search results dropdown** - Click to add tag
+- **Remove button (X)** - Appears on hover for each tag
+- **AI indicator** - Shows sparkle icon for AI-added tags
+
+**Functions Added:**
+
+```typescript
+// Search for CRM objects
+const handleSearch = async (query: string) => {
+  // Search deals, contacts, clients, properties
+  // Returns combined results with type badges
+};
+
+// Add a tag with AI training feedback
+const handleAddTag = async (object: CRMSearchResult) => {
+  // Create email_object_link
+  // Log to agent_corrections (AI missed this link)
+  // Create activity record if linking to deal
+  // Update local state
+};
+
+// Remove a tag with AI training feedback
+const handleRemoveTag = async (linkedObject: LinkedObject) => {
+  // Delete from email_object_link
+  // Log to agent_corrections if was AI-added (AI was wrong)
+  // Update local state
+};
+```
+
+**AI Training Integration:**
+- **Adding a tag**: Logs as "AI missed linking to [type]"
+- **Removing an AI tag**: Logs as "AI incorrectly linked to [type]"
+- These corrections feed into the Active Learning system
+
+**Visual Indicators:**
+- Tags now show a sparkle icon if `linkSource === 'ai_agent'`
+- Remove button appears on hover with red highlight
+- Loading spinner during add/remove operations
+
+### Updated Response Format
+
+The email triage response now includes Gmail label status:
+
+```json
+{
+  "success": true,
+  "duration_ms": 25458,
+  "processed": 3,
+  "total_tags": 2,
+  "total_tool_calls": 27,
+  "flagged_for_review": 0,
+  "deleted": 2,
+  "rule_overrides": 0,
+  "gmail_labels_applied": 1,
+  "results": [
+    {
+      "email_id": "uuid",
+      "subject": "Re: Milledgeville, GA",
+      "tags_added": 2,
+      "flagged_for_review": false,
+      "is_relevant": true,
+      "action": "keep",
+      "rule_override": false,
+      "tool_calls": 21,
+      "summary": "Linked to deal and client",
+      "gmail_label_applied": true,
+      "gmail_label_error": null
+    }
+  ]
+}
+```
+
+### Email Detail Modal - Link Sources
+
+The system now tracks and displays how each link was created:
+
+| Link Source | Display | Meaning |
+|-------------|---------|---------|
+| `ai_agent` | Sparkle icon | AI automatically linked |
+| `manual` | No icon | User manually added |
+| `thread_inheritance` | No icon | Inherited from thread |
+| `rule` | No icon | Created by rule match |
+
+### Testing Phase 3 Features
+
+**Test Recipient Tagging:**
+1. Send an email to multiple recipients who exist as contacts
+2. Run email triage
+3. Verify all recipients were tagged
+
+**Test Thread Inheritance:**
+1. Tag an email to a deal manually
+2. Send/receive a reply to that thread
+3. Run email triage on the reply
+4. Verify the reply inherited the deal tag
+
+**Test Gmail Labels:**
+1. Process an email that gets linked
+2. Check Gmail for "OVIS-Linked" label
+3. Run `backfill-gmail-labels` for existing emails
+
+**Test Tag Management:**
+1. Open an email in the detail modal
+2. Click "Add Tag" and search for a deal
+3. Add the tag, verify it appears with correct icon
+4. Remove a tag, verify it's deleted
+5. Check `agent_corrections` table for training data
+
+---
+
 ## Next Steps (Proposed)
 
-### Phase 3: Enhanced Rule System
+### Phase 4: Enhanced Rule System
 1. Auto-rule creation when users correct classifications
 2. Semantic rule matching with embeddings
 3. Rule testing preview
 4. Rule analytics (trigger counts)
 
-### Phase 4: Advanced Features
-1. Email threading (link entire threads)
-2. Attachment analysis (PDFs, images)
-3. Proactive suggestions (create task, update deal stage)
-4. Confidence calibration based on correction rates
+### Phase 5: Advanced Features
+1. Attachment analysis (PDFs, images via vision)
+2. Proactive suggestions (create task, update deal stage)
+3. Confidence calibration based on correction rates
+4. Email summary generation
 
-### Phase 5: Observability
+### Phase 6: Observability
 1. Agent dashboard with metrics
 2. Cost tracking per email
 3. Performance optimization
@@ -795,7 +1112,8 @@ GEMINI_API_KEY=your-gemini-api-key  # In Supabase Edge Function secrets
 
 ---
 
-*Document updated: December 12, 2025*
+*Document updated: December 15, 2025*
 *Phase 1 improvements completed*
 *Phase 2 Active Learning completed*
+*Phase 3 Enhanced Email Intelligence completed*
 *System: OVIS CRM with Gemini 2.5 Flash autonomous agent*
