@@ -96,9 +96,10 @@ serve(async (req) => {
     // Log the scopes actually granted by Google
     console.log('Scopes granted by Google:', tokens.scope);
 
-    // Verify gmail.readonly scope was granted
-    if (!tokens.scope?.includes('gmail.readonly')) {
-      console.error('gmail.readonly scope not granted! Received:', tokens.scope);
+    // Verify gmail.modify scope was granted (or gmail.readonly as fallback)
+    // gmail.modify includes all gmail.readonly permissions
+    if (!tokens.scope?.includes('gmail.modify') && !tokens.scope?.includes('gmail.readonly')) {
+      console.error('gmail.modify scope not granted! Received:', tokens.scope);
       return Response.redirect(
         `${FRONTEND_ERROR_URL}&message=missing_gmail_readonly_scope`
       );

@@ -17,9 +17,10 @@ const corsHeaders = {
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID')!;
 const GOOGLE_REDIRECT_URI = Deno.env.get('GOOGLE_REDIRECT_URI')!;
 
-// Gmail scopes needed (gmail.readonly is a superset of gmail.metadata, don't request both)
+// Gmail scopes needed
+// gmail.modify includes read + ability to add/remove labels
 const SCOPES = [
-  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.modify',
   'https://www.googleapis.com/auth/userinfo.email',
 ].join(' ');
 
