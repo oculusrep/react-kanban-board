@@ -8,6 +8,7 @@ import {
   XCircleIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  ChevronLeftIcon,
   PencilIcon,
   TrashIcon,
   PlusIcon,
@@ -15,6 +16,7 @@ import {
   ArrowPathIcon,
   FunnelIcon,
   XMarkIcon,
+  NoSymbolIcon,
 } from '@heroicons/react/24/outline';
 
 interface EmailWithLinks {
@@ -30,6 +32,7 @@ interface EmailWithLinks {
   ai_processed_at: string | null;
   links: EmailObjectLink[];
   hasReview: boolean; // Whether feedback/correction has been logged for this email
+  reviewType: 'none' | 'feedback' | 'not_business'; // Type of review
 }
 
 interface EmailObjectLink {
@@ -58,6 +61,14 @@ interface CorrectionModalState {
   feedbackText: string;
 }
 
+// Not Business modal state
+interface NotBusinessModalState {
+  isOpen: boolean;
+  email: EmailWithLinks | null;
+  createRule: boolean;
+  ruleType: 'sender' | 'domain';
+}
+
 const EmailClassificationReviewPage: React.FC = () => {
   const [emails, setEmails] = useState<EmailWithLinks[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,6 +95,14 @@ const EmailClassificationReviewPage: React.FC = () => {
   const [correctionSearchQuery, setCorrectionSearchQuery] = useState('');
   const [correctionSearchResults, setCorrectionSearchResults] = useState<CRMObject[]>([]);
   const [correctionSearching, setCorrectionSearching] = useState(false);
+
+  // Not Business modal state
+  const [notBusinessModal, setNotBusinessModal] = useState<NotBusinessModalState>({
+    isOpen: false,
+    email: null,
+    createRule: false,
+    ruleType: 'domain',
+  });
 
   const fetchEmails = useCallback(async () => {
     try {
@@ -121,10 +140,10 @@ const EmailClassificationReviewPage: React.FC = () => {
 
       if (linksError) throw linksError;
 
-      // Fetch reviewed email IDs from ai_correction_log
+      // Fetch reviewed email IDs from ai_correction_log with correction_type
       const { data: correctionLogData } = await supabase
         .from('ai_correction_log')
-        .select('email_id')
+        .select('email_id, correction_type')
         .in('email_id', emailIds);
 
       // Fetch reviewed email IDs from agent_corrections
@@ -133,11 +152,26 @@ const EmailClassificationReviewPage: React.FC = () => {
         .select('email_id')
         .in('email_id', emailIds);
 
-      // Combine reviewed email IDs into a Set
-      const reviewedEmailIds = new Set<string>([
-        ...(correctionLogData || []).map(c => c.email_id).filter(Boolean),
-        ...(agentCorrectionsData || []).map(c => c.email_id).filter(Boolean),
-      ]);
+      // Build a map of email_id -> review type
+      const reviewTypeMap = new Map<string, 'feedback' | 'not_business'>();
+
+      // Process ai_correction_log entries
+      for (const correction of correctionLogData || []) {
+        if (correction.email_id) {
+          if (correction.correction_type === 'not_business') {
+            reviewTypeMap.set(correction.email_id, 'not_business');
+          } else if (!reviewTypeMap.has(correction.email_id)) {
+            reviewTypeMap.set(correction.email_id, 'feedback');
+          }
+        }
+      }
+
+      // Process agent_corrections entries (these are always feedback type)
+      for (const correction of agentCorrectionsData || []) {
+        if (correction.email_id && !reviewTypeMap.has(correction.email_id)) {
+          reviewTypeMap.set(correction.email_id, 'feedback');
+        }
+      }
 
       // Resolve object names
       const linksWithNames = await resolveObjectNames(linksData || []);
@@ -146,7 +180,8 @@ const EmailClassificationReviewPage: React.FC = () => {
       const emailsWithLinks = (emailsData || []).map(email => ({
         ...email,
         links: linksWithNames.filter(l => l.email_id === email.id),
-        hasReview: reviewedEmailIds.has(email.id),
+        hasReview: reviewTypeMap.has(email.id),
+        reviewType: reviewTypeMap.get(email.id) || 'none' as const,
       }));
 
       // Apply link filter
@@ -527,12 +562,120 @@ const EmailClassificationReviewPage: React.FC = () => {
 
       // Mark email as reviewed in local state
       setEmails(prev =>
-        prev.map(e => e.id === email.id ? { ...e, hasReview: true } : e)
+        prev.map(e => e.id === email.id ? { ...e, hasReview: true, reviewType: 'feedback' } : e)
       );
 
       alert('Feedback saved! The AI will use this to improve future classifications.');
     } catch (err: any) {
       alert('Error saving feedback: ' + err.message);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  // Open Not Business modal
+  const openNotBusinessModal = (email: EmailWithLinks) => {
+    setNotBusinessModal({
+      isOpen: true,
+      email,
+      createRule: false,
+      ruleType: 'domain',
+    });
+  };
+
+  // Close Not Business modal
+  const closeNotBusinessModal = () => {
+    setNotBusinessModal({
+      isOpen: false,
+      email: null,
+      createRule: false,
+      ruleType: 'domain',
+    });
+  };
+
+  // Handle Not Business action
+  const handleNotBusiness = async () => {
+    const { email, createRule, ruleType } = notBusinessModal;
+
+    if (!email) return;
+
+    if (!currentUserId) {
+      alert('Unable to save: User ID not loaded. Please try again.');
+      return;
+    }
+
+    setProcessingId(email.id);
+    try {
+      // 1. Remove all AI links for this email
+      if (email.links.length > 0) {
+        const aiLinkIds = email.links
+          .filter(l => l.link_source === 'ai_agent')
+          .map(l => l.id);
+
+        if (aiLinkIds.length > 0) {
+          const { error: deleteError } = await supabase
+            .from('email_object_link')
+            .delete()
+            .in('id', aiLinkIds);
+
+          if (deleteError) throw deleteError;
+        }
+      }
+
+      // 2. Log to ai_correction_log with correction_type = 'not_business'
+      const { error: logError } = await supabase.from('ai_correction_log').insert({
+        user_id: currentUserId,
+        email_id: email.id,
+        correction_type: 'not_business',
+        email_snippet: email.snippet || email.body_text?.substring(0, 200),
+        sender_email: email.sender_email,
+        reasoning_hint: `Marked as not business related. ${createRule ? `Created ${ruleType} exclusion rule.` : ''}`,
+      });
+
+      if (logError) {
+        console.error('[Not Business] Error logging:', logError);
+        throw logError;
+      }
+
+      // 3. Optionally create exclusion rule
+      if (createRule) {
+        const domain = email.sender_email.split('@')[1];
+        const matchPattern = ruleType === 'domain' ? domain : email.sender_email;
+        const ruleText = ruleType === 'domain'
+          ? `Exclude all emails from @${domain} (not business related)`
+          : `Exclude emails from ${email.sender_email} (not business related)`;
+
+        const { error: ruleError } = await supabase.from('agent_rules').insert({
+          rule_text: ruleText,
+          rule_type: 'exclusion',
+          match_pattern: matchPattern,
+          priority: 100,
+          is_active: true,
+        });
+
+        if (ruleError) {
+          console.error('[Not Business] Error creating rule:', ruleError);
+          // Don't throw - rule creation is optional
+        }
+      }
+
+      // 4. Update local state
+      setEmails(prev =>
+        prev.map(e => {
+          if (e.id !== email.id) return e;
+          return {
+            ...e,
+            links: e.links.filter(l => l.link_source !== 'ai_agent'),
+            hasReview: true,
+            reviewType: 'not_business',
+          };
+        })
+      );
+
+      closeNotBusinessModal();
+      alert('Email marked as not business related.' + (createRule ? ' Exclusion rule created.' : ''));
+    } catch (err: any) {
+      alert('Error: ' + err.message);
     } finally {
       setProcessingId(null);
     }
@@ -693,7 +836,7 @@ const EmailClassificationReviewPage: React.FC = () => {
               object_name: correctObject.name,
             });
           }
-          return { ...e, links: updatedLinks, hasReview: true };
+          return { ...e, links: updatedLinks, hasReview: true, reviewType: 'feedback' };
         })
       );
 
@@ -743,6 +886,13 @@ const EmailClassificationReviewPage: React.FC = () => {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <Link
+              to="/admin/gmail"
+              className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <ChevronLeftIcon className="w-4 h-4 mr-1" />
+              Gmail Settings
+            </Link>
             <Link
               to="/admin/agent-rules"
               className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
@@ -852,10 +1002,16 @@ const EmailClassificationReviewPage: React.FC = () => {
                             {email.links.length} link{email.links.length !== 1 ? 's' : ''}
                           </span>
                         )}
-                        {email.hasReview && (
+                        {email.reviewType === 'feedback' && (
                           <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded-full flex items-center gap-1">
                             <CheckCircleIcon className="w-3 h-3" />
                             Reviewed
+                          </span>
+                        )}
+                        {email.reviewType === 'not_business' && (
+                          <span className="px-2 py-0.5 text-xs font-medium bg-orange-100 text-orange-700 rounded-full flex items-center gap-1">
+                            <NoSymbolIcon className="w-3 h-3" />
+                            Not Business
                           </span>
                         )}
                       </div>
@@ -899,16 +1055,29 @@ const EmailClassificationReviewPage: React.FC = () => {
                   <div className="mb-4">
                     <div className="flex items-center justify-between mb-2">
                       <h4 className="text-sm font-medium text-gray-700">AI Classifications</h4>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowAddLink(showAddLink === email.id ? null : email.id);
-                        }}
-                        className="inline-flex items-center px-2 py-1 text-xs font-medium text-purple-700 bg-purple-100 rounded hover:bg-purple-200"
-                      >
-                        <PlusIcon className="w-3 h-3 mr-1" />
-                        Add Link
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openNotBusinessModal(email);
+                          }}
+                          disabled={email.reviewType === 'not_business'}
+                          className="inline-flex items-center px-2 py-1 text-xs font-medium text-orange-700 bg-orange-100 rounded hover:bg-orange-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <NoSymbolIcon className="w-3 h-3 mr-1" />
+                          Not Business
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowAddLink(showAddLink === email.id ? null : email.id);
+                          }}
+                          className="inline-flex items-center px-2 py-1 text-xs font-medium text-purple-700 bg-purple-100 rounded hover:bg-purple-200"
+                        >
+                          <PlusIcon className="w-3 h-3 mr-1" />
+                          Add Link
+                        </button>
+                      </div>
                     </div>
 
                     {/* Add Link Form */}
@@ -1249,6 +1418,110 @@ const EmailClassificationReviewPage: React.FC = () => {
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {processingId === correctionModal.incorrectLink.id ? 'Saving...' : 'Save Correction'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Not Business Modal */}
+      {notBusinessModal.isOpen && notBusinessModal.email && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Mark as Not Business Related
+              </h3>
+              <button
+                onClick={closeNotBusinessModal}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XMarkIcon className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="px-6 py-4 space-y-4">
+              {/* Email info */}
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm font-medium text-gray-900">{notBusinessModal.email.subject || '(No Subject)'}</p>
+                <p className="text-xs text-gray-500 mt-1">{notBusinessModal.email.sender_email}</p>
+              </div>
+
+              <p className="text-sm text-gray-600">
+                This will remove any AI classifications and mark this email as not business related.
+                {notBusinessModal.email.links.filter(l => l.link_source === 'ai_agent').length > 0 && (
+                  <span className="text-orange-600 font-medium">
+                    {' '}({notBusinessModal.email.links.filter(l => l.link_source === 'ai_agent').length} AI link(s) will be removed)
+                  </span>
+                )}
+              </p>
+
+              {/* Create exclusion rule option */}
+              <div className="border rounded-lg p-4 space-y-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={notBusinessModal.createRule}
+                    onChange={(e) => setNotBusinessModal(prev => ({ ...prev, createRule: e.target.checked }))}
+                    className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    Create exclusion rule for future emails
+                  </span>
+                </label>
+
+                {notBusinessModal.createRule && (
+                  <div className="ml-6 space-y-2">
+                    <p className="text-xs text-gray-500">Exclude emails from:</p>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="ruleType"
+                          value="domain"
+                          checked={notBusinessModal.ruleType === 'domain'}
+                          onChange={() => setNotBusinessModal(prev => ({ ...prev, ruleType: 'domain' }))}
+                          className="w-4 h-4 text-orange-600 border-gray-300 focus:ring-orange-500"
+                        />
+                        <span className="text-sm text-gray-700">
+                          @{notBusinessModal.email.sender_email.split('@')[1]}
+                        </span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="ruleType"
+                          value="sender"
+                          checked={notBusinessModal.ruleType === 'sender'}
+                          onChange={() => setNotBusinessModal(prev => ({ ...prev, ruleType: 'sender' }))}
+                          className="w-4 h-4 text-orange-600 border-gray-300 focus:ring-orange-500"
+                        />
+                        <span className="text-sm text-gray-700">
+                          {notBusinessModal.email.sender_email}
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t bg-gray-50">
+              <button
+                onClick={closeNotBusinessModal}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleNotBusiness}
+                disabled={processingId === notBusinessModal.email.id}
+                className="px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-md hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {processingId === notBusinessModal.email.id ? 'Saving...' : 'Mark as Not Business'}
               </button>
             </div>
           </div>
