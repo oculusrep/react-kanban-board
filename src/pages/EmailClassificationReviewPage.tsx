@@ -8,7 +8,6 @@ import {
   XCircleIcon,
   ChevronDownIcon,
   ChevronRightIcon,
-  TagIcon,
   PencilIcon,
   TrashIcon,
   PlusIcon,
@@ -70,6 +69,7 @@ const EmailClassificationReviewPage: React.FC = () => {
   const [searchResults, setSearchResults] = useState<CRMObject[]>([]);
   const [searching, setSearching] = useState(false);
   const [feedbackReasoning, setFeedbackReasoning] = useState<Record<string, string>>({});
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Correction modal state
   const [correctionModal, setCorrectionModal] = useState<CorrectionModalState>({
@@ -188,6 +188,59 @@ const EmailClassificationReviewPage: React.FC = () => {
 
     return resolvedLinks;
   };
+
+  // Load current user ID on mount (separate from fetchEmails to avoid re-running)
+  useEffect(() => {
+    const loadUserId = async () => {
+      console.log('[User Lookup] Starting user ID lookup...');
+      try {
+        const { data: authData, error: authError } = await supabase.auth.getUser();
+
+        if (authError) {
+          console.error('[User Lookup] Auth error:', authError);
+          return;
+        }
+
+        if (authData.user?.email) {
+          // Try to get the user ID from the user table
+          const { data: userData, error } = await supabase
+            .from('user')
+            .select('id')
+            .eq('email', authData.user.email)
+            .single();
+
+          if (error) {
+            console.error('[User Lookup] Error fetching user:', error);
+            // Fallback to auth.uid() if user table lookup fails
+            if (authData.user?.id) {
+              console.log('[User Lookup] Using auth.uid() as fallback:', authData.user.id);
+              setCurrentUserId(authData.user.id);
+            }
+          } else if (userData) {
+            console.log('[User Lookup] Found user:', userData.id);
+            setCurrentUserId(userData.id);
+          } else {
+            console.warn('[User Lookup] No user found for email:', authData.user.email);
+            // Fallback to auth.uid()
+            if (authData.user?.id) {
+              console.log('[User Lookup] Using auth.uid() as fallback:', authData.user.id);
+              setCurrentUserId(authData.user.id);
+            }
+          }
+        } else if (authData.user?.id) {
+          // No email but we have auth.uid(), use that
+          console.log('[User Lookup] No email, using auth.uid():', authData.user.id);
+          setCurrentUserId(authData.user.id);
+        } else {
+          console.warn('[User Lookup] No auth user available');
+        }
+      } catch (err) {
+        console.error('[User Lookup] Exception:', err);
+      }
+    };
+
+    loadUserId();
+  }, []);
 
   useEffect(() => {
     fetchEmails();
@@ -411,10 +464,19 @@ const EmailClassificationReviewPage: React.FC = () => {
       return;
     }
 
+    if (!currentUserId) {
+      console.warn('[AI Feedback] Cannot log - user ID not loaded yet');
+      alert('Unable to save feedback: User ID not loaded. Please try again.');
+      return;
+    }
+
     setProcessingId(email.id);
     try {
+      console.log('[AI Feedback] Logging feedback with user_id:', currentUserId, 'email_id:', email.id);
+
       // Log the correction for AI learning
       const { error } = await supabase.from('ai_correction_log').insert({
+        user_id: currentUserId,
         email_id: email.id,
         correction_type: 'feedback',
         email_snippet: email.snippet || email.body_text?.substring(0, 200),
@@ -422,7 +484,12 @@ const EmailClassificationReviewPage: React.FC = () => {
         reasoning_hint: reasoning,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('[AI Feedback] Error:', error.message, error.details, error.hint);
+        throw error;
+      }
+
+      console.log('[AI Feedback] Feedback saved successfully');
 
       // Clear the feedback
       setFeedbackReasoning(prev => {
