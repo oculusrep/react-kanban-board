@@ -33,6 +33,7 @@ interface EmailWithLinks {
   links: EmailObjectLink[];
   hasReview: boolean; // Whether feedback/correction has been logged for this email
   reviewType: 'none' | 'feedback' | 'not_business'; // Type of review
+  pendingChanges?: boolean; // Track if user has made changes in this session (links added, feedback given)
 }
 
 interface EmailObjectLink {
@@ -470,24 +471,20 @@ const EmailClassificationReviewPage: React.FC = () => {
         }).then(() => {}).catch(err => console.error('Failed to log addition:', err));
       }
 
-      // Update local state with the new link and mark as reviewed
+      // Update local state with the new link and mark as having pending changes
+      // Don't auto-remove from list - let user add more links/feedback before marking reviewed
       const newLink: EmailObjectLink = {
         ...data,
         object_name: object.name,
       };
 
-      setEmails(prev => {
-        // If we're on "needs_review" filter, remove the email from the list
-        if (reviewFilter === 'needs_review') {
-          return prev.filter(e => e.id !== emailId);
-        }
-        // Otherwise update it in place with the new link and mark as reviewed
-        return prev.map(e =>
+      setEmails(prev =>
+        prev.map(e =>
           e.id === emailId
-            ? { ...e, links: [...e.links, newLink], hasReview: true, reviewType: 'feedback' }
+            ? { ...e, links: [...e.links, newLink], pendingChanges: true }
             : e
-        );
-      });
+        )
+      );
 
       setShowAddLink(null);
       setSearchQuery('');
@@ -565,17 +562,56 @@ const EmailClassificationReviewPage: React.FC = () => {
         return rest;
       });
 
-      // Mark email as reviewed in local state - filter out if on "needs_review" view
+      // Mark email as having pending changes - don't auto-remove from list
+      setEmails(prev =>
+        prev.map(e => e.id === email.id ? { ...e, pendingChanges: true } : e)
+      );
+
+      alert('Feedback saved! Click "Mark Reviewed" when you\'re done with this email.');
+    } catch (err: any) {
+      alert('Error saving feedback: ' + err.message);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  // Explicitly mark an email as reviewed and remove from "Needs Review" list
+  const handleMarkReviewed = async (email: EmailWithLinks) => {
+    if (!currentUserId) {
+      alert('Unable to save: User ID not loaded. Please try again.');
+      return;
+    }
+
+    setProcessingId(email.id);
+    try {
+      // Log to ai_correction_log that the email was reviewed (even if no specific feedback)
+      const { error } = await supabase.from('ai_correction_log').insert({
+        user_id: currentUserId,
+        email_id: email.id,
+        correction_type: 'reviewed',
+        email_snippet: email.snippet || email.body_text?.substring(0, 200),
+        sender_email: email.sender_email,
+        reasoning_hint: 'User marked email as reviewed after checking classifications',
+      });
+
+      if (error) {
+        console.error('[Mark Reviewed] Error:', error.message, error.details);
+        throw error;
+      }
+
+      // Remove from the list if on "needs_review" view, otherwise mark as reviewed
       setEmails(prev => {
         if (reviewFilter === 'needs_review') {
           return prev.filter(e => e.id !== email.id);
         }
-        return prev.map(e => e.id === email.id ? { ...e, hasReview: true, reviewType: 'feedback' } : e);
+        return prev.map(e =>
+          e.id === email.id
+            ? { ...e, hasReview: true, reviewType: 'feedback', pendingChanges: false }
+            : e
+        );
       });
-
-      alert('Feedback saved! The AI will use this to improve future classifications.');
     } catch (err: any) {
-      alert('Error saving feedback: ' + err.message);
+      alert('Error marking as reviewed: ' + err.message);
     } finally {
       setProcessingId(null);
     }
@@ -843,12 +879,9 @@ const EmailClassificationReviewPage: React.FC = () => {
 
       if (insertError && insertError.code !== '23505') throw insertError; // Ignore duplicate key
 
-      // 4. Update local state (update links and mark as reviewed) - filter out if on "needs_review" view
-      setEmails(prev => {
-        if (reviewFilter === 'needs_review') {
-          return prev.filter(e => e.id !== email.id);
-        }
-        return prev.map(e => {
+      // 4. Update local state (update links and mark pending changes) - don't auto-remove
+      setEmails(prev =>
+        prev.map(e => {
           if (e.id !== email.id) return e;
           const updatedLinks = e.links.filter(l => l.id !== incorrectLink.id);
           if (newLink) {
@@ -857,13 +890,13 @@ const EmailClassificationReviewPage: React.FC = () => {
               object_name: correctObject.name,
             });
           }
-          return { ...e, links: updatedLinks, hasReview: true, reviewType: 'feedback' };
-        });
-      });
+          return { ...e, links: updatedLinks, pendingChanges: true };
+        })
+      );
 
       // 5. Close modal and show success
       closeCorrectionModal();
-      alert('Correction saved! This will help train the AI for future classifications.');
+      alert('Correction saved! Click "Mark Reviewed" when you\'re done with this email.');
     } catch (err: any) {
       alert('Error saving correction: ' + err.message);
     } finally {
@@ -1098,6 +1131,24 @@ const EmailClassificationReviewPage: React.FC = () => {
                           <PlusIcon className="w-3 h-3 mr-1" />
                           Add Link
                         </button>
+                        {/* Mark Reviewed button - shows when user has made changes or wants to confirm review */}
+                        {reviewFilter === 'needs_review' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMarkReviewed(email);
+                            }}
+                            disabled={processingId === email.id}
+                            className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded ${
+                              email.pendingChanges
+                                ? 'text-white bg-green-600 hover:bg-green-700 animate-pulse'
+                                : 'text-green-700 bg-green-100 hover:bg-green-200'
+                            } disabled:opacity-50`}
+                          >
+                            <CheckCircleIcon className="w-3 h-3 mr-1" />
+                            {processingId === email.id ? 'Saving...' : email.pendingChanges ? 'Done - Mark Reviewed' : 'Mark Reviewed'}
+                          </button>
+                        )}
                       </div>
                     </div>
 
