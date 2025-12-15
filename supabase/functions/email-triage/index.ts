@@ -12,6 +12,12 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import { runEmailTriageAgent } from '../_shared/gemini-agent.ts';
+import {
+  applyLabelToMessage,
+  refreshAccessToken,
+  isTokenExpired,
+  GmailConnection,
+} from '../_shared/gmail.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,6 +27,11 @@ const corsHeaders = {
 // Configuration
 const BATCH_SIZE = 5; // Smaller batch since agent calls are more expensive
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')!;
+const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID')!;
+const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
+
+// Gmail label applied to successfully processed emails
+const OVIS_LINKED_LABEL = 'OVIS-Linked';
 
 interface TriageResult {
   email_id: string;
@@ -32,6 +43,8 @@ interface TriageResult {
   rule_override: boolean;
   tool_calls: number;
   summary: string;
+  gmail_label_applied: boolean;
+  gmail_label_error?: string;
   error?: string;
 }
 
@@ -56,6 +69,7 @@ serve(async (req) => {
       .select(`
         id,
         message_id,
+        gmail_id,
         subject,
         body_text,
         snippet,
@@ -107,6 +121,7 @@ serve(async (req) => {
         rule_override: false,
         tool_calls: 0,
         summary: '',
+        gmail_label_applied: false,
       };
 
       try {
@@ -238,6 +253,63 @@ serve(async (req) => {
               ai_processed_at: new Date().toISOString(),
             })
             .eq('id', email.id);
+
+          // Apply Gmail label if email was successfully linked (has tags)
+          // This provides visual feedback in Gmail that OVIS has processed the email
+          if (agentResult.links_created > 0 && email.gmail_id && gmailConnectionId) {
+            try {
+              // Get the Gmail connection to get access token
+              const { data: connection } = await supabase
+                .from('gmail_connection')
+                .select('*')
+                .eq('id', gmailConnectionId)
+                .single();
+
+              if (connection) {
+                // Refresh token if needed
+                let accessToken = connection.access_token;
+                if (isTokenExpired(connection.token_expires_at)) {
+                  console.log(`[Gmail Label] Refreshing token for label application`);
+                  const newTokens = await refreshAccessToken(
+                    connection.refresh_token,
+                    GOOGLE_CLIENT_ID,
+                    GOOGLE_CLIENT_SECRET
+                  );
+                  accessToken = newTokens.access_token;
+
+                  // Update token in database
+                  const tokenExpiresAt = new Date(Date.now() + newTokens.expires_in * 1000);
+                  await supabase
+                    .from('gmail_connection')
+                    .update({
+                      access_token: accessToken,
+                      token_expires_at: tokenExpiresAt.toISOString(),
+                      updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', connection.id);
+                }
+
+                // Apply the OVIS-Linked label
+                const labelResult = await applyLabelToMessage(
+                  accessToken,
+                  email.gmail_id,
+                  OVIS_LINKED_LABEL
+                );
+
+                result.gmail_label_applied = labelResult.success;
+                if (!labelResult.success) {
+                  result.gmail_label_error = labelResult.error;
+                  console.log(`[Gmail Label] Could not apply label: ${labelResult.error}`);
+                } else {
+                  console.log(`[Gmail Label] Applied "${OVIS_LINKED_LABEL}" to: ${email.subject}`);
+                }
+              }
+            } catch (labelError: any) {
+              // Don't fail the whole triage for label errors
+              console.error(`[Gmail Label] Error applying label:`, labelError);
+              result.gmail_label_error = labelError.message;
+            }
+          }
         }
 
         console.log(
@@ -268,11 +340,12 @@ serve(async (req) => {
     const flaggedCount = results.filter((r) => r.flagged_for_review).length;
     const deletedCount = results.filter((r) => r.action === 'delete').length;
     const ruleOverrideCount = results.filter((r) => r.rule_override).length;
+    const labelsApplied = results.filter((r) => r.gmail_label_applied).length;
 
     console.log(
       `Agent triage complete in ${duration}ms: ${results.length} emails, ` +
       `${totalTags} tags, ${totalToolCalls} tool calls, ${flaggedCount} flagged, ` +
-      `${deletedCount} deleted, ${ruleOverrideCount} rule overrides`
+      `${deletedCount} deleted, ${ruleOverrideCount} rule overrides, ${labelsApplied} labeled`
     );
 
     return new Response(
@@ -285,6 +358,7 @@ serve(async (req) => {
         flagged_for_review: flaggedCount,
         deleted: deletedCount,
         rule_overrides: ruleOverrideCount,
+        gmail_labels_applied: labelsApplied,
         results,
       }),
       {

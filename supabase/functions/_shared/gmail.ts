@@ -540,6 +540,156 @@ export async function syncEmailsForConnection(
   };
 }
 
+// ============================================================================
+// Gmail Label Management
+// ============================================================================
+
+export interface GmailLabel {
+  id: string;
+  name: string;
+  type: 'system' | 'user';
+  messageListVisibility?: 'show' | 'hide';
+  labelListVisibility?: 'labelShow' | 'labelShowIfUnread' | 'labelHide';
+}
+
+/**
+ * List all labels in the user's Gmail account
+ */
+export async function listLabels(accessToken: string): Promise<GmailLabel[]> {
+  const response = await gmailRequest<{ labels: GmailLabel[] }>(
+    '/users/me/labels',
+    accessToken
+  );
+  return response.labels || [];
+}
+
+/**
+ * Get a specific label by ID
+ */
+export async function getLabel(accessToken: string, labelId: string): Promise<GmailLabel> {
+  return await gmailRequest<GmailLabel>(
+    `/users/me/labels/${labelId}`,
+    accessToken
+  );
+}
+
+/**
+ * Create a new label
+ */
+export async function createLabel(
+  accessToken: string,
+  name: string,
+  options?: {
+    messageListVisibility?: 'show' | 'hide';
+    labelListVisibility?: 'labelShow' | 'labelShowIfUnread' | 'labelHide';
+  }
+): Promise<GmailLabel> {
+  return await gmailRequest<GmailLabel>(
+    '/users/me/labels',
+    accessToken,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        messageListVisibility: options?.messageListVisibility || 'show',
+        labelListVisibility: options?.labelListVisibility || 'labelShow',
+      }),
+    }
+  );
+}
+
+/**
+ * Find a label by name (case-insensitive)
+ * Returns null if not found
+ */
+export async function findLabelByName(
+  accessToken: string,
+  labelName: string
+): Promise<GmailLabel | null> {
+  const labels = await listLabels(accessToken);
+  const lowerName = labelName.toLowerCase();
+  return labels.find(l => l.name.toLowerCase() === lowerName) || null;
+}
+
+/**
+ * Get or create a label by name
+ * Returns the label ID
+ */
+export async function getOrCreateLabel(
+  accessToken: string,
+  labelName: string
+): Promise<string> {
+  // First, try to find existing label
+  const existingLabel = await findLabelByName(accessToken, labelName);
+  if (existingLabel) {
+    return existingLabel.id;
+  }
+
+  // Create new label
+  const newLabel = await createLabel(accessToken, labelName);
+  return newLabel.id;
+}
+
+/**
+ * Modify labels on a message (add and/or remove labels)
+ * Requires gmail.modify scope
+ */
+export async function modifyMessageLabels(
+  accessToken: string,
+  messageId: string,
+  addLabelIds?: string[],
+  removeLabelIds?: string[]
+): Promise<void> {
+  await gmailRequest(
+    `/users/me/messages/${messageId}/modify`,
+    accessToken,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        addLabelIds: addLabelIds || [],
+        removeLabelIds: removeLabelIds || [],
+      }),
+    }
+  );
+}
+
+/**
+ * Apply a label to a message by label name
+ * Creates the label if it doesn't exist
+ * Gracefully handles permission errors (missing gmail.modify scope)
+ */
+export async function applyLabelToMessage(
+  accessToken: string,
+  messageId: string,
+  labelName: string
+): Promise<{ success: boolean; error?: string; labelId?: string }> {
+  try {
+    // Get or create the label
+    const labelId = await getOrCreateLabel(accessToken, labelName);
+
+    // Apply it to the message
+    await modifyMessageLabels(accessToken, messageId, [labelId]);
+
+    return { success: true, labelId };
+  } catch (error: any) {
+    // Handle permission errors gracefully
+    if (error.status === 403) {
+      console.warn(`[Gmail Label] Permission denied - gmail.modify scope may be required: ${error.message}`);
+      return {
+        success: false,
+        error: 'Permission denied - gmail.modify scope required'
+      };
+    }
+
+    // Handle other errors
+    console.error(`[Gmail Label] Error applying label "${labelName}":`, error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
 /**
  * Revoke OAuth tokens (for disconnect)
  */
