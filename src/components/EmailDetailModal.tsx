@@ -75,8 +75,14 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
       const url = `${supabaseUrl}/functions/v1/get-attachment?attachment_id=${attachment.id}`;
 
       if (preview && isPreviewable(attachment.mime_type)) {
-        // Open in new tab for preview
-        window.open(url, '_blank');
+        // For Office documents, use Google Docs Viewer
+        if (isOfficeDocument(attachment.mime_type)) {
+          const viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=false`;
+          window.open(viewerUrl, '_blank');
+        } else {
+          // Open directly in new tab for images, PDFs, text
+          window.open(url, '_blank');
+        }
       } else {
         // Download the file
         const link = document.createElement('a');
@@ -99,7 +105,22 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
     if (!mimeType) return false;
     return mimeType.startsWith('image/') ||
            mimeType === 'application/pdf' ||
-           mimeType.startsWith('text/');
+           mimeType.startsWith('text/') ||
+           isOfficeDocument(mimeType);
+  };
+
+  // Check if file is an Office document (Word, Excel, PowerPoint)
+  const isOfficeDocument = (mimeType: string | null): boolean => {
+    if (!mimeType) return false;
+    const officeTypes = [
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    ];
+    return officeTypes.includes(mimeType);
   };
 
   // Fetch full email details when modal opens
