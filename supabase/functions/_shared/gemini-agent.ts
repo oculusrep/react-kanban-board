@@ -1080,17 +1080,31 @@ export async function runEmailTriageAgent(
   }
 
   // ========================================================================
-  // OUTBOUND AUTO-MATCH: For OUTBOUND emails, match recipients to contacts
-  // When a user (like Arty or Mike) sends an email, tag the contacts they sent to
+  // RECIPIENT AUTO-MATCH: Match ALL recipients (To, CC, BCC) to contacts
+  // Works for both inbound and outbound emails
   // ========================================================================
-  if (email.direction === 'OUTBOUND' && email.recipient_list && email.recipient_list.length > 0) {
-    console.log(`[Agent] OUTBOUND email - checking ${email.recipient_list.length} recipients for contact matches`);
+  if (email.recipient_list && email.recipient_list.length > 0) {
+    const direction = email.direction || 'INBOUND';
+    console.log(`[Agent] ${direction} email - checking ${email.recipient_list.length} recipients for contact matches`);
 
+    let recipientMatches = 0;
     for (const recipient of email.recipient_list) {
       if (!recipient.email) continue;
 
       const recipientEmail = recipient.email.toLowerCase();
-      console.log(`[Agent] Checking recipient: ${recipientEmail}`);
+
+      // Skip internal emails (your own domain) for inbound - they're team members, not contacts
+      // For outbound, we want to match all recipients
+      if (direction === 'INBOUND') {
+        // Check if this is an internal email address (skip team members)
+        const internalDomains = ['ovisre.com', 'ovis.com'];
+        const emailDomain = recipientEmail.split('@')[1];
+        if (internalDomains.some(d => emailDomain === d)) {
+          continue;
+        }
+      }
+
+      console.log(`[Agent] Checking recipient (${recipient.type || 'to'}): ${recipientEmail}`);
 
       const { data: recipientContact } = await supabase
         .from('contact')
@@ -1108,11 +1122,12 @@ export async function runEmailTriageAgent(
           'contact',
           recipientContact.id,
           1.0,
-          `Outbound email recipient auto-matched: ${recipientEmail}`
+          `${direction} email - ${recipient.type || 'to'} recipient auto-matched: ${recipientEmail}`
         );
 
         if (contactLinkResult.success) {
           result.links_created++;
+          recipientMatches++;
           result.tags.push({
             object_type: 'contact',
             object_id: recipientContact.id,
@@ -1128,7 +1143,7 @@ export async function runEmailTriageAgent(
             'client',
             recipientContact.client_id,
             0.95,
-            `Outbound email - linked via recipient's company association`
+            `${direction} email - linked via recipient's company association`
           );
 
           if (clientLinkResult.success) {
@@ -1143,8 +1158,8 @@ export async function runEmailTriageAgent(
       }
     }
 
-    if (result.links_created > 0) {
-      console.log(`[Agent] Outbound email: auto-matched ${result.links_created} recipients, continuing to AI for deal/property analysis`);
+    if (recipientMatches > 0) {
+      console.log(`[Agent] ${direction} email: auto-matched ${recipientMatches} recipients, continuing to AI for deal/property analysis`);
     }
   }
 
