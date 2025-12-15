@@ -939,7 +939,7 @@ export async function runEmailTriageAgent(
     sender_email: string;
     sender_name: string | null;
     direction: string;
-    recipient_list?: string[];
+    recipient_list?: Array<{ email: string; name: string | null; type: 'to' | 'cc' | 'bcc' }>;
     gmail_connection_id?: string;
   },
   apiKey: string,
@@ -1077,6 +1077,75 @@ export async function runEmailTriageAgent(
 
     // Still run AI to find deals/properties, but we've already linked the contact
     console.log(`[Agent] Contact auto-matched, continuing to AI for deal/property analysis`);
+  }
+
+  // ========================================================================
+  // OUTBOUND AUTO-MATCH: For OUTBOUND emails, match recipients to contacts
+  // When a user (like Arty or Mike) sends an email, tag the contacts they sent to
+  // ========================================================================
+  if (email.direction === 'OUTBOUND' && email.recipient_list && email.recipient_list.length > 0) {
+    console.log(`[Agent] OUTBOUND email - checking ${email.recipient_list.length} recipients for contact matches`);
+
+    for (const recipient of email.recipient_list) {
+      if (!recipient.email) continue;
+
+      const recipientEmail = recipient.email.toLowerCase();
+      console.log(`[Agent] Checking recipient: ${recipientEmail}`);
+
+      const { data: recipientContact } = await supabase
+        .from('contact')
+        .select('id, first_name, last_name, email, company, client_id')
+        .eq('email', recipientEmail)
+        .single();
+
+      if (recipientContact) {
+        console.log(`[Agent] RECIPIENT AUTO-MATCH: Found contact: ${recipientContact.first_name} ${recipientContact.last_name}`);
+
+        // Link to the contact
+        const contactLinkResult = await linkObject(
+          supabase,
+          email.id,
+          'contact',
+          recipientContact.id,
+          1.0,
+          `Outbound email recipient auto-matched: ${recipientEmail}`
+        );
+
+        if (contactLinkResult.success) {
+          result.links_created++;
+          result.tags.push({
+            object_type: 'contact',
+            object_id: recipientContact.id,
+            confidence: 1.0,
+          });
+        }
+
+        // If recipient contact has a client, link to that too
+        if (recipientContact.client_id) {
+          const clientLinkResult = await linkObject(
+            supabase,
+            email.id,
+            'client',
+            recipientContact.client_id,
+            0.95,
+            `Outbound email - linked via recipient's company association`
+          );
+
+          if (clientLinkResult.success) {
+            result.links_created++;
+            result.tags.push({
+              object_type: 'client',
+              object_id: recipientContact.client_id,
+              confidence: 0.95,
+            });
+          }
+        }
+      }
+    }
+
+    if (result.links_created > 0) {
+      console.log(`[Agent] Outbound email: auto-matched ${result.links_created} recipients, continuing to AI for deal/property analysis`);
+    }
   }
 
   // ========================================================================
