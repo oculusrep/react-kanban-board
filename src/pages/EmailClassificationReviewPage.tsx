@@ -29,6 +29,7 @@ interface EmailWithLinks {
   ai_processed: boolean;
   ai_processed_at: string | null;
   links: EmailObjectLink[];
+  hasReview: boolean; // Whether feedback/correction has been logged for this email
 }
 
 interface EmailObjectLink {
@@ -63,6 +64,7 @@ const EmailClassificationReviewPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'linked' | 'unlinked'>('linked');
+  const [reviewFilter, setReviewFilter] = useState<'needs_review' | 'reviewed' | 'all'>('needs_review');
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [showAddLink, setShowAddLink] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -119,21 +121,47 @@ const EmailClassificationReviewPage: React.FC = () => {
 
       if (linksError) throw linksError;
 
+      // Fetch reviewed email IDs from ai_correction_log
+      const { data: correctionLogData } = await supabase
+        .from('ai_correction_log')
+        .select('email_id')
+        .in('email_id', emailIds);
+
+      // Fetch reviewed email IDs from agent_corrections
+      const { data: agentCorrectionsData } = await supabase
+        .from('agent_corrections')
+        .select('email_id')
+        .in('email_id', emailIds);
+
+      // Combine reviewed email IDs into a Set
+      const reviewedEmailIds = new Set<string>([
+        ...(correctionLogData || []).map(c => c.email_id).filter(Boolean),
+        ...(agentCorrectionsData || []).map(c => c.email_id).filter(Boolean),
+      ]);
+
       // Resolve object names
       const linksWithNames = await resolveObjectNames(linksData || []);
 
-      // Combine emails with their links
+      // Combine emails with their links and review status
       const emailsWithLinks = (emailsData || []).map(email => ({
         ...email,
         links: linksWithNames.filter(l => l.email_id === email.id),
+        hasReview: reviewedEmailIds.has(email.id),
       }));
 
-      // Apply filter
+      // Apply link filter
       let filteredEmails = emailsWithLinks;
       if (filter === 'linked') {
         filteredEmails = emailsWithLinks.filter(e => e.links.length > 0);
       } else if (filter === 'unlinked') {
         filteredEmails = emailsWithLinks.filter(e => e.links.length === 0);
+      }
+
+      // Apply review filter
+      if (reviewFilter === 'needs_review') {
+        filteredEmails = filteredEmails.filter(e => !e.hasReview);
+      } else if (reviewFilter === 'reviewed') {
+        filteredEmails = filteredEmails.filter(e => e.hasReview);
       }
 
       setEmails(filteredEmails);
@@ -143,7 +171,7 @@ const EmailClassificationReviewPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, reviewFilter]);
 
   const resolveObjectNames = async (links: any[]): Promise<EmailObjectLink[]> => {
     const resolvedLinks: EmailObjectLink[] = [];
@@ -497,6 +525,11 @@ const EmailClassificationReviewPage: React.FC = () => {
         return rest;
       });
 
+      // Mark email as reviewed in local state
+      setEmails(prev =>
+        prev.map(e => e.id === email.id ? { ...e, hasReview: true } : e)
+      );
+
       alert('Feedback saved! The AI will use this to improve future classifications.');
     } catch (err: any) {
       alert('Error saving feedback: ' + err.message);
@@ -649,7 +682,7 @@ const EmailClassificationReviewPage: React.FC = () => {
 
       if (insertError && insertError.code !== '23505') throw insertError; // Ignore duplicate key
 
-      // 4. Update local state
+      // 4. Update local state (update links and mark as reviewed)
       setEmails(prev =>
         prev.map(e => {
           if (e.id !== email.id) return e;
@@ -660,7 +693,7 @@ const EmailClassificationReviewPage: React.FC = () => {
               object_name: correctObject.name,
             });
           }
-          return { ...e, links: updatedLinks };
+          return { ...e, links: updatedLinks, hasReview: true };
         })
       );
 
@@ -730,7 +763,7 @@ const EmailClassificationReviewPage: React.FC = () => {
       </div>
 
       {/* Filters */}
-      <div className="mb-6 flex items-center gap-4">
+      <div className="mb-6 flex flex-wrap items-center gap-4">
         <FunnelIcon className="w-5 h-5 text-gray-400" />
         <div className="flex gap-2">
           {(['all', 'linked', 'unlinked'] as const).map((f) => (
@@ -744,6 +777,22 @@ const EmailClassificationReviewPage: React.FC = () => {
               }`}
             >
               {f === 'all' ? 'All Processed' : f === 'linked' ? 'With Links' : 'No Links'}
+            </button>
+          ))}
+        </div>
+        <div className="h-6 w-px bg-gray-300" />
+        <div className="flex gap-2">
+          {(['needs_review', 'reviewed', 'all'] as const).map((rf) => (
+            <button
+              key={rf}
+              onClick={() => setReviewFilter(rf)}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md ${
+                reviewFilter === rf
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {rf === 'needs_review' ? 'Needs Review' : rf === 'reviewed' ? 'Reviewed' : 'All Status'}
             </button>
           ))}
         </div>
@@ -801,6 +850,12 @@ const EmailClassificationReviewPage: React.FC = () => {
                         {email.links.length > 0 && (
                           <span className="px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-700 rounded-full">
                             {email.links.length} link{email.links.length !== 1 ? 's' : ''}
+                          </span>
+                        )}
+                        {email.hasReview && (
+                          <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded-full flex items-center gap-1">
+                            <CheckCircleIcon className="w-3 h-3" />
+                            Reviewed
                           </span>
                         )}
                       </div>
