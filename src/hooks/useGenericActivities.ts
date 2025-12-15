@@ -28,6 +28,7 @@ export function useGenericActivities(parentObject: ParentObject | null): UseGene
       console.log('Fetching activities for:', parentObject);
 
       // Build the query based on parent object type
+      // Include email details for email activities (sender, recipients)
       let query = supabase
         .from('activity')
         .select(`
@@ -59,6 +60,11 @@ export function useGenericActivities(parentObject: ParentObject | null): UseGene
             first_name,
             last_name,
             company
+          ),
+          email:emails!activity_email_id_fkey (
+            sender_email,
+            sender_name,
+            recipient_list
           )
         `);
 

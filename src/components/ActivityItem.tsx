@@ -367,8 +367,8 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
               </div>
             )}
 
-            {/* Assigned To */}
-            {activity.owner && (
+            {/* Assigned To - hide for emails */}
+            {activity.owner && activityType !== 'Email' && activityType !== 'ListEmail' && (
               <div className="flex items-center gap-1">
                 <UserIcon className="w-5 h-5 text-blue-500" />
                 <span className="font-medium">
@@ -377,6 +377,40 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
                     : activity.owner.name || 'Unknown User'}
                 </span>
               </div>
+            )}
+
+            {/* Email Sender/Recipients - for email activities */}
+            {(activityType === 'Email' || activityType === 'ListEmail') && (activity as any).email && (
+              <>
+                {/* Sender (for inbound) or Recipients (for outbound) */}
+                {(activity as any).direction === 'INBOUND' ? (
+                  <div className="flex items-center gap-1">
+                    <UserIcon className="w-5 h-5 text-green-500" />
+                    <span className="font-medium">
+                      From: {(activity as any).email.sender_name || (activity as any).email.sender_email}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <UserIcon className="w-5 h-5 text-orange-500" />
+                    <span className="font-medium">
+                      To: {(() => {
+                        const recipients = (activity as any).email.recipient_list;
+                        if (!recipients || recipients.length === 0) return 'Unknown';
+                        // Show first recipient, +N more if there are more
+                        const toRecipients = recipients.filter((r: any) => r.type === 'to');
+                        if (toRecipients.length === 0) return recipients[0]?.name || recipients[0]?.email || 'Unknown';
+                        const first = toRecipients[0];
+                        const displayName = first.name || first.email;
+                        if (toRecipients.length > 1) {
+                          return `${displayName} +${toRecipients.length - 1} more`;
+                        }
+                        return displayName;
+                      })()}
+                    </span>
+                  </div>
+                )}
+              </>
             )}
 
             {/* Completed Date (for calls only) */}
