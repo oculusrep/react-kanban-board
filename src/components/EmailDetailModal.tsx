@@ -15,7 +15,9 @@ import {
   LinkIcon,
   BuildingOfficeIcon,
   DocumentTextIcon,
-  PaperClipIcon
+  PaperClipIcon,
+  ArrowDownTrayIcon,
+  EyeIcon
 } from '@heroicons/react/24/outline';
 
 interface EmailDetailModalProps {
@@ -61,6 +63,44 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
   const [linkedObjects, setLinkedObjects] = useState<LinkedObject[]>([]);
   const [attachments, setAttachments] = useState<EmailAttachment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloadingAttachment, setDownloadingAttachment] = useState<string | null>(null);
+
+  // Get the Supabase URL for the edge function
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://rqbvcvwbziilnycqtmnc.supabase.co';
+
+  // Handle attachment download/preview
+  const handleAttachmentClick = async (attachment: EmailAttachment, preview: boolean = false) => {
+    setDownloadingAttachment(attachment.id);
+    try {
+      const url = `${supabaseUrl}/functions/v1/get-attachment?attachment_id=${attachment.id}`;
+
+      if (preview && isPreviewable(attachment.mime_type)) {
+        // Open in new tab for preview
+        window.open(url, '_blank');
+      } else {
+        // Download the file
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = attachment.filename;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } catch (error) {
+      console.error('Error downloading attachment:', error);
+    } finally {
+      setDownloadingAttachment(null);
+    }
+  };
+
+  // Check if file type is previewable in browser
+  const isPreviewable = (mimeType: string | null): boolean => {
+    if (!mimeType) return false;
+    return mimeType.startsWith('image/') ||
+           mimeType === 'application/pdf' ||
+           mimeType.startsWith('text/');
+  };
 
   // Fetch full email details when modal opens
   useEffect(() => {
@@ -356,7 +396,7 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
                       {attachments.map((attachment) => (
                         <li
                           key={attachment.id}
-                          className="flex items-center gap-3 p-2 bg-gray-50 rounded-md"
+                          className="flex items-center gap-3 p-2 bg-gray-50 rounded-md hover:bg-gray-100 transition-colors"
                         >
                           <PaperClipIcon className="w-5 h-5 text-gray-400 shrink-0" />
                           <div className="flex-1 min-w-0">
@@ -376,6 +416,30 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
                                 </span>
                               )}
                             </p>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {isPreviewable(attachment.mime_type) && (
+                              <button
+                                onClick={() => handleAttachmentClick(attachment, true)}
+                                disabled={downloadingAttachment === attachment.id}
+                                className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                title="Preview"
+                              >
+                                <EyeIcon className="w-4 h-4" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleAttachmentClick(attachment, false)}
+                              disabled={downloadingAttachment === attachment.id}
+                              className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                              title="Download"
+                            >
+                              {downloadingAttachment === attachment.id ? (
+                                <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <ArrowDownTrayIcon className="w-4 h-4" />
+                              )}
+                            </button>
                           </div>
                         </li>
                       ))}
