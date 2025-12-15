@@ -14,7 +14,8 @@ import {
   CalendarIcon,
   LinkIcon,
   BuildingOfficeIcon,
-  DocumentTextIcon
+  DocumentTextIcon,
+  PaperClipIcon
 } from '@heroicons/react/24/outline';
 
 interface EmailDetailModalProps {
@@ -44,6 +45,13 @@ interface LinkedObject {
   name: string;
 }
 
+interface EmailAttachment {
+  id: string;
+  filename: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+}
+
 const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
   isOpen,
   onClose,
@@ -51,6 +59,7 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
 }) => {
   const [emailDetails, setEmailDetails] = useState<EmailDetails | null>(null);
   const [linkedObjects, setLinkedObjects] = useState<LinkedObject[]>([]);
+  const [attachments, setAttachments] = useState<EmailAttachment[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Fetch full email details when modal opens
@@ -59,6 +68,7 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
       if (!isOpen || !activity) {
         setEmailDetails(null);
         setLinkedObjects([]);
+        setAttachments([]);
         return;
       }
 
@@ -142,6 +152,18 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
             }
 
             setLinkedObjects(linkedObjectsWithNames);
+          }
+
+          // Fetch attachments
+          const { data: attachmentsData, error: attachmentsError } = await supabase
+            .from('email_attachments')
+            .select('id, filename, mime_type, size_bytes')
+            .eq('email_id', emailId);
+
+          if (attachmentsError) {
+            console.error('Error fetching attachments:', attachmentsError);
+          } else if (attachmentsData) {
+            setAttachments(attachmentsData);
           }
         }
       } catch (error) {
@@ -316,6 +338,48 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
                         <span className="text-xs text-gray-400 capitalize">({obj.type})</span>
                       </span>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Attachments */}
+              {attachments.length > 0 && (
+                <div className="bg-white border rounded-lg shadow-sm">
+                  <div className="px-4 py-3 border-b bg-gray-50">
+                    <h4 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                      <PaperClipIcon className="w-4 h-4" />
+                      Attachments ({attachments.length})
+                    </h4>
+                  </div>
+                  <div className="p-4">
+                    <ul className="space-y-2">
+                      {attachments.map((attachment) => (
+                        <li
+                          key={attachment.id}
+                          className="flex items-center gap-3 p-2 bg-gray-50 rounded-md"
+                        >
+                          <PaperClipIcon className="w-5 h-5 text-gray-400 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {attachment.filename}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {attachment.mime_type || 'Unknown type'}
+                              {attachment.size_bytes && (
+                                <span className="ml-2">
+                                  {attachment.size_bytes < 1024
+                                    ? `${attachment.size_bytes} B`
+                                    : attachment.size_bytes < 1024 * 1024
+                                      ? `${(attachment.size_bytes / 1024).toFixed(1)} KB`
+                                      : `${(attachment.size_bytes / (1024 * 1024)).toFixed(1)} MB`
+                                  }
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
               )}

@@ -243,6 +243,28 @@ serve(async (req) => {
                 { onConflict: 'email_id,user_id' }
               );
 
+            // Store attachment metadata (if any)
+            if (parsedEmail.attachments && parsedEmail.attachments.length > 0) {
+              const attachmentRecords = parsedEmail.attachments.map(att => ({
+                email_id: emailId,
+                gmail_attachment_id: att.attachmentId,
+                filename: att.filename,
+                mime_type: att.mimeType,
+                size_bytes: att.size,
+              }));
+
+              const { error: attachError } = await supabase
+                .from('email_attachments')
+                .upsert(attachmentRecords, { onConflict: 'email_id,gmail_attachment_id' });
+
+              if (attachError) {
+                console.error(`Error storing attachments for email ${emailId}:`, attachError);
+                // Don't fail the whole sync for attachment errors
+              } else {
+                console.log(`Stored ${attachmentRecords.length} attachment(s) for email: ${parsedEmail.subject}`);
+              }
+            }
+
             result.synced_count++;
           } catch (msgError: any) {
             console.error(`Error processing message ${msgRef.id}:`, msgError);

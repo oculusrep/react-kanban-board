@@ -43,8 +43,15 @@ export interface GmailMessagePart {
   mimeType: string;
   filename?: string;
   headers?: Array<{ name: string; value: string }>;
-  body?: { size: number; data?: string };
+  body?: { size: number; data?: string; attachmentId?: string };
   parts?: GmailMessagePart[];
+}
+
+export interface EmailAttachment {
+  attachmentId: string;     // Gmail's attachment ID for fetching content
+  filename: string;
+  mimeType: string;
+  size: number;
 }
 
 export interface ParsedEmail {
@@ -67,6 +74,7 @@ export interface ParsedEmail {
   }>;
   receivedAt: Date;
   labelIds: string[];
+  attachments: EmailAttachment[];
 }
 
 export interface TokenRefreshResult {
@@ -366,6 +374,37 @@ function extractBodyFromParts(
 }
 
 /**
+ * Extract attachment metadata from MIME parts recursively
+ * Attachments have a filename and an attachmentId in the body
+ */
+function extractAttachmentsFromParts(
+  parts: GmailMessagePart[] | undefined
+): EmailAttachment[] {
+  if (!parts) return [];
+
+  const attachments: EmailAttachment[] = [];
+
+  for (const part of parts) {
+    // Check if this part is an attachment (has filename and attachmentId)
+    if (part.filename && part.filename.length > 0 && part.body?.attachmentId) {
+      attachments.push({
+        attachmentId: part.body.attachmentId,
+        filename: part.filename,
+        mimeType: part.mimeType,
+        size: part.body.size || 0,
+      });
+    }
+
+    // Recurse into nested parts
+    if (part.parts) {
+      attachments.push(...extractAttachmentsFromParts(part.parts));
+    }
+  }
+
+  return attachments;
+}
+
+/**
  * Parse a Gmail message into our internal format
  */
 export function parseGmailMessage(
@@ -434,6 +473,9 @@ export function parseGmailMessage(
     receivedAt = new Date(parseInt(message.internalDate));
   }
 
+  // Extract attachment metadata
+  const attachments = extractAttachmentsFromParts(message.payload.parts);
+
   return {
     messageId,
     gmailId: message.id,
@@ -450,6 +492,7 @@ export function parseGmailMessage(
     recipientList,
     receivedAt,
     labelIds: message.labelIds,
+    attachments,
   };
 }
 
