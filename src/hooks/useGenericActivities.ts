@@ -64,7 +64,10 @@ export function useGenericActivities(parentObject: ParentObject | null): UseGene
           email:emails!activity_email_id_fkey (
             sender_email,
             sender_name,
-            recipient_list
+            recipient_list,
+            email_attachments (
+              id
+            )
           )
         `);
 

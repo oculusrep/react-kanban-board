@@ -13,7 +13,8 @@ import {
   ChevronRightIcon,
   PencilIcon,
   ArrowDownLeftIcon,
-  ArrowUpRightIcon
+  ArrowUpRightIcon,
+  PaperClipIcon
 } from '@heroicons/react/24/outline';
 import {
   PhoneIcon as PhoneIconSolid,
@@ -47,12 +48,18 @@ const getActivityIcon = (activity: ActivityWithRelations, onToggleComplete?: () 
           <PhoneIcon className={`${iconClass} text-blue-500`} />;
       case 'Email':
       case 'ListEmail':
+        // Check if email has attachments
+        const hasAttachments = (activity as any).email?.email_attachments?.length > 0;
+
         // Show direction indicator for synced emails
         if (emailDirection === 'INBOUND') {
           return (
             <div className="relative">
               <EnvelopeIcon className={`${iconClass} text-blue-500`} />
               <ArrowDownLeftIcon className="w-3 h-3 text-green-600 absolute -bottom-1 -right-1" />
+              {hasAttachments && (
+                <PaperClipIcon className="w-3 h-3 text-gray-500 absolute -top-1 -right-1" />
+              )}
             </div>
           );
         } else if (emailDirection === 'OUTBOUND') {
@@ -60,6 +67,9 @@ const getActivityIcon = (activity: ActivityWithRelations, onToggleComplete?: () 
             <div className="relative">
               <EnvelopeIcon className={`${iconClass} text-blue-500`} />
               <ArrowUpRightIcon className="w-3 h-3 text-orange-500 absolute -bottom-1 -right-1" />
+              {hasAttachments && (
+                <PaperClipIcon className="w-3 h-3 text-gray-500 absolute -top-1 -right-1" />
+              )}
             </div>
           );
         }
