@@ -623,6 +623,7 @@ const EmailClassificationReviewPage: React.FC = () => {
       }
 
       // 2. Log to ai_correction_log with correction_type = 'not_business'
+      console.log('[Not Business] Logging with user_id:', currentUserId, 'email_id:', email.id);
       const { error: logError } = await supabase.from('ai_correction_log').insert({
         user_id: currentUserId,
         email_id: email.id,
@@ -633,9 +634,10 @@ const EmailClassificationReviewPage: React.FC = () => {
       });
 
       if (logError) {
-        console.error('[Not Business] Error logging:', logError);
+        console.error('[Not Business] Error logging:', logError.message, logError.details, logError.hint);
         throw logError;
       }
+      console.log('[Not Business] Successfully logged to ai_correction_log');
 
       // 3. Optionally create exclusion rule
       if (createRule) {
@@ -660,17 +662,21 @@ const EmailClassificationReviewPage: React.FC = () => {
       }
 
       // 4. Update local state
-      setEmails(prev =>
-        prev.map(e => {
+      console.log('[Not Business] Updating local state for email:', email.id);
+      setEmails(prev => {
+        const updated = prev.map(e => {
           if (e.id !== email.id) return e;
+          console.log('[Not Business] Marking email as reviewed:', e.id);
           return {
             ...e,
             links: e.links.filter(l => l.link_source !== 'ai_agent'),
             hasReview: true,
-            reviewType: 'not_business',
+            reviewType: 'not_business' as const,
           };
-        })
-      );
+        });
+        console.log('[Not Business] Updated emails count:', updated.length);
+        return updated;
+      });
 
       closeNotBusinessModal();
       alert('Email marked as not business related.' + (createRule ? ' Exclusion rule created.' : ''));
