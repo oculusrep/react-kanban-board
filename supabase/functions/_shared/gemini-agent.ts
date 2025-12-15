@@ -1264,10 +1264,22 @@ AVAILABLE TOOLS:
 PROTOCOL (Follow this order):
 1. CHECK RULES: ALWAYS call search_rules first with the sender_email and relevant keywords. If rules exist, follow them with confidence 1.0.
 2. ANALYZE SENDER: Search for the sender by email address in contacts.
-3. ANALYZE CONTENT:
-   - Extract location names, addresses, company names, deal references from subject and body.
-   - Search for deals mentioning those locations/companies.
-   - Search for properties by address if specific addresses mentioned.
+3. ANALYZE CONTENT - CRITICAL FOR DEAL MATCHING:
+   a) SCAN THE SUBJECT LINE carefully for:
+      - City names, neighborhood names, street names (e.g., "Milledgeville", "Buckhead", "Main St")
+      - Property names or addresses
+      - Client initials or company names (e.g., "JJ", "Starbucks")
+      - Deal reference patterns like "RE:", project codes, or deal nicknames
+   b) SCAN THE EMAIL BODY for:
+      - Any addresses mentioned (even partial like "123 Main" or "the Buckhead location")
+      - Client/tenant names
+      - Property references
+      - Deal-specific terms: LOI, lease, PSA, closing, due diligence
+   c) SEARCH DEALS: For EACH location/name/reference found, call search_deals. Deal names in OVIS often follow patterns like:
+      - "ClientInitials - City - PropertyName" (e.g., "JJ - Milledgeville - Amos")
+      - "City - PropertyName" (e.g., "Buckhead - 123 Main")
+      - Search by city name, street name, client name, AND property name separately if needed
+   d) Search for properties by address if specific addresses mentioned.
 4. VERIFY: If a deal is found, use get_deal_participants to verify the sender is involved.
 5. ACT:
    - If a rule matches: Follow the rule's instructions with confidence 1.0.
@@ -1295,7 +1307,14 @@ IMPORTANT:
 - LOI, lease, contract, closing discussions = likely related to a deal.
 - User-defined rules take priority over your analysis.
 - Always provide clear reasoning when linking objects.
-- Always call done() when finished.`;
+- Always call done() when finished.
+
+CRITICAL - DEAL NAME MATCHING:
+- ALWAYS extract keywords from subject AND body before finishing.
+- Deal names contain location info - search by city name, street, or area (e.g., search "Milledgeville" not the full deal name).
+- If subject mentions a city/location, ALWAYS search_deals for that location.
+- If body discusses property/lease/LOI, extract any location reference and search.
+- Multiple search_deals calls are OK - search each keyword separately if needed.`;
 
   // Build user prompt with email details
   const userPrompt = `Analyze this email and link it to the appropriate CRM objects.
