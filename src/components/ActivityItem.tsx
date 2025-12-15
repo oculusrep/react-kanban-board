@@ -138,7 +138,10 @@ const getStatusBadge = (activity: ActivityWithRelations) => {
 const getOverdueBadge = (activity: ActivityWithRelations) => {
   // Only show overdue for tasks (not calls or emails)
   const activityType = activity.activity_type?.name || activity.sf_task_subtype;
-  if (activityType !== 'Task' && !activityType) return null;
+  // Skip emails and calls - they don't have due dates
+  if (activityType === 'Email' || activityType === 'ListEmail' || activityType === 'Call') return null;
+  // Only show for tasks (or activities with no type which default to task)
+  if (activityType && activityType !== 'Task') return null;
 
   // Don't show overdue if task is already completed
   const isCompleted = activity.activity_status?.is_closed || activity.completed_call || activity.sf_is_closed;
@@ -389,6 +392,16 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
               </div>
             )}
 
+            {/* Email Date - show sent/received date */}
+            {(activityType === 'Email' || activityType === 'ListEmail') && activityDate && (
+              <div className="flex items-center gap-1">
+                <ClockIcon className="w-5 h-5 text-blue-500" />
+                <span className="font-medium text-gray-600">
+                  {(activity as any).direction === 'OUTBOUND' ? 'Sent' : 'Received'}: {format(activityDate, 'MMM d, yyyy')}
+                </span>
+              </div>
+            )}
+
             {/* Call Duration */}
             {activity.call_duration_seconds && (
               <div className="flex items-center gap-1">
@@ -406,8 +419,8 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
               </div>
             )}
 
-            {/* Due Date - only for tasks */}
-            {((activityType === 'Task' || !activityType) && activityDate) && (
+            {/* Due Date - only for tasks (not emails or calls) */}
+            {(activityType !== 'Email' && activityType !== 'ListEmail' && activityType !== 'Call' && (activityType === 'Task' || !activityType) && activityDate) && (
               <div className="flex items-center gap-1">
                 <ClockIcon className="w-5 h-5" />
                 <span className={`font-medium ${
@@ -428,8 +441,8 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onActivityUpdate,
             )}
           </div>
 
-          {/* Date and Time - Hide for calls since completion info is shown above */}
-          {displayDate && activityType !== 'Call' && (
+          {/* Date and Time - Hide for calls and emails since completion/sent info is shown above */}
+          {displayDate && activityType !== 'Call' && activityType !== 'Email' && activityType !== 'ListEmail' && (
             <div className="mt-2 text-xs text-gray-400">
               <span>
                 {isCompleted && completedDate ? 'Completed at: ' : ''}
