@@ -173,7 +173,7 @@ export const OVIS_TOOLS = [
   },
   {
     name: 'search_clients',
-    description: 'Search for clients (companies/organizations) in OVIS CRM by company name.',
+    description: 'Search for ACTIVE clients (companies/organizations) in OVIS CRM by company name. Only returns clients marked as active.',
     parameters: {
       type: 'object',
       properties: {
@@ -382,6 +382,7 @@ export async function searchContacts(
 
 /**
  * Search clients (companies) by query string
+ * Only returns active clients (is_active_client = true)
  */
 export async function searchClients(
   supabase: SupabaseClient,
@@ -391,6 +392,7 @@ export async function searchClients(
     .from('client')
     .select('id, client_name, contact(id)')
     .ilike('client_name', `%${query}%`)
+    .eq('is_active_client', true)
     .limit(10);
 
   return (clients || []).map((c: any) => ({
@@ -1254,7 +1256,7 @@ AVAILABLE TOOLS:
 - search_rules: ALWAYS call this FIRST to check for user-defined rules for this sender or topic.
 - search_deals: Search for active deals by name, address, city, or client. Deal names often contain location info (e.g., "JJ - Milledgeville - Amos").
 - search_contacts: Search for contacts (people) by name, email, or company.
-- search_clients: Search for clients (companies) by name.
+- search_clients: Search for ACTIVE clients (companies) by name. Only returns clients marked as active in the CRM.
 - search_properties: Search for properties by address, name, city, or state.
 - get_deal_participants: Get all people involved in a specific deal to verify sender involvement.
 - link_object: Link this email to a CRM object. Use confidence_score >= 0.7 to link. Include reasoning in the 'reasoning' parameter.
