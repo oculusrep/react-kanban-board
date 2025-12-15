@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useGenericActivities } from '../hooks/useGenericActivities';
 import { ActivityTabConfig, ParentObject } from '../types/activity';
+import { ActivityWithRelations } from '../hooks/useActivities';
 import ActivityItem from './ActivityItem';
 import AddTaskModal from './AddTaskModal';
 import LogCallModal from './LogCallModal';
-import { 
+import EmailDetailModal from './EmailDetailModal';
+import {
   CalendarIcon,
   FunnelIcon,
   PlusIcon,
@@ -51,6 +53,20 @@ const GenericActivityTab: React.FC<GenericActivityTabProps> = ({ config }) => {
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
   const [isLogCallModalOpen, setIsLogCallModalOpen] = useState(false);
   const [selectedTaskForEdit, setSelectedTaskForEdit] = useState<any>(null);
+  const [selectedEmailForView, setSelectedEmailForView] = useState<ActivityWithRelations | null>(null);
+
+  // Handler to determine what to open based on activity type
+  const handleActivityClick = (activity: ActivityWithRelations) => {
+    const activityType = activity.activity_type?.name || (activity as any).sf_task_subtype;
+
+    // For emails, open the email detail modal
+    if (activityType === 'Email' || activityType === 'ListEmail') {
+      setSelectedEmailForView(activity);
+    } else {
+      // For tasks and calls, open the edit modal
+      setSelectedTaskForEdit(activity);
+    }
+  };
 
   // Filter activities based on search and filters
   const filteredActivities = activities.filter(activity => {
@@ -326,7 +342,7 @@ const GenericActivityTab: React.FC<GenericActivityTabProps> = ({ config }) => {
               <ActivityItem
                 key={activity.id}
                 activity={activity}
-                onTaskClick={(task) => setSelectedTaskForEdit(task)}
+                onTaskClick={handleActivityClick}
                 onActivityUpdate={(updatedActivity) => {
                   console.log('Activity updated:', updatedActivity);
                   refetch();
@@ -380,6 +396,13 @@ const GenericActivityTab: React.FC<GenericActivityTabProps> = ({ config }) => {
           parentObject={parentObject}
         />
       )}
+
+      {/* Email Detail Modal */}
+      <EmailDetailModal
+        isOpen={!!selectedEmailForView}
+        onClose={() => setSelectedEmailForView(null)}
+        activity={selectedEmailForView}
+      />
     </div>
   );
 };
