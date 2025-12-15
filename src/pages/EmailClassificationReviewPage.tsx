@@ -470,19 +470,24 @@ const EmailClassificationReviewPage: React.FC = () => {
         }).then(() => {}).catch(err => console.error('Failed to log addition:', err));
       }
 
-      // Update local state with the new link
+      // Update local state with the new link and mark as reviewed
       const newLink: EmailObjectLink = {
         ...data,
         object_name: object.name,
       };
 
-      setEmails(prev =>
-        prev.map(email =>
-          email.id === emailId
-            ? { ...email, links: [...email.links, newLink] }
-            : email
-        )
-      );
+      setEmails(prev => {
+        // If we're on "needs_review" filter, remove the email from the list
+        if (reviewFilter === 'needs_review') {
+          return prev.filter(e => e.id !== emailId);
+        }
+        // Otherwise update it in place with the new link and mark as reviewed
+        return prev.map(e =>
+          e.id === emailId
+            ? { ...e, links: [...e.links, newLink], hasReview: true, reviewType: 'feedback' }
+            : e
+        );
+      });
 
       setShowAddLink(null);
       setSearchQuery('');
