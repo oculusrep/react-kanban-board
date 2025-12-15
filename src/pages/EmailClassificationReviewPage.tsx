@@ -560,10 +560,13 @@ const EmailClassificationReviewPage: React.FC = () => {
         return rest;
       });
 
-      // Mark email as reviewed in local state
-      setEmails(prev =>
-        prev.map(e => e.id === email.id ? { ...e, hasReview: true, reviewType: 'feedback' } : e)
-      );
+      // Mark email as reviewed in local state - filter out if on "needs_review" view
+      setEmails(prev => {
+        if (reviewFilter === 'needs_review') {
+          return prev.filter(e => e.id !== email.id);
+        }
+        return prev.map(e => e.id === email.id ? { ...e, hasReview: true, reviewType: 'feedback' } : e);
+      });
 
       alert('Feedback saved! The AI will use this to improve future classifications.');
     } catch (err: any) {
@@ -661,10 +664,16 @@ const EmailClassificationReviewPage: React.FC = () => {
         }
       }
 
-      // 4. Update local state
+      // 4. Update local state - filter out if on "needs_review" view
       console.log('[Not Business] Updating local state for email:', email.id);
       setEmails(prev => {
-        const updated = prev.map(e => {
+        // If we're on "needs_review" filter, remove the email from the list
+        if (reviewFilter === 'needs_review') {
+          console.log('[Not Business] Removing email from needs_review list:', email.id);
+          return prev.filter(e => e.id !== email.id);
+        }
+        // Otherwise update it in place
+        return prev.map(e => {
           if (e.id !== email.id) return e;
           console.log('[Not Business] Marking email as reviewed:', e.id);
           return {
@@ -674,8 +683,6 @@ const EmailClassificationReviewPage: React.FC = () => {
             reviewType: 'not_business' as const,
           };
         });
-        console.log('[Not Business] Updated emails count:', updated.length);
-        return updated;
       });
 
       closeNotBusinessModal();
@@ -831,9 +838,12 @@ const EmailClassificationReviewPage: React.FC = () => {
 
       if (insertError && insertError.code !== '23505') throw insertError; // Ignore duplicate key
 
-      // 4. Update local state (update links and mark as reviewed)
-      setEmails(prev =>
-        prev.map(e => {
+      // 4. Update local state (update links and mark as reviewed) - filter out if on "needs_review" view
+      setEmails(prev => {
+        if (reviewFilter === 'needs_review') {
+          return prev.filter(e => e.id !== email.id);
+        }
+        return prev.map(e => {
           if (e.id !== email.id) return e;
           const updatedLinks = e.links.filter(l => l.id !== incorrectLink.id);
           if (newLink) {
@@ -843,8 +853,8 @@ const EmailClassificationReviewPage: React.FC = () => {
             });
           }
           return { ...e, links: updatedLinks, hasReview: true, reviewType: 'feedback' };
-        })
-      );
+        });
+      });
 
       // 5. Close modal and show success
       closeCorrectionModal();
