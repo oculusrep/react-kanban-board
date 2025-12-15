@@ -17,7 +17,10 @@ import {
   DocumentTextIcon,
   PaperClipIcon,
   ArrowDownTrayIcon,
-  EyeIcon
+  EyeIcon,
+  PlusIcon,
+  MagnifyingGlassIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline';
 
 interface EmailDetailModalProps {
@@ -45,6 +48,14 @@ interface LinkedObject {
   type: 'deal' | 'contact' | 'client' | 'property';
   id: string;
   name: string;
+  linkId?: string; // ID of the email_object_link record for removal
+  linkSource?: string; // Whether link was from 'ai_agent' or 'manual'
+}
+
+interface CRMSearchResult {
+  id: string;
+  type: string;
+  name: string;
 }
 
 interface EmailAttachment {
@@ -64,6 +75,13 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
   const [attachments, setAttachments] = useState<EmailAttachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloadingAttachment, setDownloadingAttachment] = useState<string | null>(null);
+
+  // Tag management state
+  const [showAddTag, setShowAddTag] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<CRMSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [processingTag, setProcessingTag] = useState<string | null>(null);
 
   // Get the Supabase URL for the edge function
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://rqbvcvwbziilnycqtmnc.supabase.co';
@@ -123,6 +141,212 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
     return officeTypes.includes(mimeType);
   };
 
+  // Search for CRM objects to tag
+  const handleSearch = async (query: string) => {
+    if (query.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    setSearching(true);
+    try {
+      const results: CRMSearchResult[] = [];
+
+      // Search deals
+      const { data: deals } = await supabase
+        .from('deal')
+        .select('id, deal_name')
+        .ilike('deal_name', `%${query}%`)
+        .limit(5);
+      results.push(...(deals || []).map(d => ({ id: d.id, type: 'deal', name: d.deal_name })));
+
+      // Search contacts
+      const queryWords = query.trim().split(/\s+/);
+      let contactQuery = supabase
+        .from('contact')
+        .select('id, first_name, last_name, email');
+
+      if (queryWords.length >= 2) {
+        const firstName = queryWords[0];
+        const lastName = queryWords.slice(1).join(' ');
+        contactQuery = contactQuery.or(
+          `and(first_name.ilike.%${firstName}%,last_name.ilike.%${lastName}%),email.ilike.%${query}%`
+        );
+      } else {
+        contactQuery = contactQuery.or(
+          `first_name.ilike.%${query}%,last_name.ilike.%${query}%,email.ilike.%${query}%`
+        );
+      }
+      const { data: contacts } = await contactQuery.limit(5);
+      results.push(...(contacts || []).map(c => ({
+        id: c.id,
+        type: 'contact',
+        name: `${c.first_name || ''} ${c.last_name || ''}`.trim() + (c.email ? ` (${c.email})` : ''),
+      })));
+
+      // Search clients
+      const { data: clients } = await supabase
+        .from('client')
+        .select('id, client_name')
+        .ilike('client_name', `%${query}%`)
+        .limit(5);
+      results.push(...(clients || []).map(c => ({ id: c.id, type: 'client', name: c.client_name })));
+
+      // Search properties
+      const { data: properties } = await supabase
+        .from('property')
+        .select('id, property_name, address')
+        .or(`property_name.ilike.%${query}%,address.ilike.%${query}%`)
+        .limit(5);
+      results.push(...(properties || []).map(p => ({
+        id: p.id,
+        type: 'property',
+        name: p.property_name || p.address || 'Unknown',
+      })));
+
+      setSearchResults(results);
+    } catch (err) {
+      console.error('Search error:', err);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  // Add a tag (link) to the email
+  const handleAddTag = async (object: CRMSearchResult) => {
+    const emailId = (activity as any)?.email_id;
+    if (!emailId) return;
+
+    setProcessingTag(object.id);
+    try {
+      // Check if link already exists
+      const existingLink = linkedObjects.find(
+        lo => lo.type === object.type && lo.id === object.id
+      );
+      if (existingLink) {
+        alert('This link already exists');
+        return;
+      }
+
+      // Create the link
+      const { data, error } = await supabase
+        .from('email_object_link')
+        .insert({
+          email_id: emailId,
+          object_type: object.type,
+          object_id: object.id,
+          link_source: 'manual',
+          confidence_score: 1.0,
+          reasoning_log: 'Manually added by user',
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Log as AI training correction (AI missed this link)
+      if (emailDetails) {
+        await supabase.from('agent_corrections').insert({
+          email_id: emailId,
+          incorrect_link_id: null,
+          incorrect_object_type: 'none',
+          incorrect_object_id: '00000000-0000-0000-0000-000000000000',
+          correct_object_type: object.type,
+          correct_object_id: object.id,
+          feedback_text: `AI missed linking to ${object.type} "${object.name}" - user manually added this link`,
+          sender_email: emailDetails.sender_email,
+          email_subject: emailDetails.subject,
+        }).catch(err => console.error('Failed to log correction:', err));
+      }
+
+      // Create activity record if linking to a deal (so it shows in deal timeline)
+      if (object.type === 'deal' && emailDetails) {
+        const { data: emailActivityType } = await supabase
+          .from('activity_type')
+          .select('id')
+          .eq('name', 'Email')
+          .single();
+
+        if (emailActivityType) {
+          await supabase.from('activity').insert({
+            activity_type_id: emailActivityType.id,
+            subject: emailDetails.subject || 'Email',
+            description: emailDetails.snippet || emailDetails.body_text?.substring(0, 500),
+            activity_date: emailDetails.received_at,
+            email_id: emailId,
+            direction: emailDetails.direction,
+            sf_status: 'Completed',
+            deal_id: object.id,
+          }).catch(err => {
+            // Ignore duplicate key errors
+            if (err.code !== '23505') console.error('Failed to create activity:', err);
+          });
+        }
+      }
+
+      // Update local state
+      setLinkedObjects(prev => [...prev, {
+        type: object.type as LinkedObject['type'],
+        id: object.id,
+        name: object.name,
+        linkId: data.id,
+        linkSource: 'manual',
+      }]);
+
+      // Clear search
+      setSearchQuery('');
+      setSearchResults([]);
+      setShowAddTag(false);
+    } catch (err: any) {
+      alert('Error adding tag: ' + err.message);
+    } finally {
+      setProcessingTag(null);
+    }
+  };
+
+  // Remove a tag (link) from the email
+  const handleRemoveTag = async (linkedObject: LinkedObject) => {
+    if (!linkedObject.linkId) {
+      alert('Cannot remove this tag - no link ID found');
+      return;
+    }
+    if (!confirm(`Remove "${linkedObject.name}" tag?`)) return;
+
+    const emailId = (activity as any)?.email_id;
+    setProcessingTag(linkedObject.linkId);
+    try {
+      // Delete the link
+      const { error } = await supabase
+        .from('email_object_link')
+        .delete()
+        .eq('id', linkedObject.linkId);
+
+      if (error) throw error;
+
+      // Log removal as training data (AI was wrong to add this)
+      if (emailDetails && linkedObject.linkSource === 'ai_agent') {
+        await supabase.from('agent_corrections').insert({
+          email_id: emailId,
+          incorrect_link_id: linkedObject.linkId,
+          incorrect_object_type: linkedObject.type,
+          incorrect_object_id: linkedObject.id,
+          correct_object_type: 'none',
+          correct_object_id: '00000000-0000-0000-0000-000000000000',
+          feedback_text: `AI incorrectly linked to ${linkedObject.type} "${linkedObject.name}" - user removed this link`,
+          sender_email: emailDetails.sender_email,
+          email_subject: emailDetails.subject,
+        }).catch(err => console.error('Failed to log removal:', err));
+      }
+
+      // Update local state
+      setLinkedObjects(prev => prev.filter(lo => lo.linkId !== linkedObject.linkId));
+    } catch (err: any) {
+      alert('Error removing tag: ' + err.message);
+    } finally {
+      setProcessingTag(null);
+    }
+  };
+
   // Fetch full email details when modal opens
   useEffect(() => {
     const fetchEmailDetails = async () => {
@@ -152,27 +376,27 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
             setEmailDetails(email);
           }
 
-          // Fetch linked objects via email_tags
-          const { data: tags, error: tagsError } = await supabase
-            .from('email_tags')
-            .select('object_type, object_id')
+          // Fetch linked objects via email_object_link (includes link ID for removal)
+          const { data: links, error: linksError } = await supabase
+            .from('email_object_link')
+            .select('id, object_type, object_id, link_source')
             .eq('email_id', emailId);
 
-          if (tagsError) {
-            console.error('Error fetching email tags:', tagsError);
-          } else if (tags && tags.length > 0) {
+          if (linksError) {
+            console.error('Error fetching email links:', linksError);
+          } else if (links && links.length > 0) {
             // Fetch names for each linked object
             const linkedObjectsWithNames: LinkedObject[] = [];
 
-            for (const tag of tags) {
+            for (const link of links) {
               let name = '';
               try {
-                switch (tag.object_type) {
+                switch (link.object_type) {
                   case 'deal':
                     const { data: deal } = await supabase
                       .from('deal')
                       .select('deal_name')
-                      .eq('id', tag.object_id)
+                      .eq('id', link.object_id)
                       .single();
                     name = deal?.deal_name || 'Unknown Deal';
                     break;
@@ -180,7 +404,7 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
                     const { data: contact } = await supabase
                       .from('contact')
                       .select('first_name, last_name')
-                      .eq('id', tag.object_id)
+                      .eq('id', link.object_id)
                       .single();
                     name = contact ? `${contact.first_name} ${contact.last_name}`.trim() : 'Unknown Contact';
                     break;
@@ -188,7 +412,7 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
                     const { data: client } = await supabase
                       .from('client')
                       .select('client_name')
-                      .eq('id', tag.object_id)
+                      .eq('id', link.object_id)
                       .single();
                     name = client?.client_name || 'Unknown Client';
                     break;
@@ -196,19 +420,21 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
                     const { data: property } = await supabase
                       .from('property')
                       .select('property_name')
-                      .eq('id', tag.object_id)
+                      .eq('id', link.object_id)
                       .single();
                     name = property?.property_name || 'Unknown Property';
                     break;
                 }
 
                 linkedObjectsWithNames.push({
-                  type: tag.object_type as LinkedObject['type'],
-                  id: tag.object_id,
-                  name
+                  type: link.object_type as LinkedObject['type'],
+                  id: link.object_id,
+                  name,
+                  linkId: link.id,
+                  linkSource: link.link_source,
                 });
               } catch (err) {
-                console.error(`Error fetching ${tag.object_type} name:`, err);
+                console.error(`Error fetching ${link.object_type} name:`, err);
               }
             }
 
@@ -381,27 +607,102 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
                 </div>
               </div>
 
-              {/* Linked CRM Objects */}
-              {linkedObjects.length > 0 && (
-                <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-                  <h4 className="text-sm font-medium text-blue-900 mb-2 flex items-center gap-2">
+              {/* Linked CRM Objects - with tag management */}
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-medium text-blue-900 flex items-center gap-2">
                     <LinkIcon className="w-4 h-4" />
                     Linked to CRM Objects
                   </h4>
+                  <button
+                    onClick={() => setShowAddTag(!showAddTag)}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 rounded transition-colors"
+                  >
+                    <PlusIcon className="w-3 h-3" />
+                    Add Tag
+                  </button>
+                </div>
+
+                {/* Add Tag Search */}
+                {showAddTag && (
+                  <div className="mb-3 p-3 bg-white rounded-lg border border-blue-200">
+                    <div className="relative">
+                      <MagnifyingGlassIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Search deals, contacts, clients, properties..."
+                        value={searchQuery}
+                        onChange={(e) => {
+                          setSearchQuery(e.target.value);
+                          handleSearch(e.target.value);
+                        }}
+                        className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        autoFocus
+                      />
+                    </div>
+
+                    {/* Search Results */}
+                    {searching && (
+                      <div className="mt-2 text-sm text-gray-500">Searching...</div>
+                    )}
+                    {!searching && searchResults.length > 0 && (
+                      <div className="mt-2 max-h-48 overflow-y-auto">
+                        {searchResults.map((result) => (
+                          <button
+                            key={`${result.type}-${result.id}`}
+                            onClick={() => handleAddTag(result)}
+                            disabled={processingTag === result.id}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-blue-50 rounded-md transition-colors disabled:opacity-50"
+                          >
+                            {getObjectIcon(result.type)}
+                            <span className="flex-1 truncate">{result.name}</span>
+                            <span className="text-xs text-gray-400 capitalize">{result.type}</span>
+                            {processingTag === result.id && (
+                              <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {!searching && searchQuery.length >= 2 && searchResults.length === 0 && (
+                      <div className="mt-2 text-sm text-gray-500">No results found</div>
+                    )}
+                  </div>
+                )}
+
+                {/* Linked Objects List */}
+                {linkedObjects.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {linkedObjects.map((obj, index) => (
                       <span
                         key={`${obj.type}-${obj.id}-${index}`}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-full text-sm border border-blue-200"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-full text-sm border border-blue-200 group"
                       >
                         {getObjectIcon(obj.type)}
                         <span className="text-gray-700">{obj.name}</span>
                         <span className="text-xs text-gray-400 capitalize">({obj.type})</span>
+                        {obj.linkSource === 'ai_agent' && (
+                          <span className="text-xs text-purple-500" title="Added by AI">✨</span>
+                        )}
+                        <button
+                          onClick={() => handleRemoveTag(obj)}
+                          disabled={processingTag === obj.linkId}
+                          className="ml-1 p-0.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                          title="Remove tag"
+                        >
+                          {processingTag === obj.linkId ? (
+                            <div className="w-3 h-3 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <XMarkIcon className="w-3 h-3" />
+                          )}
+                        </button>
                       </span>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="text-sm text-blue-700 italic">No CRM objects linked to this email yet.</p>
+                )}
+              </div>
 
               {/* Attachments */}
               {attachments.length > 0 && (
