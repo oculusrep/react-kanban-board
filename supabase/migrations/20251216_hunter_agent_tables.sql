@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS hunter_source (
 INSERT INTO hunter_source (name, slug, source_type, base_url, requires_auth, auth_type, login_url, scrape_config) VALUES
 ('Nation''s Restaurant News', 'nrn', 'website', 'https://www.nrn.com', true, 'form_login', 'https://www.nrn.com/user/login',
  '{"target_paths": ["/emerging-chains", "/growth"], "article_selector": "article", "title_selector": "h1", "body_selector": ".article-body"}'::jsonb),
-('QSR Magazine', 'qsr', 'website', 'https://www.qsrmagazine.com', true, 'form_login', 'https://www.qsrmagazine.com/login',
+('QSR Magazine', 'qsr', 'website', 'https://www.qsrmagazine.com', false, null, null,
  '{"target_paths": ["/growth", "/franchising"], "article_selector": "article", "title_selector": "h1", "body_selector": ".article-content"}'::jsonb),
 ('Franchise Times', 'franchise-times', 'website', 'https://www.franchisetimes.com', false, null, null,
  '{"target_paths": ["/news", "/franchise-development"], "article_selector": "article", "title_selector": "h1", "body_selector": ".entry-content"}'::jsonb),
