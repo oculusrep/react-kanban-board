@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  hunter:
+    build: .
+    env_file: .env
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./src:/app/src
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
