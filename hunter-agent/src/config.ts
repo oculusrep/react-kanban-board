@@ -1,12 +1,14 @@
 import dotenv from 'dotenv';
+import path from 'path';
 
-dotenv.config();
+// Load from root .env file (parent directory)
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 export const config = {
   // Database
   supabase: {
-    url: process.env.SUPABASE_URL || '',
-    serviceKey: process.env.SUPABASE_SERVICE_KEY || '',
+    url: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+    serviceKey: process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
   },
 
   // LLM
