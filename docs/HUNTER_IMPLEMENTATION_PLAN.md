@@ -1,8 +1,9 @@
 # Hunter Agent - Complete Implementation Plan
 
-**Version:** 1.0
+**Version:** 1.1
 **Created:** December 16, 2025
-**Status:** Ready for Implementation
+**Updated:** December 17, 2025
+**Status:** Core Modules Complete - UI Build Remaining
 
 ---
 
@@ -1467,50 +1468,54 @@ HUNTER_TIMEZONE=America/New_York
 
 ## 6. Implementation Phases
 
-### Phase 1: Foundation (Days 1-2)
-- [ ] Initialize TypeScript project with dependencies
-- [ ] Set up Docker configuration
-- [ ] Create database migrations
-- [ ] Implement Supabase client and base queries
-- [ ] Build config and logging utilities
+### Phase 1: Foundation (Days 1-2) - COMPLETE
+- [x] Initialize TypeScript project with dependencies
+- [x] Set up Docker configuration
+- [x] Create database migrations
+- [x] Implement Supabase client and base queries
+- [x] Build config and logging utilities
 
-### Phase 2: Gatherer Module (Days 3-5)
-- [ ] Implement Playwright browser manager
-- [ ] Build NRN scraper with authentication
-- [ ] Build QSR Magazine scraper
-- [ ] Build Franchise Times scraper
-- [ ] Build BizJournals scraper
-- [ ] Implement RSS feed parser
-- [ ] Implement podcast metadata scanner
-- [ ] Integrate Whisper for selective transcription
-- [ ] Build ICSC contact lookup scraper
+### Phase 2: Gatherer Module (Days 3-5) - COMPLETE
+- [x] Implement Playwright browser manager (`hunter-agent/src/modules/gatherer/playwright-browser.ts`)
+- [x] Build NRN scraper with authentication (`hunter-agent/src/modules/gatherer/scrapers/nrn-scraper.ts`)
+- [x] Build QSR Magazine scraper (`hunter-agent/src/modules/gatherer/scrapers/qsr-scraper.ts`)
+- [x] Build Franchise Times scraper (`hunter-agent/src/modules/gatherer/scrapers/franchise-times-scraper.ts`)
+- [x] Build BizJournals scraper (`hunter-agent/src/modules/gatherer/scrapers/bizjournals-scraper.ts`)
+- [x] Implement RSS feed parser (`hunter-agent/src/modules/gatherer/rss/rss-fetcher.ts`)
+- [x] Implement podcast metadata scanner (in rss-fetcher.ts)
+- [x] Integrate Whisper for selective transcription (`hunter-agent/src/modules/gatherer/transcription/whisper-client.ts`)
+- [x] Build ICSC contact lookup scraper (`hunter-agent/src/modules/gatherer/scrapers/icsc-scraper.ts`)
 
-### Phase 3: Analyzer Module (Days 6-7)
-- [ ] Implement Gemini client
-- [ ] Build signal processor (extract leads from content)
-- [ ] Implement lead scorer (geography-based)
-- [ ] Build deduplicator (company name matching)
-- [ ] Implement existing contact/client lookup
+### Phase 3: Analyzer Module (Days 6-7) - COMPLETE
+- [x] Implement Gemini client (`hunter-agent/src/utils/gemini-client.ts`)
+- [x] Build signal processor (extract leads from content) (`hunter-agent/src/modules/analyzer/signal-processor.ts`)
+- [x] Implement lead scorer (geography-based) (`hunter-agent/src/modules/analyzer/lead-scorer.ts`)
+- [x] Build deduplicator (company name matching) (in `hunter-agent/src/utils/text-utils.ts`)
+- [x] Implement existing contact/client lookup (`hunter-agent/src/modules/analyzer/lead-manager.ts`)
 
-### Phase 4: Enricher Module (Day 8)
-- [ ] Build OVIS contact lookup
-- [ ] Integrate ICSC enricher
-- [ ] Build LinkedIn URL generator
-- [ ] Implement enrichment status tracking
+### Phase 4: Enricher Module (Day 8) - COMPLETE
+- [x] Build OVIS contact lookup (in lead-manager.ts)
+- [x] Integrate ICSC enricher (`hunter-agent/src/modules/enricher/index.ts`)
+- [x] Build LinkedIn URL generator (in `hunter-agent/src/utils/text-utils.ts`)
+- [x] Implement enrichment status tracking
 
-### Phase 5: Outreach Module (Days 9-10)
-- [ ] Build email drafter with Gemini
-- [ ] Build voicemail script drafter
-- [ ] Implement draft storage and status tracking
-- [ ] Build Gmail send integration
+### Phase 5: Outreach Module (Days 9-10) - COMPLETE
+- [x] Build email drafter with Gemini (`hunter-agent/src/modules/outreach/email-drafter.ts`)
+- [x] Build voicemail script drafter (in email-drafter.ts)
+- [x] Implement draft storage and status tracking (`hunter-agent/src/modules/outreach/index.ts`)
+- [x] Build Gmail send integration (`supabase/functions/hunter-send-outreach/index.ts`)
+  - Added `gmail.send` scope to OAuth flow
+  - Created `sendEmail` function in `supabase/functions/_shared/gmail.ts`
+  - Created edge function for sending outreach via user's Gmail
+  - Added Gmail tracking fields to `hunter_outreach_draft` table
 
-### Phase 6: Briefing Module (Day 11)
-- [ ] Build daily report generator
-- [ ] Create HTML email template
-- [ ] Implement Resend email sending
-- [ ] Build dashboard data aggregation
+### Phase 6: Briefing Module (Day 11) - COMPLETE
+- [x] Build daily report generator (`hunter-agent/src/modules/briefing/index.ts`)
+- [x] Create HTML email template (in briefing/index.ts)
+- [x] Implement Resend email sending
+- [x] Build dashboard data aggregation
 
-### Phase 7: OVIS UI (Days 12-14)
+### Phase 7: OVIS UI (Days 12-14) - PENDING
 - [ ] Create `/hunter` dashboard page
 - [ ] Build lead detail view
 - [ ] Create `/hunter/outreach` draft review queue
@@ -1518,18 +1523,48 @@ HUNTER_TIMEZONE=America/New_York
 - [ ] Add feedback capture UI
 - [ ] Build reconnect list component
 
-### Phase 8: Integration & Testing (Days 15-16)
+### Phase 8: Integration & Testing (Days 15-16) - PARTIAL
 - [ ] Set up pg_cron trigger
 - [ ] Create Edge Function to invoke Hunter service
 - [ ] End-to-end testing
 - [ ] Error handling and alerting
-- [ ] Documentation
+- [x] Documentation (this file)
 
-### Phase 9: Deployment (Day 17)
+### Phase 9: Deployment (Day 17) - PENDING
 - [ ] Deploy to Cloud Run or Railway
 - [ ] Configure production secrets
 - [ ] Set up monitoring
 - [ ] Run first production cycle
+
+---
+
+## Implementation Progress Log
+
+### December 16, 2025 - Foundation & Schema
+- Created project scaffold (`hunter-agent/`)
+- Defined database schema and migrations
+- Set up TypeScript configuration
+- Created Docker configuration
+
+### December 17, 2025 - Core Modules Complete
+- **Gatherer Module**: All scrapers implemented (NRN, QSR, Franchise Times, BizJournals, ICSC, RSS/Podcast)
+- **Analyzer Module**: Gemini-powered signal processing, geographic lead scoring, OVIS contact matching
+- **Enricher Module**: ICSC contact discovery integration with LinkedIn URL generation
+- **Outreach Module**: AI-drafted emails and voicemail scripts via Gemini
+- **Briefing Module**: Daily summary emails via Resend
+
+**Gmail Integration Added:**
+- Added `gmail.send` scope to OAuth flow in `supabase/functions/gmail-connect/index.ts`
+- Created `sendEmail()` function in `supabase/functions/_shared/gmail.ts`
+- Built `hunter-send-outreach` edge function for sending emails via user's Gmail
+- Added migration `20251217_hunter_gmail_outreach.sql` for Gmail tracking fields:
+  - `gmail_message_id` - Gmail API message ID for tracking replies
+  - `gmail_thread_id` - Thread ID for conversation grouping
+  - `sent_by_user_email` - Which OVIS user sent the email
+  - `error_message` - Error details if send failed
+  - Added `failed` status option to outreach drafts
+
+**Note:** Users must re-authorize Gmail in OVIS (disconnect/reconnect) to grant the new `gmail.send` permission
 
 ---
 
