@@ -704,3 +704,195 @@ export async function revokeToken(token: string): Promise<void> {
     // Don't throw - token may already be invalid
   }
 }
+
+// ============================================================================
+// Gmail Send Email
+// ============================================================================
+
+export interface SendEmailOptions {
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  bodyText?: string;
+  bodyHtml?: string;
+  replyTo?: string;
+  inReplyTo?: string;   // Message-ID for threading
+  references?: string;  // Reference chain for threading
+}
+
+export interface SendEmailResult {
+  success: boolean;
+  messageId?: string;
+  threadId?: string;
+  error?: string;
+}
+
+/**
+ * Encode a string to base64url format (Gmail's required encoding)
+ */
+function encodeBase64Url(str: string): string {
+  // Convert string to UTF-8 bytes, then to base64
+  const utf8Bytes = new TextEncoder().encode(str);
+  let binary = '';
+  for (const byte of utf8Bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  const base64 = btoa(binary);
+  // Convert to base64url: replace + with -, / with _, remove padding
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
+ * Build a MIME message for Gmail API
+ */
+function buildMimeMessage(
+  from: string,
+  options: SendEmailOptions
+): string {
+  const boundary = `boundary_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+  // Build headers
+  const headers: string[] = [
+    `From: ${from}`,
+    `To: ${options.to.join(', ')}`,
+  ];
+
+  if (options.cc && options.cc.length > 0) {
+    headers.push(`Cc: ${options.cc.join(', ')}`);
+  }
+
+  if (options.bcc && options.bcc.length > 0) {
+    headers.push(`Bcc: ${options.bcc.join(', ')}`);
+  }
+
+  headers.push(`Subject: ${options.subject}`);
+
+  if (options.replyTo) {
+    headers.push(`Reply-To: ${options.replyTo}`);
+  }
+
+  // Threading headers for replies
+  if (options.inReplyTo) {
+    headers.push(`In-Reply-To: ${options.inReplyTo}`);
+  }
+
+  if (options.references) {
+    headers.push(`References: ${options.references}`);
+  }
+
+  headers.push(`MIME-Version: 1.0`);
+
+  let mimeBody: string;
+
+  if (options.bodyHtml && options.bodyText) {
+    // Multipart alternative (both text and HTML)
+    headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+    mimeBody = [
+      '',
+      `--${boundary}`,
+      'Content-Type: text/plain; charset="UTF-8"',
+      'Content-Transfer-Encoding: quoted-printable',
+      '',
+      options.bodyText,
+      '',
+      `--${boundary}`,
+      'Content-Type: text/html; charset="UTF-8"',
+      'Content-Transfer-Encoding: quoted-printable',
+      '',
+      options.bodyHtml,
+      '',
+      `--${boundary}--`,
+    ].join('\r\n');
+  } else if (options.bodyHtml) {
+    // HTML only
+    headers.push('Content-Type: text/html; charset="UTF-8"');
+    mimeBody = '\r\n' + options.bodyHtml;
+  } else {
+    // Plain text only
+    headers.push('Content-Type: text/plain; charset="UTF-8"');
+    mimeBody = '\r\n' + (options.bodyText || '');
+  }
+
+  return headers.join('\r\n') + '\r\n' + mimeBody;
+}
+
+/**
+ * Send an email using the Gmail API
+ * Requires gmail.send scope
+ *
+ * @param accessToken - Valid OAuth access token with gmail.send scope
+ * @param fromEmail - The sender's email address (must match authenticated user)
+ * @param options - Email options (to, subject, body, etc.)
+ * @returns Send result with message ID and thread ID on success
+ */
+export async function sendEmail(
+  accessToken: string,
+  fromEmail: string,
+  options: SendEmailOptions
+): Promise<SendEmailResult> {
+  try {
+    // Validate required fields
+    if (!options.to || options.to.length === 0) {
+      return { success: false, error: 'At least one recipient is required' };
+    }
+
+    if (!options.subject) {
+      return { success: false, error: 'Subject is required' };
+    }
+
+    if (!options.bodyText && !options.bodyHtml) {
+      return { success: false, error: 'Email body (text or HTML) is required' };
+    }
+
+    // Build the MIME message
+    const mimeMessage = buildMimeMessage(fromEmail, options);
+
+    // Encode to base64url
+    const encodedMessage = encodeBase64Url(mimeMessage);
+
+    // Send via Gmail API
+    const response = await gmailRequest<{
+      id: string;
+      threadId: string;
+      labelIds: string[];
+    }>(
+      '/users/me/messages/send',
+      accessToken,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          raw: encodedMessage,
+        }),
+      }
+    );
+
+    return {
+      success: true,
+      messageId: response.id,
+      threadId: response.threadId,
+    };
+  } catch (error: any) {
+    console.error('[Gmail Send] Error sending email:', error);
+
+    // Handle specific error cases
+    if (error.status === 403) {
+      return {
+        success: false,
+        error: 'Permission denied - gmail.send scope required. User may need to reconnect Gmail.',
+      };
+    }
+
+    if (error.status === 401) {
+      return {
+        success: false,
+        error: 'Authentication failed - access token may be expired.',
+      };
+    }
+
+    return {
+      success: false,
+      error: error.message || 'Failed to send email',
+    };
+  }
+}

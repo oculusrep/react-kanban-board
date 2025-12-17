@@ -107,7 +107,7 @@ export interface HunterContactEnrichment {
 // ============================================================================
 
 export type OutreachType = 'email' | 'voicemail_script';
-export type OutreachStatus = 'draft' | 'approved' | 'sent' | 'rejected';
+export type OutreachStatus = 'draft' | 'approved' | 'sent' | 'rejected' | 'failed';
 
 export interface HunterOutreachDraft {
   id?: string;
@@ -127,6 +127,11 @@ export interface HunterOutreachDraft {
   user_edited_body: string | null;
   sent_at: string | null;
   sent_email_id: string | null;
+  // Gmail tracking fields
+  gmail_message_id: string | null;
+  gmail_thread_id: string | null;
+  sent_by_user_email: string | null;
+  error_message: string | null;
   created_at?: string;
   updated_at?: string;
 }

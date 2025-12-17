@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.21.0",
     "@supabase/supabase-js": "^2.39.0",
     "playwright": "^1.40.0",
     "playwright-extra": "^4.3.6",

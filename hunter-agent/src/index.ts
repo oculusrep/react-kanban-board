@@ -2,16 +2,16 @@ import express from 'express';
 import { config, validateConfig } from './config';
 import { createLogger } from './utils/logger';
 import { supabase } from './db/client';
-import { HunterRunLog, RunError } from './types';
+import { RunError } from './types';
 
 const logger = createLogger('main');
 
-// Import modules (will be implemented in subsequent phases)
-// import { Gatherer } from './modules/gatherer';
-// import { Analyzer } from './modules/analyzer';
-// import { Enricher } from './modules/enricher';
-// import { OutreachDrafter } from './modules/outreach';
-// import { BriefingSender } from './modules/briefing';
+// Import modules
+import { Gatherer } from './modules/gatherer';
+import { Analyzer } from './modules/analyzer';
+import { Enricher } from './modules/enricher';
+import { OutreachDrafter } from './modules/outreach';
+import { BriefingSender } from './modules/briefing';
 
 const app = express();
 app.use(express.json());
@@ -22,7 +22,7 @@ app.get('/health', (_, res) => {
 });
 
 // Trigger a Hunter run
-app.post('/run', async (req, res) => {
+app.post('/run', async (_req, res) => {
   logger.info('Hunter run triggered');
 
   try {
@@ -59,7 +59,7 @@ app.post('/run', async (req, res) => {
 });
 
 // Get status of a specific run
-app.get('/status/:runId', async (req, res) => {
+app.get('/status/:runId', async (req, res): Promise<void> => {
   const { runId } = req.params;
 
   try {
@@ -70,7 +70,8 @@ app.get('/status/:runId', async (req, res) => {
       .single();
 
     if (error || !runLog) {
-      return res.status(404).json({ error: 'Run not found' });
+      res.status(404).json({ error: 'Run not found' });
+      return;
     }
 
     res.json(runLog);
@@ -81,7 +82,7 @@ app.get('/status/:runId', async (req, res) => {
 });
 
 // Get latest run status
-app.get('/status', async (_, res) => {
+app.get('/status', async (_, res): Promise<void> => {
   try {
     const { data: runLog, error } = await supabase
       .from('hunter_run_log')
@@ -91,7 +92,8 @@ app.get('/status', async (_, res) => {
       .single();
 
     if (error || !runLog) {
-      return res.status(404).json({ error: 'No runs found' });
+      res.status(404).json({ error: 'No runs found' });
+      return;
     }
 
     res.json(runLog);
@@ -120,39 +122,39 @@ async function executeHunterRun(runId: string): Promise<void> {
   try {
     // Phase 1: Gather signals from all sources
     logger.info('Phase 1: Gathering signals...');
-    // const gatherer = new Gatherer();
-    // const gatherResult = await gatherer.run();
-    // metrics.sources_scraped = gatherResult.sourcesScraped;
-    // metrics.signals_collected = gatherResult.signalsCollected;
-    // TODO: Implement gatherer module
+    const gatherer = new Gatherer();
+    const gatherResult = await gatherer.run();
+    metrics.sources_scraped = gatherResult.sourcesScraped;
+    metrics.signals_collected = gatherResult.signalsCollected;
+    errors.push(...gatherResult.errors);
 
     // Phase 2: Analyze signals and create/update leads
     logger.info('Phase 2: Analyzing signals...');
-    // const analyzer = new Analyzer();
-    // const analyzeResult = await analyzer.run();
-    // metrics.leads_created = analyzeResult.leadsCreated;
-    // metrics.leads_updated = analyzeResult.leadsUpdated;
-    // TODO: Implement analyzer module
+    const analyzer = new Analyzer();
+    const analyzeResult = await analyzer.run();
+    metrics.leads_created = analyzeResult.leadsCreated;
+    metrics.leads_updated = analyzeResult.leadsUpdated;
+    errors.push(...analyzeResult.errors);
 
     // Phase 3: Enrich leads with contact information
     logger.info('Phase 3: Enriching leads...');
-    // const enricher = new Enricher();
-    // const enrichResult = await enricher.run();
-    // metrics.contacts_enriched = enrichResult.contactsEnriched;
-    // TODO: Implement enricher module
+    const enricher = new Enricher();
+    const enrichResult = await enricher.run();
+    metrics.contacts_enriched = enrichResult.contactsEnriched;
+    errors.push(...enrichResult.errors);
 
     // Phase 4: Draft outreach for HOT leads
     logger.info('Phase 4: Drafting outreach...');
-    // const outreachDrafter = new OutreachDrafter();
-    // const outreachResult = await outreachDrafter.run();
-    // metrics.outreach_drafted = outreachResult.draftedCount;
-    // TODO: Implement outreach module
+    const outreachDrafter = new OutreachDrafter();
+    const outreachResult = await outreachDrafter.run();
+    metrics.outreach_drafted = outreachResult.draftedCount;
+    errors.push(...outreachResult.errors);
 
     // Phase 5: Send daily briefing
     logger.info('Phase 5: Sending briefing...');
-    // const briefingSender = new BriefingSender();
-    // const briefingResult = await briefingSender.send(runId, metrics);
-    // TODO: Implement briefing module
+    const briefingSender = new BriefingSender();
+    const briefingResult = await briefingSender.send(runId, metrics);
+    errors.push(...briefingResult.errors);
 
     // Update run log with success
     await supabase

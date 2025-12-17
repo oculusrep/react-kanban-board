@@ -19,8 +19,10 @@ const GOOGLE_REDIRECT_URI = Deno.env.get('GOOGLE_REDIRECT_URI')!;
 
 // Gmail scopes needed
 // gmail.modify includes read + ability to add/remove labels
+// gmail.send allows sending emails on behalf of the user
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.modify',
+  'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/userinfo.email',
 ].join(' ');
 

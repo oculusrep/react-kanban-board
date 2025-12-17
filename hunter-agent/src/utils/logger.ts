@@ -8,7 +8,7 @@ interface LogEntry {
   data?: Record<string, unknown>;
 }
 
-class Logger {
+export class Logger {
   private module: string;
 
   constructor(module: string) {

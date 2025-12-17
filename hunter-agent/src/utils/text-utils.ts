@@ -3,7 +3,7 @@ import crypto from 'crypto';
 /**
  * Normalize company name for matching/deduplication
  */
-export function normalizeName(name: string): string {
+export function normalizeCompanyName(name: string): string {
   return name
     .toLowerCase()
     .replace(/['']/g, '')                    // Remove apostrophes
@@ -53,8 +53,8 @@ export function levenshteinDistance(str1: string, str2: string): number {
  * Check if two names likely refer to the same company
  */
 export function isSameCompany(name1: string, name2: string): boolean {
-  const norm1 = normalizeName(name1);
-  const norm2 = normalizeName(name2);
+  const norm1 = normalizeCompanyName(name1);
+  const norm2 = normalizeCompanyName(name2);
 
   // Exact match
   if (norm1 === norm2) return true;
