@@ -1,13 +1,14 @@
 import { supabase } from '../../db/client';
 import { HunterSource, HunterSignal, RunError } from '../../types';
 import { createLogger } from '../../utils/logger';
-import { getBrowserManager } from './playwright-browser';
+import { BrowserManager } from './playwright-browser';
 import { BaseScraper } from './scrapers/base-scraper';
 import { NRNScraper } from './scrapers/nrn-scraper';
 import { QSRScraper } from './scrapers/qsr-scraper';
 import { FranchiseTimesScraper } from './scrapers/franchise-times-scraper';
 import { BizJournalsScraper } from './scrapers/bizjournals-scraper';
 import { RSSFetcher } from './rss/rss-fetcher';
+import { ArticleFetcher, RSS_FEEDS } from './rss/article-fetcher';
 import { WhisperClient } from './transcription/whisper-client';
 import { generateContentHash } from '../../utils/text-utils';
 
@@ -19,13 +20,22 @@ export interface GathererResult {
   errors: RunError[];
 }
 
+/**
+ * Gatherer module optimized for low memory usage.
+ *
+ * Memory optimization strategy:
+ * 1. Use RSS feeds for no-auth sources (no Playwright needed)
+ * 2. For auth-required sources, create/destroy browser for each source
+ * 3. Process sources sequentially to avoid memory spikes
+ * 4. Force garbage collection hints between sources
+ */
 export class Gatherer {
-  private browserManager = getBrowserManager();
   private rssFetcher = new RSSFetcher();
+  private articleFetcher = new ArticleFetcher();
   private whisperClient = new WhisperClient();
 
   /**
-   * Run the full gathering process
+   * Run the full gathering process with memory optimization
    */
   async run(): Promise<GathererResult> {
     const result: GathererResult = {
@@ -34,94 +44,175 @@ export class Gatherer {
       errors: [],
     };
 
-    try {
-      // Initialize browser
-      await this.browserManager.initialize();
+    // Get all active sources
+    const { data: sources, error: sourcesError } = await supabase
+      .from('hunter_source')
+      .select('*')
+      .eq('is_active', true);
 
-      // Get all active sources
-      const { data: sources, error: sourcesError } = await supabase
-        .from('hunter_source')
-        .select('*')
-        .eq('is_active', true);
+    if (sourcesError || !sources) {
+      throw new Error(`Failed to fetch sources: ${sourcesError?.message}`);
+    }
 
-      if (sourcesError || !sources) {
-        throw new Error(`Failed to fetch sources: ${sourcesError?.message}`);
-      }
+    logger.info(`Found ${sources.length} active sources`);
 
-      logger.info(`Found ${sources.length} active sources`);
+    // Separate sources by type for processing
+    const rssOnlySources = sources.filter(
+      (s) => s.source_type === 'rss' || s.source_type === 'podcast'
+    );
+    const noAuthWebsites = sources.filter(
+      (s) => s.source_type === 'website' && !s.requires_auth && RSS_FEEDS[s.slug]
+    );
+    const authWebsites = sources.filter(
+      (s) => s.source_type === 'website' && s.requires_auth
+    );
+    const noRssNoAuthWebsites = sources.filter(
+      (s) => s.source_type === 'website' && !s.requires_auth && !RSS_FEEDS[s.slug]
+    );
 
-      // Process each source
-      for (const source of sources) {
-        try {
-          logger.info(`Processing source: ${source.name}`);
+    logger.info(
+      `Source breakdown: ${rssOnlySources.length} RSS/podcast, ` +
+      `${noAuthWebsites.length} no-auth with RSS, ` +
+      `${authWebsites.length} auth-required, ` +
+      `${noRssNoAuthWebsites.length} no-auth without RSS`
+    );
 
-          let signals: Omit<HunterSignal, 'id'>[] = [];
+    // Phase 1: Process RSS-only sources (podcasts) - NO PLAYWRIGHT
+    for (const source of rssOnlySources) {
+      try {
+        logger.info(`[RSS] Processing: ${source.name}`);
+        const signals = await this.processPodcast(source);
 
-          if (source.source_type === 'website') {
-            signals = await this.scrapeWebsite(source);
-          } else if (source.source_type === 'podcast' || source.source_type === 'rss') {
-            signals = await this.processPodcast(source);
-          }
-
-          // Store signals
-          if (signals.length > 0) {
-            const storedCount = await this.storeSignals(signals);
-            result.signalsCollected += storedCount;
-            logger.info(`Stored ${storedCount} new signals from ${source.name}`);
-          }
-
-          // Update source last_scraped_at
-          await supabase
-            .from('hunter_source')
-            .update({
-              last_scraped_at: new Date().toISOString(),
-              last_error: null,
-              consecutive_failures: 0,
-            })
-            .eq('id', source.id);
-
-          result.sourcesScraped++;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Unknown error';
-          logger.error(`Failed to process source ${source.name}: ${message}`);
-
-          result.errors.push({
-            source: source.name,
-            module: 'gatherer',
-            message,
-            timestamp: new Date().toISOString(),
-          });
-
-          // Update source with error
-          await supabase
-            .from('hunter_source')
-            .update({
-              last_error: message,
-              consecutive_failures: (source.consecutive_failures || 0) + 1,
-            })
-            .eq('id', source.id);
+        if (signals.length > 0) {
+          const storedCount = await this.storeSignals(signals);
+          result.signalsCollected += storedCount;
+          logger.info(`[RSS] Stored ${storedCount} signals from ${source.name}`);
         }
+
+        await this.markSourceSuccess(source);
+        result.sourcesScraped++;
+      } catch (error) {
+        await this.handleSourceError(source, error, result);
       }
-    } finally {
-      // Always clean up browser
-      await this.browserManager.close();
+
+      this.triggerGC();
+    }
+
+    // Phase 2: Process no-auth websites via RSS - NO PLAYWRIGHT
+    for (const source of noAuthWebsites) {
+      try {
+        logger.info(`[RSS-Article] Processing: ${source.name}`);
+        const rssUrl = RSS_FEEDS[source.slug];
+        const articles = await this.articleFetcher.fetchFromRSS(rssUrl);
+        const signals = this.articleFetcher.articlesToSignals(source, articles);
+
+        if (signals.length > 0) {
+          const storedCount = await this.storeSignals(signals);
+          result.signalsCollected += storedCount;
+          logger.info(`[RSS-Article] Stored ${storedCount} signals from ${source.name}`);
+        }
+
+        await this.markSourceSuccess(source);
+        result.sourcesScraped++;
+      } catch (error) {
+        await this.handleSourceError(source, error, result);
+      }
+
+      this.triggerGC();
+    }
+
+    // Phase 3: Process auth-required websites with Playwright
+    // Create/destroy browser for EACH source to minimize memory
+    for (const source of authWebsites) {
+      let browserManager: BrowserManager | null = null;
+
+      try {
+        logger.info(`[Browser] Processing auth-required source: ${source.name}`);
+
+        // Create fresh browser for this source
+        browserManager = new BrowserManager();
+        await browserManager.initialize();
+
+        const context = await browserManager.getContext(source.slug);
+        const signals = await this.scrapeWithBrowser(source, context);
+
+        if (signals.length > 0) {
+          const storedCount = await this.storeSignals(signals);
+          result.signalsCollected += storedCount;
+          logger.info(`[Browser] Stored ${storedCount} signals from ${source.name}`);
+        }
+
+        await this.markSourceSuccess(source);
+        result.sourcesScraped++;
+      } catch (error) {
+        await this.handleSourceError(source, error, result);
+      } finally {
+        // CRITICAL: Close browser after each source to free memory
+        if (browserManager) {
+          logger.info(`[Browser] Closing browser for ${source.name}`);
+          await browserManager.close();
+          browserManager = null;
+        }
+
+        this.triggerGC();
+
+        // Small delay between browser sources to let memory settle
+        await this.delay(2000);
+      }
+    }
+
+    // Phase 4: Process no-auth websites without RSS (still need Playwright)
+    for (const source of noRssNoAuthWebsites) {
+      let browserManager: BrowserManager | null = null;
+
+      try {
+        logger.info(`[Browser] Processing no-auth source: ${source.name}`);
+
+        browserManager = new BrowserManager();
+        await browserManager.initialize();
+
+        const context = await browserManager.getContext(source.slug);
+        const signals = await this.scrapeWithBrowser(source, context);
+
+        if (signals.length > 0) {
+          const storedCount = await this.storeSignals(signals);
+          result.signalsCollected += storedCount;
+          logger.info(`[Browser] Stored ${storedCount} signals from ${source.name}`);
+        }
+
+        await this.markSourceSuccess(source);
+        result.sourcesScraped++;
+      } catch (error) {
+        await this.handleSourceError(source, error, result);
+      } finally {
+        if (browserManager) {
+          logger.info(`[Browser] Closing browser for ${source.name}`);
+          await browserManager.close();
+          browserManager = null;
+        }
+
+        this.triggerGC();
+        await this.delay(2000);
+      }
     }
 
     logger.info(
-      `Gatherer complete: ${result.sourcesScraped} sources, ${result.signalsCollected} signals, ${result.errors.length} errors`
+      `Gatherer complete: ${result.sourcesScraped} sources, ` +
+      `${result.signalsCollected} signals, ${result.errors.length} errors`
     );
 
     return result;
   }
 
   /**
-   * Scrape a website source
+   * Scrape a website using Playwright browser
    */
-  private async scrapeWebsite(source: HunterSource): Promise<Omit<HunterSignal, 'id'>[]> {
-    const context = await this.browserManager.getContext(source.slug);
+  private async scrapeWithBrowser(
+    source: HunterSource,
+    context: import('playwright').BrowserContext
+  ): Promise<Omit<HunterSignal, 'id'>[]> {
     let scraper: BaseScraper;
 
-    // Get the appropriate scraper for this source
     switch (source.slug) {
       case 'nrn':
         scraper = new NRNScraper(source, context);
@@ -177,15 +268,19 @@ export class Gatherer {
       });
 
       // Check if we should transcribe
-      const shouldTranscribe = this.rssFetcher.shouldTranscribe(episode, config.transcribe_keywords || []);
+      const shouldTranscribe = this.rssFetcher.shouldTranscribe(
+        episode,
+        config.transcribe_keywords || []
+      );
 
       if (shouldTranscribe && episode.audioUrl) {
         logger.info(`Transcribing episode: ${episode.title}`);
 
-        // Generate a unique ID for this episode
         const episodeId = generateContentHash(episode.url).substring(0, 12);
-
-        const transcript = await this.whisperClient.transcribeEpisode(episode.audioUrl, episodeId);
+        const transcript = await this.whisperClient.transcribeEpisode(
+          episode.audioUrl,
+          episodeId
+        );
 
         if (transcript) {
           signals.push({
@@ -236,6 +331,64 @@ export class Gatherer {
     }
 
     return storedCount;
+  }
+
+  /**
+   * Mark source as successfully scraped
+   */
+  private async markSourceSuccess(source: HunterSource): Promise<void> {
+    await supabase
+      .from('hunter_source')
+      .update({
+        last_scraped_at: new Date().toISOString(),
+        last_error: null,
+        consecutive_failures: 0,
+      })
+      .eq('id', source.id);
+  }
+
+  /**
+   * Handle source error and record it
+   */
+  private async handleSourceError(
+    source: HunterSource,
+    error: unknown,
+    result: GathererResult
+  ): Promise<void> {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    logger.error(`Failed to process source ${source.name}: ${message}`);
+
+    result.errors.push({
+      source: source.name,
+      module: 'gatherer',
+      message,
+      timestamp: new Date().toISOString(),
+    });
+
+    await supabase
+      .from('hunter_source')
+      .update({
+        last_error: message,
+        consecutive_failures: (source.consecutive_failures || 0) + 1,
+      })
+      .eq('id', source.id);
+  }
+
+  /**
+   * Trigger garbage collection hint
+   */
+  private triggerGC(): void {
+    if (global.gc) {
+      logger.debug('Triggering garbage collection');
+      global.gc();
+    }
+  }
+
+  /**
+   * Simple delay helper
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 

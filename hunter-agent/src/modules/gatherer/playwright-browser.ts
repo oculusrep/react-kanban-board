@@ -3,6 +3,12 @@ import { createLogger } from '../../utils/logger';
 
 const logger = createLogger('playwright-browser');
 
+/**
+ * Browser manager for Playwright with memory optimization.
+ *
+ * Each instance manages a single browser. Create a new instance per source
+ * and destroy it after use to minimize memory footprint.
+ */
 export class BrowserManager {
   private browser: Browser | null = null;
   private contexts: Map<string, BrowserContext> = new Map();
@@ -13,15 +19,43 @@ export class BrowserManager {
       return;
     }
 
-    logger.info('Initializing Playwright browser');
+    logger.info('Initializing Playwright browser (memory optimized)');
     this.browser = await chromium.launch({
       headless: true,
       args: [
+        // Essential sandboxing
         '--no-sandbox',
         '--disable-setuid-sandbox',
+
+        // Memory optimization flags
         '--disable-dev-shm-usage',
         '--disable-accelerated-2d-canvas',
         '--disable-gpu',
+        '--disable-software-rasterizer',
+
+        // Disable features we don't need
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-breakpad',
+        '--disable-component-extensions-with-background-pages',
+        '--disable-component-update',
+        '--disable-default-apps',
+        '--disable-domain-reliability',
+        '--disable-features=TranslateUI',
+        '--disable-hang-monitor',
+        '--disable-ipc-flooding-protection',
+        '--disable-popup-blocking',
+        '--disable-prompt-on-repost',
+        '--disable-renderer-backgrounding',
+        '--disable-sync',
+        '--metrics-recording-only',
+        '--no-first-run',
+        '--safebrowsing-disable-auto-update',
+
+        // Reduce memory usage
+        '--js-flags=--max-old-space-size=256',
       ],
     });
     logger.info('Browser initialized successfully');
@@ -43,7 +77,7 @@ export class BrowserManager {
     const context = await this.browser!.newContext({
       userAgent:
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      viewport: { width: 1920, height: 1080 },
+      viewport: { width: 1280, height: 720 }, // Smaller viewport to save memory
       locale: 'en-US',
       timezoneId: 'America/New_York',
       permissions: ['geolocation'],
@@ -65,32 +99,34 @@ export class BrowserManager {
 
   async close(): Promise<void> {
     logger.info('Closing browser and all contexts');
+
+    // Close all contexts first
     for (const [key, context] of this.contexts) {
       logger.debug(`Closing context: ${key}`);
-      await context.close();
+      try {
+        await context.close();
+      } catch (err) {
+        // Ignore errors during cleanup
+      }
     }
     this.contexts.clear();
 
+    // Close browser
     if (this.browser) {
-      await this.browser.close();
+      try {
+        await this.browser.close();
+      } catch (err) {
+        // Ignore errors during cleanup
+      }
       this.browser = null;
     }
+
     logger.info('Browser closed');
   }
 
   isInitialized(): boolean {
     return this.browser !== null;
   }
-}
-
-// Singleton instance
-let browserManagerInstance: BrowserManager | null = null;
-
-export function getBrowserManager(): BrowserManager {
-  if (!browserManagerInstance) {
-    browserManagerInstance = new BrowserManager();
-  }
-  return browserManagerInstance;
 }
 
 export default BrowserManager;

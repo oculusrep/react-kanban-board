@@ -1,7 +1,7 @@
 import { supabase } from '../../db/client';
 import { createLogger } from '../../utils/logger';
 import { HunterLead, HunterContactEnrichment, RunError } from '../../types';
-import { getBrowserManager } from '../gatherer/playwright-browser';
+import { BrowserManager } from '../gatherer/playwright-browser';
 import { ICSCScraper } from '../gatherer/scrapers/icsc-scraper';
 import { generateLinkedInSearchUrl } from '../../utils/text-utils';
 
@@ -13,7 +13,7 @@ export interface EnricherResult {
 }
 
 export class Enricher {
-  private browserManager = getBrowserManager();
+  private browserManager: BrowserManager | null = null;
   private icscScraper: ICSCScraper | null = null;
 
   /**
@@ -47,7 +47,8 @@ export class Enricher {
 
       logger.info(`Found ${leads.length} leads to enrich`);
 
-      // Initialize browser for ICSC
+      // Initialize browser for ICSC (create fresh instance)
+      this.browserManager = new BrowserManager();
       await this.browserManager.initialize();
       const context = await this.browserManager.getContext('icsc');
 
@@ -100,7 +101,10 @@ export class Enricher {
         timestamp: new Date().toISOString(),
       });
     } finally {
-      await this.browserManager.close();
+      if (this.browserManager) {
+        await this.browserManager.close();
+        this.browserManager = null;
+      }
     }
 
     logger.info(
