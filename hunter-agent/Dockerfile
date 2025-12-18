@@ -30,8 +30,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install all dependencies (including dev for build)
+RUN npm ci
 
 # Install Playwright browsers
 RUN npx playwright install chromium
@@ -41,6 +41,9 @@ COPY . .
 
 # Build TypeScript
 RUN npm run build
+
+# Remove dev dependencies after build
+RUN npm prune --production
 
 # Expose port for health checks
 EXPOSE 3001
