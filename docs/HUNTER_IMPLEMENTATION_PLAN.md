@@ -2,8 +2,8 @@
 
 **Version:** 1.1
 **Created:** December 16, 2025
-**Updated:** December 17, 2025
-**Status:** Core Modules Complete - UI Build Remaining
+**Updated:** December 18, 2025
+**Status:** UI Build Complete - Testing Remaining
 
 ---
 
@@ -1515,13 +1515,16 @@ HUNTER_TIMEZONE=America/New_York
 - [x] Implement Resend email sending
 - [x] Build dashboard data aggregation
 
-### Phase 7: OVIS UI (Days 12-14) - PENDING
-- [ ] Create `/hunter` dashboard page
-- [ ] Build lead detail view
-- [ ] Create `/hunter/outreach` draft review queue
-- [ ] Implement approve/edit/send workflow
-- [ ] Add feedback capture UI
-- [ ] Build reconnect list component
+### Phase 7: OVIS UI (Days 12-14) - COMPLETE
+- [x] Create `/hunter` dashboard page (`src/pages/HunterDashboardPage.tsx`)
+- [x] Build lead detail view (`src/pages/HunterLeadDetailsPage.tsx`)
+- [x] Create `/hunter/outreach` draft review queue (`src/components/hunter/HunterOutreachTab.tsx`)
+- [x] Implement approve/edit/send workflow (via Gmail integration)
+- [x] Build leads list with filtering (`src/components/hunter/HunterLeadsTab.tsx`)
+- [x] Build sources monitoring page (`src/components/hunter/HunterSourcesTab.tsx`)
+- [x] Build stats/analytics tab (`src/components/hunter/HunterStatsTab.tsx`)
+- [x] Add "Convert to Contact" with Hunter source type
+- [x] Add navigation to Hunter in Navbar
 
 ### Phase 8: Integration & Testing (Days 15-16) - PARTIAL
 - [ ] Set up pg_cron trigger
@@ -1565,6 +1568,20 @@ HUNTER_TIMEZONE=America/New_York
   - Added `failed` status option to outreach drafts
 
 **Note:** Users must re-authorize Gmail in OVIS (disconnect/reconnect) to grant the new `gmail.send` permission
+
+### December 18, 2025 - OVIS UI Complete
+- **Dashboard Page**: Created `src/pages/HunterDashboardPage.tsx` with tabs for Leads, Sources, Outreach, Stats
+- **Leads Tab**: `src/components/hunter/HunterLeadsTab.tsx` - displays leads with geo relevance filtering, status badges
+- **Sources Tab**: `src/components/hunter/HunterSourcesTab.tsx` - shows scraper status, last run times, article counts
+- **Outreach Tab**: `src/components/hunter/HunterOutreachTab.tsx` - draft review queue with approve/reject/send via Gmail
+- **Stats Tab**: `src/components/hunter/HunterStatsTab.tsx` - funnel metrics, geo breakdown, source performance
+- **Lead Detail Page**: `src/pages/HunterLeadDetailsPage.tsx` - full lead details with "Convert to Contact" action
+- **Contact Integration**:
+  - Added `hunter_lead_id` FK to contact table via migration `20251218_contact_hunter_source.sql`
+  - Added 'Hunter' source type to `ContactFormModal.tsx`
+  - Updated `database-schema.ts` with new column and relationship
+- **Navigation**: Added "Hunter AI" link to main Navbar (admin only)
+- **Routes**: Added `/hunter` and `/hunter/lead/:leadId` routes in `App.tsx`
 
 ---
 

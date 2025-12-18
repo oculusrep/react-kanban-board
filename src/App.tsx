@@ -42,6 +42,8 @@ import SuggestedContactsPage from "./pages/SuggestedContactsPage";
 import AgentRulesPage from "./pages/AgentRulesPage";
 import EmailClassificationReviewPage from "./pages/EmailClassificationReviewPage";
 import FlaggedEmailQueuePage from "./pages/FlaggedEmailQueuePage";
+import HunterDashboardPage from "./pages/HunterDashboardPage";
+import HunterLeadDetailsPage from "./pages/HunterLeadDetailsPage";
 
 function ProtectedLayout() {
   const location = useLocation();
@@ -122,6 +124,8 @@ function App() {
           <Route path="admin/email-review" element={<AdminRoute><EmailClassificationReviewPage /></AdminRoute>} />
           <Route path="admin/flagged-emails" element={<AdminRoute><FlaggedEmailQueuePage /></AdminRoute>} />
           <Route path="contacts/suggested" element={<SuggestedContactsPage />} />
+          <Route path="hunter" element={<AdminRoute><HunterDashboardPage /></AdminRoute>} />
+          <Route path="hunter/lead/:leadId" element={<AdminRoute><HunterLeadDetailsPage /></AdminRoute>} />
         </Route>
       </Routes>
     </AuthProvider>

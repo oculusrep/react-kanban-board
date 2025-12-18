@@ -1179,6 +1179,7 @@ export type Database = {
           email: string | null
           fax: string | null
           first_name: string | null
+          hunter_lead_id: string | null
           icsc_profile_link: string | null
           id: string
           is_site_selector: boolean | null
@@ -1235,6 +1236,7 @@ export type Database = {
           email?: string | null
           fax?: string | null
           first_name?: string | null
+          hunter_lead_id?: string | null
           icsc_profile_link?: string | null
           id?: string
           is_site_selector?: boolean | null
@@ -1291,6 +1293,7 @@ export type Database = {
           email?: string | null
           fax?: string | null
           first_name?: string | null
+          hunter_lead_id?: string | null
           icsc_profile_link?: string | null
           id?: string
           is_site_selector?: boolean | null
@@ -1345,6 +1348,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user"
             referencedColumns: ["auth_user_id"]
+          },
+          {
+            foreignKeyName: "contact_hunter_lead_id_fkey"
+            columns: ["hunter_lead_id"]
+            isOneToOne: false
+            referencedRelation: "hunter_lead"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "contact_lead_status_id_fkey"

@@ -525,6 +525,17 @@ export default function Navbar() {
                   {userRole === 'admin' && (
                     <button
                       onClick={() => {
+                        navigate('/hunter');
+                        setIsReportsMenuOpen(false);
+                      }}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                    >
+                      🎯 Hunter AI
+                    </button>
+                  )}
+                  {userRole === 'admin' && (
+                    <button
+                      onClick={() => {
                         navigate('/admin/quickbooks');
                         setIsReportsMenuOpen(false);
                       }}
@@ -1048,6 +1059,17 @@ export default function Navbar() {
                     className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                   >
                     📞 Prospecting
+                  </button>
+                )}
+                {userRole === 'admin' && (
+                  <button
+                    onClick={() => {
+                      navigate('/hunter');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                  >
+                    🎯 Hunter AI
                   </button>
                 )}
                 {userRole === 'admin' && (

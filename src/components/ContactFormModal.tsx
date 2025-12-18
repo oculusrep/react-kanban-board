@@ -86,10 +86,11 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Source type options (Contact vs Lead)
+  // Source type options
   const sourceTypes = [
     'Contact',
-    'Lead'
+    'Lead',
+    'Hunter'
   ];
 
   // US States
