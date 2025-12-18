@@ -30,7 +30,7 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install all dependencies (including dev for build)
+# Install all dependencies (including dev for TypeScript build)
 RUN npm ci
 
 # Install Playwright browsers
