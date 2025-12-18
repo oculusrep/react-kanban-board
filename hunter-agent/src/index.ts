@@ -194,6 +194,46 @@ async function executeHunterRun(runId: string): Promise<void> {
   }
 }
 
+/**
+ * Check for and process any pending runs created via the UI
+ */
+async function processPendingRuns(): Promise<void> {
+  try {
+    // Find any pending runs
+    const { data: pendingRuns, error } = await supabase
+      .from('hunter_run_log')
+      .select('*')
+      .eq('status', 'pending')
+      .order('started_at', { ascending: true })
+      .limit(1);
+
+    if (error) {
+      logger.error('Failed to check pending runs', { error: error.message });
+      return;
+    }
+
+    if (pendingRuns && pendingRuns.length > 0) {
+      const pendingRun = pendingRuns[0];
+      logger.info('Found pending run, processing...', { runId: pendingRun.id });
+
+      // Update status to running
+      await supabase
+        .from('hunter_run_log')
+        .update({
+          status: 'running',
+          started_at: new Date().toISOString(),
+        })
+        .eq('id', pendingRun.id);
+
+      // Execute the run
+      await executeHunterRun(pendingRun.id);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Error processing pending runs', { error: message });
+  }
+}
+
 // Start server
 async function main(): Promise<void> {
   try {
@@ -207,8 +247,15 @@ async function main(): Promise<void> {
     }
     logger.info('Database connection successful');
 
+    // Check for pending runs on startup
+    await processPendingRuns();
+
+    // Poll for pending runs every 30 seconds
+    setInterval(processPendingRuns, 30000);
+
     app.listen(config.app.port, () => {
       logger.info(`Hunter Agent listening on port ${config.app.port}`);
+      logger.info('Polling for pending runs every 30 seconds');
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

@@ -1,4 +1,3 @@
-import { Resend } from 'resend';
 import { supabase } from '../../db/client';
 import { config } from '../../config';
 import { createLogger } from '../../utils/logger';
@@ -22,14 +21,8 @@ export interface RunMetrics {
 }
 
 export class BriefingSender {
-  private resend: Resend;
-
-  constructor() {
-    this.resend = new Resend(config.resend.apiKey);
-  }
-
   /**
-   * Send the daily briefing email
+   * Send the daily briefing email via Gmail (using edge function)
    */
   async send(runId: string, metrics: RunMetrics): Promise<BriefingResult> {
     const result: BriefingResult = {
@@ -39,9 +32,10 @@ export class BriefingSender {
     };
 
     try {
-      // Skip if Resend not configured
-      if (!config.resend.apiKey || !config.resend.toEmail) {
-        logger.warn('Resend not configured, skipping briefing email');
+      // Skip if no briefing email configured
+      const toEmail = config.briefing.toEmail;
+      if (!toEmail) {
+        logger.warn('BRIEFING_TO_EMAIL not configured, skipping briefing email');
         return result;
       }
 
@@ -50,23 +44,31 @@ export class BriefingSender {
       const pendingOutreach = await this.getPendingOutreach();
       const reconnectOpportunities = await this.getReconnectOpportunities();
 
-      // Generate email HTML
+      // Generate email content
       const html = this.generateBriefingHtml(metrics, hotLeads, pendingOutreach, reconnectOpportunities);
+      const subject = this.generateSubject(metrics, hotLeads.length);
+      const plainText = this.generatePlainText(metrics, hotLeads, pendingOutreach);
 
-      // Send email
-      const { data, error } = await this.resend.emails.send({
-        from: config.resend.fromEmail,
-        to: config.resend.toEmail,
-        subject: this.generateSubject(metrics, hotLeads.length),
-        html,
+      // Send via the hunter-send-briefing edge function (uses Gmail)
+      const { data, error } = await supabase.functions.invoke('hunter-send-briefing', {
+        body: {
+          to: toEmail,
+          subject,
+          body_html: html,
+          body_text: plainText,
+        },
       });
 
       if (error) {
-        throw new Error(`Resend error: ${error.message}`);
+        throw new Error(`Edge function error: ${error.message}`);
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to send briefing');
       }
 
       result.sent = true;
-      result.emailId = data?.id || null;
+      result.emailId = data.message_id || null;
 
       // Update run log with briefing info
       await supabase
@@ -77,7 +79,7 @@ export class BriefingSender {
         })
         .eq('id', runId);
 
-      logger.info(`Briefing email sent: ${result.emailId}`);
+      logger.info(`Briefing email sent via Gmail: ${result.emailId}`);
 
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -91,6 +93,33 @@ export class BriefingSender {
     }
 
     return result;
+  }
+
+  /**
+   * Generate plain text version of the briefing
+   */
+  private generatePlainText(
+    metrics: RunMetrics,
+    hotLeads: DashboardLead[],
+    pendingOutreach: OutreachQueueItem[]
+  ): string {
+    let text = `HUNTER DAILY BRIEFING\n\n`;
+    text += `Signals: ${metrics.signals_collected} | New Leads: ${metrics.leads_created} | Drafts Ready: ${metrics.outreach_drafted}\n\n`;
+
+    if (hotLeads.length > 0) {
+      text += `HOT LEADS:\n`;
+      hotLeads.forEach(lead => {
+        text += `- ${lead.concept_name} (${lead.signal_strength})\n`;
+      });
+      text += `\n`;
+    }
+
+    if (pendingOutreach.length > 0) {
+      text += `PENDING OUTREACH: ${pendingOutreach.length} draft(s) ready for review\n\n`;
+    }
+
+    text += `View dashboard: ${config.app.ovisUrl}/hunter`;
+    return text;
   }
 
   /**

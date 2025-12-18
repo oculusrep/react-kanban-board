@@ -23,10 +23,8 @@ export const config = {
     apiKey: process.env.OPENAI_API_KEY || '',
   },
 
-  // Email - Briefings
-  resend: {
-    apiKey: process.env.RESEND_API_KEY || '',
-    fromEmail: process.env.RESEND_FROM_EMAIL || 'hunter@oculusrep.com',
+  // Email - Briefings (sent via Gmail edge function)
+  briefing: {
     toEmail: process.env.BRIEFING_TO_EMAIL || '',
   },
 
