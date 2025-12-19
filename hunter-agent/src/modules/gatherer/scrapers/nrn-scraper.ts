@@ -30,39 +30,65 @@ export class NRNScraper extends BaseScraper {
     }
 
     try {
-      this.logger.info('Navigating to NRN login page');
-      await this.page!.goto(this.source.login_url!, { waitUntil: 'domcontentloaded' });
+      this.logger.info(`Step 1/6: Navigating to NRN login page: ${this.source.login_url}`);
+      await this.page!.goto(this.source.login_url!, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await this.randomDelay(2000, 4000);
 
+      this.logger.info(`Step 2/6: Page loaded, current URL: ${this.page!.url()}`);
+
+      // Check what form fields are available
+      const usernameField = await this.page!.$('input[name="name"], input#edit-name');
+      const passwordField = await this.page!.$('input[name="pass"], input#edit-pass');
+      this.logger.info(`Step 3/6: Form fields found - username: ${!!usernameField}, password: ${!!passwordField}`);
+
+      if (!usernameField || !passwordField) {
+        // Log the page content to help debug
+        const pageContent = await this.page!.content();
+        this.logger.error(`Login form not found. Page title: ${await this.page!.title()}`);
+        this.logger.debug(`Page HTML snippet: ${pageContent.substring(0, 1000)}`);
+        return false;
+      }
+
       // Fill in the login form
-      // NRN uses Drupal-style login form
+      this.logger.info('Step 4/6: Filling username field...');
       await this.page!.fill('input[name="name"], input#edit-name', username);
       await this.randomDelay(500, 1000);
 
+      this.logger.info('Step 5/6: Filling password field...');
       await this.page!.fill('input[name="pass"], input#edit-pass', password);
       await this.randomDelay(500, 1000);
 
       // Submit the form
+      this.logger.info('Step 6/6: Clicking submit button...');
       await this.page!.click('input[type="submit"], button[type="submit"]');
 
       // Wait for navigation
-      await this.page!.waitForLoadState('domcontentloaded');
+      await this.page!.waitForLoadState('domcontentloaded', { timeout: 30000 });
       await this.randomDelay(2000, 3000);
 
       // Verify login success - check if we're redirected away from login page
       const currentUrl = this.page!.url();
+      this.logger.info(`Post-login URL: ${currentUrl}`);
+
       const isLoggedIn = !currentUrl.includes('/user/login') && !currentUrl.includes('/login');
 
       if (isLoggedIn) {
-        this.logger.info('NRN login successful');
+        this.logger.info('NRN login successful - redirected away from login page');
         return true;
       } else {
-        this.logger.warn('NRN login may have failed - still on login page');
+        // Check for error messages on the page
+        const errorMsg = await this.page!.$eval('.messages--error, .error-message, .alert-danger',
+          el => el.textContent?.trim() || ''
+        ).catch(() => '');
+
+        this.logger.warn(`NRN login failed - still on login page. Error message: "${errorMsg || 'none found'}"`);
         return false;
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
+      const stack = error instanceof Error ? error.stack : '';
       this.logger.error(`NRN login failed: ${message}`);
+      this.logger.debug(`Stack trace: ${stack}`);
       return false;
     }
   }

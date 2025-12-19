@@ -30,38 +30,65 @@ export class BizJournalsScraper extends BaseScraper {
     }
 
     try {
-      this.logger.info('Navigating to BizJournals login page');
-      await this.page!.goto(this.source.login_url!, { waitUntil: 'domcontentloaded' });
+      this.logger.info(`Step 1/6: Navigating to BizJournals login page: ${this.source.login_url}`);
+      await this.page!.goto(this.source.login_url!, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await this.randomDelay(2000, 4000);
 
+      this.logger.info(`Step 2/6: Page loaded, current URL: ${this.page!.url()}`);
+
+      // Check what form fields are available
+      const emailField = await this.page!.$('input[name="email"], input[type="email"], #email');
+      const passwordField = await this.page!.$('input[name="password"], input[type="password"], #password');
+      this.logger.info(`Step 3/6: Form fields found - email: ${!!emailField}, password: ${!!passwordField}`);
+
+      if (!emailField || !passwordField) {
+        // Log the page content to help debug
+        const pageContent = await this.page!.content();
+        this.logger.error(`Login form not found. Page title: ${await this.page!.title()}`);
+        this.logger.debug(`Page HTML snippet: ${pageContent.substring(0, 1000)}`);
+        return false;
+      }
+
       // BizJournals login form
+      this.logger.info('Step 4/6: Filling email field...');
       await this.page!.fill('input[name="email"], input[type="email"], #email', username);
       await this.randomDelay(500, 1000);
 
+      this.logger.info('Step 5/6: Filling password field...');
       await this.page!.fill('input[name="password"], input[type="password"], #password', password);
       await this.randomDelay(500, 1000);
 
       // Submit
+      this.logger.info('Step 6/6: Clicking submit button...');
       await this.page!.click('button[type="submit"], input[type="submit"], .login-button');
 
       // Wait for navigation
-      await this.page!.waitForLoadState('domcontentloaded');
+      await this.page!.waitForLoadState('domcontentloaded', { timeout: 30000 });
       await this.randomDelay(3000, 5000);
 
       // Check if login was successful
       const currentUrl = this.page!.url();
+      this.logger.info(`Post-login URL: ${currentUrl}`);
+
       const isLoggedIn = !currentUrl.includes('/login') && !currentUrl.includes('/sign-in');
 
       if (isLoggedIn) {
-        this.logger.info('BizJournals login successful');
+        this.logger.info('BizJournals login successful - redirected away from login page');
         return true;
       } else {
-        this.logger.warn('BizJournals login may have failed');
+        // Check for error messages on the page
+        const errorMsg = await this.page!.$eval('.error, .alert-error, .error-message, [class*="error"]',
+          el => el.textContent?.trim() || ''
+        ).catch(() => '');
+
+        this.logger.warn(`BizJournals login failed - still on login page. Error message: "${errorMsg || 'none found'}"`);
         return false;
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
+      const stack = error instanceof Error ? error.stack : '';
       this.logger.error(`BizJournals login failed: ${message}`);
+      this.logger.debug(`Stack trace: ${stack}`);
       return false;
     }
   }
