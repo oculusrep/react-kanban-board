@@ -21,7 +21,8 @@ import {
   Eye,
   Move,
   Link,
-  GripVertical
+  GripVertical,
+  Pencil
 } from 'lucide-react';
 
 interface FileManagerProps {
@@ -42,6 +43,7 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
     deleteItem,
     moveItem,
     downloadFile,
+    renameItem,
     getSharedLink,
     getLatestCursor,
     longpollForChanges,
@@ -60,6 +62,8 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
   const [draggedItem, setDraggedItem] = useState<DropboxFile | null>(null);
   const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
   const [isMoving, setIsMoving] = useState(false);
+  const [renamingItem, setRenamingItem] = useState<DropboxFile | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   // Longpoll for changes to automatically refresh when Dropbox folder changes
   useEffect(() => {
@@ -330,6 +334,42 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
   const handlePreview = async (file: DropboxFile) => {
     setContextMenu(null);
     await handleFileView(file);
+  };
+
+  // Handle rename
+  const handleStartRename = (file: DropboxFile) => {
+    setContextMenu(null);
+    setRenamingItem(file);
+    setRenameValue(file.name);
+  };
+
+  const handleRename = async () => {
+    if (!renamingItem || !renameValue.trim()) return;
+
+    // Don't rename if name hasn't changed
+    if (renameValue.trim() === renamingItem.name) {
+      setRenamingItem(null);
+      setRenameValue('');
+      return;
+    }
+
+    try {
+      await renameItem(renamingItem.path, renameValue.trim());
+      setToastMessage(`Renamed to "${renameValue.trim()}"`);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (err) {
+      console.error('Error renaming item:', err);
+      alert('Failed to rename item. Please try again.');
+    } finally {
+      setRenamingItem(null);
+      setRenameValue('');
+    }
+  };
+
+  const handleCancelRename = () => {
+    setRenamingItem(null);
+    setRenameValue('');
   };
 
   // Drag and drop handlers for moving files
@@ -815,6 +855,13 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
             <Link className="w-4 h-4" />
             <span>Copy Dropbox Link</span>
           </button>
+          <button
+            onClick={() => handleStartRename(contextMenu.file)}
+            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-yellow-50 hover:text-yellow-600 flex items-center gap-3"
+          >
+            <Pencil className="w-4 h-4" />
+            <span>Rename</span>
+          </button>
           <div className="border-t border-gray-100 my-1" />
           <button
             onClick={() => {
@@ -826,6 +873,44 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
             <Trash2 className="w-4 h-4" />
             <span>Delete</span>
           </button>
+        </div>
+      )}
+
+      {/* Rename Modal */}
+      {renamingItem && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Rename {renamingItem.type === 'folder' ? 'Folder' : 'File'}
+            </h3>
+            <input
+              type="text"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Enter new name"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleRename();
+                if (e.key === 'Escape') handleCancelRename();
+              }}
+            />
+            <div className="flex justify-end gap-3 mt-4">
+              <button
+                onClick={handleCancelRename}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRename}
+                disabled={!renameValue.trim() || renameValue.trim() === renamingItem.name}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Rename
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

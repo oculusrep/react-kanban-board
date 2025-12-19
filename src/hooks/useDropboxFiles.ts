@@ -16,6 +16,7 @@ interface UseDropboxFilesReturn {
   deleteItem: (path: string) => Promise<void>;
   moveItem: (sourcePath: string, destinationFolderPath: string) => Promise<void>;
   downloadFile: (path: string, fileName: string) => Promise<void>;
+  renameItem: (currentPath: string, newName: string) => Promise<void>;
   getSharedLink: (path: string) => Promise<string>;
   getLatestCursor: () => Promise<string | null>;
   longpollForChanges: (cursor: string, timeout?: number) => Promise<{ changes: boolean; backoff?: number } | null>;
@@ -559,6 +560,33 @@ export function useDropboxFiles(
     []
   );
 
+  /**
+   * Rename a file or folder
+   * @param currentPath - Full path to the file/folder
+   * @param newName - New name for the file/folder
+   */
+  const renameItem = useCallback(
+    async (currentPath: string, newName: string) => {
+      if (!dropboxService) {
+        throw new Error('Dropbox service not initialized');
+      }
+
+      setError(null);
+
+      try {
+        await dropboxService.renameItem(currentPath, newName);
+
+        // Refresh file list after rename
+        await refreshFiles();
+      } catch (err: any) {
+        console.error('Error renaming item:', err);
+        setError(err.message || 'Failed to rename item');
+        throw err;
+      }
+    },
+    [refreshFiles]
+  );
+
   // Fetch files when entity changes
   useEffect(() => {
     fetchFiles();
@@ -606,6 +634,7 @@ export function useDropboxFiles(
     deleteItem,
     moveItem,
     downloadFile,
+    renameItem,
     getSharedLink,
     getLatestCursor,
     longpollForChanges,

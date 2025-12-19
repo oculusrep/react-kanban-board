@@ -323,6 +323,49 @@ class DropboxService {
   }
 
   /**
+   * Rename a file or folder in Dropbox
+   * @param currentPath - Current full path to the file/folder
+   * @param newName - New name for the item (just the name, not the full path)
+   * @returns Updated file/folder info
+   */
+  async renameItem(currentPath: string, newName: string): Promise<DropboxFile> {
+    this.validatePath(currentPath);
+
+    // Build the new path by replacing the last segment with the new name
+    const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/'));
+    const newPath = `${parentPath}/${newName}`;
+
+    this.validatePath(newPath);
+
+    return this.executeWithTokenRefresh(async () => {
+      const response = await this.dbx.filesMoveV2({
+        from_path: currentPath,
+        to_path: newPath,
+        autorename: false, // Don't auto-rename if conflict exists
+        allow_ownership_transfer: false
+      });
+
+      const result = response.result.metadata;
+      const isFolder = result['.tag'] === 'folder';
+
+      console.log('✅ Dropbox item renamed successfully:', {
+        from: currentPath,
+        to: newPath
+      });
+
+      return {
+        id: result.id,
+        name: result.name,
+        path: result.path_display || result.path_lower,
+        type: isFolder ? 'folder' : 'file',
+        size: !isFolder && 'size' in result ? result.size : null,
+        modified: !isFolder && 'server_modified' in result ? result.server_modified : null,
+        shared_link: null
+      };
+    });
+  }
+
+  /**
    * Move a file or folder to a new location
    * @param sourcePath - Current full path to the file/folder
    * @param destinationFolderPath - Destination folder path
