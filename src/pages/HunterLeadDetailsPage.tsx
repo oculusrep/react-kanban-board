@@ -13,7 +13,9 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   DocumentTextIcon,
-  CalendarIcon
+  CalendarIcon,
+  NewspaperIcon,
+  ArrowTopRightOnSquareIcon
 } from '@heroicons/react/24/outline';
 
 interface HunterLead {
@@ -40,6 +42,24 @@ interface HunterLead {
   }[];
 }
 
+interface LeadSignal {
+  id: string;
+  extracted_summary: string | null;
+  mentioned_geography: string[] | null;
+  mentioned_person: string | null;
+  created_at: string;
+  signal: {
+    id: string;
+    source_url: string;
+    source_title: string | null;
+    source_published_at: string | null;
+    content_type: string;
+    source: {
+      name: string;
+    } | null;
+  };
+}
+
 const GEO_BADGE_COLORS = {
   'HOT': 'bg-red-100 text-red-800 border-red-200',
   'WARM+': 'bg-orange-100 text-orange-800 border-orange-200',
@@ -63,6 +83,7 @@ export default function HunterLeadDetailsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [lead, setLead] = useState<HunterLead | null>(null);
+  const [signals, setSignals] = useState<LeadSignal[]>([]);
   const [loading, setLoading] = useState(true);
   const [converting, setConverting] = useState(false);
   const [showConvertModal, setShowConvertModal] = useState(false);
@@ -70,6 +91,7 @@ export default function HunterLeadDetailsPage() {
   useEffect(() => {
     if (leadId) {
       loadLead(leadId);
+      loadSignals(leadId);
     }
   }, [leadId]);
 
@@ -97,6 +119,35 @@ export default function HunterLeadDetailsPage() {
       console.error('Error loading lead:', error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadSignals(id: string) {
+    try {
+      const { data, error } = await supabase
+        .from('hunter_lead_signal')
+        .select(`
+          id,
+          extracted_summary,
+          mentioned_geography,
+          mentioned_person,
+          created_at,
+          signal:hunter_signal(
+            id,
+            source_url,
+            source_title,
+            source_published_at,
+            content_type,
+            source:hunter_source(name)
+          )
+        `)
+        .eq('lead_id', id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setSignals(data || []);
+    } catch (error) {
+      console.error('Error loading signals:', error);
     }
   }
 
@@ -246,6 +297,47 @@ export default function HunterLeadDetailsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Source Signals */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <NewspaperIcon className="w-5 h-5 text-gray-500" />
+                Source Articles ({signals.length})
+              </h2>
+              {signals.length === 0 ? (
+                <p className="text-gray-500 text-sm">No source articles linked yet</p>
+              ) : (
+                <div className="space-y-4">
+                  {signals.map((ls) => (
+                    <div key={ls.id} className="border-l-2 border-orange-300 pl-4 py-2">
+                      <a
+                        href={ls.signal.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 font-medium flex items-start gap-2 group"
+                      >
+                        <span className="flex-1">{ls.signal.source_title || 'Untitled Article'}</span>
+                        <ArrowTopRightOnSquareIcon className="w-4 h-4 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </a>
+                      <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
+                        {ls.signal.source?.name && (
+                          <span className="font-medium text-gray-600">{ls.signal.source.name}</span>
+                        )}
+                        {ls.signal.source_published_at && (
+                          <span>{new Date(ls.signal.source_published_at).toLocaleDateString()}</span>
+                        )}
+                        <span className="capitalize text-xs bg-gray-100 px-2 py-0.5 rounded">
+                          {ls.signal.content_type.replace('_', ' ')}
+                        </span>
+                      </div>
+                      {ls.extracted_summary && (
+                        <p className="mt-2 text-sm text-gray-600 italic">"{ls.extracted_summary}"</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Score Reasoning */}
             {lead.score_reasoning && (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
