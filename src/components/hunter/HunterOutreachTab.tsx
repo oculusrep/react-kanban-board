@@ -7,7 +7,8 @@ import {
   XMarkIcon,
   PaperAirplaneIcon,
   ClockIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  PhoneIcon
 } from '@heroicons/react/24/outline';
 
 interface OutreachDraft {
@@ -15,6 +16,8 @@ interface OutreachDraft {
   lead_id: string;
   outreach_type: 'email' | 'voicemail_script';
   contact_name: string;
+  contact_email: string | null;
+  contact_phone: string | null;
   subject: string | null;
   body: string;
   status: 'draft' | 'approved' | 'sent' | 'rejected';
@@ -291,7 +294,16 @@ export default function HunterOutreachTab() {
         {selectedDraft && (
           <div className="w-1/2 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="font-medium text-gray-900">Email Preview</h3>
+              <div className="flex items-center gap-2">
+                {selectedDraft.outreach_type === 'email' ? (
+                  <EnvelopeIcon className="w-5 h-5 text-blue-500" />
+                ) : (
+                  <PhoneIcon className="w-5 h-5 text-green-500" />
+                )}
+                <h3 className="font-medium text-gray-900">
+                  {selectedDraft.outreach_type === 'email' ? 'Email Preview' : 'Voicemail Script'}
+                </h3>
+              </div>
               <button
                 onClick={() => setSelectedDraft(null)}
                 className="text-gray-400 hover:text-gray-600"
@@ -301,12 +313,24 @@ export default function HunterOutreachTab() {
             </div>
 
             <div className="p-4 space-y-4">
-              {/* Email Headers */}
+              {/* Contact Info */}
               <div className="space-y-2 text-sm">
                 <div className="flex">
                   <span className="w-16 text-gray-500">To:</span>
                   <span className="text-gray-900">{selectedDraft.contact_name}</span>
                 </div>
+                {selectedDraft.outreach_type === 'email' && selectedDraft.contact_email && (
+                  <div className="flex">
+                    <span className="w-16 text-gray-500">Email:</span>
+                    <span className="text-gray-900">{selectedDraft.contact_email}</span>
+                  </div>
+                )}
+                {selectedDraft.outreach_type === 'voicemail_script' && selectedDraft.contact_phone && (
+                  <div className="flex">
+                    <span className="w-16 text-gray-500">Phone:</span>
+                    <span className="text-gray-900">{selectedDraft.contact_phone}</span>
+                  </div>
+                )}
                 {selectedDraft.subject && (
                   <div className="flex">
                     <span className="w-16 text-gray-500">Subject:</span>
@@ -317,14 +341,13 @@ export default function HunterOutreachTab() {
                   <span className="w-16 text-gray-500">Lead:</span>
                   <span className="text-gray-900">{selectedDraft.lead?.concept_name}</span>
                 </div>
-                <div className="flex">
-                  <span className="w-16 text-gray-500">Type:</span>
-                  <span className="text-gray-900">{OUTREACH_TYPE_LABELS[selectedDraft.outreach_type]}</span>
-                </div>
               </div>
 
-              {/* Email Body */}
+              {/* Body/Script */}
               <div className="border rounded-lg p-4 bg-gray-50 max-h-[400px] overflow-y-auto">
+                {selectedDraft.outreach_type === 'voicemail_script' && (
+                  <p className="text-xs text-gray-500 mb-2 italic">Read this script when leaving a voicemail:</p>
+                )}
                 <div className="prose prose-sm max-w-none whitespace-pre-wrap">
                   {selectedDraft.body}
                 </div>
@@ -350,7 +373,7 @@ export default function HunterOutreachTab() {
                     </button>
                   </>
                 )}
-                {selectedDraft.status === 'approved' && (
+                {selectedDraft.status === 'approved' && selectedDraft.outreach_type === 'email' && (
                   <button
                     onClick={() => sendEmail(selectedDraft)}
                     disabled={sending === selectedDraft.id}
@@ -369,6 +392,15 @@ export default function HunterOutreachTab() {
                     )}
                   </button>
                 )}
+                {selectedDraft.status === 'approved' && selectedDraft.outreach_type === 'voicemail_script' && (
+                  <button
+                    onClick={() => updateDraftStatus(selectedDraft.id, 'sent')}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  >
+                    <CheckIcon className="w-4 h-4" />
+                    Mark as Called
+                  </button>
+                )}
                 {selectedDraft.status === 'rejected' && (
                   <button
                     onClick={() => updateDraftStatus(selectedDraft.id, 'approved')}
@@ -377,6 +409,12 @@ export default function HunterOutreachTab() {
                     <CheckIcon className="w-4 h-4" />
                     Re-approve
                   </button>
+                )}
+                {selectedDraft.status === 'sent' && (
+                  <div className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg">
+                    <CheckIcon className="w-4 h-4" />
+                    {selectedDraft.outreach_type === 'email' ? 'Email Sent' : 'Called'}
+                  </div>
                 )}
               </div>
             </div>
