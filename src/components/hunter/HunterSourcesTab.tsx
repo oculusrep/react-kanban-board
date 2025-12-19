@@ -5,49 +5,37 @@ import {
   CheckCircleIcon,
   ExclamationCircleIcon,
   ClockIcon,
-  ArrowPathIcon,
-  PlayIcon
+  ArrowPathIcon
 } from '@heroicons/react/24/outline';
 
-interface SourceConfig {
+interface HunterSource {
   id: string;
-  source_name: string;
-  source_type: 'rss' | 'scraper' | 'podcast' | 'api';
+  name: string;
+  slug: string;
+  source_type: 'website' | 'podcast' | 'rss';
   base_url: string;
   is_active: boolean;
-  scrape_interval_hours: number;
-  last_scrape_at: string | null;
-  last_scrape_status: 'success' | 'failed' | 'pending' | null;
-  last_error_message: string | null;
-  articles_found_last_run: number | null;
   requires_auth: boolean;
+  last_scraped_at: string | null;
+  last_error: string | null;
+  consecutive_failures: number;
 }
 
 interface SourceStats {
-  total_articles: number;
-  articles_this_week: number;
-  leads_generated: number;
+  total_signals: number;
+  signals_this_week: number;
 }
 
-const STATUS_ICONS = {
-  success: <CheckCircleIcon className="w-5 h-5 text-green-500" />,
-  failed: <ExclamationCircleIcon className="w-5 h-5 text-red-500" />,
-  pending: <ClockIcon className="w-5 h-5 text-yellow-500" />,
-  null: <ClockIcon className="w-5 h-5 text-gray-400" />
-};
-
-const SOURCE_TYPE_LABELS = {
-  rss: 'RSS Feed',
-  scraper: 'Web Scraper',
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  website: 'Website',
   podcast: 'Podcast',
-  api: 'API'
+  rss: 'RSS Feed'
 };
 
 export default function HunterSourcesTab() {
-  const [sources, setSources] = useState<SourceConfig[]>([]);
+  const [sources, setSources] = useState<HunterSource[]>([]);
   const [stats, setStats] = useState<Record<string, SourceStats>>({});
   const [loading, setLoading] = useState(true);
-  const [runningSource, setRunningSource] = useState<string | null>(null);
 
   useEffect(() => {
     loadSources();
@@ -57,9 +45,9 @@ export default function HunterSourcesTab() {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from('hunter_source_config')
+        .from('hunter_source')
         .select('*')
-        .order('source_name');
+        .order('name');
 
       if (error) throw error;
       setSources(data || []);
@@ -67,23 +55,17 @@ export default function HunterSourcesTab() {
       // Load stats for each source
       const statsMap: Record<string, SourceStats> = {};
       for (const source of data || []) {
-        const { data: articleData } = await supabase
-          .from('hunter_article')
-          .select('id, created_at', { count: 'exact' })
-          .eq('source_config_id', source.id);
-
-        const { data: leadData } = await supabase
-          .from('hunter_lead')
-          .select('id', { count: 'exact' })
-          .eq('source_article_id', articleData?.map(a => a.id) || []);
+        const { data: signalData } = await supabase
+          .from('hunter_signal')
+          .select('id, created_at')
+          .eq('source_id', source.id);
 
         const weekAgo = new Date();
         weekAgo.setDate(weekAgo.getDate() - 7);
 
         statsMap[source.id] = {
-          total_articles: articleData?.length || 0,
-          articles_this_week: articleData?.filter(a => new Date(a.created_at) > weekAgo).length || 0,
-          leads_generated: leadData?.length || 0
+          total_signals: signalData?.length || 0,
+          signals_this_week: signalData?.filter(s => new Date(s.created_at) > weekAgo).length || 0
         };
       }
       setStats(statsMap);
@@ -97,7 +79,7 @@ export default function HunterSourcesTab() {
   async function toggleSource(sourceId: string, isActive: boolean) {
     try {
       const { error } = await supabase
-        .from('hunter_source_config')
+        .from('hunter_source')
         .update({ is_active: !isActive })
         .eq('id', sourceId);
 
@@ -105,31 +87,6 @@ export default function HunterSourcesTab() {
       loadSources();
     } catch (error) {
       console.error('Error toggling source:', error);
-    }
-  }
-
-  async function triggerScrape(sourceId: string) {
-    setRunningSource(sourceId);
-    try {
-      // Call the hunter agent to run a specific source
-      // This would typically call an edge function or background job
-      const response = await fetch('/api/hunter/run-source', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source_id: sourceId })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to trigger scrape');
-      }
-
-      // Refresh sources after triggering
-      setTimeout(loadSources, 2000);
-    } catch (error) {
-      console.error('Error triggering scrape:', error);
-      alert('Failed to trigger scrape. The Hunter agent may need to be running.');
-    } finally {
-      setRunningSource(null);
     }
   }
 
@@ -147,20 +104,14 @@ export default function HunterSourcesTab() {
     return `${diffDays}d ago`;
   }
 
-  function getNextRunTime(source: SourceConfig): string {
-    if (!source.last_scrape_at) return 'Pending first run';
-    const lastRun = new Date(source.last_scrape_at);
-    const nextRun = new Date(lastRun.getTime() + source.scrape_interval_hours * 3600000);
-    const now = new Date();
-
-    if (nextRun < now) return 'Due now';
-
-    const diffMs = nextRun.getTime() - now.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-
-    if (diffMins < 60) return `in ${diffMins}m`;
-    return `in ${diffHours}h`;
+  function getStatusIcon(source: HunterSource) {
+    if (source.consecutive_failures > 0) {
+      return <ExclamationCircleIcon className="w-5 h-5 text-red-500" />;
+    }
+    if (source.last_scraped_at) {
+      return <CheckCircleIcon className="w-5 h-5 text-green-500" />;
+    }
+    return <ClockIcon className="w-5 h-5 text-gray-400" />;
   }
 
   if (loading) {
@@ -201,23 +152,23 @@ export default function HunterSourcesTab() {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3">
                   <div className={`p-2 rounded-lg ${
-                    source.last_scrape_status === 'success' ? 'bg-green-100' :
-                    source.last_scrape_status === 'failed' ? 'bg-red-100' :
+                    source.consecutive_failures > 0 ? 'bg-red-100' :
+                    source.last_scraped_at ? 'bg-green-100' :
                     'bg-gray-100'
                   }`}>
                     <NewspaperIcon className={`w-5 h-5 ${
-                      source.last_scrape_status === 'success' ? 'text-green-600' :
-                      source.last_scrape_status === 'failed' ? 'text-red-600' :
+                      source.consecutive_failures > 0 ? 'text-red-600' :
+                      source.last_scraped_at ? 'text-green-600' :
                       'text-gray-600'
                     }`} />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-gray-900">{source.source_name}</h3>
-                    <p className="text-sm text-gray-500">{SOURCE_TYPE_LABELS[source.source_type]}</p>
+                    <h3 className="font-semibold text-gray-900">{source.name}</h3>
+                    <p className="text-sm text-gray-500">{SOURCE_TYPE_LABELS[source.source_type] || source.source_type}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {STATUS_ICONS[source.last_scrape_status || 'null']}
+                  {getStatusIcon(source)}
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
@@ -231,40 +182,28 @@ export default function HunterSourcesTab() {
               </div>
 
               {/* Stats */}
-              <div className="mt-4 grid grid-cols-3 gap-4 text-sm">
+              <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p className="text-gray-500">Articles</p>
-                  <p className="font-semibold text-gray-900">{stats[source.id]?.total_articles || 0}</p>
+                  <p className="text-gray-500">Total Signals</p>
+                  <p className="font-semibold text-gray-900">{stats[source.id]?.total_signals || 0}</p>
                 </div>
                 <div>
                   <p className="text-gray-500">This Week</p>
-                  <p className="font-semibold text-gray-900">{stats[source.id]?.articles_this_week || 0}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Leads</p>
-                  <p className="font-semibold text-gray-900">{stats[source.id]?.leads_generated || 0}</p>
+                  <p className="font-semibold text-gray-900">{stats[source.id]?.signals_this_week || 0}</p>
                 </div>
               </div>
 
               {/* Timing Info */}
               <div className="mt-4 flex items-center justify-between text-sm">
                 <div className="text-gray-500">
-                  Last run: <span className="font-medium text-gray-700">{formatTimeAgo(source.last_scrape_at)}</span>
-                  {source.articles_found_last_run !== null && (
-                    <span className="ml-2 text-gray-400">
-                      ({source.articles_found_last_run} articles)
-                    </span>
-                  )}
-                </div>
-                <div className="text-gray-500">
-                  Next: <span className="font-medium text-gray-700">{getNextRunTime(source)}</span>
+                  Last run: <span className="font-medium text-gray-700">{formatTimeAgo(source.last_scraped_at)}</span>
                 </div>
               </div>
 
               {/* Error Message */}
-              {source.last_scrape_status === 'failed' && source.last_error_message && (
+              {source.consecutive_failures > 0 && source.last_error && (
                 <div className="mt-3 p-2 bg-red-50 rounded text-sm text-red-700">
-                  {source.last_error_message}
+                  {source.last_error}
                 </div>
               )}
 
@@ -286,27 +225,6 @@ export default function HunterSourcesTab() {
               >
                 View Source
               </a>
-              <button
-                onClick={() => triggerScrape(source.id)}
-                disabled={!source.is_active || runningSource === source.id}
-                className={`flex items-center gap-1 px-3 py-1 text-sm font-medium rounded ${
-                  source.is_active
-                    ? 'text-orange-600 hover:bg-orange-50'
-                    : 'text-gray-400 cursor-not-allowed'
-                }`}
-              >
-                {runningSource === source.id ? (
-                  <>
-                    <ArrowPathIcon className="w-4 h-4 animate-spin" />
-                    Running...
-                  </>
-                ) : (
-                  <>
-                    <PlayIcon className="w-4 h-4" />
-                    Run Now
-                  </>
-                )}
-              </button>
             </div>
           </div>
         ))}

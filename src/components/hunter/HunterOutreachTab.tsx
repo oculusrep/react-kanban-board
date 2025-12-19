@@ -6,7 +6,6 @@ import {
   CheckIcon,
   XMarkIcon,
   PaperAirplaneIcon,
-  EyeIcon,
   ClockIcon,
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
@@ -26,8 +25,8 @@ interface OutreachDraft {
   error_message: string | null;
   lead: {
     id: string;
-    brand_name: string;
-    geo_relevance: string;
+    concept_name: string;
+    signal_strength: string;
   } | null;
 }
 
@@ -72,8 +71,8 @@ export default function HunterOutreachTab() {
           *,
           lead:hunter_lead!hunter_outreach_draft_lead_id_fkey(
             id,
-            brand_name,
-            geo_relevance
+            concept_name,
+            signal_strength
           )
         `)
         .order('created_at', { ascending: false });
@@ -278,7 +277,7 @@ export default function HunterOutreachTab() {
                         </span>
                       </div>
                       <h4 className="mt-1 font-medium text-gray-900 truncate">
-                        {draft.lead?.brand_name || 'Unknown Lead'}
+                        {draft.lead?.concept_name || 'Unknown Lead'}
                       </h4>
                       <p className="text-sm text-gray-500 truncate">{draft.subject}</p>
                       <p className="text-xs text-gray-400 mt-1">
@@ -321,7 +320,7 @@ export default function HunterOutreachTab() {
                 </div>
                 <div className="flex">
                   <span className="w-16 text-gray-500">Lead:</span>
-                  <span className="text-gray-900">{selectedDraft.lead?.brand_name}</span>
+                  <span className="text-gray-900">{selectedDraft.lead?.concept_name}</span>
                 </div>
               </div>
 

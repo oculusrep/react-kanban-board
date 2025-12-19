@@ -45,15 +45,15 @@ export default function HunterStatsTab() {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - daysAgo);
 
-      // Load articles
-      const { data: articles } = await supabase
-        .from('hunter_article')
-        .select('id, source_config_id, created_at, source_config:hunter_source_config(source_name)');
+      // Load signals (articles)
+      const { data: signals } = await supabase
+        .from('hunter_signal')
+        .select('id, source_id, created_at, source:hunter_source!source_id(name)');
 
       // Load leads
       const { data: leads } = await supabase
         .from('hunter_lead')
-        .select('id, geo_relevance, lead_status, created_at');
+        .select('id, signal_strength, status, created_at');
 
       // Load outreach
       const { data: outreach } = await supabase
@@ -64,27 +64,27 @@ export default function HunterStatsTab() {
       weekAgo.setDate(weekAgo.getDate() - 7);
 
       // Calculate stats
-      const totalArticles = articles?.length || 0;
-      const articlesThisWeek = articles?.filter(a => new Date(a.created_at) > weekAgo).length || 0;
+      const totalArticles = signals?.length || 0;
+      const articlesThisWeek = signals?.filter(a => new Date(a.created_at) > weekAgo).length || 0;
       const totalLeads = leads?.length || 0;
       const leadsThisWeek = leads?.filter(l => new Date(l.created_at) > weekAgo).length || 0;
-      const hotLeads = leads?.filter(l => l.geo_relevance === 'HOT').length || 0;
-      const convertedLeads = leads?.filter(l => l.lead_status === 'converted').length || 0;
+      const hotLeads = leads?.filter(l => l.signal_strength === 'HOT').length || 0;
+      const convertedLeads = leads?.filter(l => l.status === 'converted').length || 0;
       const outreachSent = outreach?.filter(o => o.status === 'sent').length || 0;
       const outreachPending = outreach?.filter(o => o.status === 'draft' || o.status === 'approved').length || 0;
       const conversionRate = totalLeads > 0 ? (convertedLeads / totalLeads) * 100 : 0;
 
-      // Leads by geo
+      // Leads by signal strength
       const geoGroups: Record<string, number> = {};
       leads?.forEach(l => {
-        geoGroups[l.geo_relevance] = (geoGroups[l.geo_relevance] || 0) + 1;
+        geoGroups[l.signal_strength] = (geoGroups[l.signal_strength] || 0) + 1;
       });
       const leadsByGeo = Object.entries(geoGroups).map(([geo, count]) => ({ geo, count }));
 
-      // Leads by source
+      // Signals by source
       const sourceGroups: Record<string, number> = {};
-      articles?.forEach(a => {
-        const sourceName = (a.source_config as any)?.source_name || 'Unknown';
+      signals?.forEach(s => {
+        const sourceName = (s.source as any)?.name || 'Unknown';
         sourceGroups[sourceName] = (sourceGroups[sourceName] || 0) + 1;
       });
       const leadsBySource = Object.entries(sourceGroups)
@@ -103,8 +103,8 @@ export default function HunterStatsTab() {
 
         recentActivity.push({
           date: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-          articles: articles?.filter(a => {
-            const created = new Date(a.created_at);
+          articles: signals?.filter(s => {
+            const created = new Date(s.created_at);
             return created >= date && created < nextDate;
           }).length || 0,
           leads: leads?.filter(l => {
