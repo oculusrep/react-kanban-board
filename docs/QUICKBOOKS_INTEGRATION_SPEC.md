@@ -332,8 +332,165 @@ Stores imported expenses from QBO.
 
 ---
 
+## Sandbox to Production Migration Plan
+
+### Key Differences: Sandbox vs Production
+
+| Aspect | Sandbox | Production |
+|--------|---------|------------|
+| API Base URL | `sandbox-quickbooks.api.intuit.com` | `quickbooks.api.intuit.com` |
+| Data | Test/fake data | Real company data |
+| Rate Limits | More lenient | Stricter (10 requests/sec per realm) |
+| OAuth Token | Same process | Same process |
+| Realm ID | Sandbox company ID | Real company ID |
+| Customers/Invoices | Test entities | Real invoices sent to real customers |
+
+### Pre-Production Checklist
+
+#### 1. Intuit Developer Portal Configuration
+
+- [ ] **Get Production Keys**: In your Intuit Developer app, ensure you have production credentials (not just sandbox)
+- [ ] **Add Production Redirect URI**: Same callback URL works, but verify it's approved for production
+- [ ] **App Review (if required)**: Check if Intuit requires app review for production use. For internal-use apps (only your company uses it), this is typically not required
+- [ ] **Verify Scopes**: `com.intuit.quickbooks.accounting` scope is approved for production
+
+#### 2. QuickBooks Online Setup (Your Real QBO Account)
+
+Before syncing invoices, ensure these are configured in your production QBO:
+
+- [ ] **Create Income Account**:
+  - Navigate to Settings > Chart of Accounts
+  - Create or identify the income account for "Brokerage Fee" revenue (e.g., "Service Income" or "Consulting Income")
+  - Note the account ID for use in the `findOrCreateServiceItem` function
+
+- [ ] **Create "Brokerage Fee" Service Item**:
+  - Navigate to Sales > Products and Services
+  - Create a service item named "Brokerage Fee"
+  - Link it to your income account
+  - (Or let the system auto-create it on first invoice sync)
+
+- [ ] **Create "Consulting Fee" Service Item** (optional):
+  - Same process for any secondary service types
+
+- [ ] **Verify Email Settings**:
+  - Settings > Account and Settings > Sales > Online delivery
+  - Ensure invoice emails are configured with your branding
+  - Set "Email me a copy" if you want notifications
+
+- [ ] **Invoice Template**:
+  - Customize your invoice template with logo, colors, terms
+  - Settings > Custom Form Styles
+
+#### 3. Environment Variable Updates
+
+Update Supabase secrets for production:
+
+```bash
+# Set production environment
+supabase secrets set QUICKBOOKS_ENVIRONMENT=production
+
+# If you have separate production credentials (check Intuit portal)
+supabase secrets set QUICKBOOKS_CLIENT_ID=<production_client_id>
+supabase secrets set QUICKBOOKS_CLIENT_SECRET=<production_client_secret>
+```
+
+**Important**: The OAuth process will connect to your REAL QuickBooks company. The `realm_id` stored will be your production company ID.
+
+#### 4. Database Preparation
+
+- [ ] **Clear Sandbox Connection**: Before switching, remove any sandbox connection data:
+  ```sql
+  -- View current connections (to see what environment you're connected to)
+  SELECT realm_id, status, connected_at FROM qb_connection;
+
+  -- If switching from sandbox to production, you'll need to re-authorize
+  -- The old sandbox realm_id won't work with production
+  ```
+
+- [ ] **Existing Payment Records**: If payments have `qb_invoice_id` from sandbox testing, decide whether to:
+  - Clear them: `UPDATE payment SET qb_invoice_id = NULL, qb_invoice_number = NULL WHERE qb_invoice_id IS NOT NULL;`
+  - Or leave them (they won't conflict, just won't link to real invoices)
+
+#### 5. Code Changes Required
+
+**None required** - The code is already production-ready:
+
+- `quickbooks.ts` line 165-166: `getQBApiUrl()` uses `QUICKBOOKS_ENVIRONMENT` to determine URL
+- `quickbooks-connect/index.ts` line 108: Auth URL is the same for sandbox and production
+- Token refresh, invoice creation, and all API calls work identically
+
+#### 6. Post-Switch Testing
+
+After switching to production:
+
+1. **Test OAuth Flow**:
+   - Go to Admin > QuickBooks settings
+   - Click "Connect to QuickBooks"
+   - Authorize with your real QBO account
+   - Verify `qb_connection` table shows your production `realm_id`
+
+2. **Test Invoice Sync (Carefully!)**:
+   - Create a test payment in OVIS for a real or test client
+   - Sync to QuickBooks WITHOUT sending email first
+   - Verify invoice appears correctly in QBO
+   - Check amounts, customer name, service item, due date
+
+3. **Test Invoice Send**:
+   - Once invoice looks correct, test sending to your own email first
+   - Update `bill_to_email` to your email address temporarily
+   - Verify email delivery and formatting
+
+### Recommended Production Launch Sequence
+
+1. **Week -1: Preparation**
+   - Create service items in QBO (Brokerage Fee, Consulting Fee)
+   - Customize invoice template
+   - Verify Chart of Accounts income account
+
+2. **Day 1: Switch Environment**
+   - Update `QUICKBOOKS_ENVIRONMENT=production` in Supabase secrets
+   - Re-deploy edge functions (if any changes): `supabase functions deploy`
+   - Admin reconnects QuickBooks (authorizes production company)
+
+3. **Day 1-2: Validation**
+   - Create 2-3 test invoices to real customers (or your own email)
+   - Verify all fields sync correctly
+   - Test "Send Invoice" functionality
+
+4. **Day 3+: Full Production Use**
+   - Begin syncing real invoices
+   - Monitor `qb_sync_log` for any errors
+   - Set up weekly review of sync status
+
+### Rollback Plan
+
+If issues occur in production:
+
+1. Set `QUICKBOOKS_ENVIRONMENT=sandbox` to revert API calls
+2. Invoices created in production QBO remain (they're real records)
+3. Clear `qb_invoice_id` on affected payments to allow re-sync after fix
+
+### Rate Limiting Considerations
+
+QuickBooks production API limits:
+- **10 requests per second** per realm (company)
+- **500 requests per minute** per realm
+- Batch operations help stay within limits
+
+Current implementation makes 2-4 API calls per invoice:
+1. Query for existing customer
+2. Create customer (if new)
+3. Query for service item
+4. Create invoice
+5. (Optional) Send invoice
+
+This is well within limits for normal use. For bulk operations (migrating many invoices), add delays between syncs.
+
+---
+
 ## Reference Links
 
 - Intuit Developer Portal: https://developer.intuit.com
 - QBO API Documentation: https://developer.intuit.com/app/developer/qbo/docs/api/accounting/all-entities
 - OAuth 2.0 Guide: https://developer.intuit.com/app/developer/qbo/docs/develop/authentication-and-authorization
+- Rate Limits: https://developer.intuit.com/app/developer/qbo/docs/develop/rate-limits
