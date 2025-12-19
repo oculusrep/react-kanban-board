@@ -14,22 +14,16 @@ import {
 interface HunterLead {
   id: string;
   concept_name: string;
-  parent_company: string | null;
-  confidence_score: number;
+  industry_segment: string | null;
   signal_strength: 'HOT' | 'WARM+' | 'WARM' | 'COOL';
-  status: 'new' | 'enriching' | 'ready' | 'contacted' | 'converted' | 'rejected';
-  expansion_indicators: string[] | null;
+  status: 'new' | 'enriching' | 'ready' | 'outreach_drafted' | 'contacted' | 'converted' | 'dismissed' | 'watching';
+  score_reasoning: string | null;
   target_geography: string[] | null;
   key_person_name: string | null;
   key_person_title: string | null;
+  first_seen_at: string;
+  last_signal_at: string;
   created_at: string;
-  source_signal: {
-    id: string;
-    source_title: string;
-    source: {
-      name: string;
-    } | null;
-  } | null;
 }
 
 const GEO_BADGE_COLORS = {
@@ -39,13 +33,15 @@ const GEO_BADGE_COLORS = {
   'COOL': 'bg-blue-100 text-blue-800 border-blue-200'
 };
 
-const STATUS_COLORS = {
+const STATUS_COLORS: Record<string, string> = {
   'new': 'bg-green-100 text-green-800',
   'enriching': 'bg-blue-100 text-blue-800',
   'ready': 'bg-purple-100 text-purple-800',
+  'outreach_drafted': 'bg-yellow-100 text-yellow-800',
   'contacted': 'bg-indigo-100 text-indigo-800',
   'converted': 'bg-emerald-100 text-emerald-800',
-  'rejected': 'bg-gray-100 text-gray-800'
+  'dismissed': 'bg-gray-100 text-gray-800',
+  'watching': 'bg-cyan-100 text-cyan-800'
 };
 
 export default function HunterLeadsTab() {
@@ -74,24 +70,18 @@ export default function HunterLeadsTab() {
         .select(`
           id,
           concept_name,
-          parent_company,
-          confidence_score,
+          industry_segment,
           signal_strength,
           status,
-          expansion_indicators,
+          score_reasoning,
           target_geography,
           key_person_name,
           key_person_title,
-          created_at,
-          source_signal:hunter_signal!hunter_lead_source_signal_id_fkey(
-            id,
-            source_title,
-            source:hunter_source!hunter_signal_source_id_fkey(
-              name
-            )
-          )
+          first_seen_at,
+          last_signal_at,
+          created_at
         `)
-        .order('created_at', { ascending: false });
+        .order('last_signal_at', { ascending: false });
 
       if (geoFilter !== 'all') {
         query = query.eq('signal_strength', geoFilter);
@@ -264,9 +254,9 @@ export default function HunterLeadsTab() {
                     </div>
 
                     <div className="mt-1 flex items-center gap-4 text-sm text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <span className="font-medium">{Math.round((lead.confidence_score || 0) * 100)}%</span> confidence
-                      </span>
+                      {lead.industry_segment && (
+                        <span className="text-purple-600 font-medium">{lead.industry_segment}</span>
+                      )}
                       {lead.target_geography && lead.target_geography.length > 0 && (
                         <span className="flex items-center gap-1">
                           <MapPinIcon className="w-4 h-4" />
@@ -274,32 +264,16 @@ export default function HunterLeadsTab() {
                           {lead.target_geography.length > 2 && ` +${lead.target_geography.length - 2}`}
                         </span>
                       )}
-                      {lead.parent_company && (
-                        <span className="text-purple-600 font-medium">{lead.parent_company}</span>
+                      {lead.key_person_name && (
+                        <span className="text-gray-600">
+                          {lead.key_person_name}{lead.key_person_title && `, ${lead.key_person_title}`}
+                        </span>
                       )}
                     </div>
 
-                    {lead.expansion_indicators && lead.expansion_indicators.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {lead.expansion_indicators.slice(0, 3).map((signal, idx) => (
-                          <span
-                            key={idx}
-                            className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded"
-                          >
-                            {signal}
-                          </span>
-                        ))}
-                        {lead.expansion_indicators.length > 3 && (
-                          <span className="px-2 py-0.5 text-xs text-gray-400">
-                            +{lead.expansion_indicators.length - 3} more
-                          </span>
-                        )}
-                      </div>
-                    )}
-
-                    {lead.source_signal && (
-                      <p className="mt-2 text-sm text-gray-400">
-                        Source: {lead.source_signal.source?.name || 'Unknown'} - "{(lead.source_signal.source_title || '').substring(0, 60)}..."
+                    {lead.score_reasoning && (
+                      <p className="mt-2 text-sm text-gray-500 line-clamp-2">
+                        {lead.score_reasoning}
                       </p>
                     )}
                   </div>
