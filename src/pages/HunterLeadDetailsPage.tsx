@@ -35,7 +35,7 @@ interface HunterLead {
   outreach_drafts: {
     id: string;
     status: string;
-    email_type: string;
+    outreach_type: string;
     created_at: string;
   }[];
 }
@@ -83,7 +83,7 @@ export default function HunterLeadDetailsPage() {
           outreach_drafts:hunter_outreach_draft(
             id,
             status,
-            email_type,
+            outreach_type,
             created_at
           )
         `)
@@ -284,7 +284,7 @@ export default function HunterLeadDetailsPage() {
                     >
                       <div className="flex items-center gap-3">
                         <EnvelopeIcon className="w-5 h-5 text-gray-400" />
-                        <span className="text-gray-700 capitalize">{draft.email_type.replace('_', ' ')}</span>
+                        <span className="text-gray-700 capitalize">{draft.outreach_type.replace('_', ' ')}</span>
                       </div>
                       <div className="flex items-center gap-3">
                         <span className={`px-2 py-0.5 text-xs font-medium rounded ${

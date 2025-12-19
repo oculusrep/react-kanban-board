@@ -13,16 +13,13 @@ import {
 interface OutreachDraft {
   id: string;
   lead_id: string;
-  email_type: 'intro' | 'follow_up' | 'check_in';
-  to_email: string;
-  to_name: string;
-  subject: string;
-  body_html: string;
-  body_text: string;
-  status: 'draft' | 'approved' | 'sent' | 'rejected' | 'failed';
+  outreach_type: 'email' | 'voicemail_script';
+  contact_name: string;
+  subject: string | null;
+  body: string;
+  status: 'draft' | 'approved' | 'sent' | 'rejected';
   created_at: string;
   sent_at: string | null;
-  error_message: string | null;
   lead: {
     id: string;
     concept_name: string;
@@ -30,18 +27,16 @@ interface OutreachDraft {
   } | null;
 }
 
-const STATUS_STYLES = {
+const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
   draft: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Pending Review' },
   approved: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Approved' },
   sent: { bg: 'bg-green-100', text: 'text-green-800', label: 'Sent' },
-  rejected: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Rejected' },
-  failed: { bg: 'bg-red-100', text: 'text-red-800', label: 'Failed' }
+  rejected: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Rejected' }
 };
 
-const EMAIL_TYPE_LABELS = {
-  intro: 'Introduction',
-  follow_up: 'Follow Up',
-  check_in: 'Check In'
+const OUTREACH_TYPE_LABELS = {
+  email: 'Email',
+  voicemail_script: 'Voicemail Script'
 };
 
 export default function HunterOutreachTab() {
@@ -55,7 +50,7 @@ export default function HunterOutreachTab() {
     pending: 0,
     approved: 0,
     sent: 0,
-    failed: 0
+    rejected: 0
   });
 
   useEffect(() => {
@@ -96,7 +91,7 @@ export default function HunterOutreachTab() {
           pending: allDrafts.filter(d => d.status === 'draft').length,
           approved: allDrafts.filter(d => d.status === 'approved').length,
           sent: allDrafts.filter(d => d.status === 'sent').length,
-          failed: allDrafts.filter(d => d.status === 'failed').length
+          rejected: allDrafts.filter(d => d.status === 'rejected').length
         });
       }
     } catch (error) {
@@ -136,10 +131,9 @@ export default function HunterOutreachTab() {
         body: {
           outreach_id: draft.id,
           user_email: user.email,
-          to: [draft.to_email],
+          contact_name: draft.contact_name,
           subject: draft.subject,
-          body_html: draft.body_html,
-          body_text: draft.body_text
+          body: draft.body
         }
       });
 
@@ -213,18 +207,18 @@ export default function HunterOutreachTab() {
           <p className="text-sm text-gray-500 mt-1">Sent</p>
         </button>
         <button
-          onClick={() => setStatusFilter('failed')}
+          onClick={() => setStatusFilter('rejected')}
           className={`p-4 rounded-lg border text-left transition-colors ${
-            statusFilter === 'failed'
+            statusFilter === 'rejected'
               ? 'border-orange-500 bg-orange-50'
               : 'border-gray-200 bg-white hover:border-gray-300'
           }`}
         >
           <div className="flex items-center gap-2">
-            <ExclamationTriangleIcon className="w-5 h-5 text-red-500" />
-            <span className="text-2xl font-bold">{stats.failed}</span>
+            <ExclamationTriangleIcon className="w-5 h-5 text-gray-500" />
+            <span className="text-2xl font-bold">{stats.rejected}</span>
           </div>
-          <p className="text-sm text-gray-500 mt-1">Failed</p>
+          <p className="text-sm text-gray-500 mt-1">Rejected</p>
         </button>
       </div>
 
@@ -243,7 +237,6 @@ export default function HunterOutreachTab() {
               <option value="approved">Approved</option>
               <option value="sent">Sent</option>
               <option value="rejected">Rejected</option>
-              <option value="failed">Failed</option>
             </select>
           </div>
 
@@ -273,7 +266,7 @@ export default function HunterOutreachTab() {
                           {STATUS_STYLES[draft.status].label}
                         </span>
                         <span className="text-xs text-gray-400">
-                          {EMAIL_TYPE_LABELS[draft.email_type]}
+                          {OUTREACH_TYPE_LABELS[draft.outreach_type]}
                         </span>
                       </div>
                       <h4 className="mt-1 font-medium text-gray-900 truncate">
@@ -281,7 +274,7 @@ export default function HunterOutreachTab() {
                       </h4>
                       <p className="text-sm text-gray-500 truncate">{draft.subject}</p>
                       <p className="text-xs text-gray-400 mt-1">
-                        To: {draft.to_name} &lt;{draft.to_email}&gt;
+                        To: {draft.contact_name}
                       </p>
                     </div>
                     <div className="text-xs text-gray-400 whitespace-nowrap">
@@ -312,32 +305,30 @@ export default function HunterOutreachTab() {
               <div className="space-y-2 text-sm">
                 <div className="flex">
                   <span className="w-16 text-gray-500">To:</span>
-                  <span className="text-gray-900">{selectedDraft.to_name} &lt;{selectedDraft.to_email}&gt;</span>
+                  <span className="text-gray-900">{selectedDraft.contact_name}</span>
                 </div>
-                <div className="flex">
-                  <span className="w-16 text-gray-500">Subject:</span>
-                  <span className="text-gray-900 font-medium">{selectedDraft.subject}</span>
-                </div>
+                {selectedDraft.subject && (
+                  <div className="flex">
+                    <span className="w-16 text-gray-500">Subject:</span>
+                    <span className="text-gray-900 font-medium">{selectedDraft.subject}</span>
+                  </div>
+                )}
                 <div className="flex">
                   <span className="w-16 text-gray-500">Lead:</span>
                   <span className="text-gray-900">{selectedDraft.lead?.concept_name}</span>
+                </div>
+                <div className="flex">
+                  <span className="w-16 text-gray-500">Type:</span>
+                  <span className="text-gray-900">{OUTREACH_TYPE_LABELS[selectedDraft.outreach_type]}</span>
                 </div>
               </div>
 
               {/* Email Body */}
               <div className="border rounded-lg p-4 bg-gray-50 max-h-[400px] overflow-y-auto">
-                <div
-                  className="prose prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{ __html: selectedDraft.body_html }}
-                />
-              </div>
-
-              {/* Error Message */}
-              {selectedDraft.status === 'failed' && selectedDraft.error_message && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                  <strong>Error:</strong> {selectedDraft.error_message}
+                <div className="prose prose-sm max-w-none whitespace-pre-wrap">
+                  {selectedDraft.body}
                 </div>
-              )}
+              </div>
 
               {/* Actions */}
               <div className="flex gap-3 pt-2">
@@ -378,7 +369,7 @@ export default function HunterOutreachTab() {
                     )}
                   </button>
                 )}
-                {(selectedDraft.status === 'failed' || selectedDraft.status === 'rejected') && (
+                {selectedDraft.status === 'rejected' && (
                   <button
                     onClick={() => updateDraftStatus(selectedDraft.id, 'approved')}
                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
