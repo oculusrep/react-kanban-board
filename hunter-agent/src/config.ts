@@ -97,4 +97,20 @@ export function validateConfig(): void {
   }
 }
 
+// Log which source credentials are configured (for debugging)
+export function logSourceCredentialsStatus(): void {
+  const sources = [
+    { name: 'NRN', hasUser: !!config.sources.nrn.username, hasPass: !!config.sources.nrn.password },
+    { name: 'QSR', hasUser: !!config.sources.qsr.username, hasPass: !!config.sources.qsr.password },
+    { name: 'BizJournals', hasUser: !!config.sources.bizjournals.username, hasPass: !!config.sources.bizjournals.password },
+    { name: 'ICSC', hasUser: !!config.sources.icsc.username, hasPass: !!config.sources.icsc.password },
+  ];
+
+  console.log('[Config] Source credentials status:');
+  sources.forEach(({ name, hasUser, hasPass }) => {
+    const status = hasUser && hasPass ? '✓ Configured' : hasUser ? '✗ Missing password' : hasPass ? '✗ Missing username' : '✗ Not configured';
+    console.log(`  - ${name}: ${status}`);
+  });
+}
+
 export default config;

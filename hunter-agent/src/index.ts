@@ -1,5 +1,5 @@
 import express from 'express';
-import { config, validateConfig } from './config';
+import { config, validateConfig, logSourceCredentialsStatus } from './config';
 import { createLogger } from './utils/logger';
 import { supabase } from './db/client';
 import { RunError } from './types';
@@ -239,6 +239,9 @@ async function main(): Promise<void> {
   try {
     validateConfig();
     logger.info('Configuration validated');
+
+    // Log source credentials status for debugging
+    logSourceCredentialsStatus();
 
     // Test database connection
     const { error } = await supabase.from('hunter_source').select('count').limit(1);

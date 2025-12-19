@@ -203,14 +203,15 @@ export default function HunterSourcesTab() {
               {/* Error Message */}
               {source.consecutive_failures > 0 && source.last_error && (
                 <div className="mt-3 p-2 bg-red-50 rounded text-sm text-red-700">
+                  <span className="font-medium">Error ({source.consecutive_failures} failures):</span>{' '}
                   {source.last_error}
                 </div>
               )}
 
-              {/* Auth Warning */}
+              {/* Auth Badge */}
               {source.requires_auth && (
-                <div className="mt-3 p-2 bg-yellow-50 rounded text-sm text-yellow-700">
-                  This source requires authentication
+                <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-sm text-amber-800">
+                  <span className="font-medium">Requires Login</span> — Ensure credentials are configured in environment variables
                 </div>
               )}
             </div>
