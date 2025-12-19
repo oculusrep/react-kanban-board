@@ -323,6 +323,85 @@ class DropboxService {
   }
 
   /**
+   * Move a file or folder to a new location
+   * @param sourcePath - Current full path to the file/folder
+   * @param destinationFolderPath - Destination folder path
+   * @returns Updated file/folder info
+   */
+  async moveItem(sourcePath: string, destinationFolderPath: string): Promise<DropboxFile> {
+    this.validatePath(sourcePath);
+    this.validatePath(destinationFolderPath);
+
+    // Extract the item name from the source path
+    const itemName = sourcePath.split('/').pop() || '';
+    const newPath = `${destinationFolderPath}/${itemName}`;
+
+    this.validatePath(newPath);
+
+    return this.executeWithTokenRefresh(async () => {
+      const response = await this.dbx.filesMoveV2({
+        from_path: sourcePath,
+        to_path: newPath,
+        autorename: true, // Auto-rename if conflict exists
+        allow_ownership_transfer: false
+      });
+
+      const result = response.result.metadata;
+      const isFolder = result['.tag'] === 'folder';
+
+      console.log('✅ Dropbox item moved successfully:', {
+        from: sourcePath,
+        to: newPath
+      });
+
+      return {
+        id: result.id,
+        name: result.name,
+        path: result.path_display || result.path_lower,
+        type: isFolder ? 'folder' : 'file',
+        size: !isFolder && 'size' in result ? result.size : null,
+        modified: !isFolder && 'server_modified' in result ? result.server_modified : null,
+        shared_link: null
+      };
+    });
+  }
+
+  /**
+   * Download a file from Dropbox
+   * @param path - Full path to the file
+   * @returns Blob of the file content
+   */
+  async downloadFile(path: string): Promise<Blob> {
+    this.validatePath(path);
+
+    return this.executeWithTokenRefresh(async () => {
+      const response = await this.dbx.filesDownload({ path });
+
+      // The file content is attached to the result as a Blob
+      const result = response.result as any;
+      if (result.fileBlob) {
+        return result.fileBlob;
+      }
+
+      throw new Error('Failed to download file: No content received');
+    });
+  }
+
+  /**
+   * Get a direct download link for a file (temporary link valid for 4 hours)
+   * @param path - Full path to the file
+   * @returns Temporary direct download URL
+   */
+  async getTemporaryDownloadLink(path: string): Promise<string> {
+    this.validatePath(path);
+
+    return this.executeWithTokenRefresh(async () => {
+      const response = await this.dbx.filesGetTemporaryLink({ path });
+      return response.result.link;
+    });
+  }
+
+  /**
    * Check if a folder exists in Dropbox
    * @param path - Full path to check
    * @returns True if folder exists, false otherwise

@@ -10,12 +10,16 @@ interface UseDropboxFilesReturn {
   loading: boolean;
   uploading: boolean;
   error: string | null;
-  refreshFiles: () => Promise<void>;
+  refreshFiles: (silent?: boolean) => Promise<void>;
   uploadFiles: (fileList: FileList) => Promise<void>;
   createFolder: (folderName: string) => Promise<void>;
   deleteItem: (path: string) => Promise<void>;
+  moveItem: (sourcePath: string, destinationFolderPath: string) => Promise<void>;
+  downloadFile: (path: string, fileName: string) => Promise<void>;
   getSharedLink: (path: string) => Promise<string>;
-  folderCreatedMessage: string | null;  // New: message when folder is auto-created
+  getLatestCursor: () => Promise<string | null>;
+  longpollForChanges: (cursor: string, timeout?: number) => Promise<{ changes: boolean; backoff?: number } | null>;
+  folderCreatedMessage: string | null;
 }
 
 /**
@@ -496,6 +500,65 @@ export function useDropboxFiles(
     []
   );
 
+  /**
+   * Move a file or folder to a new location
+   * @param sourcePath - Full path to the file/folder to move
+   * @param destinationFolderPath - Destination folder path
+   */
+  const moveItem = useCallback(
+    async (sourcePath: string, destinationFolderPath: string) => {
+      if (!dropboxService) {
+        throw new Error('Dropbox service not initialized');
+      }
+
+      setError(null);
+
+      try {
+        await dropboxService.moveItem(sourcePath, destinationFolderPath);
+
+        // Refresh file list after move
+        await refreshFiles();
+      } catch (err: any) {
+        console.error('Error moving item:', err);
+        setError(err.message || 'Failed to move item');
+        throw err;
+      }
+    },
+    [refreshFiles]
+  );
+
+  /**
+   * Download a file from Dropbox
+   * @param path - Full path to the file
+   * @param fileName - Name to save the file as
+   */
+  const downloadFile = useCallback(
+    async (path: string, fileName: string) => {
+      if (!dropboxService) {
+        throw new Error('Dropbox service not initialized');
+      }
+
+      try {
+        // Get a temporary download link
+        const downloadUrl = await dropboxService.getTemporaryDownloadLink(path);
+
+        // Create a temporary anchor element to trigger the download
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = fileName;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (err: any) {
+        console.error('Error downloading file:', err);
+        setError(err.message || 'Failed to download file');
+        throw err;
+      }
+    },
+    []
+  );
+
   // Fetch files when entity changes
   useEffect(() => {
     fetchFiles();
@@ -541,6 +604,8 @@ export function useDropboxFiles(
     uploadFiles,
     createFolder,
     deleteItem,
+    moveItem,
+    downloadFile,
     getSharedLink,
     getLatestCursor,
     longpollForChanges,

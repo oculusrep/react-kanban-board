@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useDropboxFiles } from '../../hooks/useDropboxFiles';
+import { DropboxFile } from '../../services/dropboxService';
 
 interface FileManagerModuleProps {
   entityType: 'property' | 'client' | 'deal' | 'contact';
@@ -17,17 +18,19 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
 }) => {
   console.log('🗂️ FileManagerModule rendered:', { entityType, entityId, isExpanded });
 
-  const { files, folderPath, loading, error, uploadFiles, deleteItem, getSharedLink, refreshFiles, createFolder, getLatestCursor, longpollForChanges, folderCreatedMessage } = useDropboxFiles(
+  const { files, folderPath, loading, error, uploadFiles, deleteItem, moveItem, downloadFile, getSharedLink, refreshFiles, createFolder, getLatestCursor, longpollForChanges, folderCreatedMessage } = useDropboxFiles(
     entityType,
     entityId
   );
   const [uploading, setUploading] = useState(false);
   const [currentPath, setCurrentPath] = useState<string>('');
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: any } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: DropboxFile } | null>(null);
   const [showCreateFolder, setShowCreateFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState<string>('');
+  const [draggedItem, setDraggedItem] = useState<DropboxFile | null>(null);
+  const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
 
   // Get breadcrumbs from current path
   const getBreadcrumbs = () => {
@@ -128,7 +131,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
     });
   };
 
-  const handleCopyLink = async (file: any) => {
+  const handleCopyLink = async (file: DropboxFile) => {
     try {
       const url = await getSharedLink(file.path);
       await navigator.clipboard.writeText(url);
@@ -141,6 +144,109 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
     } catch (err) {
       console.error('Error copying link:', err);
       alert('Failed to copy link. Please try again.');
+    }
+  };
+
+  // Handle file download
+  const handleDownload = async (file: DropboxFile) => {
+    try {
+      setContextMenu(null);
+      await downloadFile(file.path, file.name);
+      setToastMessage(`Downloading ${file.name}...`);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (err) {
+      console.error('Error downloading file:', err);
+      alert('Failed to download file. Please try again.');
+    }
+  };
+
+  // Handle file preview (open in Dropbox)
+  const handlePreview = async (file: DropboxFile) => {
+    setContextMenu(null);
+    await handleFileClick(file.path);
+  };
+
+  // Drag and drop handlers for moving files
+  const handleDragStart = (e: React.DragEvent, file: DropboxFile) => {
+    setDraggedItem(file);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', file.path);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedItem(null);
+    setDropTargetPath(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent, folder: DropboxFile) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (draggedItem && folder.type === 'folder' && folder.path !== draggedItem.path) {
+      e.dataTransfer.dropEffect = 'move';
+      setDropTargetPath(folder.path);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDropTargetPath(null);
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetFolder: DropboxFile) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropTargetPath(null);
+
+    if (!draggedItem || targetFolder.type !== 'folder') return;
+    if (draggedItem.path === targetFolder.path) return;
+
+    // Don't allow dropping a folder into itself or its children
+    if (targetFolder.path.startsWith(draggedItem.path + '/')) {
+      setToastMessage('Cannot move a folder into itself');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+      return;
+    }
+
+    try {
+      await moveItem(draggedItem.path, targetFolder.path);
+      setToastMessage(`Moved "${draggedItem.name}" to "${targetFolder.name}"`);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (err) {
+      console.error('Error moving item:', err);
+      alert('Failed to move item. Please try again.');
+    } finally {
+      setDraggedItem(null);
+    }
+  };
+
+  // Handle drop on breadcrumb (move to parent folder)
+  const handleBreadcrumbDrop = async (e: React.DragEvent, targetPath: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropTargetPath(null);
+
+    if (!draggedItem || !folderPath) return;
+
+    const fullTargetPath = folderPath + targetPath;
+
+    // Don't allow dropping on same location
+    const itemParentPath = draggedItem.path.substring(0, draggedItem.path.lastIndexOf('/'));
+    if (itemParentPath === fullTargetPath) return;
+
+    try {
+      await moveItem(draggedItem.path, fullTargetPath);
+      const targetName = targetPath === '' ? 'root folder' : targetPath.split('/').pop();
+      setToastMessage(`Moved "${draggedItem.name}" to ${targetName}`);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (err) {
+      console.error('Error moving item:', err);
+      alert('Failed to move item. Please try again.');
+    } finally {
+      setDraggedItem(null);
     }
   };
 
@@ -374,13 +480,24 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
       </div>
       {isExpanded && (
         <>
-          {/* Breadcrumb Navigation */}
+          {/* Breadcrumb Navigation - supports drag-drop to move files */}
           {!loading && !error && (
             <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
               <div className="flex items-center text-xs text-gray-600 space-x-1">
                 <button
                   onClick={() => setCurrentPath('')}
-                  className="hover:text-blue-600 transition-colors flex items-center"
+                  onDragOver={(e) => {
+                    if (draggedItem) {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      setDropTargetPath('');
+                    }
+                  }}
+                  onDragLeave={() => setDropTargetPath(null)}
+                  onDrop={(e) => handleBreadcrumbDrop(e, '')}
+                  className={`hover:text-blue-600 transition-colors flex items-center p-1 rounded ${
+                    dropTargetPath === '' ? 'bg-blue-100 ring-2 ring-blue-400' : ''
+                  }`}
                   title="Go to root"
                 >
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -394,7 +511,18 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
                     </svg>
                     <button
                       onClick={() => setCurrentPath(crumb.path)}
-                      className="hover:text-blue-600 transition-colors truncate max-w-[100px]"
+                      onDragOver={(e) => {
+                        if (draggedItem) {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'move';
+                          setDropTargetPath(crumb.path);
+                        }
+                      }}
+                      onDragLeave={() => setDropTargetPath(null)}
+                      onDrop={(e) => handleBreadcrumbDrop(e, crumb.path)}
+                      className={`hover:text-blue-600 transition-colors truncate max-w-[100px] px-1 py-0.5 rounded ${
+                        dropTargetPath === crumb.path ? 'bg-blue-100 ring-2 ring-blue-400' : ''
+                      }`}
                       title={crumb.name}
                     >
                       {crumb.name}
@@ -489,15 +617,29 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
-              {/* Show folders first */}
-              {folders.map((folder: any) => (
+              {/* Show folders first - draggable and drop targets */}
+              {folders.map((folder: DropboxFile) => (
                 <div
                   key={folder.path}
-                  className="p-2 hover:bg-blue-50 group transition-colors cursor-pointer"
+                  className={`p-2 hover:bg-blue-50 group transition-colors cursor-pointer ${
+                    draggedItem?.path === folder.path ? 'opacity-50 bg-gray-100' : ''
+                  } ${
+                    dropTargetPath === folder.path ? 'bg-blue-100 ring-2 ring-blue-400 ring-inset' : ''
+                  }`}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, folder)}
+                  onDragEnd={handleDragEnd}
+                  onDragOver={(e) => handleDragOver(e, folder)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, folder)}
                   onClick={() => handleFolderClick(folder)}
+                  onContextMenu={(e) => handleRightClick(e, folder)}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2 flex-1 min-w-0">
+                      <svg className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-50 cursor-grab active:cursor-grabbing flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                      </svg>
                       <svg className="w-5 h-5 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
                       </svg>
@@ -517,47 +659,68 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
                 </div>
               ))}
 
-              {/* Then show files */}
-              {actualFiles.map((file: any) => (
+              {/* Then show files - draggable with download/preview buttons */}
+              {actualFiles.map((file: DropboxFile) => (
                   <div
                     key={file.path}
-                    className="p-2 hover:bg-gray-50 group transition-colors"
+                    className={`p-2 hover:bg-gray-50 group transition-colors ${
+                      draggedItem?.path === file.path ? 'opacity-50 bg-gray-100' : ''
+                    }`}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, file)}
+                    onDragEnd={handleDragEnd}
                     onContextMenu={(e) => handleRightClick(e, file)}
                   >
                     <div className="flex items-center justify-between">
-                      <button
-                        onClick={() => handleFileClick(file.path)}
-                        className="flex items-center space-x-2 flex-1 min-w-0 text-left"
-                      >
-                        {getFileIcon(file.name)}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate group-hover:text-blue-600">
-                            {file.name}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {formatFileSize(file.size)}
-                            {file.modified && (
-                              <> • {new Date(file.modified).toLocaleString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric',
-                                hour: 'numeric',
-                                minute: '2-digit',
-                                hour12: true
-                              })}</>
-                            )}
-                          </p>
-                        </div>
-                      </button>
-                      <button
-                        onClick={() => handleDelete(file.path, file.name)}
-                        className="flex-shrink-0 p-1 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="Delete file"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      <div className="flex items-center space-x-2 flex-1 min-w-0">
+                        <svg className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-50 cursor-grab active:cursor-grabbing flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
                         </svg>
-                      </button>
+                        <button
+                          onClick={() => handleFileClick(file.path)}
+                          className="flex items-center space-x-2 flex-1 min-w-0 text-left"
+                        >
+                          {getFileIcon(file.name)}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate group-hover:text-blue-600">
+                              {file.name}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {formatFileSize(file.size)}
+                              {file.modified && (
+                                <> • {new Date(file.modified).toLocaleString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                  hour: 'numeric',
+                                  minute: '2-digit',
+                                  hour12: true
+                                })}</>
+                              )}
+                            </p>
+                          </div>
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleDownload(file)}
+                          className="flex-shrink-0 p-1 text-gray-400 hover:text-green-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Download"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDelete(file.path, file.name)}
+                          className="flex-shrink-0 p-1 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Delete file"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -570,21 +733,58 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
       {/* Context Menu */}
       {contextMenu && (
         <div
-          className="fixed bg-white border border-gray-200 rounded-md shadow-lg py-1 z-50"
+          className="fixed bg-white border border-gray-200 rounded-lg shadow-xl py-1 z-50 min-w-[160px]"
           style={{
             top: `${contextMenu.y}px`,
             left: `${contextMenu.x}px`,
           }}
           onClick={(e) => e.stopPropagation()}
         >
+          {contextMenu.file.type === 'file' && (
+            <>
+              <button
+                onClick={() => handlePreview(contextMenu.file)}
+                className="w-full px-3 py-1.5 text-left text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 flex items-center space-x-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                <span>Open in Dropbox</span>
+              </button>
+              <button
+                onClick={() => handleDownload(contextMenu.file)}
+                className="w-full px-3 py-1.5 text-left text-sm text-gray-700 hover:bg-green-50 hover:text-green-600 flex items-center space-x-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span>Download</span>
+              </button>
+              <div className="border-t border-gray-100 my-1" />
+            </>
+          )}
           <button
             onClick={() => handleCopyLink(contextMenu.file)}
-            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 flex items-center space-x-2"
+            className="w-full px-3 py-1.5 text-left text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 flex items-center space-x-2"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
             </svg>
             <span>Copy Dropbox Link</span>
+          </button>
+          <div className="border-t border-gray-100 my-1" />
+          <button
+            onClick={() => {
+              setContextMenu(null);
+              handleDelete(contextMenu.file.path, contextMenu.file.name);
+            }}
+            className="w-full px-3 py-1.5 text-left text-sm text-gray-700 hover:bg-red-50 hover:text-red-600 flex items-center space-x-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            <span>Delete</span>
           </button>
         </div>
       )}
