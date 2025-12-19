@@ -15,7 +15,9 @@ import {
   DocumentTextIcon,
   CalendarIcon,
   NewspaperIcon,
-  ArrowTopRightOnSquareIcon
+  ArrowTopRightOnSquareIcon,
+  ChatBubbleLeftEllipsisIcon,
+  HandThumbDownIcon
 } from '@heroicons/react/24/outline';
 
 interface HunterLead {
@@ -87,6 +89,10 @@ export default function HunterLeadDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [converting, setConverting] = useState(false);
   const [showConvertModal, setShowConvertModal] = useState(false);
+  const [showFeedbackForm, setShowFeedbackForm] = useState(false);
+  const [feedbackNote, setFeedbackNote] = useState('');
+  const [newSignalStrength, setNewSignalStrength] = useState<string>('');
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
 
   useEffect(() => {
     if (leadId) {
@@ -166,6 +172,53 @@ export default function HunterLeadDetailsPage() {
       setLead({ ...lead, status: newStatus as HunterLead['status'] });
     } catch (error) {
       console.error('Error updating status:', error);
+    }
+  }
+
+  async function submitFeedback() {
+    if (!lead || !user) return;
+
+    setSubmittingFeedback(true);
+    try {
+      // Record feedback in hunter_feedback table
+      const { error: feedbackError } = await supabase
+        .from('hunter_feedback')
+        .insert({
+          lead_id: lead.id,
+          feedback_type: 'score_override',
+          original_value: lead.signal_strength,
+          corrected_value: newSignalStrength || null,
+          feedback_note: feedbackNote || null,
+          concept_name: lead.concept_name,
+          created_by: user.id
+        });
+
+      if (feedbackError) throw feedbackError;
+
+      // If signal strength was changed, update the lead
+      if (newSignalStrength && newSignalStrength !== lead.signal_strength) {
+        const { error: updateError } = await supabase
+          .from('hunter_lead')
+          .update({
+            signal_strength: newSignalStrength,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', lead.id);
+
+        if (updateError) throw updateError;
+        setLead({ ...lead, signal_strength: newSignalStrength as HunterLead['signal_strength'] });
+      }
+
+      // Reset form
+      setShowFeedbackForm(false);
+      setFeedbackNote('');
+      setNewSignalStrength('');
+      alert('Feedback submitted. This helps Hunter improve future scoring.');
+    } catch (error) {
+      console.error('Error submitting feedback:', error);
+      alert(`Failed to submit feedback: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSubmittingFeedback(false);
     }
   }
 
@@ -345,6 +398,89 @@ export default function HunterLeadDetailsPage() {
                 <p className="text-gray-700 leading-relaxed">{lead.score_reasoning}</p>
               </div>
             )}
+
+            {/* Feedback Section */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <ChatBubbleLeftEllipsisIcon className="w-5 h-5 text-gray-500" />
+                  Scoring Feedback
+                </h2>
+                {!showFeedbackForm && (
+                  <button
+                    onClick={() => {
+                      setShowFeedbackForm(true);
+                      setNewSignalStrength(lead.signal_strength);
+                    }}
+                    className="text-sm text-orange-600 hover:text-orange-700 font-medium"
+                  >
+                    Report Incorrect Score
+                  </button>
+                )}
+              </div>
+
+              {showFeedbackForm ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      What should the signal strength be?
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {(['HOT', 'WARM+', 'WARM', 'COOL'] as const).map((strength) => (
+                        <button
+                          key={strength}
+                          onClick={() => setNewSignalStrength(strength)}
+                          className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                            newSignalStrength === strength
+                              ? GEO_BADGE_COLORS[strength] + ' border-transparent'
+                              : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          {strength}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Why is this score incorrect? (optional)
+                    </label>
+                    <textarea
+                      value={feedbackNote}
+                      onChange={(e) => setFeedbackNote(e.target.value)}
+                      placeholder="e.g., Article mentions Arizona expansion, not Southeast. No relevance to our target market."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setShowFeedbackForm(false);
+                        setFeedbackNote('');
+                        setNewSignalStrength('');
+                      }}
+                      className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={submitFeedback}
+                      disabled={submittingFeedback || (!feedbackNote && newSignalStrength === lead.signal_strength)}
+                      className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 text-sm"
+                    >
+                      {submittingFeedback ? 'Submitting...' : 'Submit Feedback'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  Help Hunter learn by reporting when the AI scores a lead incorrectly. Your feedback improves future lead scoring.
+                </p>
+              )}
+            </div>
 
             {/* Target Geography */}
             {lead.target_geography && lead.target_geography.length > 0 && (
