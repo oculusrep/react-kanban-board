@@ -1,9 +1,9 @@
 # Hunter Agent - Complete Implementation Plan
 
-**Version:** 1.1
+**Version:** 1.2
 **Created:** December 16, 2025
-**Updated:** December 18, 2025
-**Status:** UI Build Complete - Testing Remaining
+**Updated:** December 19, 2025
+**Status:** Deployed to Render - Debugging Authentication Issues
 
 ---
 
@@ -1582,6 +1582,88 @@ HUNTER_TIMEZONE=America/New_York
   - Updated `database-schema.ts` with new column and relationship
 - **Navigation**: Added "Hunter AI" link to main Navbar (admin only)
 - **Routes**: Added `/hunter` and `/hunter/lead/:leadId` routes in `App.tsx`
+
+### December 19, 2025 - Render Deployment & Authentication Debugging
+
+**Deployment Status:**
+- Hunter agent deployed to Render.com successfully
+- Docker container starts, database connection verified
+- HTTP server listening on configured port
+- Pending runs polling active (30 second interval)
+
+**Credentials Status (verified via startup logs):**
+- ✅ NRN: Configured (username + password)
+- ✅ BizJournals: Configured (username + password)
+- ✅ ICSC: Configured (username + password)
+- ❌ QSR Magazine: Not configured (marked as no-auth source in DB)
+
+**Outstanding Issues:**
+
+1. **Authenticated sources failing despite credentials**
+   - NRN and BizJournals scrapers are failing login
+   - Credentials are correctly loaded from environment (verified in logs)
+   - Root cause unknown - possible issues:
+     - Form selectors may have changed on source websites
+     - CAPTCHA or bot detection being triggered
+     - Incorrect credentials
+     - Cloudflare or other protection blocking headless browser
+
+2. **No outreach drafts being created**
+   - Outreach tab is empty
+   - OutreachDrafter only creates drafts for leads with:
+     - `status = 'ready'`
+     - `signal_strength` in `['HOT', 'WARM+']`
+     - `news_only = false`
+     - Has contact enrichment records
+   - Likely cause: Pipeline not progressing leads to 'ready' status because authenticated sources aren't working
+
+**Debugging Enhancements Added:**
+
+1. **Credential status logging** (`hunter-agent/src/config.ts`):
+   ```typescript
+   export function logSourceCredentialsStatus(): void {
+     // Logs ✓ Configured or ✗ Not configured for each source on startup
+   }
+   ```
+
+2. **Step-by-step login logging** for NRN and BizJournals scrapers:
+   - Step 1/6: Navigate to login page
+   - Step 2/6: Page loaded, log current URL
+   - Step 3/6: Check if form fields exist (email + password)
+   - Step 4/6: Fill email field
+   - Step 5/6: Fill password field
+   - Step 6/6: Click submit button
+   - Log post-login URL to detect success/failure
+   - Capture any error messages from the page
+
+3. **Improved Sources tab UI**:
+   - Shows failure count: `Error ({consecutive_failures} failures)`
+   - Auth badge: "Requires Login — Ensure credentials are configured in environment variables"
+
+4. **Outreach tab voicemail support**:
+   - Added `PhoneIcon` for voicemail script entries
+   - Shows phone number instead of email for voicemail drafts
+   - "Mark as Called" button for voicemail scripts
+   - "Send via Gmail" only shown for email type drafts
+
+**Next Steps:**
+1. Run Hunter again to capture detailed login failure logs
+2. Analyze which step of login is failing
+3. Possible fixes:
+   - Update form selectors if website changed
+   - Add Cloudflare bypass if being blocked
+   - Test credentials manually on source websites
+   - Consider adding screenshots on failure for debugging
+4. Once authenticated sources work, verify leads progress to 'ready' status
+5. Verify outreach drafts are created for qualifying leads
+
+**Files Modified:**
+- `hunter-agent/src/config.ts` - Added `logSourceCredentialsStatus()`
+- `hunter-agent/src/index.ts` - Call credential logging on startup
+- `hunter-agent/src/modules/gatherer/scrapers/nrn-scraper.ts` - Detailed login logging
+- `hunter-agent/src/modules/gatherer/scrapers/bizjournals-scraper.ts` - Detailed login logging
+- `src/components/hunter/HunterSourcesTab.tsx` - Improved error display
+- `src/components/hunter/HunterOutreachTab.tsx` - Voicemail script support
 
 ---
 
