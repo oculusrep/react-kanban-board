@@ -18,38 +18,20 @@ import {
 
 interface HunterLead {
   id: string;
-  brand_name: string;
-  brand_website: string | null;
-  confidence_score: number;
-  geo_relevance: 'HOT' | 'WARM+' | 'WARM' | 'COOL';
-  lead_status: 'new' | 'reviewing' | 'qualified' | 'contacted' | 'converted' | 'rejected';
-  expansion_signals: string[];
-  target_markets: string[];
-  franchise_info: {
-    is_franchise?: boolean;
-    franchise_fee?: number;
-    unit_count?: number;
-    growth_plans?: string;
-  } | null;
-  contact_info: {
-    name?: string;
-    title?: string;
-    email?: string;
-    phone?: string;
-    linkedin?: string;
-  } | null;
-  ai_summary: string | null;
-  ai_outreach_angle: string | null;
+  concept_name: string;
+  website: string | null;
+  industry_segment: string | null;
+  signal_strength: 'HOT' | 'WARM+' | 'WARM' | 'COOL';
+  status: 'new' | 'enriching' | 'ready' | 'outreach_drafted' | 'contacted' | 'converted' | 'dismissed' | 'watching';
+  score_reasoning: string | null;
+  target_geography: string[] | null;
+  geo_relevance: string | null;
+  key_person_name: string | null;
+  key_person_title: string | null;
+  first_seen_at: string;
+  last_signal_at: string;
   created_at: string;
   updated_at: string;
-  source_article: {
-    id: string;
-    title: string;
-    source_name: string;
-    article_url: string;
-    published_at: string;
-    content_snippet: string;
-  } | null;
   outreach_drafts: {
     id: string;
     status: string;
@@ -67,11 +49,13 @@ const GEO_BADGE_COLORS = {
 
 const STATUS_OPTIONS = [
   { value: 'new', label: 'New', color: 'bg-green-100 text-green-800' },
-  { value: 'reviewing', label: 'Reviewing', color: 'bg-blue-100 text-blue-800' },
-  { value: 'qualified', label: 'Qualified', color: 'bg-purple-100 text-purple-800' },
+  { value: 'enriching', label: 'Enriching', color: 'bg-blue-100 text-blue-800' },
+  { value: 'ready', label: 'Ready', color: 'bg-purple-100 text-purple-800' },
+  { value: 'outreach_drafted', label: 'Outreach Drafted', color: 'bg-yellow-100 text-yellow-800' },
   { value: 'contacted', label: 'Contacted', color: 'bg-indigo-100 text-indigo-800' },
   { value: 'converted', label: 'Converted', color: 'bg-emerald-100 text-emerald-800' },
-  { value: 'rejected', label: 'Rejected', color: 'bg-gray-100 text-gray-800' }
+  { value: 'dismissed', label: 'Dismissed', color: 'bg-gray-100 text-gray-800' },
+  { value: 'watching', label: 'Watching', color: 'bg-cyan-100 text-cyan-800' }
 ];
 
 export default function HunterLeadDetailsPage() {
@@ -96,14 +80,6 @@ export default function HunterLeadDetailsPage() {
         .from('hunter_lead')
         .select(`
           *,
-          source_article:hunter_article!hunter_lead_source_article_id_fkey(
-            id,
-            title,
-            source_name,
-            article_url,
-            published_at,
-            content_snippet
-          ),
           outreach_drafts:hunter_outreach_draft(
             id,
             status,
@@ -116,7 +92,7 @@ export default function HunterLeadDetailsPage() {
 
       if (error) throw error;
       setLead(data);
-      document.title = `${data.brand_name} | Hunter | OVIS`;
+      document.title = `${data.concept_name} | Hunter | OVIS`;
     } catch (error) {
       console.error('Error loading lead:', error);
     } finally {
@@ -130,20 +106,20 @@ export default function HunterLeadDetailsPage() {
       const { error } = await supabase
         .from('hunter_lead')
         .update({
-          lead_status: newStatus,
+          status: newStatus,
           updated_at: new Date().toISOString()
         })
         .eq('id', lead.id);
 
       if (error) throw error;
-      setLead({ ...lead, lead_status: newStatus as HunterLead['lead_status'] });
+      setLead({ ...lead, status: newStatus as HunterLead['status'] });
     } catch (error) {
       console.error('Error updating status:', error);
     }
   }
 
   async function convertToContact() {
-    if (!lead || !lead.contact_info) {
+    if (!lead || !lead.key_person_name) {
       alert('No contact information available to convert.');
       return;
     }
@@ -151,9 +127,9 @@ export default function HunterLeadDetailsPage() {
     setConverting(true);
     try {
       // Parse name into first/last
-      const nameParts = (lead.contact_info.name || lead.brand_name).split(' ');
+      const nameParts = (lead.key_person_name || lead.concept_name).split(' ');
       const firstName = nameParts[0] || '';
-      const lastName = nameParts.slice(1).join(' ') || lead.brand_name;
+      const lastName = nameParts.slice(1).join(' ') || lead.concept_name;
 
       // Create contact with Hunter source type and link to lead
       const { data: newContact, error: contactError } = await supabase
@@ -161,15 +137,12 @@ export default function HunterLeadDetailsPage() {
         .insert({
           first_name: firstName,
           last_name: lastName,
-          email: lead.contact_info.email || null,
-          phone: lead.contact_info.phone || null,
-          title: lead.contact_info.title || null,
-          company: lead.brand_name,
-          website: lead.brand_website || null,
-          linked_in_profile_link: lead.contact_info.linkedin || null,
+          title: lead.key_person_title || null,
+          company: lead.concept_name,
+          website: lead.website || null,
           source_type: 'Hunter',
           hunter_lead_id: lead.id,
-          contact_tags: `Hunter Lead, ${lead.geo_relevance}`,
+          contact_tags: `Hunter Lead, ${lead.signal_strength}`,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -182,7 +155,7 @@ export default function HunterLeadDetailsPage() {
       await supabase
         .from('hunter_lead')
         .update({
-          lead_status: 'converted',
+          status: 'converted',
           updated_at: new Date().toISOString()
         })
         .eq('id', lead.id);
@@ -232,18 +205,19 @@ export default function HunterLeadDetailsPage() {
             </button>
             <div className="flex-1">
               <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold text-gray-900">{lead.brand_name}</h1>
-                <span className={`px-3 py-1 text-sm font-medium rounded-full border ${GEO_BADGE_COLORS[lead.geo_relevance]}`}>
-                  {lead.geo_relevance}
+                <h1 className="text-2xl font-bold text-gray-900">{lead.concept_name}</h1>
+                <span className={`px-3 py-1 text-sm font-medium rounded-full border ${GEO_BADGE_COLORS[lead.signal_strength]}`}>
+                  {lead.signal_strength}
                 </span>
               </div>
               <p className="text-gray-500 mt-1">
-                Discovered {new Date(lead.created_at).toLocaleDateString()}
+                Discovered {new Date(lead.first_seen_at).toLocaleDateString()}
+                {lead.industry_segment && ` • ${lead.industry_segment}`}
               </p>
             </div>
             <div className="flex items-center gap-3">
               <select
-                value={lead.lead_status}
+                value={lead.status}
                 onChange={(e) => updateStatus(e.target.value)}
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500"
               >
@@ -253,7 +227,7 @@ export default function HunterLeadDetailsPage() {
                   </option>
                 ))}
               </select>
-              {lead.lead_status !== 'converted' && (
+              {lead.status !== 'converted' && lead.key_person_name && (
                 <button
                   onClick={() => setShowConvertModal(true)}
                   className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
@@ -272,65 +246,28 @@ export default function HunterLeadDetailsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
-            {/* AI Summary */}
-            {lead.ai_summary && (
+            {/* Score Reasoning */}
+            {lead.score_reasoning && (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-3">AI Summary</h2>
-                <p className="text-gray-700 leading-relaxed">{lead.ai_summary}</p>
+                <h2 className="text-lg font-semibold text-gray-900 mb-3">Why This Lead?</h2>
+                <p className="text-gray-700 leading-relaxed">{lead.score_reasoning}</p>
               </div>
             )}
 
-            {/* Outreach Angle */}
-            {lead.ai_outreach_angle && (
-              <div className="bg-gradient-to-r from-orange-50 to-red-50 rounded-lg border border-orange-200 p-6">
-                <h2 className="text-lg font-semibold text-orange-900 mb-3">Suggested Outreach Angle</h2>
-                <p className="text-orange-800 leading-relaxed">{lead.ai_outreach_angle}</p>
-              </div>
-            )}
-
-            {/* Expansion Signals */}
-            {lead.expansion_signals && lead.expansion_signals.length > 0 && (
+            {/* Target Geography */}
+            {lead.target_geography && lead.target_geography.length > 0 && (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-3">Expansion Signals</h2>
+                <h2 className="text-lg font-semibold text-gray-900 mb-3">Target Geography</h2>
                 <div className="flex flex-wrap gap-2">
-                  {lead.expansion_signals.map((signal, idx) => (
+                  {lead.target_geography.map((geo, idx) => (
                     <span
                       key={idx}
-                      className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm"
+                      className="flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
                     >
-                      {signal}
+                      <MapPinIcon className="w-4 h-4" />
+                      {geo}
                     </span>
                   ))}
-                </div>
-              </div>
-            )}
-
-            {/* Source Article */}
-            {lead.source_article && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-3">Source Article</h2>
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3">
-                    <DocumentTextIcon className="w-5 h-5 text-gray-400 mt-0.5" />
-                    <div>
-                      <a
-                        href={lead.source_article.article_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-medium text-blue-600 hover:text-blue-800"
-                      >
-                        {lead.source_article.title}
-                      </a>
-                      <p className="text-sm text-gray-500 mt-1">
-                        {lead.source_article.source_name} • {new Date(lead.source_article.published_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                  {lead.source_article.content_snippet && (
-                    <p className="text-gray-600 text-sm bg-gray-50 p-3 rounded-lg">
-                      "{lead.source_article.content_snippet}"
-                    </p>
-                  )}
                 </div>
               </div>
             )}
@@ -370,54 +307,23 @@ export default function HunterLeadDetailsPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Contact Info */}
+            {/* Key Person Info */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Contact Information</h2>
-              {lead.contact_info ? (
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Key Contact</h2>
+              {lead.key_person_name ? (
                 <div className="space-y-4">
-                  {lead.contact_info.name && (
-                    <div className="flex items-center gap-3">
-                      <UserPlusIcon className="w-5 h-5 text-gray-400" />
-                      <div>
-                        <p className="font-medium text-gray-900">{lead.contact_info.name}</p>
-                        {lead.contact_info.title && (
-                          <p className="text-sm text-gray-500">{lead.contact_info.title}</p>
-                        )}
-                      </div>
+                  <div className="flex items-center gap-3">
+                    <UserPlusIcon className="w-5 h-5 text-gray-400" />
+                    <div>
+                      <p className="font-medium text-gray-900">{lead.key_person_name}</p>
+                      {lead.key_person_title && (
+                        <p className="text-sm text-gray-500">{lead.key_person_title}</p>
+                      )}
                     </div>
-                  )}
-                  {lead.contact_info.email && (
-                    <a
-                      href={`mailto:${lead.contact_info.email}`}
-                      className="flex items-center gap-3 text-blue-600 hover:text-blue-800"
-                    >
-                      <EnvelopeIcon className="w-5 h-5" />
-                      {lead.contact_info.email}
-                    </a>
-                  )}
-                  {lead.contact_info.phone && (
-                    <a
-                      href={`tel:${lead.contact_info.phone}`}
-                      className="flex items-center gap-3 text-blue-600 hover:text-blue-800"
-                    >
-                      <PhoneIcon className="w-5 h-5" />
-                      {lead.contact_info.phone}
-                    </a>
-                  )}
-                  {lead.contact_info.linkedin && (
-                    <a
-                      href={lead.contact_info.linkedin}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 text-blue-600 hover:text-blue-800"
-                    >
-                      <LinkIcon className="w-5 h-5" />
-                      LinkedIn Profile
-                    </a>
-                  )}
+                  </div>
                 </div>
               ) : (
-                <p className="text-gray-500">No contact information available</p>
+                <p className="text-gray-500">No contact information available yet</p>
               )}
             </div>
 
@@ -425,72 +331,31 @@ export default function HunterLeadDetailsPage() {
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Brand Details</h2>
               <div className="space-y-4">
-                {lead.brand_website && (
+                {lead.website && (
                   <a
-                    href={lead.brand_website}
+                    href={lead.website}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-3 text-blue-600 hover:text-blue-800"
                   >
                     <LinkIcon className="w-5 h-5" />
-                    {new URL(lead.brand_website).hostname}
+                    {(() => { try { return new URL(lead.website).hostname; } catch { return lead.website; } })()}
                   </a>
                 )}
+                {lead.industry_segment && (
+                  <div className="flex items-center gap-3">
+                    <BuildingStorefrontIcon className="w-5 h-5 text-gray-400" />
+                    <span className="text-gray-700">{lead.industry_segment}</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-3">
-                  <CheckCircleIcon className="w-5 h-5 text-gray-400" />
+                  <CalendarIcon className="w-5 h-5 text-gray-400" />
                   <span className="text-gray-700">
-                    {Math.round(lead.confidence_score * 100)}% confidence score
+                    Last signal: {new Date(lead.last_signal_at).toLocaleDateString()}
                   </span>
                 </div>
               </div>
             </div>
-
-            {/* Target Markets */}
-            {lead.target_markets && lead.target_markets.length > 0 && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Target Markets</h2>
-                <div className="flex flex-wrap gap-2">
-                  {lead.target_markets.map((market, idx) => (
-                    <span
-                      key={idx}
-                      className="flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm"
-                    >
-                      <MapPinIcon className="w-4 h-4" />
-                      {market}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Franchise Info */}
-            {lead.franchise_info?.is_franchise && (
-              <div className="bg-purple-50 rounded-lg border border-purple-200 p-6">
-                <h2 className="text-lg font-semibold text-purple-900 mb-4">Franchise Information</h2>
-                <div className="space-y-3 text-sm">
-                  {lead.franchise_info.unit_count && (
-                    <div className="flex justify-between">
-                      <span className="text-purple-700">Unit Count:</span>
-                      <span className="font-medium text-purple-900">{lead.franchise_info.unit_count}</span>
-                    </div>
-                  )}
-                  {lead.franchise_info.franchise_fee && (
-                    <div className="flex justify-between">
-                      <span className="text-purple-700">Franchise Fee:</span>
-                      <span className="font-medium text-purple-900">
-                        ${lead.franchise_info.franchise_fee.toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-                  {lead.franchise_info.growth_plans && (
-                    <div>
-                      <span className="text-purple-700">Growth Plans:</span>
-                      <p className="mt-1 text-purple-900">{lead.franchise_info.growth_plans}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -504,26 +369,20 @@ export default function HunterLeadDetailsPage() {
               This will create a new contact in OVIS with the source type "Hunter" and link it back to this lead for ROI tracking.
             </p>
 
-            {lead.contact_info && (
+            {lead.key_person_name && (
               <div className="bg-gray-50 rounded-lg p-4 mb-6 space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-500">Name:</span>
-                  <span className="font-medium">{lead.contact_info.name || lead.brand_name}</span>
+                  <span className="font-medium">{lead.key_person_name}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Company:</span>
-                  <span className="font-medium">{lead.brand_name}</span>
+                  <span className="font-medium">{lead.concept_name}</span>
                 </div>
-                {lead.contact_info.email && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Email:</span>
-                    <span className="font-medium">{lead.contact_info.email}</span>
-                  </div>
-                )}
-                {lead.contact_info.title && (
+                {lead.key_person_title && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">Title:</span>
-                    <span className="font-medium">{lead.contact_info.title}</span>
+                    <span className="font-medium">{lead.key_person_title}</span>
                   </div>
                 )}
               </div>
