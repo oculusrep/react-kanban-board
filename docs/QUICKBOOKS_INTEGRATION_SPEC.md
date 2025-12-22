@@ -470,6 +470,45 @@ If issues occur in production:
 2. Invoices created in production QBO remain (they're real records)
 3. Clear `qb_invoice_id` on affected payments to allow re-sync after fix
 
+### Handling Existing Invoices
+
+If you already have invoices in QuickBooks with invoice numbers stored in the `payment` table, **you do NOT need to delete and recreate them**. The connector is designed to create new invoices only - it skips any payment that already has `qb_invoice_id` populated.
+
+#### Option A: Leave Existing, Only Sync New (Recommended)
+
+Simply proceed with production. The connector will:
+- Skip any payment that already has `qb_invoice_id` populated
+- Only create new invoices for payments without a QBO link
+- Your historical invoices remain in QuickBooks unchanged
+
+This is the simplest approach if you don't need the "Send Invoice" button to work for historical invoices.
+
+#### Option B: Link Existing Invoices via API
+
+If you want the connector to manage existing invoices (for "Send Invoice" functionality), I can build a reconciliation edge function that:
+1. Queries QuickBooks for all invoices by their `DocNumber` (invoice number)
+2. Matches them to your payments by `qb_invoice_number`
+3. Updates `qb_invoice_id` automatically
+
+This would enable full functionality for historical invoices.
+
+#### Option C: Manual Linking
+
+For each existing invoice, update the payment record manually:
+
+```sql
+-- Example: Link a specific payment to its QBO invoice
+UPDATE payment
+SET qb_invoice_id = '<qbo_invoice_id>',  -- QBO's internal ID (numeric string like "123")
+    qb_sync_status = 'synced',
+    qb_last_sync = NOW()
+WHERE qb_invoice_number = '<your_invoice_number>';
+```
+
+Note: `qb_invoice_id` is QuickBooks' internal ID (not the invoice number). You'd need to look these up in QuickBooks via Settings > Audit Log or API.
+
+---
+
 ### Rate Limiting Considerations
 
 QuickBooks production API limits:
