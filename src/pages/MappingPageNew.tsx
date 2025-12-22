@@ -27,9 +27,14 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import Toast from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
+import { useAuth } from '../contexts/AuthContext';
+
+// Roles that can verify restaurant pin locations
+const RESTAURANT_VERIFY_ROLES = ['admin', 'broker (full)', 'broker (lite)', 'va'];
 
 // Inner component that uses the LayerManager context
 const MappingPageContent: React.FC = () => {
+  const { userRole } = useAuth();
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const [searchAddress, setSearchAddress] = useState('');
   const [searchResult, setSearchResult] = useState<string>('');
@@ -39,6 +44,9 @@ const MappingPageContent: React.FC = () => {
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [verifyingPropertyId, setVerifyingPropertyId] = useState<string | null>(null);
   const [verifyingRestaurantStoreNo, setVerifyingRestaurantStoreNo] = useState<string | null>(null);
+
+  // Check if user can verify restaurant locations
+  const canVerifyRestaurantLocations = userRole && RESTAURANT_VERIFY_ROLES.includes(userRole);
 
   // Modal states
   const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false);
@@ -1774,8 +1782,8 @@ const MappingPageContent: React.FC = () => {
               isVisible={layerState.restaurants?.isVisible || false}
               selectedStoreNo={selectedPinType === 'restaurant' && selectedPinData ? selectedPinData.store_no : null}
               verifyingStoreNo={verifyingRestaurantStoreNo}
-              onLocationVerified={handleRestaurantLocationVerified}
-              onRestaurantRightClick={handleRestaurantRightClick}
+              onLocationVerified={canVerifyRestaurantLocations ? handleRestaurantLocationVerified : undefined}
+              onRestaurantRightClick={canVerifyRestaurantLocations ? handleRestaurantRightClick : undefined}
               onRestaurantsLoaded={(count) => {
                 setLayerCount('restaurants', count);
                 setLayerLoading('restaurants', false);
