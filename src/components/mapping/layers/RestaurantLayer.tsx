@@ -4,6 +4,7 @@ import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import { supabase } from '../../../lib/supabaseClient';
 import { ModernMarkerStyles } from '../utils/modernMarkers';
 import RestaurantPopup from '../popups/RestaurantPopup';
+import { useLayerManager } from './LayerManager';
 
 // Restaurant location type matching database schema
 interface RestaurantLocation {
@@ -80,6 +81,13 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
   // Track if we're currently fetching to prevent duplicate requests
   const isFetchingRef = useRef(false);
   const lastFetchBoundsRef = useRef<string | null>(null);
+
+  // Track if a verification just completed - skip next fetch to prevent race condition
+  const skipNextFetchRef = useRef(false);
+
+  // Get refresh trigger from LayerManager
+  const { refreshTrigger } = useLayerManager();
+  const restaurantRefreshTrigger = refreshTrigger.restaurants || 0;
 
   // Sync ref with state
   useEffect(() => {
@@ -195,8 +203,15 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
   };
 
   // Fetch restaurants within viewport bounds
-  const fetchRestaurants = useCallback(async () => {
+  const fetchRestaurants = useCallback(async (forceRefresh: boolean = false) => {
     if (!map) return;
+
+    // Skip fetch if we just completed a verification (prevent race condition)
+    if (skipNextFetchRef.current && !forceRefresh) {
+      console.log('🍔 Skipping fetch - verification just completed, using local state');
+      skipNextFetchRef.current = false;
+      return;
+    }
 
     // Prevent duplicate simultaneous fetches
     if (isFetchingRef.current) {
@@ -217,8 +232,8 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
     // Create a bounds key to check if we've already fetched this area
     const boundsKey = `${sw.lat().toFixed(4)},${sw.lng().toFixed(4)},${ne.lat().toFixed(4)},${ne.lng().toFixed(4)}`;
 
-    // Skip if we just fetched this exact area
-    if (lastFetchBoundsRef.current === boundsKey) {
+    // Skip if we just fetched this exact area (unless force refresh)
+    if (!forceRefresh && lastFetchBoundsRef.current === boundsKey) {
       console.log('🍔 Already have data for this viewport, skipping fetch');
       return;
     }
@@ -339,6 +354,20 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
     }
   }, [map, isVisible]);
 
+  // Respond to refresh trigger from LayerManager (delayed refresh after verification)
+  useEffect(() => {
+    if (map && isVisible && restaurantRefreshTrigger > 0) {
+      console.log('🍔 Refresh trigger received, will force refresh after delay...');
+      // Delay the refresh to ensure database write has committed
+      const timer = setTimeout(() => {
+        console.log('🍔 Force refreshing restaurants from database');
+        lastFetchBoundsRef.current = null; // Clear bounds cache to force refresh
+        fetchRestaurants(true);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [restaurantRefreshTrigger]);
+
   // Create markers for all restaurants
   const createMarkers = useCallback(() => {
     if (!map || !restaurants.length) return;
@@ -401,6 +430,9 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
             if (event.latLng) {
               const newLat = event.latLng.lat();
               const newLng = event.latLng.lng();
+
+              // Set flag to skip the next fetch (prevents race condition with map idle event)
+              skipNextFetchRef.current = true;
 
               // Optimistically update local state to prevent snap-back
               setRestaurants(prev => prev.map(r =>
