@@ -85,6 +85,10 @@ const EmailClassificationReviewPage: React.FC = () => {
   const [feedbackReasoning, setFeedbackReasoning] = useState<Record<string, string>>({});
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
+  // Multi-select state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+
   // Correction modal state
   const [correctionModal, setCorrectionModal] = useState<CorrectionModalState>({
     isOpen: false,
@@ -649,6 +653,74 @@ const EmailClassificationReviewPage: React.FC = () => {
     }
   };
 
+  // Bulk mark selected emails as reviewed
+  const handleBulkMarkReviewed = async () => {
+    if (selectedIds.size === 0) return;
+    if (!currentUserId) {
+      alert('Unable to save: User ID not loaded. Please try again.');
+      return;
+    }
+
+    setBulkProcessing(true);
+    try {
+      const selectedEmails = emails.filter(e => selectedIds.has(e.id));
+
+      // Insert all corrections in one batch
+      const corrections = selectedEmails.map(email => ({
+        user_id: currentUserId,
+        email_id: email.id,
+        correction_type: 'reviewed',
+        email_snippet: email.snippet || email.body_text?.substring(0, 200),
+        sender_email: email.sender_email,
+        reasoning_hint: 'User marked email as reviewed after checking classifications (bulk action)',
+      }));
+
+      const { error } = await supabase.from('ai_correction_log').insert(corrections);
+      if (error) throw error;
+
+      // Remove from list if on "needs_review" view
+      setEmails(prev => {
+        if (reviewFilter === 'needs_review') {
+          return prev.filter(e => !selectedIds.has(e.id));
+        }
+        return prev.map(e =>
+          selectedIds.has(e.id)
+            ? { ...e, hasReview: true, reviewType: 'feedback' as const, pendingChanges: false }
+            : e
+        );
+      });
+
+      // Clear selection
+      setSelectedIds(new Set());
+    } catch (err: any) {
+      alert('Error marking emails as reviewed: ' + err.message);
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  // Toggle selection for a single email
+  const toggleSelection = (emailId: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(emailId)) {
+        next.delete(emailId);
+      } else {
+        next.add(emailId);
+      }
+      return next;
+    });
+  };
+
+  // Select all / deselect all
+  const toggleSelectAll = () => {
+    if (selectedIds.size === emails.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(emails.map(e => e.id)));
+    }
+  };
+
   // Open Not Business modal
   const openNotBusinessModal = (email: EmailWithLinks) => {
     setNotBusinessModal({
@@ -1037,6 +1109,38 @@ const EmailClassificationReviewPage: React.FC = () => {
         </span>
       </div>
 
+      {/* Bulk actions bar - shows when emails are loaded and on needs_review filter */}
+      {!loading && emails.length > 0 && reviewFilter === 'needs_review' && (
+        <div className="mb-4 flex items-center gap-4 p-3 bg-gray-50 rounded-lg border">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={selectedIds.size === emails.length && emails.length > 0}
+              onChange={toggleSelectAll}
+              className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+            />
+            <span className="text-sm font-medium text-gray-700">
+              {selectedIds.size === emails.length ? 'Deselect All' : 'Select All'}
+            </span>
+          </label>
+          {selectedIds.size > 0 && (
+            <>
+              <span className="text-sm text-gray-500">
+                {selectedIds.size} selected
+              </span>
+              <button
+                onClick={handleBulkMarkReviewed}
+                disabled={bulkProcessing}
+                className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50"
+              >
+                <CheckCircleIcon className="w-4 h-4 mr-1" />
+                {bulkProcessing ? 'Processing...' : `Mark ${selectedIds.size} as Reviewed`}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       {error && (
         <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
           {error}
@@ -1067,53 +1171,88 @@ const EmailClassificationReviewPage: React.FC = () => {
               className="bg-white border rounded-lg shadow-sm overflow-hidden"
             >
               {/* Email Header */}
-              <div
-                className="px-4 py-3 cursor-pointer hover:bg-gray-50"
-                onClick={() => setExpandedId(expandedId === email.id ? null : email.id)}
-              >
+              <div className="px-4 py-3 hover:bg-gray-50">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3">
-                    {expandedId === email.id ? (
-                      <ChevronDownIcon className="w-5 h-5 text-gray-400 mt-0.5" />
-                    ) : (
-                      <ChevronRightIcon className="w-5 h-5 text-gray-400 mt-0.5" />
+                    {/* Checkbox for multi-select (only on needs_review) */}
+                    {reviewFilter === 'needs_review' && (
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(email.id)}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          toggleSelection(email.id);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-4 h-4 mt-1 text-green-600 border-gray-300 rounded focus:ring-green-500 cursor-pointer"
+                      />
                     )}
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900">
-                          {email.subject || '(No Subject)'}
-                        </span>
-                        {email.links.length > 0 && (
-                          <span className="px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-700 rounded-full">
-                            {email.links.length} link{email.links.length !== 1 ? 's' : ''}
+                    <div
+                      className="flex items-start gap-3 flex-1 cursor-pointer"
+                      onClick={() => setExpandedId(expandedId === email.id ? null : email.id)}
+                    >
+                      {expandedId === email.id ? (
+                        <ChevronDownIcon className="w-5 h-5 text-gray-400 mt-0.5" />
+                      ) : (
+                        <ChevronRightIcon className="w-5 h-5 text-gray-400 mt-0.5" />
+                      )}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900">
+                            {email.subject || '(No Subject)'}
                           </span>
-                        )}
-                        {email.reviewType === 'feedback' && (
-                          <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded-full flex items-center gap-1">
-                            <CheckCircleIcon className="w-3 h-3" />
-                            Reviewed
-                          </span>
-                        )}
-                        {email.reviewType === 'not_business' && (
-                          <span className="px-2 py-0.5 text-xs font-medium bg-orange-100 text-orange-700 rounded-full flex items-center gap-1">
-                            <NoSymbolIcon className="w-3 h-3" />
-                            Not Business
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-1 text-sm text-gray-500">
-                        {email.sender_name ? `${email.sender_name} <${email.sender_email}>` : email.sender_email}
+                          {email.links.length > 0 && (
+                            <span className="px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-700 rounded-full">
+                              {email.links.length} link{email.links.length !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                          {email.reviewType === 'feedback' && (
+                            <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded-full flex items-center gap-1">
+                              <CheckCircleIcon className="w-3 h-3" />
+                              Reviewed
+                            </span>
+                          )}
+                          {email.reviewType === 'not_business' && (
+                            <span className="px-2 py-0.5 text-xs font-medium bg-orange-100 text-orange-700 rounded-full flex items-center gap-1">
+                              <NoSymbolIcon className="w-3 h-3" />
+                              Not Business
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1 text-sm text-gray-500">
+                          {email.sender_name ? `${email.sender_name} <${email.sender_email}>` : email.sender_email}
+                        </div>
                       </div>
                     </div>
                   </div>
-                  <div className="text-sm text-gray-500">
-                    {formatDate(email.received_at)}
+                  <div className="flex items-center gap-3">
+                    {/* Mark Reviewed button in collapsed view (only on needs_review) */}
+                    {reviewFilter === 'needs_review' && expandedId !== email.id && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMarkReviewed(email);
+                        }}
+                        disabled={processingId === email.id}
+                        className="inline-flex items-center px-2 py-1 text-xs font-medium text-green-700 bg-green-100 rounded hover:bg-green-200 disabled:opacity-50"
+                        title="AI classifications look correct - mark as reviewed"
+                      >
+                        <CheckCircleIcon className="w-3.5 h-3.5 mr-1" />
+                        {processingId === email.id ? '...' : 'Reviewed'}
+                      </button>
+                    )}
+                    <div className="text-sm text-gray-500">
+                      {formatDate(email.received_at)}
+                    </div>
                   </div>
                 </div>
 
                 {/* Quick view of links */}
                 {email.links.length > 0 && expandedId !== email.id && (
-                  <div className="mt-2 ml-8 flex flex-wrap gap-2">
+                  <div
+                    className="mt-2 ml-12 flex flex-wrap gap-2 cursor-pointer"
+                    onClick={() => setExpandedId(expandedId === email.id ? null : email.id)}
+                  >
                     {email.links.map((link) => (
                       <span
                         key={link.id}
