@@ -1,0 +1,213 @@
+OVIS ID,OVIS Invoice,OVIS Amount,OVIS Client,OVIS Deal,Payment Received,Invoice Sent
+41d34f10-cd01-4a57-9d21-ac78583d9e51,1774,6000,Jimmy Johns - Elias,JJ - Elias - Cedarcrest Centre,false,true
+9a320e3c-aaa1-45f9-927e-ad408b17b205,,9114,"Buffalo Wild Wings, Inc.",BWW - GO - Tucker,true,false
+466560f0-a176-406e-8d11-bc93e92e128a,,9114,"Buffalo Wild Wings, Inc.",BWW - GO - Tucker,true,false
+c5f00ba7-181b-4d67-b6ec-bb3234c268fb,1724,19620,Central Bark,Central Bark - Athens,false,false
+97e572dc-6704-43f8-b6ea-06927cc84255,1768,8448.3,BWW GO - Jigar,BWW GO - Jigar - Auburn,true,true
+e6edeeae-edf1-4c95-873c-1b76768b12c4,1769,8448.3,BWW GO - Jigar,BWW GO - Jigar - Auburn,false,false
+317adb4c-982e-4f94-9bdd-c9577ee14db5,1765,9854.75,"PJ's Coffee of New Orleans, LLC","PJs Coffee - Collier Rd Atlanta, GA",false,false
+0d84c721-3c16-485a-8f1c-5b334f735746,1764,9854.75,"PJ's Coffee of New Orleans, LLC","PJs Coffee - Collier Rd Atlanta, GA",false,false
+188790a5-10d4-4275-b193-c51d90cb8d3e,1767,4470.29,Vivid Group,Vivid Development Office Lease,true,true
+85bc8496-87aa-40f8-8ae9-a4c53c2cf353,1766,4470.29,Vivid Group,Vivid Development Office Lease,true,false
+df86c6ed-fa38-450e-a6d7-e5ed4eb916f6,1760,9490.68,Back 9 Golf,Back 9 - Kings Market - Roswell,true,false
+bd8e9b3d-6011-4425-8422-8ec9f4be529f,1761,9490.68,Back 9 Golf,Back 9 - Kings Market - Roswell,false,false
+645819b3-75b2-4beb-ba86-b611223d4f4a,1773,14542.5,Giggletown,Giggletown - Shiloh Crossing - Kennesaw,false,false
+8dafd0cd-461e-4006-9118-59a747b639e2,1772,14542.5,Giggletown,Giggletown - Shiloh Crossing - Kennesaw,true,true
+44fd5733-cfd8-42da-aabd-d1c8111ecc3e,1762,14505.11,Giggletown,Giggletown - Collection at Forsyth,false,true
+4b12473b-c0d5-42aa-a847-b9c263026ad3,1763,14505.11,Giggletown,Giggletown - Collection at Forsyth,false,false
+b7105931-21eb-43a0-8913-a7ca4c3889c6,1756,12257.68,FS8 - Nisreen,FS8 - East Cobb Crossing - Nisreen,true,true
+d77fe3d9-30bd-4d29-b207-936d15c92671,1757,12257.68,FS8 - Nisreen,FS8 - East Cobb Crossing - Nisreen,false,false
+a1660c1d-225c-4ff4-89f2-664b4fde2989,1758,7262.64,Fyzical - Joshua Backing,Fyzical - Josh - Castleberry Promenade,true,true
+cc56074c-ece5-4012-979f-ecf93f595bac,1759,7262.64,Fyzical - Joshua Backing,Fyzical - Josh - Castleberry Promenade,false,false
+2b63fc87-2fb3-4736-be9b-12ea9652954d,1753,39018,"T-Mobile US, Inc.","T-Mobile - Lithonia, GA",false,true
+8bd374b9-c4c7-4478-8f0e-20b3910e7b3e,1752,39018,"T-Mobile US, Inc.","T-Mobile - Lithonia, GA",true,true
+dcf4ae85-6ff9-4c98-bb11-2e25d80e08b7,1740,8385.08,Back 9 Golf,"Back 9 Golf - Braselton, GA",false,false
+4a9bf2da-a1c5-4cc0-a848-6c79032a6110,1739,8385.08,Back 9 Golf,"Back 9 Golf - Braselton, GA",true,false
+c32aa7e9-18bd-4572-8a26-f84f15239955,1747,9013.53,Dumont Creamery & Cafe,"Dumont Creamery & Cafe - Sandy Springs, GA",false,false
+e8b6600f-402b-469d-b045-28258f139191,1746,9013.53,Dumont Creamery & Cafe,"Dumont Creamery & Cafe - Sandy Springs, GA",true,false
+262354cb-1a4f-40a7-acb4-940d687ee529,1732,6487.76,Quadra Commercial,Healthpeak Referral Fee - Ryan Wesner,true,false
+935c9bcc-abd1-408a-ba75-a4229412b1df,1738,16216.41,Bodenvy,"Bodenvy - Sandy Springs, GA",false,false
+876b0c70-50e3-4276-a3e6-12512bdd34e1,1737,16216.41,Bodenvy,"Bodenvy - Sandy Springs, GA",true,true
+ec042120-bb57-4064-98ff-b25396470c56,1741,16000,Hawaiian Bros,HB - Atl Hwy - Cumming,false,false
+198517c2-c215-4b91-9191-300e59fe9a3f,1743,28500,Huey Magoo's - Mangesh,"HM - Dublin, GA Pizza Hut",false,false
+9fd3c28b-aed7-49c9-b417-e2535a5e939a,1730,9677.81,Wayback Burgers,"Wayback Burgers - Rincon, GA",true,false
+f950ce06-da65-4dcd-85bc-4e944659e9ce,1731,9677.81,Wayback Burgers,"Wayback Burgers - Rincon, GA",false,false
+b97280cb-d056-4abb-afeb-306a3bc1bcae,1729,18600,"T-Mobile US, Inc.","T-Mobile Hartwell, GA - Purchase of Land",true,false
+6f8b6230-bd80-40fa-9239-82f7ada525ed,1742,28500,Hawaiian Bros,HB - McDonough - Jonesboro Rd,true,true
+24543bcd-328b-4838-ad9a-cbabde669488,1726,17325,"T-Mobile US, Inc.","T-Mobile Hartwell, GA - Lease",true,true
+f6a47cd1-de1c-4dfe-afdd-407efd5ba92a,1725,17325,"T-Mobile US, Inc.","T-Mobile Hartwell, GA - Lease",true,true
+599f3928-56f7-48c6-92af-b220b39c04ff,1755,26048.16,FS8 - Cunningham,FS8 - Buckhead - Terminus,false,false
+7114029c-2d6b-4278-958e-76e601aa0816,1754,26048.16,FS8 - Cunningham,FS8 - Buckhead - Terminus,true,true
+680bccb7-3396-41ab-a601-4ae28ac41c2f,1736,11494.67,Foxtail - Harshil,Foxtail - Ashford Lane - Former Panera,false,false
+5f039fed-314d-4c0a-9237-52bfa7e736f5,1735,11494.67,Foxtail - Harshil,Foxtail - Ashford Lane - Former Panera,true,false
+f626a62d-10cd-4770-b10a-3a83de4fe728,1723,9810,Central Bark,Central Bark - Athens,false,false
+22ba622d-79f7-4d83-a082-87ada8c8ad3d,1722,9810,Central Bark,Central Bark - Athens,true,false
+12a225bb-948a-4002-9c28-c3134c8a0698,1721,15092.43,Hammer and Nails,Hammer and Nails - Suwanee,false,false
+bb1ee135-95a8-433f-8018-3770fd622ae9,1720,15092.43,Hammer and Nails,Hammer and Nails - Suwanee,true,false
+c5ae9daa-c89a-4d33-b477-74a0ec91e19a,1717,8000,"PJ's Coffee of New Orleans, LLC",PJ's - Rome - Consulting Fee,true,false
+c7eac81c-2eb6-4abd-ad9d-5916d8debb81,1714,10914.75,"T-Mobile US, Inc.","T-Mobile - Dublin, GA",true,false
+cf1392ca-ae89-4a90-97b2-2615b4e605df,1713,10914.75,"T-Mobile US, Inc.","T-Mobile - Dublin, GA",true,false
+f4a43ed7-0bcc-4195-bb92-13fd8ea17f8d,1716,4696.36,CabinetIQ,CabinetIQ - Roswell GA,false,false
+e979c00b-0fa6-4983-8593-c84bbf7effdb,1715,4696.36,CabinetIQ,CabinetIQ - Roswell GA,true,false
+cec13b91-57ec-41b9-b2e1-87ac57c422b7,1705,6378.75,BWW - Samir Patel,BWW - Samir - Warner Robins,true,false
+e0a1f963-34ec-4d42-bfb8-3a332731a9fa,1706,6378.75,BWW - Samir Patel,BWW - Samir - Warner Robins,true,false
+0467ff3e-21b6-4c2f-b848-ab67c35dc818,1708,16415.94,Hammer and Nails,Hammer and Nails - Chamblee,false,false
+b4b4fe42-a21e-4ec6-a71e-65c876120465,1707,16415.94,Hammer and Nails,Hammer and Nails - Chamblee,true,false
+d53b6c7f-d09f-464d-b2f5-cefc88233e20,1703,10629.95,Hammer and Nails,Hammer and Nails - West Cobb Avenues,true,false
+f3165754-e52c-4b3b-a40d-49ad3e7a3899,1704,10629.95,Hammer and Nails,Hammer and Nails - West Cobb Avenues,true,false
+0d93d089-cd19-4fd7-be16-c9850e0618e3,1702,30000,"T-Mobile US, Inc.",T-Mobile - McDonough,true,false
+8d73ec14-6839-402b-b3da-cb2ae8ca31af,1733,13341.08,Fyzical Therapy & Balance Centers,"Fyzical - Lexington, SC",true,false
+90dcf96e-285f-4cf6-a3b5-dd35f99743f5,1734,13341.08,Fyzical Therapy & Balance Centers,"Fyzical - Lexington, SC",true,false
+4c73a5bc-98e2-464d-b075-f4d3638417e1,1701,29250,Nick N Moes,"Nick N Moes - Lawrenceville, GA",true,false
+f3a0048b-72e3-4a00-954c-30cdc72e09f6,1727,9141.96,Jimmy Johns - Amos,JJ - Soho Crossing - Warner Robins - Amos,true,false
+2fd8c0fa-f908-48c6-a420-d7c36001fff4,1728,9141.96,Jimmy Johns - Amos,JJ - Soho Crossing - Warner Robins - Amos,false,false
+7e1dad05-dbf1-4506-8c72-3d6d5f9b3333,1711,12348,BWW - Zubair,BWW - Zubair - Hickory Rd - Canton,true,false
+62fe348e-fb04-497e-9b25-fedc7ce8a750,1710,14784,"Crumbl - KTP Investments, LLC",Crumbl - Jefferson,false,false
+545f298a-5f3c-418c-acc8-b06b9cf01c6a,1709,14784,"Crumbl - KTP Investments, LLC",Crumbl - Jefferson,false,false
+9b46f803-8e74-4619-86db-dd57110b9e0d,1719,11124.96,BWW - Zubair,BWW - Zubair - Braselton Village,false,true
+7fd4d97a-225e-419a-b277-e709a745f49e,1718,11124.96,BWW - Zubair,BWW - Zubair - Braselton Village,true,false
+914b7a32-4ba6-4cf9-9c1a-50acb86b48dd,1700,3601.87,BWW - Samir Patel,BWW - Valdosta - Samir,true,true
+5a32d08e-3d2b-4d2d-b0a0-ec8604d7778d,1699,3601.87,BWW - Samir Patel,BWW - Valdosta - Samir,true,false
+facb4c44-fc05-48a4-a3dc-ed5a25773e25,1695,13558.78,Your Pie,Your Pie - Brunswick,true,false
+4f718f7f-bd05-42ca-8ad4-4bf891f1fe54,1696,13558.78,Your Pie,Your Pie - Brunswick,true,false
+16fa6d2a-7ae1-4645-9d07-a408312af92c,1694,39000,Huey Magoo's - Mangesh,HM - Zebulon Fazoli's,true,false
+6fa705c9-d4a4-43cf-a7d5-7ceb758268d6,,2017.5,Terrace 24 Realty,T24 - Sharon Love Sale,true,false
+afcacedf-9a60-4b09-ae9f-f58a252fe9ef,1692,6569.84,CabinetIQ,CabinetIQ - Kennesaw,false,false
+91005d8a-f9a7-491d-bc47-92767f33ba57,1691,6569.84,CabinetIQ,CabinetIQ - Kennesaw,true,false
+ff42c113-7c90-44df-8e97-6ae3cde38f1d,1687,34494,"T-Mobile US, Inc.","T-Mobile - Thomasville, GA",true,false
+50e5b2cb-e52d-469a-978e-cedf719bbc3d,1684,9150.49,Jimmy Johns - Jabar Smith,JJ - Roswell - Jabar,true,false
+9c1b2b9f-ecb6-472a-8029-a27651285c4b,1683,9150.49,Jimmy Johns - Jabar Smith,JJ - Roswell - Jabar,true,false
+bc0dc6bb-d647-4bd9-87b0-b494ee2ba659,1693,45000,Huey Magoo's - Mangesh,HM - Bass Road - Mangesh,true,false
+e82910f7-4659-46e5-9fcf-9cd8810a2516,1675,20178,"T-Mobile US, Inc.","T-Mobile - Swainsboro, GA",true,false
+6bf58c36-ef35-47ff-8e45-9d203a3c0a84,1676,20178,"T-Mobile US, Inc.","T-Mobile - Swainsboro, GA",true,false
+c4e498d3-9dfe-4d82-ba32-b9602d5ab659,1678,20476,"T-Mobile US, Inc.","T-Mobile - Americus, GA",true,false
+0a99d5a0-a336-4b50-ace7-30a97b177e00,1677,20476,"T-Mobile US, Inc.","T-Mobile - Americus, GA",true,false
+71356089-c5a8-4497-8b58-7d7ce9aef052,1679,8451.52,BWW - Zubair,BWW - GO - Woodstock,true,false
+ffc557cd-c79e-4bca-8bdb-5c348c5e7b04,1680,8451.52,BWW - Zubair,BWW - GO - Woodstock,true,false
+96ce4352-6e24-4ced-8062-b3de24b29613,1681,18750,Jimmy Johns - Abdou,JJ - Bethlehem,true,false
+21b21dc1-e564-4472-b511-6806dd27e3a4,1674,42768,"T-Mobile US, Inc.",T-Mobile - Alpharetta Haynes Bridge,true,false
+351456b1-8638-4407-a54b-ef47360bb5c8,1673,22500,Huey Magoo's - Knapp - SC,HM - Spartanburg - 1621 JB White Lot,true,false
+8b2c7280-440c-41d5-8895-f1536e839086,1672,14883.75,Huey Magoo's - Tom Scarborough,HM - Eisenhower Crossing - Augusta,true,false
+7a026824-4427-4895-8527-9c30a8b55375,1671,14883.75,Huey Magoo's - Tom Scarborough,HM - Eisenhower Crossing - Augusta,true,false
+bfc32b22-6e7b-45cf-a06b-a8b7114fcaaa,1669,22680,Huey Magoo's - Tom Scarborough,HM - Aiken Mall Redevelopment,true,false
+20a1d031-bd0e-4629-ab36-9102ebdbcb03,1670,22680,Huey Magoo's - Tom Scarborough,HM - Aiken Mall Redevelopment,false,false
+f92fbc98-a438-430b-abdf-0d8a4fd8bcf7,1655,11910.5,"T-Mobile US, Inc.",T-Mobile - Alma,true,false
+47ed7dbf-b0b4-47b9-afab-184f75376f69,1666,4782,Jimmy Johns - Hans,JJ - Cumming - 535 Canton Hwy,true,false
+edbff743-d4b2-4a0a-9b00-71a07724a9e7,1667,4782,Jimmy Johns - Hans,JJ - Cumming - 535 Canton Hwy,false,false
+0feb8186-f0d2-47d7-b2ea-0f22e73b7e82,1654,11910.5,"T-Mobile US, Inc.",T-Mobile - Alma,true,false
+994850d9-57c6-43c3-b5bc-1915abe4851e,1663,9619.08,Botanical Sciences,BS - Augusta - Laundry,true,false
+a875b0b5-e789-4f75-9c94-f9d65fbf0b36,1664,9619.08,Botanical Sciences,BS - Augusta - Laundry,false,false
+84745a23-a402-483b-a351-41224992e610,1662,8318.51,Jimmy John's Franchise Inc,JJ - Byron - Amos,false,true
+0a2beb01-5b8b-4d97-85c9-a53c9cf18fc7,1661,8318.51,Jimmy John's Franchise Inc,JJ - Byron - Amos,true,false
+9034c9f4-6ff4-4c26-9d7d-701cbe7d17f2,1660,23250,Huey Magoo's - Knapp - SC,HM - Greenwood - Ryan's,true,false
+8e8747ca-68a3-4ba5-8f7e-b82266b373be,1658,8160,"T-Mobile US, Inc.",T-Mobile - Milledgeville,true,false
+0d77582a-9365-4033-9917-470bf382f557,1659,8160,"T-Mobile US, Inc.",T-Mobile - Milledgeville,true,false
+d54250fe-d210-4d76-8b05-07952d7841f7,1656,11124.29,Pochino Italy,Pochino - Kennesaw,true,false
+f39b6e4f-dad7-4c8b-9296-0fd21d20503b,1657,11124.28,Pochino Italy,Pochino - Kennesaw,true,false
+1247f062-a3e8-4285-95fe-fedfa4b94144,1652,12600,"T-Mobile US, Inc.",T-Mobile - Tifton,true,false
+9a75db89-b527-4dd3-8cd8-2b6e43824f87,1653,12600,"T-Mobile US, Inc.",T-Mobile - Tifton,true,false
+cd7e17de-b116-4633-a805-ccf93d45f0d8,1650,27123.54,Botanical Sciences,BS - Stockbridge - Rock Quarry,true,false
+783d5913-d214-43f0-8e92-46558130643b,1651,27123.54,Botanical Sciences,BS - Stockbridge - Rock Quarry,true,false
+d78c2582-3d52-4cee-a5c9-4963f85a829c,1642,5693.86,Moore Company Realty,Woof Gang Bakery - Milton,true,false
+8e2cadd0-d75e-416f-a192-e71be924e00f,1643,5693.86,Moore Company Realty,Woof Gang Bakery - Milton,true,false
+f3a36ead-91c5-4ede-8830-a5ea3346ec4c,1647,12131.65,Botanical Sciences,BS - Chamblee - Verizon,true,false
+73ebbba3-6b18-424c-a9ab-c594edf09950,1648,12131.65,Botanical Sciences,BS - Chamblee - Verizon,true,false
+5eeed76e-8e3b-4aa6-bd1b-f5cd286ab156,1645,13689,Hounds Town USA,Hounds Town - Smyrna,true,false
+a1a5e719-b18a-45e0-a70e-a8db0ac31c26,1646,13689,Hounds Town USA,Hounds Town - Smyrna,true,false
+19216218-c09f-47db-921a-5194158d9fc5,1644,12489.7,Botanical Sciences,BS - Marietta - Windy Hill,true,false
+5c25d46c-178e-422a-b91b-ccb5f4f18be1,1640,13681.68,"T-Mobile US, Inc.","T-Mobile - Corneilia, GA",true,false
+2ad29b51-3e1e-4747-9182-3e22fb6a96d6,1641,13681.68,"T-Mobile US, Inc.","T-Mobile - Corneilia, GA",true,false
+c0c7dd63-02da-48cc-b55a-014cb11e0afc,1616,8467.2,"T-Mobile US, Inc.","T-Mobile - Fairburn, GA",true,false
+600f8fe4-c302-4209-96f4-7d3dbaa4da8e,1615,8467.2,"T-Mobile US, Inc.","T-Mobile - Fairburn, GA",true,false
+10115554-00ab-4d3f-843b-3544878a741d,1637,4575.6,SportClips,Sport Clips - Flowery Branch,true,false
+4f18ead3-8194-4cbe-be3f-295e89f9d552,1636,4575.6,SportClips,Sport Clips - Flowery Branch,true,false
+d5c02430-8445-45d9-959c-68518424dbe7,1638,9089.2,Botanical Sciences,BS - Pooler - Liquor Land,true,false
+bd649a6a-b6cc-437c-967f-ee42f6c64795,1639,9089.2,Botanical Sciences,BS - Pooler - Liquor Land,true,false
+399938f0-3960-4197-ae61-1b4a53d630b2,1634,12496.68,Resolut RE,"Hounds Town - Conyers, GA",true,false
+4511c874-50b7-4384-96c4-296768bc9924,1635,12496.68,Resolut RE,"Hounds Town - Conyers, GA",true,false
+ee289f1a-b07b-4466-bac2-d97b9d3aec7b,1633,11920.26,Zoup! Fresh Soup Company,Zoup! - Westside Village,true,false
+6f34b88b-71d1-4c7e-a71f-459771889ad3,1632,11920.26,Zoup! Fresh Soup Company,Zoup! - Westside Village,true,false
+144d979d-b176-4029-9f0a-208b7c5d6895,1630,14700,"T-Mobile US, Inc.","T-Mobile - Bonaire, GA",true,false
+4a32906e-85c2-4e07-9948-17dfb44b7824,1629,14700,"T-Mobile US, Inc.","T-Mobile - Bonaire, GA",true,false
+b845217e-cf4d-439f-863d-5186a03da012,1626,4203.57,Acai Express,Acai Express - Lawrenceville,true,false
+1e8a74f0-f5a2-419f-a7ae-ca99dd26c951,1627,4203.56,Acai Express,Acai Express - Lawrenceville,true,false
+0c35b9b0-77f6-46f4-8c9c-5b130c6702cf,1624,11401.94,"Buffalo Wild Wings, Inc.",BWW-Pinetree Plaza - Doraville,true,false
+b1753e3d-d512-4d41-b1c6-e04007524067,1625,11401.94,"Buffalo Wild Wings, Inc.",BWW-Pinetree Plaza - Doraville,true,false
+ac668084-94c7-4604-b528-59edeae96e57,1622,9909.95,Hammer and Nails,Hammer & Nails - Roswell Village,true,false
+134d11f2-28cc-4d81-90ba-a9d53a6ea08b,1621,12600,"T-Mobile US, Inc.","T-Mobile - Blackshear, GA",true,false
+7faf5108-a0d0-461b-b322-af7577f6c4db,1620,12600,"T-Mobile US, Inc.","T-Mobile - Blackshear, GA",true,false
+3cab9b1b-abd7-464f-8cc8-571d80a78fb8,1618,5733,"Buffalo Wild Wings, Inc.",BWW GO - Loganville,true,false
+9e744660-c89b-4c99-bb2a-4bce62798b08,1617,5733,"Buffalo Wild Wings, Inc.",BWW GO - Loganville,true,false
+846f20fd-5eac-4459-bb04-fe17b4654b3b,1567,14489.68,Golftec Enterprises LLC,GolfTec - Midtown,true,false
+fb466411-676a-4791-adf3-80004c457d6c,1566,14489.68,Golftec Enterprises LLC,GolfTec - Midtown,true,false
+da77c644-16e2-4016-ba0e-a73ea9f2ced0,1568,25612.79,Roll On In Sushi & Buzzed Bull Cramery,"Roll On In Sushi - Evans,GA",true,false
+66be6728-78df-46d8-8db1-db66d246febc,1610,18900,"T-Mobile US, Inc.","T-Mobile - Albany, GA",true,false
+2fb17f24-d6e2-4938-b4da-946ede0ec312,1611,18900,"T-Mobile US, Inc.","T-Mobile - Albany, GA",true,false
+17012e6c-6ec0-47ad-aec3-07e9fc81b879,1613,17366.09,Resolut RE,"Hounds Town - Roswell, GA",true,false
+e57c8b46-bef4-42bc-b7fc-d6bd06b92759,1612,17365.72,Resolut RE,"Hounds Town - Roswell, GA",true,false
+9eac74bb-920f-4a36-8463-928a192c15e7,1609,11025,BWW - Kuzminsky,BWW GO - Lovejoy,true,false
+84078b05-a930-424c-894b-445d3d059baf,1608,11025,BWW - Kuzminsky,BWW GO - Lovejoy,true,false
+e833f589-1447-4dd2-8553-43a98ae4b9ee,1597,13826.4,"T-Mobile US, Inc.","T-Mobile - Glennville, GA",true,false
+7d681372-42f9-4414-b782-8dc52e92531a,1598,13825,"T-Mobile US, Inc.","T-Mobile - Glennville, GA",true,false
+84686586-d93c-4f8b-b4d3-8420a102de09,1599,22600,"T-Mobile US, Inc.","T-Mobile - Reidsville, GA",true,false
+f7afbb51-1817-4866-b96d-8c2a2cbeb5a7,1600,12600,"T-Mobile US, Inc.","T-Mobile - Reidsville, GA",true,false
+ab24cf94-0a01-44c8-a3a3-b6c87552f3d1,1604,13362.3,Pure Green,Pure Green - Buckhead,true,false
+47a438c6-206d-4d4f-8eb1-f03cac49dfa6,1603,13362.3,Pure Green,Pure Green - Buckhead,true,false
+de1bfb33-4a5e-4443-903d-8bf96931ed84,1631,36000,Huey Magoo's - DADs Tenders,Hueys - Monroe Publix,true,false
+bde2fbab-4a3d-48a3-a165-4303a679b15a,1619,28500,Huey Magoo's - Mangesh,HM - Macon - Hartley Bridge,true,false
+5d46781f-6550-46b6-b3b7-e720c3762928,1596,2500,"T-Mobile US, Inc.","T-Mobile - Hazelhurst, GA",true,false
+4ff3392c-a47b-4676-8604-072775442faf,1595,2500,"T-Mobile US, Inc.","T-Mobile - Hazelhurst, GA",true,false
+6e42290e-b3ca-4572-b7d4-7ab9dbd89cf1,1594,4000,"T-Mobile US, Inc.","T-Mobile - Cairo, GA",true,false
+42bc9907-94a4-4294-8339-2f027531a5ed,1593,4000,"T-Mobile US, Inc.","T-Mobile - Cairo, GA",true,false
+b66119ae-e28f-4ba2-a790-e9a42a900021,1590,6120,"T-Mobile US, Inc.",T-Mobile - Conyers,true,false
+820ad485-cf7b-441d-bd6e-68dbca503099,1589,6120,"T-Mobile US, Inc.",T-Mobile - Conyers,true,false
+bb5c4cc5-f8b0-40a2-bfbe-10dd6fca8994,1588,3633.29,AT&T,AT&T - Conyers,true,false
+a032de68-977f-4a02-a3bf-2daa3e04e968,1587,3633.29,AT&T,AT&T - Conyers,true,false
+f57dc96b-248b-45eb-9ea8-4dd4b16733b9,1602,6006,"Buffalo Wild Wings, Inc.",BWW GO - Lawrenceville,true,false
+988f1fb1-ffbb-491a-8024-1a459c68f6b7,1601,6006,"Buffalo Wild Wings, Inc.",BWW GO - Lawrenceville,true,false
+7043f12c-6a1f-4d25-9060-dbed565ea5c3,OBC,25932.33,Pizza Factory,Pizza Factory - Athens,true,false
+1e6ef366-8235-4c52-887f-2804eb98275a,1583,4452,"T-Mobile US, Inc.",T-Mobile - Ft Oglethorpe,true,false
+ec1a3fd2-7ecd-4b4c-9394-19a0d2ac521d,1584,4452,"T-Mobile US, Inc.",T-Mobile - Ft Oglethorpe,true,false
+2ada0ac6-ffba-4777-9e99-92e5b4d2bbca,1578,4520.41,Scenthound,ScentHound - Woodstock,true,false
+7380ddd2-229d-4a3a-afff-ba0f586121b4,1577,4520.41,Scenthound,ScentHound - Woodstock,true,false
+32dcbdd8-4b93-4853-93d7-1ccf0a857692,1581,8820,Jimmy John's Franchise Inc,JJ - Cumming,true,false
+f9d40f28-01b7-4c89-b22d-45f794a7fcca,1582,8820,Jimmy John's Franchise Inc,JJ - Cumming,true,false
+c4a67a32-77f3-4c05-b8c3-e8ce9d0ae056,1591,23100,The Krystal Company,Krystal - MLK,true,false
+1953e5a3-e1c3-4596-9345-93faed172121,1576,3616.7,Hunter Douglas Inc,Hunter Douglas - Peachtree City,true,false
+95859b97-d992-45c5-aaa8-88262b82bcc4,1575,3616.71,Hunter Douglas Inc,Hunter Douglas - Peachtree City,true,false
+34d67025-f432-4761-a606-938e0b620da1,1574,23310,Huey Magoo's - DADs Tenders,Hueys - Covington Publix,true,false
+570340e4-98a2-42d3-a438-17cf5dd981d0,,16500,Take 5 Oil Change,T5 - Richmond Hill,true,false
+927f8691-a3cc-484c-b249-b36db1eb4b72,1573,22125.88,VIO Med Spa,VIO - Dunwoody,true,false
+a4b7b538-a17a-4429-81fa-3155d1c3b910,1572,22125.88,VIO Med Spa,VIO - Dunwoody,true,false
+a5dda8a0-dc39-46b7-8f7e-2bdab0f714a8,,42840,Take 5 Oil Change,T5 - Rome - American Legion,true,false
+117587da-2b75-4926-b144-daa5c37cafc5,,2076.48,"Buffalo Wild Wings, Inc.",BWW - GO - Ga Tech,true,false
+f026adaf-dd0f-4b23-9208-b48c14c4cc79,1580,9384.38,Jimmy John's Franchise Inc,JJ - Amos - Woodstock,true,false
+c67a1666-862f-49f9-b5c6-fb3c8e844a0f,1579,9384.38,Jimmy John's Franchise Inc,JJ - Amos - Woodstock,true,false
+6a3be353-bcce-4455-b002-5d15b03f38de,1585,20250,Stayapt Suites,SAS - Newnan,true,false
+6a79eef9-e4bc-4553-a52f-76fa719d1c55,1571,14700,Take 5 Oil Change,T5 - Savannah - Abercorn,true,false
+d7840a28-55b1-4453-b691-8fdfc1fff285,,14700,Take 5 Oil Change,T5 - Savannah - Abercorn,true,false
+afeaffe1-800e-4566-84ba-f1c2cff3d089,,21000,Take 5 Oil Change,T5 - Powers Ferry Rd,true,false
+816ef0f2-ca8d-437c-9356-805e5b8e58f5,,21000,Take 5 Oil Change,T5 - Powers Ferry Rd,true,false
+9ebcc2fc-9558-4e2f-9548-f634a7927790,,20320,Take 5 Oil Change,T5 - Savannah - McAlpin Square,true,false
+52008936-4f52-441f-9e87-40d025659499,,20320,Take 5 Oil Change,T5 - Savannah - McAlpin Square,true,false
+abb8cdcc-31e8-40c0-ae2b-1bfa8efb16f0,,30000,Take 5 Oil Change,T5 - Calhoun - Cookout,true,false
+48d88b5a-a325-48bf-a09b-472b493b7d03,,26618.67,Huey Magoo's Chicken Tenders,HM - Oakwood - Steak N Shake,true,false
+1b585766-1dcd-4e2a-8809-f575ea846c99,,26618.67,Huey Magoo's Chicken Tenders,HM - Oakwood - Steak N Shake,true,false
+d2b9a7e4-ed18-41d1-95ec-2124e627532f,,11550,Huey Magoo's Chicken Tenders,HM - Milledgeville - Heritage Walk,true,false
+cca7ee9a-43bb-46e2-ac1a-982a386b11de,,11550,Huey Magoo's Chicken Tenders,HM - Milledgeville - Heritage Walk,true,false
+3f6dfc6c-656f-40a5-8153-5af910570c3f,1628,150000,"Buffalo Wild Wings, Inc.",BWW - GGP - Perimeter,true,false
+32bd4ffe-77e9-47c6-b455-791224e7508b,,36000,Take 5 Oil Change,T5 - Kennesaw Pep Boys,true,false
+8899e192-2430-4961-9315-c6b067d906f5,,21461.46,Huey Magoo's Chicken Tenders,HM - Spout Springs - Apollo Plaza,true,false
+8c7d7520-43fc-428b-924e-681bdce1bcec,1614,21461.46,Huey Magoo's Chicken Tenders,HM - Spout Springs - Apollo Plaza,true,false
+dea57e5f-ca46-477f-9de6-fd0396174f08,1586,30400,Huey Magoo's Chicken Tenders,HM - Statesboro Outparcel,true,false
+41b0b0c9-8c14-4542-bbf9-2c8c09d9bdea,,23310,Huey Magoo's - DADs Tenders,Hueys - Covington Publix,true,false
+74327183-f191-4a4c-8668-4b270f543e67,,32000,Huey Magoo's Chicken Tenders,HM - Dacula - Butler,true,false
+d6713282-4f67-44ef-a7a8-9ce8dbee786d,1649,2000,GPS Hospitality,GPS - Pizza Hut - Memorial Relocation,true,false
+8c8050db-d388-49fd-aa30-0b10481359c3,1649,2000,GPS Hospitality,GPS - Pizza Hut - Memorial Relocation,true,false
+faee163c-98d4-40f1-a49d-00f36c4587cd,,9332.67,"Buffalo Wild Wings, Inc.",BWW GO - Cumming,true,false
+2b75e92e-68c3-45fe-8ae1-b885745d2320,,9332.67,"Buffalo Wild Wings, Inc.",BWW GO - Cumming,true,false
+721d7545-7031-4b2f-aa9c-0663b528964d,,2614.98,Benjamin Moore & Co.,BM - Brookhaven,true,false
+2863700a-5fd5-4a7b-ac66-5b9b510da724,,11893.77,"Buffalo Wild Wings, Inc.",BWW - GO - Emory Village,true,false
+fec941a1-8976-4d28-aa61-7432675d136b,,11893.78,"Buffalo Wild Wings, Inc.",BWW - GO - Emory Village,true,false
+657fbcaa-eea9-4f6e-a948-8bae10516e06,,2614.99,Benjamin Moore & Co.,BM - Brookhaven,true,false
+c38671bc-14b2-48db-93a0-a9599a0bc14a,,32000,Take 5 Oil Change,T5 - Velox Insurance - Big Chick,true,false

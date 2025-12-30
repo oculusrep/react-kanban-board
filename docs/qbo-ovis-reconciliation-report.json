@@ -1,0 +1,2353 @@
+{
+  "generated_at": "2025-12-30T17:10:26.990Z",
+  "summary": {
+    "ovis_total": 218,
+    "qbo_total": 36,
+    "already_linked": 1,
+    "needs_linking": 5,
+    "no_match_in_qbo": 212,
+    "qbo_only": 34
+  },
+  "already_linked": [
+    {
+      "ovis_id": "2e829007-55b5-451a-9c15-c08e2e0683ff",
+      "ovis_invoice": "1770",
+      "ovis_amount": 20979,
+      "ovis_client": "Potbelly - KTP",
+      "ovis_deal": "Potbelly - New Whole Foods - Cumming",
+      "qbo_id": "160",
+      "qbo_doc_number": "1053",
+      "qbo_amount": 20979,
+      "qbo_customer": "Potbelly - KTP - Potbelly - New Whole Foods - Cumming",
+      "qbo_balance": 20979,
+      "match_type": "linked_by_id"
+    }
+  ],
+  "needs_linking": [
+    {
+      "ovis_id": "556c5060-d7ee-4859-a9fc-b3f0cdcd39ca",
+      "ovis_invoice": "1771",
+      "ovis_amount": 20979,
+      "ovis_client": "Potbelly - KTP",
+      "ovis_deal": "Potbelly - New Whole Foods - Cumming",
+      "ovis_received": false,
+      "potential_matches": [
+        {
+          "qbo_id": "160",
+          "qbo_doc_number": "1053",
+          "qbo_amount": 20979,
+          "qbo_customer": "Potbelly - KTP - Potbelly - New Whole Foods - Cumming",
+          "qbo_balance": 20979,
+          "qbo_date": "2025-12-10",
+          "match_reason": "Amount matches ($20979), customer \"Potbelly - KTP - Potbelly - New Whole Foods - Cumming\" partial match",
+          "confidence": "medium"
+        }
+      ]
+    },
+    {
+      "ovis_id": "89d1bfdd-1969-48ff-89b5-08d0d6f7b5e8",
+      "ovis_invoice": "1697",
+      "ovis_amount": 25804.8,
+      "ovis_client": "Huey Magoo's - Nilay",
+      "ovis_deal": "HM - Nilay - Jefferson ECDT",
+      "ovis_received": false,
+      "potential_matches": [
+        {
+          "qbo_id": "146",
+          "qbo_doc_number": "1039",
+          "qbo_amount": 12947.76,
+          "qbo_customer": "Huey Magoo's - Nilay",
+          "qbo_balance": 12947.76,
+          "qbo_date": "2025-12-08",
+          "match_reason": "Customer \"Huey Magoo's - Nilay\" exact match, amount differs (QBO: $12947.76, OVIS: $25804.8)",
+          "confidence": "low"
+        }
+      ]
+    },
+    {
+      "ovis_id": "f4aa4bd2-350f-4a2e-80e6-027cda29f1c1",
+      "ovis_invoice": "1698",
+      "ovis_amount": 25804.8,
+      "ovis_client": "Huey Magoo's - Nilay",
+      "ovis_deal": "HM - Nilay - Jefferson ECDT",
+      "ovis_received": false,
+      "potential_matches": [
+        {
+          "qbo_id": "146",
+          "qbo_doc_number": "1039",
+          "qbo_amount": 12947.76,
+          "qbo_customer": "Huey Magoo's - Nilay",
+          "qbo_balance": 12947.76,
+          "qbo_date": "2025-12-08",
+          "match_reason": "Customer \"Huey Magoo's - Nilay\" exact match, amount differs (QBO: $12947.76, OVIS: $25804.8)",
+          "confidence": "low"
+        }
+      ]
+    },
+    {
+      "ovis_id": "751b33d3-38ef-4208-97d4-635a82837f8d",
+      "ovis_invoice": "1685",
+      "ovis_amount": 19687.5,
+      "ovis_client": "Huey Magoo's - Nilay",
+      "ovis_deal": "HM - Cornelia Hardees",
+      "ovis_received": true,
+      "potential_matches": [
+        {
+          "qbo_id": "146",
+          "qbo_doc_number": "1039",
+          "qbo_amount": 12947.76,
+          "qbo_customer": "Huey Magoo's - Nilay",
+          "qbo_balance": 12947.76,
+          "qbo_date": "2025-12-08",
+          "match_reason": "Customer \"Huey Magoo's - Nilay\" exact match, amount differs (QBO: $12947.76, OVIS: $19687.5)",
+          "confidence": "low"
+        }
+      ]
+    },
+    {
+      "ovis_id": "091c8a73-1999-4ffa-8347-4f5f914bf0db",
+      "ovis_invoice": "1686",
+      "ovis_amount": 19687.5,
+      "ovis_client": "Huey Magoo's - Nilay",
+      "ovis_deal": "HM - Cornelia Hardees",
+      "ovis_received": true,
+      "potential_matches": [
+        {
+          "qbo_id": "146",
+          "qbo_doc_number": "1039",
+          "qbo_amount": 12947.76,
+          "qbo_customer": "Huey Magoo's - Nilay",
+          "qbo_balance": 12947.76,
+          "qbo_date": "2025-12-08",
+          "match_reason": "Customer \"Huey Magoo's - Nilay\" exact match, amount differs (QBO: $12947.76, OVIS: $19687.5)",
+          "confidence": "low"
+        }
+      ]
+    }
+  ],
+  "no_match_in_qbo": [
+    {
+      "ovis_id": "41d34f10-cd01-4a57-9d21-ac78583d9e51",
+      "ovis_invoice": "1774",
+      "ovis_amount": 6000,
+      "ovis_client": "Jimmy Johns - Elias",
+      "ovis_deal": "JJ - Elias - Cedarcrest Centre",
+      "ovis_received": false,
+      "ovis_sent": true
+    },
+    {
+      "ovis_id": "9a320e3c-aaa1-45f9-927e-ad408b17b205",
+      "ovis_invoice": "",
+      "ovis_amount": 9114,
+      "ovis_client": "Buffalo Wild Wings, Inc.",
+      "ovis_deal": "BWW - GO - Tucker",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "466560f0-a176-406e-8d11-bc93e92e128a",
+      "ovis_invoice": "",
+      "ovis_amount": 9114,
+      "ovis_client": "Buffalo Wild Wings, Inc.",
+      "ovis_deal": "BWW - GO - Tucker",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "c5f00ba7-181b-4d67-b6ec-bb3234c268fb",
+      "ovis_invoice": "1724",
+      "ovis_amount": 19620,
+      "ovis_client": "Central Bark",
+      "ovis_deal": "Central Bark - Athens",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "97e572dc-6704-43f8-b6ea-06927cc84255",
+      "ovis_invoice": "1768",
+      "ovis_amount": 8448.3,
+      "ovis_client": "BWW GO - Jigar",
+      "ovis_deal": "BWW GO - Jigar - Auburn",
+      "ovis_received": true,
+      "ovis_sent": true
+    },
+    {
+      "ovis_id": "e6edeeae-edf1-4c95-873c-1b76768b12c4",
+      "ovis_invoice": "1769",
+      "ovis_amount": 8448.3,
+      "ovis_client": "BWW GO - Jigar",
+      "ovis_deal": "BWW GO - Jigar - Auburn",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "317adb4c-982e-4f94-9bdd-c9577ee14db5",
+      "ovis_invoice": "1765",
+      "ovis_amount": 9854.75,
+      "ovis_client": "PJ's Coffee of New Orleans, LLC",
+      "ovis_deal": "PJs Coffee - Collier Rd Atlanta, GA",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "0d84c721-3c16-485a-8f1c-5b334f735746",
+      "ovis_invoice": "1764",
+      "ovis_amount": 9854.75,
+      "ovis_client": "PJ's Coffee of New Orleans, LLC",
+      "ovis_deal": "PJs Coffee - Collier Rd Atlanta, GA",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "188790a5-10d4-4275-b193-c51d90cb8d3e",
+      "ovis_invoice": "1767",
+      "ovis_amount": 4470.29,
+      "ovis_client": "Vivid Group",
+      "ovis_deal": "Vivid Development Office Lease",
+      "ovis_received": true,
+      "ovis_sent": true
+    },
+    {
+      "ovis_id": "85bc8496-87aa-40f8-8ae9-a4c53c2cf353",
+      "ovis_invoice": "1766",
+      "ovis_amount": 4470.29,
+      "ovis_client": "Vivid Group",
+      "ovis_deal": "Vivid Development Office Lease",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "df86c6ed-fa38-450e-a6d7-e5ed4eb916f6",
+      "ovis_invoice": "1760",
+      "ovis_amount": 9490.68,
+      "ovis_client": "Back 9 Golf",
+      "ovis_deal": "Back 9 - Kings Market - Roswell",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "bd8e9b3d-6011-4425-8422-8ec9f4be529f",
+      "ovis_invoice": "1761",
+      "ovis_amount": 9490.68,
+      "ovis_client": "Back 9 Golf",
+      "ovis_deal": "Back 9 - Kings Market - Roswell",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "645819b3-75b2-4beb-ba86-b611223d4f4a",
+      "ovis_invoice": "1773",
+      "ovis_amount": 14542.5,
+      "ovis_client": "Giggletown",
+      "ovis_deal": "Giggletown - Shiloh Crossing - Kennesaw",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "8dafd0cd-461e-4006-9118-59a747b639e2",
+      "ovis_invoice": "1772",
+      "ovis_amount": 14542.5,
+      "ovis_client": "Giggletown",
+      "ovis_deal": "Giggletown - Shiloh Crossing - Kennesaw",
+      "ovis_received": true,
+      "ovis_sent": true
+    },
+    {
+      "ovis_id": "44fd5733-cfd8-42da-aabd-d1c8111ecc3e",
+      "ovis_invoice": "1762",
+      "ovis_amount": 14505.11,
+      "ovis_client": "Giggletown",
+      "ovis_deal": "Giggletown - Collection at Forsyth",
+      "ovis_received": false,
+      "ovis_sent": true
+    },
+    {
+      "ovis_id": "4b12473b-c0d5-42aa-a847-b9c263026ad3",
+      "ovis_invoice": "1763",
+      "ovis_amount": 14505.11,
+      "ovis_client": "Giggletown",
+      "ovis_deal": "Giggletown - Collection at Forsyth",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "b7105931-21eb-43a0-8913-a7ca4c3889c6",
+      "ovis_invoice": "1756",
+      "ovis_amount": 12257.68,
+      "ovis_client": "FS8 - Nisreen",
+      "ovis_deal": "FS8 - East Cobb Crossing - Nisreen",
+      "ovis_received": true,
+      "ovis_sent": true
+    },
+    {
+      "ovis_id": "d77fe3d9-30bd-4d29-b207-936d15c92671",
+      "ovis_invoice": "1757",
+      "ovis_amount": 12257.68,
+      "ovis_client": "FS8 - Nisreen",
+      "ovis_deal": "FS8 - East Cobb Crossing - Nisreen",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "a1660c1d-225c-4ff4-89f2-664b4fde2989",
+      "ovis_invoice": "1758",
+      "ovis_amount": 7262.64,
+      "ovis_client": "Fyzical - Joshua Backing",
+      "ovis_deal": "Fyzical - Josh - Castleberry Promenade",
+      "ovis_received": true,
+      "ovis_sent": true
+    },
+    {
+      "ovis_id": "cc56074c-ece5-4012-979f-ecf93f595bac",
+      "ovis_invoice": "1759",
+      "ovis_amount": 7262.64,
+      "ovis_client": "Fyzical - Joshua Backing",
+      "ovis_deal": "Fyzical - Josh - Castleberry Promenade",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "2b63fc87-2fb3-4736-be9b-12ea9652954d",
+      "ovis_invoice": "1753",
+      "ovis_amount": 39018,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Lithonia, GA",
+      "ovis_received": false,
+      "ovis_sent": true
+    },
+    {
+      "ovis_id": "8bd374b9-c4c7-4478-8f0e-20b3910e7b3e",
+      "ovis_invoice": "1752",
+      "ovis_amount": 39018,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Lithonia, GA",
+      "ovis_received": true,
+      "ovis_sent": true
+    },
+    {
+      "ovis_id": "dcf4ae85-6ff9-4c98-bb11-2e25d80e08b7",
+      "ovis_invoice": "1740",
+      "ovis_amount": 8385.08,
+      "ovis_client": "Back 9 Golf",
+      "ovis_deal": "Back 9 Golf - Braselton, GA",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "4a9bf2da-a1c5-4cc0-a848-6c79032a6110",
+      "ovis_invoice": "1739",
+      "ovis_amount": 8385.08,
+      "ovis_client": "Back 9 Golf",
+      "ovis_deal": "Back 9 Golf - Braselton, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "c32aa7e9-18bd-4572-8a26-f84f15239955",
+      "ovis_invoice": "1747",
+      "ovis_amount": 9013.53,
+      "ovis_client": "Dumont Creamery & Cafe",
+      "ovis_deal": "Dumont Creamery & Cafe - Sandy Springs, GA",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "e8b6600f-402b-469d-b045-28258f139191",
+      "ovis_invoice": "1746",
+      "ovis_amount": 9013.53,
+      "ovis_client": "Dumont Creamery & Cafe",
+      "ovis_deal": "Dumont Creamery & Cafe - Sandy Springs, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "262354cb-1a4f-40a7-acb4-940d687ee529",
+      "ovis_invoice": "1732",
+      "ovis_amount": 6487.76,
+      "ovis_client": "Quadra Commercial",
+      "ovis_deal": "Healthpeak Referral Fee - Ryan Wesner",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "935c9bcc-abd1-408a-ba75-a4229412b1df",
+      "ovis_invoice": "1738",
+      "ovis_amount": 16216.41,
+      "ovis_client": "Bodenvy",
+      "ovis_deal": "Bodenvy - Sandy Springs, GA",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "876b0c70-50e3-4276-a3e6-12512bdd34e1",
+      "ovis_invoice": "1737",
+      "ovis_amount": 16216.41,
+      "ovis_client": "Bodenvy",
+      "ovis_deal": "Bodenvy - Sandy Springs, GA",
+      "ovis_received": true,
+      "ovis_sent": true
+    },
+    {
+      "ovis_id": "ec042120-bb57-4064-98ff-b25396470c56",
+      "ovis_invoice": "1741",
+      "ovis_amount": 16000,
+      "ovis_client": "Hawaiian Bros",
+      "ovis_deal": "HB - Atl Hwy - Cumming",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "198517c2-c215-4b91-9191-300e59fe9a3f",
+      "ovis_invoice": "1743",
+      "ovis_amount": 28500,
+      "ovis_client": "Huey Magoo's - Mangesh",
+      "ovis_deal": "HM - Dublin, GA Pizza Hut",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "9fd3c28b-aed7-49c9-b417-e2535a5e939a",
+      "ovis_invoice": "1730",
+      "ovis_amount": 9677.81,
+      "ovis_client": "Wayback Burgers",
+      "ovis_deal": "Wayback Burgers - Rincon, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "f950ce06-da65-4dcd-85bc-4e944659e9ce",
+      "ovis_invoice": "1731",
+      "ovis_amount": 9677.81,
+      "ovis_client": "Wayback Burgers",
+      "ovis_deal": "Wayback Burgers - Rincon, GA",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "b97280cb-d056-4abb-afeb-306a3bc1bcae",
+      "ovis_invoice": "1729",
+      "ovis_amount": 18600,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile Hartwell, GA - Purchase of Land",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "6f8b6230-bd80-40fa-9239-82f7ada525ed",
+      "ovis_invoice": "1742",
+      "ovis_amount": 28500,
+      "ovis_client": "Hawaiian Bros",
+      "ovis_deal": "HB - McDonough - Jonesboro Rd",
+      "ovis_received": true,
+      "ovis_sent": true
+    },
+    {
+      "ovis_id": "24543bcd-328b-4838-ad9a-cbabde669488",
+      "ovis_invoice": "1726",
+      "ovis_amount": 17325,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile Hartwell, GA - Lease",
+      "ovis_received": true,
+      "ovis_sent": true
+    },
+    {
+      "ovis_id": "f6a47cd1-de1c-4dfe-afdd-407efd5ba92a",
+      "ovis_invoice": "1725",
+      "ovis_amount": 17325,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile Hartwell, GA - Lease",
+      "ovis_received": true,
+      "ovis_sent": true
+    },
+    {
+      "ovis_id": "599f3928-56f7-48c6-92af-b220b39c04ff",
+      "ovis_invoice": "1755",
+      "ovis_amount": 26048.16,
+      "ovis_client": "FS8 - Cunningham",
+      "ovis_deal": "FS8 - Buckhead - Terminus",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "7114029c-2d6b-4278-958e-76e601aa0816",
+      "ovis_invoice": "1754",
+      "ovis_amount": 26048.16,
+      "ovis_client": "FS8 - Cunningham",
+      "ovis_deal": "FS8 - Buckhead - Terminus",
+      "ovis_received": true,
+      "ovis_sent": true
+    },
+    {
+      "ovis_id": "680bccb7-3396-41ab-a601-4ae28ac41c2f",
+      "ovis_invoice": "1736",
+      "ovis_amount": 11494.67,
+      "ovis_client": "Foxtail - Harshil",
+      "ovis_deal": "Foxtail - Ashford Lane - Former Panera",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "5f039fed-314d-4c0a-9237-52bfa7e736f5",
+      "ovis_invoice": "1735",
+      "ovis_amount": 11494.67,
+      "ovis_client": "Foxtail - Harshil",
+      "ovis_deal": "Foxtail - Ashford Lane - Former Panera",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "f626a62d-10cd-4770-b10a-3a83de4fe728",
+      "ovis_invoice": "1723",
+      "ovis_amount": 9810,
+      "ovis_client": "Central Bark",
+      "ovis_deal": "Central Bark - Athens",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "22ba622d-79f7-4d83-a082-87ada8c8ad3d",
+      "ovis_invoice": "1722",
+      "ovis_amount": 9810,
+      "ovis_client": "Central Bark",
+      "ovis_deal": "Central Bark - Athens",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "12a225bb-948a-4002-9c28-c3134c8a0698",
+      "ovis_invoice": "1721",
+      "ovis_amount": 15092.43,
+      "ovis_client": "Hammer and Nails",
+      "ovis_deal": "Hammer and Nails - Suwanee",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "bb1ee135-95a8-433f-8018-3770fd622ae9",
+      "ovis_invoice": "1720",
+      "ovis_amount": 15092.43,
+      "ovis_client": "Hammer and Nails",
+      "ovis_deal": "Hammer and Nails - Suwanee",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "c5ae9daa-c89a-4d33-b477-74a0ec91e19a",
+      "ovis_invoice": "1717",
+      "ovis_amount": 8000,
+      "ovis_client": "PJ's Coffee of New Orleans, LLC",
+      "ovis_deal": "PJ's - Rome - Consulting Fee",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "c7eac81c-2eb6-4abd-ad9d-5916d8debb81",
+      "ovis_invoice": "1714",
+      "ovis_amount": 10914.75,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Dublin, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "cf1392ca-ae89-4a90-97b2-2615b4e605df",
+      "ovis_invoice": "1713",
+      "ovis_amount": 10914.75,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Dublin, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "f4a43ed7-0bcc-4195-bb92-13fd8ea17f8d",
+      "ovis_invoice": "1716",
+      "ovis_amount": 4696.36,
+      "ovis_client": "CabinetIQ",
+      "ovis_deal": "CabinetIQ - Roswell GA",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "e979c00b-0fa6-4983-8593-c84bbf7effdb",
+      "ovis_invoice": "1715",
+      "ovis_amount": 4696.36,
+      "ovis_client": "CabinetIQ",
+      "ovis_deal": "CabinetIQ - Roswell GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "cec13b91-57ec-41b9-b2e1-87ac57c422b7",
+      "ovis_invoice": "1705",
+      "ovis_amount": 6378.75,
+      "ovis_client": "BWW - Samir Patel",
+      "ovis_deal": "BWW - Samir - Warner Robins",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "e0a1f963-34ec-4d42-bfb8-3a332731a9fa",
+      "ovis_invoice": "1706",
+      "ovis_amount": 6378.75,
+      "ovis_client": "BWW - Samir Patel",
+      "ovis_deal": "BWW - Samir - Warner Robins",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "0467ff3e-21b6-4c2f-b848-ab67c35dc818",
+      "ovis_invoice": "1708",
+      "ovis_amount": 16415.94,
+      "ovis_client": "Hammer and Nails",
+      "ovis_deal": "Hammer and Nails - Chamblee",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "b4b4fe42-a21e-4ec6-a71e-65c876120465",
+      "ovis_invoice": "1707",
+      "ovis_amount": 16415.94,
+      "ovis_client": "Hammer and Nails",
+      "ovis_deal": "Hammer and Nails - Chamblee",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "d53b6c7f-d09f-464d-b2f5-cefc88233e20",
+      "ovis_invoice": "1703",
+      "ovis_amount": 10629.95,
+      "ovis_client": "Hammer and Nails",
+      "ovis_deal": "Hammer and Nails - West Cobb Avenues",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "f3165754-e52c-4b3b-a40d-49ad3e7a3899",
+      "ovis_invoice": "1704",
+      "ovis_amount": 10629.95,
+      "ovis_client": "Hammer and Nails",
+      "ovis_deal": "Hammer and Nails - West Cobb Avenues",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "0d93d089-cd19-4fd7-be16-c9850e0618e3",
+      "ovis_invoice": "1702",
+      "ovis_amount": 30000,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - McDonough",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "8d73ec14-6839-402b-b3da-cb2ae8ca31af",
+      "ovis_invoice": "1733",
+      "ovis_amount": 13341.08,
+      "ovis_client": "Fyzical Therapy & Balance Centers",
+      "ovis_deal": "Fyzical - Lexington, SC",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "90dcf96e-285f-4cf6-a3b5-dd35f99743f5",
+      "ovis_invoice": "1734",
+      "ovis_amount": 13341.08,
+      "ovis_client": "Fyzical Therapy & Balance Centers",
+      "ovis_deal": "Fyzical - Lexington, SC",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "4c73a5bc-98e2-464d-b075-f4d3638417e1",
+      "ovis_invoice": "1701",
+      "ovis_amount": 29250,
+      "ovis_client": "Nick N Moes",
+      "ovis_deal": "Nick N Moes - Lawrenceville, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "f3a0048b-72e3-4a00-954c-30cdc72e09f6",
+      "ovis_invoice": "1727",
+      "ovis_amount": 9141.96,
+      "ovis_client": "Jimmy Johns - Amos",
+      "ovis_deal": "JJ - Soho Crossing - Warner Robins - Amos",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "2fd8c0fa-f908-48c6-a420-d7c36001fff4",
+      "ovis_invoice": "1728",
+      "ovis_amount": 9141.96,
+      "ovis_client": "Jimmy Johns - Amos",
+      "ovis_deal": "JJ - Soho Crossing - Warner Robins - Amos",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "7e1dad05-dbf1-4506-8c72-3d6d5f9b3333",
+      "ovis_invoice": "1711",
+      "ovis_amount": 12348,
+      "ovis_client": "BWW - Zubair",
+      "ovis_deal": "BWW - Zubair - Hickory Rd - Canton",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "62fe348e-fb04-497e-9b25-fedc7ce8a750",
+      "ovis_invoice": "1710",
+      "ovis_amount": 14784,
+      "ovis_client": "Crumbl - KTP Investments, LLC",
+      "ovis_deal": "Crumbl - Jefferson",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "545f298a-5f3c-418c-acc8-b06b9cf01c6a",
+      "ovis_invoice": "1709",
+      "ovis_amount": 14784,
+      "ovis_client": "Crumbl - KTP Investments, LLC",
+      "ovis_deal": "Crumbl - Jefferson",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "9b46f803-8e74-4619-86db-dd57110b9e0d",
+      "ovis_invoice": "1719",
+      "ovis_amount": 11124.96,
+      "ovis_client": "BWW - Zubair",
+      "ovis_deal": "BWW - Zubair - Braselton Village",
+      "ovis_received": false,
+      "ovis_sent": true
+    },
+    {
+      "ovis_id": "7fd4d97a-225e-419a-b277-e709a745f49e",
+      "ovis_invoice": "1718",
+      "ovis_amount": 11124.96,
+      "ovis_client": "BWW - Zubair",
+      "ovis_deal": "BWW - Zubair - Braselton Village",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "914b7a32-4ba6-4cf9-9c1a-50acb86b48dd",
+      "ovis_invoice": "1700",
+      "ovis_amount": 3601.87,
+      "ovis_client": "BWW - Samir Patel",
+      "ovis_deal": "BWW - Valdosta - Samir",
+      "ovis_received": true,
+      "ovis_sent": true
+    },
+    {
+      "ovis_id": "5a32d08e-3d2b-4d2d-b0a0-ec8604d7778d",
+      "ovis_invoice": "1699",
+      "ovis_amount": 3601.87,
+      "ovis_client": "BWW - Samir Patel",
+      "ovis_deal": "BWW - Valdosta - Samir",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "facb4c44-fc05-48a4-a3dc-ed5a25773e25",
+      "ovis_invoice": "1695",
+      "ovis_amount": 13558.78,
+      "ovis_client": "Your Pie",
+      "ovis_deal": "Your Pie - Brunswick",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "4f718f7f-bd05-42ca-8ad4-4bf891f1fe54",
+      "ovis_invoice": "1696",
+      "ovis_amount": 13558.78,
+      "ovis_client": "Your Pie",
+      "ovis_deal": "Your Pie - Brunswick",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "16fa6d2a-7ae1-4645-9d07-a408312af92c",
+      "ovis_invoice": "1694",
+      "ovis_amount": 39000,
+      "ovis_client": "Huey Magoo's - Mangesh",
+      "ovis_deal": "HM - Zebulon Fazoli's",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "6fa705c9-d4a4-43cf-a7d5-7ceb758268d6",
+      "ovis_invoice": "",
+      "ovis_amount": 2017.5,
+      "ovis_client": "Terrace 24 Realty",
+      "ovis_deal": "T24 - Sharon Love Sale",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "afcacedf-9a60-4b09-ae9f-f58a252fe9ef",
+      "ovis_invoice": "1692",
+      "ovis_amount": 6569.84,
+      "ovis_client": "CabinetIQ",
+      "ovis_deal": "CabinetIQ - Kennesaw",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "91005d8a-f9a7-491d-bc47-92767f33ba57",
+      "ovis_invoice": "1691",
+      "ovis_amount": 6569.84,
+      "ovis_client": "CabinetIQ",
+      "ovis_deal": "CabinetIQ - Kennesaw",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "ff42c113-7c90-44df-8e97-6ae3cde38f1d",
+      "ovis_invoice": "1687",
+      "ovis_amount": 34494,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Thomasville, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "50e5b2cb-e52d-469a-978e-cedf719bbc3d",
+      "ovis_invoice": "1684",
+      "ovis_amount": 9150.49,
+      "ovis_client": "Jimmy Johns - Jabar Smith",
+      "ovis_deal": "JJ - Roswell - Jabar",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "9c1b2b9f-ecb6-472a-8029-a27651285c4b",
+      "ovis_invoice": "1683",
+      "ovis_amount": 9150.49,
+      "ovis_client": "Jimmy Johns - Jabar Smith",
+      "ovis_deal": "JJ - Roswell - Jabar",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "bc0dc6bb-d647-4bd9-87b0-b494ee2ba659",
+      "ovis_invoice": "1693",
+      "ovis_amount": 45000,
+      "ovis_client": "Huey Magoo's - Mangesh",
+      "ovis_deal": "HM - Bass Road - Mangesh",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "e82910f7-4659-46e5-9fcf-9cd8810a2516",
+      "ovis_invoice": "1675",
+      "ovis_amount": 20178,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Swainsboro, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "6bf58c36-ef35-47ff-8e45-9d203a3c0a84",
+      "ovis_invoice": "1676",
+      "ovis_amount": 20178,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Swainsboro, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "c4e498d3-9dfe-4d82-ba32-b9602d5ab659",
+      "ovis_invoice": "1678",
+      "ovis_amount": 20476,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Americus, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "0a99d5a0-a336-4b50-ace7-30a97b177e00",
+      "ovis_invoice": "1677",
+      "ovis_amount": 20476,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Americus, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "71356089-c5a8-4497-8b58-7d7ce9aef052",
+      "ovis_invoice": "1679",
+      "ovis_amount": 8451.52,
+      "ovis_client": "BWW - Zubair",
+      "ovis_deal": "BWW - GO - Woodstock",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "ffc557cd-c79e-4bca-8bdb-5c348c5e7b04",
+      "ovis_invoice": "1680",
+      "ovis_amount": 8451.52,
+      "ovis_client": "BWW - Zubair",
+      "ovis_deal": "BWW - GO - Woodstock",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "96ce4352-6e24-4ced-8062-b3de24b29613",
+      "ovis_invoice": "1681",
+      "ovis_amount": 18750,
+      "ovis_client": "Jimmy Johns - Abdou",
+      "ovis_deal": "JJ - Bethlehem",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "21b21dc1-e564-4472-b511-6806dd27e3a4",
+      "ovis_invoice": "1674",
+      "ovis_amount": 42768,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Alpharetta Haynes Bridge",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "351456b1-8638-4407-a54b-ef47360bb5c8",
+      "ovis_invoice": "1673",
+      "ovis_amount": 22500,
+      "ovis_client": "Huey Magoo's - Knapp - SC",
+      "ovis_deal": "HM - Spartanburg - 1621 JB White Lot",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "8b2c7280-440c-41d5-8895-f1536e839086",
+      "ovis_invoice": "1672",
+      "ovis_amount": 14883.75,
+      "ovis_client": "Huey Magoo's - Tom Scarborough",
+      "ovis_deal": "HM - Eisenhower Crossing - Augusta",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "7a026824-4427-4895-8527-9c30a8b55375",
+      "ovis_invoice": "1671",
+      "ovis_amount": 14883.75,
+      "ovis_client": "Huey Magoo's - Tom Scarborough",
+      "ovis_deal": "HM - Eisenhower Crossing - Augusta",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "bfc32b22-6e7b-45cf-a06b-a8b7114fcaaa",
+      "ovis_invoice": "1669",
+      "ovis_amount": 22680,
+      "ovis_client": "Huey Magoo's - Tom Scarborough",
+      "ovis_deal": "HM - Aiken Mall Redevelopment",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "20a1d031-bd0e-4629-ab36-9102ebdbcb03",
+      "ovis_invoice": "1670",
+      "ovis_amount": 22680,
+      "ovis_client": "Huey Magoo's - Tom Scarborough",
+      "ovis_deal": "HM - Aiken Mall Redevelopment",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "f92fbc98-a438-430b-abdf-0d8a4fd8bcf7",
+      "ovis_invoice": "1655",
+      "ovis_amount": 11910.5,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Alma",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "47ed7dbf-b0b4-47b9-afab-184f75376f69",
+      "ovis_invoice": "1666",
+      "ovis_amount": 4782,
+      "ovis_client": "Jimmy Johns - Hans",
+      "ovis_deal": "JJ - Cumming - 535 Canton Hwy",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "edbff743-d4b2-4a0a-9b00-71a07724a9e7",
+      "ovis_invoice": "1667",
+      "ovis_amount": 4782,
+      "ovis_client": "Jimmy Johns - Hans",
+      "ovis_deal": "JJ - Cumming - 535 Canton Hwy",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "0feb8186-f0d2-47d7-b2ea-0f22e73b7e82",
+      "ovis_invoice": "1654",
+      "ovis_amount": 11910.5,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Alma",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "994850d9-57c6-43c3-b5bc-1915abe4851e",
+      "ovis_invoice": "1663",
+      "ovis_amount": 9619.08,
+      "ovis_client": "Botanical Sciences",
+      "ovis_deal": "BS - Augusta - Laundry",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "a875b0b5-e789-4f75-9c94-f9d65fbf0b36",
+      "ovis_invoice": "1664",
+      "ovis_amount": 9619.08,
+      "ovis_client": "Botanical Sciences",
+      "ovis_deal": "BS - Augusta - Laundry",
+      "ovis_received": false,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "84745a23-a402-483b-a351-41224992e610",
+      "ovis_invoice": "1662",
+      "ovis_amount": 8318.51,
+      "ovis_client": "Jimmy John's Franchise Inc",
+      "ovis_deal": "JJ - Byron - Amos",
+      "ovis_received": false,
+      "ovis_sent": true
+    },
+    {
+      "ovis_id": "0a2beb01-5b8b-4d97-85c9-a53c9cf18fc7",
+      "ovis_invoice": "1661",
+      "ovis_amount": 8318.51,
+      "ovis_client": "Jimmy John's Franchise Inc",
+      "ovis_deal": "JJ - Byron - Amos",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "9034c9f4-6ff4-4c26-9d7d-701cbe7d17f2",
+      "ovis_invoice": "1660",
+      "ovis_amount": 23250,
+      "ovis_client": "Huey Magoo's - Knapp - SC",
+      "ovis_deal": "HM - Greenwood - Ryan's",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "8e8747ca-68a3-4ba5-8f7e-b82266b373be",
+      "ovis_invoice": "1658",
+      "ovis_amount": 8160,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Milledgeville",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "0d77582a-9365-4033-9917-470bf382f557",
+      "ovis_invoice": "1659",
+      "ovis_amount": 8160,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Milledgeville",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "d54250fe-d210-4d76-8b05-07952d7841f7",
+      "ovis_invoice": "1656",
+      "ovis_amount": 11124.29,
+      "ovis_client": "Pochino Italy",
+      "ovis_deal": "Pochino - Kennesaw",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "f39b6e4f-dad7-4c8b-9296-0fd21d20503b",
+      "ovis_invoice": "1657",
+      "ovis_amount": 11124.28,
+      "ovis_client": "Pochino Italy",
+      "ovis_deal": "Pochino - Kennesaw",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "1247f062-a3e8-4285-95fe-fedfa4b94144",
+      "ovis_invoice": "1652",
+      "ovis_amount": 12600,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Tifton",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "9a75db89-b527-4dd3-8cd8-2b6e43824f87",
+      "ovis_invoice": "1653",
+      "ovis_amount": 12600,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Tifton",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "cd7e17de-b116-4633-a805-ccf93d45f0d8",
+      "ovis_invoice": "1650",
+      "ovis_amount": 27123.54,
+      "ovis_client": "Botanical Sciences",
+      "ovis_deal": "BS - Stockbridge - Rock Quarry",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "783d5913-d214-43f0-8e92-46558130643b",
+      "ovis_invoice": "1651",
+      "ovis_amount": 27123.54,
+      "ovis_client": "Botanical Sciences",
+      "ovis_deal": "BS - Stockbridge - Rock Quarry",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "d78c2582-3d52-4cee-a5c9-4963f85a829c",
+      "ovis_invoice": "1642",
+      "ovis_amount": 5693.86,
+      "ovis_client": "Moore Company Realty",
+      "ovis_deal": "Woof Gang Bakery - Milton",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "8e2cadd0-d75e-416f-a192-e71be924e00f",
+      "ovis_invoice": "1643",
+      "ovis_amount": 5693.86,
+      "ovis_client": "Moore Company Realty",
+      "ovis_deal": "Woof Gang Bakery - Milton",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "f3a36ead-91c5-4ede-8830-a5ea3346ec4c",
+      "ovis_invoice": "1647",
+      "ovis_amount": 12131.65,
+      "ovis_client": "Botanical Sciences",
+      "ovis_deal": "BS - Chamblee - Verizon",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "73ebbba3-6b18-424c-a9ab-c594edf09950",
+      "ovis_invoice": "1648",
+      "ovis_amount": 12131.65,
+      "ovis_client": "Botanical Sciences",
+      "ovis_deal": "BS - Chamblee - Verizon",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "5eeed76e-8e3b-4aa6-bd1b-f5cd286ab156",
+      "ovis_invoice": "1645",
+      "ovis_amount": 13689,
+      "ovis_client": "Hounds Town USA",
+      "ovis_deal": "Hounds Town - Smyrna",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "a1a5e719-b18a-45e0-a70e-a8db0ac31c26",
+      "ovis_invoice": "1646",
+      "ovis_amount": 13689,
+      "ovis_client": "Hounds Town USA",
+      "ovis_deal": "Hounds Town - Smyrna",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "19216218-c09f-47db-921a-5194158d9fc5",
+      "ovis_invoice": "1644",
+      "ovis_amount": 12489.7,
+      "ovis_client": "Botanical Sciences",
+      "ovis_deal": "BS - Marietta - Windy Hill",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "5c25d46c-178e-422a-b91b-ccb5f4f18be1",
+      "ovis_invoice": "1640",
+      "ovis_amount": 13681.68,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Corneilia, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "2ad29b51-3e1e-4747-9182-3e22fb6a96d6",
+      "ovis_invoice": "1641",
+      "ovis_amount": 13681.68,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Corneilia, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "c0c7dd63-02da-48cc-b55a-014cb11e0afc",
+      "ovis_invoice": "1616",
+      "ovis_amount": 8467.2,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Fairburn, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "600f8fe4-c302-4209-96f4-7d3dbaa4da8e",
+      "ovis_invoice": "1615",
+      "ovis_amount": 8467.2,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Fairburn, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "10115554-00ab-4d3f-843b-3544878a741d",
+      "ovis_invoice": "1637",
+      "ovis_amount": 4575.6,
+      "ovis_client": "SportClips",
+      "ovis_deal": "Sport Clips - Flowery Branch",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "4f18ead3-8194-4cbe-be3f-295e89f9d552",
+      "ovis_invoice": "1636",
+      "ovis_amount": 4575.6,
+      "ovis_client": "SportClips",
+      "ovis_deal": "Sport Clips - Flowery Branch",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "d5c02430-8445-45d9-959c-68518424dbe7",
+      "ovis_invoice": "1638",
+      "ovis_amount": 9089.2,
+      "ovis_client": "Botanical Sciences",
+      "ovis_deal": "BS - Pooler - Liquor Land",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "bd649a6a-b6cc-437c-967f-ee42f6c64795",
+      "ovis_invoice": "1639",
+      "ovis_amount": 9089.2,
+      "ovis_client": "Botanical Sciences",
+      "ovis_deal": "BS - Pooler - Liquor Land",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "399938f0-3960-4197-ae61-1b4a53d630b2",
+      "ovis_invoice": "1634",
+      "ovis_amount": 12496.68,
+      "ovis_client": "Resolut RE",
+      "ovis_deal": "Hounds Town - Conyers, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "4511c874-50b7-4384-96c4-296768bc9924",
+      "ovis_invoice": "1635",
+      "ovis_amount": 12496.68,
+      "ovis_client": "Resolut RE",
+      "ovis_deal": "Hounds Town - Conyers, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "ee289f1a-b07b-4466-bac2-d97b9d3aec7b",
+      "ovis_invoice": "1633",
+      "ovis_amount": 11920.26,
+      "ovis_client": "Zoup! Fresh Soup Company",
+      "ovis_deal": "Zoup! - Westside Village",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "6f34b88b-71d1-4c7e-a71f-459771889ad3",
+      "ovis_invoice": "1632",
+      "ovis_amount": 11920.26,
+      "ovis_client": "Zoup! Fresh Soup Company",
+      "ovis_deal": "Zoup! - Westside Village",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "144d979d-b176-4029-9f0a-208b7c5d6895",
+      "ovis_invoice": "1630",
+      "ovis_amount": 14700,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Bonaire, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "4a32906e-85c2-4e07-9948-17dfb44b7824",
+      "ovis_invoice": "1629",
+      "ovis_amount": 14700,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Bonaire, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "b845217e-cf4d-439f-863d-5186a03da012",
+      "ovis_invoice": "1626",
+      "ovis_amount": 4203.57,
+      "ovis_client": "Acai Express",
+      "ovis_deal": "Acai Express - Lawrenceville",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "1e8a74f0-f5a2-419f-a7ae-ca99dd26c951",
+      "ovis_invoice": "1627",
+      "ovis_amount": 4203.56,
+      "ovis_client": "Acai Express",
+      "ovis_deal": "Acai Express - Lawrenceville",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "0c35b9b0-77f6-46f4-8c9c-5b130c6702cf",
+      "ovis_invoice": "1624",
+      "ovis_amount": 11401.94,
+      "ovis_client": "Buffalo Wild Wings, Inc.",
+      "ovis_deal": "BWW-Pinetree Plaza - Doraville",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "b1753e3d-d512-4d41-b1c6-e04007524067",
+      "ovis_invoice": "1625",
+      "ovis_amount": 11401.94,
+      "ovis_client": "Buffalo Wild Wings, Inc.",
+      "ovis_deal": "BWW-Pinetree Plaza - Doraville",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "ac668084-94c7-4604-b528-59edeae96e57",
+      "ovis_invoice": "1622",
+      "ovis_amount": 9909.95,
+      "ovis_client": "Hammer and Nails",
+      "ovis_deal": "Hammer & Nails - Roswell Village",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "134d11f2-28cc-4d81-90ba-a9d53a6ea08b",
+      "ovis_invoice": "1621",
+      "ovis_amount": 12600,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Blackshear, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "7faf5108-a0d0-461b-b322-af7577f6c4db",
+      "ovis_invoice": "1620",
+      "ovis_amount": 12600,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Blackshear, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "3cab9b1b-abd7-464f-8cc8-571d80a78fb8",
+      "ovis_invoice": "1618",
+      "ovis_amount": 5733,
+      "ovis_client": "Buffalo Wild Wings, Inc.",
+      "ovis_deal": "BWW GO - Loganville",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "9e744660-c89b-4c99-bb2a-4bce62798b08",
+      "ovis_invoice": "1617",
+      "ovis_amount": 5733,
+      "ovis_client": "Buffalo Wild Wings, Inc.",
+      "ovis_deal": "BWW GO - Loganville",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "846f20fd-5eac-4459-bb04-fe17b4654b3b",
+      "ovis_invoice": "1567",
+      "ovis_amount": 14489.68,
+      "ovis_client": "Golftec Enterprises LLC",
+      "ovis_deal": "GolfTec - Midtown",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "fb466411-676a-4791-adf3-80004c457d6c",
+      "ovis_invoice": "1566",
+      "ovis_amount": 14489.68,
+      "ovis_client": "Golftec Enterprises LLC",
+      "ovis_deal": "GolfTec - Midtown",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "da77c644-16e2-4016-ba0e-a73ea9f2ced0",
+      "ovis_invoice": "1568",
+      "ovis_amount": 25612.79,
+      "ovis_client": "Roll On In Sushi & Buzzed Bull Cramery",
+      "ovis_deal": "Roll On In Sushi - Evans,GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "66be6728-78df-46d8-8db1-db66d246febc",
+      "ovis_invoice": "1610",
+      "ovis_amount": 18900,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Albany, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "2fb17f24-d6e2-4938-b4da-946ede0ec312",
+      "ovis_invoice": "1611",
+      "ovis_amount": 18900,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Albany, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "17012e6c-6ec0-47ad-aec3-07e9fc81b879",
+      "ovis_invoice": "1613",
+      "ovis_amount": 17366.09,
+      "ovis_client": "Resolut RE",
+      "ovis_deal": "Hounds Town - Roswell, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "e57c8b46-bef4-42bc-b7fc-d6bd06b92759",
+      "ovis_invoice": "1612",
+      "ovis_amount": 17365.72,
+      "ovis_client": "Resolut RE",
+      "ovis_deal": "Hounds Town - Roswell, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "9eac74bb-920f-4a36-8463-928a192c15e7",
+      "ovis_invoice": "1609",
+      "ovis_amount": 11025,
+      "ovis_client": "BWW - Kuzminsky",
+      "ovis_deal": "BWW GO - Lovejoy",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "84078b05-a930-424c-894b-445d3d059baf",
+      "ovis_invoice": "1608",
+      "ovis_amount": 11025,
+      "ovis_client": "BWW - Kuzminsky",
+      "ovis_deal": "BWW GO - Lovejoy",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "e833f589-1447-4dd2-8553-43a98ae4b9ee",
+      "ovis_invoice": "1597",
+      "ovis_amount": 13826.4,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Glennville, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "7d681372-42f9-4414-b782-8dc52e92531a",
+      "ovis_invoice": "1598",
+      "ovis_amount": 13825,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Glennville, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "84686586-d93c-4f8b-b4d3-8420a102de09",
+      "ovis_invoice": "1599",
+      "ovis_amount": 22600,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Reidsville, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "f7afbb51-1817-4866-b96d-8c2a2cbeb5a7",
+      "ovis_invoice": "1600",
+      "ovis_amount": 12600,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Reidsville, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "ab24cf94-0a01-44c8-a3a3-b6c87552f3d1",
+      "ovis_invoice": "1604",
+      "ovis_amount": 13362.3,
+      "ovis_client": "Pure Green",
+      "ovis_deal": "Pure Green - Buckhead",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "47a438c6-206d-4d4f-8eb1-f03cac49dfa6",
+      "ovis_invoice": "1603",
+      "ovis_amount": 13362.3,
+      "ovis_client": "Pure Green",
+      "ovis_deal": "Pure Green - Buckhead",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "de1bfb33-4a5e-4443-903d-8bf96931ed84",
+      "ovis_invoice": "1631",
+      "ovis_amount": 36000,
+      "ovis_client": "Huey Magoo's - DADs Tenders",
+      "ovis_deal": "Hueys - Monroe Publix",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "bde2fbab-4a3d-48a3-a165-4303a679b15a",
+      "ovis_invoice": "1619",
+      "ovis_amount": 28500,
+      "ovis_client": "Huey Magoo's - Mangesh",
+      "ovis_deal": "HM - Macon - Hartley Bridge",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "5d46781f-6550-46b6-b3b7-e720c3762928",
+      "ovis_invoice": "1596",
+      "ovis_amount": 2500,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Hazelhurst, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "4ff3392c-a47b-4676-8604-072775442faf",
+      "ovis_invoice": "1595",
+      "ovis_amount": 2500,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Hazelhurst, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "6e42290e-b3ca-4572-b7d4-7ab9dbd89cf1",
+      "ovis_invoice": "1594",
+      "ovis_amount": 4000,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Cairo, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "42bc9907-94a4-4294-8339-2f027531a5ed",
+      "ovis_invoice": "1593",
+      "ovis_amount": 4000,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Cairo, GA",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "b66119ae-e28f-4ba2-a790-e9a42a900021",
+      "ovis_invoice": "1590",
+      "ovis_amount": 6120,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Conyers",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "820ad485-cf7b-441d-bd6e-68dbca503099",
+      "ovis_invoice": "1589",
+      "ovis_amount": 6120,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Conyers",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "bb5c4cc5-f8b0-40a2-bfbe-10dd6fca8994",
+      "ovis_invoice": "1588",
+      "ovis_amount": 3633.29,
+      "ovis_client": "AT&T",
+      "ovis_deal": "AT&T - Conyers",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "a032de68-977f-4a02-a3bf-2daa3e04e968",
+      "ovis_invoice": "1587",
+      "ovis_amount": 3633.29,
+      "ovis_client": "AT&T",
+      "ovis_deal": "AT&T - Conyers",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "f57dc96b-248b-45eb-9ea8-4dd4b16733b9",
+      "ovis_invoice": "1602",
+      "ovis_amount": 6006,
+      "ovis_client": "Buffalo Wild Wings, Inc.",
+      "ovis_deal": "BWW GO - Lawrenceville",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "988f1fb1-ffbb-491a-8024-1a459c68f6b7",
+      "ovis_invoice": "1601",
+      "ovis_amount": 6006,
+      "ovis_client": "Buffalo Wild Wings, Inc.",
+      "ovis_deal": "BWW GO - Lawrenceville",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "7043f12c-6a1f-4d25-9060-dbed565ea5c3",
+      "ovis_invoice": "OBC",
+      "ovis_amount": 25932.33,
+      "ovis_client": "Pizza Factory",
+      "ovis_deal": "Pizza Factory - Athens",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "1e6ef366-8235-4c52-887f-2804eb98275a",
+      "ovis_invoice": "1583",
+      "ovis_amount": 4452,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Ft Oglethorpe",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "ec1a3fd2-7ecd-4b4c-9394-19a0d2ac521d",
+      "ovis_invoice": "1584",
+      "ovis_amount": 4452,
+      "ovis_client": "T-Mobile US, Inc.",
+      "ovis_deal": "T-Mobile - Ft Oglethorpe",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "2ada0ac6-ffba-4777-9e99-92e5b4d2bbca",
+      "ovis_invoice": "1578",
+      "ovis_amount": 4520.41,
+      "ovis_client": "Scenthound",
+      "ovis_deal": "ScentHound - Woodstock",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "7380ddd2-229d-4a3a-afff-ba0f586121b4",
+      "ovis_invoice": "1577",
+      "ovis_amount": 4520.41,
+      "ovis_client": "Scenthound",
+      "ovis_deal": "ScentHound - Woodstock",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "32dcbdd8-4b93-4853-93d7-1ccf0a857692",
+      "ovis_invoice": "1581",
+      "ovis_amount": 8820,
+      "ovis_client": "Jimmy John's Franchise Inc",
+      "ovis_deal": "JJ - Cumming",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "f9d40f28-01b7-4c89-b22d-45f794a7fcca",
+      "ovis_invoice": "1582",
+      "ovis_amount": 8820,
+      "ovis_client": "Jimmy John's Franchise Inc",
+      "ovis_deal": "JJ - Cumming",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "c4a67a32-77f3-4c05-b8c3-e8ce9d0ae056",
+      "ovis_invoice": "1591",
+      "ovis_amount": 23100,
+      "ovis_client": "The Krystal Company",
+      "ovis_deal": "Krystal - MLK",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "1953e5a3-e1c3-4596-9345-93faed172121",
+      "ovis_invoice": "1576",
+      "ovis_amount": 3616.7,
+      "ovis_client": "Hunter Douglas Inc",
+      "ovis_deal": "Hunter Douglas - Peachtree City",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "95859b97-d992-45c5-aaa8-88262b82bcc4",
+      "ovis_invoice": "1575",
+      "ovis_amount": 3616.71,
+      "ovis_client": "Hunter Douglas Inc",
+      "ovis_deal": "Hunter Douglas - Peachtree City",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "34d67025-f432-4761-a606-938e0b620da1",
+      "ovis_invoice": "1574",
+      "ovis_amount": 23310,
+      "ovis_client": "Huey Magoo's - DADs Tenders",
+      "ovis_deal": "Hueys - Covington Publix",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "570340e4-98a2-42d3-a438-17cf5dd981d0",
+      "ovis_invoice": "",
+      "ovis_amount": 16500,
+      "ovis_client": "Take 5 Oil Change",
+      "ovis_deal": "T5 - Richmond Hill",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "927f8691-a3cc-484c-b249-b36db1eb4b72",
+      "ovis_invoice": "1573",
+      "ovis_amount": 22125.88,
+      "ovis_client": "VIO Med Spa",
+      "ovis_deal": "VIO - Dunwoody",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "a4b7b538-a17a-4429-81fa-3155d1c3b910",
+      "ovis_invoice": "1572",
+      "ovis_amount": 22125.88,
+      "ovis_client": "VIO Med Spa",
+      "ovis_deal": "VIO - Dunwoody",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "a5dda8a0-dc39-46b7-8f7e-2bdab0f714a8",
+      "ovis_invoice": "",
+      "ovis_amount": 42840,
+      "ovis_client": "Take 5 Oil Change",
+      "ovis_deal": "T5 - Rome - American Legion",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "117587da-2b75-4926-b144-daa5c37cafc5",
+      "ovis_invoice": "",
+      "ovis_amount": 2076.48,
+      "ovis_client": "Buffalo Wild Wings, Inc.",
+      "ovis_deal": "BWW - GO - Ga Tech",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "f026adaf-dd0f-4b23-9208-b48c14c4cc79",
+      "ovis_invoice": "1580",
+      "ovis_amount": 9384.38,
+      "ovis_client": "Jimmy John's Franchise Inc",
+      "ovis_deal": "JJ - Amos - Woodstock",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "c67a1666-862f-49f9-b5c6-fb3c8e844a0f",
+      "ovis_invoice": "1579",
+      "ovis_amount": 9384.38,
+      "ovis_client": "Jimmy John's Franchise Inc",
+      "ovis_deal": "JJ - Amos - Woodstock",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "6a3be353-bcce-4455-b002-5d15b03f38de",
+      "ovis_invoice": "1585",
+      "ovis_amount": 20250,
+      "ovis_client": "Stayapt Suites",
+      "ovis_deal": "SAS - Newnan",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "6a79eef9-e4bc-4553-a52f-76fa719d1c55",
+      "ovis_invoice": "1571",
+      "ovis_amount": 14700,
+      "ovis_client": "Take 5 Oil Change",
+      "ovis_deal": "T5 - Savannah - Abercorn",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "d7840a28-55b1-4453-b691-8fdfc1fff285",
+      "ovis_invoice": "",
+      "ovis_amount": 14700,
+      "ovis_client": "Take 5 Oil Change",
+      "ovis_deal": "T5 - Savannah - Abercorn",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "afeaffe1-800e-4566-84ba-f1c2cff3d089",
+      "ovis_invoice": "",
+      "ovis_amount": 21000,
+      "ovis_client": "Take 5 Oil Change",
+      "ovis_deal": "T5 - Powers Ferry Rd",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "816ef0f2-ca8d-437c-9356-805e5b8e58f5",
+      "ovis_invoice": "",
+      "ovis_amount": 21000,
+      "ovis_client": "Take 5 Oil Change",
+      "ovis_deal": "T5 - Powers Ferry Rd",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "9ebcc2fc-9558-4e2f-9548-f634a7927790",
+      "ovis_invoice": "",
+      "ovis_amount": 20320,
+      "ovis_client": "Take 5 Oil Change",
+      "ovis_deal": "T5 - Savannah - McAlpin Square",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "52008936-4f52-441f-9e87-40d025659499",
+      "ovis_invoice": "",
+      "ovis_amount": 20320,
+      "ovis_client": "Take 5 Oil Change",
+      "ovis_deal": "T5 - Savannah - McAlpin Square",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "abb8cdcc-31e8-40c0-ae2b-1bfa8efb16f0",
+      "ovis_invoice": "",
+      "ovis_amount": 30000,
+      "ovis_client": "Take 5 Oil Change",
+      "ovis_deal": "T5 - Calhoun - Cookout",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "48d88b5a-a325-48bf-a09b-472b493b7d03",
+      "ovis_invoice": "",
+      "ovis_amount": 26618.67,
+      "ovis_client": "Huey Magoo's Chicken Tenders",
+      "ovis_deal": "HM - Oakwood - Steak N Shake",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "1b585766-1dcd-4e2a-8809-f575ea846c99",
+      "ovis_invoice": "",
+      "ovis_amount": 26618.67,
+      "ovis_client": "Huey Magoo's Chicken Tenders",
+      "ovis_deal": "HM - Oakwood - Steak N Shake",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "d2b9a7e4-ed18-41d1-95ec-2124e627532f",
+      "ovis_invoice": "",
+      "ovis_amount": 11550,
+      "ovis_client": "Huey Magoo's Chicken Tenders",
+      "ovis_deal": "HM - Milledgeville - Heritage Walk",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "cca7ee9a-43bb-46e2-ac1a-982a386b11de",
+      "ovis_invoice": "",
+      "ovis_amount": 11550,
+      "ovis_client": "Huey Magoo's Chicken Tenders",
+      "ovis_deal": "HM - Milledgeville - Heritage Walk",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "3f6dfc6c-656f-40a5-8153-5af910570c3f",
+      "ovis_invoice": "1628",
+      "ovis_amount": 150000,
+      "ovis_client": "Buffalo Wild Wings, Inc.",
+      "ovis_deal": "BWW - GGP - Perimeter",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "32bd4ffe-77e9-47c6-b455-791224e7508b",
+      "ovis_invoice": "",
+      "ovis_amount": 36000,
+      "ovis_client": "Take 5 Oil Change",
+      "ovis_deal": "T5 - Kennesaw Pep Boys",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "8899e192-2430-4961-9315-c6b067d906f5",
+      "ovis_invoice": "",
+      "ovis_amount": 21461.46,
+      "ovis_client": "Huey Magoo's Chicken Tenders",
+      "ovis_deal": "HM - Spout Springs - Apollo Plaza",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "8c7d7520-43fc-428b-924e-681bdce1bcec",
+      "ovis_invoice": "1614",
+      "ovis_amount": 21461.46,
+      "ovis_client": "Huey Magoo's Chicken Tenders",
+      "ovis_deal": "HM - Spout Springs - Apollo Plaza",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "dea57e5f-ca46-477f-9de6-fd0396174f08",
+      "ovis_invoice": "1586",
+      "ovis_amount": 30400,
+      "ovis_client": "Huey Magoo's Chicken Tenders",
+      "ovis_deal": "HM - Statesboro Outparcel",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "41b0b0c9-8c14-4542-bbf9-2c8c09d9bdea",
+      "ovis_invoice": "",
+      "ovis_amount": 23310,
+      "ovis_client": "Huey Magoo's - DADs Tenders",
+      "ovis_deal": "Hueys - Covington Publix",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "74327183-f191-4a4c-8668-4b270f543e67",
+      "ovis_invoice": "",
+      "ovis_amount": 32000,
+      "ovis_client": "Huey Magoo's Chicken Tenders",
+      "ovis_deal": "HM - Dacula - Butler",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "d6713282-4f67-44ef-a7a8-9ce8dbee786d",
+      "ovis_invoice": "1649",
+      "ovis_amount": 2000,
+      "ovis_client": "GPS Hospitality",
+      "ovis_deal": "GPS - Pizza Hut - Memorial Relocation",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "8c8050db-d388-49fd-aa30-0b10481359c3",
+      "ovis_invoice": "1649",
+      "ovis_amount": 2000,
+      "ovis_client": "GPS Hospitality",
+      "ovis_deal": "GPS - Pizza Hut - Memorial Relocation",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "faee163c-98d4-40f1-a49d-00f36c4587cd",
+      "ovis_invoice": "",
+      "ovis_amount": 9332.67,
+      "ovis_client": "Buffalo Wild Wings, Inc.",
+      "ovis_deal": "BWW GO - Cumming",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "2b75e92e-68c3-45fe-8ae1-b885745d2320",
+      "ovis_invoice": "",
+      "ovis_amount": 9332.67,
+      "ovis_client": "Buffalo Wild Wings, Inc.",
+      "ovis_deal": "BWW GO - Cumming",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "721d7545-7031-4b2f-aa9c-0663b528964d",
+      "ovis_invoice": "",
+      "ovis_amount": 2614.98,
+      "ovis_client": "Benjamin Moore & Co.",
+      "ovis_deal": "BM - Brookhaven",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "2863700a-5fd5-4a7b-ac66-5b9b510da724",
+      "ovis_invoice": "",
+      "ovis_amount": 11893.77,
+      "ovis_client": "Buffalo Wild Wings, Inc.",
+      "ovis_deal": "BWW - GO - Emory Village",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "fec941a1-8976-4d28-aa61-7432675d136b",
+      "ovis_invoice": "",
+      "ovis_amount": 11893.78,
+      "ovis_client": "Buffalo Wild Wings, Inc.",
+      "ovis_deal": "BWW - GO - Emory Village",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "657fbcaa-eea9-4f6e-a948-8bae10516e06",
+      "ovis_invoice": "",
+      "ovis_amount": 2614.99,
+      "ovis_client": "Benjamin Moore & Co.",
+      "ovis_deal": "BM - Brookhaven",
+      "ovis_received": true,
+      "ovis_sent": false
+    },
+    {
+      "ovis_id": "c38671bc-14b2-48db-93a0-a9599a0bc14a",
+      "ovis_invoice": "",
+      "ovis_amount": 32000,
+      "ovis_client": "Take 5 Oil Change",
+      "ovis_deal": "T5 - Velox Insurance - Big Chick",
+      "ovis_received": true,
+      "ovis_sent": false
+    }
+  ],
+  "qbo_only": [
+    {
+      "qbo_id": "149",
+      "qbo_doc_number": "1042",
+      "qbo_amount": 8064,
+      "qbo_customer": "Jeff's Bagel Run - Tarak & Krishna",
+      "qbo_balance": 8064,
+      "qbo_date": "2025-12-09",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "148",
+      "qbo_doc_number": "1041",
+      "qbo_amount": 16188.07,
+      "qbo_customer": "Foxtail - CS Ventures",
+      "qbo_balance": 16188.07,
+      "qbo_date": "2025-12-08",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "145",
+      "qbo_doc_number": "1038",
+      "qbo_amount": 13399.67,
+      "qbo_customer": "Foxtail - CS Ventures",
+      "qbo_balance": 13399.67,
+      "qbo_date": "2025-12-08",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "130",
+      "qbo_doc_number": "1037",
+      "qbo_amount": 362.07,
+      "qbo_customer": "Sonnenschein Family Store",
+      "qbo_balance": 362.07,
+      "qbo_date": "2025-11-09",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "129",
+      "qbo_doc_number": "1036",
+      "qbo_amount": 477.5,
+      "qbo_customer": "0969 Ocean View Road",
+      "qbo_balance": 477.5,
+      "qbo_date": "2025-11-09",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "96",
+      "qbo_doc_number": "1031",
+      "qbo_amount": 387,
+      "qbo_customer": "0969 Ocean View Road",
+      "qbo_balance": 0,
+      "qbo_date": "2025-08-25",
+      "qbo_status": "Paid"
+    },
+    {
+      "qbo_id": "12",
+      "qbo_doc_number": "1004",
+      "qbo_amount": 2369.52,
+      "qbo_customer": "Cool Cars",
+      "qbo_balance": 0,
+      "qbo_date": "2025-10-28",
+      "qbo_status": "Paid"
+    },
+    {
+      "qbo_id": "119",
+      "qbo_doc_number": "1035",
+      "qbo_amount": 314.28,
+      "qbo_customer": "Mark Cho",
+      "qbo_balance": 314.28,
+      "qbo_date": "2025-11-09",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "63",
+      "qbo_doc_number": "1017",
+      "qbo_amount": 80,
+      "qbo_customer": "Sushi by Katsuyuki",
+      "qbo_balance": 0,
+      "qbo_date": "2025-10-24",
+      "qbo_status": "Paid"
+    },
+    {
+      "qbo_id": "106",
+      "qbo_doc_number": "1034",
+      "qbo_amount": 78.6,
+      "qbo_customer": "Rondonuwu Fruit and Vegi",
+      "qbo_balance": 78.6,
+      "qbo_date": "2025-11-08",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "103",
+      "qbo_doc_number": "1033",
+      "qbo_amount": 629.1,
+      "qbo_customer": "Geeta Kalapatapu",
+      "qbo_balance": 629.1,
+      "qbo_date": "2025-11-08",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "67",
+      "qbo_doc_number": "1021",
+      "qbo_amount": 459,
+      "qbo_customer": "Amy's Bird Sanctuary",
+      "qbo_balance": 239,
+      "qbo_date": "2025-10-18",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "99",
+      "qbo_doc_number": "1032",
+      "qbo_amount": 414.72,
+      "qbo_customer": "Travis Waldron",
+      "qbo_balance": 414.72,
+      "qbo_date": "2025-11-06",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "42",
+      "qbo_doc_number": "1013",
+      "qbo_amount": 81,
+      "qbo_customer": "Travis Waldron",
+      "qbo_balance": 0,
+      "qbo_date": "2025-10-28",
+      "qbo_status": "Paid"
+    },
+    {
+      "qbo_id": "95",
+      "qbo_doc_number": "1030",
+      "qbo_amount": 226.75,
+      "qbo_customer": "0969 Ocean View Road",
+      "qbo_balance": 0,
+      "qbo_date": "2025-07-25",
+      "qbo_status": "Paid"
+    },
+    {
+      "qbo_id": "93",
+      "qbo_doc_number": "1029",
+      "qbo_amount": 460.4,
+      "qbo_customer": "Dukes Basketball Camp",
+      "qbo_balance": 0,
+      "qbo_date": "2025-09-22",
+      "qbo_status": "Paid"
+    },
+    {
+      "qbo_id": "68",
+      "qbo_doc_number": "1022",
+      "qbo_amount": 81,
+      "qbo_customer": "Jeff's Jalopies",
+      "qbo_balance": 81,
+      "qbo_date": "2025-10-18",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "9",
+      "qbo_doc_number": "1001",
+      "qbo_amount": 108,
+      "qbo_customer": "Amy's Bird Sanctuary",
+      "qbo_balance": 0,
+      "qbo_date": "2025-11-06",
+      "qbo_status": "Paid"
+    },
+    {
+      "qbo_id": "13",
+      "qbo_doc_number": "1005",
+      "qbo_amount": 54,
+      "qbo_customer": "55 Twin Lane",
+      "qbo_balance": 4,
+      "qbo_date": "2025-10-31",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "14",
+      "qbo_doc_number": "1006",
+      "qbo_amount": 86.4,
+      "qbo_customer": "55 Twin Lane",
+      "qbo_balance": 0,
+      "qbo_date": "2025-10-01",
+      "qbo_status": "Paid"
+    },
+    {
+      "qbo_id": "92",
+      "qbo_doc_number": "1028",
+      "qbo_amount": 81,
+      "qbo_customer": "55 Twin Lane",
+      "qbo_balance": 81,
+      "qbo_date": "2025-09-22",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "10",
+      "qbo_doc_number": "1002",
+      "qbo_amount": 175,
+      "qbo_customer": "Bill's Windsurf Shop",
+      "qbo_balance": 0,
+      "qbo_date": "2025-07-25",
+      "qbo_status": "Paid"
+    },
+    {
+      "qbo_id": "75",
+      "qbo_doc_number": "1027",
+      "qbo_amount": 85,
+      "qbo_customer": "Bill's Windsurf Shop",
+      "qbo_balance": 85,
+      "qbo_date": "2025-09-22",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "71",
+      "qbo_doc_number": "1025",
+      "qbo_amount": 205,
+      "qbo_customer": "Amy's Bird Sanctuary",
+      "qbo_balance": 0,
+      "qbo_date": "2025-09-22",
+      "qbo_status": "Paid"
+    },
+    {
+      "qbo_id": "70",
+      "qbo_doc_number": "1024",
+      "qbo_amount": 156,
+      "qbo_customer": "Red Rock Diner",
+      "qbo_balance": 156,
+      "qbo_date": "2025-09-01",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "69",
+      "qbo_doc_number": "1023",
+      "qbo_amount": 70,
+      "qbo_customer": "Red Rock Diner",
+      "qbo_balance": 70,
+      "qbo_date": "2025-11-07",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "65",
+      "qbo_doc_number": "1019",
+      "qbo_amount": 80,
+      "qbo_customer": "Sushi by Katsuyuki",
+      "qbo_balance": 80,
+      "qbo_date": "2025-11-07",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "64",
+      "qbo_doc_number": "1018",
+      "qbo_amount": 80,
+      "qbo_customer": "Sushi by Katsuyuki",
+      "qbo_balance": 80,
+      "qbo_date": "2025-10-31",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "60",
+      "qbo_doc_number": "1016",
+      "qbo_amount": 75,
+      "qbo_customer": "Kookies by Kathy",
+      "qbo_balance": 75,
+      "qbo_date": "2025-09-21",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "49",
+      "qbo_doc_number": "1015",
+      "qbo_amount": 954.75,
+      "qbo_customer": "Paulsen Medical Supplies",
+      "qbo_balance": 954.75,
+      "qbo_date": "2025-11-07",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "27",
+      "qbo_doc_number": "1009",
+      "qbo_amount": 103.55,
+      "qbo_customer": "Travis Waldron",
+      "qbo_balance": 0,
+      "qbo_date": "2025-11-06",
+      "qbo_status": "Paid"
+    },
+    {
+      "qbo_id": "39",
+      "qbo_doc_number": "1012",
+      "qbo_amount": 274.5,
+      "qbo_customer": "Barnett Design",
+      "qbo_balance": 274.5,
+      "qbo_date": "2025-10-26",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "34",
+      "qbo_doc_number": "1010",
+      "qbo_amount": 375,
+      "qbo_customer": "Weiskopf Consulting",
+      "qbo_balance": 375,
+      "qbo_date": "2025-11-07",
+      "qbo_status": "Open"
+    },
+    {
+      "qbo_id": "16",
+      "qbo_doc_number": "1007",
+      "qbo_amount": 750,
+      "qbo_customer": "John Melton",
+      "qbo_balance": 450,
+      "qbo_date": "2025-10-15",
+      "qbo_status": "Open"
+    }
+  ],
+  "customer_name_differences": [
+    {
+      "ovis_client": "Potbelly - KTP",
+      "qbo_customer": "Potbelly - KTP - Potbelly - New Whole Foods - Cumming",
+      "suggestion": "Update QBO customer \"Potbelly - KTP - Potbelly - New Whole Foods - Cumming\" to \"Potbelly - KTP\" to match OVIS"
+    }
+  ]
+}

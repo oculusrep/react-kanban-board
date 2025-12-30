@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { Bars3Icon } from '@heroicons/react/24/outline';
 import {
   PaymentDashboardRow,
   PaymentDashboardFilters,
@@ -22,6 +23,8 @@ const PaymentDashboardPage: React.FC = () => {
   const [filteredPayments, setFilteredPayments] = useState<PaymentDashboardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<PaymentSummaryStats | null>(null);
+  const [showToolsMenu, setShowToolsMenu] = useState(false);
+  const toolsMenuRef = useRef<HTMLDivElement>(null);
 
   const [filters, setFilters] = useState<PaymentDashboardFilters>({
     searchQuery: '',
@@ -122,6 +125,20 @@ const PaymentDashboardPage: React.FC = () => {
   useEffect(() => {
     applyFilters();
   }, [payments, filters]);
+
+  // Click outside to close tools menu
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (toolsMenuRef.current && !toolsMenuRef.current.contains(event.target as Node)) {
+        setShowToolsMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const fetchPaymentData = async () => {
     try {
@@ -395,67 +412,101 @@ const PaymentDashboardPage: React.FC = () => {
       {/* Tabs */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
         <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`${
-                activeTab === 'dashboard'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-            >
-              Payment Tracking
-            </button>
-            <button
-              onClick={() => setActiveTab('comparison')}
-              className={`${
-                activeTab === 'comparison'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-            >
-              Salesforce vs OVIS Comparison
-            </button>
-            <button
-              onClick={() => setActiveTab('discrepancies')}
-              className={`${
-                activeTab === 'discrepancies'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-            >
-              Fix Discrepancies
-            </button>
-            <button
-              onClick={() => setActiveTab('validation')}
-              className={`${
-                activeTab === 'validation'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-            >
-              Split Validation
-            </button>
-            <button
-              onClick={() => setActiveTab('deal-reconciliation')}
-              className={`${
-                activeTab === 'deal-reconciliation'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-            >
-              Deal Reconciliation
-            </button>
-            <button
-              onClick={() => setActiveTab('payment-reconciliation')}
-              className={`${
-                activeTab === 'payment-reconciliation'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-            >
-              Payment Reconciliation
-            </button>
+          <nav className="-mb-px flex items-center justify-between">
+            <div className="flex space-x-8">
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className={`${
+                  activeTab === 'dashboard'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+              >
+                Payment Tracking
+              </button>
+              {/* Show active utility tab name if one is selected */}
+              {activeTab !== 'dashboard' && (
+                <span className="whitespace-nowrap py-4 px-1 border-b-2 border-blue-500 text-blue-600 font-medium text-sm">
+                  {activeTab === 'comparison' && 'SF vs OVIS Comparison'}
+                  {activeTab === 'discrepancies' && 'Fix Discrepancies'}
+                  {activeTab === 'validation' && 'Split Validation'}
+                  {activeTab === 'deal-reconciliation' && 'Deal Reconciliation'}
+                  {activeTab === 'payment-reconciliation' && 'Payment Reconciliation'}
+                </span>
+              )}
+            </div>
+
+            {/* Tools Menu */}
+            <div className="relative" ref={toolsMenuRef}>
+              <button
+                onClick={() => setShowToolsMenu(!showToolsMenu)}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+              >
+                <Bars3Icon className="h-5 w-5" />
+                Tools
+              </button>
+              {showToolsMenu && (
+                <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-20">
+                  <div className="py-1">
+                    <button
+                      onClick={() => {
+                        setActiveTab('comparison');
+                        setShowToolsMenu(false);
+                      }}
+                      className={`block w-full text-left px-4 py-2 text-sm ${
+                        activeTab === 'comparison' ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      Salesforce vs OVIS Comparison
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveTab('discrepancies');
+                        setShowToolsMenu(false);
+                      }}
+                      className={`block w-full text-left px-4 py-2 text-sm ${
+                        activeTab === 'discrepancies' ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      Fix Discrepancies
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveTab('validation');
+                        setShowToolsMenu(false);
+                      }}
+                      className={`block w-full text-left px-4 py-2 text-sm ${
+                        activeTab === 'validation' ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      Split Validation
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveTab('deal-reconciliation');
+                        setShowToolsMenu(false);
+                      }}
+                      className={`block w-full text-left px-4 py-2 text-sm ${
+                        activeTab === 'deal-reconciliation' ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      Deal Reconciliation
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveTab('payment-reconciliation');
+                        setShowToolsMenu(false);
+                      }}
+                      className={`block w-full text-left px-4 py-2 text-sm ${
+                        activeTab === 'payment-reconciliation' ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      Payment Reconciliation
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </nav>
         </div>
       </div>

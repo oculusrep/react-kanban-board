@@ -7,6 +7,7 @@ import ReferralFeeRow from './ReferralFeeRow';
 import PaymentDetailSidebar from './PaymentDetailSidebar';
 import PaymentCheckProcessing from './PaymentCheckProcessing';
 import PaymentAmountOverrideModal from './PaymentAmountOverrideModal';
+import { CheckCircleIcon } from '@heroicons/react/24/outline';
 
 interface PaymentDashboardTableProps {
   payments: PaymentDashboardRow[];
@@ -37,6 +38,10 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
   // Override modal state
   const [showOverrideModal, setShowOverrideModal] = useState(false);
   const [paymentToOverride, setPaymentToOverride] = useState<PaymentDashboardRow | null>(null);
+
+  // QB Sync state
+  const [syncingPaymentId, setSyncingPaymentId] = useState<string | null>(null);
+  const [qbSyncMessage, setQbSyncMessage] = useState<{ paymentId: string; type: 'success' | 'error'; text: string } | null>(null);
 
   // Sync local payments with parent when parent data changes and apply sorting
   useEffect(() => {
@@ -284,6 +289,55 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
     }
   };
 
+  // Sync payment to QuickBooks
+  const handleSyncToQuickBooks = async (paymentId: string) => {
+    setSyncingPaymentId(paymentId);
+    setQbSyncMessage(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setQbSyncMessage({ paymentId, type: 'error', text: 'You must be logged in to sync' });
+        setSyncingPaymentId(null);
+        return;
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quickbooks-sync-invoice`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            paymentId: paymentId,
+            sendEmail: false,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to sync');
+      }
+
+      const message = result.linked
+        ? `Linked to invoice #${result.qbInvoiceNumber}`
+        : `Invoice #${result.qbInvoiceNumber} created`;
+
+      setQbSyncMessage({ paymentId, type: 'success', text: message });
+      onPaymentUpdate();
+    } catch (error: any) {
+      setQbSyncMessage({ paymentId, type: 'error', text: error.message || 'Sync failed' });
+    } finally {
+      setSyncingPaymentId(null);
+      // Clear message after 4 seconds
+      setTimeout(() => setQbSyncMessage(null), 4000);
+    }
+  };
+
   const confirmDelete = async () => {
     if (!paymentToDelete) return;
 
@@ -391,9 +445,12 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                 onClick={() => handleSort('orep_invoice')}
               >
                 <div className="flex items-center justify-center">
-                  Invoice #
+                  OVIS Inv #
                   {renderSortIcon('orep_invoice')}
                 </div>
+              </th>
+              <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">
+                QBO Inv #
               </th>
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                 Payment
@@ -488,8 +545,33 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                         value={payment.orep_invoice || ''}
                         onChange={(e) => handleUpdatePaymentField(payment.payment_id, 'orep_invoice', e.target.value || null)}
                         placeholder="-"
-                        className="w-full border-0 bg-transparent px-0 py-0 text-sm text-gray-900 text-center focus:outline-none focus:ring-0 placeholder-gray-400 cursor-text"
+                        className="w-16 border-0 bg-transparent px-0 py-0 text-sm text-gray-900 text-center focus:outline-none focus:ring-0 placeholder-gray-400 cursor-text"
                       />
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap text-sm text-center" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-1">
+                        {payment.qb_invoice_id ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-green-100 text-green-700" title={`QB Invoice #${payment.qb_invoice_number || payment.qb_invoice_id}`}>
+                            <CheckCircleIcon className="w-3 h-3" />
+                            {payment.qb_invoice_number || 'Synced'}
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleSyncToQuickBooks(payment.payment_id)}
+                            disabled={syncingPaymentId === payment.payment_id}
+                            className="inline-flex items-center px-1.5 py-0.5 text-xs font-medium text-blue-700 bg-blue-100 rounded hover:bg-blue-200 disabled:opacity-50"
+                            title="Sync to QuickBooks"
+                          >
+                            {syncingPaymentId === payment.payment_id ? '...' : 'Sync QB'}
+                          </button>
+                        )}
+                      </div>
+                      {/* QB Sync Message */}
+                      {qbSyncMessage && qbSyncMessage.paymentId === payment.payment_id && (
+                        <div className={`text-xs mt-1 ${qbSyncMessage.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                          {qbSyncMessage.text}
+                        </div>
+                      )}
                     </td>
                     <td
                       className="px-3 py-3 whitespace-nowrap text-sm text-gray-900"
@@ -625,7 +707,7 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                   {/* Expanded Details */}
                   {isExpanded && (
                     <tr>
-                      <td colSpan={9} className="px-0 py-0 bg-gray-50">
+                      <td colSpan={10} className="px-0 py-0 bg-gray-50">
                         <div className="px-12 py-4">
                           {/* Payment Check Processing Section */}
                           <PaymentCheckProcessing

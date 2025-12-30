@@ -1,0 +1,7 @@
+Category,Count
+OVIS Total Invoices,218
+QBO Total Invoices,36
+Already Linked,1
+Needs Linking,5
+OVIS Only (No Match in QBO),212
+QBO Only (Not in OVIS),34
