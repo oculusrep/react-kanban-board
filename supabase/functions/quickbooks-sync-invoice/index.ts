@@ -8,6 +8,7 @@ import {
   createInvoice,
   sendInvoice,
   logSync,
+  qbApiRequest,
   QBInvoice,
   QBInvoiceLine
 } from '../_shared/quickbooks.ts'
@@ -97,6 +98,7 @@ serve(async (req) => {
         payment_invoice_date,
         qb_invoice_id,
         qb_invoice_number,
+        orep_invoice,
         deal:deal_id (
           id,
           deal_name,
@@ -134,7 +136,7 @@ serve(async (req) => {
       )
     }
 
-    // Check if already synced
+    // Check if already synced by qb_invoice_id
     if (payment.qb_invoice_id) {
       return new Response(
         JSON.stringify({
@@ -145,6 +147,67 @@ serve(async (req) => {
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
+    }
+
+    // Check if orep_invoice matches an existing QBO invoice (for linking legacy invoices)
+    // This handles the case where invoices were created in QBO manually before OVIS integration
+    if (payment.orep_invoice) {
+      console.log(`Checking if orep_invoice "${payment.orep_invoice}" exists in QBO...`)
+
+      const searchQuery = `SELECT * FROM Invoice WHERE DocNumber = '${payment.orep_invoice}'`
+      try {
+        const searchResult = await qbApiRequest<{ QueryResponse: { Invoice?: Array<{ Id: string; DocNumber: string; TotalAmt: number }> } }>(
+          connection,
+          'GET',
+          `query?query=${encodeURIComponent(searchQuery)}`
+        )
+
+        const existingInvoice = searchResult.QueryResponse.Invoice?.[0]
+
+        if (existingInvoice) {
+          console.log(`Found existing QBO invoice ${existingInvoice.DocNumber} (ID: ${existingInvoice.Id}) - linking instead of creating new`)
+
+          // Link the existing invoice to this payment
+          const { error: linkError } = await supabaseClient
+            .from('payment')
+            .update({
+              qb_invoice_id: existingInvoice.Id,
+              qb_invoice_number: existingInvoice.DocNumber,
+              qb_sync_status: 'synced',
+              qb_last_sync: new Date().toISOString()
+            })
+            .eq('id', paymentId)
+
+          if (linkError) {
+            console.error('Failed to link payment to existing QBO invoice:', linkError)
+          }
+
+          // Log the link
+          await logSync(
+            supabaseClient,
+            'invoice',
+            'outbound',
+            'success',
+            paymentId,
+            'payment',
+            existingInvoice.Id
+          )
+
+          return new Response(
+            JSON.stringify({
+              success: true,
+              message: `Linked to existing QuickBooks invoice #${existingInvoice.DocNumber}`,
+              qbInvoiceId: existingInvoice.Id,
+              qbInvoiceNumber: existingInvoice.DocNumber,
+              linked: true
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+      } catch (searchError: any) {
+        // Log but continue - we'll create a new invoice if search fails
+        console.error('Error searching for existing QBO invoice:', searchError.message)
+      }
     }
 
     const deal = payment.deal as any

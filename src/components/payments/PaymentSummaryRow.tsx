@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { ChevronDownIcon, ChevronRightIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 import { Payment, Deal } from '../../lib/types';
 import { formatDateString } from '../../utils/dateUtils';
+import { supabase } from '../../lib/supabaseClient';
 import PaymentAmountOverrideModal from './PaymentAmountOverrideModal';
 
 interface PaymentSummaryRowProps {
@@ -27,6 +28,57 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
 }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [syncingToQB, setSyncingToQB] = useState(false);
+  const [qbSyncMessage, setQbSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Sync payment to QuickBooks
+  const handleSyncToQuickBooks = async () => {
+    setSyncingToQB(true);
+    setQbSyncMessage(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setQbSyncMessage({ type: 'error', text: 'You must be logged in to sync' });
+        setSyncingToQB(false);
+        return;
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quickbooks-sync-invoice`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            paymentId: payment.id,
+            sendEmail: false,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to sync');
+      }
+
+      const message = result.linked
+        ? `Linked to invoice #${result.qbInvoiceNumber}`
+        : `Invoice #${result.qbInvoiceNumber} created`;
+
+      setQbSyncMessage({ type: 'success', text: message });
+      if (onRefresh) onRefresh();
+    } catch (error: any) {
+      setQbSyncMessage({ type: 'error', text: error.message || 'Sync failed' });
+    } finally {
+      setSyncingToQB(false);
+      // Clear message after 4 seconds
+      setTimeout(() => setQbSyncMessage(null), 4000);
+    }
+  };
 
   // DEBUG: Check payment date values
   console.log('📅 PaymentSummaryRow payment dates:', {
@@ -84,18 +136,42 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
         </div>
       </div>
 
-      {/* Invoice Number - 2 cols */}
+      {/* Invoice Number + QB Sync - 2 cols */}
       <div className="col-span-2">
         <div className={`text-xs ${payment.orep_invoice ? 'text-gray-500' : 'text-red-500'}`}>
           Invoice #
         </div>
-        <input
-          type="text"
-          value={payment.orep_invoice || ''}
-          onChange={(e) => onUpdatePayment({ orep_invoice: e.target.value || null })}
-          placeholder="-"
-          className="w-full border-0 bg-transparent px-0 py-0 text-sm text-gray-900 focus:outline-none focus:ring-0 placeholder-gray-400 cursor-text"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={payment.orep_invoice || ''}
+            onChange={(e) => onUpdatePayment({ orep_invoice: e.target.value || null })}
+            placeholder="-"
+            className="w-16 border-0 bg-transparent px-0 py-0 text-sm text-gray-900 focus:outline-none focus:ring-0 placeholder-gray-400 cursor-text"
+          />
+          {/* QB Sync Status/Button */}
+          {(payment as any).qb_invoice_id ? (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-green-100 text-green-700" title={`QB Invoice #${(payment as any).qb_invoice_number || (payment as any).qb_invoice_id}`}>
+              <CheckCircleIcon className="w-3 h-3" />
+              QB
+            </span>
+          ) : (
+            <button
+              onClick={handleSyncToQuickBooks}
+              disabled={syncingToQB}
+              className="inline-flex items-center px-1.5 py-0.5 text-xs font-medium text-blue-700 bg-blue-100 rounded hover:bg-blue-200 disabled:opacity-50"
+              title="Sync to QuickBooks"
+            >
+              {syncingToQB ? '...' : 'QB'}
+            </button>
+          )}
+        </div>
+        {/* QB Sync Message */}
+        {qbSyncMessage && (
+          <div className={`text-xs mt-1 ${qbSyncMessage.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+            {qbSyncMessage.text}
+          </div>
+        )}
       </div>
 
       {/* Status - 2 cols */}
