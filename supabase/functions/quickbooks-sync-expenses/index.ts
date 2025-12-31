@@ -140,131 +140,162 @@ Deno.serve(async (req) => {
     let totalExpenses = 0
     let errorCount = 0
     const now = new Date().toISOString()
+    const PAGE_SIZE = 1000
 
-    // ============================================
-    // Fetch Purchase transactions (checks, credit cards, etc.)
-    // ============================================
-    console.log('Fetching Purchase transactions...')
+    // Helper function to process purchase line items
+    const processPurchase = async (purchase: QBPurchase) => {
+      let lineIndex = 0
+      for (const line of purchase.Line) {
+        if (line.DetailType === 'AccountBasedExpenseLineDetail' && line.AccountBasedExpenseLineDetail) {
+          const accountRef = line.AccountBasedExpenseLineDetail.AccountRef
+          const lineId = line.Id || String(lineIndex)
+          const transactionId = `purchase_${purchase.Id}_${lineId}`
 
-    const purchaseQuery = `SELECT * FROM Purchase WHERE TxnDate >= '${startDate}' ORDERBY TxnDate DESC MAXRESULTS 1000`
+          const { error: upsertError } = await supabaseClient
+            .from('qb_expense')
+            .upsert({
+              qb_transaction_id: transactionId,
+              transaction_type: 'Purchase',
+              transaction_date: purchase.TxnDate,
+              vendor_name: purchase.EntityRef?.name || null,
+              category: accountRef.name,
+              account_id: accountRef.value,
+              account_name: accountRef.name,
+              description: line.Description || purchase.PrivateNote || null,
+              amount: line.Amount,
+              imported_at: now,
+              sync_token: purchase.SyncToken,
+              qb_entity_type: 'Purchase',
+              qb_entity_id: purchase.Id,
+              qb_line_id: lineId
+            }, {
+              onConflict: 'qb_transaction_id'
+            })
 
-    try {
-      const purchaseResult = await qbApiRequest<QBQueryResponse<QBPurchase>>(
-        connection,
-        'GET',
-        `query?query=${encodeURIComponent(purchaseQuery)}`
-      )
-
-      const purchases = purchaseResult.QueryResponse.Purchase || []
-      console.log(`Found ${purchases.length} Purchase transactions`)
-
-      for (const purchase of purchases) {
-        // Each purchase can have multiple line items with different accounts
-        let lineIndex = 0
-        for (const line of purchase.Line) {
-          if (line.DetailType === 'AccountBasedExpenseLineDetail' && line.AccountBasedExpenseLineDetail) {
-            const accountRef = line.AccountBasedExpenseLineDetail.AccountRef
-            // Use line ID if available, otherwise use index
-            const lineId = line.Id || String(lineIndex)
-
-            const transactionId = `purchase_${purchase.Id}_${lineId}`
-
-            const { error: upsertError } = await supabaseClient
-              .from('qb_expense')
-              .upsert({
-                qb_transaction_id: transactionId,
-                transaction_type: 'Purchase',
-                transaction_date: purchase.TxnDate,
-                vendor_name: purchase.EntityRef?.name || null,
-                category: accountRef.name,
-                account_id: accountRef.value,
-                account_name: accountRef.name,
-                description: line.Description || purchase.PrivateNote || null,
-                amount: line.Amount,
-                imported_at: now,
-                // New fields for recategorization
-                sync_token: purchase.SyncToken,
-                qb_entity_type: 'Purchase',
-                qb_entity_id: purchase.Id,
-                qb_line_id: lineId
-              }, {
-                onConflict: 'qb_transaction_id'
-              })
-
-            if (upsertError) {
-              console.error(`Error upserting purchase expense:`, upsertError)
-              errorCount++
-            } else {
-              totalExpenses++
-            }
-            lineIndex++
+          if (upsertError) {
+            console.error(`Error upserting purchase expense:`, upsertError)
+            errorCount++
+          } else {
+            totalExpenses++
           }
+          lineIndex++
         }
       }
+    }
+
+    // Helper function to process bill line items
+    const processBill = async (bill: QBBill) => {
+      let lineIndex = 0
+      for (const line of bill.Line) {
+        if (line.DetailType === 'AccountBasedExpenseLineDetail' && line.AccountBasedExpenseLineDetail) {
+          const accountRef = line.AccountBasedExpenseLineDetail.AccountRef
+          const lineId = line.Id || String(lineIndex)
+          const transactionId = `bill_${bill.Id}_${lineId}`
+
+          const { error: upsertError } = await supabaseClient
+            .from('qb_expense')
+            .upsert({
+              qb_transaction_id: transactionId,
+              transaction_type: 'Bill',
+              transaction_date: bill.TxnDate,
+              vendor_name: bill.VendorRef?.name || null,
+              category: accountRef.name,
+              account_id: accountRef.value,
+              account_name: accountRef.name,
+              description: line.Description || bill.PrivateNote || null,
+              amount: line.Amount,
+              imported_at: now,
+              sync_token: bill.SyncToken,
+              qb_entity_type: 'Bill',
+              qb_entity_id: bill.Id,
+              qb_line_id: lineId
+            }, {
+              onConflict: 'qb_transaction_id'
+            })
+
+          if (upsertError) {
+            console.error(`Error upserting bill expense:`, upsertError)
+            errorCount++
+          } else {
+            totalExpenses++
+          }
+          lineIndex++
+        }
+      }
+    }
+
+    // ============================================
+    // Fetch Purchase transactions with pagination
+    // ============================================
+    console.log('Fetching Purchase transactions...')
+    let purchaseStartPosition = 1
+    let totalPurchases = 0
+
+    try {
+      while (true) {
+        const purchaseQuery = `SELECT * FROM Purchase WHERE TxnDate >= '${startDate}' ORDERBY TxnDate DESC STARTPOSITION ${purchaseStartPosition} MAXRESULTS ${PAGE_SIZE}`
+
+        const purchaseResult = await qbApiRequest<QBQueryResponse<QBPurchase>>(
+          connection,
+          'GET',
+          `query?query=${encodeURIComponent(purchaseQuery)}`
+        )
+
+        const purchases = purchaseResult.QueryResponse.Purchase || []
+        console.log(`Fetched ${purchases.length} Purchase transactions (starting at ${purchaseStartPosition})`)
+
+        if (purchases.length === 0) break
+
+        for (const purchase of purchases) {
+          await processPurchase(purchase)
+        }
+
+        totalPurchases += purchases.length
+
+        // If we got fewer than PAGE_SIZE, we've reached the end
+        if (purchases.length < PAGE_SIZE) break
+
+        purchaseStartPosition += PAGE_SIZE
+      }
+      console.log(`Total Purchase transactions fetched: ${totalPurchases}`)
     } catch (err: any) {
       console.error('Error fetching purchases:', err.message)
     }
 
     // ============================================
-    // Fetch Bills (vendor invoices)
+    // Fetch Bills with pagination
     // ============================================
     console.log('Fetching Bill transactions...')
-
-    const billQuery = `SELECT * FROM Bill WHERE TxnDate >= '${startDate}' ORDERBY TxnDate DESC MAXRESULTS 1000`
+    let billStartPosition = 1
+    let totalBills = 0
 
     try {
-      const billResult = await qbApiRequest<QBQueryResponse<QBBill>>(
-        connection,
-        'GET',
-        `query?query=${encodeURIComponent(billQuery)}`
-      )
+      while (true) {
+        const billQuery = `SELECT * FROM Bill WHERE TxnDate >= '${startDate}' ORDERBY TxnDate DESC STARTPOSITION ${billStartPosition} MAXRESULTS ${PAGE_SIZE}`
 
-      const bills = billResult.QueryResponse.Bill || []
-      console.log(`Found ${bills.length} Bill transactions`)
+        const billResult = await qbApiRequest<QBQueryResponse<QBBill>>(
+          connection,
+          'GET',
+          `query?query=${encodeURIComponent(billQuery)}`
+        )
 
-      for (const bill of bills) {
-        // Each bill can have multiple line items
-        let lineIndex = 0
-        for (const line of bill.Line) {
-          if (line.DetailType === 'AccountBasedExpenseLineDetail' && line.AccountBasedExpenseLineDetail) {
-            const accountRef = line.AccountBasedExpenseLineDetail.AccountRef
-            // Use line ID if available, otherwise use index
-            const lineId = line.Id || String(lineIndex)
+        const bills = billResult.QueryResponse.Bill || []
+        console.log(`Fetched ${bills.length} Bill transactions (starting at ${billStartPosition})`)
 
-            const transactionId = `bill_${bill.Id}_${lineId}`
+        if (bills.length === 0) break
 
-            const { error: upsertError } = await supabaseClient
-              .from('qb_expense')
-              .upsert({
-                qb_transaction_id: transactionId,
-                transaction_type: 'Bill',
-                transaction_date: bill.TxnDate,
-                vendor_name: bill.VendorRef?.name || null,
-                category: accountRef.name,
-                account_id: accountRef.value,
-                account_name: accountRef.name,
-                description: line.Description || bill.PrivateNote || null,
-                amount: line.Amount,
-                imported_at: now,
-                // New fields for recategorization
-                sync_token: bill.SyncToken,
-                qb_entity_type: 'Bill',
-                qb_entity_id: bill.Id,
-                qb_line_id: lineId
-              }, {
-                onConflict: 'qb_transaction_id'
-              })
-
-            if (upsertError) {
-              console.error(`Error upserting bill expense:`, upsertError)
-              errorCount++
-            } else {
-              totalExpenses++
-            }
-            lineIndex++
-          }
+        for (const bill of bills) {
+          await processBill(bill)
         }
+
+        totalBills += bills.length
+
+        // If we got fewer than PAGE_SIZE, we've reached the end
+        if (bills.length < PAGE_SIZE) break
+
+        billStartPosition += PAGE_SIZE
       }
+      console.log(`Total Bill transactions fetched: ${totalBills}`)
     } catch (err: any) {
       console.error('Error fetching bills:', err.message)
     }
