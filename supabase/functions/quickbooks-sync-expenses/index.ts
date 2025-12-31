@@ -15,6 +15,8 @@ const corsHeaders = {
 }
 
 interface QBPurchaseLine {
+  Id?: string  // Line item ID
+  LineNum?: number
   Amount: number
   DetailType: string
   AccountBasedExpenseLineDetail?: {
@@ -25,6 +27,7 @@ interface QBPurchaseLine {
 
 interface QBPurchase {
   Id: string
+  SyncToken: string  // Required for updates
   TxnDate: string
   TotalAmt: number
   EntityRef?: { name: string; value: string }
@@ -35,6 +38,7 @@ interface QBPurchase {
 
 interface QBBill {
   Id: string
+  SyncToken: string  // Required for updates
   TxnDate: string
   TotalAmt: number
   VendorRef?: { name: string; value: string }
@@ -156,11 +160,14 @@ Deno.serve(async (req) => {
 
       for (const purchase of purchases) {
         // Each purchase can have multiple line items with different accounts
+        let lineIndex = 0
         for (const line of purchase.Line) {
           if (line.DetailType === 'AccountBasedExpenseLineDetail' && line.AccountBasedExpenseLineDetail) {
             const accountRef = line.AccountBasedExpenseLineDetail.AccountRef
+            // Use line ID if available, otherwise use index
+            const lineId = line.Id || String(lineIndex)
 
-            const transactionId = `purchase_${purchase.Id}_${accountRef.value}`
+            const transactionId = `purchase_${purchase.Id}_${lineId}`
 
             const { error: upsertError } = await supabaseClient
               .from('qb_expense')
@@ -174,7 +181,12 @@ Deno.serve(async (req) => {
                 account_name: accountRef.name,
                 description: line.Description || purchase.PrivateNote || null,
                 amount: line.Amount,
-                imported_at: now
+                imported_at: now,
+                // New fields for recategorization
+                sync_token: purchase.SyncToken,
+                qb_entity_type: 'Purchase',
+                qb_entity_id: purchase.Id,
+                qb_line_id: lineId
               }, {
                 onConflict: 'qb_transaction_id'
               })
@@ -185,6 +197,7 @@ Deno.serve(async (req) => {
             } else {
               totalExpenses++
             }
+            lineIndex++
           }
         }
       }
@@ -211,11 +224,14 @@ Deno.serve(async (req) => {
 
       for (const bill of bills) {
         // Each bill can have multiple line items
+        let lineIndex = 0
         for (const line of bill.Line) {
           if (line.DetailType === 'AccountBasedExpenseLineDetail' && line.AccountBasedExpenseLineDetail) {
             const accountRef = line.AccountBasedExpenseLineDetail.AccountRef
+            // Use line ID if available, otherwise use index
+            const lineId = line.Id || String(lineIndex)
 
-            const transactionId = `bill_${bill.Id}_${accountRef.value}`
+            const transactionId = `bill_${bill.Id}_${lineId}`
 
             const { error: upsertError } = await supabaseClient
               .from('qb_expense')
@@ -229,7 +245,12 @@ Deno.serve(async (req) => {
                 account_name: accountRef.name,
                 description: line.Description || bill.PrivateNote || null,
                 amount: line.Amount,
-                imported_at: now
+                imported_at: now,
+                // New fields for recategorization
+                sync_token: bill.SyncToken,
+                qb_entity_type: 'Bill',
+                qb_entity_id: bill.Id,
+                qb_line_id: lineId
               }, {
                 onConflict: 'qb_transaction_id'
               })
@@ -240,6 +261,7 @@ Deno.serve(async (req) => {
             } else {
               totalExpenses++
             }
+            lineIndex++
           }
         }
       }

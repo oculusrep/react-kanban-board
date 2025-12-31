@@ -41,6 +41,10 @@ interface QBExpense {
   account_name: string;
   description: string | null;
   amount: number;
+  qb_entity_type?: string;
+  qb_entity_id?: string;
+  qb_line_id?: string;
+  sync_token?: string;
 }
 
 interface CategorySummary {
@@ -64,6 +68,8 @@ export default function BudgetDashboardPage() {
   const [editingBudget, setEditingBudget] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>("");
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [recategorizingExpense, setRecategorizingExpense] = useState<string | null>(null);
+  const [updatingExpense, setUpdatingExpense] = useState<string | null>(null);
 
   // Date filter state
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
@@ -271,6 +277,49 @@ export default function BudgetDashboardPage() {
   const cancelEdit = () => {
     setEditingBudget(null);
     setEditValue('');
+  };
+
+  const handleRecategorize = async (expenseId: string, newAccountId: string, newAccountName: string) => {
+    setUpdatingExpense(expenseId);
+    setMessage(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setMessage({ type: 'error', text: 'You must be logged in' });
+        return;
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quickbooks-update-expense`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            expenseId,
+            newAccountId,
+            newAccountName
+          })
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to update expense');
+      }
+
+      setMessage({ type: 'success', text: 'Expense category updated in QuickBooks' });
+      setRecategorizingExpense(null);
+      fetchData();
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message || 'Failed to update expense' });
+    } finally {
+      setUpdatingExpense(null);
+    }
   };
 
   // Calculate totals
@@ -564,7 +613,7 @@ export default function BudgetDashboardPage() {
 
                       {/* Expanded transactions */}
                       {isExpanded && summary.transactions.length > 0 && (
-                        <tr>
+                        <tr key={`${summary.account.id}-expanded`}>
                           <td colSpan={5} className="px-6 py-0 bg-gray-50">
                             <div className="py-4 pl-8">
                               <table className="min-w-full">
@@ -575,16 +624,24 @@ export default function BudgetDashboardPage() {
                                     <th className="py-2 text-left">Description</th>
                                     <th className="py-2 text-left">Type</th>
                                     <th className="py-2 text-right">Amount</th>
+                                    <th className="py-2 text-center w-48">Category</th>
                                   </tr>
                                 </thead>
                                 <tbody className="text-sm">
-                                  {summary.transactions.slice(0, 20).map((txn) => (
+                                  {summary.transactions.slice(0, 20).map((txn) => {
+                                    const canRecategorize = !!txn.qb_entity_type && !!txn.qb_entity_id;
+                                    const isRecategorizing = recategorizingExpense === txn.id;
+                                    const isUpdating = updatingExpense === txn.id;
+
+                                    return (
                                     <tr key={txn.id} className="border-t border-gray-100">
                                       <td className="py-2 text-gray-600">
                                         {new Date(txn.transaction_date).toLocaleDateString()}
                                       </td>
                                       <td className="py-2 text-gray-900">{txn.vendor_name || '-'}</td>
-                                      <td className="py-2 text-gray-600">{txn.description || '-'}</td>
+                                      <td className="py-2 text-gray-600 max-w-xs truncate" title={txn.description || undefined}>
+                                        {txn.description || '-'}
+                                      </td>
                                       <td className="py-2">
                                         <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">
                                           {txn.transaction_type}
@@ -593,11 +650,56 @@ export default function BudgetDashboardPage() {
                                       <td className="py-2 text-right font-medium text-gray-900">
                                         ${txn.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                       </td>
+                                      <td className="py-2 text-center">
+                                        {isUpdating ? (
+                                          <span className="text-gray-500 text-xs">Updating...</span>
+                                        ) : isRecategorizing ? (
+                                          <div className="flex items-center gap-1">
+                                            <select
+                                              className="text-xs border border-gray-300 rounded px-1 py-0.5 max-w-[140px]"
+                                              defaultValue=""
+                                              onChange={(e) => {
+                                                if (e.target.value) {
+                                                  const selectedAccount = accounts.find(a => a.qb_account_id === e.target.value);
+                                                  handleRecategorize(txn.id, e.target.value, selectedAccount?.name || '');
+                                                }
+                                              }}
+                                            >
+                                              <option value="">Select category...</option>
+                                              {accounts
+                                                .filter(a => a.qb_account_id !== txn.account_id)
+                                                .map(account => (
+                                                  <option key={account.qb_account_id} value={account.qb_account_id}>
+                                                    {account.name}
+                                                  </option>
+                                                ))}
+                                            </select>
+                                            <button
+                                              onClick={() => setRecategorizingExpense(null)}
+                                              className="p-0.5 text-gray-400 hover:text-gray-600"
+                                            >
+                                              <X className="h-3 w-3" />
+                                            </button>
+                                          </div>
+                                        ) : canRecategorize ? (
+                                          <button
+                                            onClick={() => setRecategorizingExpense(txn.id)}
+                                            className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                          >
+                                            Change
+                                          </button>
+                                        ) : (
+                                          <span className="text-xs text-gray-400" title="Sync expenses to enable recategorization">
+                                            -
+                                          </span>
+                                        )}
+                                      </td>
                                     </tr>
-                                  ))}
+                                    );
+                                  })}
                                   {summary.transactions.length > 20 && (
                                     <tr className="border-t border-gray-100">
-                                      <td colSpan={5} className="py-2 text-center text-gray-500 text-sm">
+                                      <td colSpan={6} className="py-2 text-center text-gray-500 text-sm">
                                         ... and {summary.transactions.length - 20} more transactions
                                       </td>
                                     </tr>
