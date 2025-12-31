@@ -98,11 +98,11 @@ Deno.serve(async (req) => {
     // Refresh token if needed
     connection = await refreshTokenIfNeeded(supabaseClient, connection)
 
-    // Query all accounts from QBO - focus on Expense and COGS types
-    // We'll fetch all accounts so users can see the full chart
+    // Query all accounts from QBO for full P&L statement
+    // Income, COGS, and Expense accounts
     console.log('Fetching Chart of Accounts from QuickBooks...')
 
-    const accountTypes = ['Expense', 'Cost of Goods Sold', 'Other Expense']
+    const accountTypes = ['Income', 'Other Income', 'Cost of Goods Sold', 'Expense', 'Other Expense']
     let allAccounts: QBAccount[] = []
 
     for (const accountType of accountTypes) {
@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`Found ${allAccounts.length} expense-related accounts`)
+    console.log(`Found ${allAccounts.length} P&L accounts (Income, COGS, Expenses)`)
 
     // Upsert accounts into database
     const now = new Date().toISOString()
