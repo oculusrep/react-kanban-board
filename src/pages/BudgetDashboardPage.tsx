@@ -107,19 +107,37 @@ export default function BudgetDashboardPage() {
         endDate = `${selectedYear + 1}-01-01`;
       }
 
-      // Fetch expenses for the selected period
-      const { data: expenseData, error: expenseError } = await supabase
-        .from('qb_expense')
-        .select('*')
-        .gte('transaction_date', startDate)
-        .lt('transaction_date', endDate)
-        .order('transaction_date', { ascending: false });
+      // Fetch expenses for the selected period with pagination
+      // Supabase default limit is 1000, so we need to fetch all pages
+      let allExpenses: QBExpense[] = [];
+      let page = 0;
+      const pageSize = 1000;
 
-      if (expenseError) throw expenseError;
-      setExpenses(expenseData || []);
+      while (true) {
+        const { data: expenseData, error: expenseError } = await supabase
+          .from('qb_expense')
+          .select('*')
+          .gte('transaction_date', startDate)
+          .lt('transaction_date', endDate)
+          .order('transaction_date', { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (expenseError) throw expenseError;
+
+        if (!expenseData || expenseData.length === 0) break;
+
+        allExpenses = [...allExpenses, ...expenseData];
+
+        // If we got fewer than pageSize, we've reached the end
+        if (expenseData.length < pageSize) break;
+
+        page++;
+      }
+
+      setExpenses(allExpenses);
 
       // Calculate category summaries
-      calculateSummaries(accountData || [], expenseData || []);
+      calculateSummaries(accountData || [], allExpenses);
     } catch (error: any) {
       console.error('Error fetching budget data:', error);
       setMessage({ type: 'error', text: error.message || 'Failed to load data' });
