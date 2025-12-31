@@ -788,7 +788,7 @@ export default function BudgetDashboardPage() {
         <div className="bg-white rounded-lg shadow">
           {/* Header */}
           <div className="px-6 py-4 border-b border-gray-200 text-center">
-            <h2 className="text-lg font-semibold text-gray-900">OVIS Produce</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Oculus Real Estate Partners</h2>
             <p className="text-sm text-gray-600">Profit and Loss</p>
             <p className="text-sm text-gray-500">{periodLabel}</p>
           </div>
