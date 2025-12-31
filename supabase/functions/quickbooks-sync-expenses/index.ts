@@ -148,8 +148,9 @@ Deno.serve(async (req) => {
       for (const line of purchase.Line) {
         if (line.DetailType === 'AccountBasedExpenseLineDetail' && line.AccountBasedExpenseLineDetail) {
           const accountRef = line.AccountBasedExpenseLineDetail.AccountRef
-          const lineId = line.Id || String(lineIndex)
-          const transactionId = `purchase_${purchase.Id}_${lineId}`
+          // Use LineNum (1-based, unique per transaction) for stable ID, fall back to Id or index
+          const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
+          const transactionId = `purchase_${purchase.Id}_line${lineId}`
 
           const { error: upsertError } = await supabaseClient
             .from('qb_expense')
@@ -189,8 +190,9 @@ Deno.serve(async (req) => {
       for (const line of bill.Line) {
         if (line.DetailType === 'AccountBasedExpenseLineDetail' && line.AccountBasedExpenseLineDetail) {
           const accountRef = line.AccountBasedExpenseLineDetail.AccountRef
-          const lineId = line.Id || String(lineIndex)
-          const transactionId = `bill_${bill.Id}_${lineId}`
+          // Use LineNum (1-based, unique per transaction) for stable ID, fall back to Id or index
+          const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
+          const transactionId = `bill_${bill.Id}_line${lineId}`
 
           const { error: upsertError } = await supabaseClient
             .from('qb_expense')
