@@ -1,5 +1,5 @@
-// Supabase Edge Function: Sync Expenses from QuickBooks
-// Pulls Purchase transactions and Bills from QBO and stores them in qb_expense table
+// Supabase Edge Function: Sync Transactions from QuickBooks
+// Pulls Purchase, Bill, Invoice, SalesReceipt, and JournalEntry transactions for P&L
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
@@ -46,10 +46,71 @@ interface QBBill {
   PrivateNote?: string
 }
 
+interface QBInvoiceLine {
+  Id?: string
+  LineNum?: number
+  Amount: number
+  DetailType: string
+  SalesItemLineDetail?: {
+    ItemRef: { value: string; name: string }
+    Qty?: number
+    UnitPrice?: number
+  }
+  Description?: string
+}
+
+interface QBInvoice {
+  Id: string
+  SyncToken: string
+  TxnDate: string
+  TotalAmt: number
+  CustomerRef?: { name: string; value: string }
+  Line: QBInvoiceLine[]
+  PrivateNote?: string
+  DocNumber?: string
+}
+
+interface QBSalesReceipt {
+  Id: string
+  SyncToken: string
+  TxnDate: string
+  TotalAmt: number
+  CustomerRef?: { name: string; value: string }
+  Line: QBInvoiceLine[]
+  PrivateNote?: string
+  DocNumber?: string
+  DepositToAccountRef?: { value: string; name: string }
+}
+
+interface QBJournalEntryLine {
+  Id?: string
+  LineNum?: number
+  Amount: number
+  DetailType: string
+  JournalEntryLineDetail?: {
+    PostingType: 'Credit' | 'Debit'
+    AccountRef: { value: string; name: string }
+  }
+  Description?: string
+}
+
+interface QBJournalEntry {
+  Id: string
+  SyncToken: string
+  TxnDate: string
+  TotalAmt: number
+  Line: QBJournalEntryLine[]
+  PrivateNote?: string
+  DocNumber?: string
+}
+
 interface QBQueryResponse<T> {
   QueryResponse: {
     Purchase?: T[]
     Bill?: T[]
+    Invoice?: T[]
+    SalesReceipt?: T[]
+    JournalEntry?: T[]
     startPosition?: number
     maxResults?: number
     totalCount?: number
@@ -226,6 +287,135 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Helper function to process invoice line items (income)
+    const processInvoice = async (invoice: QBInvoice) => {
+      // For invoices, we need to find the income account
+      // QBO invoices don't always have account info on line items
+      // We'll store as income with the customer as the "vendor"
+      let lineIndex = 0
+      for (const line of invoice.Line) {
+        if (line.DetailType === 'SalesItemLineDetail' && line.SalesItemLineDetail && line.Amount > 0) {
+          const itemRef = line.SalesItemLineDetail.ItemRef
+          const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
+          const transactionId = `invoice_${invoice.Id}_line${lineId}`
+
+          const { error: upsertError } = await supabaseClient
+            .from('qb_expense')
+            .upsert({
+              qb_transaction_id: transactionId,
+              transaction_type: 'Invoice',
+              transaction_date: invoice.TxnDate,
+              vendor_name: invoice.CustomerRef?.name || null,
+              category: itemRef.name,
+              account_id: itemRef.value,  // This is the Item ID, not account
+              account_name: itemRef.name,
+              description: line.Description || invoice.PrivateNote || `Invoice #${invoice.DocNumber || invoice.Id}`,
+              amount: line.Amount,
+              imported_at: now,
+              sync_token: invoice.SyncToken,
+              qb_entity_type: 'Invoice',
+              qb_entity_id: invoice.Id,
+              qb_line_id: lineId
+            }, {
+              onConflict: 'qb_transaction_id'
+            })
+
+          if (upsertError) {
+            console.error(`Error upserting invoice:`, upsertError)
+            errorCount++
+          } else {
+            totalExpenses++
+          }
+          lineIndex++
+        }
+      }
+    }
+
+    // Helper function to process sales receipt line items (income)
+    const processSalesReceipt = async (receipt: QBSalesReceipt) => {
+      let lineIndex = 0
+      for (const line of receipt.Line) {
+        if (line.DetailType === 'SalesItemLineDetail' && line.SalesItemLineDetail && line.Amount > 0) {
+          const itemRef = line.SalesItemLineDetail.ItemRef
+          const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
+          const transactionId = `salesreceipt_${receipt.Id}_line${lineId}`
+
+          const { error: upsertError } = await supabaseClient
+            .from('qb_expense')
+            .upsert({
+              qb_transaction_id: transactionId,
+              transaction_type: 'SalesReceipt',
+              transaction_date: receipt.TxnDate,
+              vendor_name: receipt.CustomerRef?.name || null,
+              category: itemRef.name,
+              account_id: itemRef.value,
+              account_name: itemRef.name,
+              description: line.Description || receipt.PrivateNote || `Receipt #${receipt.DocNumber || receipt.Id}`,
+              amount: line.Amount,
+              imported_at: now,
+              sync_token: receipt.SyncToken,
+              qb_entity_type: 'SalesReceipt',
+              qb_entity_id: receipt.Id,
+              qb_line_id: lineId
+            }, {
+              onConflict: 'qb_transaction_id'
+            })
+
+          if (upsertError) {
+            console.error(`Error upserting sales receipt:`, upsertError)
+            errorCount++
+          } else {
+            totalExpenses++
+          }
+          lineIndex++
+        }
+      }
+    }
+
+    // Helper function to process journal entry line items
+    const processJournalEntry = async (je: QBJournalEntry) => {
+      let lineIndex = 0
+      for (const line of je.Line) {
+        if (line.DetailType === 'JournalEntryLineDetail' && line.JournalEntryLineDetail) {
+          const accountRef = line.JournalEntryLineDetail.AccountRef
+          const postingType = line.JournalEntryLineDetail.PostingType
+          const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
+          const transactionId = `journalentry_${je.Id}_line${lineId}`
+
+          // For journal entries, Credit to income = income, Debit to expense = expense
+          // We store both and let the P&L sort it out by account type
+          const { error: upsertError } = await supabaseClient
+            .from('qb_expense')
+            .upsert({
+              qb_transaction_id: transactionId,
+              transaction_type: `JournalEntry-${postingType}`,
+              transaction_date: je.TxnDate,
+              vendor_name: null,
+              category: accountRef.name,
+              account_id: accountRef.value,
+              account_name: accountRef.name,
+              description: line.Description || je.PrivateNote || `JE #${je.DocNumber || je.Id}`,
+              amount: line.Amount,
+              imported_at: now,
+              sync_token: je.SyncToken,
+              qb_entity_type: 'JournalEntry',
+              qb_entity_id: je.Id,
+              qb_line_id: lineId
+            }, {
+              onConflict: 'qb_transaction_id'
+            })
+
+          if (upsertError) {
+            console.error(`Error upserting journal entry:`, upsertError)
+            errorCount++
+          } else {
+            totalExpenses++
+          }
+          lineIndex++
+        }
+      }
+    }
+
     // ============================================
     // Fetch Purchase transactions with pagination
     // ============================================
@@ -302,6 +492,117 @@ Deno.serve(async (req) => {
       console.error('Error fetching bills:', err.message)
     }
 
+    // ============================================
+    // Fetch Invoice transactions with pagination (Income)
+    // ============================================
+    console.log('Fetching Invoice transactions...')
+    let invoiceStartPosition = 1
+    let totalInvoices = 0
+
+    try {
+      while (true) {
+        const invoiceQuery = `SELECT * FROM Invoice WHERE TxnDate >= '${startDate}' ORDERBY TxnDate DESC STARTPOSITION ${invoiceStartPosition} MAXRESULTS ${PAGE_SIZE}`
+
+        const invoiceResult = await qbApiRequest<QBQueryResponse<QBInvoice>>(
+          connection,
+          'GET',
+          `query?query=${encodeURIComponent(invoiceQuery)}`
+        )
+
+        const invoices = invoiceResult.QueryResponse.Invoice || []
+        console.log(`Fetched ${invoices.length} Invoice transactions (starting at ${invoiceStartPosition})`)
+
+        if (invoices.length === 0) break
+
+        for (const invoice of invoices) {
+          await processInvoice(invoice)
+        }
+
+        totalInvoices += invoices.length
+
+        if (invoices.length < PAGE_SIZE) break
+
+        invoiceStartPosition += PAGE_SIZE
+      }
+      console.log(`Total Invoice transactions fetched: ${totalInvoices}`)
+    } catch (err: any) {
+      console.error('Error fetching invoices:', err.message)
+    }
+
+    // ============================================
+    // Fetch SalesReceipt transactions with pagination (Income)
+    // ============================================
+    console.log('Fetching SalesReceipt transactions...')
+    let salesReceiptStartPosition = 1
+    let totalSalesReceipts = 0
+
+    try {
+      while (true) {
+        const salesReceiptQuery = `SELECT * FROM SalesReceipt WHERE TxnDate >= '${startDate}' ORDERBY TxnDate DESC STARTPOSITION ${salesReceiptStartPosition} MAXRESULTS ${PAGE_SIZE}`
+
+        const salesReceiptResult = await qbApiRequest<QBQueryResponse<QBSalesReceipt>>(
+          connection,
+          'GET',
+          `query?query=${encodeURIComponent(salesReceiptQuery)}`
+        )
+
+        const salesReceipts = salesReceiptResult.QueryResponse.SalesReceipt || []
+        console.log(`Fetched ${salesReceipts.length} SalesReceipt transactions (starting at ${salesReceiptStartPosition})`)
+
+        if (salesReceipts.length === 0) break
+
+        for (const receipt of salesReceipts) {
+          await processSalesReceipt(receipt)
+        }
+
+        totalSalesReceipts += salesReceipts.length
+
+        if (salesReceipts.length < PAGE_SIZE) break
+
+        salesReceiptStartPosition += PAGE_SIZE
+      }
+      console.log(`Total SalesReceipt transactions fetched: ${totalSalesReceipts}`)
+    } catch (err: any) {
+      console.error('Error fetching sales receipts:', err.message)
+    }
+
+    // ============================================
+    // Fetch JournalEntry transactions with pagination
+    // ============================================
+    console.log('Fetching JournalEntry transactions...')
+    let jeStartPosition = 1
+    let totalJournalEntries = 0
+
+    try {
+      while (true) {
+        const jeQuery = `SELECT * FROM JournalEntry WHERE TxnDate >= '${startDate}' ORDERBY TxnDate DESC STARTPOSITION ${jeStartPosition} MAXRESULTS ${PAGE_SIZE}`
+
+        const jeResult = await qbApiRequest<QBQueryResponse<QBJournalEntry>>(
+          connection,
+          'GET',
+          `query?query=${encodeURIComponent(jeQuery)}`
+        )
+
+        const journalEntries = jeResult.QueryResponse.JournalEntry || []
+        console.log(`Fetched ${journalEntries.length} JournalEntry transactions (starting at ${jeStartPosition})`)
+
+        if (journalEntries.length === 0) break
+
+        for (const je of journalEntries) {
+          await processJournalEntry(je)
+        }
+
+        totalJournalEntries += journalEntries.length
+
+        if (journalEntries.length < PAGE_SIZE) break
+
+        jeStartPosition += PAGE_SIZE
+      }
+      console.log(`Total JournalEntry transactions fetched: ${totalJournalEntries}`)
+    } catch (err: any) {
+      console.error('Error fetching journal entries:', err.message)
+    }
+
     // Log the sync
     await logSync(
       supabaseClient,
@@ -317,8 +618,13 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Synced ${totalExpenses} expense transactions from QuickBooks`,
-        expenseCount: totalExpenses,
+        message: `Synced ${totalExpenses} transactions from QuickBooks (${totalPurchases} purchases, ${totalBills} bills, ${totalInvoices} invoices, ${totalSalesReceipts} sales receipts, ${totalJournalEntries} journal entries)`,
+        transactionCount: totalExpenses,
+        purchases: totalPurchases,
+        bills: totalBills,
+        invoices: totalInvoices,
+        salesReceipts: totalSalesReceipts,
+        journalEntries: totalJournalEntries,
         errors: errorCount,
         startDate: startDate
       }),
