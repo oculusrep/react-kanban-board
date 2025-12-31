@@ -1,0 +1,284 @@
+// Supabase Edge Function: Sync Expenses from QuickBooks
+// Pulls Purchase transactions and Bills from QBO and stores them in qb_expense table
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+  getQBConnection,
+  refreshTokenIfNeeded,
+  qbApiRequest,
+  logSync
+} from '../_shared/quickbooks.ts'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+interface QBPurchaseLine {
+  Amount: number
+  DetailType: string
+  AccountBasedExpenseLineDetail?: {
+    AccountRef: { value: string; name: string }
+  }
+  Description?: string
+}
+
+interface QBPurchase {
+  Id: string
+  TxnDate: string
+  TotalAmt: number
+  EntityRef?: { name: string; value: string }
+  Line: QBPurchaseLine[]
+  PrivateNote?: string
+  PaymentType?: string
+}
+
+interface QBBill {
+  Id: string
+  TxnDate: string
+  TotalAmt: number
+  VendorRef?: { name: string; value: string }
+  Line: QBPurchaseLine[]
+  PrivateNote?: string
+}
+
+interface QBQueryResponse<T> {
+  QueryResponse: {
+    Purchase?: T[]
+    Bill?: T[]
+    startPosition?: number
+    maxResults?: number
+    totalCount?: number
+  }
+}
+
+Deno.serve(async (req) => {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    // Verify authentication
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      )
+    }
+
+    // Parse request body for options
+    let startDate = '2025-01-01'  // Default to 2025
+    let fullSync = false
+
+    if (req.method === 'POST') {
+      try {
+        const body = await req.json()
+        if (body.startDate) startDate = body.startDate
+        if (body.fullSync) fullSync = body.fullSync
+      } catch {
+        // Ignore JSON parse errors, use defaults
+      }
+    }
+
+    // Create Supabase client
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    )
+
+    // Verify user is authenticated and is admin
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
+
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid token' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      )
+    }
+
+    // Check admin role
+    const { data: userData, error: roleError } = await supabaseClient
+      .from('user')
+      .select('ovis_role')
+      .eq('auth_user_id', user.id)
+      .single()
+
+    if (roleError || userData?.ovis_role !== 'admin') {
+      return new Response(
+        JSON.stringify({ error: 'Admin access required' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
+      )
+    }
+
+    // Get QB connection
+    let connection = await getQBConnection(supabaseClient)
+    if (!connection) {
+      return new Response(
+        JSON.stringify({ error: 'QuickBooks not connected' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
+    }
+
+    // Refresh token if needed
+    connection = await refreshTokenIfNeeded(supabaseClient, connection)
+
+    console.log(`Syncing expenses from QuickBooks since ${startDate}...`)
+
+    let totalExpenses = 0
+    let errorCount = 0
+    const now = new Date().toISOString()
+
+    // ============================================
+    // Fetch Purchase transactions (checks, credit cards, etc.)
+    // ============================================
+    console.log('Fetching Purchase transactions...')
+
+    const purchaseQuery = `SELECT * FROM Purchase WHERE TxnDate >= '${startDate}' ORDERBY TxnDate DESC MAXRESULTS 1000`
+
+    try {
+      const purchaseResult = await qbApiRequest<QBQueryResponse<QBPurchase>>(
+        connection,
+        'GET',
+        `query?query=${encodeURIComponent(purchaseQuery)}`
+      )
+
+      const purchases = purchaseResult.QueryResponse.Purchase || []
+      console.log(`Found ${purchases.length} Purchase transactions`)
+
+      for (const purchase of purchases) {
+        // Each purchase can have multiple line items with different accounts
+        for (const line of purchase.Line) {
+          if (line.DetailType === 'AccountBasedExpenseLineDetail' && line.AccountBasedExpenseLineDetail) {
+            const accountRef = line.AccountBasedExpenseLineDetail.AccountRef
+
+            const transactionId = `purchase_${purchase.Id}_${accountRef.value}`
+
+            const { error: upsertError } = await supabaseClient
+              .from('qb_expense')
+              .upsert({
+                qb_transaction_id: transactionId,
+                transaction_type: 'Purchase',
+                transaction_date: purchase.TxnDate,
+                vendor_name: purchase.EntityRef?.name || null,
+                category: accountRef.name,
+                account_id: accountRef.value,
+                account_name: accountRef.name,
+                description: line.Description || purchase.PrivateNote || null,
+                amount: line.Amount,
+                imported_at: now
+              }, {
+                onConflict: 'qb_transaction_id'
+              })
+
+            if (upsertError) {
+              console.error(`Error upserting purchase expense:`, upsertError)
+              errorCount++
+            } else {
+              totalExpenses++
+            }
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error('Error fetching purchases:', err.message)
+    }
+
+    // ============================================
+    // Fetch Bills (vendor invoices)
+    // ============================================
+    console.log('Fetching Bill transactions...')
+
+    const billQuery = `SELECT * FROM Bill WHERE TxnDate >= '${startDate}' ORDERBY TxnDate DESC MAXRESULTS 1000`
+
+    try {
+      const billResult = await qbApiRequest<QBQueryResponse<QBBill>>(
+        connection,
+        'GET',
+        `query?query=${encodeURIComponent(billQuery)}`
+      )
+
+      const bills = billResult.QueryResponse.Bill || []
+      console.log(`Found ${bills.length} Bill transactions`)
+
+      for (const bill of bills) {
+        // Each bill can have multiple line items
+        for (const line of bill.Line) {
+          if (line.DetailType === 'AccountBasedExpenseLineDetail' && line.AccountBasedExpenseLineDetail) {
+            const accountRef = line.AccountBasedExpenseLineDetail.AccountRef
+
+            const transactionId = `bill_${bill.Id}_${accountRef.value}`
+
+            const { error: upsertError } = await supabaseClient
+              .from('qb_expense')
+              .upsert({
+                qb_transaction_id: transactionId,
+                transaction_type: 'Bill',
+                transaction_date: bill.TxnDate,
+                vendor_name: bill.VendorRef?.name || null,
+                category: accountRef.name,
+                account_id: accountRef.value,
+                account_name: accountRef.name,
+                description: line.Description || bill.PrivateNote || null,
+                amount: line.Amount,
+                imported_at: now
+              }, {
+                onConflict: 'qb_transaction_id'
+              })
+
+            if (upsertError) {
+              console.error(`Error upserting bill expense:`, upsertError)
+              errorCount++
+            } else {
+              totalExpenses++
+            }
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error('Error fetching bills:', err.message)
+    }
+
+    // Log the sync
+    await logSync(
+      supabaseClient,
+      'expense',
+      'inbound',
+      errorCount === 0 ? 'success' : 'failed',
+      undefined,
+      'qb_expense',
+      undefined,
+      errorCount > 0 ? `${errorCount} expenses failed to sync` : undefined
+    )
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: `Synced ${totalExpenses} expense transactions from QuickBooks`,
+        expenseCount: totalExpenses,
+        errors: errorCount,
+        startDate: startDate
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+
+  } catch (error: any) {
+    console.error('Sync expenses error:', error)
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: error.message || 'Failed to sync expenses'
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    )
+  }
+})

@@ -1,8 +1,9 @@
 # QuickBooks Online Integration Specification
 
 **Document Created:** December 5, 2025
-**Status:** In Progress - OAuth Flow Ready
-**Last Step Completed:** OAuth Edge Functions created, database tables created
+**Last Updated:** December 30, 2025
+**Status:** Blocked - Awaiting Intuit Production Approval
+**Last Step Completed:** Invoice sync working in sandbox; Production questionnaire submitted but rejected
 
 ---
 
@@ -320,15 +321,49 @@ Stores imported expenses from QBO.
 
 ---
 
+## Current Status (December 30, 2025)
+
+### What's Working (Sandbox)
+- ✅ OAuth flow complete (connect/callback Edge Functions deployed)
+- ✅ QuickBooks settings page in Admin section
+- ✅ Invoice creation via `quickbooks-sync-invoice` Edge Function
+- ✅ Invoice linking (matches `orep_invoice` to existing QBO invoices by DocNumber)
+- ✅ QB sync button in Payment Dashboard table
+- ✅ QB sync status display (green checkmark when synced)
+- ✅ Customer auto-creation in QBO
+- ✅ Service item auto-creation ("Brokerage Fee")
+
+### Production Migration - BLOCKED
+
+**Issue:** Intuit Developer Portal compliance questionnaire rejected the app.
+
+**Root Cause:** The questionnaire forces apps that "create invoices" into the "Payments/Money Movement" regulated industry pathway, which requires payment processing compliance. OVIS only creates invoice **documents** using the Accounting API - it does not process payments.
+
+**Action Taken:** Submitted clarification email to Intuit Developer Support (Reference: Q-063543) explaining:
+- OVIS only uses the Accounting API (not Payments API)
+- Invoice documents are created for bookkeeping only
+- Actual payments are received via wire/check outside the application
+- Requested guidance on correct compliance pathway
+
+**Timeline:** Intuit gave 1 week to respond (email sent December 30, 2025)
+
+### Next Steps (After Intuit Responds)
+1. If approved: Update Supabase secrets with production Client ID/Secret
+2. Clear sandbox connection from `qb_connection` table
+3. Re-authorize OVIS to connect to production QBO
+4. Test invoice linking with production data
+
+---
+
 ## Resume Point
 
-**Where we left off:** OAuth flow backend is complete. Database tables created.
+**Where we left off:** Production migration blocked pending Intuit response.
 
-**Next session should start with:**
-1. Configure OAuth redirect URI in Intuit Developer Portal (see above)
-2. Deploy Edge Functions: `npx supabase functions deploy quickbooks-connect` and `npx supabase functions deploy quickbooks-callback`
-3. Build the frontend QuickBooks settings page with Connect button
-4. Test the OAuth flow end-to-end
+**When Intuit approves:**
+1. Get production credentials from Intuit Developer Portal
+2. Update secrets: `supabase secrets set QUICKBOOKS_CLIENT_ID=<prod_id>` and `QUICKBOOKS_CLIENT_SECRET=<prod_secret>`
+3. Set environment: `supabase secrets set QUICKBOOKS_ENVIRONMENT=production`
+4. Clear sandbox connection and re-authorize
 
 ---
 
@@ -524,6 +559,228 @@ Current implementation makes 2-4 API calls per invoice:
 5. (Optional) Send invoice
 
 This is well within limits for normal use. For bulk operations (migrating many invoices), add delays between syncs.
+
+---
+
+## Phase 2: Budget & P&L Module (Future)
+
+This feature will import expenses from QuickBooks and allow budget tracking by Chart of Accounts categories.
+
+### Overview
+
+The Budget & P&L module will:
+1. Import all expenses from QuickBooks (initially 2025, then ongoing sync)
+2. Display expenses organized by QBO Chart of Accounts categories
+3. Allow setting budget targets per category
+4. Show budget vs actual comparisons
+5. Provide drill-down into individual transactions
+
+### Data Flow
+
+```
+QuickBooks Online
+    └── Expenses (Purchase transactions)
+    └── Chart of Accounts (Categories)
+            │
+            ▼
+    Supabase Edge Function (quickbooks-sync-expenses)
+            │
+            ▼
+    qb_expense table (stores transaction details)
+    qb_account table (stores Chart of Accounts)
+            │
+            ▼
+    OVIS Budget Module UI
+        ├── Category summaries with budget targets
+        ├── Monthly/quarterly/annual views
+        └── Transaction drill-down
+```
+
+### QBO API Endpoints Needed
+
+1. **Chart of Accounts**: `GET /v3/company/{realmId}/query?query=SELECT * FROM Account WHERE AccountType IN ('Expense', 'Cost of Goods Sold')`
+2. **Purchases/Expenses**: `GET /v3/company/{realmId}/query?query=SELECT * FROM Purchase WHERE TxnDate >= '2025-01-01'`
+3. **Bills**: `GET /v3/company/{realmId}/query?query=SELECT * FROM Bill WHERE TxnDate >= '2025-01-01'`
+
+### Database Tables (To Be Created)
+
+#### `qb_account` (Chart of Accounts cache)
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | Primary key |
+| qb_account_id | text | QBO Account ID |
+| name | text | Account name |
+| account_type | text | 'Expense', 'COGS', etc. |
+| account_sub_type | text | Sub-classification |
+| fully_qualified_name | text | Full hierarchy path |
+| active | boolean | Is account active |
+| budget_amount | numeric | Monthly budget target (OVIS-only field) |
+| last_synced_at | timestamp | — |
+
+#### `qb_expense` (Already defined above, stores individual transactions)
+
+### UI Components (To Be Built)
+
+1. **Budget Dashboard Page** (`/admin/budget`)
+   - Summary cards: Total budget, Total spent, Remaining
+   - Category breakdown table with progress bars
+   - Monthly trend chart
+
+2. **Category Detail View**
+   - All transactions for selected category
+   - Filterable by date range, vendor
+   - Edit budget target
+
+3. **Expense Sync Controls**
+   - "Sync Expenses" button (manual trigger)
+   - Last sync timestamp
+   - Sync status/errors
+
+### Implementation Order
+
+1. Create `qb_account` table and sync Chart of Accounts
+2. Build `quickbooks-sync-expenses` Edge Function
+3. Initial import of 2025 expenses
+4. Create Budget Dashboard page UI
+5. Add budget target editing
+6. Build category drill-down view
+7. Set up weekly background sync (Supabase cron)
+
+### Permissions
+
+- **View Budget/P&L**: Admin only
+- **Edit Budget Targets**: Admin only
+- **Trigger Expense Sync**: Admin only
+
+---
+
+## Phase 2b: Expense Recategorization (Pending Production)
+
+**Status:** Documented - Build when production access granted
+
+This feature allows users to recategorize expenses in OVIS and sync the changes back to QuickBooks.
+
+### Use Case
+
+When reviewing expenses in the Budget Dashboard, users may notice transactions categorized to the wrong Chart of Accounts category. Instead of switching to QuickBooks to fix it, users can change the category directly in OVIS and have it sync back.
+
+### Technical Requirements
+
+#### SyncToken Tracking
+
+QuickBooks uses optimistic locking via a `SyncToken` field. To update any entity in QBO:
+1. You must include the current `SyncToken` value in the update request
+2. If someone else modified the record, QBO rejects your update with a "stale object" error
+3. You must then re-fetch the entity to get the new `SyncToken` and retry
+
+**Database Changes Required:**
+```sql
+ALTER TABLE qb_expense ADD COLUMN sync_token TEXT;
+ALTER TABLE qb_expense ADD COLUMN qb_entity_type TEXT; -- 'Purchase' or 'Bill'
+ALTER TABLE qb_expense ADD COLUMN qb_entity_id TEXT;   -- The actual Purchase/Bill ID (not line item)
+```
+
+Currently `qb_transaction_id` stores a composite like `purchase_123_456` (type + entity ID + account ID). We need to split this to track the actual entity for updates.
+
+#### API Endpoint for Updates
+
+**Purchase Update:**
+```
+POST /v3/company/{realmId}/purchase
+Content-Type: application/json
+
+{
+  "Id": "123",
+  "SyncToken": "0",
+  "Line": [...],  // Full line array with updated AccountRef
+  ...other required fields
+}
+```
+
+**Bill Update:**
+```
+POST /v3/company/{realmId}/bill
+Content-Type: application/json
+
+{
+  "Id": "456",
+  "SyncToken": "1",
+  "Line": [...],
+  ...other required fields
+}
+```
+
+Note: QBO requires sending the FULL entity for updates, not just the changed fields.
+
+### Implementation Plan
+
+#### 1. Schema Updates
+- Add `sync_token`, `qb_entity_type`, `qb_entity_id` columns to `qb_expense`
+- Update `quickbooks-sync-expenses` to populate these fields during import
+
+#### 2. Edge Function: `quickbooks-update-expense`
+- Accept: expense ID, new account ID
+- Fetch current expense from OVIS to get `qb_entity_id` and `sync_token`
+- Fetch full entity from QBO (to get current state)
+- Update the line item's `AccountRef`
+- POST updated entity to QBO
+- Handle stale token errors with retry logic
+- Update `qb_expense` record with new `sync_token` and `account_id`
+
+#### 3. UI Changes to Budget Dashboard
+- Add "Edit Category" button/dropdown to expense rows
+- Show dropdown of available QBO accounts (from `qb_account` table)
+- Call update function on selection
+- Show success/error feedback
+- Refresh expense data after update
+
+### Why Wait for Production
+
+1. **Sandbox data is fake** - Can't meaningfully test recategorization workflow with test transactions
+2. **Real data reveals real needs** - Users will identify actual miscategorization patterns
+3. **SyncToken debugging** - Easier to debug with real data and real concurrent editing scenarios
+4. **API behavior verification** - Production API may have subtle differences in validation
+
+### Resume Point for Phase 2b
+
+**When to build:** After production access is granted and basic expense sync is verified working.
+
+**Build order:**
+1. Run expense sync with production data
+2. Let users review for ~1 week to identify recategorization needs
+3. If recategorization is needed:
+   - Apply schema migration (add sync_token columns)
+   - Re-run expense sync to populate new columns
+   - Build `quickbooks-update-expense` Edge Function
+   - Add UI controls to Budget Dashboard
+   - Test with real expenses
+
+---
+
+## Phase 2 Status Summary
+
+| Component | Status | Location |
+|-----------|--------|----------|
+| `qb_account` table migration | ⚠️ Created, needs manual apply | `supabase/migrations/20251230_create_qb_account_table.sql` |
+| `quickbooks-sync-accounts` function | ✅ Deployed | `supabase/functions/quickbooks-sync-accounts/` |
+| `quickbooks-sync-expenses` function | ✅ Deployed | `supabase/functions/quickbooks-sync-expenses/` |
+| Budget Dashboard UI | ✅ Built | `src/pages/BudgetDashboardPage.tsx` |
+| Route and navigation | ✅ Added | `/admin/budget` in `App.tsx`, links in `Navbar.tsx` |
+| Expense recategorization | 📝 Documented | This section - build after production access |
+
+### Manual Steps Required
+
+Before testing Budget Dashboard:
+
+1. **Apply the qb_account migration** via Supabase Dashboard:
+   - Go to SQL Editor
+   - Run contents of `supabase/migrations/20251230_create_qb_account_table.sql`
+
+2. **Connect to QuickBooks** (sandbox or production)
+
+3. **Sync Accounts** using the "Sync Accounts" button in Budget Dashboard
+
+4. **Sync Expenses** using the "Sync Expenses" button
 
 ---
 

@@ -44,6 +44,7 @@ import EmailClassificationReviewPage from "./pages/EmailClassificationReviewPage
 import FlaggedEmailQueuePage from "./pages/FlaggedEmailQueuePage";
 import HunterDashboardPage from "./pages/HunterDashboardPage";
 import HunterLeadDetailsPage from "./pages/HunterLeadDetailsPage";
+import BudgetDashboardPage from "./pages/BudgetDashboardPage";
 
 function ProtectedLayout() {
   const location = useLocation();
@@ -119,6 +120,7 @@ function App() {
           <Route path="kpi-dashboard" element={<CoachRoute><KPIDashboardPage /></CoachRoute>} />
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
           <Route path="admin/quickbooks" element={<AdminRoute><QuickBooksAdminPage /></AdminRoute>} />
+          <Route path="admin/budget" element={<AdminRoute><BudgetDashboardPage /></AdminRoute>} />
           <Route path="admin/gmail" element={<AdminRoute><GmailSettingsPage /></AdminRoute>} />
           <Route path="admin/agent-rules" element={<AdminRoute><AgentRulesPage /></AdminRoute>} />
           <Route path="admin/email-review" element={<AdminRoute><EmailClassificationReviewPage /></AdminRoute>} />
