@@ -114,12 +114,15 @@ export default function BudgetDashboardPage() {
       const pageSize = 1000;
 
       while (true) {
+        // Order by transaction_date DESC, then by id for consistent pagination
+        // (per Supabase pagination best practices in project docs)
         const { data: expenseData, error: expenseError } = await supabase
           .from('qb_expense')
           .select('*')
           .gte('transaction_date', startDate)
           .lt('transaction_date', endDate)
           .order('transaction_date', { ascending: false })
+          .order('id', { ascending: true })
           .range(page * pageSize, (page + 1) * pageSize - 1);
 
         if (expenseError) throw expenseError;
