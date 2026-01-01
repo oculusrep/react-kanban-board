@@ -16,7 +16,8 @@ OVIS integrates with QuickBooks Online (QBO) for:
 |-------|---------|
 | `qb_connection` | OAuth tokens and connection status |
 | `qb_account` | Chart of accounts (synced from QBO) |
-| `qb_expense` | Expense transactions (synced from QBO) |
+| `qb_item` | Items/products with income account mappings |
+| `qb_expense` | All transactions (synced from QBO) |
 | `qb_sync_log` | Audit trail of sync operations |
 
 ### Edge Functions
@@ -26,7 +27,8 @@ OVIS integrates with QuickBooks Online (QBO) for:
 | `quickbooks-auth` | OAuth flow initiation |
 | `quickbooks-callback` | OAuth callback handler |
 | `quickbooks-sync-accounts` | Pull chart of accounts from QBO |
-| `quickbooks-sync-expenses` | Pull Purchase/Bill transactions from QBO |
+| `quickbooks-sync-items` | Pull items/products with income account mappings |
+| `quickbooks-sync-expenses` | Pull all transaction types from QBO |
 | `quickbooks-update-expense` | Push category changes back to QBO |
 | `quickbooks-reconcile` | Payment reconciliation |
 | `quickbooks-create-invoice` | Push invoices to QBO |
@@ -103,20 +105,31 @@ qb_account:
 
 ---
 
-## Expense Sync
+## Transaction Sync
 
 ### Transaction Types Pulled
 
+**Expenses:**
 1. **Purchase** - Credit card charges, checks, cash expenses
 2. **Bill** - Vendor bills/invoices
 
+**Income:**
+3. **Invoice** - Customer invoices (income)
+4. **SalesReceipt** - Point-of-sale transactions (income)
+
+**Both:**
+5. **JournalEntry** - Manual journal entries (can be income or expense)
+
 ### Line Item Handling
 
-Each Purchase/Bill can have multiple line items. We store each line as a separate expense record:
+Each transaction can have multiple line items. We store each line as a separate record:
 
 ```
 Transaction ID format: {type}_{entity_id}_line{line_num}
-Example: purchase_123_line1, bill_456_line2
+Examples:
+  purchase_123_line1, bill_456_line2
+  invoice_789_line1, salesreceipt_101_line1
+  journalentry_202_line1
 ```
 
 ### Data Stored
@@ -124,19 +137,30 @@ Example: purchase_123_line1, bill_456_line2
 ```sql
 qb_expense:
   - qb_transaction_id (unique composite ID)
-  - transaction_type (Purchase or Bill)
+  - transaction_type (Purchase, Bill, Invoice, SalesReceipt, JournalEntry-Credit, JournalEntry-Debit)
   - transaction_date
-  - vendor_name
-  - account_id (stable QBO account ID for matching)
+  - vendor_name (vendor for expenses, customer for income)
+  - account_id (QBO account ID, or Item ID for invoices - see Items section)
   - account_name (display fallback)
   - category (display fallback)
   - description
   - amount
   - sync_token (for optimistic locking on updates)
-  - qb_entity_type (Purchase or Bill)
+  - qb_entity_type (Purchase, Bill, Invoice, SalesReceipt, JournalEntry)
   - qb_entity_id (parent transaction ID in QBO)
   - qb_line_id (line number within transaction)
 ```
+
+### Invoice Income Mapping
+
+**Important:** QuickBooks Invoices don't reference Income accounts directly. They reference **Items** (products/services), and each Item has an `IncomeAccountRef` that specifies which Income account to use.
+
+When syncing invoices:
+1. The `account_id` stored is actually the **Item ID**, not an Account ID
+2. We sync Items separately via `quickbooks-sync-items`
+3. The P&L display code looks up the Item to find the real Income account
+
+This is why the Items sync is required for income to display correctly.
 
 ### Pagination
 
@@ -239,6 +263,28 @@ ALTER TABLE qb_expense ADD COLUMN qb_entity_id TEXT;
 ALTER TABLE qb_expense ADD COLUMN qb_line_id TEXT;
 ```
 
+### 20251231_add_qb_item_table.sql
+
+Creates table for Item-to-Income-Account mappings:
+```sql
+CREATE TABLE qb_item (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    qb_item_id TEXT NOT NULL UNIQUE,  -- QBO Item ID
+    name TEXT NOT NULL,
+    fully_qualified_name TEXT,
+    item_type TEXT,  -- 'Service', 'Inventory', 'NonInventory', etc.
+    active BOOLEAN DEFAULT true,
+    income_account_id TEXT,  -- QBO Account ID for income
+    income_account_name TEXT,
+    expense_account_id TEXT,  -- QBO Account ID for COGS/expense
+    expense_account_name TEXT,
+    description TEXT,
+    last_synced_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
 ---
 
 ## Common Operations
@@ -246,12 +292,13 @@ ALTER TABLE qb_expense ADD COLUMN qb_line_id TEXT;
 ### Initial Setup
 
 1. Configure environment variables in Supabase
-2. Run migrations
+2. Run migrations (including `20251231_add_qb_item_table.sql`)
 3. Deploy Edge Functions:
    ```bash
    npx supabase functions deploy quickbooks-auth --no-verify-jwt
    npx supabase functions deploy quickbooks-callback --no-verify-jwt
    npx supabase functions deploy quickbooks-sync-accounts --no-verify-jwt
+   npx supabase functions deploy quickbooks-sync-items --no-verify-jwt
    npx supabase functions deploy quickbooks-sync-expenses --no-verify-jwt
    npx supabase functions deploy quickbooks-update-expense --no-verify-jwt
    ```
@@ -263,29 +310,29 @@ ALTER TABLE qb_expense ADD COLUMN qb_line_id TEXT;
 3. Authorize in QBO popup
 4. Connection status shows "Connected"
 
-### Sync Chart of Accounts
+### Sync All Data
 
-1. Go to P&L Statement page
-2. Click "Sync Accounts"
-3. Pulls all Income, COGS, and Expense accounts
-
-### Sync Transactions
-
-1. Go to P&L Statement page
-2. Click "Sync Transactions"
-3. Pulls Purchase and Bill transactions for selected year
+1. Go to P&L Statement page (`/admin/budget`)
+2. Click **"Sync from QuickBooks"** button
+3. This single button syncs everything in order:
+   - Accounts (chart of accounts)
+   - Items (products/services with income account mappings)
+   - Transactions (purchases, bills, invoices, sales receipts, journal entries)
+4. Progress is shown during sync ("Syncing accounts...", "Syncing items...", etc.)
+5. Summary shows counts when complete
 
 ### After Changing Chart of Accounts in QBO
 
-Just click "Sync Accounts" - the P&L will reflect new names and hierarchy because matching is by stable `account_id`, not names.
+Just click "Sync from QuickBooks" - the P&L will reflect new names and hierarchy because matching is by stable `account_id`, not names.
 
 ### Full Refresh (if needed)
 
 If data is corrupted or you want a clean slate:
 ```sql
 TRUNCATE TABLE qb_expense;
+TRUNCATE TABLE qb_item;
 ```
-Then sync accounts and transactions.
+Then click "Sync from QuickBooks".
 
 ---
 
@@ -327,7 +374,8 @@ supabase/functions/
   quickbooks-auth/             # OAuth initiation
   quickbooks-callback/         # OAuth callback
   quickbooks-sync-accounts/    # Chart of accounts sync
-  quickbooks-sync-expenses/    # Transaction sync
+  quickbooks-sync-items/       # Items sync (for income mapping)
+  quickbooks-sync-expenses/    # Transaction sync (all types)
   quickbooks-update-expense/   # Recategorization
   quickbooks-reconcile/        # Payment reconciliation
   quickbooks-create-invoice/   # Invoice push
@@ -335,13 +383,14 @@ supabase/functions/
 supabase/migrations/
   20251208_create_quickbooks_tables.sql
   20251231_add_expense_recategorization.sql
+  20251231_add_qb_item_table.sql
 ```
 
 ---
 
-## Session History (December 31, 2025)
+## Session History
 
-### Work Completed
+### December 31, 2025
 
 1. **Fixed OAuth flow for production**
    - Added `--no-verify-jwt` flag for callback
@@ -373,3 +422,62 @@ supabase/migrations/
    - Uses stable `qb_account_id` (never changes) for matching
    - Account renames/reorganization in QBO reflect after account sync only
    - No need to re-sync transactions when structure changes
+
+### January 1, 2026
+
+7. **Added income transaction syncing**
+   - Added Invoice, SalesReceipt, and JournalEntry sync to `quickbooks-sync-expenses`
+   - Invoices store Item ID (not Account ID) - requires Items sync for proper mapping
+
+8. **Added Items sync for income account mapping**
+   - Created `qb_item` table to store Items with their income account references
+   - Created `quickbooks-sync-items` Edge Function
+   - Updated P&L display to look up Items and map to correct Income accounts
+
+9. **Consolidated sync buttons**
+   - Replaced 3 separate buttons with single "Sync from QuickBooks"
+   - Syncs accounts, items, and transactions in sequence
+   - Shows progress during sync
+
+10. **Improved transaction display**
+    - Removed 15-transaction limit
+    - Added scrollable container (max-height 384px) for long lists
+    - Sticky header stays visible while scrolling
+    - Shows total transaction count
+
+---
+
+## TODO / Known Issues
+
+**Pending: Run `qb_item` table migration**
+
+The `qb_item` table needs to be created in the database. Run this SQL in Supabase Dashboard > SQL Editor:
+
+```sql
+CREATE TABLE IF NOT EXISTS qb_item (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    qb_item_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    fully_qualified_name TEXT,
+    item_type TEXT,
+    active BOOLEAN DEFAULT true,
+    income_account_id TEXT,
+    income_account_name TEXT,
+    expense_account_id TEXT,
+    expense_account_name TEXT,
+    description TEXT,
+    last_synced_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS qb_item_income_account_idx ON qb_item (income_account_id);
+CREATE INDEX IF NOT EXISTS qb_item_active_idx ON qb_item (active) WHERE active = true;
+
+GRANT ALL ON qb_item TO service_role;
+GRANT SELECT ON qb_item TO authenticated;
+```
+
+**Testing needed:**
+- Verify invoice income appears under correct Income accounts after Items sync
+- Verify Commission Income and other income accounts show correct totals
