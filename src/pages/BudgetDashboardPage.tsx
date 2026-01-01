@@ -597,18 +597,19 @@ export default function BudgetDashboardPage() {
           <tr>
             <td colSpan={5} className="py-0 bg-blue-50/30">
               <div className="py-2" style={{ paddingLeft: `${40 + indent}px` }}>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-xs text-gray-500 uppercase">
-                      <th className="py-1 text-left font-medium">Date</th>
-                      <th className="py-1 text-left font-medium">Vendor</th>
-                      <th className="py-1 text-left font-medium">Description</th>
-                      <th className="py-1 text-right font-medium">Amount</th>
-                      <th className="py-1 text-center font-medium w-32">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {category.transactions.slice(0, 15).map((txn) => {
+                <div className="max-h-96 overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-blue-50">
+                      <tr className="text-xs text-gray-500 uppercase">
+                        <th className="py-1 text-left font-medium">Date</th>
+                        <th className="py-1 text-left font-medium">Vendor</th>
+                        <th className="py-1 text-left font-medium">Description</th>
+                        <th className="py-1 text-right font-medium">Amount</th>
+                        <th className="py-1 text-center font-medium w-32">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {category.transactions.map((txn) => {
                       const canRecategorize = !!txn.qb_entity_type && !!txn.qb_entity_id;
                       const isRecategorizing = recategorizingExpense === txn.id;
                       const isUpdating = updatingExpense === txn.id;
@@ -667,16 +668,15 @@ export default function BudgetDashboardPage() {
                           </td>
                         </tr>
                       );
-                    })}
-                    {category.transactions.length > 15 && (
-                      <tr className="border-t border-gray-100">
-                        <td colSpan={5} className="py-1.5 text-center text-gray-500 text-xs">
-                          ... and {category.transactions.length - 15} more transactions
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {category.transactions.length > 0 && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    {category.transactions.length} transaction{category.transactions.length !== 1 ? 's' : ''}
+                  </div>
+                )}
               </div>
             </td>
           </tr>
