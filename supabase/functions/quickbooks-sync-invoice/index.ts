@@ -45,11 +45,9 @@ serve(async (req) => {
     const token = authHeader.replace('Bearer ', '')
 
     // Use service role client for all database operations
-    // Note: Using SERVICE_ROLE_JWT because SUPABASE_SERVICE_ROLE_KEY uses new format
-    // that doesn't work with the Supabase client
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SERVICE_ROLE_JWT') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
 
     // Verify the token by checking if it's a valid JWT and getting user info
