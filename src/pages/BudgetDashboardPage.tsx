@@ -47,6 +47,13 @@ interface QBExpense {
   sync_token?: string;
 }
 
+interface QBItem {
+  qb_item_id: string;
+  name: string;
+  income_account_id: string | null;
+  income_account_name: string | null;
+}
+
 // Hierarchical structure for P&L display
 interface PLCategory {
   name: string;
@@ -76,6 +83,7 @@ export default function BudgetDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [accounts, setAccounts] = useState<QBAccount[]>([]);
+  const [items, setItems] = useState<QBItem[]>([]);
   const [expenses, setExpenses] = useState<QBExpense[]>([]);
   const [plSections, setPLSections] = useState<PLSection[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -98,7 +106,7 @@ export default function BudgetDashboardPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch accounts
+      // Fetch accounts (only active)
       const { data: accountData, error: accountError } = await supabase
         .from('qb_account')
         .select('*')
@@ -107,6 +115,17 @@ export default function BudgetDashboardPage() {
 
       if (accountError) throw accountError;
       setAccounts(accountData || []);
+
+      // Fetch items (for mapping invoice items to income accounts)
+      const { data: itemData, error: itemError } = await supabase
+        .from('qb_item')
+        .select('qb_item_id, name, income_account_id, income_account_name')
+        .eq('active', true);
+
+      if (itemError) {
+        console.warn('Could not fetch items (table may not exist yet):', itemError.message);
+      }
+      setItems(itemData || []);
 
       // Build date filter for expenses
       let startDate: string;
@@ -145,7 +164,7 @@ export default function BudgetDashboardPage() {
       }
 
       setExpenses(allExpenses);
-      buildPLStructure(accountData || [], allExpenses);
+      buildPLStructure(accountData || [], allExpenses, itemData || []);
     } catch (error: any) {
       console.error('Error fetching budget data:', error);
       setMessage({ type: 'error', text: error.message || 'Failed to load data' });
@@ -154,11 +173,33 @@ export default function BudgetDashboardPage() {
     }
   };
 
-  const buildPLStructure = (accountList: QBAccount[], expenseList: QBExpense[]) => {
-    // Group expenses by account
+  const buildPLStructure = (accountList: QBAccount[], expenseList: QBExpense[], itemList: QBItem[]) => {
+    // Build item-to-income-account map for Invoice/SalesReceipt transactions
+    // In QBO, Invoices reference Items (products/services), not accounts directly.
+    // Items have an IncomeAccountRef that maps to the actual Income account.
+    const itemToIncomeAccount = new Map<string, { accountId: string; accountName: string }>();
+    for (const item of itemList) {
+      if (item.income_account_id) {
+        itemToIncomeAccount.set(item.qb_item_id, {
+          accountId: item.income_account_id,
+          accountName: item.income_account_name || ''
+        });
+      }
+    }
+
+    // Group expenses by account, mapping invoice items to their income accounts
     const expensesByAccount = new Map<string, QBExpense[]>();
     for (const expense of expenseList) {
-      const accountId = expense.account_id;
+      let accountId = expense.account_id;
+
+      // For Invoice and SalesReceipt transactions, the account_id is actually an Item ID
+      // We need to look up the Item to get the real Income account
+      if ((expense.transaction_type === 'Invoice' || expense.transaction_type === 'SalesReceipt')
+          && itemToIncomeAccount.has(accountId)) {
+        const mapping = itemToIncomeAccount.get(accountId)!;
+        accountId = mapping.accountId;
+      }
+
       if (!expensesByAccount.has(accountId)) {
         expensesByAccount.set(accountId, []);
       }
@@ -289,7 +330,7 @@ export default function BudgetDashboardPage() {
     setPLSections(sections);
   };
 
-  const handleSyncAccounts = async () => {
+  const handleSyncAll = async () => {
     setSyncing(true);
     setMessage(null);
 
@@ -300,64 +341,56 @@ export default function BudgetDashboardPage() {
         return;
       }
 
-      const response = await fetch(
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`
+      };
+
+      // 1. Sync Accounts
+      setMessage({ type: 'success', text: 'Syncing accounts...' });
+      const accountsResponse = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quickbooks-sync-accounts`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
-          }
-        }
+        { method: 'POST', headers }
       );
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to sync accounts');
+      const accountsResult = await accountsResponse.json();
+      if (!accountsResponse.ok) {
+        throw new Error(accountsResult.error || 'Failed to sync accounts');
       }
 
-      setMessage({ type: 'success', text: result.message });
-      fetchData();
-    } catch (error: any) {
-      setMessage({ type: 'error', text: error.message || 'Sync failed' });
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  const handleSyncExpenses = async () => {
-    setSyncing(true);
-    setMessage(null);
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        setMessage({ type: 'error', text: 'You must be logged in' });
-        return;
+      // 2. Sync Items (for income account mapping)
+      setMessage({ type: 'success', text: 'Syncing items...' });
+      const itemsResponse = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quickbooks-sync-items`,
+        { method: 'POST', headers }
+      );
+      const itemsResult = await itemsResponse.json();
+      if (!itemsResponse.ok) {
+        // Don't fail entirely if items sync fails (table might not exist yet)
+        console.warn('Items sync failed:', itemsResult.error);
       }
 
-      const response = await fetch(
+      // 3. Sync Transactions
+      setMessage({ type: 'success', text: 'Syncing transactions...' });
+      const expensesResponse = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quickbooks-sync-expenses`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
-          },
-          body: JSON.stringify({
-            startDate: `${selectedYear}-01-01`
-          })
+          headers,
+          body: JSON.stringify({ startDate: `${selectedYear}-01-01` })
         }
       );
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to sync expenses');
+      const expensesResult = await expensesResponse.json();
+      if (!expensesResponse.ok) {
+        throw new Error(expensesResult.error || 'Failed to sync transactions');
       }
 
-      setMessage({ type: 'success', text: result.message });
+      // Build summary message
+      const parts = [];
+      if (accountsResult.accountCount) parts.push(`${accountsResult.accountCount} accounts`);
+      if (itemsResult.itemCount) parts.push(`${itemsResult.itemCount} items`);
+      if (expensesResult.transactionCount) parts.push(`${expensesResult.transactionCount} transactions`);
+
+      setMessage({ type: 'success', text: `Synced ${parts.join(', ')} from QuickBooks` });
       fetchData();
     } catch (error: any) {
       setMessage({ type: 'error', text: error.message || 'Sync failed' });
@@ -715,24 +748,14 @@ export default function BudgetDashboardPage() {
               <p className="mt-1 text-gray-600">{periodLabel}</p>
             </div>
 
-            <div className="flex gap-2">
-              <button
-                onClick={handleSyncAccounts}
-                disabled={syncing}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-              >
-                <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-                Sync Accounts
-              </button>
-              <button
-                onClick={handleSyncExpenses}
-                disabled={syncing}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-              >
-                <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-                Sync Transactions
-              </button>
-            </div>
+            <button
+              onClick={handleSyncAll}
+              disabled={syncing}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Syncing...' : 'Sync from QuickBooks'}
+            </button>
           </div>
         </div>
 
