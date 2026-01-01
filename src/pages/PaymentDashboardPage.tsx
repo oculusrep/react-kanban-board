@@ -28,10 +28,10 @@ const PaymentDashboardPage: React.FC = () => {
 
   const [filters, setFilters] = useState<PaymentDashboardFilters>({
     searchQuery: '',
-    paymentStatus: 'all',
+    paymentStatus: 'pending',
     payoutStatus: 'all',
     dateRange: { start: null, end: null },
-    dealStages: [],
+    dealStages: ['Booked', 'Executed Payable', 'Closed Paid'],
     dealId: null,
   });
 
