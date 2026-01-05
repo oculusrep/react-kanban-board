@@ -73,6 +73,14 @@ serve(async (req) => {
       )
     }
 
+    console.log('Looking up payment with ID:', paymentId, 'Type:', typeof paymentId, 'Length:', paymentId?.length)
+
+    // Quick test: try to count all payments first
+    const { count: paymentCount, error: countError } = await supabaseClient
+      .from('payment')
+      .select('*', { count: 'exact', head: true })
+    console.log('Total payments in database:', paymentCount, 'Count error:', countError?.message)
+
     // Get the QBO connection
     let connection = await getQBConnection(supabaseClient)
     if (!connection) {
@@ -127,9 +135,13 @@ serve(async (req) => {
       .single()
 
     if (paymentError || !payment) {
-      console.error('Payment not found:', paymentError)
+      console.error('Payment not found - ID:', paymentId, 'Error:', paymentError?.message, 'Code:', paymentError?.code)
       return new Response(
-        JSON.stringify({ error: 'Payment not found' }),
+        JSON.stringify({
+          error: 'Payment not found',
+          details: paymentError?.message || 'No payment with this ID exists',
+          paymentId: paymentId
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
       )
     }
