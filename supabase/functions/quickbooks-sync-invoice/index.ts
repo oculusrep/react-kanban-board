@@ -118,8 +118,7 @@ serve(async (req) => {
           bill_to_phone,
           client:client_id (
             id,
-            client_name,
-            email
+            client_name
           ),
           property:property_id (
             id,
@@ -235,11 +234,11 @@ serve(async (req) => {
     const customerId = await findOrCreateCustomer(
       connection,
       client.client_name,
-      client.email,
+      deal.bill_to_email,
       {
         companyName: deal.bill_to_company_name || client.client_name,
         contactName: deal.bill_to_contact_name,
-        email: deal.bill_to_email || client.email,
+        email: deal.bill_to_email,
         street: deal.bill_to_address_street,
         city: deal.bill_to_address_city,
         state: deal.bill_to_address_state,
@@ -290,8 +289,8 @@ serve(async (req) => {
     }
 
     // Add bill-to email for sending
-    if (deal.bill_to_email || client.email) {
-      invoice.BillEmail = { Address: deal.bill_to_email || client.email }
+    if (deal.bill_to_email) {
+      invoice.BillEmail = { Address: deal.bill_to_email }
     }
 
     // Add memo with deal/property info
@@ -335,9 +334,9 @@ serve(async (req) => {
 
     // Optionally send the invoice via email
     let emailSent = false
-    if (sendEmail && (deal.bill_to_email || client.email)) {
+    if (sendEmail && deal.bill_to_email) {
       try {
-        await sendInvoice(connection, qbInvoice.Id, deal.bill_to_email || client.email)
+        await sendInvoice(connection, qbInvoice.Id, deal.bill_to_email)
         emailSent = true
 
         // Update payment to mark invoice as sent
