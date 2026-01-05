@@ -200,9 +200,9 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
           />
           {/* QB Sync Status/Button */}
           {(payment as any).qb_invoice_id ? (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-green-100 text-green-700" title={`QB Invoice #${(payment as any).qb_invoice_number || (payment as any).qb_invoice_id}`}>
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-green-100 text-green-700" title={`QB Invoice ID: ${(payment as any).qb_invoice_id}`}>
               <CheckCircleIcon className="w-3 h-3" />
-              QB
+              QB #{(payment as any).qb_invoice_number || (payment as any).qb_invoice_id}
             </span>
           ) : (
             <button
