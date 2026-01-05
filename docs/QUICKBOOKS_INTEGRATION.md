@@ -31,7 +31,8 @@ OVIS integrates with QuickBooks Online (QBO) for:
 | `quickbooks-sync-expenses` | Pull all transaction types from QBO |
 | `quickbooks-update-expense` | Push category changes back to QBO |
 | `quickbooks-reconcile` | Payment reconciliation |
-| `quickbooks-create-invoice` | Push invoices to QBO |
+| `quickbooks-sync-invoice` | Create/link invoices in QBO from OVIS payments |
+| `quickbooks-update-invoice` | Update invoice fields (e.g., DueDate) in QBO |
 
 ### Frontend Pages
 
@@ -444,6 +445,30 @@ supabase/migrations/
     - Added scrollable container (max-height 384px) for long lists
     - Sticky header stays visible while scrolling
     - Shows total transaction count
+
+### January 5, 2026
+
+11. **Fixed Invoice Sync "Payment not found" error**
+    - **Root cause**: The `client` table in the database doesn't have an `email` column, but the Edge Function query was trying to select `client.email`
+    - **Error message**: `column client_2.email does not exist`
+    - Removed `email` from the client join in `quickbooks-sync-invoice`
+    - Changed all `client.email` fallbacks to use only `deal.bill_to_email`
+    - Files modified: `supabase/functions/quickbooks-sync-invoice/index.ts`
+
+12. **Added Due Date sync from OVIS to QuickBooks**
+    - Created `getInvoice()` and `updateInvoice()` functions in shared `quickbooks.ts`
+    - Created new Edge Function `quickbooks-update-invoice` for updating invoice due dates
+    - When `payment_date_estimated` is changed on a payment linked to QBO, the due date automatically syncs
+    - Uses QBO's sparse update with SyncToken for optimistic locking
+    - Files created: `supabase/functions/quickbooks-update-invoice/index.ts`
+    - Files modified: `supabase/functions/_shared/quickbooks.ts`, `src/components/payments/PaymentDashboardTable.tsx`
+
+**Field Mapping (OVIS → QuickBooks):**
+| OVIS Field | QBO Invoice Field | Notes |
+|------------|------------------|-------|
+| `payment_date_estimated` | `DueDate` | Auto-syncs when changed on linked payments |
+| `payment_invoice_date` | `TxnDate` | Set when creating new invoice |
+| `orep_invoice` | `DocNumber` | Used to match/link existing QBO invoices |
 
 ---
 
