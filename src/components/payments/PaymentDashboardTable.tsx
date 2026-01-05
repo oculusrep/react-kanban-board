@@ -153,12 +153,15 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
   };
 
   const handleUpdatePaymentField = async (paymentId: string, field: string, value: any) => {
+    // Find the payment to check if it's linked to QB
+    const payment = localPayments.find(p => p.payment_id === paymentId);
+
     // Optimistic update - update local state immediately
     setLocalPayments(prevPayments =>
-      prevPayments.map(payment =>
-        payment.payment_id === paymentId
-          ? { ...payment, [field]: value }
-          : payment
+      prevPayments.map(p =>
+        p.payment_id === paymentId
+          ? { ...p, [field]: value }
+          : p
       )
     );
 
@@ -173,6 +176,50 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
       alert(`Failed to update payment ${field}`);
       // Revert on error by refetching
       onPaymentUpdate();
+      return;
+    }
+
+    // If updating estimated date and payment is linked to QB, sync the due date
+    if (field === 'payment_date_estimated' && payment?.qb_invoice_id && value) {
+      syncDueDateToQuickBooks(paymentId, value);
+    }
+  };
+
+  // Sync due date changes to QuickBooks
+  const syncDueDateToQuickBooks = async (paymentId: string, dueDate: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        console.warn('No session for QB sync');
+        return;
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quickbooks-update-invoice`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ paymentId, dueDate }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error('Failed to sync due date to QB:', result.error);
+        setQbSyncMessage({ paymentId, type: 'error', text: `QB sync failed: ${result.error}` });
+        setTimeout(() => setQbSyncMessage(null), 4000);
+        return;
+      }
+
+      setQbSyncMessage({ paymentId, type: 'success', text: 'Due date synced to QB' });
+      setTimeout(() => setQbSyncMessage(null), 3000);
+    } catch (error: any) {
+      console.error('Error syncing due date to QB:', error);
     }
   };
 

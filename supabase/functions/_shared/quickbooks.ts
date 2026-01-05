@@ -342,6 +342,45 @@ export async function sendInvoice(
 }
 
 /**
+ * Get an invoice from QuickBooks by ID
+ */
+export async function getInvoice(
+  connection: QBConnection,
+  invoiceId: string
+): Promise<{ Id: string; SyncToken: string; DueDate?: string; DocNumber?: string }> {
+  const result = await qbApiRequest<{ Invoice: { Id: string; SyncToken: string; DueDate?: string; DocNumber?: string } }>(
+    connection,
+    'GET',
+    `invoice/${invoiceId}`
+  )
+  return result.Invoice
+}
+
+/**
+ * Update an invoice in QuickBooks (sparse update)
+ * QBO requires SyncToken for optimistic locking
+ */
+export async function updateInvoice(
+  connection: QBConnection,
+  invoiceId: string,
+  syncToken: string,
+  updates: { DueDate?: string }
+): Promise<{ Id: string; SyncToken: string; DueDate?: string; DocNumber?: string }> {
+  const result = await qbApiRequest<{ Invoice: { Id: string; SyncToken: string; DueDate?: string; DocNumber?: string } }>(
+    connection,
+    'POST',
+    'invoice?operation=update',
+    {
+      Id: invoiceId,
+      SyncToken: syncToken,
+      sparse: true,
+      ...updates
+    }
+  )
+  return result.Invoice
+}
+
+/**
  * Log a sync operation
  */
 export async function logSync(
