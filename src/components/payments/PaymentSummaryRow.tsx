@@ -66,9 +66,10 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
         throw new Error(result.error || 'Failed to sync');
       }
 
+      const envLabel = result.qbEnvironment === 'production' ? '' : ` (${result.qbEnvironment || 'sandbox'})`;
       const message = result.linked
-        ? `Linked to invoice #${result.qbInvoiceNumber}`
-        : `Invoice #${result.qbInvoiceNumber} created`;
+        ? `Linked to invoice #${result.qbInvoiceNumber}${envLabel}`
+        : `Invoice #${result.qbInvoiceNumber} created${envLabel}`;
 
       setQbSyncMessage({ type: 'success', text: message });
       if (onRefresh) onRefresh();
@@ -78,6 +79,53 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
       setSyncingToQB(false);
       // Clear message after 4 seconds
       setTimeout(() => setQbSyncMessage(null), 4000);
+    }
+  };
+
+  // Sync due date changes to QuickBooks (if payment is already linked)
+  const syncDueDateToQuickBooks = async (dueDate: string) => {
+    // Only sync if payment is already linked to QB
+    if (!(payment as any).qb_invoice_id) return;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quickbooks-update-invoice`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ paymentId: payment.id, dueDate }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error('Failed to sync due date to QB:', result.error);
+        setQbSyncMessage({ type: 'error', text: `QB sync failed: ${result.error}` });
+        setTimeout(() => setQbSyncMessage(null), 4000);
+        return;
+      }
+
+      setQbSyncMessage({ type: 'success', text: 'Due date synced to QB' });
+      setTimeout(() => setQbSyncMessage(null), 3000);
+    } catch (error: any) {
+      console.error('Error syncing due date to QB:', error);
+    }
+  };
+
+  // Handle date change with QB sync
+  const handleDateChange = async (newDate: string) => {
+    await onUpdatePayment({ payment_date_estimated: newDate });
+    // Sync to QB after updating OVIS
+    if (newDate) {
+      syncDueDateToQuickBooks(newDate);
     }
   };
 
@@ -210,7 +258,7 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
             <input
               type="date"
               value={payment.payment_date_estimated || ''}
-              onChange={(e) => onUpdatePayment({ payment_date_estimated: e.target.value })}
+              onChange={(e) => handleDateChange(e.target.value)}
               className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm"
               placeholder="Estimated payment date"
             />

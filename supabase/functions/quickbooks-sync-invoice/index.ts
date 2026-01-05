@@ -90,6 +90,10 @@ serve(async (req) => {
       )
     }
 
+    // Log which QBO environment we're using
+    const qbEnv = Deno.env.get('QUICKBOOKS_ENVIRONMENT') || 'sandbox'
+    console.log('QuickBooks environment:', qbEnv, '| Realm ID:', connection.realm_id)
+
     // Refresh token if needed
     connection = await refreshTokenIfNeeded(supabaseClient, connection)
 
@@ -208,7 +212,8 @@ serve(async (req) => {
               message: `Linked to existing QuickBooks invoice #${existingInvoice.DocNumber}`,
               qbInvoiceId: existingInvoice.Id,
               qbInvoiceNumber: existingInvoice.DocNumber,
-              linked: true
+              linked: true,
+              qbEnvironment: qbEnv
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
@@ -377,7 +382,8 @@ serve(async (req) => {
           : 'Invoice created in QuickBooks',
         qbInvoiceId: qbInvoice.Id,
         qbInvoiceNumber: qbInvoice.DocNumber,
-        emailSent
+        emailSent,
+        qbEnvironment: qbEnv
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
