@@ -50,6 +50,7 @@ export interface QBInvoice {
   Line: QBInvoiceLine[]
   DueDate?: string
   TxnDate?: string
+  SalesTermRef?: { value: string; name?: string }  // Payment terms reference
   CustomerMemo?: { value: string }
   BillEmail?: { Address: string }
   BillAddr?: {

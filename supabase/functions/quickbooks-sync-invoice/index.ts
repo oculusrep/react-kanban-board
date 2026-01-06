@@ -501,7 +501,8 @@ serve(async (req) => {
       Line: [invoiceLine],
       TxnDate: payment.payment_invoice_date || new Date().toISOString().split('T')[0],
       DueDate: payment.payment_date_estimated || undefined,
-      DocNumber: nextDocNumber  // Explicitly set invoice number for custom numbering
+      DocNumber: nextDocNumber,  // Explicitly set invoice number for custom numbering
+      SalesTermRef: { value: '1', name: 'Due on receipt' }  // Terms: Due on receipt
     }
 
     // Add bill-to address if available
