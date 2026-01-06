@@ -472,6 +472,10 @@ serve(async (req) => {
     }
 
     // Build invoice line with service date from contract_signed_date
+    // Description includes deal name and payment sequence (e.g., "Payment 1 of 2")
+    const description = [deal.deal_name, payment.payment_name].filter(Boolean).join(' - ')
+      || `Brokerage services - ${client.client_name}`
+
     const invoiceLine: QBInvoiceLine = {
       Amount: Number(payment.payment_amount),
       DetailType: 'SalesItemLineDetail',
@@ -481,7 +485,7 @@ serve(async (req) => {
         UnitPrice: Number(payment.payment_amount),
         ServiceDate: deal.contract_signed_date  // Service date = contract signed date
       },
-      Description: deal.deal_name || `Brokerage services - ${client.client_name}`
+      Description: description
     }
 
     // Build property address memo if available
