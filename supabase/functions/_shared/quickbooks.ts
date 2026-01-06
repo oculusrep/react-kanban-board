@@ -53,6 +53,8 @@ export interface QBInvoice {
   SalesTermRef?: { value: string; name?: string }  // Payment terms reference
   CustomerMemo?: { value: string }
   BillEmail?: { Address: string }
+  BillEmailCc?: { Address: string }   // CC email address
+  BillEmailBcc?: { Address: string }  // BCC email address
   BillAddr?: {
     Line1?: string  // Contact Name
     Line2?: string  // Company Name

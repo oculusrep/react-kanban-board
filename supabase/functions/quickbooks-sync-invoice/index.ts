@@ -122,6 +122,8 @@ serve(async (req) => {
           bill_to_contact_name,
           bill_to_company_name,
           bill_to_email,
+          bill_to_cc_emails,
+          bill_to_bcc_emails,
           bill_to_address_street,
           bill_to_address_city,
           bill_to_address_state,
@@ -521,6 +523,22 @@ serve(async (req) => {
     // Add bill-to email for sending
     if (deal.bill_to_email) {
       invoice.BillEmail = { Address: deal.bill_to_email }
+    }
+
+    // Add CC email (QBO only supports one CC email, use the first one if multiple)
+    if (deal.bill_to_cc_emails) {
+      const ccEmail = deal.bill_to_cc_emails.split(',')[0]?.trim()
+      if (ccEmail) {
+        invoice.BillEmailCc = { Address: ccEmail }
+      }
+    }
+
+    // Add BCC email (QBO only supports one BCC email, use the first one if multiple)
+    if (deal.bill_to_bcc_emails) {
+      const bccEmail = deal.bill_to_bcc_emails.split(',')[0]?.trim()
+      if (bccEmail) {
+        invoice.BillEmailBcc = { Address: bccEmail }
+      }
     }
 
     // Add memo with deal/property info
