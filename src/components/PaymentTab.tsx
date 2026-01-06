@@ -7,6 +7,7 @@ import PaymentGenerationSection from './PaymentGenerationSection';
 import PaymentListSection from './payments/PaymentListSection';
 import PaymentStatusCard from './PaymentStatusCard';
 import CommissionBreakdownBar from './CommissionBreakdownBar';
+import BillToSection from './BillToSection';
 import { usePaymentStatus } from '../hooks/usePaymentStatus';
 import { useToast } from '../hooks/useToast';
 import Toast from './Toast';
@@ -153,10 +154,10 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
           .select('*')
           .eq('deal_id', deal.id),
         
-        // All brokers (lighter query)
+        // All brokers with linked user email
         supabase
           .from('broker')
-          .select('id, name')
+          .select('id, name, user:user_id(email)')
           .order('name'),
         
         // Clients (with error handling)
@@ -173,8 +174,14 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
 
       const paymentsData = paymentsResult.data || [];
       const commissionSplitsData = commissionSplitsResult.data || [];
-      const brokersData = brokersResult.data || [];
+      const rawBrokersData = brokersResult.data || [];
       const clientsData = clientsResult.data || [];
+
+      // Extract email from joined user object
+      const brokersData = rawBrokersData.map((broker: any) => ({
+        ...broker,
+        email: broker.user?.email || null
+      }));
 
       // Fetch payment splits only if we have payments (conditional query)
       let paymentSplitsData: PaymentSplit[] = [];
@@ -601,6 +608,14 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
         deal={deal}
         commissionSplits={commissionSplits}
         className="mb-6"
+      />
+
+      {/* Bill-To Section for QuickBooks */}
+      <BillToSection
+        dealId={deal.id}
+        clientId={deal.client_id}
+        commissionSplits={commissionSplits}
+        brokers={brokers}
       />
 
       {/* Payment Generation Section */}

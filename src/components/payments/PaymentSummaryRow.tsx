@@ -129,14 +129,6 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
     }
   };
 
-  // DEBUG: Check payment date values
-  console.log('📅 PaymentSummaryRow payment dates:', {
-    id: payment.id,
-    payment_sequence: payment.payment_sequence,
-    payment_date_estimated: payment.payment_date_estimated,
-    payment_received_date: payment.payment_received_date
-  });
-
   // Use stored payment amount (respects overrides) as the source of truth
   const storedPaymentAmount = payment.payment_amount || 0;
 
