@@ -8,6 +8,7 @@ import { usePaymentSplitValidation } from '../../hooks/usePaymentSplitValidation
 import { usePaymentSplitCalculations } from '../../hooks/usePaymentSplitCalculations';
 import { usePaymentDisbursement } from '../../hooks/usePaymentDisbursement';
 import { supabase } from '../../lib/supabaseClient';
+import { deleteQBInvoice } from '../../services/quickbooksService';
 
 interface PaymentDetailPanelProps {
   payment: Payment;
@@ -38,6 +39,7 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
 }) => {
   const [paymentDetailsExpanded, setPaymentDetailsExpanded] = useState(false);
   const [syncingToQB, setSyncingToQB] = useState(false);
+  const [deletingFromQB, setDeletingFromQB] = useState(false);
   const [qbSyncMessage, setQbSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const getBrokerName = (brokerId: string) => {
@@ -181,6 +183,33 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
       setQbSyncMessage({ type: 'error', text: error.message || 'Failed to send invoice' });
     } finally {
       setSyncingToQB(false);
+      setTimeout(() => setQbSyncMessage(null), 5000);
+    }
+  };
+
+  const handleDeleteFromQuickBooks = async () => {
+    if (!window.confirm('Are you sure you want to delete this invoice from QuickBooks? This action cannot be undone.')) {
+      return;
+    }
+
+    setDeletingFromQB(true);
+    setQbSyncMessage(null);
+
+    try {
+      const result = await deleteQBInvoice(payment.id);
+
+      if (!result.success) {
+        setQbSyncMessage({ type: 'error', text: result.error || 'Failed to delete invoice' });
+        return;
+      }
+
+      setQbSyncMessage({ type: 'success', text: result.message || 'Invoice deleted from QuickBooks' });
+      if (onRefresh) onRefresh();
+    } catch (error: any) {
+      console.error('QuickBooks delete error:', error);
+      setQbSyncMessage({ type: 'error', text: error.message || 'Failed to delete invoice' });
+    } finally {
+      setDeletingFromQB(false);
       setTimeout(() => setQbSyncMessage(null), 5000);
     }
   };
@@ -368,6 +397,14 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
                   {syncingToQB ? 'Sending...' : 'Send Invoice'}
                 </button>
               )}
+              <button
+                onClick={handleDeleteFromQuickBooks}
+                disabled={deletingFromQB || syncingToQB}
+                className="px-3 py-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Delete this invoice from QuickBooks"
+              >
+                {deletingFromQB ? 'Deleting...' : 'Delete Invoice'}
+              </button>
               {payment.qb_last_sync && (
                 <span className="text-xs text-gray-500 ml-auto">
                   Last synced {formatQBSyncDate(payment.qb_last_sync)}
