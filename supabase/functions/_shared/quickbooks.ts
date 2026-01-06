@@ -52,7 +52,9 @@ export interface QBInvoice {
   CustomerMemo?: { value: string }
   BillEmail?: { Address: string }
   BillAddr?: {
-    Line1?: string
+    Line1?: string  // Contact Name
+    Line2?: string  // Company Name
+    Line3?: string  // Street Address
     City?: string
     CountrySubDivisionCode?: string
     PostalCode?: string

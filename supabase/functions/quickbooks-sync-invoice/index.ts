@@ -492,9 +492,12 @@ serve(async (req) => {
     }
 
     // Add bill-to address if available
-    if (deal.bill_to_address_street || deal.bill_to_address_city) {
+    // Line1 = Contact Name, Line2 = Company Name, Line3 = Street Address
+    if (deal.bill_to_contact_name || deal.bill_to_company_name || deal.bill_to_address_street || deal.bill_to_address_city) {
       invoice.BillAddr = {
-        Line1: deal.bill_to_address_street,
+        Line1: deal.bill_to_contact_name || undefined,
+        Line2: deal.bill_to_company_name || undefined,
+        Line3: deal.bill_to_address_street || undefined,
         City: deal.bill_to_address_city,
         CountrySubDivisionCode: deal.bill_to_address_state,
         PostalCode: deal.bill_to_address_zip
