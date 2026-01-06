@@ -506,3 +506,52 @@ GRANT SELECT ON qb_item TO authenticated;
 **Testing needed:**
 - Verify invoice income appears under correct Income accounts after Items sync
 - Verify Commission Income and other income accounts show correct totals
+
+---
+
+### January 6, 2026
+
+13. **Added broker names to QBO invoices**
+    - Invoice line items now include a second line showing broker name(s)
+    - Broker line is description-only with $0 amount
+    - Format: `Broker(s): Mike Minihan and Arty Santos`
+    - Maps short deal_team labels to full broker names:
+      - `'Mike'` → `'Mike Minihan'`
+      - `'Arty'` → `'Arty Santos'`
+      - `'Greg'` → `'Greg Bennett'`
+      - `'Mike & Arty'` → `'Mike Minihan and Arty Santos'`
+      - etc.
+    - Required separate query for deal_team (no FK constraint between deal and deal_team tables)
+
+14. **Fixed forceResync overwriting invoice details**
+    - **Root cause**: The `forceResync` code path (used when re-syncing existing invoices) was using OLD logic that didn't include all the new features added to the create invoice path
+    - **Symptoms**: Clicking "Resync" would remove: broker names, payment terms, bill-to formatting, CC/BCC emails, proper dates
+    - **Fix**: Synchronized the forceResync code block (lines ~175-331) with all create invoice features:
+      - Broker line with full names mapping
+      - `SalesTermRef: { value: '1', name: 'Due on receipt' }`
+      - Bill-to address format: Line1=Contact Name, Line2=Company Name, Line3=Street Address
+      - CC/BCC email support (`BillEmailCc`, `BillEmailBcc`)
+      - `TxnDate` = `payment_date_estimated` (not `payment_invoice_date`)
+      - `ServiceDate` from `contract_signed_date`
+      - Full description with payment name
+    - Files modified: `supabase/functions/quickbooks-sync-invoice/index.ts`
+
+15. **Standardized invoice field mappings**
+
+| OVIS Field | QBO Invoice Field | Notes |
+|------------|------------------|-------|
+| `payment_date_estimated` | `TxnDate` | Invoice date |
+| `payment_date_estimated` | `DueDate` | Due date |
+| `deal.contract_signed_date` | `Line[].SalesItemLineDetail.ServiceDate` | Service date on line items |
+| `deal.bill_to_contact_name` | `BillAddr.Line1` | Contact name |
+| `deal.bill_to_company_name` | `BillAddr.Line2` | Company name |
+| `deal.bill_to_address_street` | `BillAddr.Line3` | Street address |
+| `deal.bill_to_email` | `BillEmail.Address` | Primary invoice email |
+| `deal.bill_to_cc_emails` | `BillEmailCc.Address` | CC email (first in comma-separated list) |
+| `deal_team.label` | Line description | `Broker(s): Full Name(s)` |
+| (hardcoded) | `SalesTermRef` | `{ value: '1', name: 'Due on receipt' }` |
+
+16. **Two code paths now synchronized**
+    - **Create Invoice** (new payments): Creates invoice with all features
+    - **Force Resync** (existing invoices): Full entity update with `sparse: false`, includes all same features
+    - Both paths now produce identical invoices in QuickBooks
