@@ -187,6 +187,17 @@ serve(async (req) => {
         )
       }
 
+      // Fetch deal_team separately (no FK constraint in DB)
+      let dealTeamLabel: string | null = null
+      if (deal?.deal_team_id) {
+        const { data: dealTeam } = await supabaseClient
+          .from('deal_team')
+          .select('label')
+          .eq('id', deal.deal_team_id)
+          .single()
+        dealTeamLabel = dealTeam?.label || null
+      }
+
       // Get current invoice to get SyncToken
       const currentInvoice = await getInvoice(connection, payment.qb_invoice_id)
       console.log('Current QBO invoice SyncToken:', currentInvoice.SyncToken)
@@ -194,16 +205,51 @@ serve(async (req) => {
       // Find or create the service item (Brokerage Fee)
       const serviceItemId = await findOrCreateServiceItem(connection, 'Brokerage Fee')
 
-      // Build invoice line with updated amount
+      // Build description matching create invoice format
+      const description = [
+        payment.payment_name,
+        deal.deal_name ? `procuring cause of Contract Agreement with ${deal.deal_name}` : null
+      ].filter(Boolean).join(' - ')
+
+      // Build invoice line with updated amount (matching create invoice format)
       const invoiceLine: QBInvoiceLine = {
         Amount: Number(payment.payment_amount),
         DetailType: 'SalesItemLineDetail',
         SalesItemLineDetail: {
           ItemRef: { value: serviceItemId, name: 'Brokerage Fee' },
           Qty: 1,
-          UnitPrice: Number(payment.payment_amount)
+          UnitPrice: Number(payment.payment_amount),
+          ServiceDate: deal.contract_signed_date  // Service date = contract signed date
         },
-        Description: deal.deal_name || `Brokerage services - ${client.client_name}`
+        Description: description
+      }
+
+      // Build broker line (description-only, $0 amount)
+      const dealTeamToFullNames: Record<string, string> = {
+        'Mike': 'Mike Minihan',
+        'Arty': 'Arty Santos',
+        'Greg': 'Greg Bennett',
+        'Mike & Arty': 'Mike Minihan and Arty Santos',
+        'Mike & Greg': 'Mike Minihan and Greg Bennett',
+        'Arty & Greg': 'Arty Santos and Greg Bennett',
+        'Mike, Arty & Greg': 'Mike Minihan, Arty Santos, and Greg Bennett'
+      }
+      const brokerNames = dealTeamLabel ? (dealTeamToFullNames[dealTeamLabel] || dealTeamLabel) : null
+      const brokerLine: QBInvoiceLine | null = brokerNames ? {
+        Amount: 0,
+        DetailType: 'SalesItemLineDetail',
+        SalesItemLineDetail: {
+          ItemRef: { value: serviceItemId, name: 'Brokerage Fee' },
+          Qty: 0,
+          UnitPrice: 0
+        },
+        Description: `Broker(s): ${brokerNames}`
+      } : null
+
+      // Build invoice lines array
+      const invoiceLines: QBInvoiceLine[] = [invoiceLine]
+      if (brokerLine) {
+        invoiceLines.push(brokerLine)
       }
 
       // Build property address memo if available
@@ -212,16 +258,6 @@ serve(async (req) => {
         propertyMemo = [property.property_name, property.address, property.city, property.state]
           .filter(Boolean)
           .join(', ')
-      }
-
-      // Build update payload - full invoice update requires all fields
-      const updatePayload: any = {
-        Id: payment.qb_invoice_id,
-        SyncToken: currentInvoice.SyncToken,
-        sparse: false, // Full update to ensure all fields are updated
-        Line: [invoiceLine],
-        DueDate: payment.payment_date_estimated || undefined,
-        TxnDate: payment.payment_invoice_date || new Date().toISOString().split('T')[0]
       }
 
       // Find or create customer (in case bill-to info changed)
@@ -241,12 +277,25 @@ serve(async (req) => {
         }
       )
 
-      updatePayload.CustomerRef = { value: customerId, name: client.client_name }
+      // Build update payload - full invoice update requires all fields
+      const updatePayload: any = {
+        Id: payment.qb_invoice_id,
+        SyncToken: currentInvoice.SyncToken,
+        sparse: false, // Full update to ensure all fields are updated
+        CustomerRef: { value: customerId, name: client.client_name },
+        Line: invoiceLines,
+        TxnDate: payment.payment_date_estimated || new Date().toISOString().split('T')[0],
+        DueDate: payment.payment_date_estimated || undefined,
+        SalesTermRef: { value: '1', name: 'Due on receipt' }  // Terms: Due on receipt
+      }
 
       // Add bill-to address if available
-      if (deal.bill_to_address_street || deal.bill_to_address_city) {
+      // Line1 = Contact Name, Line2 = Company Name, Line3 = Street Address
+      if (deal.bill_to_contact_name || deal.bill_to_company_name || deal.bill_to_address_street || deal.bill_to_address_city) {
         updatePayload.BillAddr = {
-          Line1: deal.bill_to_address_street,
+          Line1: deal.bill_to_contact_name || undefined,
+          Line2: deal.bill_to_company_name || undefined,
+          Line3: deal.bill_to_address_street || undefined,
           City: deal.bill_to_address_city,
           CountrySubDivisionCode: deal.bill_to_address_state,
           PostalCode: deal.bill_to_address_zip
@@ -256,6 +305,22 @@ serve(async (req) => {
       // Add bill-to email for sending
       if (deal.bill_to_email) {
         updatePayload.BillEmail = { Address: deal.bill_to_email }
+      }
+
+      // Add CC email (QBO only supports one CC email, use the first one if multiple)
+      if (deal.bill_to_cc_emails) {
+        const ccEmail = deal.bill_to_cc_emails.split(',')[0]?.trim()
+        if (ccEmail) {
+          updatePayload.BillEmailCc = { Address: ccEmail }
+        }
+      }
+
+      // Add BCC email (QBO only supports one BCC email, use the first one if multiple)
+      if (deal.bill_to_bcc_emails) {
+        const bccEmail = deal.bill_to_bcc_emails.split(',')[0]?.trim()
+        if (bccEmail) {
+          updatePayload.BillEmailBcc = { Address: bccEmail }
+        }
       }
 
       // Add memo with deal/property info
