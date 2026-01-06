@@ -106,12 +106,12 @@ serve(async (req) => {
       )
     }
 
-    // Update the invoice in QBO
+    // Update the invoice in QBO - both DueDate and TxnDate (invoice date) should match
     const updatedInvoice = await updateInvoice(
       connection,
       payment.qb_invoice_id,
       currentInvoice.SyncToken,
-      { DueDate: newDueDate }
+      { DueDate: newDueDate, TxnDate: newDueDate }
     )
 
     console.log('Updated QBO invoice:', updatedInvoice)
@@ -142,10 +142,11 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Updated QuickBooks invoice #${payment.qb_invoice_number} due date to ${newDueDate}`,
+        message: `Updated QuickBooks invoice #${payment.qb_invoice_number} invoice date and due date to ${newDueDate}`,
         qbInvoiceId: payment.qb_invoice_id,
         qbInvoiceNumber: payment.qb_invoice_number,
-        newDueDate
+        newDueDate,
+        newTxnDate: newDueDate
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

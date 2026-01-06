@@ -379,9 +379,9 @@ export async function updateInvoice(
   connection: QBConnection,
   invoiceId: string,
   syncToken: string,
-  updates: { DueDate?: string }
-): Promise<{ Id: string; SyncToken: string; DueDate?: string; DocNumber?: string }> {
-  const result = await qbApiRequest<{ Invoice: { Id: string; SyncToken: string; DueDate?: string; DocNumber?: string } }>(
+  updates: { DueDate?: string; TxnDate?: string }
+): Promise<{ Id: string; SyncToken: string; DueDate?: string; TxnDate?: string; DocNumber?: string }> {
+  const result = await qbApiRequest<{ Invoice: { Id: string; SyncToken: string; DueDate?: string; TxnDate?: string; DocNumber?: string } }>(
     connection,
     'POST',
     'invoice?operation=update',
