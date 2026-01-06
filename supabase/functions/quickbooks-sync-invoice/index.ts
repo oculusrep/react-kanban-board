@@ -95,7 +95,10 @@ serve(async (req) => {
 
     // Log which QBO environment we're using
     const qbEnv = Deno.env.get('QUICKBOOKS_ENVIRONMENT') || 'sandbox'
-    console.log('QuickBooks environment:', qbEnv, '| Realm ID:', connection.realm_id)
+    const qbApiBaseUrl = qbEnv === 'production'
+      ? 'https://quickbooks.api.intuit.com'
+      : 'https://sandbox-quickbooks.api.intuit.com'
+    console.log('QuickBooks environment:', qbEnv, '| API URL:', qbApiBaseUrl, '| Realm ID:', connection.realm_id)
 
     // Refresh token if needed
     connection = await refreshTokenIfNeeded(supabaseClient, connection)
@@ -557,7 +560,9 @@ serve(async (req) => {
         qbInvoiceId: qbInvoice.Id,
         qbInvoiceNumber: qbInvoice.DocNumber,
         emailSent,
-        qbEnvironment: qbEnv
+        qbEnvironment: qbEnv,
+        qbApiBaseUrl,
+        realmId: connection.realm_id
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
