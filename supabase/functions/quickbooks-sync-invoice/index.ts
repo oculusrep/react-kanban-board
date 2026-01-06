@@ -472,9 +472,8 @@ serve(async (req) => {
     }
 
     // Build invoice line with service date from contract_signed_date
-    // Description includes deal name and payment sequence (e.g., "Payment 1 of 2")
-    const description = [deal.deal_name, payment.payment_name].filter(Boolean).join(' - ')
-      || `Brokerage services - ${client.client_name}`
+    // Description format: "Payment 1 of 2 Now Due for Commission related to procuring cause of Contract Agreement with Deal Name"
+    const description = `${payment.payment_name || 'Payment'} Now Due for Commission related to procuring cause of Contract Agreement with ${deal.deal_name || client.client_name}`
 
     const invoiceLine: QBInvoiceLine = {
       Amount: Number(payment.payment_amount),
