@@ -118,6 +118,7 @@ serve(async (req) => {
         deal:deal_id (
           id,
           deal_name,
+          deal_team_id,
           contract_signed_date,
           bill_to_contact_name,
           bill_to_company_name,
@@ -129,10 +130,6 @@ serve(async (req) => {
           bill_to_address_state,
           bill_to_address_zip,
           bill_to_phone,
-          deal_team:deal_team_id (
-            id,
-            label
-          ),
           client:client_id (
             id,
             client_name
@@ -411,6 +408,17 @@ serve(async (req) => {
     const client = deal?.client
     const property = deal?.property
 
+    // Fetch deal_team separately (no FK constraint in DB)
+    let dealTeamLabel: string | null = null
+    if (deal?.deal_team_id) {
+      const { data: dealTeam } = await supabaseClient
+        .from('deal_team')
+        .select('label')
+        .eq('id', deal.deal_team_id)
+        .single()
+      dealTeamLabel = dealTeam?.label || null
+    }
+
     if (!client) {
       return new Response(
         JSON.stringify({ error: 'Payment must have a client associated via deal' }),
@@ -493,8 +501,7 @@ serve(async (req) => {
       Description: description
     }
 
-    // Build broker line (description-only, no amount)
-    // Convert deal team labels to full broker names
+    // Build broker line (description-only, $0 amount)
     const dealTeamToFullNames: Record<string, string> = {
       'Mike': 'Mike Minihan',
       'Arty': 'Arty Santos',
@@ -504,18 +511,23 @@ serve(async (req) => {
       'Arty & Greg': 'Arty Santos and Greg Bennett',
       'Mike, Arty & Greg': 'Mike Minihan, Arty Santos, and Greg Bennett'
     }
-    const dealTeam = deal.deal_team as any
-    const brokerNames = dealTeam?.label ? (dealTeamToFullNames[dealTeam.label] || dealTeam.label) : null
-    const brokerLine = brokerNames ? {
+    const brokerNames = dealTeamLabel ? (dealTeamToFullNames[dealTeamLabel] || dealTeamLabel) : null
+    const brokerLine: QBInvoiceLine | null = brokerNames ? {
       Amount: 0,
-      DetailType: 'SalesItemLineDetail' as const,
+      DetailType: 'SalesItemLineDetail',
       SalesItemLineDetail: {
         ItemRef: { value: serviceItemId, name: 'Brokerage Fee' },
         Qty: 0,
         UnitPrice: 0
       },
-      Description: `Broker(s): ${dealTeam.label}`
+      Description: `Broker(s): ${brokerNames}`
     } : null
+
+    // Build invoice lines array
+    const invoiceLines: QBInvoiceLine[] = [invoiceLine]
+    if (brokerLine) {
+      invoiceLines.push(brokerLine)
+    }
 
     // Build property address memo if available
     let propertyMemo = ''
@@ -525,17 +537,11 @@ serve(async (req) => {
         .join(', ')
     }
 
-    // Build the invoice lines array
-    const invoiceLines: QBInvoiceLine[] = [invoiceLine]
-    if (brokerLine) {
-      invoiceLines.push(brokerLine)
-    }
-
     // Build the invoice
     const invoice: QBInvoice = {
       CustomerRef: { value: customerId, name: client.client_name },
       Line: invoiceLines,
-      TxnDate: payment.payment_invoice_date || new Date().toISOString().split('T')[0],
+      TxnDate: payment.payment_date_estimated || new Date().toISOString().split('T')[0],
       DueDate: payment.payment_date_estimated || undefined,
       DocNumber: nextDocNumber,  // Explicitly set invoice number for custom numbering
       SalesTermRef: { value: '1', name: 'Due on receipt' }  // Terms: Due on receipt
