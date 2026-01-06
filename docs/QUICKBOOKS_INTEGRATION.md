@@ -566,3 +566,23 @@ GRANT SELECT ON qb_item TO authenticated;
     - Only shows the description text: `Broker(s): Full Name(s)`
     - Updated `QBInvoiceLine` interface to support both `SalesItemLineDetail` and `DescriptionOnly` types
     - Files modified: `supabase/functions/quickbooks-sync-invoice/index.ts`, `supabase/functions/_shared/quickbooks.ts`
+
+19. **Automatic invoice attachments from Dropbox**
+    - Three standard documents are automatically downloaded from Dropbox and attached to every new invoice in QuickBooks:
+      1. `W9-Oculus REP - CURRENT.pdf`
+      2. `OCULUS WIRING INSTRUCTIONS.PDF`
+      3. `ACH_eCHECK INSTRUCTIONS.PDF`
+    - Attachments are marked with `IncludeOnSend: true` so they are included when sending the invoice via QBO email
+    - Files are stored in Dropbox at `/Salesforce Documents/Invoice Attachments/`
+    - Dropbox access token auto-refreshes using OAuth refresh token flow
+    - If attachment download/upload fails, invoice creation still succeeds (graceful degradation)
+    - Files created: `supabase/functions/_shared/dropbox.ts`
+    - Files modified: `supabase/functions/quickbooks-sync-invoice/index.ts`, `supabase/functions/_shared/quickbooks.ts` (added `uploadAttachment()`)
+
+**Required Supabase secrets for Dropbox:**
+```
+DROPBOX_ACCESS_TOKEN=your_access_token
+DROPBOX_REFRESH_TOKEN=your_refresh_token
+DROPBOX_APP_KEY=your_app_key
+DROPBOX_APP_SECRET=your_app_secret
+```

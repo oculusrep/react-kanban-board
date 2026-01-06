@@ -400,6 +400,123 @@ export async function updateInvoice(
 }
 
 /**
+ * Interface for QuickBooks Attachable (file attachment)
+ */
+export interface QBAttachable {
+  Id?: string
+  FileName: string
+  ContentType: string
+  AttachableRef: Array<{
+    EntityRef: {
+      type: string
+      value: string
+    }
+    IncludeOnSend: boolean
+  }>
+}
+
+/**
+ * Upload an attachment to a QuickBooks invoice
+ * Uses multipart/form-data to upload the file
+ * @param connection - QBO connection
+ * @param invoiceId - The QBO invoice ID to attach to
+ * @param fileData - The file content as Uint8Array
+ * @param fileName - The filename for the attachment
+ * @param contentType - MIME type of the file (defaults to application/pdf)
+ * @returns The created attachable object
+ */
+export async function uploadAttachment(
+  connection: QBConnection,
+  invoiceId: string,
+  fileData: Uint8Array,
+  fileName: string,
+  contentType: string = 'application/pdf'
+): Promise<{ Id: string; FileName: string }> {
+  const baseUrl = getQBApiUrl()
+  const url = `${baseUrl}/v3/company/${connection.realm_id}/upload`
+
+  console.log(`[QBO API] Uploading attachment: ${fileName} to invoice ${invoiceId}`)
+
+  // Create the metadata for the attachment
+  const metadata: QBAttachable = {
+    FileName: fileName,
+    ContentType: contentType,
+    AttachableRef: [
+      {
+        EntityRef: {
+          type: 'Invoice',
+          value: invoiceId
+        },
+        IncludeOnSend: true  // Include this attachment when sending the invoice
+      }
+    ]
+  }
+
+  // Build multipart form data manually
+  // QBO expects: file_metadata_01 (JSON) and file_content_01 (file bytes)
+  const boundary = '----FormBoundary' + Math.random().toString(36).substring(2)
+
+  // Build the multipart body
+  const encoder = new TextEncoder()
+  const parts: Uint8Array[] = []
+
+  // Part 1: file_metadata_01 (JSON metadata)
+  const metadataPart = encoder.encode(
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="file_metadata_01"\r\n` +
+    `Content-Type: application/json\r\n\r\n` +
+    JSON.stringify(metadata) + '\r\n'
+  )
+  parts.push(metadataPart)
+
+  // Part 2: file_content_01 (file bytes)
+  const fileHeaderPart = encoder.encode(
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="file_content_01"; filename="${fileName}"\r\n` +
+    `Content-Type: ${contentType}\r\n\r\n`
+  )
+  parts.push(fileHeaderPart)
+  parts.push(fileData)
+  parts.push(encoder.encode('\r\n'))
+
+  // Closing boundary
+  parts.push(encoder.encode(`--${boundary}--\r\n`))
+
+  // Combine all parts into a single Uint8Array
+  const totalLength = parts.reduce((acc, part) => acc + part.length, 0)
+  const body = new Uint8Array(totalLength)
+  let offset = 0
+  for (const part of parts) {
+    body.set(part, offset)
+    offset += part.length
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${connection.access_token}`,
+      'Accept': 'application/json',
+      'Content-Type': `multipart/form-data; boundary=${boundary}`
+    },
+    body: body
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    console.error(`QBO upload error (${response.status}):`, errorText)
+    throw new Error(`QBO upload error: ${response.status} - ${errorText}`)
+  }
+
+  const result = await response.json()
+  console.log(`Uploaded attachment ${fileName} to invoice ${invoiceId}:`, result.AttachableResponse?.[0]?.Attachable?.Id)
+
+  return {
+    Id: result.AttachableResponse?.[0]?.Attachable?.Id,
+    FileName: fileName
+  }
+}
+
+/**
  * Log a sync operation
  */
 export async function logSync(

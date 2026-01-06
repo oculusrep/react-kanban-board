@@ -9,11 +9,13 @@ import {
   getInvoice,
   updateInvoice,
   sendInvoice,
+  uploadAttachment,
   logSync,
   qbApiRequest,
   QBInvoice,
   QBInvoiceLine
 } from '../_shared/quickbooks.ts'
+import { downloadInvoiceAttachments } from '../_shared/dropbox.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -648,6 +650,39 @@ serve(async (req) => {
 
     console.log('Created QBO invoice:', qbInvoice)
 
+    // Download and attach standard invoice attachments from Dropbox
+    // These files (W-9, Wiring Instructions, ACH Instructions) are attached to every invoice
+    let attachmentsUploaded = 0
+    try {
+      const attachments = await downloadInvoiceAttachments()
+      console.log(`Downloaded ${attachments.length} attachments from Dropbox`)
+
+      for (const attachment of attachments) {
+        try {
+          // Determine content type from file extension
+          const ext = attachment.name.toLowerCase().split('.').pop()
+          const contentType = ext === 'pdf' ? 'application/pdf' : 'application/octet-stream'
+
+          await uploadAttachment(
+            connection,
+            qbInvoice.Id,
+            attachment.data,
+            attachment.name,
+            contentType
+          )
+          attachmentsUploaded++
+        } catch (attachError: any) {
+          console.error(`Failed to upload attachment ${attachment.name}:`, attachError.message)
+          // Continue with other attachments - don't fail the whole operation
+        }
+      }
+
+      console.log(`Successfully attached ${attachmentsUploaded}/${attachments.length} files to invoice`)
+    } catch (dropboxError: any) {
+      console.error('Failed to download attachments from Dropbox:', dropboxError.message)
+      // Don't fail invoice creation if attachments fail
+    }
+
     // Update payment with QBO invoice info
     const { error: updateError } = await supabaseClient
       .from('payment')
@@ -713,15 +748,22 @@ serve(async (req) => {
       .update({ last_sync_at: new Date().toISOString() })
       .eq('id', connection.id)
 
+    // Build response message with attachment info
+    let responseMessage = emailSent
+      ? 'Invoice created and sent via QuickBooks'
+      : 'Invoice created in QuickBooks'
+    if (attachmentsUploaded > 0) {
+      responseMessage += ` with ${attachmentsUploaded} attachment${attachmentsUploaded > 1 ? 's' : ''}`
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
-        message: emailSent
-          ? 'Invoice created and sent via QuickBooks'
-          : 'Invoice created in QuickBooks',
+        message: responseMessage,
         qbInvoiceId: qbInvoice.Id,
         qbInvoiceNumber: qbInvoice.DocNumber,
         emailSent,
+        attachmentsUploaded,
         qbEnvironment: qbEnv,
         qbApiBaseUrl,
         realmId: connection.realm_id
