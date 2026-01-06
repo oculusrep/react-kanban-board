@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PaymentDashboardRow } from '../../types/payment-dashboard';
 import { supabase } from '../../lib/supabaseClient';
+import { deleteQBInvoice } from '../../services/quickbooksService';
 
 interface PaymentDetailSidebarProps {
   payment: PaymentDashboardRow | null;
@@ -21,6 +22,7 @@ const PaymentDetailSidebar: React.FC<PaymentDetailSidebarProps> = ({
 }) => {
   const navigate = useNavigate();
   const [syncingToQB, setSyncingToQB] = useState(false);
+  const [deletingFromQB, setDeletingFromQB] = useState(false);
   const [qbSyncMessage, setQbSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Close on Escape key
@@ -122,6 +124,40 @@ const PaymentDetailSidebar: React.FC<PaymentDetailSidebarProps> = ({
       setQbSyncMessage({ type: 'error', text: error.message || 'Failed to sync to QuickBooks' });
     } finally {
       setSyncingToQB(false);
+    }
+  };
+
+  const handleDeleteFromQuickBooks = async () => {
+    if (!payment) return;
+
+    // Confirm deletion
+    if (!window.confirm(`Are you sure you want to delete Invoice #${payment.qb_invoice_number || payment.qb_invoice_id} from QuickBooks? This cannot be undone.`)) {
+      return;
+    }
+
+    setDeletingFromQB(true);
+    setQbSyncMessage(null);
+
+    try {
+      const result = await deleteQBInvoice(payment.payment_id);
+
+      if (!result.success) {
+        setQbSyncMessage({ type: 'error', text: result.error || 'Failed to delete invoice' });
+        return;
+      }
+
+      setQbSyncMessage({
+        type: 'success',
+        text: result.message || 'Invoice deleted from QuickBooks'
+      });
+
+      // Refresh the data
+      onUpdate();
+    } catch (error: any) {
+      console.error('QuickBooks delete error:', error);
+      setQbSyncMessage({ type: 'error', text: error.message || 'Failed to delete from QuickBooks' });
+    } finally {
+      setDeletingFromQB(false);
     }
   };
 
@@ -338,7 +374,7 @@ const PaymentDetailSidebar: React.FC<PaymentDetailSidebarProps> = ({
               </h3>
               <div className="bg-white border border-gray-200 rounded-lg p-4">
                 {payment.qb_invoice_id ? (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
                         Synced
@@ -352,6 +388,13 @@ const PaymentDetailSidebar: React.FC<PaymentDetailSidebarProps> = ({
                         Last synced: {formatDate(payment.qb_last_sync)}
                       </div>
                     )}
+                    <button
+                      onClick={handleDeleteFromQuickBooks}
+                      disabled={deletingFromQB}
+                      className="w-full px-3 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {deletingFromQB ? 'Deleting...' : 'Delete Invoice from QuickBooks'}
+                    </button>
                   </div>
                 ) : (
                   <div className="space-y-3">
