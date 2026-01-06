@@ -131,6 +131,40 @@ serve(async (req) => {
       results.sandboxWithSandboxRealmId = { status: 'ERROR', message: e.message }
     }
 
+    // Query recent invoices from production to see what's there
+    try {
+      const invoiceQueryResponse = await fetch(
+        `${productionUrl}/v3/company/${connection.realm_id}/query?query=${encodeURIComponent('SELECT * FROM Invoice ORDER BY Id DESC MAXRESULTS 5')}`,
+        {
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${connection.access_token}`
+          }
+        }
+      )
+      if (invoiceQueryResponse.ok) {
+        const data = await invoiceQueryResponse.json()
+        results.recentInvoicesInProduction = {
+          status: 'SUCCESS',
+          invoices: data.QueryResponse?.Invoice?.map((inv: any) => ({
+            id: inv.Id,
+            docNumber: inv.DocNumber,
+            customerName: inv.CustomerRef?.name,
+            totalAmt: inv.TotalAmt
+          })) || []
+        }
+      } else {
+        const errorText = await invoiceQueryResponse.text()
+        results.recentInvoicesInProduction = {
+          status: 'FAILED',
+          httpStatus: invoiceQueryResponse.status,
+          error: errorText.substring(0, 300)
+        }
+      }
+    } catch (e: any) {
+      results.recentInvoicesInProduction = { status: 'ERROR', message: e.message }
+    }
+
     return new Response(
       JSON.stringify(results, null, 2),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
