@@ -118,6 +118,7 @@ serve(async (req) => {
         deal:deal_id (
           id,
           deal_name,
+          contract_signed_date,
           bill_to_contact_name,
           bill_to_company_name,
           bill_to_email,
@@ -411,6 +412,14 @@ serve(async (req) => {
       )
     }
 
+    // Require contract_signed_date for service date
+    if (!deal.contract_signed_date) {
+      return new Response(
+        JSON.stringify({ error: 'Deal must have a contract signed date to create an invoice. Please set the contract signed date on the deal first.' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
+    }
+
     // Find or create customer in QuickBooks
     const customerId = await findOrCreateCustomer(
       connection,
@@ -462,14 +471,15 @@ serve(async (req) => {
       console.error('Failed to query for next DocNumber, will let QBO auto-assign:', queryError.message)
     }
 
-    // Build invoice line
+    // Build invoice line with service date from contract_signed_date
     const invoiceLine: QBInvoiceLine = {
       Amount: Number(payment.payment_amount),
       DetailType: 'SalesItemLineDetail',
       SalesItemLineDetail: {
         ItemRef: { value: serviceItemId, name: 'Brokerage Fee' },
         Qty: 1,
-        UnitPrice: Number(payment.payment_amount)
+        UnitPrice: Number(payment.payment_amount),
+        ServiceDate: deal.contract_signed_date  // Service date = contract signed date
       },
       Description: deal.deal_name || `Brokerage services - ${client.client_name}`
     }

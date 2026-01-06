@@ -38,6 +38,7 @@ export interface QBInvoiceLine {
     ItemRef: { value: string; name?: string }
     Qty?: number
     UnitPrice?: number
+    ServiceDate?: string  // YYYY-MM-DD format - the date service was provided
   }
   Description?: string
 }
