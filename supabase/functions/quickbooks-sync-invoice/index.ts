@@ -129,6 +129,10 @@ serve(async (req) => {
           bill_to_address_state,
           bill_to_address_zip,
           bill_to_phone,
+          deal_team:deal_team_id (
+            id,
+            label
+          ),
           client:client_id (
             id,
             client_name
@@ -489,6 +493,30 @@ serve(async (req) => {
       Description: description
     }
 
+    // Build broker line (description-only, no amount)
+    // Convert deal team labels to full broker names
+    const dealTeamToFullNames: Record<string, string> = {
+      'Mike': 'Mike Minihan',
+      'Arty': 'Arty Santos',
+      'Greg': 'Greg Bennett',
+      'Mike & Arty': 'Mike Minihan and Arty Santos',
+      'Mike & Greg': 'Mike Minihan and Greg Bennett',
+      'Arty & Greg': 'Arty Santos and Greg Bennett',
+      'Mike, Arty & Greg': 'Mike Minihan, Arty Santos, and Greg Bennett'
+    }
+    const dealTeam = deal.deal_team as any
+    const brokerNames = dealTeam?.label ? (dealTeamToFullNames[dealTeam.label] || dealTeam.label) : null
+    const brokerLine = brokerNames ? {
+      Amount: 0,
+      DetailType: 'SalesItemLineDetail' as const,
+      SalesItemLineDetail: {
+        ItemRef: { value: serviceItemId, name: 'Brokerage Fee' },
+        Qty: 0,
+        UnitPrice: 0
+      },
+      Description: `Broker(s): ${dealTeam.label}`
+    } : null
+
     // Build property address memo if available
     let propertyMemo = ''
     if (property) {
@@ -497,10 +525,16 @@ serve(async (req) => {
         .join(', ')
     }
 
+    // Build the invoice lines array
+    const invoiceLines: QBInvoiceLine[] = [invoiceLine]
+    if (brokerLine) {
+      invoiceLines.push(brokerLine)
+    }
+
     // Build the invoice
     const invoice: QBInvoice = {
       CustomerRef: { value: customerId, name: client.client_name },
-      Line: [invoiceLine],
+      Line: invoiceLines,
       TxnDate: payment.payment_invoice_date || new Date().toISOString().split('T')[0],
       DueDate: payment.payment_date_estimated || undefined,
       DocNumber: nextDocNumber,  // Explicitly set invoice number for custom numbering
