@@ -8,6 +8,7 @@ import {
   createInvoice,
   getInvoice,
   updateInvoice,
+  deleteInvoice,
   sendInvoice,
   uploadAttachment,
   logSync,
@@ -26,6 +27,7 @@ interface SyncInvoiceRequest {
   paymentId: string
   sendEmail?: boolean  // If true, also send the invoice via QBO email
   forceResync?: boolean // If true, update existing invoice with current OVIS data
+  deleteOnly?: boolean  // If true, delete the QBO invoice and clear link (no recreate)
 }
 
 serve(async (req) => {
@@ -69,7 +71,7 @@ serve(async (req) => {
     }
 
     // Get request body
-    const { paymentId, sendEmail, forceResync } = await req.json() as SyncInvoiceRequest
+    const { paymentId, sendEmail, forceResync, deleteOnly } = await req.json() as SyncInvoiceRequest
 
     if (!paymentId) {
       return new Response(
@@ -161,8 +163,53 @@ serve(async (req) => {
       )
     }
 
+    // Handle deleteOnly - delete the QBO invoice and clear the link
+    if (deleteOnly && payment.qb_invoice_id) {
+      console.log('Delete requested - deleting QBO invoice:', payment.qb_invoice_id)
+
+      // Get current invoice to get SyncToken (required for deletion)
+      const currentInvoice = await getInvoice(connection, payment.qb_invoice_id)
+
+      // Delete the invoice from QuickBooks
+      await deleteInvoice(connection, payment.qb_invoice_id, currentInvoice.SyncToken)
+
+      // Clear QBO link from payment
+      await supabaseClient
+        .from('payment')
+        .update({
+          qb_invoice_id: null,
+          qb_invoice_number: null,
+          qb_sync_status: null,
+          qb_last_sync: null,
+          qb_sync_pending: false
+        })
+        .eq('id', paymentId)
+
+      // Log the deletion
+      await logSync(
+        supabaseClient,
+        'invoice',
+        'outbound',
+        'success',
+        paymentId,
+        'payment',
+        undefined,
+        'Invoice deleted from QuickBooks'
+      )
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: `Deleted QuickBooks invoice #${payment.qb_invoice_number}`,
+          deleted: true,
+          qbEnvironment: qbEnv
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Check if already synced by qb_invoice_id
-    if (payment.qb_invoice_id && !forceResync) {
+    if (payment.qb_invoice_id && !forceResync && !deleteOnly) {
       return new Response(
         JSON.stringify({
           success: true,

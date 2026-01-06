@@ -376,6 +376,30 @@ export async function getInvoice(
 }
 
 /**
+ * Delete an invoice from QuickBooks
+ * Note: QBO requires SyncToken for deletion (optimistic locking)
+ */
+export async function deleteInvoice(
+  connection: QBConnection,
+  invoiceId: string,
+  syncToken: string
+): Promise<void> {
+  console.log(`[QBO API] Deleting invoice ${invoiceId}`)
+
+  await qbApiRequest(
+    connection,
+    'POST',
+    'invoice?operation=delete',
+    {
+      Id: invoiceId,
+      SyncToken: syncToken
+    }
+  )
+
+  console.log(`Deleted QBO invoice ${invoiceId}`)
+}
+
+/**
  * Update an invoice in QuickBooks (sparse update)
  * QBO requires SyncToken for optimistic locking
  */
