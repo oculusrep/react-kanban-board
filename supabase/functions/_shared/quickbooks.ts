@@ -180,6 +180,9 @@ export async function qbApiRequest<T>(
   const baseUrl = getQBApiUrl()
   const url = `${baseUrl}/v3/company/${connection.realm_id}/${endpoint}`
 
+  // Log the full URL being called
+  console.log(`[QBO API] ${method} ${url}`)
+
   const headers: Record<string, string> = {
     'Accept': 'application/json',
     'Authorization': `Bearer ${connection.access_token}`
