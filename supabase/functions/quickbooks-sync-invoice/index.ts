@@ -224,7 +224,7 @@ serve(async (req) => {
         Description: description
       }
 
-      // Build broker line (description-only, $0 amount)
+      // Build broker line (description-only, no product/service, no amounts)
       const dealTeamToFullNames: Record<string, string> = {
         'Mike': 'Mike Minihan',
         'Arty': 'Arty Santos',
@@ -237,12 +237,7 @@ serve(async (req) => {
       const brokerNames = dealTeamLabel ? (dealTeamToFullNames[dealTeamLabel] || dealTeamLabel) : null
       const brokerLine: QBInvoiceLine | null = brokerNames ? {
         Amount: 0,
-        DetailType: 'SalesItemLineDetail',
-        SalesItemLineDetail: {
-          ItemRef: { value: serviceItemId, name: 'Brokerage Fee' },
-          Qty: 0,
-          UnitPrice: 0
-        },
+        DetailType: 'DescriptionOnly',
         Description: `Broker(s): ${brokerNames}`
       } : null
 
@@ -566,7 +561,7 @@ serve(async (req) => {
       Description: description
     }
 
-    // Build broker line (description-only, $0 amount)
+    // Build broker line (description-only, no product/service, no amounts)
     const dealTeamToFullNames: Record<string, string> = {
       'Mike': 'Mike Minihan',
       'Arty': 'Arty Santos',
@@ -579,12 +574,7 @@ serve(async (req) => {
     const brokerNames = dealTeamLabel ? (dealTeamToFullNames[dealTeamLabel] || dealTeamLabel) : null
     const brokerLine: QBInvoiceLine | null = brokerNames ? {
       Amount: 0,
-      DetailType: 'SalesItemLineDetail',
-      SalesItemLineDetail: {
-        ItemRef: { value: serviceItemId, name: 'Brokerage Fee' },
-        Qty: 0,
-        UnitPrice: 0
-      },
+      DetailType: 'DescriptionOnly',
       Description: `Broker(s): ${brokerNames}`
     } : null
 

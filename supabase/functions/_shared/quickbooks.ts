@@ -33,12 +33,16 @@ export interface QBCustomer {
 
 export interface QBInvoiceLine {
   Amount: number
-  DetailType: 'SalesItemLineDetail'
-  SalesItemLineDetail: {
+  DetailType: 'SalesItemLineDetail' | 'DescriptionOnly'
+  SalesItemLineDetail?: {
     ItemRef: { value: string; name?: string }
     Qty?: number
     UnitPrice?: number
     ServiceDate?: string  // YYYY-MM-DD format - the date service was provided
+  }
+  DescriptionLineDetail?: {
+    ServiceDate?: string
+    TaxCodeRef?: { value: string }
   }
   Description?: string
 }
