@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import { Deal, Payment, PaymentSplit, Broker, CommissionSplit, Client } from '../lib/types';
@@ -459,79 +459,84 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
     fetchPaymentData();
   }, [fetchPaymentData, deal.id]);
 
-  // Auto-sync payments to QuickBooks when they have pending changes
-  const syncPendingQBPayments = useCallback(async (paymentsToCheck: PaymentWithProperty[]) => {
-    // Find payments that need QB sync (have qb_invoice_id and qb_sync_pending is true)
-    const pendingPayments = paymentsToCheck.filter(
-      p => p.qb_invoice_id && p.qb_sync_pending
+  // Track which payments we've already attempted to sync this session to prevent loops
+  const syncedPaymentIdsRef = useRef<Set<string>>(new Set());
+  const isSyncingRef = useRef(false);
+
+  // Auto-sync payments to QuickBooks when they have pending changes (runs once on initial load)
+  useEffect(() => {
+    // Don't run while loading or if already syncing
+    if (loading || isSyncingRef.current || payments.length === 0) return;
+
+    // Find payments that need QB sync and haven't been synced this session
+    const pendingPayments = payments.filter(
+      p => p.qb_invoice_id && p.qb_sync_pending && !syncedPaymentIdsRef.current.has(p.id)
     );
 
     if (pendingPayments.length === 0) return;
 
-    console.log(`🔄 Auto-syncing ${pendingPayments.length} payment(s) to QuickBooks...`);
+    const syncPayments = async () => {
+      isSyncingRef.current = true;
+      console.log(`🔄 Auto-syncing ${pendingPayments.length} payment(s) to QuickBooks...`);
 
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        console.log('⚠️ No session for QB auto-sync');
-        return;
-      }
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      // Sync each pending payment
-      for (const payment of pendingPayments) {
-        try {
-          console.log(`  → Syncing payment ${payment.payment_sequence} (${payment.id})...`);
-
-          const response = await fetch(`${supabaseUrl}/functions/v1/quickbooks-sync-invoice`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`,
-              'apikey': anonKey
-            },
-            body: JSON.stringify({
-              paymentId: payment.id,
-              sendEmail: false,
-              forceResync: true
-            })
-          });
-
-          const result = await response.json();
-
-          if (response.ok && result.success) {
-            console.log(`  ✅ Synced payment ${payment.payment_sequence} to QB`);
-
-            // Clear the pending flag
-            await supabase
-              .from('payment')
-              .update({ qb_sync_pending: false })
-              .eq('id', payment.id);
-          } else {
-            console.error(`  ❌ Failed to sync payment ${payment.payment_sequence}:`, result.error);
-          }
-        } catch (err) {
-          console.error(`  ❌ Error syncing payment ${payment.payment_sequence}:`, err);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          console.log('⚠️ No session for QB auto-sync');
+          return;
         }
+
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+        // Sync each pending payment
+        for (const payment of pendingPayments) {
+          // Mark as attempted so we don't retry
+          syncedPaymentIdsRef.current.add(payment.id);
+
+          try {
+            console.log(`  → Syncing payment ${payment.payment_sequence} (${payment.id})...`);
+
+            const response = await fetch(`${supabaseUrl}/functions/v1/quickbooks-sync-invoice`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`,
+                'apikey': anonKey
+              },
+              body: JSON.stringify({
+                paymentId: payment.id,
+                sendEmail: false,
+                forceResync: true
+              })
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+              console.log(`  ✅ Synced payment ${payment.payment_sequence} to QB`);
+            } else {
+              console.error(`  ❌ Failed to sync payment ${payment.payment_sequence}:`, result.error);
+            }
+          } catch (err) {
+            console.error(`  ❌ Error syncing payment ${payment.payment_sequence}:`, err);
+          }
+        }
+
+      } catch (err) {
+        console.error('Error during QB auto-sync:', err);
+      } finally {
+        isSyncingRef.current = false;
       }
+    };
 
-      // Refresh data to show updated sync status
-      paymentDataCache.delete(deal.id);
-      fetchPaymentData();
+    syncPayments();
+  }, [loading, payments]); // Only depend on loading and payments - no callback deps to prevent loops
 
-    } catch (err) {
-      console.error('Error during QB auto-sync:', err);
-    }
-  }, [deal.id, fetchPaymentData]);
-
-  // Trigger auto-sync when payments are loaded and some need syncing
+  // Reset synced payment IDs when deal changes
   useEffect(() => {
-    if (!loading && payments.length > 0) {
-      syncPendingQBPayments(payments);
-    }
-  }, [loading, payments, syncPendingQBPayments]);
+    syncedPaymentIdsRef.current = new Set();
+  }, [deal.id]);
 
   // Real-time subscriptions for automatic updates
   useEffect(() => {
