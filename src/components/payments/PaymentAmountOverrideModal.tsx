@@ -8,6 +8,7 @@ interface PaymentAmountOverrideModalProps {
   currentAmount: number;
   paymentSequence: number;
   dealName: string;
+  qbInvoiceId?: string | null; // If set, will auto-sync to QB after saving
   onSuccess?: () => void;
 }
 
@@ -18,12 +19,15 @@ const PaymentAmountOverrideModal: React.FC<PaymentAmountOverrideModalProps> = ({
   currentAmount,
   paymentSequence,
   dealName,
+  qbInvoiceId,
   onSuccess,
 }) => {
   const [overrideAmount, setOverrideAmount] = useState<string>('');
   const [displayValue, setDisplayValue] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [syncingToQB, setSyncingToQB] = useState(false);
+  const [qbSyncStatus, setQbSyncStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -79,6 +83,57 @@ const PaymentAmountOverrideModal: React.FC<PaymentAmountOverrideModalProps> = ({
     }
   };
 
+  // Sync amount change to QuickBooks if invoice exists
+  const syncAmountToQuickBooks = async (): Promise<boolean> => {
+    if (!qbInvoiceId) return true; // No invoice to sync, consider it success
+
+    setSyncingToQB(true);
+    setQbSyncStatus('Syncing to QuickBooks...');
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setQbSyncStatus('QB sync skipped: not logged in');
+        return true; // Don't block the save
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quickbooks-sync-invoice`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            paymentId: paymentId,
+            sendEmail: false,
+            forceResync: true, // Force update the existing invoice
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error('[Override] QB sync failed:', result.error);
+        setQbSyncStatus(`QB sync failed: ${result.error}`);
+        return false;
+      }
+
+      console.log('[Override] QB sync successful:', result);
+      setQbSyncStatus('Amount synced to QuickBooks');
+      return true;
+    } catch (error: any) {
+      console.error('[Override] QB sync error:', error);
+      setQbSyncStatus(`QB sync error: ${error.message}`);
+      return false;
+    } finally {
+      setSyncingToQB(false);
+    }
+  };
+
   const handleSave = async () => {
     const newAmount = parseFloat(overrideAmount);
     console.log('[Override] Attempting to save:', { paymentId, currentAmount, newAmount, overrideAmount });
@@ -107,7 +162,15 @@ const PaymentAmountOverrideModal: React.FC<PaymentAmountOverrideModalProps> = ({
         throw updateError;
       }
 
-      console.log('[Override] Update successful, refreshing data...');
+      console.log('[Override] Update successful');
+
+      // If there's a QB invoice, sync the amount change
+      if (qbInvoiceId) {
+        console.log('[Override] Syncing amount to QuickBooks invoice:', qbInvoiceId);
+        await syncAmountToQuickBooks();
+      }
+
+      console.log('[Override] Refreshing data...');
       // Close modal and trigger refresh callback
       onClose();
       if (onSuccess) {
@@ -203,13 +266,27 @@ const PaymentAmountOverrideModal: React.FC<PaymentAmountOverrideModalProps> = ({
               </div>
             </div>
           </div>
+          {/* QB Sync Status */}
+          {qbSyncStatus && (
+            <div className={`text-sm ${qbSyncStatus.includes('failed') || qbSyncStatus.includes('error') ? 'text-red-600' : 'text-green-600'}`}>
+              {qbSyncStatus}
+            </div>
+          )}
+
+          {/* Note about QB sync */}
+          {qbInvoiceId && (
+            <div className="text-xs text-gray-500">
+              This payment is linked to QuickBooks. The amount will be synced automatically.
+            </div>
+          )}
+
           <div className="mt-5 sm:mt-6 flex space-x-3">
             <button
               onClick={handleSave}
-              disabled={loading}
+              disabled={loading || syncingToQB}
               className="flex-1 inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:text-sm disabled:opacity-50"
             >
-              {loading ? 'Saving...' : 'Save Override'}
+              {loading ? 'Saving...' : syncingToQB ? 'Syncing to QB...' : 'Save Override'}
             </button>
             <button
               onClick={onClose}

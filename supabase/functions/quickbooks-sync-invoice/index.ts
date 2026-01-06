@@ -6,6 +6,8 @@ import {
   findOrCreateCustomer,
   findOrCreateServiceItem,
   createInvoice,
+  getInvoice,
+  updateInvoice,
   sendInvoice,
   logSync,
   qbApiRequest,
@@ -21,6 +23,7 @@ const corsHeaders = {
 interface SyncInvoiceRequest {
   paymentId: string
   sendEmail?: boolean  // If true, also send the invoice via QBO email
+  forceResync?: boolean // If true, update existing invoice with current OVIS data
 }
 
 serve(async (req) => {
@@ -64,7 +67,7 @@ serve(async (req) => {
     }
 
     // Get request body
-    const { paymentId, sendEmail } = await req.json() as SyncInvoiceRequest
+    const { paymentId, sendEmail, forceResync } = await req.json() as SyncInvoiceRequest
 
     if (!paymentId) {
       return new Response(
@@ -150,13 +153,181 @@ serve(async (req) => {
     }
 
     // Check if already synced by qb_invoice_id
-    if (payment.qb_invoice_id) {
+    if (payment.qb_invoice_id && !forceResync) {
       return new Response(
         JSON.stringify({
           success: true,
           message: 'Invoice already synced to QuickBooks',
           qbInvoiceId: payment.qb_invoice_id,
           qbInvoiceNumber: payment.qb_invoice_number
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // If forceResync is true and invoice exists, update it
+    if (payment.qb_invoice_id && forceResync) {
+      console.log('Force resync requested - updating existing invoice:', payment.qb_invoice_id)
+
+      const deal = payment.deal as any
+      const client = deal?.client
+      const property = deal?.property
+
+      if (!client) {
+        return new Response(
+          JSON.stringify({ error: 'Payment must have a client associated via deal' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        )
+      }
+
+      // Get current invoice to get SyncToken
+      const currentInvoice = await getInvoice(connection, payment.qb_invoice_id)
+      console.log('Current QBO invoice SyncToken:', currentInvoice.SyncToken)
+
+      // Find or create the service item (Brokerage Fee)
+      const serviceItemId = await findOrCreateServiceItem(connection, 'Brokerage Fee')
+
+      // Build invoice line with updated amount
+      const invoiceLine: QBInvoiceLine = {
+        Amount: Number(payment.payment_amount),
+        DetailType: 'SalesItemLineDetail',
+        SalesItemLineDetail: {
+          ItemRef: { value: serviceItemId, name: 'Brokerage Fee' },
+          Qty: 1,
+          UnitPrice: Number(payment.payment_amount)
+        },
+        Description: deal.deal_name || `Brokerage services - ${client.client_name}`
+      }
+
+      // Build property address memo if available
+      let propertyMemo = ''
+      if (property) {
+        propertyMemo = [property.property_name, property.address, property.city, property.state]
+          .filter(Boolean)
+          .join(', ')
+      }
+
+      // Build update payload - full invoice update requires all fields
+      const updatePayload: any = {
+        Id: payment.qb_invoice_id,
+        SyncToken: currentInvoice.SyncToken,
+        sparse: false, // Full update to ensure all fields are updated
+        Line: [invoiceLine],
+        DueDate: payment.payment_date_estimated || undefined,
+        TxnDate: payment.payment_invoice_date || new Date().toISOString().split('T')[0]
+      }
+
+      // Find or create customer (in case bill-to info changed)
+      const customerId = await findOrCreateCustomer(
+        connection,
+        client.client_name,
+        deal.bill_to_email,
+        {
+          companyName: deal.bill_to_company_name || client.client_name,
+          contactName: deal.bill_to_contact_name,
+          email: deal.bill_to_email,
+          street: deal.bill_to_address_street,
+          city: deal.bill_to_address_city,
+          state: deal.bill_to_address_state,
+          zip: deal.bill_to_address_zip,
+          phone: deal.bill_to_phone
+        }
+      )
+
+      updatePayload.CustomerRef = { value: customerId, name: client.client_name }
+
+      // Add bill-to address if available
+      if (deal.bill_to_address_street || deal.bill_to_address_city) {
+        updatePayload.BillAddr = {
+          Line1: deal.bill_to_address_street,
+          City: deal.bill_to_address_city,
+          CountrySubDivisionCode: deal.bill_to_address_state,
+          PostalCode: deal.bill_to_address_zip
+        }
+      }
+
+      // Add bill-to email for sending
+      if (deal.bill_to_email) {
+        updatePayload.BillEmail = { Address: deal.bill_to_email }
+      }
+
+      // Add memo with deal/property info
+      if (propertyMemo || deal.deal_name) {
+        updatePayload.CustomerMemo = {
+          value: [deal.deal_name, propertyMemo].filter(Boolean).join(' - ')
+        }
+      }
+
+      // Update the invoice in QuickBooks using full update
+      const updatedInvoice = await qbApiRequest<{ Invoice: { Id: string; DocNumber: string; SyncToken: string } }>(
+        connection,
+        'POST',
+        'invoice',
+        updatePayload
+      )
+
+      console.log('Updated QBO invoice:', updatedInvoice.Invoice)
+
+      // Update sync timestamp on payment
+      const { error: updateError } = await supabaseClient
+        .from('payment')
+        .update({
+          qb_sync_status: 'synced',
+          qb_last_sync: new Date().toISOString()
+        })
+        .eq('id', paymentId)
+
+      if (updateError) {
+        console.error('Failed to update payment sync timestamp:', updateError)
+      }
+
+      // Log successful sync
+      await logSync(
+        supabaseClient,
+        'invoice',
+        'outbound',
+        'success',
+        paymentId,
+        'payment',
+        payment.qb_invoice_id
+      )
+
+      // Update last_sync_at on connection
+      await supabaseClient
+        .from('qb_connection')
+        .update({ last_sync_at: new Date().toISOString() })
+        .eq('id', connection.id)
+
+      // Optionally send the invoice via email
+      let emailSent = false
+      if (sendEmail && deal.bill_to_email) {
+        try {
+          await sendInvoice(connection, payment.qb_invoice_id, deal.bill_to_email)
+          emailSent = true
+
+          await supabaseClient
+            .from('payment')
+            .update({
+              invoice_sent: true,
+              sf_invoice_sent_date: new Date().toISOString().split('T')[0]
+            })
+            .eq('id', paymentId)
+        } catch (emailError: any) {
+          console.error('Failed to send invoice email:', emailError)
+        }
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: emailSent
+            ? `Invoice #${payment.qb_invoice_number} updated and sent`
+            : `Invoice #${payment.qb_invoice_number} updated in QuickBooks`,
+          qbInvoiceId: payment.qb_invoice_id,
+          qbInvoiceNumber: payment.qb_invoice_number,
+          wasUpdate: true,
+          emailSent,
+          qbEnvironment: qbEnv
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )

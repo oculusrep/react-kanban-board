@@ -320,6 +320,7 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
         currentAmount={payment.payment_amount}
         paymentSequence={payment.payment_sequence}
         dealName={deal.deal_name}
+        qbInvoiceId={(payment as any).qb_invoice_id}
         onSuccess={() => {
           if (onRefresh) onRefresh();
         }}
