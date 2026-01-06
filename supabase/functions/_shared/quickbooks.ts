@@ -312,16 +312,20 @@ export async function createInvoice(
   connection: QBConnection,
   invoice: QBInvoice
 ): Promise<{ Id: string; DocNumber: string }> {
-  const result = await qbApiRequest<{ Invoice: { Id: string; DocNumber: string } }>(
+  const result = await qbApiRequest<{ Invoice: { Id: string; DocNumber?: string } }>(
     connection,
     'POST',
     'invoice',
     invoice
   )
 
+  console.log('QBO createInvoice response:', JSON.stringify(result.Invoice, null, 2))
+
+  // QuickBooks may not return DocNumber immediately in some cases
+  // Fall back to Id if DocNumber is not available
   return {
     Id: result.Invoice.Id,
-    DocNumber: result.Invoice.DocNumber
+    DocNumber: result.Invoice.DocNumber || result.Invoice.Id
   }
 }
 
