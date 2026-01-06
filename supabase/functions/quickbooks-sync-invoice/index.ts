@@ -431,6 +431,37 @@ serve(async (req) => {
     // Find or create the service item (Brokerage Fee)
     const serviceItemId = await findOrCreateServiceItem(connection, 'Brokerage Fee')
 
+    // Get the next invoice number by querying QBO for the highest DocNumber
+    let nextDocNumber: string | undefined
+    try {
+      const invoiceQuery = `SELECT DocNumber FROM Invoice ORDER BY MetaData.CreateTime DESC MAXRESULTS 50`
+      const invoiceResult = await qbApiRequest<{ QueryResponse: { Invoice?: Array<{ DocNumber?: string }> } }>(
+        connection,
+        'GET',
+        `query?query=${encodeURIComponent(invoiceQuery)}`
+      )
+
+      // Find the highest numeric DocNumber
+      let maxDocNumber = 0
+      if (invoiceResult.QueryResponse.Invoice) {
+        for (const inv of invoiceResult.QueryResponse.Invoice) {
+          if (inv.DocNumber) {
+            const num = parseInt(inv.DocNumber, 10)
+            if (!isNaN(num) && num > maxDocNumber) {
+              maxDocNumber = num
+            }
+          }
+        }
+      }
+
+      if (maxDocNumber > 0) {
+        nextDocNumber = String(maxDocNumber + 1)
+        console.log(`Next invoice DocNumber will be: ${nextDocNumber} (after highest: ${maxDocNumber})`)
+      }
+    } catch (queryError: any) {
+      console.error('Failed to query for next DocNumber, will let QBO auto-assign:', queryError.message)
+    }
+
     // Build invoice line
     const invoiceLine: QBInvoiceLine = {
       Amount: Number(payment.payment_amount),
@@ -456,7 +487,8 @@ serve(async (req) => {
       CustomerRef: { value: customerId, name: client.client_name },
       Line: [invoiceLine],
       TxnDate: payment.payment_invoice_date || new Date().toISOString().split('T')[0],
-      DueDate: payment.payment_date_estimated || undefined
+      DueDate: payment.payment_date_estimated || undefined,
+      DocNumber: nextDocNumber  // Explicitly set invoice number for custom numbering
     }
 
     // Add bill-to address if available

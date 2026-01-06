@@ -44,7 +44,7 @@ export interface QBInvoiceLine {
 
 export interface QBInvoice {
   Id?: string
-  DocNumber?: string
+  DocNumber?: string  // Invoice number - required when QBO has "Custom transaction numbers" enabled
   CustomerRef: { value: string; name?: string }
   Line: QBInvoiceLine[]
   DueDate?: string
