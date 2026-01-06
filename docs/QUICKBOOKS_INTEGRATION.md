@@ -555,3 +555,14 @@ GRANT SELECT ON qb_item TO authenticated;
     - **Create Invoice** (new payments): Creates invoice with all features
     - **Force Resync** (existing invoices): Full entity update with `sparse: false`, includes all same features
     - Both paths now produce identical invoices in QuickBooks
+
+17. **Invoice date now syncs with due date**
+    - When `payment_date_estimated` is changed on a synced invoice, both `TxnDate` (invoice date) and `DueDate` are updated to the same value
+    - Files modified: `supabase/functions/quickbooks-update-invoice/index.ts`, `supabase/functions/_shared/quickbooks.ts`
+
+18. **Broker line changed to DescriptionOnly type**
+    - Broker line (line 2) now uses QBO's `DescriptionOnly` detail type instead of `SalesItemLineDetail`
+    - Result: No product/service, service date, qty, rate, or amount columns on line 2
+    - Only shows the description text: `Broker(s): Full Name(s)`
+    - Updated `QBInvoiceLine` interface to support both `SalesItemLineDetail` and `DescriptionOnly` types
+    - Files modified: `supabase/functions/quickbooks-sync-invoice/index.ts`, `supabase/functions/_shared/quickbooks.ts`
