@@ -163,7 +163,9 @@ export async function refreshTokenIfNeeded(
  */
 export function getQBApiUrl(): string {
   const environment = Deno.env.get('QUICKBOOKS_ENVIRONMENT') || 'sandbox'
-  return environment === 'production' ? QBO_PRODUCTION_API_URL : QBO_SANDBOX_API_URL
+  const url = environment === 'production' ? QBO_PRODUCTION_API_URL : QBO_SANDBOX_API_URL
+  console.log('[QBO] getQBApiUrl called - QUICKBOOKS_ENVIRONMENT:', environment, '| URL:', url)
+  return url
 }
 
 /**

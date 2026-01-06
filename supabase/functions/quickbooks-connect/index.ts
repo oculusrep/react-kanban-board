@@ -22,6 +22,10 @@ serve(async (req) => {
     const environment = Deno.env.get('QUICKBOOKS_ENVIRONMENT') || 'sandbox'
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
 
+    // Log for debugging - show partial client ID to verify correct keys are being used
+    const clientIdPrefix = clientId ? clientId.substring(0, 10) : 'NOT SET'
+    console.log(`[QB Connect] Environment: ${environment}, Client ID prefix: ${clientIdPrefix}...`)
+
     if (!clientId) {
       throw new Error('QUICKBOOKS_CLIENT_ID not configured')
     }
@@ -129,7 +133,12 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         authorizationUrl: authorizationUrl.toString(),
-        message: 'Redirect user to this URL to authorize QuickBooks connection'
+        message: 'Redirect user to this URL to authorize QuickBooks connection',
+        debug: {
+          environment,
+          clientIdPrefix: clientIdPrefix + '...',
+          redirectUri
+        }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
