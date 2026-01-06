@@ -268,12 +268,13 @@ serve(async (req) => {
 
       console.log('Updated QBO invoice:', updatedInvoice.Invoice)
 
-      // Update sync timestamp on payment
+      // Update sync timestamp on payment and clear pending flag
       const { error: updateError } = await supabaseClient
         .from('payment')
         .update({
           qb_sync_status: 'synced',
-          qb_last_sync: new Date().toISOString()
+          qb_last_sync: new Date().toISOString(),
+          qb_sync_pending: false  // Clear the pending flag after successful sync
         })
         .eq('id', paymentId)
 
@@ -358,7 +359,8 @@ serve(async (req) => {
               qb_invoice_id: existingInvoice.Id,
               qb_invoice_number: existingInvoice.DocNumber,
               qb_sync_status: 'synced',
-              qb_last_sync: new Date().toISOString()
+              qb_last_sync: new Date().toISOString(),
+              qb_sync_pending: false
             })
             .eq('id', paymentId)
 
@@ -488,7 +490,8 @@ serve(async (req) => {
         qb_invoice_id: qbInvoice.Id,
         qb_invoice_number: qbInvoice.DocNumber,
         qb_sync_status: 'synced',
-        qb_last_sync: new Date().toISOString()
+        qb_last_sync: new Date().toISOString(),
+        qb_sync_pending: false
       })
       .eq('id', paymentId)
 

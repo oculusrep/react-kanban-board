@@ -261,6 +261,7 @@ export interface Payment {
   qb_payment_id: string | null;
   qb_sync_status?: string | null;
   qb_last_sync?: string | null;
+  qb_sync_pending?: boolean | null; // True when amount changed and needs sync to QB
   
   // OREP invoice tracking
   orep_invoice?: string | null;
