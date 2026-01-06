@@ -144,6 +144,7 @@ const PaymentListSection: React.FC<PaymentListSectionProps> = ({
                   onSplitPercentageChange={handleSplitPercentageChange}
                   onUpdatePayment={(updates) => onUpdatePayment(payment.id, updates)}
                   onUpdatePaymentSplit={onUpdatePaymentSplit}
+                  onRefresh={onRefresh}
                 />
               )}
             </div>
