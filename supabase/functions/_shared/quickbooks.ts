@@ -21,6 +21,8 @@ export interface QBCustomer {
   Id?: string
   DisplayName: string
   CompanyName?: string
+  GivenName?: string    // First name
+  FamilyName?: string   // Last name
   PrimaryEmailAddr?: { Address: string }
   BillAddr?: {
     Line1?: string
@@ -251,6 +253,19 @@ export async function findOrCreateCustomer(
   const newCustomer: QBCustomer = {
     DisplayName: clientName,
     CompanyName: billTo?.companyName || clientName
+  }
+
+  // Parse contact name into first and last name for QBO
+  if (billTo?.contactName) {
+    const nameParts = billTo.contactName.trim().split(/\s+/)
+    if (nameParts.length >= 2) {
+      // First word is given name, rest is family name
+      newCustomer.GivenName = nameParts[0]
+      newCustomer.FamilyName = nameParts.slice(1).join(' ')
+    } else if (nameParts.length === 1) {
+      // Single name - use as given name
+      newCustomer.GivenName = nameParts[0]
+    }
   }
 
   if (billTo?.email || email) {
