@@ -843,14 +843,84 @@ export default function SiteSubmitDashboardPage() {
     setIsPinDetailsOpen(false);
     setSelectedPinData(null);
     setSelectedPinType(null);
-    // Refetch data to get any changes made in the slideout
-    fetchReportData();
   }, []);
 
-  const handleDataUpdate = useCallback(async () => {
-    // Don't refetch all data on every autosave - causes infinite loop
-    // The slideout manages its own state. Only refetch if user explicitly requests it.
-    console.log('📝 Data updated in slideout (not refetching dashboard data)');
+  // Soft update: merge changes from slideout into local state without full refetch
+  const handleDataUpdate = useCallback((updatedData: any) => {
+    if (!updatedData?.id) return;
+
+    console.log('📝 Soft updating data from slideout:', updatedData);
+
+    // Update clientSubmitData with the changed record
+    setClientSubmitData(prev => prev.map(row => {
+      if (row.id !== updatedData.id) return row;
+
+      // Merge updated fields
+      const property = updatedData.property || row.property;
+      const stage = updatedData.submit_stage;
+
+      return {
+        ...row,
+        notes: updatedData.notes ?? row.notes,
+        date_submitted: updatedData.date_submitted ?? row.date_submitted,
+        loi_date: updatedData.loi_date ?? row.loi_date,
+        submit_stage_id: updatedData.submit_stage_id ?? row.submit_stage_id,
+        submit_stage_name: stage?.name ?? row.submit_stage_name,
+        property_name: property?.property_name ?? row.property_name,
+        city: property?.city ?? row.city,
+        latitude: property?.verified_latitude ?? property?.latitude ?? row.latitude,
+        longitude: property?.verified_longitude ?? property?.longitude ?? row.longitude,
+        map_link: (property?.verified_latitude ?? property?.latitude) && (property?.verified_longitude ?? property?.longitude)
+          ? `https://www.google.com/maps?q=${property?.verified_latitude ?? property?.latitude},${property?.verified_longitude ?? property?.longitude}`
+          : row.map_link,
+        property: property ?? row.property,
+        _fullSiteSubmit: updatedData,
+      };
+    }));
+
+    // Also update filteredClientSubmitData directly
+    setFilteredClientSubmitData(prev => prev.map(row => {
+      if (row.id !== updatedData.id) return row;
+
+      const property = updatedData.property || row.property;
+      const stage = updatedData.submit_stage;
+
+      return {
+        ...row,
+        notes: updatedData.notes ?? row.notes,
+        date_submitted: updatedData.date_submitted ?? row.date_submitted,
+        loi_date: updatedData.loi_date ?? row.loi_date,
+        submit_stage_id: updatedData.submit_stage_id ?? row.submit_stage_id,
+        submit_stage_name: stage?.name ?? row.submit_stage_name,
+        property_name: property?.property_name ?? row.property_name,
+        city: property?.city ?? row.city,
+        latitude: property?.verified_latitude ?? property?.latitude ?? row.latitude,
+        longitude: property?.verified_longitude ?? property?.longitude ?? row.longitude,
+        map_link: (property?.verified_latitude ?? property?.latitude) && (property?.verified_longitude ?? property?.longitude)
+          ? `https://www.google.com/maps?q=${property?.verified_latitude ?? property?.latitude},${property?.verified_longitude ?? property?.longitude}`
+          : row.map_link,
+        property: property ?? row.property,
+        _fullSiteSubmit: updatedData,
+      };
+    }));
+
+    // Update main data array too (for Dashboard tab)
+    setData(prev => prev.map(row => {
+      if (row.id !== updatedData.id) return row;
+
+      const property = updatedData.property || row.property;
+      const stage = updatedData.submit_stage;
+
+      return {
+        ...row,
+        date_submitted: updatedData.date_submitted ?? row.date_submitted,
+        submit_stage_id: updatedData.submit_stage_id ?? row.submit_stage_id,
+        submit_stage_name: stage?.name ?? row.submit_stage_name,
+        property_name: property?.property_name ?? row.property_name,
+        property: property ?? row.property,
+        _fullSiteSubmit: updatedData,
+      };
+    }));
   }, []);
 
   // Handle viewing property details from site submit slideout
@@ -891,8 +961,6 @@ export default function SiteSubmitDashboardPage() {
   const handlePropertyDetailsClose = useCallback(() => {
     setIsPropertyDetailsOpen(false);
     setSelectedPropertyData(null);
-    // Refetch data to get any changes made in the slideout
-    fetchReportData();
   }, []);
 
   const handlePropertyDataUpdate = useCallback(async () => {
@@ -910,8 +978,6 @@ export default function SiteSubmitDashboardPage() {
   const handleFullSiteSubmitClose = useCallback(() => {
     setIsFullSiteSubmitOpen(false);
     setFullSiteSubmitId("");
-    // Refetch data to get any changes made in the slideout
-    fetchReportData();
   }, []);
 
   const fetchAssignments = async () => {
