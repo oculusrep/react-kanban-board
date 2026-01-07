@@ -11,7 +11,7 @@ import PropertyPSFField from '../../property/PropertyPSFField';
 import PropertyCurrencyField from '../../property/PropertyCurrencyField';
 import PropertySquareFootageField from '../../property/PropertySquareFootageField';
 import FormattedField from '../../shared/FormattedField';
-import { FileText, DollarSign, Building2, Activity, MapPin, Edit3, FolderOpen, Users, Trash2, Grid3x3, ExternalLink } from 'lucide-react';
+import { FileText, DollarSign, Building2, Activity, MapPin, Edit3, FolderOpen, Users, Trash2, Grid3x3, ExternalLink, Map } from 'lucide-react';
 import { Database } from '../../../../database-schema';
 import { getDropboxPropertySyncService } from '../../../services/dropboxPropertySync';
 import FileManager from '../../FileManager/FileManager';
@@ -2494,6 +2494,17 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                   title="Open property in new tab"
                 >
                   <ExternalLink size={16} className="text-white" />
+                </button>
+              )}
+
+              {/* Open Map View Button - For properties */}
+              {isProperty && localPropertyData?.id && (
+                <button
+                  onClick={() => window.open(`/mapping?property=${localPropertyData.id}`, '_blank')}
+                  className="p-2 bg-green-500 bg-opacity-80 hover:bg-green-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
+                  title="Open in map view"
+                >
+                  <Map size={16} className="text-white" />
                 </button>
               )}
 
