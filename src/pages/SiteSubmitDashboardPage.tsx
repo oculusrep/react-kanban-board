@@ -793,20 +793,42 @@ export default function SiteSubmitDashboardPage() {
 
       if (error) throw error;
 
-      // Update local state
-      setClientSubmitData(prev => prev.map(row => {
-        if (row.id === rowId) {
-          if (field === "submit_stage_id") {
-            const stage = stages.find(s => s.id === value);
-            return { ...row, submit_stage_id: value, submit_stage_name: stage?.name || null };
-          } else if (field === "date_submitted") {
-            return { ...row, date_submitted: value || null };
-          } else if (field === "notes") {
-            return { ...row, notes: value || null };
-          }
+      // Helper to update a row based on field
+      const updateRow = <T extends { id: string; submit_stage_id?: string | null; submit_stage_name?: string | null; date_submitted?: string | null; notes?: string | null }>(row: T): T => {
+        if (row.id !== rowId) return row;
+
+        if (field === "submit_stage_id") {
+          const stage = stages.find(s => s.id === value);
+          return { ...row, submit_stage_id: value || null, submit_stage_name: stage?.name || null };
+        } else if (field === "date_submitted") {
+          return { ...row, date_submitted: value || null };
+        } else if (field === "notes") {
+          return { ...row, notes: value || null };
         }
         return row;
-      }));
+      };
+
+      // Update source data
+      setClientSubmitData(prev => prev.map(updateRow));
+
+      // Also update filtered data directly to avoid any timing issues
+      setFilteredClientSubmitData(prev => prev.map(updateRow));
+
+      // Also update the main Dashboard data if the field affects it
+      if (field === "submit_stage_id" || field === "date_submitted" || field === "notes") {
+        setData(prev => prev.map(row => {
+          if (row.id !== rowId) return row;
+
+          if (field === "submit_stage_id") {
+            const stage = stages.find(s => s.id === value);
+            return { ...row, submit_stage_id: value || null, submit_stage_name: stage?.name || null };
+          } else if (field === "date_submitted") {
+            return { ...row, date_submitted: value || null };
+          }
+          // notes is not in the Dashboard tab data, so skip
+          return row;
+        }));
+      }
 
       cancelEditing();
     } catch (err) {
