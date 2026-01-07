@@ -62,6 +62,7 @@ interface ClientSubmitReportRow {
 type ActiveTab = "dashboard" | "client-submit-report";
 
 type SortField = "site_submit_name" | "property_name" | "display_sqft" | "display_nnn" | "submit_stage_name" | "client_name" | "created_at";
+type ClientSubmitSortField = "property_name" | "city" | "submit_stage_name" | "date_submitted" | "loi_date";
 type SortDirection = "asc" | "desc";
 
 export default function SiteSubmitDashboardPage() {
@@ -85,8 +86,10 @@ export default function SiteSubmitDashboardPage() {
   const [selectedStageIds, setSelectedStageIds] = useState<string[]>([]); // Changed to array for multi-select
   const [selectedClientId, setSelectedClientId] = useState<string>("");
   const [selectedClientName, setSelectedClientName] = useState<string>("");
+  const [selectedCity, setSelectedCity] = useState<string>("");
   const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
   const [clients, setClients] = useState<{ id: string; name: string }[]>([]);
+  const [cities, setCities] = useState<string[]>([]);
   const [quickFilter, setQuickFilter] = useState<string>("all"); // For button strip
 
   // Auto-suggest state (client only)
@@ -100,9 +103,13 @@ export default function SiteSubmitDashboardPage() {
   const [showStageMultiSelect, setShowStageMultiSelect] = useState(false);
   const stageMultiSelectRef = useRef<HTMLDivElement>(null);
 
-  // Sorting
+  // Sorting (Dashboard tab)
   const [sortField, setSortField] = useState<SortField>("site_submit_name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+
+  // Sorting (Client Submit Report tab)
+  const [clientSubmitSortField, setClientSubmitSortField] = useState<ClientSubmitSortField>("property_name");
+  const [clientSubmitSortDirection, setClientSubmitSortDirection] = useState<SortDirection>("asc");
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -153,7 +160,7 @@ export default function SiteSubmitDashboardPage() {
   // Apply filters for Client Submit Report tab
   useEffect(() => {
     applyClientSubmitFilters();
-  }, [clientSubmitData, selectedStageIds, selectedClientId, quickFilter]);
+  }, [clientSubmitData, selectedStageIds, selectedClientId, selectedCity, quickFilter, clientSubmitSortField, clientSubmitSortDirection]);
 
   // Handle clicking outside dropdowns
   useEffect(() => {
@@ -378,6 +385,15 @@ export default function SiteSubmitDashboardPage() {
           .sort((a, b) => a.name.localeCompare(b.name))
       );
 
+      // Extract unique cities for filters
+      const uniqueCities = new Set<string>();
+      clientSubmitRows.forEach(row => {
+        if (row.city) {
+          uniqueCities.add(row.city);
+        }
+      });
+      setCities(Array.from(uniqueCities).sort((a, b) => a.localeCompare(b)));
+
     } catch (err) {
       console.error('❌ Error in fetchReportData:', err);
       setError(err instanceof Error ? err.message : "An error occurred");
@@ -459,15 +475,49 @@ export default function SiteSubmitDashboardPage() {
       result = result.filter(row => row.client_id === selectedClientId);
     }
 
-    // Sort by property name by default
+    if (selectedCity) {
+      result = result.filter(row => row.city === selectedCity);
+    }
+
+    // Apply sorting
     result.sort((a, b) => {
-      const aVal = a.property_name || '';
-      const bVal = b.property_name || '';
-      return aVal.localeCompare(bVal);
+      let aVal: string | null = null;
+      let bVal: string | null = null;
+
+      if (clientSubmitSortField === "property_name") {
+        aVal = a.property_name;
+        bVal = b.property_name;
+      } else if (clientSubmitSortField === "city") {
+        aVal = a.city;
+        bVal = b.city;
+      } else if (clientSubmitSortField === "submit_stage_name") {
+        aVal = a.submit_stage_name;
+        bVal = b.submit_stage_name;
+      } else if (clientSubmitSortField === "date_submitted") {
+        aVal = a.date_submitted;
+        bVal = b.date_submitted;
+      } else if (clientSubmitSortField === "loi_date") {
+        aVal = a.loi_date;
+        bVal = b.loi_date;
+      }
+
+      if (aVal === null && bVal === null) return 0;
+      if (aVal === null) return 1;
+      if (bVal === null) return -1;
+
+      let comparison = 0;
+      // For date fields, compare as dates
+      if (clientSubmitSortField === "date_submitted" || clientSubmitSortField === "loi_date") {
+        comparison = new Date(aVal).getTime() - new Date(bVal).getTime();
+      } else {
+        comparison = aVal.localeCompare(bVal);
+      }
+
+      return clientSubmitSortDirection === "asc" ? comparison : -comparison;
     });
 
     setFilteredClientSubmitData(result);
-  }, [clientSubmitData, selectedStageIds, selectedClientId, quickFilter]);
+  }, [clientSubmitData, selectedStageIds, selectedClientId, selectedCity, quickFilter, clientSubmitSortField, clientSubmitSortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -484,11 +534,26 @@ export default function SiteSubmitDashboardPage() {
     }
   };
 
+  const handleClientSubmitSort = (field: ClientSubmitSortField) => {
+    if (clientSubmitSortField === field) {
+      if (clientSubmitSortDirection === "asc") {
+        setClientSubmitSortDirection("desc");
+      } else {
+        setClientSubmitSortField("property_name");
+        setClientSubmitSortDirection("asc");
+      }
+    } else {
+      setClientSubmitSortField(field);
+      setClientSubmitSortDirection("asc");
+    }
+  };
+
   const clearFilters = () => {
     setSelectedStageIds([]);
     setQuickFilter("all");
     setSelectedClientId("");
     setSelectedClientName("");
+    setSelectedCity("");
     setClientQuery("");
   };
 
@@ -959,7 +1024,7 @@ export default function SiteSubmitDashboardPage() {
           <div className="flex items-center gap-2 mb-3">
             <Filter size={18} className="text-gray-600" />
             <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
-            {(selectedStageIds.length > 0 || selectedClientId || quickFilter !== 'all') && (
+            {(selectedStageIds.length > 0 || selectedClientId || selectedCity || quickFilter !== 'all') && (
               <button
                 onClick={clearFilters}
                 className="ml-auto text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
@@ -970,7 +1035,7 @@ export default function SiteSubmitDashboardPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className={`grid grid-cols-1 gap-4 ${activeTab === "client-submit-report" ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
             {/* Stage Multi-Select Filter */}
             <div className="relative">
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1081,6 +1146,37 @@ export default function SiteSubmitDashboardPage() {
                 </div>
               )}
             </div>
+
+            {/* City Filter (only for Client Submit Report tab) */}
+            {activeTab === "client-submit-report" && (
+              <div className="relative">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Filter by City
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedCity}
+                    onChange={(e) => setSelectedCity(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                  >
+                    <option value="">All Cities</option>
+                    {cities.map((city) => (
+                      <option key={city} value={city}>
+                        {city}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedCity && (
+                    <button
+                      onClick={() => setSelectedCity("")}
+                      className="absolute right-8 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1316,7 +1412,7 @@ export default function SiteSubmitDashboardPage() {
             <div className="flex justify-between items-center mb-4">
               <p className="text-sm text-gray-600">
                 Showing {filteredClientSubmitData.length} site submits
-                {(selectedStageIds.length > 0 || selectedClientId || quickFilter !== 'all') && " (filtered)"}
+                {(selectedStageIds.length > 0 || selectedClientId || selectedCity || quickFilter !== 'all') && " (filtered)"}
               </p>
               <button
                 onClick={exportClientSubmitToCSV}
@@ -1333,11 +1429,27 @@ export default function SiteSubmitDashboardPage() {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Property Name
+                      <th
+                        onClick={() => handleClientSubmitSort("property_name")}
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>Property Name</span>
+                          {clientSubmitSortField === "property_name" && (
+                            clientSubmitSortDirection === "asc" ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                          )}
+                        </div>
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        City
+                      <th
+                        onClick={() => handleClientSubmitSort("city")}
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>City</span>
+                          {clientSubmitSortField === "city" && (
+                            clientSubmitSortDirection === "asc" ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                          )}
+                        </div>
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Map
@@ -1348,14 +1460,38 @@ export default function SiteSubmitDashboardPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Longitude
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Submit Stage
+                      <th
+                        onClick={() => handleClientSubmitSort("submit_stage_name")}
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>Submit Stage</span>
+                          {clientSubmitSortField === "submit_stage_name" && (
+                            clientSubmitSortDirection === "asc" ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                          )}
+                        </div>
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Date Submitted
+                      <th
+                        onClick={() => handleClientSubmitSort("date_submitted")}
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>Date Submitted</span>
+                          {clientSubmitSortField === "date_submitted" && (
+                            clientSubmitSortDirection === "asc" ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                          )}
+                        </div>
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        LOI Date
+                      <th
+                        onClick={() => handleClientSubmitSort("loi_date")}
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>LOI Date</span>
+                          {clientSubmitSortField === "loi_date" && (
+                            clientSubmitSortDirection === "asc" ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                          )}
+                        </div>
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Notes
