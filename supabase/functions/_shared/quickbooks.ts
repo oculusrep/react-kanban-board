@@ -250,6 +250,9 @@ export async function findOrCreateCustomer(
 
     // Update existing customer with contact name if provided
     if (billTo?.contactName) {
+      console.log(`Processing contact name update for customer ${existingCustomer.Id}: "${billTo.contactName}"`)
+      console.log(`Existing customer name - GivenName: "${existingCustomer.GivenName}", FamilyName: "${existingCustomer.FamilyName}"`)
+
       const nameParts = billTo.contactName.trim().split(/\s+/)
       let givenName: string | undefined
       let familyName: string | undefined
@@ -261,8 +264,13 @@ export async function findOrCreateCustomer(
         givenName = nameParts[0]
       }
 
+      console.log(`Parsed name - GivenName: "${givenName}", FamilyName: "${familyName}"`)
+
       // Only update if the name has changed
-      if (givenName && (existingCustomer.GivenName !== givenName || existingCustomer.FamilyName !== familyName)) {
+      const needsUpdate = givenName && (existingCustomer.GivenName !== givenName || existingCustomer.FamilyName !== familyName)
+      console.log(`Needs update: ${needsUpdate} (GivenName changed: ${existingCustomer.GivenName !== givenName}, FamilyName changed: ${existingCustomer.FamilyName !== familyName})`)
+
+      if (needsUpdate) {
         console.log(`Updating QBO customer ${existingCustomer.Id} with name: ${givenName} ${familyName || ''}`)
 
         // Need to get SyncToken for update
@@ -276,17 +284,23 @@ export async function findOrCreateCustomer(
         const syncToken = customerResult.QueryResponse.Customer?.[0]?.SyncToken
         if (syncToken) {
           try {
+            // Build update payload - only include FamilyName if it has a value
+            const updatePayload: Record<string, any> = {
+              Id: existingCustomer.Id,
+              SyncToken: syncToken,
+              sparse: true,
+              GivenName: givenName
+            }
+            if (familyName) {
+              updatePayload.FamilyName = familyName
+            }
+
+            console.log('Sending QBO customer update:', JSON.stringify(updatePayload))
             await qbApiRequest(
               connection,
               'POST',
               'customer',
-              {
-                Id: existingCustomer.Id,
-                SyncToken: syncToken,
-                sparse: true,
-                GivenName: givenName,
-                FamilyName: familyName
-              }
+              updatePayload
             )
             console.log('Updated QBO customer name successfully')
           } catch (updateError: any) {
