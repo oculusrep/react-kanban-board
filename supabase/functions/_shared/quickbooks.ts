@@ -246,7 +246,58 @@ export async function findOrCreateCustomer(
   )
 
   if (searchResult.QueryResponse.Customer && searchResult.QueryResponse.Customer.length > 0) {
-    return searchResult.QueryResponse.Customer[0].Id!
+    const existingCustomer = searchResult.QueryResponse.Customer[0]
+
+    // Update existing customer with contact name if provided
+    if (billTo?.contactName) {
+      const nameParts = billTo.contactName.trim().split(/\s+/)
+      let givenName: string | undefined
+      let familyName: string | undefined
+
+      if (nameParts.length >= 2) {
+        givenName = nameParts[0]
+        familyName = nameParts.slice(1).join(' ')
+      } else if (nameParts.length === 1) {
+        givenName = nameParts[0]
+      }
+
+      // Only update if the name has changed
+      if (givenName && (existingCustomer.GivenName !== givenName || existingCustomer.FamilyName !== familyName)) {
+        console.log(`Updating QBO customer ${existingCustomer.Id} with name: ${givenName} ${familyName || ''}`)
+
+        // Need to get SyncToken for update
+        const customerQuery = `SELECT * FROM Customer WHERE Id = '${existingCustomer.Id}'`
+        const customerResult = await qbApiRequest<{ QueryResponse: { Customer?: Array<{ Id: string; SyncToken: string }> } }>(
+          connection,
+          'GET',
+          `query?query=${encodeURIComponent(customerQuery)}`
+        )
+
+        const syncToken = customerResult.QueryResponse.Customer?.[0]?.SyncToken
+        if (syncToken) {
+          try {
+            await qbApiRequest(
+              connection,
+              'POST',
+              'customer',
+              {
+                Id: existingCustomer.Id,
+                SyncToken: syncToken,
+                sparse: true,
+                GivenName: givenName,
+                FamilyName: familyName
+              }
+            )
+            console.log('Updated QBO customer name successfully')
+          } catch (updateError: any) {
+            console.error('Failed to update QBO customer name:', updateError.message)
+            // Don't fail - continue with the existing customer ID
+          }
+        }
+      }
+    }
+
+    return existingCustomer.Id!
   }
 
   // Create new customer
