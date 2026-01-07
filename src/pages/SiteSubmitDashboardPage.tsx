@@ -1030,7 +1030,7 @@ export default function SiteSubmitDashboardPage() {
 
   return (
       <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-full mx-auto px-4">
         {/* Header */}
         <div className="mb-6 flex justify-between items-center">
           <div>
@@ -1550,12 +1550,12 @@ export default function SiteSubmitDashboardPage() {
             {/* Client Submit Report Table */}
             <div className="bg-white rounded-lg shadow overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
+                <table className="w-full divide-y divide-gray-200 table-fixed">
                   <thead className="bg-gray-50">
                     <tr>
                       <th
                         onClick={() => handleClientSubmitSort("property_name")}
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 w-[18%]"
                       >
                         <div className="flex items-center space-x-1">
                           <span>Property Name</span>
@@ -1566,7 +1566,7 @@ export default function SiteSubmitDashboardPage() {
                       </th>
                       <th
                         onClick={() => handleClientSubmitSort("city")}
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 w-[10%]"
                       >
                         <div className="flex items-center space-x-1">
                           <span>City</span>
@@ -1575,18 +1575,18 @@ export default function SiteSubmitDashboardPage() {
                           )}
                         </div>
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[6%]">
                         Map
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[8%]">
                         Latitude
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[8%]">
                         Longitude
                       </th>
                       <th
                         onClick={() => handleClientSubmitSort("submit_stage_name")}
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 w-[12%]"
                       >
                         <div className="flex items-center space-x-1">
                           <span>Submit Stage</span>
@@ -1597,7 +1597,7 @@ export default function SiteSubmitDashboardPage() {
                       </th>
                       <th
                         onClick={() => handleClientSubmitSort("date_submitted")}
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 w-[9%]"
                       >
                         <div className="flex items-center space-x-1">
                           <span>Date Submitted</span>
@@ -1608,7 +1608,7 @@ export default function SiteSubmitDashboardPage() {
                       </th>
                       <th
                         onClick={() => handleClientSubmitSort("loi_date")}
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 w-[8%]"
                       >
                         <div className="flex items-center space-x-1">
                           <span>LOI Date</span>
@@ -1617,7 +1617,7 @@ export default function SiteSubmitDashboardPage() {
                           )}
                         </div>
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[21%]">
                         Notes
                       </th>
                     </tr>
@@ -1626,18 +1626,18 @@ export default function SiteSubmitDashboardPage() {
                     {filteredClientSubmitData.map((row) => (
                       <tr key={row.id} className="hover:bg-gray-50">
                         {/* Property Name - clickable to open slideouts */}
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-4 py-3">
                           <button
                             onClick={() => handleClientSubmitRowClick(row)}
-                            className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
+                            className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline text-left truncate block w-full"
                           >
                             {row.property_name || <span className="text-gray-400">Unknown</span>}
                           </button>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <td className="px-4 py-3 text-sm text-gray-900 truncate">
                           {row.city || <span className="text-gray-400">—</span>}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <td className="px-3 py-3 text-sm">
                           {row.map_link ? (
                             <a
                               href={row.map_link}
@@ -1645,20 +1645,20 @@ export default function SiteSubmitDashboardPage() {
                               rel="noopener noreferrer"
                               className="text-blue-600 hover:text-blue-800 hover:underline"
                             >
-                              View Map
+                              View
                             </a>
                           ) : (
                             <span className="text-gray-400">—</span>
                           )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {row.latitude?.toFixed(6) || <span className="text-gray-400">—</span>}
+                        <td className="px-3 py-3 text-sm text-gray-900">
+                          {row.latitude?.toFixed(5) || <span className="text-gray-400">—</span>}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {row.longitude?.toFixed(6) || <span className="text-gray-400">—</span>}
+                        <td className="px-3 py-3 text-sm text-gray-900">
+                          {row.longitude?.toFixed(5) || <span className="text-gray-400">—</span>}
                         </td>
                         {/* Submit Stage - inline editable */}
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <td className="px-4 py-3 text-sm">
                           {editingRowId === row.id && editingField === "submit_stage_id" ? (
                             <div className="flex items-center gap-1">
                               <select
@@ -1695,7 +1695,7 @@ export default function SiteSubmitDashboardPage() {
                           ) : (
                             <button
                               onClick={() => startEditing(row.id, "submit_stage_id", row.submit_stage_id || "")}
-                              className="text-gray-900 hover:text-blue-600 hover:underline cursor-pointer"
+                              className="text-gray-900 hover:text-blue-600 hover:underline cursor-pointer truncate block w-full text-left"
                               title="Click to edit"
                             >
                               {row.submit_stage_name || <span className="text-gray-400">No Stage</span>}
@@ -1703,14 +1703,14 @@ export default function SiteSubmitDashboardPage() {
                           )}
                         </td>
                         {/* Date Submitted - inline editable */}
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <td className="px-3 py-3 text-sm">
                           {editingRowId === row.id && editingField === "date_submitted" ? (
                             <div className="flex items-center gap-1">
                               <input
                                 type="date"
                                 value={editValue}
                                 onChange={(e) => setEditValue(e.target.value)}
-                                className="text-sm border border-gray-300 rounded px-2 py-1 focus:ring-blue-500 focus:border-blue-500"
+                                className="text-sm border border-gray-300 rounded px-1 py-1 focus:ring-blue-500 focus:border-blue-500 w-28"
                                 autoFocus
                                 disabled={savingEdit}
                               />
@@ -1741,11 +1741,11 @@ export default function SiteSubmitDashboardPage() {
                             </button>
                           )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-3 py-3 text-sm text-gray-500">
                           {row.loi_date ? new Date(row.loi_date).toLocaleDateString() : "—"}
                         </td>
                         {/* Notes - inline editable */}
-                        <td className="px-6 py-4 text-sm max-w-xs">
+                        <td className="px-4 py-3 text-sm">
                           {editingRowId === row.id && editingField === "notes" ? (
                             <div className="flex items-center gap-1">
                               <input
@@ -1780,7 +1780,7 @@ export default function SiteSubmitDashboardPage() {
                           ) : (
                             <button
                               onClick={() => startEditing(row.id, "notes", row.notes || "")}
-                              className="text-gray-900 hover:text-blue-600 hover:underline cursor-pointer truncate block max-w-xs text-left"
+                              className="text-gray-900 hover:text-blue-600 hover:underline cursor-pointer truncate block w-full text-left"
                               title={row.notes ? `${row.notes} (Click to edit)` : "Click to add notes"}
                             >
                               {row.notes || <span className="text-gray-400">—</span>}
