@@ -843,6 +843,8 @@ export default function SiteSubmitDashboardPage() {
     setIsPinDetailsOpen(false);
     setSelectedPinData(null);
     setSelectedPinType(null);
+    // Refetch data to get any changes made in the slideout
+    fetchReportData();
   }, []);
 
   const handleDataUpdate = useCallback(async () => {
@@ -889,6 +891,8 @@ export default function SiteSubmitDashboardPage() {
   const handlePropertyDetailsClose = useCallback(() => {
     setIsPropertyDetailsOpen(false);
     setSelectedPropertyData(null);
+    // Refetch data to get any changes made in the slideout
+    fetchReportData();
   }, []);
 
   const handlePropertyDataUpdate = useCallback(async () => {
@@ -906,6 +910,8 @@ export default function SiteSubmitDashboardPage() {
   const handleFullSiteSubmitClose = useCallback(() => {
     setIsFullSiteSubmitOpen(false);
     setFullSiteSubmitId("");
+    // Refetch data to get any changes made in the slideout
+    fetchReportData();
   }, []);
 
   const fetchAssignments = async () => {
