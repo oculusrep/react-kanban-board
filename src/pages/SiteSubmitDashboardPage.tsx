@@ -39,13 +39,45 @@ interface SiteSubmitReportRow {
   _fullSiteSubmit?: any;
 }
 
+interface ClientSubmitReportRow {
+  id: string;
+  property_id: string;
+  property_name: string | null;
+  city: string | null;
+  // Coordinates - use verified if available, otherwise regular
+  latitude: number | null;
+  longitude: number | null;
+  map_link: string | null;
+  // Site submit data
+  submit_stage_name: string | null;
+  date_submitted: string | null;
+  loi_date: string | null;
+  notes: string | null;
+  // For filtering
+  submit_stage_id: string | null;
+  client_id: string | null;
+  client_name: string | null;
+}
+
+type ActiveTab = "dashboard" | "client-submit-report";
+
 type SortField = "site_submit_name" | "property_name" | "display_sqft" | "display_nnn" | "submit_stage_name" | "client_name" | "created_at";
 type SortDirection = "asc" | "desc";
 
 export default function SiteSubmitDashboardPage() {
   const navigate = useNavigate();
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<ActiveTab>("dashboard");
+
+  // Dashboard tab data
   const [data, setData] = useState<SiteSubmitReportRow[]>([]);
   const [filteredData, setFilteredData] = useState<SiteSubmitReportRow[]>([]);
+
+  // Client Submit Report tab data
+  const [clientSubmitData, setClientSubmitData] = useState<ClientSubmitReportRow[]>([]);
+  const [filteredClientSubmitData, setFilteredClientSubmitData] = useState<ClientSubmitReportRow[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -117,6 +149,11 @@ export default function SiteSubmitDashboardPage() {
   useEffect(() => {
     applyFiltersAndSort();
   }, [data, selectedStageIds, selectedClientId, sortField, sortDirection, quickFilter]);
+
+  // Apply filters for Client Submit Report tab
+  useEffect(() => {
+    applyClientSubmitFilters();
+  }, [clientSubmitData, selectedStageIds, selectedClientId, quickFilter]);
 
   // Handle clicking outside dropdowns
   useEffect(() => {
@@ -283,6 +320,39 @@ export default function SiteSubmitDashboardPage() {
 
       setData(transformedData);
 
+      // Transform data for Client Submit Report tab
+      const clientSubmitRows: ClientSubmitReportRow[] = siteSubmitData.map(submit => {
+        const property = submit.property as any;
+        const stage = submit.submit_stage as any;
+        const client = submit.client as any;
+
+        // Use verified coordinates if available, otherwise use regular lat/long
+        const lat = property?.verified_latitude ?? property?.latitude ?? null;
+        const lng = property?.verified_longitude ?? property?.longitude ?? null;
+
+        // Generate Google Maps link if we have coordinates
+        const mapLink = lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : null;
+
+        return {
+          id: submit.id,
+          property_id: submit.property_id,
+          property_name: property?.property_name ?? null,
+          city: property?.city ?? null,
+          latitude: lat,
+          longitude: lng,
+          map_link: mapLink,
+          submit_stage_name: stage?.name ?? null,
+          date_submitted: submit.date_submitted,
+          loi_date: submit.loi_date,
+          notes: submit.notes,
+          submit_stage_id: submit.submit_stage_id,
+          client_id: submit.client_id,
+          client_name: client?.client_name ?? null,
+        };
+      });
+
+      setClientSubmitData(clientSubmitRows);
+
       // Extract unique stages and clients for filters
       const uniqueStages = new Map<string, string>();
       const uniqueClients = new Map<string, string>();
@@ -364,6 +434,40 @@ export default function SiteSubmitDashboardPage() {
     setFilteredData(result);
     setCurrentPage(1); // Reset to first page when filters change
   }, [data, selectedStageIds, selectedClientId, sortField, sortDirection, quickFilter]);
+
+  const applyClientSubmitFilters = useCallback(() => {
+    let result = [...clientSubmitData];
+
+    // Apply quick filter first (button strip)
+    if (quickFilter !== 'all') {
+      const stageMap: Record<string, string> = {
+        'submitted-reviewing': 'Submitted-Reviewing',
+        'pursuing': 'Pursuing Ownership',
+        'pass': 'Pass',
+        'conflict': 'Use Conflict',
+        'not-available': 'Not Available'
+      };
+      const stageName = stageMap[quickFilter];
+      if (stageName) {
+        result = result.filter(row => row.submit_stage_name === stageName);
+      }
+    } else if (selectedStageIds.length > 0) {
+      result = result.filter(row => row.submit_stage_id && selectedStageIds.includes(row.submit_stage_id));
+    }
+
+    if (selectedClientId) {
+      result = result.filter(row => row.client_id === selectedClientId);
+    }
+
+    // Sort by property name by default
+    result.sort((a, b) => {
+      const aVal = a.property_name || '';
+      const bVal = b.property_name || '';
+      return aVal.localeCompare(bVal);
+    });
+
+    setFilteredClientSubmitData(result);
+  }, [clientSubmitData, selectedStageIds, selectedClientId, quickFilter]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -458,6 +562,50 @@ export default function SiteSubmitDashboardPage() {
     const link = document.createElement("a");
     link.href = url;
     link.download = `site-submit-dashboard-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportClientSubmitToCSV = () => {
+    if (filteredClientSubmitData.length === 0) {
+      alert("No data to export");
+      return;
+    }
+
+    const headers = [
+      "Property Name",
+      "City",
+      "Map Link",
+      "Latitude",
+      "Longitude",
+      "Submit Stage",
+      "Date Submitted",
+      "LOI Date",
+      "Notes"
+    ];
+
+    const rows = filteredClientSubmitData.map(row => [
+      row.property_name || "",
+      row.city || "",
+      row.map_link || "",
+      row.latitude?.toString() || "",
+      row.longitude?.toString() || "",
+      row.submit_stage_name || "",
+      row.date_submitted ? new Date(row.date_submitted).toLocaleDateString() : "",
+      row.loi_date ? new Date(row.loi_date).toLocaleDateString() : "",
+      row.notes || ""
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `client-submit-report-${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -710,6 +858,32 @@ export default function SiteSubmitDashboardPage() {
           </button>
         </div>
 
+        {/* Tab Navigation */}
+        <div className="mb-6 border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab("dashboard")}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === "dashboard"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              Dashboard
+            </button>
+            <button
+              onClick={() => setActiveTab("client-submit-report")}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === "client-submit-report"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              Client Submit Report
+            </button>
+          </nav>
+        </div>
+
         {/* Quick Filter Button Strip */}
         <div className="bg-white rounded-lg shadow p-4 mb-6">
           <div className="flex items-center gap-2 mb-3">
@@ -910,50 +1084,53 @@ export default function SiteSubmitDashboardPage() {
           </div>
         </div>
 
-        {/* Bulk Actions Bar */}
-        {selectedSiteSubmitIds.size > 0 && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Check className="h-5 w-5 text-blue-600" />
-                  <span className="font-medium text-blue-900">
-                    {selectedSiteSubmitIds.size} site submit{selectedSiteSubmitIds.size > 1 ? 's' : ''} selected
-                  </span>
+        {/* Dashboard Tab Content */}
+        {activeTab === "dashboard" && (
+          <>
+            {/* Bulk Actions Bar */}
+            {selectedSiteSubmitIds.size > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Check className="h-5 w-5 text-blue-600" />
+                      <span className="font-medium text-blue-900">
+                        {selectedSiteSubmitIds.size} site submit{selectedSiteSubmitIds.size > 1 ? 's' : ''} selected
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setSelectedSiteSubmitIds(new Set())}
+                      className="text-sm text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Clear selection
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setShowBulkAssignModal(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  >
+                    Assign to Assignment
+                  </button>
                 </div>
-                <button
-                  onClick={() => setSelectedSiteSubmitIds(new Set())}
-                  className="text-sm text-blue-600 hover:text-blue-800 underline"
-                >
-                  Clear selection
-                </button>
               </div>
+            )}
+
+            {/* Results Summary and Export */}
+            <div className="flex justify-between items-center mb-4">
+              <p className="text-sm text-gray-600">
+                Showing {paginatedData.length} of {filteredData.length} site submits
+                {(selectedStageIds.length > 0 || selectedClientId || quickFilter !== 'all') && " (filtered)"}
+              </p>
               <button
-                onClick={() => setShowBulkAssignModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                onClick={exportToCSV}
+                className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
               >
-                Assign to Assignment
+                <Download className="h-4 w-4" />
+                <span>Export CSV</span>
               </button>
             </div>
-          </div>
-        )}
 
-        {/* Results Summary and Export */}
-        <div className="flex justify-between items-center mb-4">
-          <p className="text-sm text-gray-600">
-            Showing {paginatedData.length} of {filteredData.length} site submits
-            {(selectedStageIds.length > 0 || selectedClientId || quickFilter !== 'all') && " (filtered)"}
-          </p>
-          <button
-            onClick={exportToCSV}
-            className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-          >
-            <Download className="h-4 w-4" />
-            <span>Export CSV</span>
-          </button>
-        </div>
-
-        {/* Table */}
+            {/* Table */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -1129,6 +1306,111 @@ export default function SiteSubmitDashboardPage() {
             </div>
           )}
         </div>
+          </>
+        )}
+
+        {/* Client Submit Report Tab Content */}
+        {activeTab === "client-submit-report" && (
+          <>
+            {/* Results Summary and Export */}
+            <div className="flex justify-between items-center mb-4">
+              <p className="text-sm text-gray-600">
+                Showing {filteredClientSubmitData.length} site submits
+                {(selectedStageIds.length > 0 || selectedClientId || quickFilter !== 'all') && " (filtered)"}
+              </p>
+              <button
+                onClick={exportClientSubmitToCSV}
+                className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+              >
+                <Download className="h-4 w-4" />
+                <span>Export CSV</span>
+              </button>
+            </div>
+
+            {/* Client Submit Report Table */}
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Property Name
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        City
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Map
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Latitude
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Longitude
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Submit Stage
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Date Submitted
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        LOI Date
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Notes
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredClientSubmitData.map((row) => (
+                      <tr key={row.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {row.property_name || <span className="text-gray-400">Unknown</span>}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {row.city || <span className="text-gray-400">—</span>}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {row.map_link ? (
+                            <a
+                              href={row.map_link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-800 hover:underline"
+                            >
+                              View Map
+                            </a>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {row.latitude?.toFixed(6) || <span className="text-gray-400">—</span>}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {row.longitude?.toFixed(6) || <span className="text-gray-400">—</span>}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {row.submit_stage_name || <span className="text-gray-400">No Stage</span>}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {row.date_submitted ? new Date(row.date_submitted).toLocaleDateString() : "—"}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {row.loi_date ? new Date(row.loi_date).toLocaleDateString() : "—"}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate" title={row.notes || ""}>
+                          {row.notes || <span className="text-gray-400">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Pin Details Slideout */}
