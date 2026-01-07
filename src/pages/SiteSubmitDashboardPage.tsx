@@ -57,6 +57,9 @@ interface ClientSubmitReportRow {
   submit_stage_id: string | null;
   client_id: string | null;
   client_name: string | null;
+  // For slideouts
+  property?: any;
+  _fullSiteSubmit?: any;
 }
 
 type ActiveTab = "dashboard" | "client-submit-report";
@@ -110,6 +113,12 @@ export default function SiteSubmitDashboardPage() {
   // Sorting (Client Submit Report tab)
   const [clientSubmitSortField, setClientSubmitSortField] = useState<ClientSubmitSortField>("property_name");
   const [clientSubmitSortDirection, setClientSubmitSortDirection] = useState<SortDirection>("asc");
+
+  // Inline editing state for Client Submit Report
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState<string>("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -355,6 +364,8 @@ export default function SiteSubmitDashboardPage() {
           submit_stage_id: submit.submit_stage_id,
           client_id: submit.client_id,
           client_name: client?.client_name ?? null,
+          property: property,
+          _fullSiteSubmit: submit,
         };
       });
 
@@ -713,6 +724,97 @@ export default function SiteSubmitDashboardPage() {
     setSelectedPinData(siteSubmitData);
     setSelectedPinType('site_submit');
     setIsPinDetailsOpen(true);
+  };
+
+  // Handler for Client Submit Report - opens both property and site submit slideouts
+  const handleClientSubmitRowClick = useCallback(async (row: ClientSubmitReportRow) => {
+    console.log('📋 Opening property and site submit slideouts for:', row.property_name);
+
+    // Open the site submit slideout (using the full site submit record)
+    if (row._fullSiteSubmit) {
+      setSelectedPinData(row._fullSiteSubmit);
+      setSelectedPinType('site_submit');
+      setIsPinDetailsOpen(true);
+    }
+
+    // Also open the property details slideout
+    if (row.property?.id) {
+      try {
+        const { data: freshPropertyData, error } = await supabase
+          .from('property')
+          .select('*')
+          .eq('id', row.property.id)
+          .single();
+
+        if (error) {
+          console.error('❌ Error fetching fresh property data:', error);
+          setSelectedPropertyData(row.property);
+        } else {
+          setSelectedPropertyData(freshPropertyData);
+        }
+      } catch (err) {
+        console.error('❌ Exception fetching fresh property data:', err);
+        setSelectedPropertyData(row.property);
+      }
+      setIsPropertyDetailsOpen(true);
+    }
+  }, []);
+
+  // Inline editing handlers for Client Submit Report
+  const startEditing = (rowId: string, field: string, currentValue: string) => {
+    setEditingRowId(rowId);
+    setEditingField(field);
+    setEditValue(currentValue || "");
+  };
+
+  const cancelEditing = () => {
+    setEditingRowId(null);
+    setEditingField(null);
+    setEditValue("");
+  };
+
+  const saveInlineEdit = async (rowId: string, field: string, value: string) => {
+    setSavingEdit(true);
+    try {
+      const updateData: Record<string, any> = {};
+
+      if (field === "submit_stage_id") {
+        updateData.submit_stage_id = value || null;
+      } else if (field === "date_submitted") {
+        updateData.date_submitted = value || null;
+      } else if (field === "notes") {
+        updateData.notes = value || null;
+      }
+
+      const { error } = await supabase
+        .from("site_submit")
+        .update(updateData)
+        .eq("id", rowId);
+
+      if (error) throw error;
+
+      // Update local state
+      setClientSubmitData(prev => prev.map(row => {
+        if (row.id === rowId) {
+          if (field === "submit_stage_id") {
+            const stage = stages.find(s => s.id === value);
+            return { ...row, submit_stage_id: value, submit_stage_name: stage?.name || null };
+          } else if (field === "date_submitted") {
+            return { ...row, date_submitted: value || null };
+          } else if (field === "notes") {
+            return { ...row, notes: value || null };
+          }
+        }
+        return row;
+      }));
+
+      cancelEditing();
+    } catch (err) {
+      console.error("Error saving edit:", err);
+      alert("Failed to save changes. Please try again.");
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const handlePinDetailsClose = useCallback(() => {
@@ -1501,8 +1603,14 @@ export default function SiteSubmitDashboardPage() {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {filteredClientSubmitData.map((row) => (
                       <tr key={row.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {row.property_name || <span className="text-gray-400">Unknown</span>}
+                        {/* Property Name - clickable to open slideouts */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <button
+                            onClick={() => handleClientSubmitRowClick(row)}
+                            className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
+                          >
+                            {row.property_name || <span className="text-gray-400">Unknown</span>}
+                          </button>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {row.city || <span className="text-gray-400">—</span>}
@@ -1527,17 +1635,135 @@ export default function SiteSubmitDashboardPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {row.longitude?.toFixed(6) || <span className="text-gray-400">—</span>}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {row.submit_stage_name || <span className="text-gray-400">No Stage</span>}
+                        {/* Submit Stage - inline editable */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {editingRowId === row.id && editingField === "submit_stage_id" ? (
+                            <div className="flex items-center gap-1">
+                              <select
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                className="text-sm border border-gray-300 rounded px-2 py-1 focus:ring-blue-500 focus:border-blue-500"
+                                autoFocus
+                                disabled={savingEdit}
+                              >
+                                <option value="">No Stage</option>
+                                {stages.map((stage) => (
+                                  <option key={stage.id} value={stage.id}>
+                                    {stage.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                onClick={() => saveInlineEdit(row.id, "submit_stage_id", editValue)}
+                                disabled={savingEdit}
+                                className="text-green-600 hover:text-green-800 p-1"
+                                title="Save"
+                              >
+                                <Check className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={cancelEditing}
+                                disabled={savingEdit}
+                                className="text-gray-400 hover:text-gray-600 p-1"
+                                title="Cancel"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => startEditing(row.id, "submit_stage_id", row.submit_stage_id || "")}
+                              className="text-gray-900 hover:text-blue-600 hover:underline cursor-pointer"
+                              title="Click to edit"
+                            >
+                              {row.submit_stage_name || <span className="text-gray-400">No Stage</span>}
+                            </button>
+                          )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {row.date_submitted ? new Date(row.date_submitted).toLocaleDateString() : "—"}
+                        {/* Date Submitted - inline editable */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {editingRowId === row.id && editingField === "date_submitted" ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="date"
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                className="text-sm border border-gray-300 rounded px-2 py-1 focus:ring-blue-500 focus:border-blue-500"
+                                autoFocus
+                                disabled={savingEdit}
+                              />
+                              <button
+                                onClick={() => saveInlineEdit(row.id, "date_submitted", editValue)}
+                                disabled={savingEdit}
+                                className="text-green-600 hover:text-green-800 p-1"
+                                title="Save"
+                              >
+                                <Check className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={cancelEditing}
+                                disabled={savingEdit}
+                                className="text-gray-400 hover:text-gray-600 p-1"
+                                title="Cancel"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => startEditing(row.id, "date_submitted", row.date_submitted ? row.date_submitted.split('T')[0] : "")}
+                              className="text-gray-500 hover:text-blue-600 hover:underline cursor-pointer"
+                              title="Click to edit"
+                            >
+                              {row.date_submitted ? new Date(row.date_submitted).toLocaleDateString() : <span className="text-gray-400">—</span>}
+                            </button>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {row.loi_date ? new Date(row.loi_date).toLocaleDateString() : "—"}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate" title={row.notes || ""}>
-                          {row.notes || <span className="text-gray-400">—</span>}
+                        {/* Notes - inline editable */}
+                        <td className="px-6 py-4 text-sm max-w-xs">
+                          {editingRowId === row.id && editingField === "notes" ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                className="text-sm border border-gray-300 rounded px-2 py-1 focus:ring-blue-500 focus:border-blue-500 w-full"
+                                autoFocus
+                                disabled={savingEdit}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") saveInlineEdit(row.id, "notes", editValue);
+                                  if (e.key === "Escape") cancelEditing();
+                                }}
+                              />
+                              <button
+                                onClick={() => saveInlineEdit(row.id, "notes", editValue)}
+                                disabled={savingEdit}
+                                className="text-green-600 hover:text-green-800 p-1"
+                                title="Save"
+                              >
+                                <Check className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={cancelEditing}
+                                disabled={savingEdit}
+                                className="text-gray-400 hover:text-gray-600 p-1"
+                                title="Cancel"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => startEditing(row.id, "notes", row.notes || "")}
+                              className="text-gray-900 hover:text-blue-600 hover:underline cursor-pointer truncate block max-w-xs text-left"
+                              title={row.notes ? `${row.notes} (Click to edit)` : "Click to add notes"}
+                            >
+                              {row.notes || <span className="text-gray-400">—</span>}
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
