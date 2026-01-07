@@ -463,6 +463,10 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
   const syncedPaymentIdsRef = useRef<Set<string>>(new Set());
   const isSyncingRef = useRef(false);
 
+  // Track when we're updating bill-to fields to skip jarring subscription refreshes
+  const billToUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const skipDealRefreshRef = useRef(false);
+
   // Auto-sync payments to QuickBooks when they have pending changes (runs once on initial load)
   useEffect(() => {
     // Don't run while loading or if already syncing
@@ -600,6 +604,11 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
         table: 'deal',
         filter: `id=eq.${deal.id}`
       }, (payload) => {
+        // Skip refresh if we're in the middle of bill-to updates (prevents jarring UI)
+        if (skipDealRefreshRef.current) {
+          console.log('💼 Deal change detected (skipping refresh - bill-to update in progress)');
+          return;
+        }
         console.log('💼 Deal change detected');
         // Clear cache and refetch
         paymentDataCache.delete(deal.id);
@@ -695,6 +704,23 @@ const PaymentTab: React.FC<PaymentTabProps> = ({ deal, onDealUpdate }) => {
         clientId={deal.client_id}
         commissionSplits={commissionSplits}
         brokers={brokers}
+        onBillToUpdate={(updates) => {
+          // Set flag to skip jarring subscription refreshes during bill-to edits
+          skipDealRefreshRef.current = true;
+
+          // Clear any existing timeout
+          if (billToUpdateTimeoutRef.current) {
+            clearTimeout(billToUpdateTimeoutRef.current);
+          }
+
+          // Reset the flag after 2 seconds (enough time for subscription events to pass)
+          billToUpdateTimeoutRef.current = setTimeout(() => {
+            skipDealRefreshRef.current = false;
+          }, 2000);
+
+          // Update the parent deal state so validation works correctly
+          onDealUpdate(updates);
+        }}
       />
 
       {/* Payment Generation Section */}

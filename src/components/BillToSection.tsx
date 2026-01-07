@@ -9,6 +9,7 @@ interface BillToSectionProps {
   clientId?: string;
   commissionSplits: CommissionSplit[];
   brokers: Broker[];
+  onBillToUpdate?: (updates: { bill_to_company_name?: string; bill_to_contact_name?: string; bill_to_email?: string }) => void;
 }
 
 const DEFAULT_BCC_EMAIL = 'mike@oculusrep.com';
@@ -17,7 +18,8 @@ const BillToSection: React.FC<BillToSectionProps> = ({
   dealId,
   clientId,
   commissionSplits,
-  brokers
+  brokers,
+  onBillToUpdate
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -103,6 +105,17 @@ const BillToSection: React.FC<BillToSectionProps> = ({
 
         if (error) throw error;
 
+        // Notify parent of bill-to field changes (for validation)
+        if (onBillToUpdate) {
+          const billToUpdates: { bill_to_company_name?: string; bill_to_contact_name?: string; bill_to_email?: string } = {};
+          if ('bill_to_company_name' in fieldsToSave) billToUpdates.bill_to_company_name = fieldsToSave.bill_to_company_name || undefined;
+          if ('bill_to_contact_name' in fieldsToSave) billToUpdates.bill_to_contact_name = fieldsToSave.bill_to_contact_name || undefined;
+          if ('bill_to_email' in fieldsToSave) billToUpdates.bill_to_email = fieldsToSave.bill_to_email || undefined;
+          if (Object.keys(billToUpdates).length > 0) {
+            onBillToUpdate(billToUpdates);
+          }
+        }
+
         // Auto-resync QuickBooks invoices when bill-to fields change
         // This runs in the background and doesn't block the UI
         resyncDealInvoices(dealId).then(results => {
@@ -118,7 +131,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
         setSaving(false);
       }
     }, 800);
-  }, [dealId]);
+  }, [dealId, onBillToUpdate]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
