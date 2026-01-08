@@ -334,13 +334,13 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
     const mapButton = createButton('Map', map.getMapTypeId() === google.maps.MapTypeId.ROADMAP);
     const satelliteButton = createButton('Satellite', map.getMapTypeId() === google.maps.MapTypeId.SATELLITE);
 
-    // Labels checkbox container
+    // Labels checkbox container - controls Google Places/business labels visibility
     const labelsContainer = document.createElement('div');
     labelsContainer.style.backgroundColor = '#fff';
     labelsContainer.style.borderRadius = '3px';
     labelsContainer.style.boxShadow = '0 2px 6px rgba(0,0,0,.3)';
     labelsContainer.style.padding = '8px 12px';
-    labelsContainer.style.display = 'none'; // Initially hidden
+    labelsContainer.style.display = 'flex'; // Always visible so users can toggle business labels
     labelsContainer.style.alignItems = 'center';
     labelsContainer.style.gap = '6px';
     labelsContainer.style.cursor = 'pointer';
@@ -629,7 +629,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
             position: google.maps.ControlPosition.LEFT_TOP,
           },
           gestureHandling: 'greedy',
-          styles: labelsVisible ? createMutedPlacesStyle() : [...createMutedPlacesStyle(), ...createNoLabelsStyle()] // Only apply to road map initially
+          styles: labelsVisible ? createMutedPlacesStyle() : [...createMutedPlacesStyle(), ...createNoPlacesStyle()] // Only apply to road map initially
         });
 
         // Add a marker at the center location
@@ -703,7 +703,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
             if (labelsVisible) {
               map.setOptions({ styles: createMutedPlacesStyle() });
             } else {
-              map.setOptions({ styles: [...createMutedPlacesStyle(), ...createNoLabelsStyle()] });
+              map.setOptions({ styles: [...createMutedPlacesStyle(), ...createNoPlacesStyle()] });
             }
           }
         });
