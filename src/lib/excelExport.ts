@@ -109,37 +109,40 @@ export async function exportToExcel(options: ExcelExportOptions): Promise<void> 
   workbook.creator = 'OVIS';
   workbook.created = new Date();
 
-  const worksheet = workbook.addWorksheet(sheetName, {
-    views: [{ state: 'frozen', ySplit: title ? (subtitle ? 3 : 2) : 1 }],
-  });
+  const worksheet = workbook.addWorksheet(sheetName);
 
   let startRow = 1;
 
-  // Add logo if provided (top left, 20px height maintaining aspect ratio)
+  // Add logo if provided (top left, 80px height maintaining aspect ratio)
   if (logoBase64) {
     const imageId = workbook.addImage({
       base64: logoBase64,
       extension: 'jpeg',
     });
-    // Logo original dimensions: 2364x789, target height: 20px
-    // Aspect ratio: 2364/789 = 2.996, so width = 20 * 3 = 60px approx
-    // ExcelJS uses column/row units, not pixels. Approximate: 1 column ~= 7px, 1 row ~= 15px
-    // For 20px height: ~1.33 rows, for 60px width: ~8.5 columns (but we'll use fractional positioning)
+    // Logo original dimensions: 2364x789, target height: 80px (4x original 20px)
+    // Aspect ratio: 2364/789 = 2.996, so width = 80 * 3 = 240px approx
     worksheet.addImage(imageId, {
       tl: { col: 0, row: 0 },
-      ext: { width: 60, height: 20 },
+      ext: { width: 240, height: 80 },
     });
   }
 
-  // Add title if provided (Calibri 16 bold)
+  // Add logo row - make it tall enough for the logo (80px = ~60 Excel row height)
+  if (logoBase64) {
+    worksheet.getRow(1).height = 60;
+    startRow = 2;
+  }
+
+  // Add title if provided (Calibri 16 bold) - on row after logo
   if (title) {
-    worksheet.mergeCells(1, 1, 1, columns.length);
-    const titleCell = worksheet.getCell(1, 1);
+    const titleRowNum = logoBase64 ? 2 : 1;
+    worksheet.mergeCells(titleRowNum, 1, titleRowNum, columns.length);
+    const titleCell = worksheet.getCell(titleRowNum, 1);
     titleCell.value = title;
     titleCell.font = { name: 'Calibri', bold: true, size: 16, color: { argb: 'FF1E293B' } };
     titleCell.alignment = { horizontal: 'left', vertical: 'middle' };
-    worksheet.getRow(1).height = 28;
-    startRow = 2;
+    worksheet.getRow(titleRowNum).height = 28;
+    startRow = titleRowNum + 1;
   }
 
   // Add subtitle if provided
@@ -246,6 +249,9 @@ export async function exportToExcel(options: ExcelExportOptions): Promise<void> 
     from: { row: headerRowNum, column: 1 },
     to: { row: headerRowNum, column: columns.length },
   };
+
+  // Freeze rows above data (header row and above)
+  worksheet.views = [{ state: 'frozen', ySplit: headerRowNum }];
 
   // Generate and download the file
   const buffer = await workbook.xlsx.writeBuffer();
