@@ -658,7 +658,17 @@ export default function SiteSubmitDashboardPage() {
         ? clients.find(c => c.id === selectedClientId)?.name
         : undefined;
 
-      await exportClientSubmitReport(filteredClientSubmitData, clientName);
+      // Get selected stage names for filter display
+      const selectedStageNames = stages
+        .filter(s => selectedStageIds.includes(s.id))
+        .map(s => s.name);
+
+      await exportClientSubmitReport(filteredClientSubmitData, {
+        clientName,
+        stages: selectedStageNames,
+        city: selectedCity || undefined,
+        quickFilter,
+      });
     } catch (error) {
       console.error('Error exporting to Excel:', error);
       alert('Error exporting to Excel. Please try again.');

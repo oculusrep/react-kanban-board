@@ -131,14 +131,13 @@ export async function exportToExcel(options: ExcelExportOptions): Promise<void> 
     });
   }
 
-  // Add title if provided
+  // Add title if provided (Calibri 16 bold)
   if (title) {
     worksheet.mergeCells(1, 1, 1, columns.length);
     const titleCell = worksheet.getCell(1, 1);
     titleCell.value = title;
-    titleCell.font = { bold: true, size: 16, color: { argb: 'FF1E293B' } };
-    // If we have a logo, indent the title to make room
-    titleCell.alignment = { horizontal: logoBase64 ? 'center' : 'left', vertical: 'middle' };
+    titleCell.font = { name: 'Calibri', bold: true, size: 16, color: { argb: 'FF1E293B' } };
+    titleCell.alignment = { horizontal: 'left', vertical: 'middle' };
     worksheet.getRow(1).height = 28;
     startRow = 2;
   }
@@ -261,6 +260,13 @@ export async function exportToExcel(options: ExcelExportOptions): Promise<void> 
   URL.revokeObjectURL(url);
 }
 
+export interface ClientSubmitReportFilters {
+  clientName?: string;
+  stages?: string[];
+  city?: string;
+  quickFilter?: string;
+}
+
 // Convenience function for Client Submit Report export
 export async function exportClientSubmitReport(
   data: {
@@ -275,7 +281,7 @@ export async function exportClientSubmitReport(
     notes: string | null;
     client_name?: string | null;
   }[],
-  clientName?: string
+  filters?: ClientSubmitReportFilters
 ): Promise<void> {
   const columns: ExcelColumn[] = [
     { header: 'Property Name', key: 'property_name', width: 35 },
@@ -302,10 +308,33 @@ export async function exportClientSubmitReport(
     notes: row.notes || '',
   }));
 
+  const clientName = filters?.clientName;
   const dateStr = new Date().toISOString().split('T')[0];
   const filename = clientName
     ? `${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_Site_Submits_${dateStr}.xlsx`
     : `Client_Submit_Report_${dateStr}.xlsx`;
+
+  // Build filter description for subtitle
+  const filterParts: string[] = [];
+  if (filters?.stages && filters.stages.length > 0) {
+    filterParts.push(`Stages: ${filters.stages.join(', ')}`);
+  }
+  if (filters?.city) {
+    filterParts.push(`City: ${filters.city}`);
+  }
+  if (filters?.quickFilter && filters.quickFilter !== 'all') {
+    const quickFilterLabels: Record<string, string> = {
+      'has_loi': 'Has LOI',
+      'no_loi': 'No LOI',
+      'submitted_this_month': 'Submitted This Month',
+      'submitted_this_quarter': 'Submitted This Quarter',
+    };
+    filterParts.push(quickFilterLabels[filters.quickFilter] || filters.quickFilter);
+  }
+
+  const filterDescription = filterParts.length > 0
+    ? `Filtered by: ${filterParts.join(' | ')}`
+    : `${data.length} records • Generated ${new Date().toLocaleDateString()}`;
 
   // Load the logo
   const logoBase64 = await getLogoBase64();
@@ -315,8 +344,8 @@ export async function exportClientSubmitReport(
     sheetName: 'Site Submits',
     columns,
     data: exportData,
-    title: clientName ? `Site Submits for ${clientName}` : 'Client Submit Report',
-    subtitle: `Generated ${new Date().toLocaleDateString()} • ${data.length} records`,
+    title: `Site Submit Report for: ${clientName || 'All Clients'}`,
+    subtitle: filterDescription,
     logoBase64: logoBase64 || undefined,
   });
 }
