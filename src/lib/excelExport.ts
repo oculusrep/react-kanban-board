@@ -5,6 +5,8 @@ export interface ExcelColumn {
   key: string;
   width?: number;
   style?: Partial<ExcelJS.Style>;
+  isHyperlink?: boolean;  // If true, values will be rendered as clickable hyperlinks
+  hyperlinkText?: string; // Optional display text for hyperlinks (e.g., "View Map")
 }
 
 export interface ExcelExportOptions {
@@ -143,8 +145,19 @@ export async function exportToExcel(options: ExcelExportOptions): Promise<void> 
       const cell = row.getCell(colIndex + 1);
       let value = rowData[col.key];
 
+      // Handle hyperlinks
+      if (col.isHyperlink && value && typeof value === 'string' && value.startsWith('http')) {
+        cell.value = {
+          text: col.hyperlinkText || value,
+          hyperlink: value,
+        };
+        cell.font = {
+          color: { argb: 'FF2563EB' },  // Blue color for links
+          underline: true,
+        };
+      }
       // Handle date formatting
-      if (value instanceof Date) {
+      else if (value instanceof Date) {
         cell.value = value;
         cell.numFmt = 'mm/dd/yyyy';
       } else if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
@@ -206,7 +219,7 @@ export async function exportClientSubmitReport(
   const columns: ExcelColumn[] = [
     { header: 'Property Name', key: 'property_name', width: 35 },
     { header: 'City', key: 'city', width: 18 },
-    { header: 'Map Link', key: 'map_link', width: 45 },
+    { header: 'Map', key: 'map_link', width: 12, isHyperlink: true, hyperlinkText: 'View Map', style: { alignment: { horizontal: 'center' } } },
     { header: 'Latitude', key: 'latitude', width: 12, style: { alignment: { horizontal: 'right' } } },
     { header: 'Longitude', key: 'longitude', width: 12, style: { alignment: { horizontal: 'right' } } },
     { header: 'Submit Stage', key: 'submit_stage_name', width: 18 },
