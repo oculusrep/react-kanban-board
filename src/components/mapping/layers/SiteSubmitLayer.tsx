@@ -653,13 +653,21 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
       clusterer.setMap(null); // Remove clusterer from map
     }
 
-    console.log(`🔗 Setting up site submit marker clustering with ${markers.length} markers...`);
-
     const clusterConfig = loadingConfig.clusterConfig || {
       minimumClusterSize: 5,
       gridSize: 60,
       maxZoom: 15
     };
+
+    // If minimumClusterSize is very high (e.g., 999), disable clustering entirely
+    // by adding markers directly to the map instead of using a clusterer
+    if (clusterConfig.minimumClusterSize >= 100) {
+      console.log(`🚫 Clustering disabled (minimumClusterSize: ${clusterConfig.minimumClusterSize})`);
+      setClusterer(null);
+      return;
+    }
+
+    console.log(`🔗 Setting up site submit marker clustering with ${markers.length} markers...`);
 
     const newClusterer = new MarkerClusterer({
       map,
@@ -676,8 +684,6 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
 
   // Update marker visibility
   const updateMarkerVisibility = () => {
-    if (!clusterer) return;
-
     if (isVisible) {
       // Add clustered markers back
       const markersToCluster: google.maps.Marker[] = [];
@@ -694,15 +700,23 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
         }
       });
 
-      console.log(`👁️ Showing ${markersToCluster.length} site submit markers + ${verifyingMarkers.length} verifying markers`);
-      clusterer.addMarkers(markersToCluster);
+      // If clustering is disabled (clusterer is null), add markers directly to map
+      if (!clusterer) {
+        console.log(`👁️ Showing ${markersToCluster.length} site submit markers (no clustering) + ${verifyingMarkers.length} verifying markers`);
+        markersToCluster.forEach(marker => marker.setMap(map));
+      } else {
+        console.log(`👁️ Showing ${markersToCluster.length} site submit markers (clustered) + ${verifyingMarkers.length} verifying markers`);
+        clusterer.addMarkers(markersToCluster);
+      }
 
       // Re-add verifying markers directly to map
       verifyingMarkers.forEach(marker => marker.setMap(map));
     } else {
       console.log('🙈 Hiding site submit markers');
-      clusterer.clearMarkers();
-      // Also hide any markers that are directly on the map (verifying marker)
+      if (clusterer) {
+        clusterer.clearMarkers();
+      }
+      // Also hide any markers that are directly on the map (verifying marker or non-clustered)
       markers.forEach(marker => {
         if (marker.getMap() !== null) {
           marker.setMap(null);
@@ -731,12 +745,12 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
     }
   }, [siteSubmits, map, loadingConfig.visibleStages, verifyingSiteSubmitId, verifyingSiteSubmit]);
 
-  // Set up clustering when markers change (including when empty)
+  // Set up clustering when markers change or cluster config changes (including when empty)
   useEffect(() => {
     if (map) {
       setupClustering();
     }
-  }, [markers, map]);
+  }, [markers, map, loadingConfig.clusterConfig]);
 
   // Update visibility when isVisible prop changes
   useEffect(() => {
