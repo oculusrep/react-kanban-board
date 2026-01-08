@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabaseClient";
 import { ChevronDown, ChevronUp, Download, X, Filter, Check } from "lucide-react";
 import PinDetailsSlideout from "../components/mapping/slideouts/PinDetailsSlideout";
 import SiteSubmitSlideOut from "../components/SiteSubmitSlideOut";
+import { exportClientSubmitReport } from "../lib/excelExport";
 
 interface SiteSubmitReportRow {
   id: string;
@@ -642,48 +643,28 @@ export default function SiteSubmitDashboardPage() {
     URL.revokeObjectURL(url);
   };
 
-  const exportClientSubmitToCSV = () => {
+  const [exporting, setExporting] = useState(false);
+
+  const exportClientSubmitToExcel = async () => {
     if (filteredClientSubmitData.length === 0) {
       alert("No data to export");
       return;
     }
 
-    const headers = [
-      "Property Name",
-      "City",
-      "Map Link",
-      "Latitude",
-      "Longitude",
-      "Submit Stage",
-      "Date Submitted",
-      "LOI Date",
-      "Notes"
-    ];
+    setExporting(true);
+    try {
+      // Get client name for filename if filtered by client
+      const clientName = selectedClientId
+        ? clients.find(c => c.id === selectedClientId)?.name
+        : undefined;
 
-    const rows = filteredClientSubmitData.map(row => [
-      row.property_name || "",
-      row.city || "",
-      row.map_link || "",
-      row.latitude?.toString() || "",
-      row.longitude?.toString() || "",
-      row.submit_stage_name || "",
-      row.date_submitted ? new Date(row.date_submitted).toLocaleDateString() : "",
-      row.loi_date ? new Date(row.loi_date).toLocaleDateString() : "",
-      row.notes || ""
-    ]);
-
-    const csvContent = [
-      headers.join(","),
-      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-    ].join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `client-submit-report-${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+      await exportClientSubmitReport(filteredClientSubmitData, clientName);
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      alert('Error exporting to Excel. Please try again.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   // Pagination
@@ -1611,11 +1592,12 @@ export default function SiteSubmitDashboardPage() {
                 {(selectedStageIds.length > 0 || selectedClientId || selectedCity || quickFilter !== 'all') && " (filtered)"}
               </p>
               <button
-                onClick={exportClientSubmitToCSV}
-                className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                onClick={exportClientSubmitToExcel}
+                disabled={exporting}
+                className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Download className="h-4 w-4" />
-                <span>Export CSV</span>
+                <span>{exporting ? 'Exporting...' : 'Export Excel'}</span>
               </button>
             </div>
 

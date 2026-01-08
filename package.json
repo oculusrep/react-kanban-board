@@ -27,6 +27,7 @@
     "dropbox": "^10.34.0",
     "email-addresses": "^5.0.0",
     "email-reply-parser": "^2.0.1",
+    "exceljs": "^4.4.0",
     "lucide-react": "^0.544.0",
     "pg": "^8.16.3",
     "quill": "^2.0.3",
