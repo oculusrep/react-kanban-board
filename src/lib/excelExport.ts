@@ -1,5 +1,33 @@
 import ExcelJS from 'exceljs';
 
+// Oculus logo as base64 - will be loaded dynamically
+let cachedLogoBase64: string | null = null;
+
+async function getLogoBase64(): Promise<string | null> {
+  if (cachedLogoBase64) return cachedLogoBase64;
+
+  try {
+    // Load the logo from the public Images folder
+    const response = await fetch('/Images/Oculus_02-Long.jpg');
+    if (!response.ok) return null;
+
+    const blob = await response.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        // Remove the data URL prefix to get just the base64 data
+        cachedLogoBase64 = base64.split(',')[1] || null;
+        resolve(cachedLogoBase64);
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
 export interface ExcelColumn {
   header: string;
   key: string;
@@ -17,6 +45,7 @@ export interface ExcelExportOptions {
   headerStyle?: Partial<ExcelJS.Style>;
   title?: string;
   subtitle?: string;
+  logoBase64?: string;  // Base64 encoded logo image
 }
 
 // Default header style - professional blue theme
@@ -73,6 +102,7 @@ export async function exportToExcel(options: ExcelExportOptions): Promise<void> 
     headerStyle = defaultHeaderStyle,
     title,
     subtitle,
+    logoBase64,
   } = options;
 
   const workbook = new ExcelJS.Workbook();
@@ -85,13 +115,30 @@ export async function exportToExcel(options: ExcelExportOptions): Promise<void> 
 
   let startRow = 1;
 
+  // Add logo if provided (top left, 20px height maintaining aspect ratio)
+  if (logoBase64) {
+    const imageId = workbook.addImage({
+      base64: logoBase64,
+      extension: 'jpeg',
+    });
+    // Logo original dimensions: 2364x789, target height: 20px
+    // Aspect ratio: 2364/789 = 2.996, so width = 20 * 3 = 60px approx
+    // ExcelJS uses column/row units, not pixels. Approximate: 1 column ~= 7px, 1 row ~= 15px
+    // For 20px height: ~1.33 rows, for 60px width: ~8.5 columns (but we'll use fractional positioning)
+    worksheet.addImage(imageId, {
+      tl: { col: 0, row: 0 },
+      ext: { width: 60, height: 20 },
+    });
+  }
+
   // Add title if provided
   if (title) {
     worksheet.mergeCells(1, 1, 1, columns.length);
     const titleCell = worksheet.getCell(1, 1);
     titleCell.value = title;
     titleCell.font = { bold: true, size: 16, color: { argb: 'FF1E293B' } };
-    titleCell.alignment = { horizontal: 'left', vertical: 'middle' };
+    // If we have a logo, indent the title to make room
+    titleCell.alignment = { horizontal: logoBase64 ? 'center' : 'left', vertical: 'middle' };
     worksheet.getRow(1).height = 28;
     startRow = 2;
   }
@@ -172,13 +219,27 @@ export async function exportToExcel(options: ExcelExportOptions): Promise<void> 
       cell.fill = rowIndex % 2 === 0 ? evenRowFill : oddRowFill;
       cell.border = dataCellBorder;
       cell.alignment = {
-        vertical: 'middle',
+        vertical: 'top',
         horizontal: col.style?.alignment?.horizontal || 'left',
         wrapText: true,
       };
     });
 
-    row.height = 20;
+    // Calculate row height based on content (especially for Notes column)
+    // Find the longest text content and estimate lines needed
+    let maxLines = 1;
+    columns.forEach((col, colIndex) => {
+      const value = rowData[col.key];
+      if (typeof value === 'string' && value.length > 0) {
+        const colWidth = col.width || 15;
+        // Estimate characters per line based on column width (approx 1.2 chars per width unit)
+        const charsPerLine = Math.floor(colWidth * 1.2);
+        const estimatedLines = Math.ceil(value.length / charsPerLine);
+        maxLines = Math.max(maxLines, estimatedLines);
+      }
+    });
+    // Each line is approximately 15px, minimum row height is 20px
+    row.height = Math.max(20, Math.min(maxLines * 15, 200));
   });
 
   // Auto-filter on header row
@@ -246,6 +307,9 @@ export async function exportClientSubmitReport(
     ? `${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_Site_Submits_${dateStr}.xlsx`
     : `Client_Submit_Report_${dateStr}.xlsx`;
 
+  // Load the logo
+  const logoBase64 = await getLogoBase64();
+
   await exportToExcel({
     filename,
     sheetName: 'Site Submits',
@@ -253,5 +317,6 @@ export async function exportClientSubmitReport(
     data: exportData,
     title: clientName ? `Site Submits for ${clientName}` : 'Client Submit Report',
     subtitle: `Generated ${new Date().toLocaleDateString()} • ${data.length} records`,
+    logoBase64: logoBase64 || undefined,
   });
 }
