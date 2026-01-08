@@ -491,6 +491,20 @@ export default function SiteSubmitDashboardPage() {
       result = result.filter(row => row.city === selectedCity);
     }
 
+    // Custom sort order for Submit Stage (ascending)
+    const submitStageSortOrder = [
+      'LOI',
+      'Submitted-Reviewing',
+      'Pursuing Ownership',
+      'Pass',
+      'Use Conflict',
+      'Use Declined',
+      'Not Available',
+      'Lost/Killed',
+      'Under Contract/Contingent',
+      'Store Opened',
+    ];
+
     // Apply sorting
     result.sort((a, b) => {
       let aVal: string | null = null;
@@ -521,6 +535,25 @@ export default function SiteSubmitDashboardPage() {
       // For date fields, compare as dates
       if (clientSubmitSortField === "date_submitted" || clientSubmitSortField === "loi_date") {
         comparison = new Date(aVal).getTime() - new Date(bVal).getTime();
+      } else if (clientSubmitSortField === "submit_stage_name") {
+        // Custom sort order for Submit Stage
+        const aIndex = submitStageSortOrder.indexOf(aVal);
+        const bIndex = submitStageSortOrder.indexOf(bVal);
+
+        // If both are in the custom order, sort by index
+        if (aIndex !== -1 && bIndex !== -1) {
+          comparison = aIndex - bIndex;
+        }
+        // If only one is in the custom order, it comes first
+        else if (aIndex !== -1) {
+          comparison = -1;
+        } else if (bIndex !== -1) {
+          comparison = 1;
+        }
+        // If neither is in the custom order, sort alphabetically
+        else {
+          comparison = aVal.localeCompare(bVal);
+        }
       } else {
         comparison = aVal.localeCompare(bVal);
       }
