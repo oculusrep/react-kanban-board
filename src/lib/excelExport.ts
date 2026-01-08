@@ -122,70 +122,76 @@ export async function exportToExcel(options: ExcelExportOptions): Promise<void> 
 
   const worksheet = workbook.addWorksheet(sheetName);
 
-  let startRow = 1;
+  // Set column widths first (without headers - we'll add headers manually later)
+  columns.forEach((col, index) => {
+    worksheet.getColumn(index + 1).width = col.width || 15;
+  });
 
-  // Add logo if provided (top left, 80px height maintaining aspect ratio)
-  if (logoBase64) {
-    const imageId = workbook.addImage({
-      base64: logoBase64,
-      extension: 'jpeg',
-    });
-    // Logo original dimensions: 2364x789, target height: 80px (4x original 20px)
-    // Aspect ratio: 2364/789 = 2.996, so width = 80 * 3 = 240px approx
-    worksheet.addImage(imageId, {
-      tl: { col: 0, row: 0 },
-      ext: { width: 240, height: 80 },
-    });
+  let currentRow = 1;
+
+  // Row 1: Logo + Title on same row (white background, centered title)
+  if (logoBase64 || title) {
+    // Merge cells for the title area (leave space for logo on left)
+    worksheet.mergeCells(1, 1, 1, columns.length);
+
+    // Add logo if provided (96px height = 20% larger than 80px)
+    if (logoBase64) {
+      const imageId = workbook.addImage({
+        base64: logoBase64,
+        extension: 'jpeg',
+      });
+      // Logo original dimensions: 2364x789, target height: 96px (20% larger)
+      // Aspect ratio: 2364/789 = 2.996, so width = 96 * 3 = 288px approx
+      worksheet.addImage(imageId, {
+        tl: { col: 0, row: 0 },
+        ext: { width: 288, height: 96 },
+      });
+    }
+
+    // Add title in the merged cell, centered
+    if (title) {
+      const titleCell = worksheet.getCell(1, 1);
+      titleCell.value = title;
+      titleCell.font = { name: 'Calibri', bold: true, size: 16, color: { argb: 'FF002147' } }; // Deep Midnight Blue
+      titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } }; // White background
+    }
+
+    // Set row height to accommodate logo (96px ≈ 72 Excel row height)
+    worksheet.getRow(1).height = 72;
+    currentRow = 2;
   }
 
-  // Add logo row - make it tall enough for the logo (80px = ~60 Excel row height)
-  if (logoBase64) {
-    worksheet.getRow(1).height = 60;
-    startRow = 2;
-  }
-
-  // Add title if provided (Calibri 16 bold, Deep Midnight Blue) - on row after logo
-  if (title) {
-    const titleRowNum = logoBase64 ? 2 : 1;
-    worksheet.mergeCells(titleRowNum, 1, titleRowNum, columns.length);
-    const titleCell = worksheet.getCell(titleRowNum, 1);
-    titleCell.value = title;
-    titleCell.font = { name: 'Calibri', bold: true, size: 16, color: { argb: 'FF002147' } }; // Deep Midnight Blue
-    titleCell.alignment = { horizontal: 'left', vertical: 'middle' };
-    worksheet.getRow(titleRowNum).height = 28;
-    startRow = titleRowNum + 1;
-  }
-
-  // Add subtitle if provided (Steel Blue for secondary text)
+  // Row 2: Filter info (subtitle) - only if filters are applied
   if (subtitle) {
-    worksheet.mergeCells(startRow, 1, startRow, columns.length);
-    const subtitleCell = worksheet.getCell(startRow, 1);
+    worksheet.mergeCells(currentRow, 1, currentRow, columns.length);
+    const subtitleCell = worksheet.getCell(currentRow, 1);
     subtitleCell.value = subtitle;
     subtitleCell.font = { name: 'Calibri', size: 11, color: { argb: 'FF4A6B94' } }; // Steel Blue
     subtitleCell.alignment = { horizontal: 'left', vertical: 'middle' };
-    worksheet.getRow(startRow).height = 20;
-    startRow += 1;
+    subtitleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } }; // White background
+    worksheet.getRow(currentRow).height = 18;
+    currentRow += 1;
   }
 
-  // Set column definitions
-  worksheet.columns = columns.map(col => ({
-    header: col.header,
-    key: col.key,
-    width: col.width || 15,
-    style: col.style,
-  }));
+  // Next row: Generated date and record count
+  worksheet.mergeCells(currentRow, 1, currentRow, columns.length);
+  const metaCell = worksheet.getCell(currentRow, 1);
+  metaCell.value = `${data.length} records • Generated ${new Date().toLocaleDateString()}`;
+  metaCell.font = { name: 'Calibri', size: 11, color: { argb: 'FF4A6B94' } }; // Steel Blue
+  metaCell.alignment = { horizontal: 'left', vertical: 'middle' };
+  metaCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } }; // White background
+  worksheet.getRow(currentRow).height = 18;
+  currentRow += 1;
 
-  // If we have title/subtitle, we need to re-add headers since columns were set
-  if (title || subtitle) {
-    const headerRow = worksheet.getRow(startRow);
-    columns.forEach((col, index) => {
-      headerRow.getCell(index + 1).value = col.header;
-    });
-  }
+  // Now add the header row
+  const headerRowNum = currentRow;
+  const headerRow = worksheet.getRow(headerRowNum);
+  columns.forEach((col, index) => {
+    headerRow.getCell(index + 1).value = col.header;
+  });
 
   // Style header row
-  const headerRowNum = startRow;
-  const headerRow = worksheet.getRow(headerRowNum);
   headerRow.height = 24;
   headerRow.eachCell((cell, colNumber) => {
     Object.assign(cell, { style: { ...headerStyle } });
@@ -309,11 +315,11 @@ export async function exportClientSubmitReport(
     { header: 'Property Name', key: 'property_name', width: 35 },
     { header: 'City', key: 'city', width: 18 },
     { header: 'Map', key: 'map_link', width: 12, isHyperlink: true, hyperlinkText: 'View Map', style: { alignment: { horizontal: 'center' } } },
-    { header: 'Latitude', key: 'latitude', width: 12, style: { alignment: { horizontal: 'right' } } },
-    { header: 'Longitude', key: 'longitude', width: 12, style: { alignment: { horizontal: 'right' } } },
+    { header: 'Latitude', key: 'latitude', width: 14, style: { alignment: { horizontal: 'right' } } },      // Widened for filter arrow
+    { header: 'Longitude', key: 'longitude', width: 14, style: { alignment: { horizontal: 'right' } } },    // Widened for filter arrow
     { header: 'Submit Stage', key: 'submit_stage_name', width: 18 },
-    { header: 'Date Submitted', key: 'date_submitted', width: 14, style: { alignment: { horizontal: 'center' } } },
-    { header: 'LOI Date', key: 'loi_date', width: 12, style: { alignment: { horizontal: 'center' } } },
+    { header: 'Date Submitted', key: 'date_submitted', width: 16, style: { alignment: { horizontal: 'center' } } },  // Widened for filter arrow
+    { header: 'LOI Date', key: 'loi_date', width: 14, style: { alignment: { horizontal: 'center' } } },     // Widened for filter arrow
     { header: 'Notes', key: 'notes', width: 50 },
   ];
 
@@ -354,9 +360,10 @@ export async function exportClientSubmitReport(
     filterParts.push(quickFilterLabels[filters.quickFilter] || filters.quickFilter);
   }
 
+  // Only show filter info if there are filters (record count is shown separately)
   const filterDescription = filterParts.length > 0
     ? `Filtered by: ${filterParts.join(' | ')}`
-    : `${data.length} records • Generated ${new Date().toLocaleDateString()}`;
+    : undefined;
 
   // Load the logo
   const logoBase64 = await getLogoBase64();
