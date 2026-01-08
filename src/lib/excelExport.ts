@@ -48,9 +48,19 @@ export interface ExcelExportOptions {
   logoBase64?: string;  // Base64 encoded logo image
 }
 
-// Default header style - professional blue theme
+// ============================================
+// Oculus Real Estate Partners Brand Colors
+// ============================================
+// Deep Midnight Blue: #002147 - Primary header/text color
+// Steel Blue Gradient: #4A6B94 - Mid-tone accent
+// Light Slate Blue:    #8FA9C8 - Light accent/borders
+// Pure White:          #FFFFFF - Background
+// ============================================
+
+// Default header style - Oculus Deep Midnight Blue
 const defaultHeaderStyle: Partial<ExcelJS.Style> = {
   font: {
+    name: 'Calibri',
     bold: true,
     color: { argb: 'FFFFFFFF' },
     size: 11,
@@ -58,7 +68,7 @@ const defaultHeaderStyle: Partial<ExcelJS.Style> = {
   fill: {
     type: 'pattern',
     pattern: 'solid',
-    fgColor: { argb: 'FF2563EB' }, // Blue-600
+    fgColor: { argb: 'FF002147' }, // Deep Midnight Blue
   },
   alignment: {
     vertical: 'middle',
@@ -66,31 +76,32 @@ const defaultHeaderStyle: Partial<ExcelJS.Style> = {
     wrapText: true,
   },
   border: {
-    top: { style: 'thin', color: { argb: 'FF1D4ED8' } },
-    left: { style: 'thin', color: { argb: 'FF1D4ED8' } },
-    bottom: { style: 'thin', color: { argb: 'FF1D4ED8' } },
-    right: { style: 'thin', color: { argb: 'FF1D4ED8' } },
+    top: { style: 'thin', color: { argb: 'FF4A6B94' } },    // Steel Blue
+    left: { style: 'thin', color: { argb: 'FF4A6B94' } },
+    bottom: { style: 'thin', color: { argb: 'FF4A6B94' } },
+    right: { style: 'thin', color: { argb: 'FF4A6B94' } },
   },
 };
 
-// Alternating row style for data rows
+// Alternating row styles - subtle, clean design
 const evenRowFill: ExcelJS.Fill = {
   type: 'pattern',
   pattern: 'solid',
-  fgColor: { argb: 'FFF8FAFC' }, // Slate-50
+  fgColor: { argb: 'FFF7F9FC' }, // Very light blue-gray tint
 };
 
 const oddRowFill: ExcelJS.Fill = {
   type: 'pattern',
   pattern: 'solid',
-  fgColor: { argb: 'FFFFFFFF' }, // White
+  fgColor: { argb: 'FFFFFFFF' }, // Pure White
 };
 
+// Subtle borders using Light Slate Blue
 const dataCellBorder: Partial<ExcelJS.Borders> = {
-  top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-  left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-  bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-  right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+  top: { style: 'thin', color: { argb: 'FFD0DBE8' } },    // Lighter than Light Slate Blue
+  left: { style: 'thin', color: { argb: 'FFD0DBE8' } },
+  bottom: { style: 'thin', color: { argb: 'FFD0DBE8' } },
+  right: { style: 'thin', color: { argb: 'FFD0DBE8' } },
 };
 
 export async function exportToExcel(options: ExcelExportOptions): Promise<void> {
@@ -133,24 +144,24 @@ export async function exportToExcel(options: ExcelExportOptions): Promise<void> 
     startRow = 2;
   }
 
-  // Add title if provided (Calibri 16 bold) - on row after logo
+  // Add title if provided (Calibri 16 bold, Deep Midnight Blue) - on row after logo
   if (title) {
     const titleRowNum = logoBase64 ? 2 : 1;
     worksheet.mergeCells(titleRowNum, 1, titleRowNum, columns.length);
     const titleCell = worksheet.getCell(titleRowNum, 1);
     titleCell.value = title;
-    titleCell.font = { name: 'Calibri', bold: true, size: 16, color: { argb: 'FF1E293B' } };
+    titleCell.font = { name: 'Calibri', bold: true, size: 16, color: { argb: 'FF002147' } }; // Deep Midnight Blue
     titleCell.alignment = { horizontal: 'left', vertical: 'middle' };
     worksheet.getRow(titleRowNum).height = 28;
     startRow = titleRowNum + 1;
   }
 
-  // Add subtitle if provided
+  // Add subtitle if provided (Steel Blue for secondary text)
   if (subtitle) {
     worksheet.mergeCells(startRow, 1, startRow, columns.length);
     const subtitleCell = worksheet.getCell(startRow, 1);
     subtitleCell.value = subtitle;
-    subtitleCell.font = { size: 11, color: { argb: 'FF64748B' } };
+    subtitleCell.font = { name: 'Calibri', size: 11, color: { argb: 'FF4A6B94' } }; // Steel Blue
     subtitleCell.alignment = { horizontal: 'left', vertical: 'middle' };
     worksheet.getRow(startRow).height = 20;
     startRow += 1;
@@ -194,14 +205,15 @@ export async function exportToExcel(options: ExcelExportOptions): Promise<void> 
       const cell = row.getCell(colIndex + 1);
       let value = rowData[col.key];
 
-      // Handle hyperlinks
+      // Handle hyperlinks (Steel Blue for links - brand consistent)
       if (col.isHyperlink && value && typeof value === 'string' && value.startsWith('http')) {
         cell.value = {
           text: col.hyperlinkText || value,
           hyperlink: value,
         };
         cell.font = {
-          color: { argb: 'FF2563EB' },  // Blue color for links
+          name: 'Calibri',
+          color: { argb: 'FF4A6B94' },  // Steel Blue - brand color
           underline: true,
         };
       }
@@ -217,7 +229,7 @@ export async function exportToExcel(options: ExcelExportOptions): Promise<void> 
         cell.value = value ?? '';
       }
 
-      // Apply styling
+      // Apply styling - consistent Calibri font throughout
       cell.fill = rowIndex % 2 === 0 ? evenRowFill : oddRowFill;
       cell.border = dataCellBorder;
       cell.alignment = {
@@ -225,6 +237,10 @@ export async function exportToExcel(options: ExcelExportOptions): Promise<void> 
         horizontal: col.style?.alignment?.horizontal || 'left',
         wrapText: true,
       };
+      // Set font if not already set (hyperlinks have their own font)
+      if (!col.isHyperlink || !value || typeof value !== 'string' || !value.startsWith('http')) {
+        cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF002147' } }; // Deep Midnight Blue text
+      }
     });
 
     // Calculate row height based on content (especially for Notes column)
