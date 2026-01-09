@@ -45,11 +45,12 @@ export function getMarkerLibrary(): google.maps.MarkerLibrary {
 export interface AdvancedMarkerOptions {
   color: string;
   shape: MarkerShape;
-  size?: number; // Base size in pixels (default: 38 - ~20% larger than before)
+  size?: number; // Base size in pixels (default: 44 for better visibility)
   icon?: string; // SVG path for interior icon
   verified?: boolean; // Show verification indicator
   zIndex?: number;
   draggable?: boolean;
+  strokeWidth?: number; // White border thickness (default: 3, use 4 for property markers)
 }
 
 // Stage configurations with Lucide-compatible icon definitions
@@ -345,6 +346,29 @@ const PROPERTY_ICON_CONFIGS: Record<string, LucideIconDef> = {
     // MapPin icon with inner circle
     paths: ['M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0'],
     circles: [{ cx: 12, cy: 10, r: 3 }]
+  },
+  selected: {
+    // Crosshair/target icon for selected property
+    circles: [{ cx: 12, cy: 12, r: 10 }],
+    lines: [
+      { x1: 22, y1: 12, x2: 18, y2: 12 },
+      { x1: 6, y1: 12, x2: 2, y2: 12 },
+      { x1: 12, y1: 2, x2: 12, y2: 6 },
+      { x1: 12, y1: 18, x2: 12, y2: 22 }
+    ]
+  },
+  verifying: {
+    // Move/drag icon for verifying location
+    paths: [
+      'M5 9l-3 3 3 3',
+      'M9 5l3-3 3 3',
+      'M15 19l-3 3-3-3',
+      'M19 9l3 3-3 3'
+    ],
+    lines: [
+      { x1: 2, y1: 12, x2: 22, y2: 12 },
+      { x1: 12, y1: 2, x2: 12, y2: 22 }
+    ]
   }
 };
 
@@ -660,24 +684,28 @@ export function createStageMarkerElement(
 
 /**
  * Create a property marker element
+ * Uses larger size (44px) and brighter colors for better visibility against POIs
  */
 export function createPropertyMarkerElement(
-  type: 'verified' | 'recent' | 'geocoded' | 'default',
+  type: 'verified' | 'recent' | 'geocoded' | 'default' | 'selected' | 'verifying',
   shape: MarkerShape,
-  size: number = 38
+  size: number = 44  // Larger default size for better visibility
 ): HTMLElement {
+  // Brighter, more saturated colors to stand out from Google POIs
   const colors: Record<string, string> = {
-    verified: '#10B981',  // Green
-    recent: '#EF4444',    // Red
-    geocoded: '#3B82F6',  // Blue
-    default: '#6B7280'    // Gray
+    verified: '#00D084',  // Bright green (more saturated)
+    recent: '#FF3B30',    // Bright red (iOS-style)
+    geocoded: '#007AFF',  // Bright blue (iOS-style)
+    default: '#8E8E93',   // Gray
+    selected: '#FF9500',  // Bright orange for selected
+    verifying: '#FF9500'  // Bright orange for verifying
   };
 
   const color = colors[type] || colors.default;
   const iconDef = PROPERTY_ICON_CONFIGS[type] || PROPERTY_ICON_CONFIGS.default;
 
-  // Create marker directly with the icon definition
-  return createPropertyMarkerWithIcon(color, shape, size, iconDef, type === 'verified');
+  // Create marker directly with the icon definition (thicker stroke for visibility)
+  return createPropertyMarkerWithIcon(color, shape, size, iconDef, type === 'verified', 4);
 }
 
 /**
@@ -688,12 +716,13 @@ function createPropertyMarkerWithIcon(
   shape: MarkerShape,
   size: number,
   iconDef: LucideIconDef,
-  verified: boolean
+  verified: boolean,
+  strokeWidth: number = 3
 ): HTMLElement {
   if (shape === 'teardrop') {
-    return createTeardropWithIcon(color, size, iconDef, verified);
+    return createTeardropWithIcon(color, size, iconDef, verified, strokeWidth);
   }
-  return createCircleWithIcon(color, size, iconDef, verified);
+  return createCircleWithIcon(color, size, iconDef, verified, strokeWidth);
 }
 
 /**
@@ -703,7 +732,8 @@ function createTeardropWithIcon(
   color: string,
   size: number,
   iconDef: LucideIconDef,
-  verified: boolean
+  verified: boolean,
+  strokeWidth: number = 3
 ): HTMLElement {
   const container = document.createElement('div');
   container.className = 'advanced-marker-teardrop';
@@ -712,7 +742,7 @@ function createTeardropWithIcon(
     width: ${size}px;
     height: ${size + 10}px;
     cursor: pointer;
-    filter: drop-shadow(0 3px 6px rgba(0,0,0,0.4));
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
     transition: transform 0.15s ease-out;
   `;
 
@@ -737,7 +767,7 @@ function createTeardropWithIcon(
   path.setAttribute('d', d);
   path.setAttribute('fill', color);
   path.setAttribute('stroke', 'white');
-  path.setAttribute('stroke-width', '3');
+  path.setAttribute('stroke-width', `${strokeWidth}`);
   svg.appendChild(path);
 
   // Add icon
@@ -791,7 +821,8 @@ function createCircleWithIcon(
   color: string,
   size: number,
   iconDef: LucideIconDef,
-  verified: boolean
+  verified: boolean,
+  strokeWidth: number = 3
 ): HTMLElement {
   const container = document.createElement('div');
   container.className = 'advanced-marker-circle';
@@ -800,7 +831,7 @@ function createCircleWithIcon(
     width: ${size}px;
     height: ${size + 8}px;
     cursor: pointer;
-    filter: drop-shadow(0 3px 6px rgba(0,0,0,0.4));
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
     transition: transform 0.15s ease-out;
   `;
 
@@ -820,7 +851,7 @@ function createCircleWithIcon(
   circle.setAttribute('r', `${r}`);
   circle.setAttribute('fill', color);
   circle.setAttribute('stroke', 'white');
-  circle.setAttribute('stroke-width', '3');
+  circle.setAttribute('stroke-width', `${strokeWidth}`);
   svg.appendChild(circle);
 
   const tail = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
@@ -828,7 +859,7 @@ function createCircleWithIcon(
   tail.setAttribute('points', `${cx},${size + 4} ${cx - tailWidth},${size - 6} ${cx + tailWidth},${size - 6}`);
   tail.setAttribute('fill', color);
   tail.setAttribute('stroke', 'white');
-  tail.setAttribute('stroke-width', '2');
+  tail.setAttribute('stroke-width', `${Math.max(2, strokeWidth - 1)}`);
   tail.setAttribute('stroke-linejoin', 'round');
   svg.appendChild(tail);
 
@@ -1026,7 +1057,7 @@ export async function createAdvancedStageMarker(
 export async function createAdvancedPropertyMarker(
   map: google.maps.Map,
   position: google.maps.LatLngLiteral,
-  type: 'verified' | 'recent' | 'geocoded' | 'default',
+  type: 'verified' | 'recent' | 'geocoded' | 'default' | 'selected' | 'verifying',
   shape: MarkerShape,
   options: {
     size?: number;
@@ -1041,7 +1072,7 @@ export async function createAdvancedPropertyMarker(
   const content = createPropertyMarkerElement(
     type,
     shape,
-    options.size || 38
+    options.size || 44  // Larger default size for property markers
   );
 
   return createAdvancedMarker(map, position, content, {
