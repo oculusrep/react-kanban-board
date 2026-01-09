@@ -174,12 +174,12 @@ SELECT
   p.orep_invoice,
   p.payment_amount,
   p.payment_date_estimated as due_date,
-  p.payment_status,
+  p.sf_payment_status as payment_status,
   p.qb_invoice_id,
   d.id as deal_id,
   d.deal_name,
   c.id as client_id,
-  c.company_name as client_name,
+  c.client_name,
   CURRENT_DATE - p.payment_date_estimated as days_overdue,
   CASE
     WHEN p.payment_date_estimated >= CURRENT_DATE THEN 'current'
@@ -191,7 +191,7 @@ SELECT
 FROM payment p
 JOIN deal d ON p.deal_id = d.id
 JOIN client c ON d.client_id = c.id
-WHERE p.payment_status NOT IN ('received', 'cancelled')
+WHERE p.sf_payment_status NOT IN ('received', 'cancelled')
   AND p.payment_amount > 0;
 
 -- Grant access to view
