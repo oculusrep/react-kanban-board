@@ -1812,7 +1812,6 @@ const MappingPageContent: React.FC = () => {
                 setSelectedPropertyId(property.id);
                 setShowSiteSubmitModal(true);
               }}
-              markerStyle={markerStyle}
             />
 
             {/* Site Submit Layer - Connected to Layer Manager */}

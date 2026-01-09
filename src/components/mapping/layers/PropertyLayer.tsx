@@ -5,13 +5,6 @@ import { useLayerManager } from './LayerManager';
 import { ModernMarkerStyles } from '../utils/modernMarkers';
 import { Database } from '../../../database-schema';
 import { isTouchDevice, addLongPressListener } from '../../../utils/deviceDetection';
-import {
-  MarkerShape,
-  loadMarkerLibrary,
-  createPropertyMarkerElement,
-  createAdvancedMarker,
-  isMarkerLibraryLoaded
-} from '../utils/advancedMarkers';
 
 type Property = Database['public']['Tables']['property']['Row'] & {
   property_record_type?: {
@@ -45,10 +38,6 @@ interface PropertyLayerProps {
   onPropertyRightClick?: (property: Property, x: number, y: number) => void;
   selectedPropertyId?: string | null; // Currently selected property for editing
   selectedPropertyData?: Property | null; // Full property data when selected from search
-  markerStyle?: {
-    shape: MarkerShape;
-    useAdvancedMarkers: boolean;
-  };
 }
 
 const PropertyLayer: React.FC<PropertyLayerProps> = ({
@@ -63,33 +52,15 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   onLocationVerified,
   onPropertyRightClick,
   selectedPropertyId = null,
-  selectedPropertyData = null,
-  markerStyle = { shape: 'teardrop', useAdvancedMarkers: true }
+  selectedPropertyData = null
 }) => {
   const [properties, setProperties] = useState<Property[]>([]);
-  // Union type for markers - can be legacy Marker or AdvancedMarkerElement
-  type AnyMarker = google.maps.Marker | google.maps.marker.AdvancedMarkerElement;
-  const [markers, setMarkers] = useState<AnyMarker[]>([]);
-  const [sessionMarkers, setSessionMarkers] = useState<AnyMarker[]>([]); // Always visible session pins
+  const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
+  const [sessionMarkers, setSessionMarkers] = useState<google.maps.Marker[]>([]); // Always visible session pins
   const [clusterer, setClusterer] = useState<MarkerClusterer | null>(null);
-  const [selectedMarker, setSelectedMarker] = useState<AnyMarker | null>(null);
+  const [selectedMarker, setSelectedMarker] = useState<google.maps.Marker | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [markerLibraryLoaded, setMarkerLibraryLoaded] = useState(false);
-
-  // Load marker library for AdvancedMarkerElement
-  useEffect(() => {
-    if (markerStyle.useAdvancedMarkers && !markerLibraryLoaded) {
-      loadMarkerLibrary()
-        .then(() => {
-          setMarkerLibraryLoaded(true);
-          console.log('✅ PropertyLayer: Marker library loaded');
-        })
-        .catch((err) => {
-          console.error('❌ PropertyLayer: Failed to load marker library:', err);
-        });
-    }
-  }, [markerStyle.useAdvancedMarkers, markerLibraryLoaded]);
 
   // Function to get display coordinates (verified takes priority over regular)
   const getDisplayCoordinates = (property: Property) => {
@@ -473,168 +444,220 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   const createMarkers = () => {
     if (!map || !properties.length) return;
 
-    // For advanced markers, wait for library to load
-    if (markerStyle.useAdvancedMarkers && !isMarkerLibraryLoaded()) {
-      console.log('⏳ Waiting for marker library to load...');
-      return;
-    }
-
     // Clear existing markers from map and clusterer
     if (clusterer) {
       clusterer.clearMarkers();
     }
-    markers.forEach(marker => marker.map = null);
+    markers.forEach(marker => marker.setMap(null));
 
     const filteredProperties = properties.filter(property => !recentlyCreatedIds.has(property.id));
 
-    let newSelectedMarker: AnyMarker | null = null;
+    let newSelectedMarker: google.maps.Marker | null = null;
 
-    const newMarkers: AnyMarker[] = filteredProperties
+    const newMarkers: google.maps.Marker[] = filteredProperties
       .map(property => {
         const coords = getDisplayCoordinates(property);
         if (!coords) return null;
 
-        const isSelected = selectedPropertyId === property.id;
-        const isBeingVerified = verifyingPropertyId === property.id;
+        // This is always false now since we filtered out recently created
+        const isRecentlyCreated = false;
 
-        // Determine marker type
-        let markerType: 'verified' | 'recent' | 'geocoded' | 'default' | 'selected' | 'verifying';
-        if (isSelected) {
-          markerType = 'selected';
-        } else if (isBeingVerified) {
-          markerType = 'verifying';
-        } else if (coords.verified) {
-          markerType = 'verified';
-        } else {
-          markerType = 'geocoded';
+      // Create info window content
+      const createSiteSubmitButton = onCreateSiteSubmit ? `
+        <div class="mt-3 pt-3 border-t border-gray-200">
+          <button
+            id="create-site-submit-${property.id}"
+            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-3 rounded text-sm transition-colors"
+          >
+            📍 Create Site Submit
+          </button>
+        </div>
+      ` : '';
+
+      const infoContent = `
+        <div class="p-3 max-w-sm">
+          <h3 class="font-semibold text-lg text-gray-900 mb-2">
+            ${property.property_name || 'Property'}
+          </h3>
+          <div class="space-y-1 text-sm text-gray-600">
+            <div><strong>Address:</strong> ${property.address}</div>
+            ${property.city ? `<div><strong>City:</strong> ${property.city}</div>` : ''}
+            ${property.state ? `<div><strong>State:</strong> ${property.state}</div>` : ''}
+            ${property.zip ? `<div><strong>ZIP:</strong> ${property.zip}</div>` : ''}
+            <div><strong>Coordinates:</strong> ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}</div>
+            <div class="text-xs ${isRecentlyCreated ? 'text-red-600' : coords.verified ? 'text-green-600' : 'text-blue-600'}">
+              ${isRecentlyCreated ? '🆕 Recently Created' : coords.verified ? '✓ Verified Location' : '📍 Geocoded Location'}
+            </div>
+          </div>
+          ${createSiteSubmitButton}
+        </div>
+      `;
+
+      const infoWindow = new google.maps.InfoWindow({
+        content: infoContent
+      });
+
+      // Determine marker icon based on property state and selection
+      let markerIcon: google.maps.Icon;
+      const isSelected = selectedPropertyId === property.id;
+      const isBeingVerified = verifyingPropertyId === property.id;
+
+      if (isSelected) {
+        markerIcon = ModernMarkerStyles.property.selected(); // Selected - large orange
+      } else if (isBeingVerified) {
+        markerIcon = ModernMarkerStyles.property.verifying(); // Verifying - orange
+      } else if (isRecentlyCreated) {
+        markerIcon = ModernMarkerStyles.property.recent(); // Recently created - red
+      } else if (coords.verified) {
+        markerIcon = ModernMarkerStyles.property.verified(); // Verified - green
+      } else {
+        markerIcon = ModernMarkerStyles.property.geocoded(); // Geocoded - blue
+      }
+
+      const marker = new google.maps.Marker({
+        position: { lat: coords.lat, lng: coords.lng },
+        map: null, // Don't show initially
+        title: property.property_name || property.address,
+        icon: markerIcon,
+        draggable: isBeingVerified,
+        zIndex: isSelected ? 3000 : (isBeingVerified ? 2000 : 100) // Highest z-index for selected
+      });
+
+      // Long-press state for touch devices (defined here so click handler and drag can access it)
+      let wasLongPress = false;
+      let touchStartTime = 0; // Declare here so drag handlers can access it
+
+      // Add drag listener for verification
+      if (isBeingVerified && onLocationVerified) {
+        // Reset long-press detection when drag starts
+        marker.addListener('dragstart', () => {
+          touchStartTime = 0; // Cancel any pending long-press
+          wasLongPress = false;
+        });
+
+        marker.addListener('dragend', (event: google.maps.MapMouseEvent) => {
+          if (event.latLng) {
+            const newLat = event.latLng.lat();
+            const newLng = event.latLng.lng();
+            console.log('📍 Property location verified:', { propertyId: property.id, lat: newLat, lng: newLng });
+            onLocationVerified(property.id, newLat, newLng);
+          }
+        });
+      }
+
+      marker.addListener('click', () => {
+        // Don't open slideout if this was a long-press
+        if (wasLongPress) {
+          console.log('🚫 Skipping click - was long press');
+          wasLongPress = false;
+          return;
         }
 
-        // Use AdvancedMarkerElement for modern markers
-        if (markerStyle.useAdvancedMarkers) {
-          const content = createPropertyMarkerElement(
-            markerType,
-            markerStyle.shape,
-            isSelected ? 52 : 44 // Larger size for selected
-          );
+        // Use modern slideout instead of info window
+        if (onPinClick) {
+          onPinClick(property);
+          return;
+        }
 
-          const advancedMarker = createAdvancedMarker(
-            map,
-            { lat: coords.lat, lng: coords.lng },
-            content,
-            {
-              title: property.property_name || property.address,
-              zIndex: isSelected ? 3000 : (isBeingVerified ? 2000 : 100),
-              gmpDraggable: isBeingVerified
-            }
-          );
+        // Fallback to info window if no modern handler
+        infoWindow.open(map, marker);
 
-          // Add click handler via content element
-          const element = advancedMarker.element;
-          if (element) {
-            element.addEventListener('click', () => {
-              if (onPinClick) {
-                onPinClick(property);
-              }
-            });
-
-            // Add right-click handler
-            if (onPropertyRightClick) {
-              element.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
+        // Add event listener for the site submit button after info window opens
+        if (onCreateSiteSubmit) {
+          // Use setTimeout to ensure the DOM element exists
+          setTimeout(() => {
+            const button = document.getElementById(`create-site-submit-${property.id}`);
+            if (button) {
+              button.addEventListener('click', (e) => {
                 e.stopPropagation();
-                onPropertyRightClick(property, e.clientX, e.clientY);
+                infoWindow.close();
+                onCreateSiteSubmit(property);
               });
-
-              // Long-press for touch devices
-              if (isTouchDevice()) {
-                addLongPressListener(element, (x, y) => {
-                  onPropertyRightClick(property, x, y);
-                });
-              }
             }
-          }
-
-          // Add drag listener for verification
-          if (isBeingVerified && onLocationVerified) {
-            advancedMarker.addListener('dragend', () => {
-              const pos = advancedMarker.position;
-              if (pos) {
-                const lat = typeof pos.lat === 'function' ? pos.lat() : pos.lat;
-                const lng = typeof pos.lng === 'function' ? pos.lng() : pos.lng;
-                console.log('📍 Property location verified:', { propertyId: property.id, lat, lng });
-                onLocationVerified(property.id, lat, lng);
-              }
-            });
-          }
-
-          // Store reference to selected marker
-          if (isSelected) {
-            newSelectedMarker = advancedMarker;
-          }
-
-          return advancedMarker;
+          }, 100);
         }
+      });
 
-        // Legacy marker fallback
-        let markerIcon: google.maps.Icon;
-        if (isSelected) {
-          markerIcon = ModernMarkerStyles.property.selected();
-        } else if (isBeingVerified) {
-          markerIcon = ModernMarkerStyles.property.verifying();
-        } else if (coords.verified) {
-          markerIcon = ModernMarkerStyles.property.verified();
-        } else {
-          markerIcon = ModernMarkerStyles.property.geocoded();
-        }
-
-        const marker = new google.maps.Marker({
-          position: { lat: coords.lat, lng: coords.lng },
-          map: null,
-          title: property.property_name || property.address,
-          icon: markerIcon,
-          draggable: isBeingVerified,
-          zIndex: isSelected ? 3000 : (isBeingVerified ? 2000 : 100)
-        });
-
-        // Add click handler
-        marker.addListener('click', () => {
-          if (onPinClick) {
-            onPinClick(property);
+      // Add right-click listener for regular markers
+      if (onPropertyRightClick) {
+        marker.addListener('rightclick', (event: google.maps.MapMouseEvent) => {
+          if (event.domEvent) {
+            // Prevent the map's contextmenu event from firing
+            event.domEvent.preventDefault();
+            event.domEvent.stopPropagation();
+            onPropertyRightClick(property, event.domEvent.clientX, event.domEvent.clientY);
           }
         });
 
-        // Add right-click listener
-        if (onPropertyRightClick) {
-          marker.addListener('rightclick', (event: google.maps.MapMouseEvent) => {
-            if (event.domEvent) {
-              event.domEvent.preventDefault();
-              event.domEvent.stopPropagation();
-              onPropertyRightClick(property, event.domEvent.clientX, event.domEvent.clientY);
+        // Add long-press support for touch devices
+        // Note: Standard markers don't have getElement(), so we handle long-press
+        // through a custom click event with timing
+        if (isTouchDevice()) {
+          let touchMoved = false;
+          let touchStartPos = { x: 0, y: 0 };
+
+          marker.addListener('mousedown', (event: google.maps.MapMouseEvent) => {
+            if (event.domEvent && event.domEvent instanceof TouchEvent) {
+              // Cancel long-press if multi-touch (pinch/zoom)
+              if (event.domEvent.touches.length > 1) {
+                touchStartTime = 0;
+                return;
+              }
+
+              touchStartTime = Date.now(); // Use outer scope variable
+              touchMoved = false;
+              wasLongPress = false;
+              const touch = event.domEvent.touches[0];
+              touchStartPos = { x: touch.clientX, y: touch.clientY };
+            }
+          });
+
+          marker.addListener('mousemove', (event: google.maps.MapMouseEvent) => {
+            if (touchStartTime && event.domEvent && event.domEvent instanceof TouchEvent) {
+              // Cancel long-press if multi-touch detected during move
+              if (event.domEvent.touches.length > 1) {
+                touchStartTime = 0;
+                return;
+              }
+
+              const touch = event.domEvent.touches[0];
+              const deltaX = Math.abs(touch.clientX - touchStartPos.x);
+              const deltaY = Math.abs(touch.clientY - touchStartPos.y);
+              if (deltaX > 10 || deltaY > 10) {
+                touchMoved = true;
+              }
+            }
+          });
+
+          marker.addListener('mouseup', (event: google.maps.MapMouseEvent) => {
+            if (touchStartTime && event.domEvent && event.domEvent instanceof TouchEvent) {
+              const touchDuration = Date.now() - touchStartTime;
+              if (touchDuration >= 500 && !touchMoved) {
+                console.log('📱 Long press on property marker:', property.property_name);
+                wasLongPress = true;
+                const touch = event.domEvent.changedTouches[0];
+                onPropertyRightClick(property, touch.clientX, touch.clientY);
+                event.domEvent.preventDefault();
+                event.domEvent.stopPropagation();
+                // Stop all event propagation including to map
+                if (event.stop) {
+                  event.stop();
+                }
+              }
+              touchStartTime = 0;
             }
           });
         }
+      }
 
-        // Add drag listener for verification
-        if (isBeingVerified && onLocationVerified) {
-          marker.addListener('dragend', (event: google.maps.MapMouseEvent) => {
-            if (event.latLng) {
-              const newLat = event.latLng.lat();
-              const newLng = event.latLng.lng();
-              console.log('📍 Property location verified:', { propertyId: property.id, lat: newLat, lng: newLng });
-              onLocationVerified(property.id, newLat, newLng);
-            }
-          });
-        }
+      // Store reference to selected marker
+      if (isSelected) {
+        newSelectedMarker = marker;
+      }
 
-        // Store reference to selected marker
-        if (isSelected) {
-          newSelectedMarker = marker;
-        }
+      return marker;
+    }).filter(marker => marker !== null) as google.maps.Marker[];
 
-        return marker;
-      }).filter(marker => marker !== null) as AnyMarker[];
-
-    console.log(`🏢 PropertyLayer: Created ${newMarkers.length} markers (${markerStyle.useAdvancedMarkers ? 'Advanced' : 'Legacy'})`);
     setMarkers(newMarkers);
     setSelectedMarker(newSelectedMarker);
   };
@@ -677,80 +700,63 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     setClusterer(newClusterer);
   };
 
-  // Helper to get/set map for both marker types
-  const getMarkerMap = (marker: AnyMarker): google.maps.Map | null => {
-    if ('getMap' in marker && typeof marker.getMap === 'function') {
-      return marker.getMap() as google.maps.Map | null;
-    }
-    return marker.map as google.maps.Map | null;
-  };
-
-  const setMarkerMap = (marker: AnyMarker, targetMap: google.maps.Map | null) => {
-    if ('setMap' in marker && typeof marker.setMap === 'function') {
-      marker.setMap(targetMap);
-    } else {
-      marker.map = targetMap;
-    }
-  };
-
   // Update marker visibility - handles both clustered and non-clustered modes
   const updateMarkerVisibility = React.useCallback(() => {
     if (!map || markers.length === 0) return;
 
     // Handle case when clustering is disabled (clusterer is null)
-    // Note: Clustering doesn't work with AdvancedMarkerElement, so use direct map display
-    if (!clusterer || markerStyle.useAdvancedMarkers) {
+    if (!clusterer) {
       if (isVisible) {
         // Show all markers directly on the map (no clustering)
         markers.forEach(marker => {
-          if (getMarkerMap(marker) !== map) {
-            setMarkerMap(marker, map);
+          if (marker.getMap() !== map) {
+            marker.setMap(map);
           }
         });
       } else {
         // Hide all markers except selected
         markers.forEach(marker => {
-          if (marker !== selectedMarker && getMarkerMap(marker) !== null) {
-            setMarkerMap(marker, null);
+          if (marker !== selectedMarker && marker.getMap() !== null) {
+            marker.setMap(null);
           }
         });
 
         // Show selected marker even when layer is hidden
-        if (selectedMarker && getMarkerMap(selectedMarker) !== map) {
-          setMarkerMap(selectedMarker, map);
+        if (selectedMarker && selectedMarker.getMap() !== map) {
+          selectedMarker.setMap(map);
         }
       }
       return;
     }
 
-    // Clustered mode (legacy markers only)
+    // Clustered mode
     clusterer.clearMarkers();
 
     if (isVisible) {
       // Separate selected marker from regular markers
-      const regularMarkers = markers.filter(marker => marker !== selectedMarker) as google.maps.Marker[];
+      const regularMarkers = markers.filter(marker => marker !== selectedMarker);
 
       // Add regular markers to clusterer
       clusterer.addMarkers(regularMarkers);
 
       // Show selected marker directly on map (not clustered)
-      if (selectedMarker) {
-        setMarkerMap(selectedMarker, map);
+      if (selectedMarker && selectedMarker.getMap() !== map) {
+        selectedMarker.setMap(map);
       }
     } else {
       // Hide regular markers but KEEP selected marker visible
       markers.forEach(marker => {
-        if (marker !== selectedMarker) {
-          setMarkerMap(marker, null);
+        if (marker !== selectedMarker && marker.getMap() !== null) {
+          marker.setMap(null);
         }
       });
 
       // Show selected marker even when layer is hidden
-      if (selectedMarker) {
-        setMarkerMap(selectedMarker, map);
+      if (selectedMarker && selectedMarker.getMap() !== map) {
+        selectedMarker.setMap(map);
       }
     }
-  }, [map, markers, clusterer, isVisible, selectedMarker, markerStyle.useAdvancedMarkers]);
+  }, [map, markers, clusterer, isVisible, selectedMarker]);
 
   // Get refresh trigger from LayerManager
   const { refreshTrigger } = useLayerManager();
@@ -787,7 +793,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     if (properties.length > 0) {
       createMarkers();
     }
-  }, [properties, map, recentlyCreatedIds, verifyingPropertyId, selectedPropertyId, markerStyle.shape, markerStyle.useAdvancedMarkers, markerLibraryLoaded]);
+  }, [properties, map, recentlyCreatedIds, verifyingPropertyId, selectedPropertyId]); // selectedPropertyId dependency ensures markers refresh when selection changes
 
   // Create session markers when recently created IDs change or properties load
   // Session markers are shown when the main layer is hidden or always (depending on UX choice)
@@ -796,7 +802,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       createSessionMarkers();
     } else if (recentlyCreatedIds.size === 0) {
       // Clear session markers when no recently created IDs
-      sessionMarkers.forEach(marker => setMarkerMap(marker, null));
+      sessionMarkers.forEach(marker => marker.setMap(null));
       setSessionMarkers([]);
     }
   }, [properties, recentlyCreatedIds, map, verifyingPropertyId]);
@@ -804,7 +810,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   // Update session marker visibility - session markers are ALWAYS visible when they exist
   useEffect(() => {
     sessionMarkers.forEach(marker => {
-      setMarkerMap(marker, map); // Always show session markers when map exists
+      marker.setMap(map); // Always show session markers when map exists
     });
   }, [sessionMarkers, map]); // Removed isVisible dependency - session markers always visible
 
@@ -835,8 +841,8 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       if (clusterer) {
         clusterer.clearMarkers();
       }
-      markers.forEach(marker => setMarkerMap(marker, null));
-      sessionMarkers.forEach(marker => setMarkerMap(marker, null));
+      markers.forEach(marker => marker.setMap(null));
+      sessionMarkers.forEach(marker => marker.setMap(null));
     };
   }, []);
 
