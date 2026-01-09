@@ -378,14 +378,21 @@ Natural language query interface for the CFO Agent.
 ### Phase 1: Data Foundation (Current)
 1. ✅ P&L Statement with expense sync from QBO
 2. ✅ Expense recategorization (OVIS → QBO)
-3. 🔲 Add recurring expense detection
-4. 🔲 Add budget fields to qb_account
-5. 🔲 Create invoice_aging view
-6. 🔲 Create financial_snapshot table
+3. ✅ Schema migration applied (January 9, 2026):
+   - `financial_snapshot` table created
+   - `ai_financial_context` table created
+   - `ai_financial_queries` table created
+   - `qb_expense` enhanced with `is_recurring`, `recurring_pattern`, `anomaly_score`, `ai_parsed_memo`
+   - `qb_account` enhanced with `budget_monthly`, `budget_annual`, `alert_threshold_pct`, `budget_notes`
+   - `invoice_aging` view created
+   - `budget_vs_actual` view created
+4. 🔲 Verify P&L expense sync and recategorization working correctly
+5. 🔲 Implement recurring expense detection logic
+6. 🔲 Populate budget fields for expense accounts
 
 ### Phase 2: AI Infrastructure
-1. 🔲 Create ai_financial_context table
-2. 🔲 Create ai_financial_queries table
+1. ✅ Create ai_financial_context table (done in Phase 1 migration)
+2. ✅ Create ai_financial_queries table (done in Phase 1 migration)
 3. 🔲 Build financial-summary Edge Function
 4. 🔲 Build anomaly detection during expense sync
 5. 🔲 Create daily snapshot cron job
@@ -442,11 +449,14 @@ Natural language query interface for the CFO Agent.
 
 ## Resume Point
 
-**Current State**: Planning complete, ready for schema implementation.
+**Current State**: Schema migration complete (January 9, 2026). Ready for P&L verification and troubleshooting.
 
 **Next Steps**:
-1. Apply schema changes (Phase 1 data foundation)
-2. Test expense recategorization sync to QBO
-3. Review and recategorize 2025 expenses
-4. Set up budgets by account
-5. Build financial snapshot infrastructure
+1. ✅ Schema migration applied
+2. 🔲 Verify P&L expense sync from QBO is working correctly
+3. 🔲 Test expense recategorization sync back to QBO (OVIS as source of truth)
+4. 🔲 Review and recategorize all 2025 expenses
+5. 🔲 Set up budgets by account
+6. 🔲 Build financial snapshot infrastructure
+
+**Immediate Priority**: Troubleshoot P&L/expense sync issues before proceeding with budgeting

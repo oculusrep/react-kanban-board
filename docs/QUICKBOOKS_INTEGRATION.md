@@ -586,3 +586,21 @@ DROPBOX_REFRESH_TOKEN=your_refresh_token
 DROPBOX_APP_KEY=your_app_key
 DROPBOX_APP_SECRET=your_app_secret
 ```
+
+---
+
+### January 9, 2026
+
+20. **CFO Agent schema migration applied**
+    - Added AI-native financial data schema to support future CFO Agent
+    - New tables: `financial_snapshot`, `ai_financial_context`, `ai_financial_queries`
+    - Enhanced `qb_expense` with: `is_recurring`, `recurring_pattern`, `anomaly_score`, `ai_parsed_memo`
+    - Enhanced `qb_account` with: `budget_monthly`, `budget_annual`, `alert_threshold_pct`, `budget_notes`
+    - Created views: `invoice_aging`, `budget_vs_actual`
+    - See [CFO_AGENT_SPEC.md](./CFO_AGENT_SPEC.md) for full details
+
+**Next Steps:**
+- Verify P&L expense sync from QBO is working correctly
+- Test expense recategorization sync back to QBO (OVIS as source of truth)
+- Review and recategorize all 2025 expenses
+- Set up budgets by expense account
