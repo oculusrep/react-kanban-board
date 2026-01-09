@@ -44,9 +44,9 @@ CREATE POLICY "Admin can view financial snapshots" ON financial_snapshot
   FOR SELECT TO authenticated
   USING (
     EXISTS (
-      SELECT 1 FROM user_profiles
-      WHERE user_profiles.id = auth.uid()
-      AND user_profiles.role = 'admin'
+      SELECT 1 FROM "user" u
+      WHERE u.auth_user_id = auth.uid()
+      AND u.ovis_role = 'admin'
     )
   );
 
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS ai_financial_context (
   context_text text NOT NULL,  -- Natural language description
   metadata jsonb DEFAULT '{}', -- Structured data if needed
 
-  created_by uuid REFERENCES user_profiles(id),
+  created_by uuid REFERENCES "user"(id),
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
@@ -83,9 +83,9 @@ CREATE POLICY "Admin can manage ai_financial_context" ON ai_financial_context
   FOR ALL TO authenticated
   USING (
     EXISTS (
-      SELECT 1 FROM user_profiles
-      WHERE user_profiles.id = auth.uid()
-      AND user_profiles.role = 'admin'
+      SELECT 1 FROM "user" u
+      WHERE u.auth_user_id = auth.uid()
+      AND u.ovis_role = 'admin'
     )
   );
 
@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS ai_financial_queries (
   response_text text,           -- AI's analysis/answer
   confidence_score numeric,     -- AI's confidence (0-1)
 
-  user_id uuid REFERENCES user_profiles(id),
+  user_id uuid REFERENCES "user"(id),
   created_at timestamptz DEFAULT now()
 );
 
@@ -121,9 +121,9 @@ CREATE POLICY "Admin can manage ai_financial_queries" ON ai_financial_queries
   FOR ALL TO authenticated
   USING (
     EXISTS (
-      SELECT 1 FROM user_profiles
-      WHERE user_profiles.id = auth.uid()
-      AND user_profiles.role = 'admin'
+      SELECT 1 FROM "user" u
+      WHERE u.auth_user_id = auth.uid()
+      AND u.ovis_role = 'admin'
     )
   );
 
