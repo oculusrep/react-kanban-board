@@ -18,6 +18,11 @@ export type PropertyLoadingMode = 'static-1000' | 'static-2000' | 'static-all' |
 export interface PropertyLoadingConfig {
   mode: PropertyLoadingMode;
   staticLimit?: number;
+  clusterConfig?: {
+    minimumClusterSize: number;
+    gridSize: number;
+    maxZoom: number;
+  };
 }
 
 interface PropertyLayerProps {
@@ -439,24 +444,13 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   const createMarkers = () => {
     if (!map || !properties.length) return;
 
-    console.log('🗺️ Creating markers for properties...', properties.length, 'properties');
-    console.log('🔍 Recently created IDs to exclude:', [...recentlyCreatedIds]);
-    console.log('🎯 Current selectedPropertyId:', selectedPropertyId);
-
     // Clear existing markers from map and clusterer
-    console.log('🧹 Clearing existing markers:', {
-      markersCount: markers.length,
-      clustererExists: !!clusterer,
-      selectedMarkerId: selectedMarker ? selectedMarker.getTitle() : null
-    });
-
     if (clusterer) {
       clusterer.clearMarkers();
     }
     markers.forEach(marker => marker.setMap(null));
 
     const filteredProperties = properties.filter(property => !recentlyCreatedIds.has(property.id));
-    console.log('📊 Filtered properties count:', filteredProperties.length, 'out of', properties.length);
 
     let newSelectedMarker: google.maps.Marker | null = null;
 
@@ -507,21 +501,6 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       let markerIcon: google.maps.Icon;
       const isSelected = selectedPropertyId === property.id;
       const isBeingVerified = verifyingPropertyId === property.id;
-
-      // Debug logging for selection
-      if (isSelected) {
-        console.log('🧡 Property is SELECTED:', property.id, property.property_name || property.address);
-      }
-
-      // Debug logging to catch multiple orange pins
-      if (selectedPropertyId) {
-        console.log('🔍 Selection check:', {
-          propertyId: property.id,
-          selectedPropertyId,
-          isSelected,
-          propertyName: property.property_name || property.address
-        });
-      }
 
       if (isSelected) {
         markerIcon = ModernMarkerStyles.property.selected(); // Selected - large orange
@@ -679,7 +658,6 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       return marker;
     }).filter(marker => marker !== null) as google.maps.Marker[];
 
-    console.log(`✅ Created ${newMarkers.length} markers`);
     setMarkers(newMarkers);
     setSelectedMarker(newSelectedMarker);
   };
@@ -688,64 +666,97 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   const setupClustering = () => {
     if (!map) return;
 
-    // Only create clusterer if it doesn't exist
-    if (!clusterer) {
-      console.log('🔗 Setting up marker clustering...');
-
-      const newClusterer = new MarkerClusterer({
-        map,
-        markers: [],
-        gridSize: 60,
-        maxZoom: 15,
-        averageCenter: true,
-        minimumClusterSize: 2
-      });
-
-      setClusterer(newClusterer);
-      console.log('✅ Clustering initialized');
+    // Dispose of existing clusterer if it exists (handles map recreation)
+    if (clusterer) {
+      console.log('🧹 Disposing of existing clusterer due to map change...');
+      clusterer.clearMarkers();
+      clusterer.setMap(null);
     }
-  };
 
-  // Update marker visibility
-  const updateMarkerVisibility = () => {
-    if (!clusterer) {
-      console.log('⚠️ PropertyLayer: No clusterer available for visibility update');
+    // Get cluster config from loadingConfig, with defaults
+    const clusterSettings = loadingConfig.clusterConfig || {
+      minimumClusterSize: 5,
+      gridSize: 60,
+      maxZoom: 15
+    };
+
+    // If minimumClusterSize is very high (e.g., 999), disable clustering entirely
+    // by not creating a clusterer - markers will be added directly to the map
+    if (clusterSettings.minimumClusterSize >= 100) {
+      console.log(`🚫 PropertyLayer: Clustering disabled`);
+      setClusterer(null);
       return;
     }
 
-    // Always clear first to ensure clean state
+    const newClusterer = new MarkerClusterer({
+      map,
+      markers: [],
+      gridSize: clusterSettings.gridSize,
+      maxZoom: clusterSettings.maxZoom,
+      averageCenter: true,
+      minimumClusterSize: clusterSettings.minimumClusterSize
+    });
+
+    setClusterer(newClusterer);
+  };
+
+  // Update marker visibility - handles both clustered and non-clustered modes
+  const updateMarkerVisibility = React.useCallback(() => {
+    if (!map || markers.length === 0) return;
+
+    // Handle case when clustering is disabled (clusterer is null)
+    if (!clusterer) {
+      if (isVisible) {
+        // Show all markers directly on the map (no clustering)
+        markers.forEach(marker => {
+          if (marker.getMap() !== map) {
+            marker.setMap(map);
+          }
+        });
+      } else {
+        // Hide all markers except selected
+        markers.forEach(marker => {
+          if (marker !== selectedMarker && marker.getMap() !== null) {
+            marker.setMap(null);
+          }
+        });
+
+        // Show selected marker even when layer is hidden
+        if (selectedMarker && selectedMarker.getMap() !== map) {
+          selectedMarker.setMap(map);
+        }
+      }
+      return;
+    }
+
+    // Clustered mode
     clusterer.clearMarkers();
 
     if (isVisible) {
       // Separate selected marker from regular markers
       const regularMarkers = markers.filter(marker => marker !== selectedMarker);
 
-      console.log(`👁️ PropertyLayer: Showing ${regularMarkers.length} clustered markers + ${selectedMarker ? 1 : 0} selected marker`);
-
       // Add regular markers to clusterer
       clusterer.addMarkers(regularMarkers);
 
       // Show selected marker directly on map (not clustered)
-      if (selectedMarker) {
+      if (selectedMarker && selectedMarker.getMap() !== map) {
         selectedMarker.setMap(map);
-        console.log('🧡 Selected marker shown individually (not clustered)');
       }
     } else {
-      console.log('🙈 PropertyLayer: Hiding property markers (except selected)');
       // Hide regular markers but KEEP selected marker visible
       markers.forEach(marker => {
-        if (marker !== selectedMarker) {
+        if (marker !== selectedMarker && marker.getMap() !== null) {
           marker.setMap(null);
         }
       });
 
       // Show selected marker even when layer is hidden
-      if (selectedMarker) {
+      if (selectedMarker && selectedMarker.getMap() !== map) {
         selectedMarker.setMap(map);
-        console.log('🧡 Selected marker kept visible even with layer hidden');
       }
     }
-  };
+  }, [map, markers, clusterer, isVisible, selectedMarker]);
 
   // Get refresh trigger from LayerManager
   const { refreshTrigger } = useLayerManager();
@@ -787,17 +798,10 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   // Create session markers when recently created IDs change or properties load
   // Session markers are shown when the main layer is hidden or always (depending on UX choice)
   useEffect(() => {
-    console.log('🔄 Session marker effect triggered:', {
-      propertiesCount: properties.length,
-      recentlyCreatedIdsSize: recentlyCreatedIds.size,
-      recentlyCreatedIds: [...recentlyCreatedIds]
-    });
-
     if (properties.length > 0 && recentlyCreatedIds.size > 0) {
       createSessionMarkers();
     } else if (recentlyCreatedIds.size === 0) {
       // Clear session markers when no recently created IDs
-      console.log('🧹 Clearing session markers because no recently created IDs');
       sessionMarkers.forEach(marker => marker.setMap(null));
       setSessionMarkers([]);
     }
@@ -805,33 +809,31 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
 
   // Update session marker visibility - session markers are ALWAYS visible when they exist
   useEffect(() => {
-    console.log(`🔄 PropertyLayer: Updating session marker visibility`, {
-      sessionMarkersCount: sessionMarkers.length,
-      hasMap: !!map,
-      note: 'Session markers are always visible regardless of layer state'
-    });
-
     sessionMarkers.forEach(marker => {
       marker.setMap(map); // Always show session markers when map exists
     });
-
-    if (sessionMarkers.length > 0) {
-      console.log(`🎯 PropertyLayer: Session markers shown (${sessionMarkers.length} markers) - always visible`);
-    }
   }, [sessionMarkers, map]); // Removed isVisible dependency - session markers always visible
 
-  // Set up clustering when map is ready (only once)
+  // Extract cluster config values for dependency comparison (avoid object reference issues)
+  const clusterMinSize = loadingConfig.clusterConfig?.minimumClusterSize;
+  const clusterGridSize = loadingConfig.clusterConfig?.gridSize;
+  const clusterMaxZoom = loadingConfig.clusterConfig?.maxZoom;
+
+  // Set up clustering when map is ready, changes (recreated for Map ID swap), or cluster config changes
   useEffect(() => {
     if (map) {
       setupClustering();
+      // Also recreate markers when map changes (they're tied to the old map instance)
+      if (properties.length > 0) {
+        createMarkers();
+      }
     }
-  }, [map]);
+  }, [map, clusterMinSize, clusterGridSize, clusterMaxZoom]);
 
-  // Update visibility when isVisible prop changes
+  // Update visibility when any relevant state changes
   useEffect(() => {
-    console.log(`🔄 PropertyLayer: isVisible changed to ${isVisible}, updating marker visibility`);
     updateMarkerVisibility();
-  }, [isVisible, clusterer, markers]);
+  }, [updateMarkerVisibility]);
 
   // Cleanup on unmount
   useEffect(() => {

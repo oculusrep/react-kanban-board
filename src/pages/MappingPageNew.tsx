@@ -4,6 +4,7 @@ import BatchGeocodingPanel from '../components/mapping/BatchGeocodingPanel';
 import BatchReverseGeocodingPanel from '../components/mapping/BatchReverseGeocodingPanel';
 import PropertyLayer, { PropertyLoadingConfig } from '../components/mapping/layers/PropertyLayer';
 import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/layers/SiteSubmitLayer';
+import { MarkerShape } from '../components/mapping/utils/advancedMarkers';
 import RestaurantLayer from '../components/mapping/layers/RestaurantLayer';
 import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
 import MapContextMenu from '../components/mapping/MapContextMenu';
@@ -101,6 +102,15 @@ const MappingPageContent: React.FC = () => {
     minimumClusterSize: 5,
     gridSize: 60,
     maxZoom: 15
+  });
+
+  // Marker style configuration (for AdvancedMarkerElement)
+  const [markerStyle, setMarkerStyle] = useState<{
+    shape: MarkerShape;
+    useAdvancedMarkers: boolean;
+  }>({
+    shape: 'teardrop',
+    useAdvancedMarkers: true
   });
   // Initialize recently created IDs from sessionStorage
   const [recentlyCreatedPropertyIds, setRecentlyCreatedPropertyIds] = useState<Set<string>>(() => {
@@ -1402,8 +1412,9 @@ const MappingPageContent: React.FC = () => {
 
   // Property layer configuration (memoized to prevent infinite re-renders)
   const propertyLoadingConfig: PropertyLoadingConfig = useMemo(() => ({
-    mode: 'static-all'
-  }), []);
+    mode: 'static-all',
+    clusterConfig: clusterConfig
+  }), [clusterConfig]);
 
   // Site submit layer configuration (memoized to prevent infinite re-renders)
   // When a client is selected, use client-filtered mode
@@ -1413,8 +1424,9 @@ const MappingPageContent: React.FC = () => {
     mode: 'client-filtered',
     clientId: selectedClient?.id || null,
     visibleStages: visibleStages,
-    clusterConfig: clusterConfig
-  }), [selectedClient, visibleStages, clusterConfig]);
+    clusterConfig: clusterConfig,
+    markerStyle: markerStyle
+  }), [selectedClient, visibleStages, clusterConfig, markerStyle]);
 
   // Stage toggle handlers
   const handleStageToggle = (stageName: string) => {
@@ -1687,6 +1699,49 @@ const MappingPageContent: React.FC = () => {
                             </div>
                           </div>
                         </div>
+
+                        {/* Marker Style Configuration */}
+                        <div className="border-t border-gray-200 mt-1 pt-1">
+                          <div className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                            Marker Style (Experimental)
+                          </div>
+
+                          <div className="px-4 py-2 space-y-2">
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">Marker shape:</label>
+                              <select
+                                value={markerStyle.shape}
+                                onChange={(e) => setMarkerStyle(prev => ({
+                                  ...prev,
+                                  shape: e.target.value as MarkerShape
+                                }))}
+                                className="w-full text-xs border border-gray-300 rounded px-2 py-1"
+                              >
+                                <option value="teardrop">Teardrop (Classic)</option>
+                                <option value="circle">Circle with tail</option>
+                              </select>
+                            </div>
+
+                            <div className="flex items-center">
+                              <input
+                                type="checkbox"
+                                id="useAdvancedMarkers"
+                                checked={markerStyle.useAdvancedMarkers}
+                                onChange={(e) => setMarkerStyle(prev => ({
+                                  ...prev,
+                                  useAdvancedMarkers: e.target.checked
+                                }))}
+                                className="mr-2"
+                              />
+                              <label htmlFor="useAdvancedMarkers" className="text-xs text-gray-600">
+                                Use new marker style
+                              </label>
+                            </div>
+                            <p className="text-[10px] text-gray-400">
+                              New markers have better contrast and hover effects
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1784,6 +1839,7 @@ const MappingPageContent: React.FC = () => {
               verifyingStoreNo={verifyingRestaurantStoreNo}
               onLocationVerified={canVerifyRestaurantLocations ? handleRestaurantLocationVerified : undefined}
               onRestaurantRightClick={canVerifyRestaurantLocations ? handleRestaurantRightClick : undefined}
+              clusterConfig={clusterConfig}
               onRestaurantsLoaded={(count) => {
                 setLayerCount('restaurants', count);
                 setLayerLoading('restaurants', false);

@@ -294,8 +294,16 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
   };
 
   // Create custom map type control with labels checkbox
-  const createCustomMapTypeControl = (map: google.maps.Map, onToggleLabels: (newValue: boolean) => void) => {
+  const createCustomMapTypeControl = (
+    map: google.maps.Map,
+    onToggleLabels: (newValue: boolean) => void,
+    onMapRecreated?: (newMap: google.maps.Map) => void
+  ) => {
     let currentLabelsVisible = labelsVisible;
+
+    // Get Map IDs from environment for POI toggle (cloud-based styling)
+    const mapIdWithPoi = import.meta.env.VITE_GOOGLE_MAP_ID;
+    const mapIdNoPoi = import.meta.env.VITE_GOOGLE_MAP_ID_NO_POI;
     const controlDiv = document.createElement('div');
     controlDiv.style.margin = '10px';
 
@@ -433,7 +441,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
       updateButtonStates();
     });
 
-    // Labels checkbox handler
+    // Labels checkbox handler - recreates map with different Map ID for cloud-based POI toggle
     const handleLabelsToggle = (fromCheckbox = false) => {
       let newLabelsVisible;
 
@@ -451,33 +459,82 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
 
       console.log('Labels toggle:', newLabelsVisible, 'Map type:', currentMapType);
 
-      if (newLabelsVisible) {
-        // Show labels (including places)
-        if (currentMapType === google.maps.MapTypeId.ROADMAP) {
-          // For road map, use muted places style (shows all labels)
-          map.setOptions({ styles: createMutedPlacesStyle() });
-        } else {
-          // For satellite views, use HYBRID with satellite-optimized muted places style
-          map.setMapTypeId(google.maps.MapTypeId.HYBRID);
-          map.setOptions({ styles: createSatelliteMutedPlacesStyle() });
+      // Use Map ID swapping for cloud-based styling (required for AdvancedMarkerElement)
+      // Note: Map ID cannot be changed dynamically - must recreate map
+      if (mapIdWithPoi && mapIdNoPoi) {
+        const newMapId = newLabelsVisible ? mapIdWithPoi : mapIdNoPoi;
+        console.log('🗺️ Recreating map with new Map ID for POI toggle:', newMapId);
+
+        // Save current map state
+        const currentCenter = map.getCenter();
+        const currentZoom = map.getZoom();
+        const mapContainer = map.getDiv();
+
+        // Create new map with different Map ID
+        const newMap = new google.maps.Map(mapContainer, {
+          center: currentCenter,
+          zoom: currentZoom,
+          mapTypeId: currentMapType,
+          mapId: newMapId,
+          mapTypeControl: false,
+          streetViewControl: true,
+          streetViewControlOptions: {
+            position: google.maps.ControlPosition.LEFT_TOP,
+          },
+          fullscreenControl: false,
+          zoomControl: true,
+          zoomControlOptions: {
+            position: google.maps.ControlPosition.LEFT_TOP,
+          },
+          rotateControl: true,
+          rotateControlOptions: {
+            position: google.maps.ControlPosition.LEFT_TOP,
+          },
+          gestureHandling: 'greedy',
+        });
+
+        // Update local variable
+        currentLabelsVisible = newLabelsVisible;
+
+        // Call the callback to update React state and trigger layer recreation
+        onToggleLabels(newLabelsVisible);
+
+        // Notify parent that map instance has changed
+        // This triggers onMapLoad which will cause layers to recreate their markers
+        if (onMapRecreated) {
+          onMapRecreated(newMap);
         }
       } else {
-        // Hide only Google Places, keep road labels
-        if (currentMapType === google.maps.MapTypeId.ROADMAP) {
-          // For road map, combine muted places with no places style
-          map.setOptions({ styles: [...createMutedPlacesStyle(), ...createNoPlacesStyle()] });
+        // Fallback to JSON styles if Map IDs not configured (legacy mode)
+        console.log('⚠️ Map IDs not configured, using JSON styles fallback');
+        if (newLabelsVisible) {
+          // Show labels (including places)
+          if (currentMapType === google.maps.MapTypeId.ROADMAP) {
+            // For road map, use muted places style (shows all labels)
+            map.setOptions({ styles: createMutedPlacesStyle() });
+          } else {
+            // For satellite views, use HYBRID with satellite-optimized muted places style
+            map.setMapTypeId(google.maps.MapTypeId.HYBRID);
+            map.setOptions({ styles: createSatelliteMutedPlacesStyle() });
+          }
         } else {
-          // For satellite views, use HYBRID but hide places
-          map.setMapTypeId(google.maps.MapTypeId.HYBRID);
-          map.setOptions({ styles: createNoPlacesStyle() });
+          // Hide only Google Places, keep road labels
+          if (currentMapType === google.maps.MapTypeId.ROADMAP) {
+            // For road map, combine muted places with no places style
+            map.setOptions({ styles: [...createMutedPlacesStyle(), ...createNoPlacesStyle()] });
+          } else {
+            // For satellite views, use HYBRID but hide places
+            map.setMapTypeId(google.maps.MapTypeId.HYBRID);
+            map.setOptions({ styles: createNoPlacesStyle() });
+          }
         }
+
+        // Update the local variable
+        currentLabelsVisible = newLabelsVisible;
+
+        // Call the callback to update React state
+        onToggleLabels(newLabelsVisible);
       }
-
-      // Update the local variable
-      currentLabelsVisible = newLabelsVisible;
-
-      // Call the callback to update React state
-      onToggleLabels(newLabelsVisible);
     };
 
     labelsContainer.addEventListener('click', (e) => {
@@ -609,11 +666,20 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
 
         console.log('✅ Creating map instance...');
 
+        // Get Map ID from environment (required for AdvancedMarkerElement)
+        const mapId = import.meta.env.VITE_GOOGLE_MAP_ID;
+        if (mapId) {
+          console.log('🗺️ Using Map ID for AdvancedMarkerElement support');
+        } else {
+          console.warn('⚠️ VITE_GOOGLE_MAP_ID not set - AdvancedMarkerElement will not work. Falling back to legacy markers.');
+        }
+
         // Create map instance with muted places styling
         const map = new google.maps.Map(mapRef.current, {
           center: mapCenter,
           zoom: location ? 12 : 10,
           mapTypeId: google.maps.MapTypeId.ROADMAP,
+          mapId: mapId || undefined, // Required for AdvancedMarkerElement
           mapTypeControl: false, // Disable default map type control
           streetViewControl: true,
           streetViewControlOptions: {
@@ -674,8 +740,24 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         // Store map instance
         mapInstanceRef.current = map;
 
+        // Callback for when map is recreated (due to Map ID swap for labels toggle)
+        const handleMapRecreated = (newMap: google.maps.Map) => {
+          console.log('🔄 Map recreated with new Map ID, updating references...');
+          mapInstanceRef.current = newMap;
+
+          // Re-add the map type control to the new map
+          const newMapTypeControl = createCustomMapTypeControl(newMap, setLabelsVisible, handleMapRecreated);
+          labelsControlRef.current = newMapTypeControl;
+          newMap.controls[google.maps.ControlPosition.TOP_LEFT].push(newMapTypeControl.controlDiv);
+
+          // Notify parent component so layers can update
+          if (onMapLoad) {
+            onMapLoad(newMap);
+          }
+        };
+
         // Add custom map type control with labels toggle
-        const mapTypeControl = createCustomMapTypeControl(map, setLabelsVisible);
+        const mapTypeControl = createCustomMapTypeControl(map, setLabelsVisible, handleMapRecreated);
         labelsControlRef.current = mapTypeControl;
         map.controls[google.maps.ControlPosition.TOP_LEFT].push(mapTypeControl.controlDiv);
 
@@ -683,12 +765,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         // Keeping Google Maps control creation for reference but not adding to map
         console.log('✅ GPS tracking controls handled by React component');
 
-        // Hide labels control when clicking on the map
-        map.addListener('click', () => {
-          if (mapTypeControl.hideLabelsControl) {
-            mapTypeControl.hideLabelsControl();
-          }
-        });
+        // Labels toggle is always visible - no hide on map click
 
         // Handle map type changes to apply correct styles
         map.addListener('maptypeid_changed', () => {

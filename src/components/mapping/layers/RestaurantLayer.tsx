@@ -49,6 +49,11 @@ interface RestaurantLayerProps {
   onRestaurantRightClick?: (restaurant: RestaurantWithTrends, x: number, y: number) => void;
   selectedStoreNo?: string | null;
   onRestaurantsLoaded?: (count: number) => void;
+  clusterConfig?: {
+    minimumClusterSize: number;
+    gridSize: number;
+    maxZoom: number;
+  };
 }
 
 const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
@@ -59,7 +64,8 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
   onLocationVerified,
   onRestaurantRightClick,
   selectedStoreNo = null,
-  onRestaurantsLoaded
+  onRestaurantsLoaded,
+  clusterConfig
 }) => {
   const [restaurants, setRestaurants] = useState<RestaurantWithTrends[]>([]);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
@@ -535,9 +541,22 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
     setMarkers(newMarkers);
     setSelectedMarker(newSelectedMarker);
 
+    // Check if clustering should be disabled (minimumClusterSize >= 100 means no clustering)
+    const clusteringDisabled = clusterConfig && clusterConfig.minimumClusterSize >= 100;
+
     // Create or update clusterer with red styling
     if (newMarkers.length > 0) {
-      if (clusterer) {
+      if (clusteringDisabled) {
+        // No clustering - show all markers directly on map
+        console.log('🍔 RestaurantLayer: Clustering disabled, showing markers directly');
+        if (clusterer) {
+          clusterer.clearMarkers();
+          setClusterer(null);
+        }
+        if (isVisible) {
+          newMarkers.forEach(marker => marker.setMap(map));
+        }
+      } else if (clusterer) {
         clusterer.clearMarkers();
         if (isVisible) {
           clusterer.addMarkers(newMarkers.filter(m => m !== newSelectedMarker));
@@ -572,20 +591,45 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
           },
         };
 
+        // Apply cluster config settings
+        const algorithmOptions: any = {};
+        if (clusterConfig) {
+          algorithmOptions.maxZoom = clusterConfig.maxZoom;
+        }
+
         const newClusterer = new MarkerClusterer({
           map,
           markers: [], // Start with empty markers, let visibility effect handle it
           renderer,
+          algorithmOptions,
         });
         setClusterer(newClusterer);
       }
     }
-  }, [map, restaurants, selectedStoreNo, verifyingStoreNo, onPinClick, onLocationVerified, onRestaurantRightClick, clusterer, markers, createPopupOverlay, openPopup]);
+  }, [map, restaurants, selectedStoreNo, verifyingStoreNo, onPinClick, onLocationVerified, onRestaurantRightClick, clusterer, markers, createPopupOverlay, openPopup, clusterConfig]);
+
+  // Extract primitive values for dependency comparison
+  const clusterMinSize = clusterConfig?.minimumClusterSize;
+  const clusterMaxZoom = clusterConfig?.maxZoom;
 
   // Update markers when restaurants or selection changes
   useEffect(() => {
     createMarkers();
   }, [restaurants, selectedStoreNo, verifyingStoreNo]);
+
+  // Recreate clusterer when cluster config changes
+  useEffect(() => {
+    if (!map || restaurants.length === 0) return;
+
+    // Clear existing clusterer and recreate markers with new config
+    if (clusterer) {
+      clusterer.clearMarkers();
+      setClusterer(null);
+    }
+
+    // Trigger marker recreation
+    createMarkers();
+  }, [clusterMinSize, clusterMaxZoom]);
 
   // Refetch restaurants when map bounds change (viewport-based loading)
   useEffect(() => {
@@ -603,26 +647,40 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
 
   // Update marker visibility
   useEffect(() => {
-    if (!clusterer) return;
+    if (!map || markers.length === 0) return;
+
+    // Check if clustering is disabled
+    const clusteringDisabled = clusterConfig && clusterConfig.minimumClusterSize >= 100;
 
     if (isVisible) {
-      // Show clustered markers
-      markers.forEach(marker => {
-        if (marker !== selectedMarker) {
-          clusterer.addMarker(marker);
-        }
-      });
+      if (clusteringDisabled || !clusterer) {
+        // No clustering - show all markers directly
+        markers.forEach(marker => {
+          if (marker.getMap() !== map) {
+            marker.setMap(map);
+          }
+        });
+      } else {
+        // Show clustered markers
+        markers.forEach(marker => {
+          if (marker !== selectedMarker) {
+            clusterer.addMarker(marker);
+          }
+        });
 
-      // Always show selected marker separately
-      if (selectedMarker) {
-        selectedMarker.setMap(map);
+        // Always show selected marker separately
+        if (selectedMarker) {
+          selectedMarker.setMap(map);
+        }
       }
     } else {
       // Hide all markers
-      clusterer.clearMarkers();
+      if (clusterer) {
+        clusterer.clearMarkers();
+      }
       markers.forEach(marker => marker.setMap(null));
     }
-  }, [isVisible, markers, selectedMarker, clusterer, map]);
+  }, [isVisible, markers, selectedMarker, clusterer, map, clusterConfig]);
 
   // Track previous selectedStoreNo for reference
   const prevSelectedStoreNoRef = useRef<string | null>(null);

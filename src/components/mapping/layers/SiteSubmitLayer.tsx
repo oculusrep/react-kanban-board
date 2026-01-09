@@ -1,9 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from './LayerManager';
 import { createStageMarkerIcon, createVerifiedStageMarkerIcon } from '../utils/stageMarkers';
 import { isTouchDevice, addLongPressListener } from '../../../utils/deviceDetection';
+import {
+  loadMarkerLibrary,
+  createStageMarkerElement,
+  MarkerShape,
+  getStageConfig
+} from '../utils/advancedMarkers';
 
 interface SiteSubmit {
   id: string;
@@ -61,6 +67,10 @@ export interface SiteSubmitLoadingConfig {
     gridSize: number;
     maxZoom: number;
   };
+  markerStyle?: {
+    shape: MarkerShape;
+    useAdvancedMarkers: boolean;
+  };
 }
 
 interface SiteSubmitLayerProps {
@@ -90,10 +100,19 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
   onLocationVerified
 }) => {
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
-  const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
+  // Support both legacy Marker and AdvancedMarkerElement
+  type MarkerType = google.maps.Marker | google.maps.marker.AdvancedMarkerElement;
+  const [markers, setMarkers] = useState<MarkerType[]>([]);
   const [clusterer, setClusterer] = useState<MarkerClusterer | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [markerLibraryLoaded, setMarkerLibraryLoaded] = useState(false);
+
+  // Get marker style settings with defaults
+  const markerStyle = loadingConfig.markerStyle || {
+    shape: 'teardrop' as MarkerShape,
+    useAdvancedMarkers: true // Default to advanced markers
+  };
 
   // Function to get display coordinates (priority: verified site submit coords > property coords)
   const getDisplayCoordinates = (siteSubmit: SiteSubmit) => {
@@ -436,8 +455,18 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
   };
 
   // Create markers for all site submits
-  const createMarkers = () => {
+  const createMarkers = async () => {
     if (!map) return;
+
+    // Load marker library if using advanced markers
+    if (markerStyle.useAdvancedMarkers && !markerLibraryLoaded) {
+      try {
+        await loadMarkerLibrary();
+        setMarkerLibraryLoaded(true);
+      } catch (err) {
+        console.error('Failed to load marker library, falling back to legacy markers:', err);
+      }
+    }
 
     // Ensure verifying site submit is included even if not in loaded list
     let siteSubmitsToRender = [...siteSubmits];
@@ -458,6 +487,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
     console.log('📊 Site submits to render:', siteSubmitsToRender.length);
     console.log('📊 Visible stages:', loadingConfig.visibleStages ? Array.from(loadingConfig.visibleStages) : 'all');
     console.log('🎯 Verifying site submit ID:', verifyingSiteSubmitId);
+    console.log('🎨 Marker style:', markerStyle.useAdvancedMarkers ? `Advanced (${markerStyle.shape})` : 'Legacy');
 
     // Clear existing markers (always, even if there are no new markers to create)
     markers.forEach(marker => marker.setMap(null));
@@ -469,7 +499,9 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
       return;
     }
 
-    const newMarkers: google.maps.Marker[] = siteSubmitsToRender.map(siteSubmit => {
+    const useAdvanced = markerStyle.useAdvancedMarkers && markerLibraryLoaded;
+
+    const newMarkers: MarkerType[] = siteSubmitsToRender.map(siteSubmit => {
       const coords = getDisplayCoordinates(siteSubmit);
       if (!coords) return null;
 
@@ -482,9 +514,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
         return null;
       }
 
-      const markerIcon = getMarkerIcon(siteSubmit);
-
-      // Create info window content
+      // Create info window content (used for fallback)
       const infoContent = `
         <div class="p-3 max-w-sm">
           <h3 class="font-semibold text-lg text-gray-900 mb-2">
@@ -518,125 +548,236 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
         });
       }
 
-      const marker = new google.maps.Marker({
-        position: { lat: coords.lat, lng: coords.lng },
-        map: isBeingVerified ? map : null, // Show immediately if being verified, otherwise add via clusterer
-        title: siteSubmit.site_submit_name || `Site Submit - ${siteSubmit.client?.client_name}`,
-        icon: markerIcon,
-        draggable: isBeingVerified, // Only draggable when explicitly verifying location
-        zIndex: isBeingVerified ? 2000 : 1000 // Higher z-index than properties (which use 500 max)
-      });
-
       // Long-press state for touch devices (defined here so click handler and drag can access it)
       let wasLongPress = false;
       let touchStartTime = 0; // Declare here so drag handlers can access it
 
-      // Handle marker drag to update verified location (only when in verification mode)
-      if (isBeingVerified && onLocationVerified) {
-        // Reset long-press detection when drag starts
-        marker.addListener('dragstart', () => {
-          touchStartTime = 0; // Cancel any pending long-press
-          wasLongPress = false;
+      // Create marker based on style
+      let marker: MarkerType;
+
+      if (useAdvanced) {
+        // Create AdvancedMarkerElement with custom HTML content
+        const { AdvancedMarkerElement } = google.maps.marker;
+        const content = createStageMarkerElement(
+          stageName,
+          markerStyle.shape,
+          coords.verified,
+          38 // 20% larger than original 32px
+        );
+
+        marker = new AdvancedMarkerElement({
+          map: isBeingVerified ? map : null,
+          position: { lat: coords.lat, lng: coords.lng },
+          content,
+          title: siteSubmit.site_submit_name || `Site Submit - ${siteSubmit.client?.client_name}`,
+          zIndex: isBeingVerified ? 2000 : 1000,
+          gmpDraggable: isBeingVerified
         });
 
-        marker.addListener('dragend', (event: google.maps.MapMouseEvent) => {
-          if (event.latLng) {
-            const newLat = event.latLng.lat();
-            const newLng = event.latLng.lng();
-            console.log('📍 Site submit location verified:', { siteSubmitId: siteSubmit.id, lat: newLat, lng: newLng });
-            onLocationVerified(siteSubmit.id, newLat, newLng);
-          }
-        });
-      }
-
-      marker.addListener('click', () => {
-        // Don't open slideout if this was a long-press
-        if (wasLongPress) {
-          console.log('🚫 Skipping click - was long press');
-          wasLongPress = false;
-          return;
-        }
-
-        // Use modern slideout instead of info window
-        if (onPinClick) {
-          onPinClick(siteSubmit);
-          return;
-        }
-
-        // Fallback to info window
-        infoWindow.open(map, marker);
-      });
-
-      // Add right-click listener for site submit markers
-      if (onSiteSubmitRightClick) {
-        marker.addListener('rightclick', (event: google.maps.MapMouseEvent) => {
-          if (event.domEvent) {
-            // Prevent the map's contextmenu event from firing
-            event.domEvent.preventDefault();
-            event.domEvent.stopPropagation();
-            onSiteSubmitRightClick(siteSubmit, event.domEvent.clientX, event.domEvent.clientY);
-          }
-        });
-
-        // Add long-press support for touch devices
-        // Note: Standard markers don't have getElement(), so we handle long-press
-        // through a custom click event with timing
-        if (isTouchDevice()) {
-          let touchMoved = false;
-          let touchStartPos = { x: 0, y: 0 };
-
-          marker.addListener('mousedown', (event: google.maps.MapMouseEvent) => {
-            if (event.domEvent && event.domEvent instanceof TouchEvent) {
-              // Cancel long-press if multi-touch (pinch/zoom)
-              if (event.domEvent.touches.length > 1) {
-                touchStartTime = 0;
-                return;
-              }
-
-              touchStartTime = Date.now(); // Use outer scope variable
-              touchMoved = false;
-              wasLongPress = false;
-              const touch = event.domEvent.touches[0];
-              touchStartPos = { x: touch.clientX, y: touch.clientY };
-            }
+        // AdvancedMarkerElement event handling
+        if (isBeingVerified && onLocationVerified) {
+          marker.addListener('dragstart', () => {
+            touchStartTime = 0;
+            wasLongPress = false;
           });
 
-          marker.addListener('mousemove', (event: google.maps.MapMouseEvent) => {
-            if (touchStartTime && event.domEvent && event.domEvent instanceof TouchEvent) {
-              // Cancel long-press if multi-touch detected during move
-              if (event.domEvent.touches.length > 1) {
+          marker.addListener('dragend', () => {
+            const pos = marker.position;
+            if (pos) {
+              const lat = typeof pos.lat === 'function' ? pos.lat() : pos.lat;
+              const lng = typeof pos.lng === 'function' ? pos.lng() : pos.lng;
+              console.log('📍 Site submit location verified:', { siteSubmitId: siteSubmit.id, lat, lng });
+              onLocationVerified(siteSubmit.id, lat!, lng!);
+            }
+          });
+        }
+
+        // Click handler for AdvancedMarkerElement
+        marker.addListener('click', () => {
+          if (wasLongPress) {
+            console.log('🚫 Skipping click - was long press');
+            wasLongPress = false;
+            return;
+          }
+
+          if (onPinClick) {
+            onPinClick(siteSubmit);
+            return;
+          }
+
+          // Fallback to info window
+          infoWindow.open(map);
+        });
+
+        // Right-click (context menu) for AdvancedMarkerElement
+        if (onSiteSubmitRightClick && content) {
+          content.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onSiteSubmitRightClick(siteSubmit, e.clientX, e.clientY);
+          });
+
+          // Long-press support for touch devices on AdvancedMarkerElement
+          if (isTouchDevice()) {
+            let touchMoved = false;
+            let touchStartPos = { x: 0, y: 0 };
+            let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+
+            content.addEventListener('touchstart', (e) => {
+              if (e.touches.length > 1) {
                 touchStartTime = 0;
+                if (longPressTimer) clearTimeout(longPressTimer);
                 return;
               }
 
-              const touch = event.domEvent.touches[0];
+              touchStartTime = Date.now();
+              touchMoved = false;
+              wasLongPress = false;
+              const touch = e.touches[0];
+              touchStartPos = { x: touch.clientX, y: touch.clientY };
+
+              longPressTimer = setTimeout(() => {
+                if (!touchMoved) {
+                  console.log('📱 Long press on site submit marker:', siteSubmit.site_submit_name);
+                  wasLongPress = true;
+                  onSiteSubmitRightClick(siteSubmit, touchStartPos.x, touchStartPos.y);
+                }
+              }, 500);
+            }, { passive: true });
+
+            content.addEventListener('touchmove', (e) => {
+              if (e.touches.length > 1) {
+                touchStartTime = 0;
+                if (longPressTimer) clearTimeout(longPressTimer);
+                return;
+              }
+
+              const touch = e.touches[0];
               const deltaX = Math.abs(touch.clientX - touchStartPos.x);
               const deltaY = Math.abs(touch.clientY - touchStartPos.y);
               if (deltaX > 10 || deltaY > 10) {
                 touchMoved = true;
+                if (longPressTimer) clearTimeout(longPressTimer);
               }
+            }, { passive: true });
+
+            content.addEventListener('touchend', () => {
+              if (longPressTimer) clearTimeout(longPressTimer);
+            }, { passive: true });
+          }
+        }
+
+      } else {
+        // Legacy google.maps.Marker
+        const markerIcon = getMarkerIcon(siteSubmit);
+
+        marker = new google.maps.Marker({
+          position: { lat: coords.lat, lng: coords.lng },
+          map: isBeingVerified ? map : null,
+          title: siteSubmit.site_submit_name || `Site Submit - ${siteSubmit.client?.client_name}`,
+          icon: markerIcon,
+          draggable: isBeingVerified,
+          zIndex: isBeingVerified ? 2000 : 1000
+        });
+
+        // Handle marker drag to update verified location (only when in verification mode)
+        if (isBeingVerified && onLocationVerified) {
+          marker.addListener('dragstart', () => {
+            touchStartTime = 0;
+            wasLongPress = false;
+          });
+
+          marker.addListener('dragend', (event: google.maps.MapMouseEvent) => {
+            if (event.latLng) {
+              const newLat = event.latLng.lat();
+              const newLng = event.latLng.lng();
+              console.log('📍 Site submit location verified:', { siteSubmitId: siteSubmit.id, lat: newLat, lng: newLng });
+              onLocationVerified(siteSubmit.id, newLat, newLng);
+            }
+          });
+        }
+
+        marker.addListener('click', () => {
+          if (wasLongPress) {
+            console.log('🚫 Skipping click - was long press');
+            wasLongPress = false;
+            return;
+          }
+
+          if (onPinClick) {
+            onPinClick(siteSubmit);
+            return;
+          }
+
+          infoWindow.open(map, marker as google.maps.Marker);
+        });
+
+        // Add right-click listener for site submit markers
+        if (onSiteSubmitRightClick) {
+          marker.addListener('rightclick', (event: google.maps.MapMouseEvent) => {
+            if (event.domEvent) {
+              event.domEvent.preventDefault();
+              event.domEvent.stopPropagation();
+              onSiteSubmitRightClick(siteSubmit, event.domEvent.clientX, event.domEvent.clientY);
             }
           });
 
-          marker.addListener('mouseup', (event: google.maps.MapMouseEvent) => {
-            if (touchStartTime && event.domEvent && event.domEvent instanceof TouchEvent) {
-              const touchDuration = Date.now() - touchStartTime;
-              if (touchDuration >= 500 && !touchMoved) {
-                console.log('📱 Long press on site submit marker:', siteSubmit.site_submit_name);
-                wasLongPress = true;
-                const touch = event.domEvent.changedTouches[0];
-                onSiteSubmitRightClick(siteSubmit, touch.clientX, touch.clientY);
-                event.domEvent.preventDefault();
-                event.domEvent.stopPropagation();
+          // Add long-press support for touch devices
+          if (isTouchDevice()) {
+            let touchMoved = false;
+            let touchStartPos = { x: 0, y: 0 };
+
+            marker.addListener('mousedown', (event: google.maps.MapMouseEvent) => {
+              if (event.domEvent && event.domEvent instanceof TouchEvent) {
+                if (event.domEvent.touches.length > 1) {
+                  touchStartTime = 0;
+                  return;
+                }
+
+                touchStartTime = Date.now();
+                touchMoved = false;
+                wasLongPress = false;
+                const touch = event.domEvent.touches[0];
+                touchStartPos = { x: touch.clientX, y: touch.clientY };
               }
-              touchStartTime = 0;
-            }
-          });
+            });
+
+            marker.addListener('mousemove', (event: google.maps.MapMouseEvent) => {
+              if (touchStartTime && event.domEvent && event.domEvent instanceof TouchEvent) {
+                if (event.domEvent.touches.length > 1) {
+                  touchStartTime = 0;
+                  return;
+                }
+
+                const touch = event.domEvent.touches[0];
+                const deltaX = Math.abs(touch.clientX - touchStartPos.x);
+                const deltaY = Math.abs(touch.clientY - touchStartPos.y);
+                if (deltaX > 10 || deltaY > 10) {
+                  touchMoved = true;
+                }
+              }
+            });
+
+            marker.addListener('mouseup', (event: google.maps.MapMouseEvent) => {
+              if (touchStartTime && event.domEvent && event.domEvent instanceof TouchEvent) {
+                const touchDuration = Date.now() - touchStartTime;
+                if (touchDuration >= 500 && !touchMoved) {
+                  console.log('📱 Long press on site submit marker:', siteSubmit.site_submit_name);
+                  wasLongPress = true;
+                  const touch = event.domEvent.changedTouches[0];
+                  onSiteSubmitRightClick(siteSubmit, touch.clientX, touch.clientY);
+                  event.domEvent.preventDefault();
+                  event.domEvent.stopPropagation();
+                }
+                touchStartTime = 0;
+              }
+            });
+          }
         }
       }
 
       return marker;
-    }).filter(marker => marker !== null) as google.maps.Marker[];
+    }).filter(marker => marker !== null) as MarkerType[];
 
     console.log(`✅ Created ${newMarkers.length} site submit markers (total site submits: ${siteSubmits.length})`);
     setMarkers(newMarkers);
@@ -682,17 +823,47 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
     console.log('✅ Site submit clustering initialized');
   };
 
+  // Helper function to check if marker is on map
+  const isMarkerOnMap = (marker: MarkerType): boolean => {
+    if ('getMap' in marker && typeof marker.getMap === 'function') {
+      // Legacy Marker
+      return marker.getMap() !== null;
+    } else {
+      // AdvancedMarkerElement - check map property
+      return marker.map !== null;
+    }
+  };
+
+  // Helper function to check if marker is draggable
+  const isMarkerDraggable = (marker: MarkerType): boolean => {
+    if ('getDraggable' in marker && typeof marker.getDraggable === 'function') {
+      return marker.getDraggable() || false;
+    } else {
+      // AdvancedMarkerElement uses gmpDraggable property
+      return (marker as google.maps.marker.AdvancedMarkerElement).gmpDraggable || false;
+    }
+  };
+
+  // Helper function to get marker z-index
+  const getMarkerZIndex = (marker: MarkerType): number => {
+    if ('getZIndex' in marker && typeof marker.getZIndex === 'function') {
+      return marker.getZIndex() || 0;
+    } else {
+      return (marker as google.maps.marker.AdvancedMarkerElement).zIndex || 0;
+    }
+  };
+
   // Update marker visibility
   const updateMarkerVisibility = () => {
     if (isVisible) {
       // Add clustered markers back
-      const markersToCluster: google.maps.Marker[] = [];
-      const verifyingMarkers: google.maps.Marker[] = [];
+      const markersToCluster: MarkerType[] = [];
+      const verifyingMarkers: MarkerType[] = [];
 
       markers.forEach(marker => {
-        if (marker.getMap() === null) {
+        if (!isMarkerOnMap(marker)) {
           // Check if this is a verifying marker (draggable + high z-index)
-          if (marker.getDraggable() && marker.getZIndex() === 2000) {
+          if (isMarkerDraggable(marker) && getMarkerZIndex(marker) === 2000) {
             verifyingMarkers.push(marker);
           } else {
             markersToCluster.push(marker);
@@ -706,7 +877,8 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
         markersToCluster.forEach(marker => marker.setMap(map));
       } else {
         console.log(`👁️ Showing ${markersToCluster.length} site submit markers (clustered) + ${verifyingMarkers.length} verifying markers`);
-        clusterer.addMarkers(markersToCluster);
+        // MarkerClusterer supports both Marker and AdvancedMarkerElement
+        clusterer.addMarkers(markersToCluster as (google.maps.Marker | google.maps.marker.AdvancedMarkerElement)[]);
       }
 
       // Re-add verifying markers directly to map
@@ -718,7 +890,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
       }
       // Also hide any markers that are directly on the map (verifying marker or non-clustered)
       markers.forEach(marker => {
-        if (marker.getMap() !== null) {
+        if (isMarkerOnMap(marker)) {
           marker.setMap(null);
         }
       });
@@ -736,14 +908,14 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
     }
   }, [map, loadingConfig, siteSubmitRefreshTrigger]);
 
-  // Create markers when site submits load or stage visibility changes
+  // Create markers when site submits load or stage visibility changes or marker style changes
   useEffect(() => {
     // Always call createMarkers, even when siteSubmits is empty
     // This ensures markers are cleared when filtering results in 0 site submits
     if (map) {
       createMarkers();
     }
-  }, [siteSubmits, map, loadingConfig.visibleStages, verifyingSiteSubmitId, verifyingSiteSubmit]);
+  }, [siteSubmits, map, loadingConfig.visibleStages, verifyingSiteSubmitId, verifyingSiteSubmit, markerStyle.shape, markerStyle.useAdvancedMarkers]);
 
   // Set up clustering when markers change or cluster config changes (including when empty)
   useEffect(() => {
