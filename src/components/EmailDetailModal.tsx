@@ -325,17 +325,28 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
 
       // Log removal as training data (AI was wrong to add this)
       if (emailDetails && linkedObject.linkSource === 'ai_agent') {
-        await supabase.from('agent_corrections').insert({
-          email_id: emailId,
-          incorrect_link_id: linkedObject.linkId,
-          incorrect_object_type: linkedObject.type,
-          incorrect_object_id: linkedObject.id,
-          correct_object_type: 'none',
-          correct_object_id: '00000000-0000-0000-0000-000000000000',
-          feedback_text: `AI incorrectly linked to ${linkedObject.type} "${linkedObject.name}" - user removed this link`,
-          sender_email: emailDetails.sender_email,
-          email_subject: emailDetails.subject,
-        }).catch(err => console.error('Failed to log removal:', err));
+        // Get current user's ID from the user table
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser) {
+          const { data: userData } = await supabase
+            .from('user')
+            .select('id')
+            .eq('auth_user_id', authUser.id)
+            .single();
+
+          if (userData) {
+            await supabase.from('ai_correction_log').insert({
+              user_id: userData.id,
+              email_id: emailId,
+              correction_type: 'removed_tag',
+              object_type: linkedObject.type,
+              incorrect_object_id: linkedObject.id,
+              email_snippet: emailDetails.snippet || emailDetails.subject,
+              sender_email: emailDetails.sender_email,
+              reasoning_hint: `User removed AI tag to ${linkedObject.type} "${linkedObject.name}"`,
+            }).catch(err => console.error('Failed to log removal:', err));
+          }
+        }
       }
 
       // Update local state
