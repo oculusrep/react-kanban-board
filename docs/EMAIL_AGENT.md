@@ -1112,8 +1112,60 @@ The system now tracks and displays how each link was created:
 
 ---
 
-*Document updated: December 15, 2025*
+## Phase 4: Shared Email Visibility (January 12, 2026)
+
+### Overview
+
+Updated RLS policies so that tagged emails are visible to all team members, enabling true collaboration on deal/client communications.
+
+### Visibility Rules
+
+| Email State | Who Can See |
+|-------------|-------------|
+| **Untagged** | Only the user who synced it (via `email_visibility`) |
+| **Tagged to CRM object** | All authenticated users |
+
+### Deduplication
+
+The system prevents duplicate emails through existing constraints:
+- `emails.message_id` UNIQUE - Same Gmail message stored only once
+- `email_object_link` UNIQUE(email_id, object_type, object_id) - Can't double-tag
+
+**Example scenario:**
+1. Both Mike and Arty receive the same email (CC'd together)
+2. Mike syncs his Gmail → Email stored with `message_id = "abc123"`
+3. Arty syncs his Gmail → Email already exists (same `message_id`), only `email_visibility` record created
+4. Mike tags email to Deal X → `email_object_link` created
+5. Arty opens Deal X → Sees the email (shared via tag)
+6. Arty tries to tag same email to Deal X → Blocked by unique constraint (already tagged)
+7. Result: One email, one tag, visible to both
+
+### Migration
+
+File: `supabase/migrations/20260112_email_shared_visibility.sql`
+
+Changes:
+- Updated `emails_select` policy: Shows emails with tags to all authenticated users
+- Updated `email_object_link_select` policy: All authenticated users can see tags
+- Updated `email_object_link_insert` policy: Can tag own emails or already-tagged emails
+- Updated `email_object_link_delete` policy: Can remove tags you created or on your own emails
+- Added `email_object_link_update` policy (was missing)
+
+### Tagging Permissions
+
+| Action | Permission |
+|--------|------------|
+| Tag your own synced email | ✅ Allowed |
+| Add tags to already-tagged email | ✅ Allowed |
+| Remove tag you created | ✅ Allowed |
+| Remove tag on your own email | ✅ Allowed |
+| Remove someone else's tag on shared email | ❌ Blocked |
+
+---
+
+*Document updated: January 12, 2026*
 *Phase 1 improvements completed*
 *Phase 2 Active Learning completed*
 *Phase 3 Enhanced Email Intelligence completed*
+*Phase 4 Shared Email Visibility completed*
 *System: OVIS CRM with Gemini 2.5 Flash autonomous agent*
