@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { usePermissions } from "../hooks/usePermissions";
 import MasterSearchBox from "./MasterSearchBox";
 import DedicatedSearchModal from "./DedicatedSearchModal";
 import { useRecentlyViewed, RecentItem } from "../hooks/useRecentlyViewed";
@@ -174,6 +175,7 @@ export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut, userRole } = useAuth();
+  const { hasPermission } = usePermissions();
   const { getRecentItems } = useRecentlyViewed();
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isReportsMenuOpen, setIsReportsMenuOpen] = useState(false);
@@ -555,7 +557,7 @@ export default function Navbar() {
                       💰 Budget & P&L
                     </button>
                   )}
-                  {(userRole === 'admin' || userRole === 'broker_full') && (
+                  {(userRole === 'admin' || hasPermission('can_access_gmail_integration')) && (
                     <button
                       onClick={() => {
                         navigate('/admin/gmail');
@@ -1105,7 +1107,7 @@ export default function Navbar() {
                     💰 Budget & P&L
                   </button>
                 )}
-                {(userRole === 'admin' || userRole === 'broker_full') && (
+                {(userRole === 'admin' || hasPermission('can_access_gmail_integration')) && (
                   <button
                     onClick={() => {
                       navigate('/admin/gmail');

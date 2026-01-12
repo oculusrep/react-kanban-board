@@ -79,6 +79,9 @@ export interface RolePermissions {
   // System Administration
   can_manage_system_settings?: boolean;
   can_view_audit_logs?: boolean;
+
+  // Integrations
+  can_access_gmail_integration?: boolean;
 }
 
 export interface PermissionDefinition {
@@ -100,7 +103,8 @@ export type PermissionCategory =
   | 'financial_access'
   | 'reporting'
   | 'tab_visibility'
-  | 'system_admin';
+  | 'system_admin'
+  | 'integrations';
 
 /**
  * Standard permission definitions with descriptions
@@ -451,6 +455,15 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     category: 'system_admin',
     defaultValue: false,
   },
+
+  // Integrations
+  {
+    key: 'can_access_gmail_integration',
+    label: 'Gmail Integration',
+    description: 'Access Gmail Integration settings and connect Gmail account',
+    category: 'integrations',
+    defaultValue: false,
+  },
 ];
 
 /**
@@ -500,6 +513,10 @@ export const PERMISSION_CATEGORIES: Record<PermissionCategory, { label: string; 
   system_admin: {
     label: 'System Administration',
     description: 'Advanced system administration permissions',
+  },
+  integrations: {
+    label: 'Integrations',
+    description: 'Third-party integrations like Gmail, QuickBooks, etc.',
   },
 };
 

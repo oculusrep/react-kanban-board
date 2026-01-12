@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
 
 interface GmailRouteProps {
   children: ReactNode;
@@ -7,10 +8,14 @@ interface GmailRouteProps {
 
 /**
  * Route guard for Gmail Integration page.
- * Allows admin and broker_full roles.
+ * Checks for can_access_gmail_integration permission.
+ * Admin users always have access.
  */
 export default function GmailRoute({ children }: GmailRouteProps) {
-  const { userRole, loading } = useAuth();
+  const { userRole, loading: authLoading } = useAuth();
+  const { hasPermission, loading: permLoading } = usePermissions();
+
+  const loading = authLoading || permLoading;
 
   if (loading) {
     return (
@@ -23,8 +28,10 @@ export default function GmailRoute({ children }: GmailRouteProps) {
     );
   }
 
-  // Allow admin and broker_full roles
-  if (userRole !== 'admin' && userRole !== 'broker_full') {
+  // Admin always has access, or check specific permission
+  const hasAccess = userRole === 'admin' || hasPermission('can_access_gmail_integration');
+
+  if (!hasAccess) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <div className="bg-white p-8 rounded-lg shadow-md max-w-md text-center">
