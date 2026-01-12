@@ -116,7 +116,7 @@ export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
       const { data: userData } = await supabase
         .from('user')
         .select('first_name, last_name, email, mobile_phone')
-        .eq('id', user?.id)
+        .eq('auth_user_id', user?.id)
         .single();
 
       // Fetch property unit files if property_unit_id exists
@@ -163,9 +163,9 @@ export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
         }
       }
 
-      // Fetch property-level files if property_id exists but property_unit_id does not
+      // Fetch property-level files if property_id exists (always, regardless of unit association)
       let propertyFiles: PropertyUnitFile[] = [];
-      if (siteSubmitData.property_id && !siteSubmitData.property_unit_id) {
+      if (siteSubmitData.property_id) {
         try {
           const { data: dropboxMapping } = await supabase
             .from('dropbox_mapping')
@@ -251,7 +251,7 @@ export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
       const { data: userData } = await supabase
         .from('user')
         .select('email')
-        .eq('id', user?.id)
+        .eq('auth_user_id', user?.id)
         .single();
 
       const response = await fetch(
