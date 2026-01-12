@@ -388,13 +388,22 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
               >
                 {syncingToQB ? 'Syncing...' : 'Resync Invoice'}
               </button>
-              {!payment.invoice_sent && (
+              {!payment.invoice_sent ? (
                 <button
                   onClick={handleSendQBInvoice}
                   disabled={syncingToQB}
                   className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {syncingToQB ? 'Sending...' : 'Send Invoice'}
+                </button>
+              ) : (
+                <button
+                  onClick={handleSendQBInvoice}
+                  disabled={syncingToQB}
+                  className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  title="Resend the invoice email to the customer"
+                >
+                  {syncingToQB ? 'Sending...' : 'Resend Invoice'}
                 </button>
               )}
               <button
