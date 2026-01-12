@@ -123,9 +123,9 @@ function App() {
           <Route path="admin/quickbooks" element={<AdminRoute><QuickBooksAdminPage /></AdminRoute>} />
           <Route path="admin/budget" element={<AdminRoute><BudgetDashboardPage /></AdminRoute>} />
           <Route path="admin/gmail" element={<GmailRoute><GmailSettingsPage /></GmailRoute>} />
-          <Route path="admin/agent-rules" element={<AdminRoute><AgentRulesPage /></AdminRoute>} />
-          <Route path="admin/email-review" element={<AdminRoute><EmailClassificationReviewPage /></AdminRoute>} />
-          <Route path="admin/flagged-emails" element={<AdminRoute><FlaggedEmailQueuePage /></AdminRoute>} />
+          <Route path="admin/agent-rules" element={<GmailRoute><AgentRulesPage /></GmailRoute>} />
+          <Route path="admin/email-review" element={<GmailRoute><EmailClassificationReviewPage /></GmailRoute>} />
+          <Route path="admin/flagged-emails" element={<GmailRoute><FlaggedEmailQueuePage /></GmailRoute>} />
           <Route path="contacts/suggested" element={<SuggestedContactsPage />} />
           <Route path="hunter" element={<AdminRoute><HunterDashboardPage /></AdminRoute>} />
           <Route path="hunter/lead/:leadId" element={<AdminRoute><HunterLeadDetailsPage /></AdminRoute>} />
