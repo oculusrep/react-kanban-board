@@ -555,7 +555,7 @@ export default function Navbar() {
                       💰 Budget & P&L
                     </button>
                   )}
-                  {userRole === 'admin' && (
+                  {(userRole === 'admin' || userRole === 'broker_full') && (
                     <button
                       onClick={() => {
                         navigate('/admin/gmail');
@@ -1105,7 +1105,7 @@ export default function Navbar() {
                     💰 Budget & P&L
                   </button>
                 )}
-                {userRole === 'admin' && (
+                {(userRole === 'admin' || userRole === 'broker_full') && (
                   <button
                     onClick={() => {
                       navigate('/admin/gmail');

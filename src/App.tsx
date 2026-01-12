@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminRoute from "./components/AdminRoute";
 import CoachRoute from "./components/CoachRoute";
+import GmailRoute from "./components/GmailRoute";
 import CoachNavbar from "./components/CoachNavbar";
 import KanbanBoard from "./components/KanbanBoard";
 import DealDetailsPage from "./pages/DealDetailsPage";
@@ -121,7 +122,7 @@ function App() {
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
           <Route path="admin/quickbooks" element={<AdminRoute><QuickBooksAdminPage /></AdminRoute>} />
           <Route path="admin/budget" element={<AdminRoute><BudgetDashboardPage /></AdminRoute>} />
-          <Route path="admin/gmail" element={<AdminRoute><GmailSettingsPage /></AdminRoute>} />
+          <Route path="admin/gmail" element={<GmailRoute><GmailSettingsPage /></GmailRoute>} />
           <Route path="admin/agent-rules" element={<AdminRoute><AgentRulesPage /></AdminRoute>} />
           <Route path="admin/email-review" element={<AdminRoute><EmailClassificationReviewPage /></AdminRoute>} />
           <Route path="admin/flagged-emails" element={<AdminRoute><FlaggedEmailQueuePage /></AdminRoute>} />
