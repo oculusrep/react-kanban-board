@@ -255,7 +255,7 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
             .single();
 
           if (userData) {
-            await supabase.from('ai_correction_log').insert({
+            const { error: logError } = await supabase.from('ai_correction_log').insert({
               user_id: userData.id,
               email_id: emailId,
               correction_type: 'added_tag',
@@ -264,7 +264,8 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
               email_snippet: emailDetails.snippet || emailDetails.subject,
               sender_email: emailDetails.sender_email,
               reasoning_hint: `User manually added tag to ${object.type} "${object.name}" - AI missed this`,
-            }).catch(err => console.error('Failed to log correction:', err));
+            });
+            if (logError) console.error('Failed to log correction:', logError);
           }
         }
       }
@@ -278,7 +279,7 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
           .single();
 
         if (emailActivityType) {
-          await supabase.from('activity').insert({
+          const { error: activityError } = await supabase.from('activity').insert({
             activity_type_id: emailActivityType.id,
             subject: emailDetails.subject || 'Email',
             description: emailDetails.snippet || emailDetails.body_text?.substring(0, 500),
@@ -287,10 +288,11 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
             direction: emailDetails.direction,
             sf_status: 'Completed',
             deal_id: object.id,
-          }).catch(err => {
-            // Ignore duplicate key errors
-            if (err.code !== '23505') console.error('Failed to create activity:', err);
           });
+          // Ignore duplicate key errors (activity already exists)
+          if (activityError && activityError.code !== '23505') {
+            console.error('Failed to create activity:', activityError);
+          }
         }
       }
 
@@ -345,7 +347,7 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
             .single();
 
           if (userData) {
-            await supabase.from('ai_correction_log').insert({
+            const { error: logError } = await supabase.from('ai_correction_log').insert({
               user_id: userData.id,
               email_id: emailId,
               correction_type: 'removed_tag',
@@ -354,7 +356,8 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
               email_snippet: emailDetails.snippet || emailDetails.subject,
               sender_email: emailDetails.sender_email,
               reasoning_hint: `User removed AI tag to ${linkedObject.type} "${linkedObject.name}"`,
-            }).catch(err => console.error('Failed to log removal:', err));
+            });
+            if (logError) console.error('Failed to log removal:', logError);
           }
         }
       }
