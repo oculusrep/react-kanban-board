@@ -246,17 +246,27 @@ const EmailDetailModal: React.FC<EmailDetailModalProps> = ({
 
       // Log as AI training correction (AI missed this link)
       if (emailDetails) {
-        await supabase.from('agent_corrections').insert({
-          email_id: emailId,
-          incorrect_link_id: null,
-          incorrect_object_type: 'none',
-          incorrect_object_id: '00000000-0000-0000-0000-000000000000',
-          correct_object_type: object.type,
-          correct_object_id: object.id,
-          feedback_text: `AI missed linking to ${object.type} "${object.name}" - user manually added this link`,
-          sender_email: emailDetails.sender_email,
-          email_subject: emailDetails.subject,
-        }).catch(err => console.error('Failed to log correction:', err));
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser) {
+          const { data: userData } = await supabase
+            .from('user')
+            .select('id')
+            .eq('auth_user_id', authUser.id)
+            .single();
+
+          if (userData) {
+            await supabase.from('ai_correction_log').insert({
+              user_id: userData.id,
+              email_id: emailId,
+              correction_type: 'added_tag',
+              object_type: object.type,
+              correct_object_id: object.id,
+              email_snippet: emailDetails.snippet || emailDetails.subject,
+              sender_email: emailDetails.sender_email,
+              reasoning_hint: `User manually added tag to ${object.type} "${object.name}" - AI missed this`,
+            }).catch(err => console.error('Failed to log correction:', err));
+          }
+        }
       }
 
       // Create activity record if linking to a deal (so it shows in deal timeline)
