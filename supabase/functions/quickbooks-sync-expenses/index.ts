@@ -1,5 +1,5 @@
 // Supabase Edge Function: Sync Transactions from QuickBooks
-// Pulls Purchase, Bill, Invoice, SalesReceipt, and JournalEntry transactions for P&L
+// Pulls Purchase, Bill, Invoice, SalesReceipt, JournalEntry, and CreditCardCredit transactions for P&L
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
@@ -104,6 +104,17 @@ interface QBJournalEntry {
   DocNumber?: string
 }
 
+// Credit Card Credit (refund) - reduces expense
+interface QBCreditCardCredit {
+  Id: string
+  SyncToken: string
+  TxnDate: string
+  TotalAmt: number
+  EntityRef?: { name: string; value: string }
+  Line: QBPurchaseLine[]
+  PrivateNote?: string
+}
+
 interface QBQueryResponse<T> {
   QueryResponse: {
     Purchase?: T[]
@@ -111,6 +122,7 @@ interface QBQueryResponse<T> {
     Invoice?: T[]
     SalesReceipt?: T[]
     JournalEntry?: T[]
+    CreditCardCredit?: T[]
     startPosition?: number
     maxResults?: number
     totalCount?: number
@@ -416,6 +428,49 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Helper function to process credit card credit (refund) line items
+    // These REDUCE expenses, so we store with negative amount
+    const processCreditCardCredit = async (credit: QBCreditCardCredit) => {
+      let lineIndex = 0
+      for (const line of credit.Line) {
+        if (line.DetailType === 'AccountBasedExpenseLineDetail' && line.AccountBasedExpenseLineDetail) {
+          const accountRef = line.AccountBasedExpenseLineDetail.AccountRef
+          const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
+          const transactionId = `creditcardcredit_${credit.Id}_line${lineId}`
+
+          const { error: upsertError } = await supabaseClient
+            .from('qb_expense')
+            .upsert({
+              qb_transaction_id: transactionId,
+              transaction_type: 'CreditCardCredit',
+              transaction_date: credit.TxnDate,
+              vendor_name: credit.EntityRef?.name || null,
+              category: accountRef.name,
+              account_id: accountRef.value,
+              account_name: accountRef.name,
+              description: line.Description || credit.PrivateNote || null,
+              // Store as NEGATIVE to reduce the expense total
+              amount: -line.Amount,
+              imported_at: now,
+              sync_token: credit.SyncToken,
+              qb_entity_type: 'CreditCardCredit',
+              qb_entity_id: credit.Id,
+              qb_line_id: lineId
+            }, {
+              onConflict: 'qb_transaction_id'
+            })
+
+          if (upsertError) {
+            console.error(`Error upserting credit card credit:`, upsertError)
+            errorCount++
+          } else {
+            totalExpenses++
+          }
+          lineIndex++
+        }
+      }
+    }
+
     // ============================================
     // Fetch Purchase transactions with pagination
     // ============================================
@@ -603,6 +658,43 @@ Deno.serve(async (req) => {
       console.error('Error fetching journal entries:', err.message)
     }
 
+    // ============================================
+    // Fetch CreditCardCredit transactions with pagination (refunds)
+    // ============================================
+    console.log('Fetching CreditCardCredit transactions...')
+    let creditCardCreditStartPosition = 1
+    let totalCreditCardCredits = 0
+
+    try {
+      while (true) {
+        const creditCardCreditQuery = `SELECT * FROM CreditCardCredit WHERE TxnDate >= '${startDate}' ORDERBY TxnDate DESC STARTPOSITION ${creditCardCreditStartPosition} MAXRESULTS ${PAGE_SIZE}`
+
+        const creditCardCreditResult = await qbApiRequest<QBQueryResponse<QBCreditCardCredit>>(
+          connection,
+          'GET',
+          `query?query=${encodeURIComponent(creditCardCreditQuery)}`
+        )
+
+        const creditCardCredits = creditCardCreditResult.QueryResponse.CreditCardCredit || []
+        console.log(`Fetched ${creditCardCredits.length} CreditCardCredit transactions (starting at ${creditCardCreditStartPosition})`)
+
+        if (creditCardCredits.length === 0) break
+
+        for (const credit of creditCardCredits) {
+          await processCreditCardCredit(credit)
+        }
+
+        totalCreditCardCredits += creditCardCredits.length
+
+        if (creditCardCredits.length < PAGE_SIZE) break
+
+        creditCardCreditStartPosition += PAGE_SIZE
+      }
+      console.log(`Total CreditCardCredit transactions fetched: ${totalCreditCardCredits}`)
+    } catch (err: any) {
+      console.error('Error fetching credit card credits:', err.message)
+    }
+
     // Log the sync
     await logSync(
       supabaseClient,
@@ -618,13 +710,14 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Synced ${totalExpenses} transactions from QuickBooks (${totalPurchases} purchases, ${totalBills} bills, ${totalInvoices} invoices, ${totalSalesReceipts} sales receipts, ${totalJournalEntries} journal entries)`,
+        message: `Synced ${totalExpenses} transactions from QuickBooks (${totalPurchases} purchases, ${totalBills} bills, ${totalInvoices} invoices, ${totalSalesReceipts} sales receipts, ${totalJournalEntries} journal entries, ${totalCreditCardCredits} credit card credits)`,
         transactionCount: totalExpenses,
         purchases: totalPurchases,
         bills: totalBills,
         invoices: totalInvoices,
         salesReceipts: totalSalesReceipts,
         journalEntries: totalJournalEntries,
+        creditCardCredits: totalCreditCardCredits,
         errors: errorCount,
         startDate: startDate
       }),
