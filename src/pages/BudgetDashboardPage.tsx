@@ -311,11 +311,12 @@ export default function BudgetDashboardPage() {
     };
 
     // Build P&L sections
+    // Standard P&L order: Income, COGS, Gross Profit, Operating Expenses, Other Income/Expense, Net Income
     const sections: PLSection[] = [
       {
         title: 'Income',
-        accountTypes: ['Income', 'Other Income'],
-        categories: buildHierarchy(accountList, ['Income', 'Other Income']),
+        accountTypes: ['Income'],
+        categories: buildHierarchy(accountList, ['Income']),
         total: 0,
         budgetTotal: 0,
         isIncome: true
@@ -330,8 +331,24 @@ export default function BudgetDashboardPage() {
       },
       {
         title: 'Operating Expenses',
-        accountTypes: ['Expense', 'Other Expense'],
-        categories: buildHierarchy(accountList, ['Expense', 'Other Expense']),
+        accountTypes: ['Expense'],
+        categories: buildHierarchy(accountList, ['Expense']),
+        total: 0,
+        budgetTotal: 0,
+        isIncome: false
+      },
+      {
+        title: 'Other Income',
+        accountTypes: ['Other Income'],
+        categories: buildHierarchy(accountList, ['Other Income']),
+        total: 0,
+        budgetTotal: 0,
+        isIncome: true
+      },
+      {
+        title: 'Other Expenses',
+        accountTypes: ['Other Expense'],
+        categories: buildHierarchy(accountList, ['Other Expense']),
         total: 0,
         budgetTotal: 0,
         isIncome: false
@@ -712,12 +729,17 @@ export default function BudgetDashboardPage() {
   const incomeSection = plSections.find(s => s.title === 'Income');
   const cogsSection = plSections.find(s => s.title === 'Cost of Goods Sold');
   const expenseSection = plSections.find(s => s.title === 'Operating Expenses');
+  const otherIncomeSection = plSections.find(s => s.title === 'Other Income');
+  const otherExpenseSection = plSections.find(s => s.title === 'Other Expenses');
 
   const totalIncome = incomeSection?.total || 0;
   const totalCOGS = cogsSection?.total || 0;
   const grossProfit = totalIncome - totalCOGS;
   const totalExpenses = expenseSection?.total || 0;
-  const netIncome = grossProfit - totalExpenses;
+  const operatingIncome = grossProfit - totalExpenses;
+  const totalOtherIncome = otherIncomeSection?.total || 0;
+  const totalOtherExpenses = otherExpenseSection?.total || 0;
+  const netIncome = operatingIncome + totalOtherIncome - totalOtherExpenses;
 
   // Check access
   if (userRole !== 'admin') {
@@ -906,9 +928,54 @@ export default function BudgetDashboardPage() {
                     </tr>
                     {expenseSection.categories.map(cat => renderCategory(cat, false))}
                     <tr className="border-t-2 border-red-200 bg-red-50/30">
-                      <td className="px-4 py-2 font-bold text-red-800">Total Expenses</td>
+                      <td className="px-4 py-2 font-bold text-red-800">Total Operating Expenses</td>
                       <td className="px-4 py-2 text-right font-bold text-red-800 tabular-nums">{formatCurrency(totalExpenses)}</td>
                       <td className="px-4 py-2 text-right font-bold text-red-700 tabular-nums">{expenseSection.budgetTotal > 0 ? formatCurrency(expenseSection.budgetTotal) : '-'}</td>
+                      <td colSpan={2}></td>
+                    </tr>
+                  </>
+                )}
+
+                {/* Operating Income */}
+                <tr className="bg-blue-100 border-y-2 border-blue-300">
+                  <td className="px-4 py-3 font-bold text-blue-900 text-base">Operating Income</td>
+                  <td className={`px-4 py-3 text-right font-bold text-base tabular-nums ${operatingIncome >= 0 ? 'text-blue-900' : 'text-red-600'}`}>
+                    {formatCurrency(operatingIncome)}
+                  </td>
+                  <td colSpan={3}></td>
+                </tr>
+
+                {/* Other Income Section */}
+                {otherIncomeSection && otherIncomeSection.categories.length > 0 && (
+                  <>
+                    <tr className="bg-teal-50/50">
+                      <td colSpan={5} className="px-4 py-3 font-bold text-teal-800 text-base">
+                        Other Income
+                      </td>
+                    </tr>
+                    {otherIncomeSection.categories.map(cat => renderCategory(cat, true))}
+                    <tr className="border-t-2 border-teal-200 bg-teal-50/30">
+                      <td className="px-4 py-2 font-bold text-teal-800">Total Other Income</td>
+                      <td className="px-4 py-2 text-right font-bold text-teal-800 tabular-nums">{formatCurrency(totalOtherIncome)}</td>
+                      <td className="px-4 py-2 text-right font-bold text-teal-700 tabular-nums">{otherIncomeSection.budgetTotal > 0 ? formatCurrency(otherIncomeSection.budgetTotal) : '-'}</td>
+                      <td colSpan={2}></td>
+                    </tr>
+                  </>
+                )}
+
+                {/* Other Expenses Section */}
+                {otherExpenseSection && otherExpenseSection.categories.length > 0 && (
+                  <>
+                    <tr className="bg-pink-50/50">
+                      <td colSpan={5} className="px-4 py-3 font-bold text-pink-800 text-base">
+                        Other Expenses
+                      </td>
+                    </tr>
+                    {otherExpenseSection.categories.map(cat => renderCategory(cat, false))}
+                    <tr className="border-t-2 border-pink-200 bg-pink-50/30">
+                      <td className="px-4 py-2 font-bold text-pink-800">Total Other Expenses</td>
+                      <td className="px-4 py-2 text-right font-bold text-pink-800 tabular-nums">{formatCurrency(totalOtherExpenses)}</td>
+                      <td className="px-4 py-2 text-right font-bold text-pink-700 tabular-nums">{otherExpenseSection.budgetTotal > 0 ? formatCurrency(otherExpenseSection.budgetTotal) : '-'}</td>
                       <td colSpan={2}></td>
                     </tr>
                   </>
