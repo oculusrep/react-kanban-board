@@ -76,6 +76,16 @@ interface PLSection {
   isIncome: boolean;
 }
 
+// Payroll item from QBO Reports API
+interface PayrollItem {
+  account_name: string;
+  account_id: string | null;
+  amount: number;
+  section: string;
+  parent_account: string | null;
+  depth: number;
+}
+
 export default function BudgetDashboardPage() {
   const navigate = useNavigate();
   const { userRole } = useAuth();
@@ -93,6 +103,9 @@ export default function BudgetDashboardPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [recategorizingExpense, setRecategorizingExpense] = useState<string | null>(null);
   const [updatingExpense, setUpdatingExpense] = useState<string | null>(null);
+  const [payrollItems, setPayrollItems] = useState<PayrollItem[]>([]);
+  const [payrollTotal, setPayrollTotal] = useState<number>(0);
+  const [loadingPayroll, setLoadingPayroll] = useState(false);
 
   // Date filter state
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
@@ -101,6 +114,7 @@ export default function BudgetDashboardPage() {
   useEffect(() => {
     document.title = "P&L Statement | OVIS Admin";
     fetchData();
+    fetchPayrollData();
   }, [selectedYear, selectedMonth]);
 
   const fetchData = async () => {
@@ -170,6 +184,52 @@ export default function BudgetDashboardPage() {
       setMessage({ type: 'error', text: error.message || 'Failed to load data' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch payroll data from QBO Reports API (payroll isn't available via Accounting API)
+  const fetchPayrollData = async () => {
+    setLoadingPayroll(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+
+      // Build date range
+      let startDate: string;
+      let endDate: string;
+
+      if (selectedMonth !== null) {
+        startDate = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
+        const nextMonth = selectedMonth === 11 ? 0 : selectedMonth + 1;
+        const nextYear = selectedMonth === 11 ? selectedYear + 1 : selectedYear;
+        endDate = `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-01`;
+      } else {
+        startDate = `${selectedYear}-01-01`;
+        endDate = `${selectedYear + 1}-01-01`;
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quickbooks-sync-pl-report`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({ startDate, endDate })
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        setPayrollItems(result.payrollItems || []);
+        setPayrollTotal(result.totalPayroll || 0);
+      }
+    } catch (error) {
+      console.error('Error fetching payroll data:', error);
+      // Don't show error - payroll is optional enhancement
+    } finally {
+      setLoadingPayroll(false);
     }
   };
 
@@ -743,7 +803,8 @@ export default function BudgetDashboardPage() {
   const otherExpenseSection = plSections.find(s => s.title === 'Other Expenses');
 
   const totalIncome = incomeSection?.total || 0;
-  const totalCOGS = cogsSection?.total || 0;
+  // Include payroll from Reports API in COGS total
+  const totalCOGS = (cogsSection?.total || 0) + payrollTotal;
   const grossProfit = totalIncome - totalCOGS;
   const totalExpenses = expenseSection?.total || 0;
   const operatingIncome = grossProfit - totalExpenses;
@@ -902,18 +963,62 @@ export default function BudgetDashboardPage() {
                 )}
 
                 {/* COGS Section */}
-                {cogsSection && cogsSection.categories.length > 0 && (
+                {((cogsSection && cogsSection.categories.length > 0) || payrollItems.length > 0) && (
                   <>
                     <tr className="bg-orange-50/50">
                       <td colSpan={5} className="px-4 py-3 font-bold text-orange-800 text-base">
                         Cost of Goods Sold
                       </td>
                     </tr>
-                    {cogsSection.categories.map(cat => renderCategory(cat, false))}
+                    {cogsSection?.categories.map(cat => renderCategory(cat, false))}
+
+                    {/* Payroll from QBO Reports API (read-only) */}
+                    {payrollItems.length > 0 && (
+                      <>
+                        <tr className="hover:bg-gray-50">
+                          <td className="py-2 pr-4" style={{ paddingLeft: '16px' }}>
+                            <div className="flex items-center gap-2">
+                              <span className="w-5" />
+                              <span className="font-semibold text-gray-900">Payroll Expenses</span>
+                              <span className="text-xs text-gray-400 italic">(from QBO Payroll)</span>
+                            </div>
+                          </td>
+                          <td className="py-2 text-right tabular-nums font-semibold">
+                            {formatCurrency(payrollTotal)}
+                          </td>
+                          <td className="py-2 text-right tabular-nums text-gray-500">-</td>
+                          <td className="py-2 text-right tabular-nums"></td>
+                          <td className="py-2 pl-4 text-center w-20"></td>
+                        </tr>
+                        {/* Show individual payroll line items indented */}
+                        {payrollItems.map((item, idx) => (
+                          <tr key={`payroll-${idx}`} className="hover:bg-gray-50 text-sm">
+                            <td className="py-1 pr-4" style={{ paddingLeft: '64px' }}>
+                              <span className="text-gray-600">{item.account_name}</span>
+                            </td>
+                            <td className="py-1 text-right tabular-nums text-gray-700">
+                              {formatCurrency(item.amount)}
+                            </td>
+                            <td className="py-1 text-right tabular-nums text-gray-400">-</td>
+                            <td className="py-1"></td>
+                            <td className="py-1"></td>
+                          </tr>
+                        ))}
+                      </>
+                    )}
+
+                    {loadingPayroll && payrollItems.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-2 text-center text-sm text-gray-500 italic">
+                          Loading payroll data...
+                        </td>
+                      </tr>
+                    )}
+
                     <tr className="border-t-2 border-orange-200 bg-orange-50/30">
                       <td className="px-4 py-2 font-bold text-orange-800">Total COGS</td>
                       <td className="px-4 py-2 text-right font-bold text-orange-800 tabular-nums">{formatCurrency(totalCOGS)}</td>
-                      <td className="px-4 py-2 text-right font-bold text-orange-700 tabular-nums">{cogsSection.budgetTotal > 0 ? formatCurrency(cogsSection.budgetTotal) : '-'}</td>
+                      <td className="px-4 py-2 text-right font-bold text-orange-700 tabular-nums">{cogsSection?.budgetTotal && cogsSection.budgetTotal > 0 ? formatCurrency(cogsSection.budgetTotal) : '-'}</td>
                       <td colSpan={2}></td>
                     </tr>
                   </>
