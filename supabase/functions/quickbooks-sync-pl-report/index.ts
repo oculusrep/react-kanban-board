@@ -60,6 +60,7 @@ interface PLLineItem {
   amount: number
   section: string  // 'Income', 'COGS', 'Expense', 'Other Income', 'Other Expense'
   parent_account: string | null
+  ancestor_path: string[]  // Full path from root to parent (e.g., ['Payroll', 'Management'])
   depth: number
 }
 
@@ -166,7 +167,8 @@ Deno.serve(async (req) => {
     let currentSection = ''
 
     // Recursive function to parse report rows
-    const parseRows = (rows: QBReportRow[], parentAccount: string | null = null, depth: number = 0) => {
+    // ancestorPath tracks the full hierarchy (e.g., ['Payroll', 'Management'] for 'Salary - Mike')
+    const parseRows = (rows: QBReportRow[], parentAccount: string | null = null, ancestorPath: string[] = [], depth: number = 0) => {
       for (const row of rows) {
         // Section headers
         if (row.Header && row.Header.ColData) {
@@ -206,6 +208,7 @@ Deno.serve(async (req) => {
               amount: amount,
               section: currentSection || 'Unknown',
               parent_account: parentAccount,
+              ancestor_path: ancestorPath,
               depth: depth
             })
           }
@@ -214,7 +217,9 @@ Deno.serve(async (req) => {
         // Recursively process nested rows
         if (row.Rows?.Row) {
           const newParent = row.Header?.ColData?.[0]?.value || parentAccount
-          parseRows(row.Rows.Row, newParent, depth + 1)
+          // Build full ancestor path for children
+          const newAncestorPath = newParent ? [...ancestorPath, newParent] : ancestorPath
+          parseRows(row.Rows.Row, newParent, newAncestorPath, depth + 1)
         }
       }
     }
@@ -257,10 +262,12 @@ Deno.serve(async (req) => {
     const netIncome = operatingIncome + totals.otherIncome - totals.otherExpense
 
     // Extract payroll items specifically (these aren't available via Accounting API)
-    // QuickBooks Payroll transactions appear under COGS with names containing "Payroll"
+    // QuickBooks Payroll transactions appear under COGS hierarchy: Payroll > Management > Salary
+    // Check the account name, parent, AND full ancestor path for "payroll"
     const payrollItems = lineItems.filter(item =>
       item.account_name.toLowerCase().includes('payroll') ||
-      item.parent_account?.toLowerCase().includes('payroll')
+      item.parent_account?.toLowerCase().includes('payroll') ||
+      item.ancestor_path.some(ancestor => ancestor.toLowerCase().includes('payroll'))
     )
 
     const totalPayroll = payrollItems.reduce((sum, item) => sum + item.amount, 0)
