@@ -604,11 +604,13 @@ export default function BudgetDashboardPage() {
     }
   };
 
-  const formatCurrency = (amount: number, showSign: boolean = false) => {
+  const formatCurrency = (amount: number, showNegative: boolean = false) => {
     const formatted = Math.abs(amount).toLocaleString('en-US', { minimumFractionDigits: 2 });
-    if (showSign && amount < 0) {
+    // Show negative amounts in parentheses (accounting format) when showNegative is true
+    if (showNegative && amount < 0) {
       return `($${formatted})`;
     }
+    // For P&L display, show positive numbers normally
     return `$${formatted}`;
   };
 
@@ -723,6 +725,7 @@ export default function BudgetDashboardPage() {
                       const canRecategorize = !!txn.qb_entity_type && !!txn.qb_entity_id;
                       const isRecategorizing = recategorizingExpense === txn.id;
                       const isUpdating = updatingExpense === txn.id;
+                      const isCredit = txn.amount < 0 || txn.transaction_type === 'CreditCardCredit' || txn.transaction_type === 'VendorCredit';
 
                       // For income sections, flip the sign on Purchase/Bill transactions
                       let displayAmount = txn.amount;
@@ -731,16 +734,19 @@ export default function BudgetDashboardPage() {
                       }
 
                       return (
-                        <tr key={txn.id} className="border-t border-gray-100">
+                        <tr key={txn.id} className={`border-t border-gray-100 ${isCredit ? 'bg-green-50/50' : ''}`}>
                           <td className="py-1.5 text-gray-600 w-24">
                             {new Date(txn.transaction_date).toLocaleDateString()}
                           </td>
-                          <td className="py-1.5 text-gray-900 w-40 truncate">{txn.vendor_name || '-'}</td>
+                          <td className="py-1.5 text-gray-900 w-40 truncate">
+                            {txn.vendor_name || '-'}
+                            {isCredit && <span className="ml-1 text-xs text-green-600">(Credit)</span>}
+                          </td>
                           <td className="py-1.5 text-gray-600 truncate max-w-xs" title={txn.description || undefined}>
                             {txn.description || '-'}
                           </td>
-                          <td className="py-1.5 text-right font-medium text-gray-900 w-28 tabular-nums">
-                            {formatCurrency(displayAmount)}
+                          <td className={`py-1.5 text-right font-medium w-28 tabular-nums ${isCredit ? 'text-green-700' : 'text-gray-900'}`}>
+                            {formatCurrency(displayAmount, true)}
                           </td>
                           <td className="py-1.5 text-center">
                             {isUpdating ? (
