@@ -364,9 +364,9 @@ export default function BudgetDashboardPage() {
         calculateTotals(root);
       }
 
-      // Sort by amount (highest first) at each level
+      // Sort alphabetically at each level (matches QBO P&L)
       const sortCategories = (cats: PLCategory[]) => {
-        cats.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+        cats.sort((a, b) => a.name.localeCompare(b.name));
         for (const cat of cats) {
           sortCategories(cat.children);
         }
