@@ -33,7 +33,8 @@ interface QBPurchase {
   EntityRef?: { name: string; value: string }
   Line: QBPurchaseLine[]
   PrivateNote?: string
-  PaymentType?: string
+  PaymentType?: string  // 'Cash', 'Check', 'CreditCard'
+  Credit?: boolean  // true = Credit Card Credit (reduces expense), false = expense
 }
 
 interface QBBill {
@@ -228,7 +229,11 @@ Deno.serve(async (req) => {
     const PAGE_SIZE = 1000
 
     // Helper function to process purchase line items
+    // Credit Card Credits in QBO are Purchase transactions with Credit=true
     const processPurchase = async (purchase: QBPurchase) => {
+      // Determine if this is a credit (refund) - Credit field or negative TotalAmt
+      const isCredit = purchase.Credit === true
+
       let lineIndex = 0
       for (const line of purchase.Line) {
         if (line.DetailType === 'AccountBasedExpenseLineDetail' && line.AccountBasedExpenseLineDetail) {
@@ -237,18 +242,21 @@ Deno.serve(async (req) => {
           const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
           const transactionId = `purchase_${purchase.Id}_line${lineId}`
 
+          // For credits, store as negative to reduce expense total
+          const amount = isCredit ? -Math.abs(line.Amount) : line.Amount
+
           const { error: upsertError } = await supabaseClient
             .from('qb_expense')
             .upsert({
               qb_transaction_id: transactionId,
-              transaction_type: 'Purchase',
+              transaction_type: isCredit ? 'CreditCardCredit' : 'Purchase',
               transaction_date: purchase.TxnDate,
               vendor_name: purchase.EntityRef?.name || null,
               category: accountRef.name,
               account_id: accountRef.value,
               account_name: accountRef.name,
               description: line.Description || purchase.PrivateNote || null,
-              amount: line.Amount,
+              amount: amount,
               imported_at: now,
               sync_token: purchase.SyncToken,
               qb_entity_type: 'Purchase',
@@ -263,6 +271,9 @@ Deno.serve(async (req) => {
             errorCount++
           } else {
             totalExpenses++
+            if (isCredit) {
+              console.log(`Processed Credit Card Credit: ${accountRef.name} -$${line.Amount}`)
+            }
           }
           lineIndex++
         }
