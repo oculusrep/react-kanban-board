@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
     }
 
     // Parse request body for options
-    let startDate = '2025-01-01'  // Default to 2025
+    let startDate = '2024-01-01'  // Default to 2024 to capture all historical data
     let fullSync = false
 
     if (req.method === 'POST') {
