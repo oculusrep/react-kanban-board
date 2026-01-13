@@ -211,6 +211,9 @@ export default function BudgetDashboardPage() {
       const filteredAccounts = accounts.filter(a => accountTypes.includes(a.account_type));
       const categoryMap = new Map<string, PLCategory>();
 
+      // Check if we're building income accounts (need to normalize Purchase/Bill amounts)
+      const isIncomeSection = accountTypes.includes('Income') || accountTypes.includes('Other Income');
+
       // First pass: create all categories including parents
       for (const account of filteredAccounts) {
         const parts = account.fully_qualified_name.split(':');
@@ -224,7 +227,21 @@ export default function BudgetDashboardPage() {
           if (!categoryMap.has(currentPath)) {
             const isLeaf = i === parts.length - 1;
             const transactions = isLeaf ? (expensesByAccount.get(account.qb_account_id) || []) : [];
-            const amount = transactions.reduce((sum, t) => sum + t.amount, 0);
+
+            // Calculate amount with proper sign handling
+            // For Income accounts: Purchase/Bill with negative amount = positive income
+            // (e.g., a rebate or fee recorded as a negative expense is actually income)
+            const amount = transactions.reduce((sum, t) => {
+              let txnAmount = t.amount;
+
+              // For income accounts, flip the sign on Purchase/Bill transactions
+              // because QBO records income via expense accounts as negative expenses
+              if (isIncomeSection && (t.transaction_type === 'Purchase' || t.transaction_type === 'Bill')) {
+                txnAmount = -txnAmount;  // Flip: -500 becomes +500
+              }
+
+              return sum + txnAmount;
+            }, 0);
 
             categoryMap.set(currentPath, {
               name: part,
@@ -614,6 +631,12 @@ export default function BudgetDashboardPage() {
                       const isRecategorizing = recategorizingExpense === txn.id;
                       const isUpdating = updatingExpense === txn.id;
 
+                      // For income sections, flip the sign on Purchase/Bill transactions
+                      let displayAmount = txn.amount;
+                      if (sectionIsIncome && (txn.transaction_type === 'Purchase' || txn.transaction_type === 'Bill')) {
+                        displayAmount = -displayAmount;
+                      }
+
                       return (
                         <tr key={txn.id} className="border-t border-gray-100">
                           <td className="py-1.5 text-gray-600 w-24">
@@ -624,7 +647,7 @@ export default function BudgetDashboardPage() {
                             {txn.description || '-'}
                           </td>
                           <td className="py-1.5 text-right font-medium text-gray-900 w-28 tabular-nums">
-                            {formatCurrency(txn.amount)}
+                            {formatCurrency(displayAmount)}
                           </td>
                           <td className="py-1.5 text-center">
                             {isUpdating ? (
