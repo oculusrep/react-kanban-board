@@ -300,14 +300,24 @@ export default function BudgetDashboardPage() {
 
       // Sort by amount (highest first) at each level
       const sortCategories = (cats: PLCategory[]) => {
-        cats.sort((a, b) => b.amount - a.amount);
+        cats.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
         for (const cat of cats) {
           sortCategories(cat.children);
         }
       };
       sortCategories(rootCategories);
 
-      return rootCategories;
+      // Filter out zero-balance categories (like QBO does on P&L)
+      const filterZeroBalance = (cats: PLCategory[]): PLCategory[] => {
+        return cats
+          .map(cat => ({
+            ...cat,
+            children: filterZeroBalance(cat.children)
+          }))
+          .filter(cat => cat.amount !== 0 || cat.children.length > 0);
+      };
+
+      return filterZeroBalance(rootCategories);
     };
 
     // Build P&L sections
