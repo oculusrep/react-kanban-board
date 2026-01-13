@@ -103,8 +103,10 @@ export default function BudgetDashboardPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [recategorizingExpense, setRecategorizingExpense] = useState<string | null>(null);
   const [updatingExpense, setUpdatingExpense] = useState<string | null>(null);
-  const [payrollItems, setPayrollItems] = useState<PayrollItem[]>([]);
-  const [payrollTotal, setPayrollTotal] = useState<number>(0);
+  const [payrollCOGSItems, setPayrollCOGSItems] = useState<PayrollItem[]>([]);
+  const [payrollCOGSTotal, setPayrollCOGSTotal] = useState<number>(0);
+  const [payrollExpenseItems, setPayrollExpenseItems] = useState<PayrollItem[]>([]);
+  const [payrollExpenseTotal, setPayrollExpenseTotal] = useState<number>(0);
   const [loadingPayroll, setLoadingPayroll] = useState(false);
 
   // Date filter state
@@ -222,8 +224,12 @@ export default function BudgetDashboardPage() {
 
       if (response.ok) {
         const result = await response.json();
-        setPayrollItems(result.payrollItems || []);
-        setPayrollTotal(result.totalPayroll || 0);
+        // COGS payroll (wages/salary)
+        setPayrollCOGSItems(result.payrollCOGSItems || []);
+        setPayrollCOGSTotal(result.totalPayrollCOGS || 0);
+        // Expense payroll (employer taxes)
+        setPayrollExpenseItems(result.payrollExpenseItems || []);
+        setPayrollExpenseTotal(result.totalPayrollExpenses || 0);
       }
     } catch (error) {
       console.error('Error fetching payroll data:', error);
@@ -803,10 +809,11 @@ export default function BudgetDashboardPage() {
   const otherExpenseSection = plSections.find(s => s.title === 'Other Expenses');
 
   const totalIncome = incomeSection?.total || 0;
-  // Include payroll from Reports API in COGS total
-  const totalCOGS = (cogsSection?.total || 0) + payrollTotal;
+  // Include payroll wages from Reports API in COGS total
+  const totalCOGS = (cogsSection?.total || 0) + payrollCOGSTotal;
   const grossProfit = totalIncome - totalCOGS;
-  const totalExpenses = expenseSection?.total || 0;
+  // Include payroll taxes from Reports API in Expenses total
+  const totalExpenses = (expenseSection?.total || 0) + payrollExpenseTotal;
   const operatingIncome = grossProfit - totalExpenses;
   const totalOtherIncome = otherIncomeSection?.total || 0;
   const totalOtherExpenses = otherExpenseSection?.total || 0;
@@ -963,7 +970,7 @@ export default function BudgetDashboardPage() {
                 )}
 
                 {/* COGS Section */}
-                {((cogsSection && cogsSection.categories.length > 0) || payrollItems.length > 0) && (
+                {((cogsSection && cogsSection.categories.length > 0) || payrollCOGSItems.length > 0) && (
                   <>
                     <tr className="bg-orange-50/50">
                       <td colSpan={5} className="px-4 py-3 font-bold text-orange-800 text-base">
@@ -972,27 +979,27 @@ export default function BudgetDashboardPage() {
                     </tr>
                     {cogsSection?.categories.map(cat => renderCategory(cat, false))}
 
-                    {/* Payroll from QBO Reports API (read-only) */}
-                    {payrollItems.length > 0 && (
+                    {/* Payroll wages/salary from QBO Reports API (read-only) */}
+                    {payrollCOGSItems.length > 0 && (
                       <>
                         <tr className="hover:bg-gray-50">
                           <td className="py-2 pr-4" style={{ paddingLeft: '16px' }}>
                             <div className="flex items-center gap-2">
                               <span className="w-5" />
-                              <span className="font-semibold text-gray-900">Payroll Expenses</span>
+                              <span className="font-semibold text-gray-900">Payroll</span>
                               <span className="text-xs text-gray-400 italic">(from QBO Payroll)</span>
                             </div>
                           </td>
                           <td className="py-2 text-right tabular-nums font-semibold">
-                            {formatCurrency(payrollTotal)}
+                            {formatCurrency(payrollCOGSTotal)}
                           </td>
                           <td className="py-2 text-right tabular-nums text-gray-500">-</td>
                           <td className="py-2 text-right tabular-nums"></td>
                           <td className="py-2 pl-4 text-center w-20"></td>
                         </tr>
                         {/* Show individual payroll line items indented */}
-                        {payrollItems.map((item, idx) => (
-                          <tr key={`payroll-${idx}`} className="hover:bg-gray-50 text-sm">
+                        {payrollCOGSItems.map((item, idx) => (
+                          <tr key={`payroll-cogs-${idx}`} className="hover:bg-gray-50 text-sm">
                             <td className="py-1 pr-4" style={{ paddingLeft: '64px' }}>
                               <span className="text-gray-600">{item.account_name}</span>
                             </td>
@@ -1007,7 +1014,7 @@ export default function BudgetDashboardPage() {
                       </>
                     )}
 
-                    {loadingPayroll && payrollItems.length === 0 && (
+                    {loadingPayroll && payrollCOGSItems.length === 0 && (
                       <tr>
                         <td colSpan={5} className="py-2 text-center text-sm text-gray-500 italic">
                           Loading payroll data...
@@ -1042,6 +1049,42 @@ export default function BudgetDashboardPage() {
                       </td>
                     </tr>
                     {expenseSection.categories.map(cat => renderCategory(cat, false))}
+
+                    {/* Payroll taxes from QBO Reports API (read-only) */}
+                    {payrollExpenseItems.length > 0 && (
+                      <>
+                        <tr className="hover:bg-gray-50">
+                          <td className="py-2 pr-4" style={{ paddingLeft: '16px' }}>
+                            <div className="flex items-center gap-2">
+                              <span className="w-5" />
+                              <span className="font-semibold text-gray-900">Payroll Taxes</span>
+                              <span className="text-xs text-gray-400 italic">(from QBO Payroll)</span>
+                            </div>
+                          </td>
+                          <td className="py-2 text-right tabular-nums font-semibold">
+                            {formatCurrency(payrollExpenseTotal)}
+                          </td>
+                          <td className="py-2 text-right tabular-nums text-gray-500">-</td>
+                          <td className="py-2 text-right tabular-nums"></td>
+                          <td className="py-2 pl-4 text-center w-20"></td>
+                        </tr>
+                        {/* Show individual payroll tax items indented */}
+                        {payrollExpenseItems.map((item, idx) => (
+                          <tr key={`payroll-exp-${idx}`} className="hover:bg-gray-50 text-sm">
+                            <td className="py-1 pr-4" style={{ paddingLeft: '64px' }}>
+                              <span className="text-gray-600">{item.account_name}</span>
+                            </td>
+                            <td className="py-1 text-right tabular-nums text-gray-700">
+                              {formatCurrency(item.amount)}
+                            </td>
+                            <td className="py-1 text-right tabular-nums text-gray-400">-</td>
+                            <td className="py-1"></td>
+                            <td className="py-1"></td>
+                          </tr>
+                        ))}
+                      </>
+                    )}
+
                     <tr className="border-t-2 border-red-200 bg-red-50/30">
                       <td className="px-4 py-2 font-bold text-red-800">Total Operating Expenses</td>
                       <td className="px-4 py-2 text-right font-bold text-red-800 tabular-nums">{formatCurrency(totalExpenses)}</td>

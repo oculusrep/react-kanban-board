@@ -262,15 +262,27 @@ Deno.serve(async (req) => {
     const netIncome = operatingIncome + totals.otherIncome - totals.otherExpense
 
     // Extract payroll items specifically (these aren't available via Accounting API)
-    // QuickBooks Payroll transactions appear under COGS hierarchy: Payroll > Management > Salary
-    // Check the account name, parent, AND full ancestor path for "payroll"
-    const payrollItems = lineItems.filter(item =>
+    // QuickBooks Payroll creates two types of entries:
+    // 1. Wages/Salary under COGS (Payroll > Management > Salary)
+    // 2. Employer taxes under Expenses (Taxes and Licenses > FUTA, Medicare, etc.)
+    // We filter by BOTH payroll ancestry AND section to separate them correctly
+    const isPayrollRelated = (item: PLLineItem) =>
       item.account_name.toLowerCase().includes('payroll') ||
       item.parent_account?.toLowerCase().includes('payroll') ||
       item.ancestor_path.some(ancestor => ancestor.toLowerCase().includes('payroll'))
+
+    // COGS payroll items (wages, salaries) - these go in the COGS section
+    const payrollCOGSItems = lineItems.filter(item =>
+      item.section === 'COGS' && isPayrollRelated(item)
     )
 
-    const totalPayroll = payrollItems.reduce((sum, item) => sum + item.amount, 0)
+    // Expense payroll items (employer taxes like FUTA, Medicare, SS, SUTA) - these go in Expenses
+    const payrollExpenseItems = lineItems.filter(item =>
+      item.section === 'Expense' && isPayrollRelated(item)
+    )
+
+    const totalPayrollCOGS = payrollCOGSItems.reduce((sum, item) => sum + item.amount, 0)
+    const totalPayrollExpenses = payrollExpenseItems.reduce((sum, item) => sum + item.amount, 0)
 
     // Log the sync
     await logSync(
@@ -294,8 +306,12 @@ Deno.serve(async (req) => {
         },
         lineItems: lineItems,
         // Payroll items extracted separately for hybrid mode
-        payrollItems: payrollItems,
-        totalPayroll: totalPayroll,
+        // COGS payroll (wages/salary) - display in COGS section
+        payrollCOGSItems: payrollCOGSItems,
+        totalPayrollCOGS: totalPayrollCOGS,
+        // Expense payroll (employer taxes) - display in Operating Expenses
+        payrollExpenseItems: payrollExpenseItems,
+        totalPayrollExpenses: totalPayrollExpenses,
         totals: {
           income: totals.income,
           cogs: totals.cogs,
