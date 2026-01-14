@@ -739,6 +739,7 @@ export default function BudgetDashboardPage() {
                     <thead className="sticky top-0 bg-blue-50">
                       <tr className="text-xs text-gray-500 uppercase">
                         <th className="py-1 text-left font-medium">Date</th>
+                        <th className="py-1 text-left font-medium">Type</th>
                         <th className="py-1 text-left font-medium">Vendor</th>
                         <th className="py-1 text-left font-medium">Description</th>
                         <th className="py-1 text-right font-medium">Amount</th>
@@ -762,6 +763,9 @@ export default function BudgetDashboardPage() {
                         <tr key={txn.id} className={`border-t border-gray-100 ${isCredit ? 'bg-green-50/50' : ''}`}>
                           <td className="py-1.5 text-gray-600 w-24">
                             {formatDate(txn.transaction_date)}
+                          </td>
+                          <td className="py-1.5 text-gray-500 text-xs w-20">
+                            {txn.transaction_type}
                           </td>
                           <td className="py-1.5 text-gray-900 w-40 truncate">
                             {txn.vendor_name || '-'}
