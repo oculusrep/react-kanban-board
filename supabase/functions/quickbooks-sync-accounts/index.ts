@@ -100,24 +100,40 @@ Deno.serve(async (req) => {
 
     // Query all accounts from QBO for full P&L statement
     // Income, COGS, and Expense accounts
+    // Use pagination to ensure we get ALL accounts (QBO default limit is ~100)
     console.log('Fetching Chart of Accounts from QuickBooks...')
 
     const accountTypes = ['Income', 'Other Income', 'Cost of Goods Sold', 'Expense', 'Other Expense']
     let allAccounts: QBAccount[] = []
+    const PAGE_SIZE = 1000
 
     for (const accountType of accountTypes) {
-      const query = `SELECT * FROM Account WHERE AccountType = '${accountType}'`
+      let startPosition = 1
+      let typeAccounts: QBAccount[] = []
 
       try {
-        const result = await qbApiRequest<QBQueryResponse>(
-          connection,
-          'GET',
-          `query?query=${encodeURIComponent(query)}`
-        )
+        while (true) {
+          const query = `SELECT * FROM Account WHERE AccountType = '${accountType}' STARTPOSITION ${startPosition} MAXRESULTS ${PAGE_SIZE}`
 
-        if (result.QueryResponse.Account) {
-          allAccounts = allAccounts.concat(result.QueryResponse.Account)
+          const result = await qbApiRequest<QBQueryResponse>(
+            connection,
+            'GET',
+            `query?query=${encodeURIComponent(query)}`
+          )
+
+          const accounts = result.QueryResponse.Account || []
+          console.log(`Fetched ${accounts.length} ${accountType} accounts (starting at ${startPosition})`)
+
+          if (accounts.length === 0) break
+
+          typeAccounts = typeAccounts.concat(accounts)
+
+          if (accounts.length < PAGE_SIZE) break
+          startPosition += PAGE_SIZE
         }
+
+        allAccounts = allAccounts.concat(typeAccounts)
+        console.log(`Total ${accountType} accounts: ${typeAccounts.length}`)
       } catch (err: any) {
         console.error(`Error fetching ${accountType} accounts:`, err.message)
       }
