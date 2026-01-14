@@ -108,6 +108,15 @@ export default function BudgetDashboardPage() {
   const [payrollExpenseItems, setPayrollExpenseItems] = useState<PayrollItem[]>([]);
   const [payrollExpenseTotal, setPayrollExpenseTotal] = useState<number>(0);
   const [loadingPayroll, setLoadingPayroll] = useState(false);
+  // QBO P&L totals for comparison/validation
+  const [qboTotals, setQboTotals] = useState<{
+    income: number;
+    cogs: number;
+    expenses: number;
+    otherIncome: number;
+    otherExpenses: number;
+    netIncome: number;
+  } | null>(null);
 
   // Date filter state
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
@@ -230,6 +239,17 @@ export default function BudgetDashboardPage() {
         // Expense payroll (employer taxes)
         setPayrollExpenseItems(result.payrollExpenseItems || []);
         setPayrollExpenseTotal(result.totalPayrollExpenses || 0);
+        // QBO totals for validation
+        if (result.totals) {
+          setQboTotals({
+            income: result.totals.income || 0,
+            cogs: result.totals.cogs || 0,
+            expenses: result.totals.expenses || 0,
+            otherIncome: result.totals.otherIncome || 0,
+            otherExpenses: result.totals.otherExpenses || 0,
+            netIncome: result.totals.netIncome || 0
+          });
+        }
       }
     } catch (error) {
       console.error('Error fetching payroll data:', error);
@@ -1210,6 +1230,54 @@ export default function BudgetDashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* QBO P&L Comparison - for validation */}
+        {qboTotals && (
+          <div className="mt-6 bg-white rounded-lg shadow p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" />
+              P&L Validation (OVIS vs QBO Report)
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-2 font-medium text-gray-600">Category</th>
+                    <th className="text-right py-2 font-medium text-gray-600">OVIS</th>
+                    <th className="text-right py-2 font-medium text-gray-600">QBO</th>
+                    <th className="text-right py-2 font-medium text-gray-600">Difference</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {[
+                    { label: 'Income', ovis: totalIncome, qbo: qboTotals.income },
+                    { label: 'COGS', ovis: totalCOGS, qbo: qboTotals.cogs },
+                    { label: 'Expenses', ovis: totalExpenses, qbo: qboTotals.expenses },
+                    { label: 'Other Income', ovis: totalOtherIncome, qbo: qboTotals.otherIncome },
+                    { label: 'Other Expenses', ovis: totalOtherExpenses, qbo: qboTotals.otherExpenses },
+                    { label: 'Net Income', ovis: netIncome, qbo: qboTotals.netIncome },
+                  ].map(row => {
+                    const diff = row.ovis - row.qbo;
+                    const hasDiff = Math.abs(diff) > 0.01;
+                    return (
+                      <tr key={row.label} className={hasDiff ? 'bg-yellow-50' : ''}>
+                        <td className="py-2 text-gray-900">{row.label}</td>
+                        <td className="py-2 text-right tabular-nums">{formatCurrency(row.ovis)}</td>
+                        <td className="py-2 text-right tabular-nums">{formatCurrency(row.qbo)}</td>
+                        <td className={`py-2 text-right tabular-nums font-medium ${hasDiff ? 'text-red-600' : 'text-green-600'}`}>
+                          {hasDiff ? formatCurrency(diff, true) : '✓'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {loadingPayroll && (
+              <p className="text-xs text-gray-500 mt-2 italic">Loading QBO comparison data...</p>
+            )}
+          </div>
+        )}
 
         {/* Last sync info */}
         {accounts.length > 0 && accounts[0].last_synced_at && (
