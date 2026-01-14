@@ -80,15 +80,19 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Parse request body for date range
+    // Parse request body for date range and accounting method
     let startDate = `${new Date().getFullYear()}-01-01`
     let endDate = new Date().toISOString().split('T')[0]
+    let accountingMethod: 'Accrual' | 'Cash' = 'Accrual'
 
     if (req.method === 'POST') {
       try {
         const body = await req.json()
         if (body.startDate) startDate = body.startDate
         if (body.endDate) endDate = body.endDate
+        if (body.accountingMethod === 'Cash' || body.accountingMethod === 'Accrual') {
+          accountingMethod = body.accountingMethod
+        }
       } catch {
         // Ignore JSON parse errors, use defaults
       }
@@ -143,14 +147,14 @@ Deno.serve(async (req) => {
     // Refresh token if needed
     connection = await refreshTokenIfNeeded(supabaseClient, connection)
 
-    console.log(`Fetching P&L report from QuickBooks for ${startDate} to ${endDate}...`)
+    console.log(`Fetching P&L report from QuickBooks for ${startDate} to ${endDate} (${accountingMethod} basis)...`)
 
     // Fetch the P&L report from QuickBooks
-    // Using accounting_method=Accrual and summarize_column_by=Total for a simple summary
+    // Using dynamic accounting_method (Accrual or Cash)
     const reportParams = new URLSearchParams({
       start_date: startDate,
       end_date: endDate,
-      accounting_method: 'Accrual',
+      accounting_method: accountingMethod,
       minorversion: '65'
     })
 
@@ -299,11 +303,12 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `P&L report fetched for ${startDate} to ${endDate}`,
+        message: `P&L report fetched for ${startDate} to ${endDate} (${accountingMethod} basis)`,
         period: {
           startDate,
           endDate
         },
+        accountingMethod,
         lineItems: lineItems,
         // Payroll items extracted separately for hybrid mode
         // COGS payroll (wages/salary) - display in COGS section

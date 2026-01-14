@@ -120,11 +120,14 @@ export default function BudgetDashboardPage() {
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
 
+  // Accounting basis toggle (Accrual = default, matches QBO)
+  const [accountingBasis, setAccountingBasis] = useState<'Accrual' | 'Cash'>('Accrual');
+
   useEffect(() => {
     document.title = "P&L Statement | OVIS Admin";
     fetchData();
     fetchPayrollData();
-  }, [selectedYear, selectedMonth]);
+  }, [selectedYear, selectedMonth, accountingBasis]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -187,7 +190,7 @@ export default function BudgetDashboardPage() {
       }
 
       setExpenses(allExpenses);
-      buildPLStructure(accountData || [], allExpenses, itemData || []);
+      buildPLStructure(accountData || [], allExpenses, itemData || [], accountingBasis);
     } catch (error: any) {
       console.error('Error fetching budget data:', error);
       setMessage({ type: 'error', text: error.message || 'Failed to load data' });
@@ -225,7 +228,7 @@ export default function BudgetDashboardPage() {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session.access_token}`
           },
-          body: JSON.stringify({ startDate, endDate })
+          body: JSON.stringify({ startDate, endDate, accountingMethod: accountingBasis })
         }
       );
 
@@ -255,7 +258,21 @@ export default function BudgetDashboardPage() {
     }
   };
 
-  const buildPLStructure = (accountList: QBAccount[], expenseList: QBExpense[], itemList: QBItem[]) => {
+  const buildPLStructure = (accountList: QBAccount[], expenseList: QBExpense[], itemList: QBItem[], basis: 'Accrual' | 'Cash') => {
+    // For Cash basis, filter out unpaid transactions:
+    // - Bills: represent expenses that may not be paid yet (exclude on cash basis)
+    // - Invoices: represent income that may not be collected yet (exclude on cash basis)
+    // Purchases, SalesReceipts, etc. are already "paid" so they appear in both bases
+    let filteredExpenses = expenseList;
+    if (basis === 'Cash') {
+      filteredExpenses = expenseList.filter(expense => {
+        // Exclude Bills (expenses) and Invoices (income) on cash basis
+        // They're recorded when created but not yet paid/collected
+        if (expense.transaction_type === 'Bill') return false;
+        if (expense.transaction_type === 'Invoice') return false;
+        return true;
+      });
+    }
     // Build item-to-income-account map for Invoice/SalesReceipt transactions
     // In QBO, Invoices reference Items (products/services), not accounts directly.
     // Items have an IncomeAccountRef that maps to the actual Income account.
@@ -271,7 +288,7 @@ export default function BudgetDashboardPage() {
 
     // Group expenses by account, mapping invoice items to their income accounts
     const expensesByAccount = new Map<string, QBExpense[]>();
-    for (const expense of expenseList) {
+    for (const expense of filteredExpenses) {
       let accountId = expense.account_id;
 
       // For Invoice and SalesReceipt transactions, the account_id is actually an Item ID
@@ -942,27 +959,56 @@ export default function BudgetDashboardPage() {
 
         {/* Date Filter */}
         <div className="bg-white rounded-lg shadow p-4 mb-6">
-          <div className="flex items-center gap-4">
-            <label className="text-sm font-medium text-gray-700">Period:</label>
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-              className="border border-gray-300 rounded-md px-3 py-2"
-            >
-              {[2024, 2025, 2026].map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))}
-            </select>
-            <select
-              value={selectedMonth ?? ''}
-              onChange={(e) => setSelectedMonth(e.target.value === '' ? null : parseInt(e.target.value))}
-              className="border border-gray-300 rounded-md px-3 py-2"
-            >
-              <option value="">Full Year</option>
-              {months.map((month, index) => (
-                <option key={index} value={index}>{month}</option>
-              ))}
-            </select>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <label className="text-sm font-medium text-gray-700">Period:</label>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                className="border border-gray-300 rounded-md px-3 py-2"
+              >
+                {[2024, 2025, 2026].map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+              <select
+                value={selectedMonth ?? ''}
+                onChange={(e) => setSelectedMonth(e.target.value === '' ? null : parseInt(e.target.value))}
+                className="border border-gray-300 rounded-md px-3 py-2"
+              >
+                <option value="">Full Year</option>
+                {months.map((month, index) => (
+                  <option key={index} value={index}>{month}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Accounting Basis Toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">Basis:</span>
+              <div className="flex bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setAccountingBasis('Accrual')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                    accountingBasis === 'Accrual'
+                      ? 'bg-white text-blue-700 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Accrual
+                </button>
+                <button
+                  onClick={() => setAccountingBasis('Cash')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                    accountingBasis === 'Cash'
+                      ? 'bg-white text-blue-700 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Cash
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -971,7 +1017,7 @@ export default function BudgetDashboardPage() {
           {/* Header */}
           <div className="px-6 py-4 border-b border-gray-200 text-center">
             <h2 className="text-lg font-semibold text-gray-900">Oculus Real Estate Partners</h2>
-            <p className="text-sm text-gray-600">Profit and Loss</p>
+            <p className="text-sm text-gray-600">Profit and Loss ({accountingBasis} Basis)</p>
             <p className="text-sm text-gray-500">{periodLabel}</p>
           </div>
 
@@ -1211,7 +1257,7 @@ export default function BudgetDashboardPage() {
           <div className="mt-6 bg-white rounded-lg shadow p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
               <AlertCircle className="h-4 w-4" />
-              P&L Validation (OVIS vs QBO Report)
+              P&L Validation (OVIS vs QBO {accountingBasis} Report)
             </h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
