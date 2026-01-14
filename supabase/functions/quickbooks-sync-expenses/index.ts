@@ -563,8 +563,9 @@ Deno.serve(async (req) => {
     }
 
     // Helper function to process deposit line items
-    // Deposits can have line items that post to expense accounts (reducing them)
-    // e.g., a deposit of $1000 minus $5 bank charges posts $5 to Bank Charges expense
+    // Deposits can have line items that post to expense accounts
+    // e.g., a deposit of $656.68 with $38.32 deducted for bank charges
+    // The bank charge is an EXPENSE (positive amount on P&L)
     const processDeposit = async (deposit: QBDeposit) => {
       let lineIndex = 0
       for (const line of deposit.Line) {
@@ -573,9 +574,8 @@ Deno.serve(async (req) => {
           const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
           const transactionId = `deposit_${deposit.Id}_line${lineId}`
 
-          // Deposit line items that post to expense accounts are typically
-          // negative amounts that REDUCE the deposit (e.g., bank charges)
-          // We store them as-is - the account type determines P&L placement
+          // In QBO API, deposit line items that represent expenses (like bank charges)
+          // are stored as positive amounts. We store them as-is since they ADD to expenses.
           const { error: upsertError } = await supabaseClient
             .from('qb_expense')
             .upsert({
@@ -587,8 +587,8 @@ Deno.serve(async (req) => {
               account_id: accountRef.value,
               account_name: accountRef.name,
               description: line.Description || deposit.PrivateNote || null,
-              // Store the amount as negative to reduce expense (it's offsetting)
-              amount: -line.Amount,
+              // Store as positive - this is an expense being incurred
+              amount: line.Amount,
               imported_at: now,
               sync_token: deposit.SyncToken,
               qb_entity_type: 'Deposit',
