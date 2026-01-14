@@ -260,6 +260,14 @@ export default function BudgetDashboardPage() {
   };
 
   const buildPLStructure = (accountList: QBAccount[], expenseList: QBExpense[], itemList: QBItem[]) => {
+    // Debug: Log unique account IDs from expenses to help identify mismatches
+    const expenseAccountIds = new Set(expenseList.map(e => e.account_id));
+    const dbAccountIds = new Set(accountList.map(a => a.qb_account_id));
+    const missingInDB = [...expenseAccountIds].filter(id => !dbAccountIds.has(id));
+    if (missingInDB.length > 0) {
+      console.log(`[P&L Debug] ${missingInDB.length} expense account IDs not found in qb_account table:`, missingInDB.slice(0, 10));
+    }
+
     // Build item-to-income-account map for Invoice/SalesReceipt transactions
     // In QBO, Invoices reference Items (products/services), not accounts directly.
     // Items have an IncomeAccountRef that maps to the actual Income account.
@@ -313,6 +321,11 @@ export default function BudgetDashboardPage() {
           if (!categoryMap.has(currentPath)) {
             const isLeaf = i === parts.length - 1;
             const transactions = isLeaf ? (expensesByAccount.get(account.qb_account_id) || []) : [];
+
+            // Debug: Log accounts with no transactions
+            if (isLeaf && transactions.length === 0 && account.current_balance !== 0) {
+              console.log(`[P&L Debug] Account "${account.name}" (qb_account_id: ${account.qb_account_id}) has QBO balance ${account.current_balance} but 0 transactions in OVIS`);
+            }
 
             // Calculate amount with proper sign handling
             // For Income accounts: Purchase/Bill with negative amount = positive income
