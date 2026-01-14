@@ -634,6 +634,15 @@ export default function BudgetDashboardPage() {
     return `$${formatted}`;
   };
 
+  // Format date string (YYYY-MM-DD) as local date to avoid timezone shift
+  // When JS parses "2025-12-12" it creates UTC midnight, which shifts back a day in US timezones
+  const formatDate = (dateString: string) => {
+    // Parse as local date by adding T12:00:00 (noon) to avoid any timezone edge cases
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day); // month is 0-indexed
+    return date.toLocaleDateString();
+  };
+
   // Render a category row with proper indentation
   const renderCategory = (category: PLCategory, sectionIsIncome: boolean) => {
     const isExpanded = expandedCategories.has(category.fullPath);
@@ -756,7 +765,7 @@ export default function BudgetDashboardPage() {
                       return (
                         <tr key={txn.id} className={`border-t border-gray-100 ${isCredit ? 'bg-green-50/50' : ''}`}>
                           <td className="py-1.5 text-gray-600 w-24">
-                            {new Date(txn.transaction_date).toLocaleDateString()}
+                            {formatDate(txn.transaction_date)}
                           </td>
                           <td className="py-1.5 text-gray-900 w-40 truncate">
                             {txn.vendor_name || '-'}
