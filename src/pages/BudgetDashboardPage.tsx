@@ -105,8 +105,6 @@ export default function BudgetDashboardPage() {
   const [updatingExpense, setUpdatingExpense] = useState<string | null>(null);
   const [payrollCOGSItems, setPayrollCOGSItems] = useState<PayrollItem[]>([]);
   const [payrollCOGSTotal, setPayrollCOGSTotal] = useState<number>(0);
-  const [payrollExpenseItems, setPayrollExpenseItems] = useState<PayrollItem[]>([]);
-  const [payrollExpenseTotal, setPayrollExpenseTotal] = useState<number>(0);
   const [loadingPayroll, setLoadingPayroll] = useState(false);
   // QBO P&L totals for comparison/validation
   const [qboTotals, setQboTotals] = useState<{
@@ -233,12 +231,10 @@ export default function BudgetDashboardPage() {
 
       if (response.ok) {
         const result = await response.json();
-        // COGS payroll (wages/salary)
+        // COGS payroll (wages/salary) - these aren't available via Accounting API
         setPayrollCOGSItems(result.payrollCOGSItems || []);
         setPayrollCOGSTotal(result.totalPayrollCOGS || 0);
-        // Expense payroll (employer taxes)
-        setPayrollExpenseItems(result.payrollExpenseItems || []);
-        setPayrollExpenseTotal(result.totalPayrollExpenses || 0);
+        // Note: Payroll expense taxes are synced via normal expense sync (Taxes & Licenses)
         // QBO totals for validation
         if (result.totals) {
           setQboTotals({
@@ -847,8 +843,9 @@ export default function BudgetDashboardPage() {
   // Include payroll wages from Reports API in COGS total
   const totalCOGS = (cogsSection?.total || 0) + payrollCOGSTotal;
   const grossProfit = totalIncome - totalCOGS;
-  // Include payroll taxes from Reports API in Expenses total
-  const totalExpenses = (expenseSection?.total || 0) + payrollExpenseTotal;
+  // Payroll taxes (employer taxes) are synced as part of Taxes & Licenses category
+  // via the normal expense sync, so we don't need to add them separately
+  const totalExpenses = expenseSection?.total || 0;
   const operatingIncome = grossProfit - totalExpenses;
   const totalOtherIncome = otherIncomeSection?.total || 0;
   const totalOtherExpenses = otherExpenseSection?.total || 0;
@@ -1084,41 +1081,6 @@ export default function BudgetDashboardPage() {
                       </td>
                     </tr>
                     {expenseSection.categories.map(cat => renderCategory(cat, false))}
-
-                    {/* Payroll taxes from QBO Reports API (read-only) */}
-                    {payrollExpenseItems.length > 0 && (
-                      <>
-                        <tr className="hover:bg-gray-50">
-                          <td className="py-2 pr-4" style={{ paddingLeft: '16px' }}>
-                            <div className="flex items-center gap-2">
-                              <span className="w-5" />
-                              <span className="font-semibold text-gray-900">Payroll Taxes</span>
-                              <span className="text-xs text-gray-400 italic">(from QBO Payroll)</span>
-                            </div>
-                          </td>
-                          <td className="py-2 text-right tabular-nums font-semibold">
-                            {formatCurrency(payrollExpenseTotal)}
-                          </td>
-                          <td className="py-2 text-right tabular-nums text-gray-500">-</td>
-                          <td className="py-2 text-right tabular-nums"></td>
-                          <td className="py-2 pl-4 text-center w-20"></td>
-                        </tr>
-                        {/* Show individual payroll tax items indented */}
-                        {payrollExpenseItems.map((item, idx) => (
-                          <tr key={`payroll-exp-${idx}`} className="hover:bg-gray-50 text-sm">
-                            <td className="py-1 pr-4" style={{ paddingLeft: '64px' }}>
-                              <span className="text-gray-600">{item.account_name}</span>
-                            </td>
-                            <td className="py-1 text-right tabular-nums text-gray-700">
-                              {formatCurrency(item.amount)}
-                            </td>
-                            <td className="py-1 text-right tabular-nums text-gray-400">-</td>
-                            <td className="py-1"></td>
-                            <td className="py-1"></td>
-                          </tr>
-                        ))}
-                      </>
-                    )}
 
                     <tr className="border-t-2 border-red-200 bg-red-50/30">
                       <td className="px-4 py-2 font-bold text-red-800">Total Operating Expenses</td>
