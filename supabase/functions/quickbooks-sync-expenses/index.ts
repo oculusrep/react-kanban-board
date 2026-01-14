@@ -42,6 +42,7 @@ interface QBBill {
   SyncToken: string  // Required for updates
   TxnDate: string
   TotalAmt: number
+  Balance: number  // Remaining balance (0 = fully paid)
   VendorRef?: { name: string; value: string }
   Line: QBPurchaseLine[]
   PrivateNote?: string
@@ -65,6 +66,7 @@ interface QBInvoice {
   SyncToken: string
   TxnDate: string
   TotalAmt: number
+  Balance: number  // Remaining balance (0 = fully paid)
   CustomerRef?: { name: string; value: string }
   Line: QBInvoiceLine[]
   PrivateNote?: string
@@ -306,7 +308,9 @@ Deno.serve(async (req) => {
     }
 
     // Helper function to process bill line items
+    // Bills have a Balance field: 0 = fully paid, >0 = unpaid/partial
     const processBill = async (bill: QBBill) => {
+      const isPaid = bill.Balance === 0
       let lineIndex = 0
       for (const line of bill.Line) {
         if (line.DetailType === 'AccountBasedExpenseLineDetail' && line.AccountBasedExpenseLineDetail) {
@@ -331,7 +335,10 @@ Deno.serve(async (req) => {
               sync_token: bill.SyncToken,
               qb_entity_type: 'Bill',
               qb_entity_id: bill.Id,
-              qb_line_id: lineId
+              qb_line_id: lineId,
+              // Payment tracking fields
+              is_paid: isPaid,
+              balance: bill.Balance
             }, {
               onConflict: 'qb_transaction_id'
             })
@@ -348,10 +355,12 @@ Deno.serve(async (req) => {
     }
 
     // Helper function to process invoice line items (income)
+    // Invoices have a Balance field: 0 = fully paid, >0 = unpaid/partial
     const processInvoice = async (invoice: QBInvoice) => {
       // For invoices, we need to find the income account
       // QBO invoices don't always have account info on line items
       // We'll store as income with the customer as the "vendor"
+      const isPaid = invoice.Balance === 0
       let lineIndex = 0
       for (const line of invoice.Line) {
         if (line.DetailType === 'SalesItemLineDetail' && line.SalesItemLineDetail && line.Amount > 0) {
@@ -375,7 +384,10 @@ Deno.serve(async (req) => {
               sync_token: invoice.SyncToken,
               qb_entity_type: 'Invoice',
               qb_entity_id: invoice.Id,
-              qb_line_id: lineId
+              qb_line_id: lineId,
+              // Payment tracking fields
+              is_paid: isPaid,
+              balance: invoice.Balance
             }, {
               onConflict: 'qb_transaction_id'
             })

@@ -45,6 +45,9 @@ interface QBExpense {
   qb_entity_id?: string;
   qb_line_id?: string;
   sync_token?: string;
+  // Payment tracking fields
+  is_paid?: boolean | null;  // true=paid, false=unpaid, null=immediate (Purchase/SalesReceipt)
+  balance?: number | null;
 }
 
 interface QBItem {
@@ -260,16 +263,21 @@ export default function BudgetDashboardPage() {
 
   const buildPLStructure = (accountList: QBAccount[], expenseList: QBExpense[], itemList: QBItem[], basis: 'Accrual' | 'Cash') => {
     // For Cash basis, filter out unpaid transactions:
-    // - Bills: represent expenses that may not be paid yet (exclude on cash basis)
-    // - Invoices: represent income that may not be collected yet (exclude on cash basis)
-    // Purchases, SalesReceipts, etc. are already "paid" so they appear in both bases
+    // - Bills with is_paid=false: expenses not yet paid
+    // - Invoices with is_paid=false: income not yet collected
+    // - If is_paid is null (not synced yet), fall back to excluding Bills/Invoices entirely
+    // Purchases, SalesReceipts, etc. are always "paid" immediately (is_paid=null)
     let filteredExpenses = expenseList;
     if (basis === 'Cash') {
       filteredExpenses = expenseList.filter(expense => {
-        // Exclude Bills (expenses) and Invoices (income) on cash basis
-        // They're recorded when created but not yet paid/collected
-        if (expense.transaction_type === 'Bill') return false;
-        if (expense.transaction_type === 'Invoice') return false;
+        // Bills and Invoices: check is_paid status
+        if (expense.transaction_type === 'Bill' || expense.transaction_type === 'Invoice') {
+          // If is_paid is explicitly false, exclude (unpaid)
+          if (expense.is_paid === false) return false;
+          // If is_paid is null (not synced yet), exclude to be safe
+          if (expense.is_paid === null || expense.is_paid === undefined) return false;
+          // is_paid === true: include (paid transaction)
+        }
         return true;
       });
     }
@@ -769,6 +777,8 @@ export default function BudgetDashboardPage() {
                       const isRecategorizing = recategorizingExpense === txn.id;
                       const isUpdating = updatingExpense === txn.id;
                       const isCredit = txn.amount < 0 || txn.transaction_type === 'CreditCardCredit' || txn.transaction_type === 'VendorCredit';
+                      // Check if this is an unpaid Bill or Invoice
+                      const isUnpaid = (txn.transaction_type === 'Bill' || txn.transaction_type === 'Invoice') && txn.is_paid === false;
 
                       // For income sections, flip the sign on Purchase/Bill transactions
                       let displayAmount = txn.amount;
@@ -777,16 +787,18 @@ export default function BudgetDashboardPage() {
                       }
 
                       return (
-                        <tr key={txn.id} className={`border-t border-gray-100 ${isCredit ? 'bg-green-50/50' : ''}`}>
+                        <tr key={txn.id} className={`border-t border-gray-100 ${isCredit ? 'bg-green-50/50' : ''} ${isUnpaid ? 'bg-yellow-50/50' : ''}`}>
                           <td className="py-1.5 text-gray-600 w-24">
                             {formatDate(txn.transaction_date)}
                           </td>
                           <td className="py-1.5 text-gray-500 text-xs w-20">
                             {txn.transaction_type}
+                            {isUnpaid && <span className="ml-1 text-yellow-600">*</span>}
                           </td>
                           <td className="py-1.5 text-gray-900 w-40 truncate">
                             {txn.vendor_name || '-'}
                             {isCredit && <span className="ml-1 text-xs text-green-600">(Credit)</span>}
+                            {isUnpaid && <span className="ml-1 text-xs text-yellow-600">(Unpaid)</span>}
                           </td>
                           <td className="py-1.5 text-gray-600 truncate max-w-xs" title={txn.description || undefined}>
                             {txn.description || '-'}
