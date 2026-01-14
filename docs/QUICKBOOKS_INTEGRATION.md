@@ -604,3 +604,85 @@ DROPBOX_APP_SECRET=your_app_secret
 - Test expense recategorization sync back to QBO (OVIS as source of truth)
 - Review and recategorize all 2025 expenses
 - Set up budgets by expense account
+
+---
+
+### January 14, 2026
+
+21. **Added Cash/Accrual Basis Toggle to P&L Statement**
+    - New toggle in the date filter bar to switch between Accrual (default) and Cash basis
+    - Both OVIS local filtering and QBO P&L Report API calls respect the selected basis
+    - Files modified:
+      - `src/pages/BudgetDashboardPage.tsx` - Added `accountingBasis` state, toggle UI, updated `fetchPayrollData()` to pass `accountingMethod`
+      - `supabase/functions/quickbooks-sync-pl-report/index.ts` - Added `accountingMethod` parameter, passes to QBO Reports API
+
+22. **Added Bill/Invoice Payment Status Tracking**
+    - **Purpose**: Accurate Cash basis reporting requires knowing which Bills are paid (expenses incurred) and which Invoices are collected (income received)
+    - **New database columns** on `qb_expense`:
+      - `is_paid` (BOOLEAN) - `true` = paid, `false` = unpaid, `null` = immediate payment type (Purchase/SalesReceipt)
+      - `payment_date` (DATE) - Date payment was received/made (for future Cash basis by payment date)
+      - `balance` (NUMERIC) - Remaining balance from QBO (0 = fully paid)
+    - **Sync logic**: QBO Bills and Invoices have a `Balance` field - if `Balance === 0`, the transaction is paid
+    - **Cash basis filter**: Excludes Bills/Invoices where `is_paid === false`
+    - **UI indicator**: Unpaid transactions show with yellow highlight and "(Unpaid)" label
+    - Files modified:
+      - `supabase/functions/quickbooks-sync-expenses/index.ts` - Added `Balance` to QBBill/QBInvoice interfaces, set `is_paid` and `balance` on upsert
+      - `src/pages/BudgetDashboardPage.tsx` - Added payment tracking interface fields, Cash basis filtering logic, unpaid visual indicator
+    - Migration created: `supabase/migrations/20260114_add_bill_payment_tracking.sql`
+
+**Migration SQL (run in Supabase Dashboard):**
+```sql
+-- Add payment tracking columns to qb_expense for accurate Cash basis reporting
+ALTER TABLE qb_expense ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT NULL;
+ALTER TABLE qb_expense ADD COLUMN IF NOT EXISTS payment_date DATE DEFAULT NULL;
+ALTER TABLE qb_expense ADD COLUMN IF NOT EXISTS balance NUMERIC(12, 2) DEFAULT NULL;
+
+-- Index for filtering by payment status
+CREATE INDEX IF NOT EXISTS qb_expense_is_paid_idx ON qb_expense (is_paid) WHERE is_paid = false;
+CREATE INDEX IF NOT EXISTS qb_expense_payment_date_idx ON qb_expense (payment_date) WHERE payment_date IS NOT NULL;
+
+COMMENT ON COLUMN qb_expense.is_paid IS 'Payment status: true=paid, false=unpaid, null=immediate payment (Purchase/SalesReceipt)';
+COMMENT ON COLUMN qb_expense.payment_date IS 'Date payment was received/made (for Cash basis reporting)';
+COMMENT ON COLUMN qb_expense.balance IS 'Remaining balance (0 = fully paid)';
+```
+
+23. **Fixed Cash Basis Income Not Showing**
+    - **Problem**: Income was not displaying on Cash P&L because the filter was excluding Invoices with `is_paid = null` (not yet synced with payment status)
+    - **Solution**: Changed filter to only exclude when `is_paid === false` (explicitly unpaid), include when `is_paid` is null/undefined (not synced yet)
+    - This is a graceful fallback until the migration is run and data is re-synced
+    - File modified: `src/pages/BudgetDashboardPage.tsx`
+
+**Cash vs Accrual Basis - How It Works:**
+
+| Basis | Income Recognized | Expenses Recognized |
+|-------|-------------------|---------------------|
+| **Accrual** | When invoiced (Invoice date) | When billed (Bill date) |
+| **Cash** | When collected (Invoice paid) | When paid (Bill paid) |
+
+**Transaction Type Behavior:**
+| Transaction Type | `is_paid` Value | Cash Basis Behavior |
+|------------------|-----------------|---------------------|
+| Purchase | `null` | Always included (immediate payment) |
+| SalesReceipt | `null` | Always included (immediate payment) |
+| Bill | `true`/`false` | Included only if `is_paid = true` |
+| Invoice | `true`/`false` | Included only if `is_paid = true` |
+
+**To Enable Full Cash Basis Accuracy:**
+1. Run the migration SQL above in Supabase Dashboard
+2. Re-sync from QuickBooks on the P&L page
+3. The sync will populate `is_paid` and `balance` for all Bills/Invoices
+4. Cash basis will then accurately exclude unpaid transactions
+
+---
+
+## Edge Function Deployment Commands
+
+After making changes to Edge Functions, deploy with:
+
+```bash
+# P&L Report (for Cash/Accrual toggle)
+npx supabase functions deploy quickbooks-sync-pl-report --no-verify-jwt
+
+# Expense Sync (for payment status tracking)
+npx supabase functions deploy quickbooks-sync-expenses --no-verify-jwt
+```
