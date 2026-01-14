@@ -89,6 +89,17 @@ interface PayrollItem {
   depth: number;
 }
 
+// QBO P&L line item for validation comparison
+interface QBOLineItem {
+  account_name: string;
+  account_id: string | null;
+  amount: number;
+  section: string;
+  parent_account: string | null;
+  ancestor_path: string[];
+  depth: number;
+}
+
 export default function BudgetDashboardPage() {
   const navigate = useNavigate();
   const { userRole } = useAuth();
@@ -118,6 +129,10 @@ export default function BudgetDashboardPage() {
     otherExpenses: number;
     netIncome: number;
   } | null>(null);
+  // QBO line items for account-level comparison
+  const [qboLineItems, setQboLineItems] = useState<QBOLineItem[]>([]);
+  // Which validation sections are expanded to show details
+  const [expandedValidation, setExpandedValidation] = useState<Set<string>>(new Set());
 
   // Date filter state
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
@@ -251,6 +266,10 @@ export default function BudgetDashboardPage() {
             otherExpenses: result.totals.otherExpenses || 0,
             netIncome: result.totals.netIncome || 0
           });
+        }
+        // Store line items for account-level comparison
+        if (result.lineItems) {
+          setQboLineItems(result.lineItems);
         }
       }
     } catch (error) {
@@ -1269,6 +1288,7 @@ export default function BudgetDashboardPage() {
             <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
               <AlertCircle className="h-4 w-4" />
               P&L Validation (OVIS vs QBO {accountingBasis} Report)
+              <span className="text-xs font-normal text-gray-500 ml-2">Click rows with discrepancies to see account details</span>
             </h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -1282,24 +1302,149 @@ export default function BudgetDashboardPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {[
-                    { label: 'Income', ovis: totalIncome, qbo: qboTotals.income },
-                    { label: 'COGS', ovis: totalCOGS, qbo: qboTotals.cogs },
-                    { label: 'Expenses', ovis: totalExpenses, qbo: qboTotals.expenses },
-                    { label: 'Other Income', ovis: totalOtherIncome, qbo: qboTotals.otherIncome },
-                    { label: 'Other Expenses', ovis: totalOtherExpenses, qbo: qboTotals.otherExpenses },
-                    { label: 'Net Income', ovis: netIncome, qbo: qboTotals.netIncome },
+                    { label: 'Income', ovis: totalIncome, qbo: qboTotals.income, section: 'Income' },
+                    { label: 'COGS', ovis: totalCOGS, qbo: qboTotals.cogs, section: 'COGS' },
+                    { label: 'Expenses', ovis: totalExpenses, qbo: qboTotals.expenses, section: 'Expense' },
+                    { label: 'Other Income', ovis: totalOtherIncome, qbo: qboTotals.otherIncome, section: 'Other Income' },
+                    { label: 'Other Expenses', ovis: totalOtherExpenses, qbo: qboTotals.otherExpenses, section: 'Other Expense' },
+                    { label: 'Net Income', ovis: netIncome, qbo: qboTotals.netIncome, section: null },
                   ].map(row => {
                     const diff = row.ovis - row.qbo;
-                    const hasDiff = Math.abs(diff) > 0.01;
+                    // Use 1.00 threshold to ignore rounding differences
+                    const hasDiff = Math.abs(diff) >= 1.00;
+                    const isExpanded = expandedValidation.has(row.label);
+                    const canExpand = hasDiff && row.section !== null && qboLineItems.length > 0;
+
+                    // Get QBO line items for this section
+                    const sectionQBOItems = row.section ? qboLineItems.filter(item => item.section === row.section) : [];
+
+                    // Get OVIS totals by account for this section
+                    const ovisSection = plSections.find(s =>
+                      (row.section === 'Income' && s.title === 'Income') ||
+                      (row.section === 'COGS' && s.title === 'Cost of Goods Sold') ||
+                      (row.section === 'Expense' && s.title === 'Operating Expenses') ||
+                      (row.section === 'Other Income' && s.title === 'Other Income') ||
+                      (row.section === 'Other Expense' && s.title === 'Other Expenses')
+                    );
+
+                    // Build account comparison for expanded view
+                    const accountComparison: { name: string; ovis: number; qbo: number; diff: number }[] = [];
+                    if (canExpand && ovisSection) {
+                      // Get all leaf accounts from OVIS
+                      const getLeafAccounts = (categories: PLCategory[]): { name: string; amount: number }[] => {
+                        const result: { name: string; amount: number }[] = [];
+                        for (const cat of categories) {
+                          if (cat.children.length > 0) {
+                            result.push(...getLeafAccounts(cat.children));
+                          } else {
+                            result.push({ name: cat.fullPath, amount: cat.amount });
+                          }
+                        }
+                        return result;
+                      };
+                      const ovisAccounts = getLeafAccounts(ovisSection.categories);
+
+                      // Build full path for QBO items
+                      const qboAccountMap = new Map<string, number>();
+                      for (const item of sectionQBOItems) {
+                        const fullPath = item.ancestor_path.length > 0
+                          ? [...item.ancestor_path, item.account_name].join(':')
+                          : item.account_name;
+                        qboAccountMap.set(fullPath, (qboAccountMap.get(fullPath) || 0) + item.amount);
+                      }
+
+                      // Combine OVIS and QBO accounts
+                      const allAccountNames = new Set([
+                        ...ovisAccounts.map(a => a.name),
+                        ...qboAccountMap.keys()
+                      ]);
+
+                      for (const name of allAccountNames) {
+                        const ovisAmt = ovisAccounts.find(a => a.name === name)?.amount || 0;
+                        const qboAmt = qboAccountMap.get(name) || 0;
+                        const acctDiff = ovisAmt - qboAmt;
+                        // Only show accounts with differences >= $1
+                        if (Math.abs(acctDiff) >= 1.00) {
+                          accountComparison.push({ name, ovis: ovisAmt, qbo: qboAmt, diff: acctDiff });
+                        }
+                      }
+                      // Sort by absolute difference descending
+                      accountComparison.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+                    }
+
                     return (
-                      <tr key={row.label} className={hasDiff ? 'bg-yellow-50' : ''}>
-                        <td className="py-2 text-gray-900">{row.label}</td>
-                        <td className="py-2 text-right tabular-nums">{formatCurrency(row.ovis)}</td>
-                        <td className="py-2 text-right tabular-nums">{formatCurrency(row.qbo)}</td>
-                        <td className={`py-2 text-right tabular-nums font-medium ${hasDiff ? 'text-red-600' : 'text-green-600'}`}>
-                          {hasDiff ? formatCurrency(diff, true) : '✓'}
-                        </td>
-                      </tr>
+                      <Fragment key={row.label}>
+                        <tr
+                          className={`${hasDiff ? 'bg-yellow-50' : ''} ${canExpand ? 'cursor-pointer hover:bg-yellow-100' : ''}`}
+                          onClick={() => {
+                            if (canExpand) {
+                              const newExpanded = new Set(expandedValidation);
+                              if (isExpanded) {
+                                newExpanded.delete(row.label);
+                              } else {
+                                newExpanded.add(row.label);
+                              }
+                              setExpandedValidation(newExpanded);
+                            }
+                          }}
+                        >
+                          <td className="py-2 text-gray-900 flex items-center gap-1">
+                            {canExpand && (
+                              isExpanded ? <ChevronDown className="h-4 w-4 text-gray-400" /> : <ChevronRight className="h-4 w-4 text-gray-400" />
+                            )}
+                            {row.label}
+                          </td>
+                          <td className="py-2 text-right tabular-nums">{formatCurrency(row.ovis)}</td>
+                          <td className="py-2 text-right tabular-nums">{formatCurrency(row.qbo)}</td>
+                          <td className={`py-2 text-right tabular-nums font-medium ${hasDiff ? 'text-red-600' : 'text-green-600'}`}>
+                            {hasDiff ? formatCurrency(diff, true) : '✓'}
+                          </td>
+                        </tr>
+                        {isExpanded && accountComparison.length > 0 && (
+                          <tr>
+                            <td colSpan={4} className="p-0">
+                              <div className="bg-gray-50 border-l-4 border-yellow-400 p-3 ml-4">
+                                <p className="text-xs font-medium text-gray-700 mb-2">
+                                  Accounts with discrepancies ({accountComparison.length}):
+                                </p>
+                                <div className="max-h-64 overflow-y-auto">
+                                  <table className="w-full text-xs">
+                                    <thead className="sticky top-0 bg-gray-50">
+                                      <tr className="border-b border-gray-200">
+                                        <th className="text-left py-1 font-medium text-gray-600">Account</th>
+                                        <th className="text-right py-1 font-medium text-gray-600 w-24">OVIS</th>
+                                        <th className="text-right py-1 font-medium text-gray-600 w-24">QBO</th>
+                                        <th className="text-right py-1 font-medium text-gray-600 w-24">Diff</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {accountComparison.map((acct, idx) => (
+                                        <tr key={idx} className="border-b border-gray-100">
+                                          <td className="py-1 text-gray-800 truncate max-w-xs" title={acct.name}>
+                                            {acct.name}
+                                          </td>
+                                          <td className="py-1 text-right tabular-nums">
+                                            {acct.ovis === 0 ? <span className="text-gray-400">-</span> : formatCurrency(acct.ovis)}
+                                          </td>
+                                          <td className="py-1 text-right tabular-nums">
+                                            {acct.qbo === 0 ? <span className="text-gray-400">-</span> : formatCurrency(acct.qbo)}
+                                          </td>
+                                          <td className={`py-1 text-right tabular-nums font-medium ${acct.diff > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                                            {formatCurrency(acct.diff, true)}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-2">
+                                  Blue = OVIS has more, Red = QBO has more (or OVIS is missing)
+                                </p>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
