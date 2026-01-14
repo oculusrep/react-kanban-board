@@ -265,7 +265,7 @@ export default function BudgetDashboardPage() {
     // For Cash basis, filter out unpaid transactions:
     // - Bills with is_paid=false: expenses not yet paid
     // - Invoices with is_paid=false: income not yet collected
-    // - If is_paid is null (not synced yet), fall back to excluding Bills/Invoices entirely
+    // - If is_paid is null/undefined (not synced yet), include by default to avoid breaking P&L
     // Purchases, SalesReceipts, etc. are always "paid" immediately (is_paid=null)
     let filteredExpenses = expenseList;
     if (basis === 'Cash') {
@@ -274,9 +274,8 @@ export default function BudgetDashboardPage() {
         if (expense.transaction_type === 'Bill' || expense.transaction_type === 'Invoice') {
           // If is_paid is explicitly false, exclude (unpaid)
           if (expense.is_paid === false) return false;
-          // If is_paid is null (not synced yet), exclude to be safe
-          if (expense.is_paid === null || expense.is_paid === undefined) return false;
-          // is_paid === true: include (paid transaction)
+          // If is_paid is null/undefined (not synced yet), include by default
+          // Once payment tracking is synced, is_paid will be true for paid transactions
         }
         return true;
       });

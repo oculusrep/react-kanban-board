@@ -29,13 +29,12 @@ import Toast from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import { useAuth } from '../contexts/AuthContext';
-
-// Roles that can verify restaurant pin locations
-const RESTAURANT_VERIFY_ROLES = ['admin', 'broker (full)', 'broker (lite)', 'va'];
+import { usePermissions } from '../hooks/usePermissions';
 
 // Inner component that uses the LayerManager context
 const MappingPageContent: React.FC = () => {
   const { userRole } = useAuth();
+  const { hasPermission } = usePermissions();
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const [searchAddress, setSearchAddress] = useState('');
   const [searchResult, setSearchResult] = useState<string>('');
@@ -46,8 +45,8 @@ const MappingPageContent: React.FC = () => {
   const [verifyingPropertyId, setVerifyingPropertyId] = useState<string | null>(null);
   const [verifyingRestaurantStoreNo, setVerifyingRestaurantStoreNo] = useState<string | null>(null);
 
-  // Check if user can verify restaurant locations
-  const canVerifyRestaurantLocations = userRole && RESTAURANT_VERIFY_ROLES.includes(userRole);
+  // Check if user can verify restaurant locations (permission-based)
+  const canVerifyRestaurantLocations = hasPermission('can_verify_restaurant_locations');
 
   // Modal states
   const [showSiteSubmitModal, setShowSiteSubmitModal] = useState(false);

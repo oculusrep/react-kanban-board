@@ -82,6 +82,9 @@ export interface RolePermissions {
 
   // Integrations
   can_access_gmail_integration?: boolean;
+
+  // Map Features
+  can_verify_restaurant_locations?: boolean;
 }
 
 export interface PermissionDefinition {
@@ -104,7 +107,8 @@ export type PermissionCategory =
   | 'reporting'
   | 'tab_visibility'
   | 'system_admin'
-  | 'integrations';
+  | 'integrations'
+  | 'map_features';
 
 /**
  * Standard permission definitions with descriptions
@@ -464,6 +468,15 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     category: 'integrations',
     defaultValue: false,
   },
+
+  // Map Features
+  {
+    key: 'can_verify_restaurant_locations',
+    label: 'Verify Restaurant Locations',
+    description: 'Right-click on Restaurant Trends pins to verify/update pin location',
+    category: 'map_features',
+    defaultValue: false,
+  },
 ];
 
 /**
@@ -517,6 +530,10 @@ export const PERMISSION_CATEGORIES: Record<PermissionCategory, { label: string; 
   integrations: {
     label: 'Integrations',
     description: 'Third-party integrations like Gmail, QuickBooks, etc.',
+  },
+  map_features: {
+    label: 'Map Features',
+    description: 'Permissions for map-specific features like pin verification',
   },
 };
 
