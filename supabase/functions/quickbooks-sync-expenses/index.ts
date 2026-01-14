@@ -574,8 +574,9 @@ Deno.serve(async (req) => {
           const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
           const transactionId = `deposit_${deposit.Id}_line${lineId}`
 
-          // In QBO API, deposit line items that represent expenses (like bank charges)
-          // are stored as positive amounts. We store them as-is since they ADD to expenses.
+          // In QBO P&L, deposit expense lines show as NEGATIVE because they reduce
+          // the expense category total (e.g., bank charges deducted from deposit).
+          // QBO API returns positive amounts, so we negate to match P&L behavior.
           const { error: upsertError } = await supabaseClient
             .from('qb_expense')
             .upsert({
@@ -587,8 +588,8 @@ Deno.serve(async (req) => {
               account_id: accountRef.value,
               account_name: accountRef.name,
               description: line.Description || deposit.PrivateNote || null,
-              // Store as positive - this is an expense being incurred
-              amount: line.Amount,
+              // Negate: deposit expense lines REDUCE the category total in QBO P&L
+              amount: -line.Amount,
               imported_at: now,
               sync_token: deposit.SyncToken,
               qb_entity_type: 'Deposit',
