@@ -1,5 +1,5 @@
 // Supabase Edge Function: Sync Transactions from QuickBooks
-// Pulls Purchase, Bill, Invoice, SalesReceipt, JournalEntry, CreditCardCredit, and VendorCredit transactions for P&L
+// Pulls Purchase, Bill, Invoice, SalesReceipt, JournalEntry, CreditCardCredit, VendorCredit, and Deposit transactions for P&L
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
@@ -127,6 +127,30 @@ interface QBVendorCredit {
   PrivateNote?: string
 }
 
+// Deposit line item - can post to income or expense accounts
+interface QBDepositLine {
+  Id?: string
+  LineNum?: number
+  Amount: number
+  DetailType: string
+  DepositLineDetail?: {
+    AccountRef: { value: string; name: string }
+    Entity?: { name: string; value: string }
+  }
+  Description?: string
+}
+
+// Deposit - bank deposits that can offset expenses (e.g., deposit minus bank charges)
+interface QBDeposit {
+  Id: string
+  SyncToken: string
+  TxnDate: string
+  TotalAmt: number
+  DepositToAccountRef?: { value: string; name: string }
+  Line: QBDepositLine[]
+  PrivateNote?: string
+}
+
 interface QBQueryResponse<T> {
   QueryResponse: {
     Purchase?: T[]
@@ -136,6 +160,7 @@ interface QBQueryResponse<T> {
     JournalEntry?: T[]
     CreditCardCredit?: T[]
     VendorCredit?: T[]
+    Deposit?: T[]
     startPosition?: number
     maxResults?: number
     totalCount?: number
@@ -537,6 +562,53 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Helper function to process deposit line items
+    // Deposits can have line items that post to expense accounts (reducing them)
+    // e.g., a deposit of $1000 minus $5 bank charges posts $5 to Bank Charges expense
+    const processDeposit = async (deposit: QBDeposit) => {
+      let lineIndex = 0
+      for (const line of deposit.Line) {
+        if (line.DetailType === 'DepositLineDetail' && line.DepositLineDetail) {
+          const accountRef = line.DepositLineDetail.AccountRef
+          const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
+          const transactionId = `deposit_${deposit.Id}_line${lineId}`
+
+          // Deposit line items that post to expense accounts are typically
+          // negative amounts that REDUCE the deposit (e.g., bank charges)
+          // We store them as-is - the account type determines P&L placement
+          const { error: upsertError } = await supabaseClient
+            .from('qb_expense')
+            .upsert({
+              qb_transaction_id: transactionId,
+              transaction_type: 'Deposit',
+              transaction_date: deposit.TxnDate,
+              vendor_name: line.DepositLineDetail.Entity?.name || null,
+              category: accountRef.name,
+              account_id: accountRef.value,
+              account_name: accountRef.name,
+              description: line.Description || deposit.PrivateNote || null,
+              // Store the amount as negative to reduce expense (it's offsetting)
+              amount: -line.Amount,
+              imported_at: now,
+              sync_token: deposit.SyncToken,
+              qb_entity_type: 'Deposit',
+              qb_entity_id: deposit.Id,
+              qb_line_id: lineId
+            }, {
+              onConflict: 'qb_transaction_id'
+            })
+
+          if (upsertError) {
+            console.error(`Error upserting deposit:`, upsertError)
+            errorCount++
+          } else {
+            totalExpenses++
+          }
+          lineIndex++
+        }
+      }
+    }
+
     // ============================================
     // Fetch Purchase transactions with pagination
     // ============================================
@@ -798,6 +870,44 @@ Deno.serve(async (req) => {
       console.error('Error fetching vendor credits:', err.message)
     }
 
+    // ============================================
+    // Fetch Deposit transactions with pagination
+    // Deposits can offset expenses (e.g., deposit minus bank charges)
+    // ============================================
+    console.log('Fetching Deposit transactions...')
+    let depositStartPosition = 1
+    let totalDeposits = 0
+
+    try {
+      while (true) {
+        const depositQuery = `SELECT * FROM Deposit WHERE TxnDate >= '${startDate}' ORDERBY TxnDate DESC STARTPOSITION ${depositStartPosition} MAXRESULTS ${PAGE_SIZE}`
+
+        const depositResult = await qbApiRequest<QBQueryResponse<QBDeposit>>(
+          connection,
+          'GET',
+          `query?query=${encodeURIComponent(depositQuery)}`
+        )
+
+        const deposits = depositResult.QueryResponse.Deposit || []
+        console.log(`Fetched ${deposits.length} Deposit transactions (starting at ${depositStartPosition})`)
+
+        if (deposits.length === 0) break
+
+        for (const deposit of deposits) {
+          await processDeposit(deposit)
+        }
+
+        totalDeposits += deposits.length
+
+        if (deposits.length < PAGE_SIZE) break
+
+        depositStartPosition += PAGE_SIZE
+      }
+      console.log(`Total Deposit transactions fetched: ${totalDeposits}`)
+    } catch (err: any) {
+      console.error('Error fetching deposits:', err.message)
+    }
+
     // Log the sync
     await logSync(
       supabaseClient,
@@ -813,7 +923,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Synced ${totalExpenses} transactions from QuickBooks (${totalPurchases} purchases, ${totalBills} bills, ${totalInvoices} invoices, ${totalSalesReceipts} sales receipts, ${totalJournalEntries} journal entries, ${totalCreditCardCredits} credit card credits, ${totalVendorCredits} vendor credits)`,
+        message: `Synced ${totalExpenses} transactions from QuickBooks (${totalPurchases} purchases, ${totalBills} bills, ${totalInvoices} invoices, ${totalSalesReceipts} sales receipts, ${totalJournalEntries} journal entries, ${totalCreditCardCredits} credit card credits, ${totalVendorCredits} vendor credits, ${totalDeposits} deposits)`,
         transactionCount: totalExpenses,
         purchases: totalPurchases,
         bills: totalBills,
@@ -822,6 +932,7 @@ Deno.serve(async (req) => {
         journalEntries: totalJournalEntries,
         creditCardCredits: totalCreditCardCredits,
         vendorCredits: totalVendorCredits,
+        deposits: totalDeposits,
         errors: errorCount,
         startDate: startDate
       }),
