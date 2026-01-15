@@ -1211,7 +1211,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
             </div>
           )}
 
-          {/* Sales Trend Chart */}
+          {/* Sales Trend Chart - nivo ResponsiveLine */}
           {chartData.length > 1 && hasVariation && (
             <div className="mb-6">
               <h3 className="text-sm font-semibold text-white mb-3 flex items-center">
