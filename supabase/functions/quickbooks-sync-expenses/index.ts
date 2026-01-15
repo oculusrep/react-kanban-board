@@ -153,6 +153,26 @@ interface QBDeposit {
   PrivateNote?: string
 }
 
+// BillPayment - records when a Bill is paid (for Cash basis accounting)
+interface QBBillPaymentLine {
+  Amount: number
+  LinkedTxn: Array<{
+    TxnId: string      // Bill ID being paid
+    TxnType: 'Bill'    // Always 'Bill' for BillPayment
+  }>
+}
+
+interface QBBillPayment {
+  Id: string
+  SyncToken: string
+  TxnDate: string        // Payment date - THIS is what we need for Cash basis
+  TotalAmt: number
+  VendorRef?: { name: string; value: string }
+  Line: QBBillPaymentLine[]
+  PayType: 'Check' | 'CreditCard'  // Payment method
+  PrivateNote?: string
+}
+
 interface QBQueryResponse<T> {
   QueryResponse: {
     Purchase?: T[]
@@ -163,6 +183,7 @@ interface QBQueryResponse<T> {
     CreditCardCredit?: T[]
     VendorCredit?: T[]
     Deposit?: T[]
+    BillPayment?: T[]
     startPosition?: number
     maxResults?: number
     totalCount?: number
@@ -921,6 +942,74 @@ Deno.serve(async (req) => {
       console.error('Error fetching deposits:', err.message)
     }
 
+    // ============================================
+    // Fetch BillPayment transactions with pagination
+    // BillPayments record when Bills are paid - critical for Cash basis accounting
+    // We use these to update the payment_date on the original Bill records
+    // ============================================
+    console.log('Fetching BillPayment transactions...')
+    let billPaymentStartPosition = 1
+    let totalBillPayments = 0
+    let billsUpdated = 0
+
+    try {
+      while (true) {
+        const billPaymentQuery = `SELECT * FROM BillPayment WHERE TxnDate >= '${startDate}' ORDERBY TxnDate DESC STARTPOSITION ${billPaymentStartPosition} MAXRESULTS ${PAGE_SIZE}`
+
+        const billPaymentResult = await qbApiRequest<QBQueryResponse<QBBillPayment>>(
+          connection,
+          'GET',
+          `query?query=${encodeURIComponent(billPaymentQuery)}`
+        )
+
+        const billPayments = billPaymentResult.QueryResponse.BillPayment || []
+        console.log(`Fetched ${billPayments.length} BillPayment transactions (starting at ${billPaymentStartPosition})`)
+
+        if (billPayments.length === 0) break
+
+        // Process each BillPayment to update the payment_date on related Bills
+        for (const payment of billPayments) {
+          const paymentDate = payment.TxnDate
+
+          // Each BillPayment can pay multiple Bills
+          for (const line of payment.Line) {
+            if (line.LinkedTxn) {
+              for (const linked of line.LinkedTxn) {
+                if (linked.TxnType === 'Bill' && linked.TxnId) {
+                  // Update all qb_expense records for this Bill with the payment date
+                  // Bills are stored with qb_transaction_id like 'bill_{id}_line{num}'
+                  const { data: updated, error: updateError } = await supabaseClient
+                    .from('qb_expense')
+                    .update({
+                      is_paid: true,
+                      payment_date: paymentDate
+                    })
+                    .eq('qb_entity_type', 'Bill')
+                    .eq('qb_entity_id', linked.TxnId)
+
+                  if (updateError) {
+                    console.error(`Error updating Bill ${linked.TxnId} with payment date:`, updateError)
+                    errorCount++
+                  } else {
+                    billsUpdated++
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        totalBillPayments += billPayments.length
+
+        if (billPayments.length < PAGE_SIZE) break
+
+        billPaymentStartPosition += PAGE_SIZE
+      }
+      console.log(`Total BillPayment transactions fetched: ${totalBillPayments}, Bills updated with payment dates: ${billsUpdated}`)
+    } catch (err: any) {
+      console.error('Error fetching bill payments:', err.message)
+    }
+
     // Log the sync
     await logSync(
       supabaseClient,
@@ -936,7 +1025,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Synced ${totalExpenses} transactions from QuickBooks (${totalPurchases} purchases, ${totalBills} bills, ${totalInvoices} invoices, ${totalSalesReceipts} sales receipts, ${totalJournalEntries} journal entries, ${totalCreditCardCredits} credit card credits, ${totalVendorCredits} vendor credits, ${totalDeposits} deposits)`,
+        message: `Synced ${totalExpenses} transactions from QuickBooks (${totalPurchases} purchases, ${totalBills} bills, ${totalInvoices} invoices, ${totalSalesReceipts} sales receipts, ${totalJournalEntries} journal entries, ${totalCreditCardCredits} credit card credits, ${totalVendorCredits} vendor credits, ${totalDeposits} deposits, ${totalBillPayments} bill payments)`,
         transactionCount: totalExpenses,
         purchases: totalPurchases,
         bills: totalBills,
@@ -946,6 +1035,8 @@ Deno.serve(async (req) => {
         creditCardCredits: totalCreditCardCredits,
         vendorCredits: totalVendorCredits,
         deposits: totalDeposits,
+        billPayments: totalBillPayments,
+        billsUpdatedWithPaymentDate: billsUpdated,
         errors: errorCount,
         startDate: startDate
       }),

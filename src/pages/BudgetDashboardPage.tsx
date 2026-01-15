@@ -48,6 +48,7 @@ interface QBExpense {
   // Payment tracking fields
   is_paid?: boolean | null;  // true=paid, false=unpaid, null=immediate (Purchase/SalesReceipt)
   balance?: number | null;
+  payment_date?: string | null;  // Date the Bill was paid (for Cash basis)
 }
 
 interface QBItem {
@@ -186,25 +187,97 @@ export default function BudgetDashboardPage() {
       }
 
       // Fetch expenses for the selected period with pagination
+      // For Cash basis, we need a more complex query:
+      // - Non-Bill transactions: use transaction_date
+      // - Bill transactions: use payment_date (when the bill was paid)
       let allExpenses: QBExpense[] = [];
       let page = 0;
       const pageSize = 1000;
 
-      while (true) {
-        const { data: expenseData, error: expenseError } = await supabase
-          .from('qb_expense')
-          .select('*')
-          .gte('transaction_date', startDate)
-          .lt('transaction_date', endDate)
-          .order('transaction_date', { ascending: false })
-          .order('id', { ascending: true })
-          .range(page * pageSize, (page + 1) * pageSize - 1);
+      if (accountingBasis === 'Accrual') {
+        // Accrual basis: simple date filter on transaction_date
+        while (true) {
+          const { data: expenseData, error: expenseError } = await supabase
+            .from('qb_expense')
+            .select('*')
+            .gte('transaction_date', startDate)
+            .lt('transaction_date', endDate)
+            .order('transaction_date', { ascending: false })
+            .order('id', { ascending: true })
+            .range(page * pageSize, (page + 1) * pageSize - 1);
 
-        if (expenseError) throw expenseError;
-        if (!expenseData || expenseData.length === 0) break;
-        allExpenses = [...allExpenses, ...expenseData];
-        if (expenseData.length < pageSize) break;
-        page++;
+          if (expenseError) throw expenseError;
+          if (!expenseData || expenseData.length === 0) break;
+          allExpenses = [...allExpenses, ...expenseData];
+          if (expenseData.length < pageSize) break;
+          page++;
+        }
+      } else {
+        // Cash basis: different date columns for different transaction types
+        // 1. Non-Bill/Invoice transactions use transaction_date
+        page = 0;
+        while (true) {
+          const { data: expenseData, error: expenseError } = await supabase
+            .from('qb_expense')
+            .select('*')
+            .not('transaction_type', 'eq', 'Bill')
+            .not('transaction_type', 'eq', 'Invoice')
+            .gte('transaction_date', startDate)
+            .lt('transaction_date', endDate)
+            .order('transaction_date', { ascending: false })
+            .order('id', { ascending: true })
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+
+          if (expenseError) throw expenseError;
+          if (!expenseData || expenseData.length === 0) break;
+          allExpenses = [...allExpenses, ...expenseData];
+          if (expenseData.length < pageSize) break;
+          page++;
+        }
+
+        // 2. Bill transactions that were PAID in the period (use payment_date)
+        page = 0;
+        while (true) {
+          const { data: billData, error: billError } = await supabase
+            .from('qb_expense')
+            .select('*')
+            .eq('transaction_type', 'Bill')
+            .eq('is_paid', true)
+            .gte('payment_date', startDate)
+            .lt('payment_date', endDate)
+            .order('payment_date', { ascending: false })
+            .order('id', { ascending: true })
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+
+          if (billError) throw billError;
+          if (!billData || billData.length === 0) break;
+          allExpenses = [...allExpenses, ...billData];
+          if (billData.length < pageSize) break;
+          page++;
+        }
+
+        // 3. Invoice transactions that were PAID in the period (use payment_date)
+        // Note: We'd need to sync Payment transactions from QBO to track invoice payments
+        // For now, include paid invoices by transaction_date (same as before)
+        page = 0;
+        while (true) {
+          const { data: invoiceData, error: invoiceError } = await supabase
+            .from('qb_expense')
+            .select('*')
+            .eq('transaction_type', 'Invoice')
+            .eq('is_paid', true)
+            .gte('transaction_date', startDate)
+            .lt('transaction_date', endDate)
+            .order('transaction_date', { ascending: false })
+            .order('id', { ascending: true })
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+
+          if (invoiceError) throw invoiceError;
+          if (!invoiceData || invoiceData.length === 0) break;
+          allExpenses = [...allExpenses, ...invoiceData];
+          if (invoiceData.length < pageSize) break;
+          page++;
+        }
       }
 
       setExpenses(allExpenses);
@@ -281,24 +354,9 @@ export default function BudgetDashboardPage() {
   };
 
   const buildPLStructure = (accountList: QBAccount[], expenseList: QBExpense[], itemList: QBItem[], basis: 'Accrual' | 'Cash') => {
-    // For Cash basis, filter out unpaid transactions:
-    // - Bills with is_paid=false: expenses not yet paid
-    // - Invoices with is_paid=false: income not yet collected
-    // - If is_paid is null/undefined (not synced yet), include by default to avoid breaking P&L
-    // Purchases, SalesReceipts, etc. are always "paid" immediately (is_paid=null)
-    let filteredExpenses = expenseList;
-    if (basis === 'Cash') {
-      filteredExpenses = expenseList.filter(expense => {
-        // Bills and Invoices: check is_paid status
-        if (expense.transaction_type === 'Bill' || expense.transaction_type === 'Invoice') {
-          // If is_paid is explicitly false, exclude (unpaid)
-          if (expense.is_paid === false) return false;
-          // If is_paid is null/undefined (not synced yet), include by default
-          // Once payment tracking is synced, is_paid will be true for paid transactions
-        }
-        return true;
-      });
-    }
+    // Note: Cash basis filtering is now done at the query level in fetchData()
+    // - For Cash basis, Bills are fetched by payment_date (when paid) not transaction_date
+    // - Unpaid Bills/Invoices are excluded at query time
     // Build item-to-income-account map for Invoice/SalesReceipt transactions
     // In QBO, Invoices reference Items (products/services), not accounts directly.
     // Items have an IncomeAccountRef that maps to the actual Income account.
@@ -314,7 +372,7 @@ export default function BudgetDashboardPage() {
 
     // Group expenses by account, mapping invoice items to their income accounts
     const expensesByAccount = new Map<string, QBExpense[]>();
-    for (const expense of filteredExpenses) {
+    for (const expense of expenseList) {
       let accountId = expense.account_id;
 
       // For Invoice and SalesReceipt transactions, the account_id is actually an Item ID
@@ -336,8 +394,27 @@ export default function BudgetDashboardPage() {
       const filteredAccounts = accounts.filter(a => accountTypes.includes(a.account_type));
       const categoryMap = new Map<string, PLCategory>();
 
+      // Build a map from fully_qualified_name to account for quick lookup
+      // This helps us find accounts that are "parents" but also have direct transactions
+      const accountByFQN = new Map<string, QBAccount>();
+      for (const account of filteredAccounts) {
+        accountByFQN.set(account.fully_qualified_name, account);
+      }
+
       // Check if we're building income accounts (need to normalize Purchase/Bill amounts)
       const isIncomeSection = accountTypes.includes('Income') || accountTypes.includes('Other Income');
+
+      // Helper to calculate amount for transactions with proper sign handling
+      const calculateAmount = (transactions: QBExpense[]) => {
+        return transactions.reduce((sum, t) => {
+          let txnAmount = t.amount;
+          // For income accounts, flip the sign on Purchase/Bill transactions
+          if (isIncomeSection && (t.transaction_type === 'Purchase' || t.transaction_type === 'Bill')) {
+            txnAmount = -txnAmount;
+          }
+          return sum + txnAmount;
+        }, 0);
+      };
 
       // First pass: create all categories including parents
       for (const account of filteredAccounts) {
@@ -351,31 +428,25 @@ export default function BudgetDashboardPage() {
 
           if (!categoryMap.has(currentPath)) {
             const isLeaf = i === parts.length - 1;
-            const transactions = isLeaf ? (expensesByAccount.get(account.qb_account_id) || []) : [];
 
-            // Calculate amount with proper sign handling
-            // For Income accounts: Purchase/Bill with negative amount = positive income
-            // (e.g., a rebate or fee recorded as a negative expense is actually income)
-            const amount = transactions.reduce((sum, t) => {
-              let txnAmount = t.amount;
+            // Check if this path corresponds to an actual account (even if it's a parent)
+            // In QBO, a parent account CAN have its own direct transactions
+            const accountAtPath = accountByFQN.get(currentPath);
+            const hasOwnAccount = !!accountAtPath;
 
-              // For income accounts, flip the sign on Purchase/Bill transactions
-              // because QBO records income via expense accounts as negative expenses
-              if (isIncomeSection && (t.transaction_type === 'Purchase' || t.transaction_type === 'Bill')) {
-                txnAmount = -txnAmount;  // Flip: -500 becomes +500
-              }
-
-              return sum + txnAmount;
-            }, 0);
+            // Get transactions for this path if it's a real account
+            const transactions = hasOwnAccount ? (expensesByAccount.get(accountAtPath.qb_account_id) || []) : [];
+            const amount = calculateAmount(transactions);
 
             categoryMap.set(currentPath, {
               name: part,
               fullPath: currentPath,
-              account: isLeaf ? account : undefined,
+              account: hasOwnAccount ? accountAtPath : undefined,
               amount: amount,
-              budgetAmount: isLeaf ? (account.budget_amount || 0) : 0,
+              budgetAmount: hasOwnAccount ? (accountAtPath.budget_amount || 0) : 0,
               transactions: transactions,
               children: [],
+              // It's a parent if it has children (not the last segment), even if it also has its own transactions
               isParent: !isLeaf,
               depth: i
             });
@@ -1330,19 +1401,25 @@ export default function BudgetDashboardPage() {
                     // Build account comparison for expanded view
                     const accountComparison: { name: string; ovis: number; qbo: number; diff: number }[] = [];
                     if (canExpand && ovisSection) {
-                      // Get all leaf accounts from OVIS
-                      const getLeafAccounts = (categories: PLCategory[]): { name: string; amount: number }[] => {
+                      // Get all accounts with their OWN transactions (not rolled-up totals)
+                      // This includes parent accounts that have direct transactions
+                      const getAccountsWithTransactions = (categories: PLCategory[]): { name: string; amount: number }[] => {
                         const result: { name: string; amount: number }[] = [];
                         for (const cat of categories) {
+                          // Include this account if it has its own transactions (not just rolled-up from children)
+                          if (cat.transactions.length > 0) {
+                            // Calculate amount from just this account's transactions (not including children)
+                            const ownAmount = cat.transactions.reduce((sum, t) => sum + t.amount, 0);
+                            result.push({ name: cat.fullPath, amount: ownAmount });
+                          }
+                          // Recursively get children
                           if (cat.children.length > 0) {
-                            result.push(...getLeafAccounts(cat.children));
-                          } else {
-                            result.push({ name: cat.fullPath, amount: cat.amount });
+                            result.push(...getAccountsWithTransactions(cat.children));
                           }
                         }
                         return result;
                       };
-                      const ovisAccounts = getLeafAccounts(ovisSection.categories);
+                      const ovisAccounts = getAccountsWithTransactions(ovisSection.categories);
 
                       // Build full path for QBO items
                       const qboAccountMap = new Map<string, number>();
