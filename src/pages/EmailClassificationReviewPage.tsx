@@ -88,6 +88,7 @@ const EmailClassificationReviewPage: React.FC = () => {
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [reclassifying, setReclassifying] = useState(false);
 
   // Correction modal state
   const [correctionModal, setCorrectionModal] = useState<CorrectionModalState>({
@@ -313,6 +314,98 @@ const EmailClassificationReviewPage: React.FC = () => {
   useEffect(() => {
     fetchEmails();
   }, [fetchEmails]);
+
+  // Re-classify emails: Reset AI status, clear links, and re-run AI triage
+  // This allows the AI to learn from your corrections and re-assess the current emails
+  const handleReclassify = async () => {
+    // Use the currently displayed/filtered emails
+    if (emails.length === 0) {
+      alert('No emails to re-classify in current view');
+      return;
+    }
+
+    const emailCount = emails.length;
+    if (!confirm(`Re-classify ${emailCount} email${emailCount > 1 ? 's' : ''} in the current view?\n\nThis will:\n• Clear existing AI classifications\n• Re-run AI analysis with your recent corrections\n• Apply any new rules you've created`)) {
+      return;
+    }
+
+    setReclassifying(true);
+    try {
+      const emailIds = emails.map(e => e.id);
+
+      // Step 1: Delete existing AI-generated links for these emails
+      // Keep manual links (link_source = 'manual') as those are user-verified
+      const { error: deleteLinksError } = await supabase
+        .from('email_object_link')
+        .delete()
+        .in('email_id', emailIds)
+        .eq('link_source', 'ai_agent');
+
+      if (deleteLinksError) {
+        console.error('Error deleting AI links:', deleteLinksError);
+        throw new Error('Failed to clear existing classifications');
+      }
+
+      // Step 2: Reset ai_processed flag so triage will pick them up
+      const { error: updateError } = await supabase
+        .from('emails')
+        .update({
+          ai_processed: false,
+          ai_processed_at: null
+        })
+        .in('id', emailIds);
+
+      if (updateError) {
+        console.error('Error resetting emails:', updateError);
+        throw new Error('Failed to reset email status');
+      }
+
+      // Step 3: Trigger the email-triage function to re-process
+      // We'll call it multiple times since it processes in batches
+      let processedCount = 0;
+      const maxAttempts = Math.ceil(emailCount / 5) + 1; // batch size is 5
+
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const { data: session } = await supabase.auth.getSession();
+        if (!session?.session?.access_token) break;
+
+        const response = await supabase.functions.invoke('email-triage', {
+          headers: {
+            Authorization: `Bearer ${session.session.access_token}`,
+          },
+        });
+
+        if (response.error) {
+          console.error('Triage error:', response.error);
+          break;
+        }
+
+        const result = response.data;
+        if (!result?.processed || result.processed === 0) {
+          break; // No more emails to process
+        }
+
+        processedCount += result.processed;
+        console.log(`Re-classified batch: ${result.processed} emails (total: ${processedCount})`);
+
+        // Small delay between batches to avoid rate limiting
+        if (attempt < maxAttempts - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
+      console.log(`Re-classification complete: ${processedCount} emails processed`);
+
+      // Step 4: Refresh the email list
+      await fetchEmails();
+
+    } catch (err: any) {
+      console.error('Re-classify error:', err);
+      alert(err.message || 'Failed to re-classify emails');
+    } finally {
+      setReclassifying(false);
+    }
+  };
 
   const handleRemoveLink = async (linkId: string, emailId: string) => {
     if (!confirm('Remove this classification?')) return;
@@ -1060,11 +1153,20 @@ const EmailClassificationReviewPage: React.FC = () => {
             </Link>
             <button
               onClick={() => fetchEmails()}
-              disabled={loading}
+              disabled={loading || reclassifying}
               className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
             >
               <ArrowPathIcon className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Refresh
+            </button>
+            <button
+              onClick={handleReclassify}
+              disabled={loading || reclassifying || emails.length === 0}
+              className="inline-flex items-center px-3 py-2 border border-purple-300 text-sm font-medium rounded-md text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-50"
+              title="Re-run AI classification on current emails using your corrections"
+            >
+              <SparklesIcon className={`w-4 h-4 mr-2 ${reclassifying ? 'animate-pulse' : ''}`} />
+              {reclassifying ? 'Re-classifying...' : 'Re-classify'}
             </button>
           </div>
         </div>
