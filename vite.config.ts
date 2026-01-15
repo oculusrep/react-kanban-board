@@ -27,6 +27,15 @@ export default defineConfig({
     commonjsOptions: {
       include: [/node_modules/],
       transformMixedEsModules: true
+    },
+rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('@nivo') || id.includes('@react-spring') || id.includes('d3-')) {
+            return 'charts';
+          }
+        }
+      }
     }
   }
 });
