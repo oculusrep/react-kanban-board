@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from '../layers/LayerManager';
 import { usePropertyRecordTypes } from '../../../hooks/usePropertyRecordTypes';
@@ -29,9 +29,7 @@ import AutosaveIndicator from '../../AutosaveIndicator';
 import EmailComposerModal from '../../EmailComposerModal';
 import { useSiteSubmitEmail } from '../../../hooks/useSiteSubmitEmail';
 import RecordMetadata from '../../RecordMetadata';
-
-// Lazy load the chart component to avoid bundling issues with nivo/d3
-const SalesTrendChart = lazy(() => import('../../charts/SalesTrendChart'));
+import SalesTrendChart from '../../charts/SalesTrendChart';
 
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
@@ -1238,13 +1236,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                 />
 
                 <div className="relative h-full">
-                  <Suspense fallback={
-                    <div className="flex items-center justify-center h-full">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500"></div>
-                    </div>
-                  }>
-                    <SalesTrendChart data={chartData} />
-                  </Suspense>
+                  <SalesTrendChart data={chartData} />
                 </div>
               </div>
             </div>
