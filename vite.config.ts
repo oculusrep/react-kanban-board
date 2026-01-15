@@ -28,14 +28,7 @@ export default defineConfig({
       include: [/node_modules/],
       transformMixedEsModules: true
     },
-rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes('@nivo') || id.includes('@react-spring') || id.includes('d3-')) {
-            return 'charts';
-          }
-        }
-      }
-    }
+    minify: 'esbuild',
+    target: 'es2020'
   }
 });
