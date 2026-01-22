@@ -1410,10 +1410,12 @@ const MappingPageContent: React.FC = () => {
   };
 
   // Property layer configuration (memoized to prevent infinite re-renders)
+  // Using viewport-based mode for better performance with large datasets
   const propertyLoadingConfig: PropertyLoadingConfig = useMemo(() => ({
-    mode: 'static-all',
-    clusterConfig: clusterConfig
-  }), [clusterConfig]);
+    mode: 'viewport-based',
+    clusterConfig: clusterConfig,
+    markerStyle: markerStyle
+  }), [clusterConfig, markerStyle]);
 
   // Site submit layer configuration (memoized to prevent infinite re-renders)
   // When a client is selected, use client-filtered mode
