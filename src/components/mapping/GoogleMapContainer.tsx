@@ -659,6 +659,16 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
 
         console.log('✅ Google Maps API loaded successfully');
 
+        // Pre-load marker library immediately after Google Maps loads
+        // This ensures the library is ready before any markers are created
+        // and prevents race conditions with other libraries
+        try {
+          await google.maps.importLibrary('marker');
+          console.log('✅ Google Maps marker library pre-loaded');
+        } catch (markerErr) {
+          console.warn('⚠️ Failed to pre-load marker library:', markerErr);
+        }
+
         // Verify DOM element exists before creating map
         if (!mapRef.current) {
           throw new Error('Map container element not found');

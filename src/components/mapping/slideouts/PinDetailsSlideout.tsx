@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLayerManager } from '../layers/LayerManager';
 import { usePropertyRecordTypes } from '../../../hooks/usePropertyRecordTypes';
@@ -29,9 +29,7 @@ import AutosaveIndicator from '../../AutosaveIndicator';
 import EmailComposerModal from '../../EmailComposerModal';
 import { useSiteSubmitEmail } from '../../../hooks/useSiteSubmitEmail';
 import RecordMetadata from '../../RecordMetadata';
-
-// Lazy load the chart component to avoid bundling issues
-const SalesTrendChart = lazy(() => import('../../charts/SalesTrendChart'));
+import SalesTrendChart from '../../charts/SalesTrendChart';
 
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
@@ -1213,7 +1211,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
             </div>
           )}
 
-          {/* Sales Trend Chart - Lazy loaded to avoid bundling issues */}
+          {/* Sales Trend Chart */}
           {chartData.length > 1 && hasVariation && (
             <div className="mb-6">
               <h3 className="text-sm font-semibold text-white mb-3 flex items-center">
@@ -1221,19 +1219,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                   📈 Sales Performance
                 </span>
               </h3>
-              <Suspense fallback={
-                <div
-                  className="relative p-8 rounded-3xl overflow-hidden shadow-2xl flex items-center justify-center"
-                  style={{
-                    height: 340,
-                    background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)'
-                  }}
-                >
-                  <div className="text-gray-400">Loading chart...</div>
-                </div>
-              }>
-                <SalesTrendChart data={chartData} formatSalesValue={formatSalesValue} />
-              </Suspense>
+              <SalesTrendChart data={chartData} formatSalesValue={formatSalesValue} />
             </div>
           )}
 
