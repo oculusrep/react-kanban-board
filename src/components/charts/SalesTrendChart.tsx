@@ -1,12 +1,4 @@
-import React from 'react';
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer
-} from 'recharts';
+import React, { useRef, useEffect } from 'react';
 
 interface ChartDataPoint {
   year: string;
@@ -19,10 +11,166 @@ interface SalesTrendChartProps {
   formatSalesValue: (value: number) => string;
 }
 
+/**
+ * Pure Canvas-based chart component - no d3 or recharts dependencies
+ * This avoids bundling conflicts with Google Maps AdvancedMarkerElement
+ */
 const SalesTrendChart: React.FC<SalesTrendChartProps> = ({ data, formatSalesValue }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container || data.length === 0) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Get device pixel ratio for crisp rendering
+    const dpr = window.devicePixelRatio || 1;
+    const rect = container.getBoundingClientRect();
+
+    // Set canvas size accounting for device pixel ratio
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    canvas.style.width = `${rect.width}px`;
+    canvas.style.height = `${rect.height}px`;
+    ctx.scale(dpr, dpr);
+
+    const width = rect.width;
+    const height = rect.height;
+    const padding = { top: 30, right: 30, bottom: 50, left: 80 };
+    const chartWidth = width - padding.left - padding.right;
+    const chartHeight = height - padding.top - padding.bottom;
+
+    // Clear canvas
+    ctx.clearRect(0, 0, width, height);
+
+    // Find min/max values
+    const values = data.map(d => d.sales);
+    const minVal = Math.min(...values) * 0.9;
+    const maxVal = Math.max(...values) * 1.1;
+    const range = maxVal - minVal;
+
+    // Helper to convert data to canvas coordinates
+    const getX = (index: number) => padding.left + (index / (data.length - 1)) * chartWidth;
+    const getY = (value: number) => padding.top + chartHeight - ((value - minVal) / range) * chartHeight;
+
+    // Draw gradient fill under the line
+    const gradient = ctx.createLinearGradient(0, padding.top, 0, height - padding.bottom);
+    gradient.addColorStop(0, 'rgba(251, 146, 60, 0.4)');
+    gradient.addColorStop(0.5, 'rgba(249, 115, 22, 0.2)');
+    gradient.addColorStop(1, 'rgba(234, 88, 12, 0)');
+
+    ctx.beginPath();
+    ctx.moveTo(getX(0), height - padding.bottom);
+    data.forEach((d, i) => {
+      ctx.lineTo(getX(i), getY(d.sales));
+    });
+    ctx.lineTo(getX(data.length - 1), height - padding.bottom);
+    ctx.closePath();
+    ctx.fillStyle = gradient;
+    ctx.fill();
+
+    // Draw the line with smooth curves (cardinal spline approximation)
+    ctx.beginPath();
+    ctx.strokeStyle = '#fb923c';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Simple smooth curve using quadratic bezier
+    data.forEach((d, i) => {
+      const x = getX(i);
+      const y = getY(d.sales);
+
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        const prevX = getX(i - 1);
+        const prevY = getY(data[i - 1].sales);
+        const cpX = (prevX + x) / 2;
+        ctx.quadraticCurveTo(prevX + (x - prevX) * 0.5, prevY, cpX, (prevY + y) / 2);
+        ctx.quadraticCurveTo(cpX, y, x, y);
+      }
+    });
+    ctx.stroke();
+
+    // Draw data points
+    data.forEach((d, i) => {
+      const x = getX(i);
+      const y = getY(d.sales);
+
+      // Outer circle (orange)
+      ctx.beginPath();
+      ctx.arc(x, y, 7, 0, Math.PI * 2);
+      ctx.fillStyle = '#fb923c';
+      ctx.fill();
+
+      // Inner circle (yellow)
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fill();
+    });
+
+    // Draw axes
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 2;
+
+    // X axis
+    ctx.beginPath();
+    ctx.moveTo(padding.left, height - padding.bottom);
+    ctx.lineTo(width - padding.right, height - padding.bottom);
+    ctx.stroke();
+
+    // Y axis
+    ctx.beginPath();
+    ctx.moveTo(padding.left, padding.top);
+    ctx.lineTo(padding.left, height - padding.bottom);
+    ctx.stroke();
+
+    // X axis labels (years)
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '600 11px system-ui, -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    data.forEach((d, i) => {
+      ctx.fillText(d.year, getX(i), height - padding.bottom + 20);
+    });
+
+    // X axis title
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '700 12px system-ui, -apple-system, sans-serif';
+    ctx.fillText('Year', width / 2, height - 10);
+
+    // Y axis labels
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '600 11px system-ui, -apple-system, sans-serif';
+    const yTicks = 5;
+    for (let i = 0; i <= yTicks; i++) {
+      const value = minVal + (range * i / yTicks);
+      const y = getY(value);
+      ctx.fillText(formatSalesValue(value), padding.left - 10, y + 4);
+    }
+
+    // Y axis title
+    ctx.save();
+    ctx.translate(20, height / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '700 12px system-ui, -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Revenue', 0, 0);
+    ctx.restore();
+
+  }, [data, formatSalesValue]);
+
   return (
     <div
-      className="relative p-8 rounded-3xl overflow-hidden shadow-2xl"
+      ref={containerRef}
+      className="relative rounded-3xl overflow-hidden shadow-2xl"
       style={{
         height: 340,
         background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)'
@@ -45,94 +193,11 @@ const SalesTrendChart: React.FC<SalesTrendChartProps> = ({ data, formatSalesValu
         }}
       />
 
-      <div className="relative h-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart
-            data={data}
-            margin={{ top: 20, right: 30, bottom: 50, left: 80 }}
-          >
-            <defs>
-              <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#fb923c" stopOpacity={0.4} />
-                <stop offset="50%" stopColor="#f97316" stopOpacity={0.2} />
-                <stop offset="100%" stopColor="#ea580c" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <XAxis
-              dataKey="year"
-              axisLine={{ stroke: '#334155', strokeWidth: 2 }}
-              tickLine={false}
-              tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }}
-              label={{
-                value: 'Year',
-                position: 'bottom',
-                offset: 30,
-                fill: '#cbd5e1',
-                fontSize: 12,
-                fontWeight: 700
-              }}
-            />
-            <YAxis
-              axisLine={{ stroke: '#334155', strokeWidth: 2 }}
-              tickLine={false}
-              tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }}
-              tickFormatter={(value) => formatSalesValue(value)}
-              label={{
-                value: 'Revenue',
-                angle: -90,
-                position: 'insideLeft',
-                offset: -60,
-                fill: '#cbd5e1',
-                fontSize: 12,
-                fontWeight: 700
-              }}
-            />
-            <Tooltip
-              content={({ active, payload }) => {
-                if (active && payload && payload.length) {
-                  const tooltipData = payload[0].payload;
-                  return (
-                    <div
-                      className="px-5 py-4 rounded-2xl shadow-2xl"
-                      style={{
-                        background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.98) 0%, rgba(15, 23, 42, 0.98) 100%)',
-                        border: '2px solid rgba(251, 146, 60, 0.5)',
-                        backdropFilter: 'blur(10px)'
-                      }}
-                    >
-                      <div className="text-xs font-bold text-orange-300 uppercase tracking-widest mb-2 flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
-                        {tooltipData.year}
-                      </div>
-                      <div
-                        className="text-3xl font-black tracking-tight"
-                        style={{
-                          background: 'linear-gradient(135deg, #fb923c 0%, #f97316 50%, #ea580c 100%)',
-                          WebkitBackgroundClip: 'text',
-                          WebkitTextFillColor: 'transparent',
-                          backgroundClip: 'text'
-                        }}
-                      >
-                        {formatSalesValue(tooltipData.sales)}
-                      </div>
-                    </div>
-                  );
-                }
-                return null;
-              }}
-            />
-            <Area
-              type="cardinal"
-              dataKey="sales"
-              stroke="#fb923c"
-              strokeWidth={5}
-              fill="url(#salesGradient)"
-              dot={{ fill: '#fbbf24', stroke: '#fb923c', strokeWidth: 3, r: 5 }}
-              activeDot={{ fill: '#fbbf24', stroke: '#fb923c', strokeWidth: 3, r: 7 }}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
+      <canvas
+        ref={canvasRef}
+        className="relative w-full h-full"
+        style={{ display: 'block' }}
+      />
     </div>
   );
 };
