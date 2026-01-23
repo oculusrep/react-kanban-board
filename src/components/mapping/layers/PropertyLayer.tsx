@@ -78,7 +78,8 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   // Viewport-based loading refs
   const lastFetchBoundsRef = useRef<string | null>(null);
   const fetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const visibleMarkersRef = useRef<Map<string, MarkerType>>(new Map());
+  const markersByPropertyId = useRef<Map<string, MarkerType>>(new Map());
+  const previousSelectedId = useRef<string | null>(null);
 
   // Get marker style settings with defaults
   const markerStyle = loadingConfig.markerStyle || {
@@ -594,8 +595,8 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     return marker;
   };
 
-  // Create markers for visible properties (virtualized)
-  const createMarkers = async () => {
+  // Create markers for visible properties (incremental updates to avoid flickering)
+  const createMarkers = async (forceRecreateAll: boolean = false) => {
     if (!map) return;
 
     // Load marker library if using advanced markers
@@ -608,10 +609,6 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       }
     }
 
-    // Clear existing markers
-    markers.forEach(marker => setMarkerMap(marker, null));
-    visibleMarkersRef.current.clear();
-
     const useAdvanced = markerStyle.useAdvancedMarkers && markerLibraryLoaded;
 
     // Filter out recently created properties (they get session markers)
@@ -619,23 +616,85 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       property => !recentlyCreatedIds.has(property.id)
     );
 
+    // Build set of current property IDs
+    const currentPropertyIds = new Set(filteredProperties.map(p => p.id));
+
+    // Check if selected property changed
+    const selectionChanged = previousSelectedId.current !== selectedPropertyId;
+    previousSelectedId.current = selectedPropertyId;
+
+    // If force recreate or marker style changed, clear everything
+    if (forceRecreateAll) {
+      markers.forEach(marker => setMarkerMap(marker, null));
+      markersByPropertyId.current.clear();
+    }
+
+    // Remove markers for properties no longer in viewport (but keep selected marker)
+    const markersToRemove: string[] = [];
+    markersByPropertyId.current.forEach((marker, propertyId) => {
+      if (!currentPropertyIds.has(propertyId)) {
+        // Don't remove the selected marker even if it's outside viewport
+        if (propertyId !== selectedPropertyId) {
+          setMarkerMap(marker, null);
+          markersToRemove.push(propertyId);
+        }
+      }
+    });
+    markersToRemove.forEach(id => markersByPropertyId.current.delete(id));
+
+    // Track which markers need updates
     let newSelectedMarker: MarkerType | null = null;
-    const newMarkers: MarkerType[] = [];
+    const allMarkers: MarkerType[] = [];
+    let created = 0;
+    let reused = 0;
 
     for (const property of filteredProperties) {
-      const marker = createPropertyMarker(property, useAdvanced);
-      if (marker) {
-        newMarkers.push(marker);
-        visibleMarkersRef.current.set(property.id, marker);
+      const existingMarker = markersByPropertyId.current.get(property.id);
+      const isSelected = selectedPropertyId === property.id;
+      const wasSelected = selectionChanged && previousSelectedId.current === property.id;
 
-        if (selectedPropertyId === property.id) {
-          newSelectedMarker = marker;
+      // Reuse existing marker if:
+      // 1. It exists AND
+      // 2. Selection state hasn't changed for this marker AND
+      // 3. It's not being verified
+      const needsRecreate = !existingMarker ||
+        (isSelected && selectionChanged) ||
+        (wasSelected && selectionChanged) ||
+        verifyingPropertyId === property.id;
+
+      if (existingMarker && !needsRecreate) {
+        // Reuse existing marker
+        allMarkers.push(existingMarker);
+        if (isSelected) {
+          newSelectedMarker = existingMarker;
+        }
+        reused++;
+      } else {
+        // Remove old marker if it exists
+        if (existingMarker) {
+          setMarkerMap(existingMarker, null);
+          markersByPropertyId.current.delete(property.id);
+        }
+
+        // Create new marker
+        const marker = createPropertyMarker(property, useAdvanced);
+        if (marker) {
+          allMarkers.push(marker);
+          markersByPropertyId.current.set(property.id, marker);
+          if (isSelected) {
+            newSelectedMarker = marker;
+          }
+          created++;
         }
       }
     }
 
-    console.log(`✅ Created ${newMarkers.length} property markers (${useAdvanced ? 'Advanced' : 'Legacy'})`);
-    setMarkers(newMarkers);
+    // Only log if something changed
+    if (created > 0 || markersToRemove.length > 0) {
+      console.log(`📍 Markers: +${created} created, ${reused} reused, -${markersToRemove.length} removed`);
+    }
+
+    setMarkers(allMarkers);
     setSelectedMarker(newSelectedMarker);
   };
 
@@ -804,10 +863,20 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     };
   }, [map, loadingConfig.mode, fetchPropertiesInViewport]);
 
+  // Track previous marker style to detect changes
+  const prevMarkerStyleRef = useRef({ shape: markerStyle.shape, useAdvancedMarkers: markerStyle.useAdvancedMarkers });
+
   // Create markers when properties or dependencies change
   useEffect(() => {
     if (properties.length > 0 || markers.length > 0) {
-      createMarkers();
+      // Force recreate all markers if style changed
+      const styleChanged =
+        prevMarkerStyleRef.current.shape !== markerStyle.shape ||
+        prevMarkerStyleRef.current.useAdvancedMarkers !== markerStyle.useAdvancedMarkers;
+
+      prevMarkerStyleRef.current = { shape: markerStyle.shape, useAdvancedMarkers: markerStyle.useAdvancedMarkers };
+
+      createMarkers(styleChanged);
     }
   }, [properties, map, recentlyCreatedIds, verifyingPropertyId, selectedPropertyId, markerStyle.shape, markerStyle.useAdvancedMarkers, markerLibraryLoaded]);
 
@@ -831,7 +900,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     if (map) {
       setupClustering();
       if (properties.length > 0) {
-        createMarkers();
+        createMarkers(true); // Force recreate when clustering config changes
       }
     }
   }, [map, clusterMinSize, clusterGridSize, clusterMaxZoom]);
@@ -850,6 +919,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       }
       markers.forEach(marker => setMarkerMap(marker, null));
       sessionMarkers.forEach(marker => setMarkerMap(marker, null));
+      markersByPropertyId.current.clear();
       if (fetchDebounceRef.current) {
         clearTimeout(fetchDebounceRef.current);
       }
