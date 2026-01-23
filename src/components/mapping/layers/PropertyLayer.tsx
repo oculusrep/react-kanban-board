@@ -7,6 +7,8 @@ import { Database } from '../../../database-schema';
 import { isTouchDevice } from '../../../utils/deviceDetection';
 import {
   loadMarkerLibrary,
+  getMarkerLibrary,
+  isMarkerLibraryLoaded,
   createPropertyMarkerElement,
   MarkerShape
 } from '../utils/advancedMarkers';
@@ -449,9 +451,10 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
 
     let marker: MarkerType;
 
-    if (useAdvanced && markerLibraryLoaded) {
-      // Create AdvancedMarkerElement
-      const { AdvancedMarkerElement } = google.maps.marker;
+    if (useAdvanced && markerLibraryLoaded && isMarkerLibraryLoaded()) {
+      // Create AdvancedMarkerElement using the cached library (not google.maps.marker directly)
+      const markerLib = getMarkerLibrary();
+      const { AdvancedMarkerElement } = markerLib;
       const content = createPropertyMarkerElement(
         markerType,
         markerStyle.shape,

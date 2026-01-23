@@ -684,12 +684,13 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           console.warn('⚠️ VITE_GOOGLE_MAP_ID not set - AdvancedMarkerElement will not work. Falling back to legacy markers.');
         }
 
-        // Create map instance with muted places styling
-        const map = new google.maps.Map(mapRef.current, {
+        // Create map instance
+        // Note: When mapId is set (for AdvancedMarkerElement), styles must NOT be used
+        // Cloud-based styling via mapId and JSON styles are mutually exclusive
+        const mapOptions: google.maps.MapOptions = {
           center: mapCenter,
           zoom: location ? 12 : 10,
           mapTypeId: google.maps.MapTypeId.ROADMAP,
-          mapId: mapId || undefined, // Required for AdvancedMarkerElement
           mapTypeControl: false, // Disable default map type control
           streetViewControl: true,
           streetViewControlOptions: {
@@ -705,8 +706,17 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
             position: google.maps.ControlPosition.LEFT_TOP,
           },
           gestureHandling: 'greedy',
-          styles: labelsVisible ? createMutedPlacesStyle() : [...createMutedPlacesStyle(), ...createNoPlacesStyle()] // Only apply to road map initially
-        });
+        };
+
+        // Only use mapId OR styles, not both (Google Maps API requirement)
+        if (mapId) {
+          mapOptions.mapId = mapId; // Required for AdvancedMarkerElement, uses cloud-based styling
+        } else {
+          // Fallback to JSON styles when no mapId (legacy mode without AdvancedMarkerElement)
+          mapOptions.styles = labelsVisible ? createMutedPlacesStyle() : [...createMutedPlacesStyle(), ...createNoPlacesStyle()];
+        }
+
+        const map = new google.maps.Map(mapRef.current, mapOptions);
 
         // Add a marker at the center location
         // Use large purple pin for static user location - distinct from:

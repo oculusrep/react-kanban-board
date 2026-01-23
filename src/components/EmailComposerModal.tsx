@@ -1,6 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
+import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+
+// Lazy load ReactQuill to prevent constructor conflicts with Google Maps AdvancedMarkerElement
+const ReactQuill = lazy(() => import('react-quill').then(module => {
+  // Import CSS side effect
+  import('react-quill/dist/quill.snow.css');
+  return module;
+}));
 
 // Custom styles for the email editor
 const editorStyles = `
@@ -369,14 +374,16 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
               </div>
             ) : (
               <div className="border border-gray-300 rounded-md email-editor-wrapper">
-                <ReactQuill
-                  theme="snow"
-                  value={emailBody}
-                  onChange={setEmailBody}
-                  modules={modules}
-                  formats={formats}
-                  style={{ height: '400px' }}
-                />
+                <Suspense fallback={<div className="h-[400px] flex items-center justify-center text-gray-400">Loading editor...</div>}>
+                  <ReactQuill
+                    theme="snow"
+                    value={emailBody}
+                    onChange={setEmailBody}
+                    modules={modules}
+                    formats={formats}
+                    style={{ height: '400px' }}
+                  />
+                </Suspense>
               </div>
             )}
           </div>

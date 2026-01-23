@@ -6,6 +6,8 @@ import { createStageMarkerIcon, createVerifiedStageMarkerIcon } from '../utils/s
 import { isTouchDevice, addLongPressListener } from '../../../utils/deviceDetection';
 import {
   loadMarkerLibrary,
+  getMarkerLibrary,
+  isMarkerLibraryLoaded,
   createStageMarkerElement,
   MarkerShape,
   getStageConfig
@@ -555,9 +557,10 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
       // Create marker based on style
       let marker: MarkerType;
 
-      if (useAdvanced) {
-        // Create AdvancedMarkerElement with custom HTML content
-        const { AdvancedMarkerElement } = google.maps.marker;
+      if (useAdvanced && isMarkerLibraryLoaded()) {
+        // Create AdvancedMarkerElement using the cached library (not google.maps.marker directly)
+        const markerLib = getMarkerLibrary();
+        const { AdvancedMarkerElement } = markerLib;
         const content = createStageMarkerElement(
           stageName,
           markerStyle.shape,

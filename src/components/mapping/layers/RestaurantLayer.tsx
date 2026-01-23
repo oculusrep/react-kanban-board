@@ -632,16 +632,27 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
   }, [clusterMinSize, clusterMaxZoom]);
 
   // Refetch restaurants when map bounds change (viewport-based loading)
+  // Debounced to prevent multiple API calls during a single camera movement
+  const idleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     if (!map || !isVisible) return;
 
     const boundsChangedListener = map.addListener('idle', () => {
-      console.log('🍔 Map idle - refetching restaurants in new viewport');
-      fetchRestaurants();
+      // Debounce the fetch to prevent multiple calls during rapid pan/zoom
+      if (idleTimeoutRef.current) {
+        clearTimeout(idleTimeoutRef.current);
+      }
+      idleTimeoutRef.current = setTimeout(() => {
+        fetchRestaurants();
+      }, 300); // 300ms debounce
     });
 
     return () => {
       google.maps.event.removeListener(boundsChangedListener);
+      if (idleTimeoutRef.current) {
+        clearTimeout(idleTimeoutRef.current);
+      }
     };
   }, [map, isVisible, fetchRestaurants]);
 

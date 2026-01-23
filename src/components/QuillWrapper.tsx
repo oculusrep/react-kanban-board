@@ -1,5 +1,11 @@
-import React, { useRef, useMemo } from 'react';
-import ReactQuill from 'react-quill';
+import React, { useRef, useMemo, lazy, Suspense, useState, useEffect } from 'react';
+
+// Lazy load ReactQuill to prevent constructor conflicts with Google Maps AdvancedMarkerElement
+const ReactQuill = lazy(() => import('react-quill').then(module => {
+  // Import CSS side effect
+  import('react-quill/dist/quill.snow.css');
+  return module;
+}));
 
 interface QuillWrapperProps {
   value: string;
@@ -26,30 +32,30 @@ if (process.env.NODE_ENV === 'development') {
   };
 }
 
-const QuillWrapper: React.FC<QuillWrapperProps> = ({
+// Inner component that actually renders ReactQuill (needs to be inside Suspense)
+const QuillEditor: React.FC<QuillWrapperProps & { quillRef: React.RefObject<any> }> = ({
   value,
   onChange,
   modules,
   formats,
   placeholder,
   className,
-  tabIndex
+  tabIndex,
+  quillRef
 }) => {
-  const quillRef = useRef<ReactQuill>(null);
-
   // Memoize the style object to prevent unnecessary re-renders
   const editorStyle = useMemo(() => ({
     minHeight: '200px',
   }), []);
 
   // Apply tabIndex to the editor after it mounts
-  React.useEffect(() => {
+  useEffect(() => {
     if (quillRef.current && tabIndex !== undefined) {
       const editor = quillRef.current.getEditor();
       const editorElement = editor.root;
       editorElement.setAttribute('tabindex', String(tabIndex));
     }
-  }, [tabIndex]);
+  }, [tabIndex, quillRef]);
 
   return (
     <ReactQuill
@@ -63,6 +69,16 @@ const QuillWrapper: React.FC<QuillWrapperProps> = ({
       className={className}
       style={editorStyle}
     />
+  );
+};
+
+const QuillWrapper: React.FC<QuillWrapperProps> = (props) => {
+  const quillRef = useRef<any>(null);
+
+  return (
+    <Suspense fallback={<div className="min-h-[200px] bg-gray-50 border rounded flex items-center justify-center text-gray-400">Loading editor...</div>}>
+      <QuillEditor {...props} quillRef={quillRef} />
+    </Suspense>
   );
 };
 

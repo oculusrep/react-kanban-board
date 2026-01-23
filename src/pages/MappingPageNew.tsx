@@ -1779,29 +1779,16 @@ const MappingPageContent: React.FC = () => {
             {/* Property Layer - Connected to Layer Manager */}
             <PropertyLayer
               map={mapInstance}
-              isVisible={(() => {
-                const isVisible = layerState.properties?.isVisible || false;
-                console.log('🏢 PropertyLayer isVisible prop:', isVisible, 'layerState.properties:', layerState.properties);
-                return isVisible;
-              })()}
+              isVisible={layerState.properties?.isVisible || false}
               loadingConfig={propertyLoadingConfig}
               recentlyCreatedIds={recentlyCreatedPropertyIds}
               verifyingPropertyId={verifyingPropertyId}
-              selectedPropertyId={(() => {
-                const id = selectedPinType === 'property' && selectedPinData ? selectedPinData.id : null;
-                console.log('🎯 PropertyLayer selectedPropertyId calculated:', {
-                  selectedPinType,
-                  selectedPinDataId: selectedPinData?.id,
-                  resultingId: id
-                });
-                return id;
-              })()}
+              selectedPropertyId={selectedPinType === 'property' && selectedPinData ? selectedPinData.id : null}
               onLocationVerified={handleLocationVerified}
               onPropertyRightClick={handlePropertyRightClick}
               onPropertiesLoaded={(count) => {
                 setLayerCount('properties', count);
                 setLayerLoading('properties', false);
-                console.log('🏢 Properties loaded, visibility:', layerState.properties?.isVisible);
               }}
               onPinClick={(property) => handlePinClick(property, 'property')}
               onCreateSiteSubmit={(property) => {
