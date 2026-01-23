@@ -7,6 +7,7 @@ import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/
 import { MarkerShape } from '../components/mapping/utils/advancedMarkers';
 import RestaurantLayer from '../components/mapping/layers/RestaurantLayer';
 import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
+import RestaurantSlideout from '../components/mapping/slideouts/RestaurantSlideout';
 import MapContextMenu from '../components/mapping/MapContextMenu';
 import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
 import SiteSubmitContextMenu from '../components/mapping/SiteSubmitContextMenu';
@@ -1840,27 +1841,37 @@ const MappingPageContent: React.FC = () => {
               }}
             />
 
-            {/* Pin Details Slideout */}
-            <PinDetailsSlideout
-              isOpen={isPinDetailsOpen}
-              onClose={handlePinDetailsClose}
-              onOpen={() => setIsPinDetailsOpen(true)}
-              data={selectedPinData}
-              type={selectedPinType}
-              onVerifyLocation={handleVerifyLocation}
-              isVerifyingLocation={!!verifyingPropertyId}
-              onViewPropertyDetails={handleViewPropertyDetails}
-              onCenterOnPin={handleCenterOnPin}
-              onDataUpdate={handlePinDataUpdate}
-              rightOffset={isPropertyDetailsOpen ? 500 : isSiteSubmitDetailsOpen ? 500 : isContactFormOpen ? 450 : 0} // Shift left when property/site submit details or contact form is open
-              onEditContact={handleEditContact}
-              onDeleteProperty={handleDeleteProperty}
-              onDeleteSiteSubmit={handleDeleteSiteSubmit}
-              onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
-              onCreateSiteSubmit={handleCreateSiteSubmitForProperty}
-              submitsRefreshTrigger={submitsRefreshTrigger}
-              initialTab={pinDetailsInitialTab}
-            />
+            {/* Pin Details Slideout - for properties and site submits */}
+            {selectedPinType !== 'restaurant' && (
+              <PinDetailsSlideout
+                isOpen={isPinDetailsOpen}
+                onClose={handlePinDetailsClose}
+                onOpen={() => setIsPinDetailsOpen(true)}
+                data={selectedPinData}
+                type={selectedPinType}
+                onVerifyLocation={handleVerifyLocation}
+                isVerifyingLocation={!!verifyingPropertyId}
+                onViewPropertyDetails={handleViewPropertyDetails}
+                onCenterOnPin={handleCenterOnPin}
+                onDataUpdate={handlePinDataUpdate}
+                rightOffset={isPropertyDetailsOpen ? 500 : isSiteSubmitDetailsOpen ? 500 : isContactFormOpen ? 450 : 0} // Shift left when property/site submit details or contact form is open
+                onEditContact={handleEditContact}
+                onDeleteProperty={handleDeleteProperty}
+                onDeleteSiteSubmit={handleDeleteSiteSubmit}
+                onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
+                onCreateSiteSubmit={handleCreateSiteSubmitForProperty}
+                submitsRefreshTrigger={submitsRefreshTrigger}
+                initialTab={pinDetailsInitialTab}
+              />
+            )}
+
+            {/* Restaurant Slideout - lightweight component for restaurant details */}
+            {selectedPinType === 'restaurant' && isPinDetailsOpen && selectedPinData && (
+              <RestaurantSlideout
+                restaurant={selectedPinData as any}
+                onClose={handlePinDetailsClose}
+              />
+            )}
 
             {/* Property Details Slideout (for "View Full Details" from site submit) */}
             <PinDetailsSlideout
