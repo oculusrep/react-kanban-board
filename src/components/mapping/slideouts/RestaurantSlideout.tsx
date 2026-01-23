@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
-import SalesTrendChart from '../../charts/SalesTrendChart';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer
+} from 'recharts';
 
 interface RestaurantTrend {
   trend_id: string;
@@ -161,7 +168,95 @@ const RestaurantSlideout: React.FC<RestaurantSlideoutProps> = ({ restaurant, onC
                 📈 Sales Performance
               </span>
             </h3>
-            <SalesTrendChart data={chartData} formatSalesValue={formatSalesValue} />
+            <div
+              className="relative rounded-3xl overflow-hidden shadow-2xl"
+              style={{
+                height: 340,
+                background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)'
+              }}
+            >
+              {/* Animated glow effect */}
+              <div
+                className="absolute inset-0 opacity-30 pointer-events-none"
+                style={{
+                  background: 'radial-gradient(circle at 20% 50%, rgba(239, 68, 68, 0.15), transparent 50%), radial-gradient(circle at 80% 50%, rgba(251, 146, 60, 0.15), transparent 50%)'
+                }}
+              />
+
+              {/* Grid pattern overlay */}
+              <div
+                className="absolute inset-0 opacity-5 pointer-events-none"
+                style={{
+                  backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
+                  backgroundSize: '20px 20px'
+                }}
+              />
+
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart
+                  data={chartData}
+                  margin={{ top: 30, right: 30, left: 20, bottom: 30 }}
+                >
+                  <defs>
+                    <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#fb923c" stopOpacity={0.4} />
+                      <stop offset="50%" stopColor="#f97316" stopOpacity={0.2} />
+                      <stop offset="100%" stopColor="#ea580c" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis
+                    dataKey="year"
+                    stroke="#94a3b8"
+                    tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }}
+                    axisLine={{ stroke: '#334155', strokeWidth: 2 }}
+                    tickLine={false}
+                    label={{
+                      value: 'Year',
+                      position: 'bottom',
+                      offset: 10,
+                      fill: '#cbd5e1',
+                      fontSize: 12,
+                      fontWeight: 700
+                    }}
+                  />
+                  <YAxis
+                    stroke="#94a3b8"
+                    tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }}
+                    axisLine={{ stroke: '#334155', strokeWidth: 2 }}
+                    tickLine={false}
+                    tickFormatter={formatSalesValue}
+                    label={{
+                      value: 'Revenue',
+                      angle: -90,
+                      position: 'insideLeft',
+                      offset: 10,
+                      fill: '#cbd5e1',
+                      fontSize: 12,
+                      fontWeight: 700
+                    }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#1e293b',
+                      border: '1px solid #334155',
+                      borderRadius: '8px',
+                      color: '#f8fafc'
+                    }}
+                    formatter={(value: number) => [formatSalesValue(value), 'Revenue']}
+                    labelStyle={{ color: '#94a3b8' }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="sales"
+                    stroke="#fb923c"
+                    strokeWidth={4}
+                    fill="url(#salesGradient)"
+                    dot={{ fill: '#fb923c', stroke: '#fbbf24', strokeWidth: 2, r: 6 }}
+                    activeDot={{ fill: '#fbbf24', stroke: '#fb923c', strokeWidth: 2, r: 8 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         )}
 
