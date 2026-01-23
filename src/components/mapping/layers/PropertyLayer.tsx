@@ -547,9 +547,8 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
         markerIcon = ModernMarkerStyles.property.verifying();
       } else if (recentlyCreatedIds.has(property.id)) {
         markerIcon = ModernMarkerStyles.property.recent();
-      } else if (coords.verified) {
-        markerIcon = ModernMarkerStyles.property.verified();
       } else {
+        // All regular pins use geocoded (blue) - no green for verified
         markerIcon = ModernMarkerStyles.property.geocoded();
       }
 
