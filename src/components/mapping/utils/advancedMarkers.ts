@@ -15,6 +15,11 @@ export async function loadMarkerLibrary(): Promise<google.maps.MarkerLibrary> {
     return markerLibrary;
   }
 
+  // Check if Google Maps is loaded
+  if (typeof google === 'undefined' || !google.maps) {
+    throw new Error('Google Maps is not loaded. Ensure the Maps API is loaded before calling loadMarkerLibrary().');
+  }
+
   try {
     markerLibrary = await google.maps.importLibrary('marker') as google.maps.MarkerLibrary;
     console.log('✅ Google Maps marker library loaded');

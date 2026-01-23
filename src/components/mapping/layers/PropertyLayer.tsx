@@ -88,9 +88,10 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     useAdvancedMarkers: true
   };
 
-  // Pre-load marker library on mount (don't wait until marker creation)
+  // Pre-load marker library when map is available (don't wait until marker creation)
   useEffect(() => {
-    if (markerStyle.useAdvancedMarkers && !markerLibraryLoaded) {
+    // Only try to load marker library if Google Maps is loaded (map prop is available)
+    if (map && markerStyle.useAdvancedMarkers && !markerLibraryLoaded) {
       loadMarkerLibrary()
         .then(() => {
           console.log('✅ Marker library pre-loaded');
@@ -100,7 +101,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
           console.error('Failed to pre-load marker library:', err);
         });
     }
-  }, [markerStyle.useAdvancedMarkers]);
+  }, [map, markerStyle.useAdvancedMarkers]);
 
   // Function to get display coordinates (verified takes priority over regular)
   const getDisplayCoordinates = (property: Property) => {
