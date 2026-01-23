@@ -88,6 +88,20 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     useAdvancedMarkers: true
   };
 
+  // Pre-load marker library on mount (don't wait until marker creation)
+  useEffect(() => {
+    if (markerStyle.useAdvancedMarkers && !markerLibraryLoaded) {
+      loadMarkerLibrary()
+        .then(() => {
+          console.log('✅ Marker library pre-loaded');
+          setMarkerLibraryLoaded(true);
+        })
+        .catch(err => {
+          console.error('Failed to pre-load marker library:', err);
+        });
+    }
+  }, [markerStyle.useAdvancedMarkers]);
+
   // Function to get display coordinates (verified takes priority over regular)
   const getDisplayCoordinates = (property: Property) => {
     if (property.verified_latitude && property.verified_longitude) {
@@ -879,16 +893,19 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   const { refreshTrigger } = useLayerManager();
   const propertyRefreshTrigger = refreshTrigger.properties || 0;
 
-  // Load properties based on mode
+  // Load properties based on mode - also trigger when isVisible becomes true
   useEffect(() => {
     if (!map) return;
+
+    // Only fetch when layer is visible (or on first mount to pre-load)
+    if (!isVisible && properties.length > 0) return;
 
     if (loadingConfig.mode === 'viewport-based') {
       fetchPropertiesInViewport(true);
     } else {
       fetchAllProperties();
     }
-  }, [map, loadingConfig.mode, propertyRefreshTrigger]);
+  }, [map, loadingConfig.mode, propertyRefreshTrigger, isVisible]);
 
   // Set up viewport-based loading listener
   useEffect(() => {
