@@ -689,14 +689,15 @@ export function createStageMarkerElement(
 export function createPropertyMarkerElement(
   type: 'verified' | 'recent' | 'geocoded' | 'default' | 'selected' | 'verifying',
   shape: MarkerShape,
-  size: number = 44  // Larger default size for better visibility
+  size: number = 44,  // Larger default size for better visibility
+  isVerifiedLocation: boolean = false  // Show checkmark badge if location is verified
 ): HTMLElement {
-  // Brighter, more saturated colors to stand out from Google POIs
+  // Colors for property markers - all regular pins are blue, only selected/verifying are orange
   const colors: Record<string, string> = {
-    verified: '#00D084',  // Bright green (more saturated)
-    recent: '#FF3B30',    // Bright red (iOS-style)
-    geocoded: '#007AFF',  // Bright blue (iOS-style)
-    default: '#8E8E93',   // Gray
+    verified: '#007AFF',  // Blue (same as default - no special color for verified)
+    recent: '#FF3B30',    // Bright red for recently created
+    geocoded: '#007AFF',  // Blue
+    default: '#007AFF',   // Blue (consistent color for all regular pins)
     selected: '#FF9500',  // Bright orange for selected
     verifying: '#FF9500'  // Bright orange for verifying
   };
@@ -704,8 +705,8 @@ export function createPropertyMarkerElement(
   const color = colors[type] || colors.default;
   const iconDef = PROPERTY_ICON_CONFIGS[type] || PROPERTY_ICON_CONFIGS.default;
 
-  // Create marker directly with the icon definition (thicker stroke for visibility)
-  return createPropertyMarkerWithIcon(color, shape, size, iconDef, type === 'verified', 4);
+  // Show checkmark badge if location is verified (passed separately from type)
+  return createPropertyMarkerWithIcon(color, shape, size, iconDef, isVerifiedLocation, 4);
 }
 
 /**

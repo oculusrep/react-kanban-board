@@ -122,9 +122,10 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   };
 
   // Determine marker type based on property state
+  // All regular pins use 'default' style - only selected/verifying/recent are different
   const getPropertyMarkerType = (
     property: Property,
-    coords: { lat: number; lng: number; verified: boolean }
+    _coords: { lat: number; lng: number; verified: boolean }
   ): 'verified' | 'recent' | 'geocoded' | 'default' | 'selected' | 'verifying' => {
     const isSelected = selectedPropertyId === property.id;
     const isBeingVerified = verifyingPropertyId === property.id;
@@ -133,8 +134,8 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     if (isSelected) return 'selected';
     if (isBeingVerified) return 'verifying';
     if (isRecentlyCreated) return 'recent';
-    if (coords.verified) return 'verified';
-    return 'geocoded';
+    // All other pins use default style (same color regardless of verified status)
+    return 'default';
   };
 
   // Fetch properties based on viewport bounds (virtualized loading with IndexedDB cache)
@@ -439,7 +440,8 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       const content = createPropertyMarkerElement(
         markerType,
         markerStyle.shape,
-        isSelected ? 40 : 32
+        isSelected ? 40 : 32,
+        coords.verified  // Pass verified status to show checkmark badge
       );
 
       marker = new AdvancedMarkerElement({
