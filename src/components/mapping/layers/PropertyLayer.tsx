@@ -10,6 +10,7 @@ import {
   createPropertyMarkerElement,
   MarkerShape
 } from '../utils/advancedMarkers';
+import { propertyCache } from '../../../utils/propertyCache';
 
 type Property = Database['public']['Tables']['property']['Row'] & {
   property_record_type?: {
@@ -136,7 +137,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     return 'geocoded';
   };
 
-  // Fetch properties based on viewport bounds (virtualized loading)
+  // Fetch properties based on viewport bounds (virtualized loading with IndexedDB cache)
   const fetchPropertiesInViewport = useCallback(async (forceRefresh: boolean = false) => {
     if (!map) return;
 
@@ -146,17 +147,17 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     const ne = bounds.getNorthEast();
     const sw = bounds.getSouthWest();
 
-    // Create bounds key for caching
+    // Create bounds key for in-memory caching (prevents duplicate fetches in same session)
     const boundsKey = `${sw.lat().toFixed(4)},${sw.lng().toFixed(4)},${ne.lat().toFixed(4)},${ne.lng().toFixed(4)}`;
 
-    // Skip if we've already fetched this area (unless forced)
+    // Skip if we've already fetched this exact area (unless forced)
     if (!forceRefresh && lastFetchBoundsRef.current === boundsKey) {
       return;
     }
 
-    // Expand bounds slightly to reduce fetches during small pans
-    const latPadding = (ne.lat() - sw.lat()) * 0.2;
-    const lngPadding = (ne.lng() - sw.lng()) * 0.2;
+    // Expand bounds by 50% to pre-fetch surrounding area (reduces fetches during panning)
+    const latPadding = (ne.lat() - sw.lat()) * 0.5;
+    const lngPadding = (ne.lng() - sw.lng()) * 0.5;
 
     const expandedBounds = {
       north: ne.lat() + latPadding,
@@ -165,64 +166,113 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       west: sw.lng() - lngPadding
     };
 
-    setIsLoading(true);
+    // Get tile keys for the expanded bounds
+    const tileKeys = propertyCache.getTileKeysForBounds(
+      expandedBounds.south,
+      expandedBounds.north,
+      expandedBounds.west,
+      expandedBounds.east
+    );
 
-    try {
-      // Query with bounds filter using OR for both verified and regular coordinates
-      const { data, error: fetchError } = await supabase
-        .from('property')
-        .select(`
-          id,
-          property_name,
-          address,
-          city,
-          state,
-          zip,
-          property_notes,
-          latitude,
-          longitude,
-          verified_latitude,
-          verified_longitude,
-          rent_psf,
-          nnn_psf,
-          acres,
-          building_sqft,
-          available_sqft,
-          property_record_type_id,
-          property_type_id,
-          asking_purchase_price,
-          asking_lease_price,
-          lease_expiration_date,
-          created_at,
-          created_by_id,
-          updated_at,
-          updated_by_id,
-          property_record_type (
-            id,
-            label
-          )
-        `)
-        .or(`and(latitude.gte.${expandedBounds.south},latitude.lte.${expandedBounds.north},longitude.gte.${expandedBounds.west},longitude.lte.${expandedBounds.east}),and(verified_latitude.gte.${expandedBounds.south},verified_latitude.lte.${expandedBounds.north},verified_longitude.gte.${expandedBounds.west},verified_longitude.lte.${expandedBounds.east})`)
-        .limit(2000);
+    // Check which tiles are already cached
+    const uncachedTileKeys: string[] = [];
+    const cachedTileKeys: string[] = [];
 
-      if (fetchError) throw fetchError;
-
-      const validProperties = (data || []).filter(property =>
-        getDisplayCoordinates(property) !== null
-      );
-
-      console.log(`📍 Viewport fetch: ${validProperties.length} properties in bounds`);
-
-      lastFetchBoundsRef.current = boundsKey;
-      setProperties(validProperties);
-      onPropertiesLoaded?.(validProperties.length);
-
-    } catch (err) {
-      console.error('Error fetching properties in viewport:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch properties');
-    } finally {
-      setIsLoading(false);
+    for (const tileKey of tileKeys) {
+      const isCached = await propertyCache.isTileCached(tileKey);
+      if (isCached && !forceRefresh) {
+        cachedTileKeys.push(tileKey);
+      } else {
+        uncachedTileKeys.push(tileKey);
+      }
     }
+
+    let allProperties: Property[] = [];
+
+    // Get cached properties
+    if (cachedTileKeys.length > 0) {
+      const cachedProperties = await propertyCache.getPropertiesFromCache(cachedTileKeys);
+      allProperties = [...cachedProperties];
+      console.log(`💾 Cache hit: ${cachedProperties.length} properties from ${cachedTileKeys.length} cached tiles`);
+    }
+
+    // Fetch uncached tiles from Supabase
+    if (uncachedTileKeys.length > 0 || forceRefresh) {
+      setIsLoading(true);
+
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('property')
+          .select(`
+            id,
+            property_name,
+            address,
+            city,
+            state,
+            zip,
+            property_notes,
+            latitude,
+            longitude,
+            verified_latitude,
+            verified_longitude,
+            rent_psf,
+            nnn_psf,
+            acres,
+            building_sqft,
+            available_sqft,
+            property_record_type_id,
+            property_type_id,
+            asking_purchase_price,
+            asking_lease_price,
+            lease_expiration_date,
+            created_at,
+            created_by_id,
+            updated_at,
+            updated_by_id,
+            property_record_type (
+              id,
+              label
+            )
+          `)
+          .or(`and(latitude.gte.${expandedBounds.south},latitude.lte.${expandedBounds.north},longitude.gte.${expandedBounds.west},longitude.lte.${expandedBounds.east}),and(verified_latitude.gte.${expandedBounds.south},verified_latitude.lte.${expandedBounds.north},verified_longitude.gte.${expandedBounds.west},verified_longitude.lte.${expandedBounds.east})`)
+          .limit(2000);
+
+        if (fetchError) throw fetchError;
+
+        const fetchedProperties = (data || []).filter(property =>
+          getDisplayCoordinates(property) !== null
+        );
+
+        console.log(`🌐 Fetched: ${fetchedProperties.length} properties from Supabase`);
+
+        // Cache the fetched properties
+        await propertyCache.cacheProperties(fetchedProperties, expandedBounds);
+
+        // Merge with cached properties (deduplicate by ID)
+        const propertyMap = new Map<string, Property>();
+        allProperties.forEach(p => propertyMap.set(p.id, p));
+        fetchedProperties.forEach(p => propertyMap.set(p.id, p)); // Fetched data takes priority
+        allProperties = Array.from(propertyMap.values());
+
+      } catch (err) {
+        console.error('Error fetching properties in viewport:', err);
+        setError(err instanceof Error ? err.message : 'Failed to fetch properties');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    // Filter to only properties with valid coordinates
+    const validProperties = allProperties.filter(property =>
+      getDisplayCoordinates(property) !== null
+    );
+
+    console.log(`📍 Total: ${validProperties.length} properties (${cachedTileKeys.length} tiles cached, ${uncachedTileKeys.length} tiles fetched)`);
+
+    lastFetchBoundsRef.current = boundsKey;
+    setProperties(validProperties);
+    onPropertiesLoaded?.(validProperties.length);
+
   }, [map, onPropertiesLoaded]);
 
   // Fetch all properties (static loading modes)

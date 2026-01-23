@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../../database-schema';
 import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
+import { propertyCache } from '../utils/propertyCache';
 
 type Property = Database['public']['Tables']['property']['Row'];
 type PropertyType = Database['public']['Tables']['property_type']['Row'];
@@ -116,6 +117,11 @@ export const useProperty = (propertyId?: string): UsePropertyResult => {
       console.log('✅ property_notes in returned data:', data?.property_notes);
       console.log('✅ updated_by_id in returned data:', data?.updated_by_id);
 
+      // Update the cache with the new property data
+      if (data) {
+        propertyCache.updateCachedProperty(data);
+      }
+
       setProperty(data);
     } catch (err) {
       console.error('Error updating property:', err);
@@ -139,6 +145,12 @@ export const useProperty = (propertyId?: string): UsePropertyResult => {
         .single();
 
       if (error) throw error;
+
+      // Add the new property to the cache
+      if (data) {
+        propertyCache.updateCachedProperty(data);
+      }
+
       return data;
     } catch (err) {
       console.error('Error creating property:', err);
