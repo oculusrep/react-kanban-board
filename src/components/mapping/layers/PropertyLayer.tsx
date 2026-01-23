@@ -439,7 +439,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       const content = createPropertyMarkerElement(
         markerType,
         markerStyle.shape,
-        isSelected ? 52 : 44
+        isSelected ? 40 : 32
       );
 
       marker = new AdvancedMarkerElement({
