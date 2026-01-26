@@ -23,8 +23,8 @@ const DisbursementReportTab: React.FC = () => {
   const [filters, setFilters] = useState<DisbursementFilters>({
     searchQuery: '',
     payeeFilter: null,
-    disbursementStatus: 'all',
-    receivedStatus: 'all',
+    disbursementStatus: 'paid',
+    receivedStatus: 'received',
     dateRange: { start: '2025-01-01', end: '2025-12-31' },
     type: 'all',
   });
