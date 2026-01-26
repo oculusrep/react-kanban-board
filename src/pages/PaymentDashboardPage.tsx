@@ -14,8 +14,9 @@ import PaymentDiscrepancyReport from '../components/payments/PaymentDiscrepancyR
 import SplitValidationTab from '../components/payments/SplitValidationTab';
 import ReconciliationReport from '../components/payments/ReconciliationReport';
 import PaymentReconciliationReport from '../components/payments/PaymentReconciliationReport';
+import DisbursementReportTab from '../components/payments/DisbursementReportTab';
 
-type TabType = 'dashboard' | 'comparison' | 'discrepancies' | 'validation' | 'deal-reconciliation' | 'payment-reconciliation';
+type TabType = 'dashboard' | 'comparison' | 'discrepancies' | 'validation' | 'deal-reconciliation' | 'payment-reconciliation' | 'disbursements';
 
 const PaymentDashboardPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -432,6 +433,7 @@ const PaymentDashboardPage: React.FC = () => {
                   {activeTab === 'validation' && 'Split Validation'}
                   {activeTab === 'deal-reconciliation' && 'Deal Reconciliation'}
                   {activeTab === 'payment-reconciliation' && 'Payment Reconciliation'}
+                  {activeTab === 'disbursements' && 'Disbursement Report'}
                 </span>
               )}
             </div>
@@ -503,6 +505,17 @@ const PaymentDashboardPage: React.FC = () => {
                     >
                       Payment Reconciliation
                     </button>
+                    <button
+                      onClick={() => {
+                        setActiveTab('disbursements');
+                        setShowToolsMenu(false);
+                      }}
+                      className={`block w-full text-left px-4 py-2 text-sm ${
+                        activeTab === 'disbursements' ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      Disbursement Report
+                    </button>
                   </div>
                 </div>
               )}
@@ -557,9 +570,11 @@ const PaymentDashboardPage: React.FC = () => {
             <ComparisonReportTab />
           ) : activeTab === 'discrepancies' ? (
             <PaymentDiscrepancyReport />
-          ) : (
+          ) : activeTab === 'validation' ? (
             <SplitValidationTab />
-          )}
+          ) : activeTab === 'disbursements' ? (
+            <DisbursementReportTab />
+          ) : null}
         </div>
       )}
     </div>
