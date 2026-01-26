@@ -422,6 +422,79 @@ const DisbursementReportTab: React.FC = () => {
     }
   };
 
+  const handlePaidDateChange = async (disbursement: DisbursementRow, newDate: string | null) => {
+    try {
+      if (disbursement.type === 'broker') {
+        // Update broker split paid_date
+        const splitId = disbursement.id.replace('broker-', '');
+        const { error } = await supabase
+          .from('payment_split')
+          .update({
+            paid_date: newDate,
+            paid: newDate ? true : false // Auto-mark as paid if date is set
+          })
+          .eq('id', splitId);
+
+        if (error) throw error;
+      } else {
+        // Update referral fee paid_date
+        const { error } = await supabase
+          .from('payment')
+          .update({
+            referral_fee_paid_date: newDate,
+            referral_fee_paid: newDate ? true : false // Auto-mark as paid if date is set
+          })
+          .eq('id', disbursement.payment_id);
+
+        if (error) throw error;
+      }
+
+      // Refresh the disbursements list
+      await fetchDisbursements();
+    } catch (error) {
+      console.error('Error updating paid date:', error);
+      alert('Failed to update paid date. Please try again.');
+    }
+  };
+
+  const toggleDisbursementPaid = async (disbursement: DisbursementRow) => {
+    try {
+      const newPaidStatus = !disbursement.disbursement_paid;
+      const today = new Date().toISOString().split('T')[0];
+
+      if (disbursement.type === 'broker') {
+        // Update broker split
+        const splitId = disbursement.id.replace('broker-', '');
+        const { error } = await supabase
+          .from('payment_split')
+          .update({
+            paid: newPaidStatus,
+            paid_date: newPaidStatus ? (disbursement.paid_date || today) : null
+          })
+          .eq('id', splitId);
+
+        if (error) throw error;
+      } else {
+        // Update referral fee
+        const { error } = await supabase
+          .from('payment')
+          .update({
+            referral_fee_paid: newPaidStatus,
+            referral_fee_paid_date: newPaidStatus ? (disbursement.paid_date || today) : null
+          })
+          .eq('id', disbursement.payment_id);
+
+        if (error) throw error;
+      }
+
+      // Refresh the disbursements list
+      await fetchDisbursements();
+    } catch (error) {
+      console.error('Error toggling disbursement status:', error);
+      alert('Failed to update disbursement status. Please try again.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Quick Shortcuts */}
@@ -689,8 +762,14 @@ const DisbursementReportTab: React.FC = () => {
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                       {formatDate(disbursement.estimated_payment_date)}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(disbursement.paid_date)}
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="date"
+                        value={disbursement.paid_date || ''}
+                        onChange={(e) => handlePaidDateChange(disbursement, e.target.value || null)}
+                        className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        title="Edit paid date"
+                      />
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-center">
                       {disbursement.payment_received ? (
@@ -699,11 +778,18 @@ const DisbursementReportTab: React.FC = () => {
                         <ClockIcon className="h-5 w-5 text-gray-400 mx-auto" title="Payment Pending" />
                       )}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-center">
+                    <td
+                      className="px-4 py-3 whitespace-nowrap text-center cursor-pointer hover:bg-gray-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleDisbursementPaid(disbursement);
+                      }}
+                      title="Click to toggle paid status"
+                    >
                       {disbursement.disbursement_paid ? (
-                        <CheckCircleIcon className="h-5 w-5 text-green-500 mx-auto" title="Disbursement Paid" />
+                        <CheckCircleIcon className="h-5 w-5 text-green-500 mx-auto" title="Disbursement Paid (click to mark unpaid)" />
                       ) : (
-                        <XCircleIcon className="h-5 w-5 text-orange-500 mx-auto" title="Disbursement Unpaid" />
+                        <XCircleIcon className="h-5 w-5 text-orange-500 mx-auto" title="Disbursement Unpaid (click to mark paid)" />
                       )}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-center">
