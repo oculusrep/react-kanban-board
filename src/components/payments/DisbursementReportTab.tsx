@@ -548,6 +548,17 @@ const DisbursementReportTab: React.FC = () => {
                   </tr>
                 ))}
               </tbody>
+              <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+                <tr>
+                  <td colSpan={6} className="px-4 py-3 text-right text-sm font-bold text-gray-900">
+                    Total:
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-gray-900 text-right">
+                    {formatCurrency(filteredDisbursements.reduce((sum, d) => sum + d.amount, 0))}
+                  </td>
+                  <td colSpan={3} className="px-4 py-3"></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}
