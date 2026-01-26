@@ -10,8 +10,11 @@ import {
   FunnelIcon,
   CheckCircleIcon,
   XCircleIcon,
-  ClockIcon
+  ClockIcon,
+  ChevronDownIcon,
+  ChevronRightIcon
 } from '@heroicons/react/24/outline';
+import { PaymentDashboardRow } from '../../types/payment-dashboard';
 
 const DisbursementReportTab: React.FC = () => {
   const [disbursements, setDisbursements] = useState<DisbursementRow[]>([]);
@@ -19,6 +22,9 @@ const DisbursementReportTab: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<DisbursementSummary | null>(null);
   const [payeeOptions, setPayeeOptions] = useState<string[]>([]);
+  const [expandedPaymentId, setExpandedPaymentId] = useState<string | null>(null);
+  const [paymentDetails, setPaymentDetails] = useState<PaymentDashboardRow | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
 
   const [filters, setFilters] = useState<DisbursementFilters>({
     searchQuery: '',
@@ -51,6 +57,7 @@ const DisbursementReportTab: React.FC = () => {
           orep_invoice,
           qb_invoice_number,
           payment_received,
+          payment_date_estimated,
           referral_fee_paid,
           referral_fee_paid_date,
           deal!inner (
@@ -109,6 +116,7 @@ const DisbursementReportTab: React.FC = () => {
           payment_name: paymentName,
           amount: split.split_broker_total || 0,
           paid_date: split.paid_date,
+          estimated_payment_date: payment.payment_date_estimated,
           payment_received: payment.payment_received || false,
           disbursement_paid: split.paid || false,
         });
@@ -141,6 +149,7 @@ const DisbursementReportTab: React.FC = () => {
             payment_name: paymentName,
             amount: referralFeePerPayment,
             paid_date: payment.referral_fee_paid_date,
+            estimated_payment_date: payment.payment_date_estimated,
             payment_received: payment.payment_received || false,
             disbursement_paid: payment.referral_fee_paid || false,
           });
@@ -241,8 +250,8 @@ const DisbursementReportTab: React.FC = () => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(amount);
   };
 
@@ -266,6 +275,150 @@ const DisbursementReportTab: React.FC = () => {
       setFilters(prev => ({ ...prev, payeeFilter: brokerName }));
     } else {
       setFilters(prev => ({ ...prev, payeeFilter: null }));
+    }
+  };
+
+  const fetchPaymentDetails = async (paymentId: string) => {
+    try {
+      setLoadingDetails(true);
+
+      // Fetch payment with related data
+      const { data: paymentData, error: paymentError } = await supabase
+        .from('payment')
+        .select(`
+          id,
+          sf_id,
+          deal_id,
+          payment_sequence,
+          payment_amount,
+          payment_date_estimated,
+          payment_received_date,
+          payment_received,
+          invoice_sent,
+          payment_invoice_date,
+          orep_invoice,
+          qb_invoice_id,
+          qb_invoice_number,
+          qb_sync_status,
+          qb_last_sync,
+          referral_fee_paid,
+          referral_fee_paid_date,
+          locked,
+          deal!inner (
+            deal_name,
+            stage_id,
+            number_of_payments,
+            referral_fee_usd,
+            referral_payee_client_id,
+            client!deal_referral_payee_client_id_fkey (
+              client_name
+            )
+          )
+        `)
+        .eq('id', paymentId)
+        .single();
+
+      if (paymentError) throw paymentError;
+
+      // Fetch deal stage
+      const { data: stageData } = await supabase
+        .from('deal_stage')
+        .select('id, label')
+        .eq('id', paymentData.deal.stage_id)
+        .single();
+
+      // Fetch broker splits for this payment
+      const { data: splitsData, error: splitsError } = await supabase
+        .from('payment_split')
+        .select(`
+          id,
+          payment_id,
+          broker_id,
+          split_origination_usd,
+          split_site_usd,
+          split_deal_usd,
+          split_broker_total,
+          split_origination_percent,
+          split_site_percent,
+          split_deal_percent,
+          paid,
+          paid_date,
+          broker!inner (
+            name
+          )
+        `)
+        .eq('payment_id', paymentId);
+
+      if (splitsError) throw splitsError;
+
+      const brokerSplits = (splitsData || []).map((split: any) => ({
+        payment_split_id: split.id,
+        broker_id: split.broker_id,
+        broker_name: split.broker?.name || 'Unknown',
+        split_origination_usd: split.split_origination_usd,
+        split_site_usd: split.split_site_usd,
+        split_deal_usd: split.split_deal_usd,
+        split_broker_total: split.split_broker_total,
+        split_origination_percent: split.split_origination_percent,
+        split_site_percent: split.split_site_percent,
+        split_deal_percent: split.split_deal_percent,
+        paid: split.paid || false,
+        paid_date: split.paid_date,
+      }));
+
+      const allBrokersPaid = brokerSplits.length > 0 && brokerSplits.every(b => b.paid);
+      const totalBrokerAmount = brokerSplits.reduce((sum, b) => sum + (b.split_broker_total || 0), 0);
+
+      const totalPayments = paymentData.deal?.number_of_payments || 1;
+      const dealReferralFeeTotal = paymentData.deal?.referral_fee_usd || 0;
+      const paymentReferralFee = dealReferralFeeTotal / totalPayments;
+
+      const details: PaymentDashboardRow = {
+        payment_id: paymentData.id,
+        payment_sf_id: paymentData.sf_id,
+        deal_id: paymentData.deal_id,
+        deal_name: paymentData.deal?.deal_name || 'Unknown Deal',
+        deal_stage: stageData?.label || null,
+        payment_sequence: paymentData.payment_sequence || 0,
+        total_payments: totalPayments,
+        payment_amount: paymentData.payment_amount || 0,
+        locked: paymentData.locked || false,
+        payment_date_estimated: paymentData.payment_date_estimated,
+        payment_received_date: paymentData.payment_received_date,
+        payment_received: paymentData.payment_received || false,
+        invoice_sent: paymentData.invoice_sent || false,
+        payment_invoice_date: paymentData.payment_invoice_date,
+        orep_invoice: paymentData.orep_invoice,
+        qb_invoice_id: paymentData.qb_invoice_id,
+        qb_invoice_number: paymentData.qb_invoice_number,
+        qb_sync_status: paymentData.qb_sync_status,
+        qb_last_sync: paymentData.qb_last_sync,
+        referral_fee_usd: paymentReferralFee > 0 ? paymentReferralFee : null,
+        referral_payee_name: paymentData.deal?.client?.client_name || null,
+        referral_payee_client_id: paymentData.deal?.referral_payee_client_id || null,
+        referral_fee_paid: paymentData.referral_fee_paid || false,
+        referral_fee_paid_date: paymentData.referral_fee_paid_date,
+        broker_splits: brokerSplits,
+        all_brokers_paid: allBrokersPaid,
+        total_broker_amount: totalBrokerAmount,
+      };
+
+      setPaymentDetails(details);
+    } catch (error) {
+      console.error('Error fetching payment details:', error);
+      setPaymentDetails(null);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  const toggleRowExpansion = (paymentId: string) => {
+    if (expandedPaymentId === paymentId) {
+      setExpandedPaymentId(null);
+      setPaymentDetails(null);
+    } else {
+      setExpandedPaymentId(paymentId);
+      fetchPaymentDetails(paymentId);
     }
   };
 
@@ -488,6 +641,9 @@ const DisbursementReportTab: React.FC = () => {
                     Amount
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Est. Date
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Paid Date
                   </th>
                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -496,11 +652,13 @@ const DisbursementReportTab: React.FC = () => {
                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Disbursement
                   </th>
+                  <th className="px-4 py-3 w-8"></th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredDisbursements.map((disbursement) => (
-                  <tr key={disbursement.id} className="hover:bg-gray-50">
+                  <React.Fragment key={disbursement.id}>
+                    <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => toggleRowExpansion(disbursement.payment_id)}>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                         disbursement.type === 'broker'
@@ -529,6 +687,9 @@ const DisbursementReportTab: React.FC = () => {
                       {formatCurrency(disbursement.amount)}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                      {formatDate(disbursement.estimated_payment_date)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                       {formatDate(disbursement.paid_date)}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-center">
@@ -545,7 +706,86 @@ const DisbursementReportTab: React.FC = () => {
                         <XCircleIcon className="h-5 w-5 text-orange-500 mx-auto" title="Disbursement Unpaid" />
                       )}
                     </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-center">
+                      {expandedPaymentId === disbursement.payment_id ? (
+                        <ChevronDownIcon className="h-5 w-5 text-gray-400 mx-auto" />
+                      ) : (
+                        <ChevronRightIcon className="h-5 w-5 text-gray-400 mx-auto" />
+                      )}
+                    </td>
                   </tr>
+                  {expandedPaymentId === disbursement.payment_id && (
+                    <tr>
+                      <td colSpan={11} className="px-4 py-4 bg-gray-50">
+                        {loadingDetails ? (
+                          <div className="text-center py-4">
+                            <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                            <p className="mt-2 text-sm text-gray-500">Loading payment details...</p>
+                          </div>
+                        ) : paymentDetails ? (
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div>
+                                <h4 className="text-xs font-semibold text-gray-700 uppercase mb-2">Payment Information</h4>
+                                <div className="space-y-2 text-sm">
+                                  <div><span className="font-medium">Payment Amount:</span> {formatCurrency(paymentDetails.payment_amount)}</div>
+                                  <div><span className="font-medium">Estimated Date:</span> {formatDate(paymentDetails.payment_date_estimated)}</div>
+                                  <div><span className="font-medium">Received Date:</span> {formatDate(paymentDetails.payment_received_date)}</div>
+                                  <div><span className="font-medium">Invoice Date:</span> {formatDate(paymentDetails.payment_invoice_date)}</div>
+                                  <div><span className="font-medium">Deal Stage:</span> {paymentDetails.deal_stage || '-'}</div>
+                                </div>
+                              </div>
+                              <div>
+                                <h4 className="text-xs font-semibold text-gray-700 uppercase mb-2">Broker Splits</h4>
+                                {paymentDetails.broker_splits.length > 0 ? (
+                                  <div className="space-y-2 text-sm">
+                                    {paymentDetails.broker_splits.map((split) => (
+                                      <div key={split.payment_split_id} className="border-l-2 border-blue-400 pl-2">
+                                        <div className="font-medium">{split.broker_name}</div>
+                                        <div className="text-gray-600">
+                                          {formatCurrency(split.split_broker_total || 0)}
+                                          {split.paid && <span className="ml-2 text-green-600">✓ Paid</span>}
+                                          {!split.paid && <span className="ml-2 text-orange-600">Unpaid</span>}
+                                        </div>
+                                        {split.paid_date && <div className="text-xs text-gray-500">Paid: {formatDate(split.paid_date)}</div>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-gray-500">No broker splits</p>
+                                )}
+                              </div>
+                              <div>
+                                <h4 className="text-xs font-semibold text-gray-700 uppercase mb-2">Referral Fee</h4>
+                                {paymentDetails.referral_fee_usd && paymentDetails.referral_fee_usd > 0 ? (
+                                  <div className="space-y-2 text-sm">
+                                    <div><span className="font-medium">Payee:</span> {paymentDetails.referral_payee_name || '-'}</div>
+                                    <div><span className="font-medium">Amount:</span> {formatCurrency(paymentDetails.referral_fee_usd)}</div>
+                                    <div>
+                                      <span className="font-medium">Status:</span>
+                                      {paymentDetails.referral_fee_paid ? (
+                                        <span className="ml-2 text-green-600">✓ Paid</span>
+                                      ) : (
+                                        <span className="ml-2 text-orange-600">Unpaid</span>
+                                      )}
+                                    </div>
+                                    {paymentDetails.referral_fee_paid_date && (
+                                      <div><span className="font-medium">Paid Date:</span> {formatDate(paymentDetails.referral_fee_paid_date)}</div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-gray-500">No referral fee</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500 text-center">Failed to load payment details</p>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
                 ))}
               </tbody>
               <tfoot className="bg-gray-50 border-t-2 border-gray-300">
@@ -556,7 +796,7 @@ const DisbursementReportTab: React.FC = () => {
                   <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-gray-900 text-right">
                     {formatCurrency(filteredDisbursements.reduce((sum, d) => sum + d.amount, 0))}
                   </td>
-                  <td colSpan={3} className="px-4 py-3"></td>
+                  <td colSpan={5} className="px-4 py-3"></td>
                 </tr>
               </tfoot>
             </table>

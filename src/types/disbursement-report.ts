@@ -31,6 +31,7 @@ export interface DisbursementRow {
 
   // Dates
   paid_date: string | null;
+  estimated_payment_date: string | null;
 
   // Status
   payment_received: boolean; // Payment received from customer
