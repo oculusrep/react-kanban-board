@@ -255,8 +255,39 @@ const DisbursementReportTab: React.FC = () => {
     });
   };
 
+  const BROKER_SHORTCUTS = [
+    { label: "Mike's Disbursements", brokerName: 'Mike Minihan' },
+    { label: "Greg's Disbursements", brokerName: 'Greg Bennett' },
+    { label: "Arty's Disbursements", brokerName: 'Arty Santos' },
+  ];
+
+  const handleShortcutChange = (brokerName: string) => {
+    if (brokerName) {
+      setFilters(prev => ({ ...prev, payeeFilter: brokerName }));
+    } else {
+      setFilters(prev => ({ ...prev, payeeFilter: null }));
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Quick Shortcuts */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <label className="block text-sm font-medium text-gray-700 mb-2">Quick Shortcuts</label>
+        <select
+          value={filters.payeeFilter || ''}
+          onChange={(e) => handleShortcutChange(e.target.value)}
+          className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        >
+          <option value="">Select a broker...</option>
+          {BROKER_SHORTCUTS.map(shortcut => (
+            <option key={shortcut.brokerName} value={shortcut.brokerName}>
+              {shortcut.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {/* Summary Cards */}
       {summary && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
