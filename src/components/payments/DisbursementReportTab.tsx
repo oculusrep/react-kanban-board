@@ -25,7 +25,7 @@ const DisbursementReportTab: React.FC = () => {
     payeeFilter: null,
     disbursementStatus: 'all',
     receivedStatus: 'all',
-    dateRange: { start: null, end: null },
+    dateRange: { start: '2025-01-01', end: '2025-12-31' },
     type: 'all',
   });
 
