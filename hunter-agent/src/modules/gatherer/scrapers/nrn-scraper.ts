@@ -30,41 +30,124 @@ export class NRNScraper extends BaseScraper {
     }
 
     try {
-      this.logger.info(`Step 1/6: Navigating to NRN login page: ${this.source.login_url}`);
+      this.logger.info(`Step 1/8: Navigating to NRN login page: ${this.source.login_url}`);
       await this.page!.goto(this.source.login_url!, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await this.randomDelay(2000, 4000);
 
-      this.logger.info(`Step 2/6: Page loaded, current URL: ${this.page!.url()}`);
+      this.logger.info(`Step 2/8: Page loaded, current URL: ${this.page!.url()}`);
 
-      // Check what form fields are available
-      const usernameField = await this.page!.$('input[name="name"], input#edit-name');
-      const passwordField = await this.page!.$('input[name="pass"], input#edit-pass');
-      this.logger.info(`Step 3/6: Form fields found - username: ${!!usernameField}, password: ${!!passwordField}`);
+      // NRN now uses an Iris authentication widget
+      // Click the login button to open the login modal/iframe
+      this.logger.info('Step 3/8: Looking for Iris login button...');
+      const irisLoginBtn = await this.page!.$('button#irisLoginBtn, input#irisLoginBtn');
 
-      if (!usernameField || !passwordField) {
-        // Log the page content to help debug
-        const pageContent = await this.page!.content();
-        this.logger.error(`Login form not found. Page title: ${await this.page!.title()}`);
-        this.logger.debug(`Page HTML snippet: ${pageContent.substring(0, 1000)}`);
-        return false;
+      if (irisLoginBtn) {
+        this.logger.info('Step 4/8: Clicking Iris login button...');
+        await irisLoginBtn.click();
+        await this.randomDelay(3000, 5000); // Wait for modal/iframe to load
+      } else {
+        this.logger.warn('Iris login button not found, attempting direct form login');
+      }
+
+      // Wait for iframe or modal to appear
+      this.logger.info('Step 5/8: Waiting for login form to appear...');
+      await this.page!.waitForTimeout(3000);
+
+      // Check if there's an iframe (common with authentication widgets)
+      const frames = this.page!.frames();
+      this.logger.info(`Found ${frames.length} frames on page`);
+
+      // Try to find login fields in main page or iframes
+      let loginFrame: any = this.page!;
+      for (const frame of frames) {
+        const hasEmailField = await frame.$('input[type="email"], input[name="email"], input[name="username"]').catch(() => null);
+        if (hasEmailField) {
+          this.logger.info(`Found login form in iframe: ${frame.url()}`);
+          loginFrame = frame;
+          break;
+        }
       }
 
       // Fill in the login form
-      this.logger.info('Step 4/6: Filling username field...');
-      await this.page!.fill('input[name="name"], input#edit-name', username);
+      this.logger.info('Step 6/8: Filling username/email field...');
+      const emailSelectors = [
+        'input[type="email"]',
+        'input[name="email"]',
+        'input[name="username"]',
+        'input[name="name"]',
+        'input#edit-name'
+      ];
+
+      let filled = false;
+      for (const selector of emailSelectors) {
+        try {
+          await loginFrame.fill(selector, username, { timeout: 3000 });
+          this.logger.info(`  ✓ Filled username: ${selector}`);
+          filled = true;
+          break;
+        } catch {
+          continue;
+        }
+      }
+
+      if (!filled) {
+        this.logger.error('Could not find username/email field');
+        return false;
+      }
+
       await this.randomDelay(500, 1000);
 
-      this.logger.info('Step 5/6: Filling password field...');
-      await this.page!.fill('input[name="pass"], input#edit-pass', password);
+      // Fill password
+      this.logger.info('Step 7/8: Filling password field...');
+      const passwordSelectors = [
+        'input[type="password"]',
+        'input[name="password"]',
+        'input[name="pass"]',
+        'input#edit-pass'
+      ];
+
+      filled = false;
+      for (const selector of passwordSelectors) {
+        try {
+          await loginFrame.fill(selector, password, { timeout: 3000 });
+          this.logger.info(`  ✓ Filled password: ${selector}`);
+          filled = true;
+          break;
+        } catch {
+          continue;
+        }
+      }
+
+      if (!filled) {
+        this.logger.error('Could not find password field');
+        return false;
+      }
+
       await this.randomDelay(500, 1000);
 
       // Submit the form
-      this.logger.info('Step 6/6: Clicking submit button...');
-      await this.page!.click('input[type="submit"], button[type="submit"]');
+      this.logger.info('Step 8/8: Submitting login form...');
+      const submitSelectors = [
+        'button[type="submit"]',
+        'input[type="submit"]',
+        'button:has-text("Log in")',
+        'button:has-text("Sign in")',
+        'button:has-text("Login")'
+      ];
 
-      // Wait for navigation
-      await this.page!.waitForLoadState('domcontentloaded', { timeout: 30000 });
-      await this.randomDelay(2000, 3000);
+      for (const selector of submitSelectors) {
+        try {
+          await loginFrame.click(selector, { timeout: 3000 });
+          this.logger.info(`  ✓ Clicked submit: ${selector}`);
+          break;
+        } catch {
+          continue;
+        }
+      }
+
+      // Wait for navigation/modal to close
+      await this.page!.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
+      await this.randomDelay(3000, 5000);
 
       // Verify login success - check if we're redirected away from login page
       const currentUrl = this.page!.url();
@@ -75,15 +158,23 @@ export class NRNScraper extends BaseScraper {
       if (isLoggedIn) {
         this.logger.info('NRN login successful - redirected away from login page');
         return true;
-      } else {
-        // Check for error messages on the page
-        const errorMsg = await this.page!.$eval('.messages--error, .error-message, .alert-danger',
-          el => el.textContent?.trim() || ''
-        ).catch(() => '');
-
-        this.logger.warn(`NRN login failed - still on login page. Error message: "${errorMsg || 'none found'}"`);
-        return false;
       }
+
+      // Alternative: Check for logout button or user profile indicator
+      const logoutBtn = await this.page!.$('button#irisLogoutBtn, input#irisLogoutBtn, .user-logout, a[href*="logout"]').catch(() => null);
+      if (logoutBtn) {
+        this.logger.info('NRN login successful - logout button found');
+        return true;
+      }
+
+      // Check for error messages
+      const errorMsg = await this.page!.$eval('.messages--error, .error-message, .alert-danger, .error',
+        el => el.textContent?.trim() || ''
+      ).catch(() => '');
+
+      this.logger.warn(`NRN login failed - still on login page. Error message: "${errorMsg || 'none found'}"`);
+      return false;
+
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       const stack = error instanceof Error ? error.stack : '';

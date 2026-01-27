@@ -30,40 +30,125 @@ export class BizJournalsScraper extends BaseScraper {
     }
 
     try {
-      this.logger.info(`Step 1/6: Navigating to BizJournals login page: ${this.source.login_url}`);
+      this.logger.info(`Step 1/8: Navigating to BizJournals login page: ${this.source.login_url}`);
       await this.page!.goto(this.source.login_url!, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await this.randomDelay(2000, 4000);
 
-      this.logger.info(`Step 2/6: Page loaded, current URL: ${this.page!.url()}`);
+      this.logger.info(`Step 2/8: Page loaded, current URL: ${this.page!.url()}`);
 
-      // Check what form fields are available
+      // BizJournals uses multi-step login: email first, then password field appears
+      // Step 1: Check for email field
       const emailField = await this.page!.$('input[name="email"], input[type="email"], #email');
-      const passwordField = await this.page!.$('input[name="password"], input[type="password"], #password');
-      this.logger.info(`Step 3/6: Form fields found - email: ${!!emailField}, password: ${!!passwordField}`);
+      this.logger.info(`Step 3/8: Email field found: ${!!emailField}`);
 
-      if (!emailField || !passwordField) {
-        // Log the page content to help debug
+      if (!emailField) {
         const pageContent = await this.page!.content();
         this.logger.error(`Login form not found. Page title: ${await this.page!.title()}`);
         this.logger.debug(`Page HTML snippet: ${pageContent.substring(0, 1000)}`);
         return false;
       }
 
-      // BizJournals login form
-      this.logger.info('Step 4/6: Filling email field...');
+      // Fill in email first
+      this.logger.info('Step 4/8: Filling email field...');
       await this.page!.fill('input[name="email"], input[type="email"], #email', username);
       await this.randomDelay(500, 1000);
 
-      this.logger.info('Step 5/6: Filling password field...');
+      // Click "Next" or "Continue" button (or submit if it's there)
+      this.logger.info('Step 5/8: Looking for Next/Continue button...');
+      const nextButtonSelectors = [
+        'button[type="submit"]',
+        'button:has-text("Next")',
+        'button:has-text("Continue")',
+        'input[type="submit"]',
+        '.login-button'
+      ];
+
+      let clickedNext = false;
+      for (const selector of nextButtonSelectors) {
+        try {
+          const button = await this.page!.$(selector);
+          if (button) {
+            await button.click();
+            this.logger.info(`  ✓ Clicked: ${selector}`);
+            clickedNext = true;
+            break;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      if (clickedNext) {
+        // Wait for password field to appear
+        this.logger.info('Step 6/8: Waiting for password field to appear...');
+        await this.randomDelay(2000, 4000);
+      }
+
+      // Now check for password field (it may have appeared after clicking Next)
+      this.logger.info('Step 7/8: Looking for password field...');
+      let passwordField = null;
+      const passwordSelectors = [
+        'input[name="password"]',
+        'input[type="password"]',
+        '#password'
+      ];
+
+      for (const selector of passwordSelectors) {
+        passwordField = await this.page!.$(selector);
+        if (passwordField) {
+          this.logger.info(`  ✓ Password field found: ${selector}`);
+          break;
+        }
+      }
+
+      if (!passwordField) {
+        // Try waiting a bit longer and checking again
+        this.logger.info('Password field not immediately visible, waiting...');
+        await this.randomDelay(2000, 3000);
+
+        for (const selector of passwordSelectors) {
+          passwordField = await this.page!.$(selector);
+          if (passwordField) {
+            this.logger.info(`  ✓ Password field appeared: ${selector}`);
+            break;
+          }
+        }
+      }
+
+      if (!passwordField) {
+        this.logger.error('Password field never appeared - multi-step login may have changed');
+        return false;
+      }
+
+      // Fill in password
+      this.logger.info('Step 8/8: Filling password and submitting...');
       await this.page!.fill('input[name="password"], input[type="password"], #password', password);
       await this.randomDelay(500, 1000);
 
-      // Submit
-      this.logger.info('Step 6/6: Clicking submit button...');
-      await this.page!.click('button[type="submit"], input[type="submit"], .login-button');
+      // Submit the login form
+      const submitSelectors = [
+        'button[type="submit"]',
+        'input[type="submit"]',
+        '.login-button',
+        'button:has-text("Log in")',
+        'button:has-text("Sign in")'
+      ];
+
+      for (const selector of submitSelectors) {
+        try {
+          const button = await this.page!.$(selector);
+          if (button) {
+            await button.click();
+            this.logger.info(`  ✓ Clicked submit: ${selector}`);
+            break;
+          }
+        } catch {
+          continue;
+        }
+      }
 
       // Wait for navigation
-      await this.page!.waitForLoadState('domcontentloaded', { timeout: 30000 });
+      await this.page!.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
       await this.randomDelay(3000, 5000);
 
       // Check if login was successful
