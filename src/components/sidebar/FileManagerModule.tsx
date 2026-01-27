@@ -31,6 +31,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
   const [toastMessage, setToastMessage] = useState<string>('');
   const [draggedItem, setDraggedItem] = useState<DropboxFile | null>(null);
   const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
+  const [dropTargetFolder, setDropTargetFolder] = useState<DropboxFile | null>(null);
   const [renamingItem, setRenamingItem] = useState<DropboxFile | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
@@ -220,7 +221,19 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
   const handleDragOver = (e: React.DragEvent, folder: DropboxFile) => {
     e.preventDefault();
     e.stopPropagation();
-    if (draggedItem && folder.type === 'folder' && folder.path !== draggedItem.path) {
+
+    if (folder.type !== 'folder') return;
+
+    // Check if dragging native files (from computer) or internal files
+    const isNativeFileDrag = e.dataTransfer.types.includes('Files');
+
+    if (isNativeFileDrag) {
+      // Native file drag from outside browser
+      e.dataTransfer.dropEffect = 'copy';
+      setDropTargetFolder(folder);
+      setDropTargetPath(folder.path);
+    } else if (draggedItem && folder.path !== draggedItem.path) {
+      // Internal file move
       e.dataTransfer.dropEffect = 'move';
       setDropTargetPath(folder.path);
     }
@@ -229,6 +242,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     setDropTargetPath(null);
+    setDropTargetFolder(null);
   };
 
   const handleDrop = async (e: React.DragEvent, targetFolder: DropboxFile) => {
@@ -236,7 +250,20 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
     e.stopPropagation();
     setDropTargetPath(null);
 
-    if (!draggedItem || targetFolder.type !== 'folder') return;
+    if (targetFolder.type !== 'folder') return;
+
+    // Check if this is a native file drop (from computer) or internal move
+    const hasNativeFiles = e.dataTransfer.files && e.dataTransfer.files.length > 0;
+
+    if (hasNativeFiles) {
+      // Native file drop - upload to target folder
+      setDropTargetFolder(targetFolder);
+      // React-dropzone will handle the actual drop and call onDrop
+      return;
+    }
+
+    // Internal file move logic
+    if (!draggedItem) return;
     if (draggedItem.path === targetFolder.path) return;
 
     // Don't allow dropping a folder into itself or its children
@@ -257,6 +284,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
       alert('Failed to move item. Please try again.');
     } finally {
       setDraggedItem(null);
+      setDropTargetFolder(null);
     }
   };
 
@@ -393,7 +421,26 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
         item: (index: number) => acceptedFiles[index]
       } as unknown as FileList;
 
-      await handleFileUpload(fileList);
+      // Determine upload path - use dropTargetFolder if set, otherwise currentPath
+      let uploadPath = currentPath;
+      if (dropTargetFolder) {
+        // Calculate relative path from base folder
+        uploadPath = dropTargetFolder.path.replace(folderPath || '', '');
+        setDropTargetFolder(null); // Clear after use
+      }
+
+      // Upload files to the determined path
+      try {
+        setUploading(true);
+        await uploadFiles(fileList, uploadPath);
+        console.log('📤 Uploaded to subfolder:', uploadPath);
+        await refreshFiles();
+      } catch (err) {
+        console.error('Error uploading files:', err);
+        alert('Failed to upload files. Please try again.');
+      } finally {
+        setUploading(false);
+      }
     },
     noClick: true,  // Don't open file picker on click (we have upload button for that)
     noKeyboard: false
@@ -662,7 +709,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
                   className={`p-2 hover:bg-blue-50 group transition-colors cursor-pointer ${
                     draggedItem?.path === folder.path ? 'opacity-50 bg-gray-100' : ''
                   } ${
-                    dropTargetPath === folder.path ? 'bg-blue-100 ring-2 ring-blue-400 ring-inset' : ''
+                    dropTargetPath === folder.path || dropTargetFolder?.path === folder.path ? 'bg-blue-100 ring-2 ring-blue-400 ring-inset' : ''
                   }`}
                   draggable
                   onDragStart={(e) => handleDragStart(e, folder)}
