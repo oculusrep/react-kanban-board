@@ -30,6 +30,7 @@ interface EmailWithLinks {
   direction: string | null;
   ai_processed: boolean;
   ai_processed_at: string | null;
+  recipient_list?: Array<{ email?: string; name?: string }> | null;
   links: EmailObjectLink[];
   hasReview: boolean; // Whether feedback/correction has been logged for this email
   reviewType: 'none' | 'feedback' | 'not_business'; // Type of review
@@ -85,6 +86,12 @@ const EmailClassificationReviewPage: React.FC = () => {
   const [feedbackReasoning, setFeedbackReasoning] = useState<Record<string, string>>({});
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
+  // Pagination and search state
+  const [emailSearchQuery, setEmailSearchQuery] = useState('');
+  const [pageSize, setPageSize] = useState<number>(50);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalEmails, setTotalEmails] = useState(0);
+
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkProcessing, setBulkProcessing] = useState(false);
@@ -115,7 +122,7 @@ const EmailClassificationReviewPage: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      // Fetch emails with their links
+      // Build query for emails with their links
       let query = supabase
         .from('emails')
         .select(`
@@ -128,14 +135,32 @@ const EmailClassificationReviewPage: React.FC = () => {
           received_at,
           direction,
           ai_processed,
-          ai_processed_at
-        `)
-        .eq('ai_processed', true)
-        .order('received_at', { ascending: false })
-        .limit(50);
+          ai_processed_at,
+          recipient_list
+        `, { count: 'exact' })
+        .eq('ai_processed', true);
 
-      const { data: emailsData, error: emailsError } = await query;
+      // Apply email search filter
+      if (emailSearchQuery.trim()) {
+        const searchTerm = emailSearchQuery.trim();
+        // Search in subject, sender_email, and sender_name
+        // Note: recipient_list search is complex with JSONB, so we'll filter client-side if needed
+        query = query.or(`subject.ilike.%${searchTerm}%,sender_email.ilike.%${searchTerm}%,sender_name.ilike.%${searchTerm}%`);
+      }
+
+      // Apply pagination
+      const from = (currentPage - 1) * pageSize;
+      const to = pageSize === -1 ? undefined : from + pageSize - 1;
+
+      query = query
+        .order('received_at', { ascending: false })
+        .range(from, to || 999999);
+
+      const { data: emailsData, error: emailsError, count } = await query;
       if (emailsError) throw emailsError;
+
+      // Update total count
+      setTotalEmails(count || 0);
 
       // Fetch links for these emails
       const emailIds = (emailsData || []).map(e => e.id);
@@ -183,12 +208,33 @@ const EmailClassificationReviewPage: React.FC = () => {
       const linksWithNames = await resolveObjectNames(linksData || []);
 
       // Combine emails with their links and review status
-      const emailsWithLinks = (emailsData || []).map(email => ({
+      let emailsWithLinks = (emailsData || []).map(email => ({
         ...email,
         links: linksWithNames.filter(l => l.email_id === email.id),
         hasReview: reviewTypeMap.has(email.id),
         reviewType: reviewTypeMap.get(email.id) || 'none' as const,
       }));
+
+      // Apply client-side search for recipients (JSONB array search is complex in SQL)
+      if (emailSearchQuery.trim()) {
+        const searchTerm = emailSearchQuery.trim().toLowerCase();
+        emailsWithLinks = emailsWithLinks.filter(email => {
+          // Check if already matched by SQL query
+          if (email.subject?.toLowerCase().includes(searchTerm) ||
+              email.sender_email?.toLowerCase().includes(searchTerm) ||
+              email.sender_name?.toLowerCase().includes(searchTerm)) {
+            return true;
+          }
+          // Check recipients
+          if (email.recipient_list && Array.isArray(email.recipient_list)) {
+            return email.recipient_list.some((recipient: any) =>
+              recipient.email?.toLowerCase().includes(searchTerm) ||
+              recipient.name?.toLowerCase().includes(searchTerm)
+            );
+          }
+          return false;
+        });
+      }
 
       // Apply link filter
       let filteredEmails = emailsWithLinks;
@@ -212,7 +258,7 @@ const EmailClassificationReviewPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [filter, reviewFilter]);
+  }, [filter, reviewFilter, emailSearchQuery, currentPage, pageSize]);
 
   const resolveObjectNames = async (links: any[]): Promise<EmailObjectLink[]> => {
     const resolvedLinks: EmailObjectLink[] = [];
@@ -1126,6 +1172,17 @@ const EmailClassificationReviewPage: React.FC = () => {
     }
   };
 
+  // Handle search input with debounce
+  const handleEmailSearch = (query: string) => {
+    setEmailSearchQuery(query);
+    setCurrentPage(1); // Reset to first page when searching
+  };
+
+  // Calculate pagination info
+  const totalPages = pageSize === -1 ? 1 : Math.ceil(totalEmails / pageSize);
+  const startIndex = (currentPage - 1) * pageSize + 1;
+  const endIndex = pageSize === -1 ? totalEmails : Math.min(currentPage * pageSize, totalEmails);
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
       <div className="mb-6">
@@ -1207,8 +1264,86 @@ const EmailClassificationReviewPage: React.FC = () => {
           ))}
         </div>
         <span className="text-sm text-gray-500">
-          {emails.length} email{emails.length !== 1 ? 's' : ''}
+          {totalEmails} total email{totalEmails !== 1 ? 's' : ''}
         </span>
+      </div>
+
+      {/* Search and Pagination Controls */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-4 p-4 bg-white border rounded-lg">
+        {/* Search */}
+        <div className="flex items-center gap-2 flex-1 min-w-[300px]">
+          <div className="relative flex-1 max-w-md">
+            <input
+              type="text"
+              placeholder="Search emails by subject, sender, or recipient..."
+              value={emailSearchQuery}
+              onChange={(e) => handleEmailSearch(e.target.value)}
+              className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+            />
+            <EnvelopeIcon className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
+            {emailSearchQuery && (
+              <button
+                onClick={() => handleEmailSearch('')}
+                className="absolute right-2 top-2 p-1 text-gray-400 hover:text-gray-600 rounded"
+              >
+                <XMarkIcon className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Pagination Controls */}
+        <div className="flex items-center gap-4">
+          {/* Page size selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">Show:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+            >
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={200}>200</option>
+              <option value={-1}>All</option>
+            </select>
+          </div>
+
+          {/* Page navigation */}
+          {pageSize !== -1 && totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Previous page"
+              >
+                <ChevronLeftIcon className="w-5 h-5" />
+              </button>
+              <span className="text-sm text-gray-600 min-w-[120px] text-center">
+                {startIndex}-{endIndex} of {totalEmails}
+              </span>
+              <button
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Next page"
+              >
+                <ChevronRightIcon className="w-5 h-5" />
+              </button>
+            </div>
+          )}
+
+          {/* Page number display when showing all */}
+          {pageSize === -1 && (
+            <span className="text-sm text-gray-600">
+              Showing all {totalEmails} emails
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Bulk actions bar - shows when emails are loaded and on needs_review filter */}
