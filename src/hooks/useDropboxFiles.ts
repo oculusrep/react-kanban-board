@@ -11,7 +11,7 @@ interface UseDropboxFilesReturn {
   uploading: boolean;
   error: string | null;
   refreshFiles: (silent?: boolean) => Promise<void>;
-  uploadFiles: (fileList: FileList) => Promise<void>;
+  uploadFiles: (fileList: FileList, subPath?: string) => Promise<void>;
   createFolder: (folderName: string) => Promise<void>;
   deleteItem: (path: string) => Promise<void>;
   moveItem: (sourcePath: string, destinationFolderPath: string) => Promise<void>;
@@ -370,9 +370,10 @@ export function useDropboxFiles(
    * Upload multiple files to the current folder
    * If no folder exists, auto-create one first
    * @param fileList - FileList from input or drag-drop event
+   * @param subPath - Optional subfolder path relative to base folder (e.g., "/_Closed")
    */
   const uploadFiles = useCallback(
-    async (fileList: FileList) => {
+    async (fileList: FileList, subPath: string = '') => {
       if (!dropboxService) {
         throw new Error('Dropbox service not initialized');
       }
@@ -386,14 +387,14 @@ export function useDropboxFiles(
       setFolderCreatedMessage(null);
 
       try {
-        let targetFolderPath = folderPath;
+        let baseFolderPath = folderPath;
 
         // If no folder path, create one
-        if (!targetFolderPath) {
+        if (!baseFolderPath) {
           console.log('📁 No folder exists, auto-creating...');
-          targetFolderPath = await createFolderAndMapping();
+          baseFolderPath = await createFolderAndMapping();
 
-          if (!targetFolderPath) {
+          if (!baseFolderPath) {
             throw new Error('Failed to create folder');
           }
 
@@ -402,9 +403,13 @@ export function useDropboxFiles(
           setFolderCreatedMessage(`Created Dropbox folder: ${entityName}`);
         }
 
+        // Combine base folder path with subfolder path
+        const targetFolderPath = baseFolderPath + subPath;
+        console.log('📤 Uploading to:', targetFolderPath);
+
         // Upload all files in parallel
         const uploadPromises = Array.from(fileList).map(file =>
-          dropboxService!.uploadFile(file, targetFolderPath!)
+          dropboxService!.uploadFile(file, targetFolderPath)
         );
 
         await Promise.all(uploadPromises);

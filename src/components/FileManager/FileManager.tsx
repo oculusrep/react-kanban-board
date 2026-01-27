@@ -218,8 +218,8 @@ const FileManager: React.FC<FileManagerProps> = ({ entityType, entityId }) => {
         });
         setUploadProgress(initialProgress);
 
-        // Upload files
-        await uploadFiles(files);
+        // Upload files to the current subfolder
+        await uploadFiles(files, currentPath);
 
         // Mark all as complete
         const completeProgress: {[key: string]: number} = {};
