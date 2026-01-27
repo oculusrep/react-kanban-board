@@ -74,3 +74,4 @@ scripts/setUserPassword.js
 
 # Local Netlify folder
 .netlify
+.env*.local
