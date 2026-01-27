@@ -853,8 +853,8 @@ export default function BudgetDashboardPage() {
                     <thead className="sticky top-0 bg-blue-50">
                       <tr className="text-xs text-gray-500 uppercase">
                         <th className="py-1 text-left font-medium">Date</th>
-                        <th className="py-1 text-left font-medium">Type</th>
-                        <th className="py-1 text-left font-medium">Vendor</th>
+                        <th className="py-1 text-left font-medium">Type / Status</th>
+                        <th className="py-1 text-left font-medium">Vendor / Payment</th>
                         <th className="py-1 text-left font-medium">Description</th>
                         <th className="py-1 text-right font-medium">Amount</th>
                         <th className="py-1 text-center font-medium w-32">Actions</th>
@@ -868,6 +868,7 @@ export default function BudgetDashboardPage() {
                       const isCredit = txn.amount < 0 || txn.transaction_type === 'CreditCardCredit' || txn.transaction_type === 'VendorCredit';
                       // Check if this is an unpaid Bill or Invoice
                       const isUnpaid = (txn.transaction_type === 'Bill' || txn.transaction_type === 'Invoice') && txn.is_paid === false;
+                      const isPaid = (txn.transaction_type === 'Bill' || txn.transaction_type === 'Invoice') && txn.is_paid === true;
 
                       // For income sections, flip the sign on Purchase/Bill transactions
                       let displayAmount = txn.amount;
@@ -883,11 +884,13 @@ export default function BudgetDashboardPage() {
                           <td className="py-1.5 text-gray-500 text-xs w-20">
                             {txn.transaction_type}
                             {isUnpaid && <span className="ml-1 text-yellow-600">*</span>}
+                            {isPaid && <span className="ml-1 text-green-600">✓</span>}
                           </td>
                           <td className="py-1.5 text-gray-900 w-40 truncate">
                             {txn.vendor_name || '-'}
                             {isCredit && <span className="ml-1 text-xs text-green-600">(Credit)</span>}
                             {isUnpaid && <span className="ml-1 text-xs text-yellow-600">(Unpaid)</span>}
+                            {isPaid && <span className="ml-1 text-xs text-green-600">(Paid {txn.payment_date ? `${new Date(txn.payment_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''})</span>}
                           </td>
                           <td className="py-1.5 text-gray-600 truncate max-w-xs" title={txn.description || undefined}>
                             {txn.description || '-'}
