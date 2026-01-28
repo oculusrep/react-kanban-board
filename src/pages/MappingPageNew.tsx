@@ -349,6 +349,52 @@ const MappingPageContent: React.FC = () => {
     }
   }, [location.search, mapInstance, layerState.properties?.isVisible, toggleLayer, setVerifyingPropertyId]);
 
+  // Handle property centering from URL parameter (without verify mode)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const propertyId = params.get('property');
+    const verifyMode = params.get('verify') === 'true';
+
+    // Only handle if property ID exists, verify mode is NOT active, and map is loaded
+    if (propertyId && !verifyMode && mapInstance) {
+      console.log('🗺️ Property centering requested (non-verify):', propertyId);
+
+      // Fetch the property data
+      supabase
+        .from('property')
+        .select('id, property_name, address, verified_latitude, verified_longitude, latitude, longitude')
+        .eq('id', propertyId)
+        .single()
+        .then(({ data, error }) => {
+          if (error || !data) {
+            console.error('Failed to fetch property for centering:', error);
+            return;
+          }
+
+          // Determine coordinates to use (priority: verified coords > regular coords)
+          const lat = data.verified_latitude ?? data.latitude;
+          const lng = data.verified_longitude ?? data.longitude;
+
+          if (lat && lng) {
+            console.log(`📍 Centering on ${data.property_name || data.address || 'Property'} at ${lat}, ${lng}`);
+            // Center map on property
+            mapInstance.setCenter({ lat, lng });
+            mapInstance.setZoom(16); // Zoom in to see the property clearly
+
+            // Enable properties layer if not already visible
+            if (!layerState.properties?.isVisible) {
+              console.log('🎯 Auto-enabling properties layer');
+              toggleLayer('properties');
+            }
+
+            console.log('✅ Map centered on property');
+          } else {
+            console.warn('⚠️ Property has no coordinates:', data.property_name || data.address);
+          }
+        });
+    }
+  }, [location.search, mapInstance, layerState.properties?.isVisible, toggleLayer]);
+
   const handleMapLoad = (map: google.maps.Map) => {
     setMapInstance(map);
     console.log('Map loaded successfully:', map);
