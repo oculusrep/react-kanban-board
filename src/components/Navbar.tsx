@@ -504,6 +504,17 @@ export default function Navbar() {
                   >
                     🏋️ Coach Dashboard
                   </button>
+                  {hasPermission('can_view_goal_dashboard') && (
+                    <button
+                      onClick={() => {
+                        navigate('/reports/goal-dashboard');
+                        setIsReportsMenuOpen(false);
+                      }}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                    >
+                      🎯 Goal Dashboard
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       navigate('/notes-debug');
@@ -1054,6 +1065,17 @@ export default function Navbar() {
                 >
                   🏋️ Coach Dashboard
                 </button>
+                {hasPermission('can_view_goal_dashboard') && (
+                  <button
+                    onClick={() => {
+                      navigate('/reports/goal-dashboard');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                  >
+                    🎯 Goal Dashboard
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     navigate('/notes-debug');
