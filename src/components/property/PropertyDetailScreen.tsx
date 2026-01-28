@@ -12,7 +12,6 @@ import FinancialSection from './FinancialSection';
 import PropertyDetailsSection from './PropertyDetailsSection';
 import MarketAnalysisSection from './MarketAnalysisSection';
 import LinksSection from './LinksSection';
-import NotesSection from './NotesSection';
 import PropertySidebar from './PropertySidebar';
 import PropertyUnitsSection from './PropertyUnitsSection';
 import GenericActivityTab from '../GenericActivityTab';
@@ -504,12 +503,6 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
                 />
 
                 <LinksSection
-                  property={currentProperty}
-                  isEditing={isEditing}
-                  onFieldUpdate={handleFieldUpdate}
-                />
-
-                <NotesSection
                   property={currentProperty}
                   isEditing={isEditing}
                   onFieldUpdate={handleFieldUpdate}

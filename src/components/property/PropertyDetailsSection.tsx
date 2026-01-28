@@ -131,6 +131,16 @@ const PropertyDetailsSection: React.FC<PropertyDetailsSectionProps> = ({
             tabIndex={3}
           />
 
+          <PropertyInputField
+            label="Property Notes"
+            value={property.property_notes}
+            onChange={(value) => onFieldUpdate('property_notes', value)}
+            placeholder="Add notes about this property, market conditions, tenant information, lease details, or any other relevant information..."
+            multiline={true}
+            rows={4}
+            tabIndex={4}
+          />
+
           {/* Basic Market Information */}
           <div className="border-t border-gray-200 pt-3">
             <h4 className="text-xs font-medium text-gray-900 mb-2">Location Details</h4>
@@ -140,7 +150,7 @@ const PropertyDetailsSection: React.FC<PropertyDetailsSectionProps> = ({
               onChange={(value) => onFieldUpdate('trade_area', value)}
               field="trade_area"
               placeholder="Downtown, Suburb, etc."
-              tabIndex={4}
+              tabIndex={5}
             />
           </div>
 
