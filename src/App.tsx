@@ -34,6 +34,7 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 import UserManagementPage from "./pages/UserManagementPage";
 import KPIDashboardPage from "./pages/KPIDashboardPage";
 import RobReportPage from "./pages/RobReportPage";
+import RobReport2025Page from "./pages/RobReport2025Page";
 import CoachDashboardPage from "./pages/CoachDashboardPage";
 import GoalManagementPage from "./pages/GoalManagementPage";
 import GoalDashboardPage from "./pages/GoalDashboardPage";
@@ -117,6 +118,7 @@ function App() {
           <Route path="reports/site-submit-dashboard" element={<CoachRoute><SiteSubmitDashboardPage /></CoachRoute>} />
           <Route path="reports/dropbox-sync-admin" element={<AdminRoute><DropboxSyncAdminPage /></AdminRoute>} />
           <Route path="reports/rob-report" element={<CoachRoute><RobReportPage /></CoachRoute>} />
+          <Route path="reports/rob-report-2025" element={<CoachRoute><RobReport2025Page /></CoachRoute>} />
           <Route path="reports/goals" element={<AdminRoute><GoalManagementPage /></AdminRoute>} />
           <Route path="reports/goal-dashboard" element={<CoachRoute><GoalDashboardPage /></CoachRoute>} />
           <Route path="prospecting" element={<AdminRoute><ProspectingDashboardPage /></AdminRoute>} />

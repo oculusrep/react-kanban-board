@@ -464,6 +464,15 @@ export default function Navbar() {
                   >
                     📊 Reports
                   </button>
+                  <button
+                    onClick={() => {
+                      navigate('/reports/rob-report-2025');
+                      setIsReportsMenuOpen(false);
+                    }}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                  >
+                    📋 2025 Rob Report
+                  </button>
                   {userRole === 'admin' && (
                     <>
                       <button
@@ -1024,6 +1033,15 @@ export default function Navbar() {
                   className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                 >
                   📊 Reports
+                </button>
+                <button
+                  onClick={() => {
+                    navigate('/reports/rob-report-2025');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                >
+                  📋 2025 Rob Report
                 </button>
                 {userRole === 'admin' && (
                   <>
