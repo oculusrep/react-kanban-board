@@ -135,6 +135,10 @@ export default function SiteSubmitDashboardPage() {
   const [isPropertyDetailsOpen, setIsPropertyDetailsOpen] = useState(false);
   const [selectedPropertyData, setSelectedPropertyData] = useState<any>(null);
 
+  // Site Submit Details slideout (for viewing site submit from property)
+  const [isSiteSubmitDetailsOpen, setIsSiteSubmitDetailsOpen] = useState(false);
+  const [selectedSiteSubmitData, setSelectedSiteSubmitData] = useState<any>(null);
+
   // Full Site Submit slideout (for viewing full site submit record)
   const [isFullSiteSubmitOpen, setIsFullSiteSubmitOpen] = useState(false);
   const [fullSiteSubmitId, setFullSiteSubmitId] = useState<string>("");
@@ -147,10 +151,12 @@ export default function SiteSubmitDashboardPage() {
       selectedPinDataId: selectedPinData?.id,
       isPropertyDetailsOpen,
       selectedPropertyDataId: selectedPropertyData?.id,
+      isSiteSubmitDetailsOpen,
+      selectedSiteSubmitDataId: selectedSiteSubmitData?.id,
       isFullSiteSubmitOpen,
       fullSiteSubmitId
     });
-  }, [isPinDetailsOpen, selectedPinData, selectedPinType, isPropertyDetailsOpen, selectedPropertyData, isFullSiteSubmitOpen, fullSiteSubmitId]);
+  }, [isPinDetailsOpen, selectedPinData, selectedPinType, isPropertyDetailsOpen, selectedPropertyData, isSiteSubmitDetailsOpen, selectedSiteSubmitData, isFullSiteSubmitOpen, fullSiteSubmitId]);
 
   // Bulk selection state
   const [selectedSiteSubmitIds, setSelectedSiteSubmitIds] = useState<Set<string>>(new Set());
@@ -1041,16 +1047,21 @@ export default function SiteSubmitDashboardPage() {
   }, []);
 
   const handleViewSiteSubmitDetails = useCallback((siteSubmit: any) => {
-    console.log('📋 Opening site submit full slideout from property sidebar (keeping property open):', siteSubmit);
+    console.log('📋 Opening site submit PIN DETAILS slideout from property sidebar (keeping property open):', siteSubmit);
     if (!siteSubmit?.id) {
       console.error('❌ No site submit ID found:', siteSubmit);
       return;
     }
 
-    // Open the full site submit slideout (keeps property slideout open and nests them)
-    setFullSiteSubmitId(siteSubmit.id);
-    setIsFullSiteSubmitOpen(true);
-    console.log('✅ Opened full site submit slideout:', siteSubmit.id, '(property slideout remains open)');
+    // Open the site submit pin details slideout (keeps property slideout open and nests them)
+    setSelectedSiteSubmitData(siteSubmit);
+    setIsSiteSubmitDetailsOpen(true);
+    console.log('✅ Opened site submit pin details slideout:', siteSubmit.id, '(property slideout remains open)');
+  }, []);
+
+  const handleSiteSubmitDetailsClose = useCallback(() => {
+    setIsSiteSubmitDetailsOpen(false);
+    setSelectedSiteSubmitData(null);
   }, []);
 
   const handleFullSiteSubmitClose = useCallback(() => {
@@ -1980,7 +1991,7 @@ export default function SiteSubmitDashboardPage() {
         onViewPropertyDetails={handleViewPropertyDetails}
         onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
         onOpenFullSiteSubmit={handleOpenFullSiteSubmit}
-        rightOffset={isFullSiteSubmitOpen ? 800 : (isPropertyDetailsOpen ? 500 : 0)} // Shift left when full site submit or property details is open
+        rightOffset={isFullSiteSubmitOpen ? 800 : (isPropertyDetailsOpen ? 500 : (isSiteSubmitDetailsOpen ? 500 : 0))} // Shift left when full site submit, property details, or site submit details is open
       />
 
       {/* Property Details Slideout (for viewing property from site submit) */}
@@ -1991,6 +2002,17 @@ export default function SiteSubmitDashboardPage() {
         type="property"
         onDataUpdate={handlePropertyDataUpdate}
         onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
+        onOpenFullSiteSubmit={handleOpenFullSiteSubmit}
+        rightOffset={isFullSiteSubmitOpen ? 800 : (isSiteSubmitDetailsOpen ? 500 : 0)} // Shift left when full site submit or site submit details is open
+      />
+
+      {/* Site Submit Details Slideout (for viewing site submit from property) */}
+      <PinDetailsSlideout
+        isOpen={isSiteSubmitDetailsOpen}
+        onClose={handleSiteSubmitDetailsClose}
+        data={selectedSiteSubmitData}
+        type="site_submit"
+        onDataUpdate={handleDataUpdate}
         onOpenFullSiteSubmit={handleOpenFullSiteSubmit}
         rightOffset={isFullSiteSubmitOpen ? 800 : 0} // Shift left when full site submit is open
       />
