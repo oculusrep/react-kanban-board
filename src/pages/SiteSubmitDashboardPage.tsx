@@ -139,6 +139,19 @@ export default function SiteSubmitDashboardPage() {
   const [isFullSiteSubmitOpen, setIsFullSiteSubmitOpen] = useState(false);
   const [fullSiteSubmitId, setFullSiteSubmitId] = useState<string>("");
 
+  // Debug: Log slideout state changes
+  useEffect(() => {
+    console.log('🔄 Slideout states changed:', {
+      isPinDetailsOpen,
+      selectedPinType,
+      selectedPinDataId: selectedPinData?.id,
+      isPropertyDetailsOpen,
+      selectedPropertyDataId: selectedPropertyData?.id,
+      isFullSiteSubmitOpen,
+      fullSiteSubmitId
+    });
+  }, [isPinDetailsOpen, selectedPinData, selectedPinType, isPropertyDetailsOpen, selectedPropertyData, isFullSiteSubmitOpen, fullSiteSubmitId]);
+
   // Bulk selection state
   const [selectedSiteSubmitIds, setSelectedSiteSubmitIds] = useState<Set<string>>(new Set());
   const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
@@ -764,16 +777,27 @@ export default function SiteSubmitDashboardPage() {
   // Handler for Client Submit Report - opens both property and site submit slideouts
   const handleClientSubmitRowClick = useCallback(async (row: ClientSubmitReportRow) => {
     console.log('📋 Opening property and site submit slideouts for:', row.property_name);
+    console.log('📊 Current slideout states BEFORE:', {
+      isPinDetailsOpen,
+      isPropertyDetailsOpen,
+      selectedPinType,
+      hasSiteSubmitData: !!row._fullSiteSubmit,
+      hasPropertyData: !!row.property?.id
+    });
 
     // Open the site submit slideout (using the full site submit record)
     if (row._fullSiteSubmit) {
+      console.log('🎯 Opening Pin Details slideout with site submit:', row._fullSiteSubmit.id);
       setSelectedPinData(row._fullSiteSubmit);
       setSelectedPinType('site_submit');
       setIsPinDetailsOpen(true);
+    } else {
+      console.warn('⚠️ No _fullSiteSubmit data found for row:', row.id);
     }
 
     // Also open the property details slideout
     if (row.property?.id) {
+      console.log('🏢 Opening Property Details slideout for property:', row.property.id);
       try {
         const { data: freshPropertyData, error } = await supabase
           .from('property')
@@ -785,6 +809,7 @@ export default function SiteSubmitDashboardPage() {
           console.error('❌ Error fetching fresh property data:', error);
           setSelectedPropertyData(row.property);
         } else {
+          console.log('✅ Fetched fresh property data:', freshPropertyData.id);
           setSelectedPropertyData(freshPropertyData);
         }
       } catch (err) {
@@ -792,8 +817,13 @@ export default function SiteSubmitDashboardPage() {
         setSelectedPropertyData(row.property);
       }
       setIsPropertyDetailsOpen(true);
+      console.log('✅ Set isPropertyDetailsOpen to true');
+    } else {
+      console.warn('⚠️ No property data found for row:', row.id);
     }
-  }, []);
+
+    console.log('✅ handleClientSubmitRowClick completed');
+  }, [isPinDetailsOpen, isPropertyDetailsOpen, selectedPinType]);
 
   // Inline editing handlers for Client Submit Report
   const startEditing = (rowId: string, field: string, currentValue: string) => {
