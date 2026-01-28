@@ -1041,17 +1041,16 @@ export default function SiteSubmitDashboardPage() {
   }, []);
 
   const handleViewSiteSubmitDetails = useCallback((siteSubmit: any) => {
-    console.log('📋 Opening site submit PIN DETAILS slideout from property sidebar:', siteSubmit);
+    console.log('📋 Opening site submit full slideout from property sidebar (keeping property open):', siteSubmit);
     if (!siteSubmit?.id) {
       console.error('❌ No site submit ID found:', siteSubmit);
       return;
     }
 
-    // Open the pin details slideout with site submit data (mimics clicking site submit on map)
-    setSelectedPinData(siteSubmit);
-    setSelectedPinType('site_submit');
-    setIsPinDetailsOpen(true);
-    console.log('✅ Opened pin details slideout with site submit:', siteSubmit.id);
+    // Open the full site submit slideout (keeps property slideout open and nests them)
+    setFullSiteSubmitId(siteSubmit.id);
+    setIsFullSiteSubmitOpen(true);
+    console.log('✅ Opened full site submit slideout:', siteSubmit.id, '(property slideout remains open)');
   }, []);
 
   const handleFullSiteSubmitClose = useCallback(() => {
