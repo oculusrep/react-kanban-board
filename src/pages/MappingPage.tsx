@@ -46,7 +46,14 @@ const MappingPage: React.FC = () => {
   useEffect(() => {
     const propertyId = searchParams.get('property');
 
-    if (!propertyId || !mapInstance) return;
+    console.log('🗺️ Property centering effect running:', { propertyId, hasMap: !!mapInstance });
+
+    if (!propertyId || !mapInstance) {
+      if (propertyId && !mapInstance) {
+        console.log('⏳ Waiting for map to load before centering on property...');
+      }
+      return;
+    }
 
     const centerOnProperty = async () => {
       try {
@@ -84,9 +91,8 @@ const MappingPage: React.FC = () => {
         mapInstance.setZoom(16); // Zoom in to see the property clearly
 
         // Make sure Properties layer is visible
-        if (!showProperties) {
-          setShowProperties(true);
-        }
+        setShowProperties(true);
+        console.log('✅ Map centered and properties layer enabled');
       } catch (err) {
         console.error('❌ Exception while centering on property:', err);
       }
