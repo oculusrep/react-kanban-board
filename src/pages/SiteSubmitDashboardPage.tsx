@@ -1040,6 +1040,15 @@ export default function SiteSubmitDashboardPage() {
     setIsFullSiteSubmitOpen(true);
   }, []);
 
+  const handleViewSiteSubmitDetails = useCallback((siteSubmit: any) => {
+    console.log('📋 Opening site submit slideout from property sidebar:', siteSubmit);
+    if (siteSubmit?.id) {
+      handleOpenFullSiteSubmit(siteSubmit.id);
+    } else {
+      console.error('❌ No site submit ID found:', siteSubmit);
+    }
+  }, [handleOpenFullSiteSubmit]);
+
   const handleFullSiteSubmitClose = useCallback(() => {
     setIsFullSiteSubmitOpen(false);
     setFullSiteSubmitId("");
@@ -1965,6 +1974,7 @@ export default function SiteSubmitDashboardPage() {
         type={selectedPinType}
         onDataUpdate={handleDataUpdate}
         onViewPropertyDetails={handleViewPropertyDetails}
+        onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
         onOpenFullSiteSubmit={handleOpenFullSiteSubmit}
         rightOffset={isFullSiteSubmitOpen ? 800 : (isPropertyDetailsOpen ? 500 : 0)} // Shift left when full site submit or property details is open
       />
@@ -1976,6 +1986,7 @@ export default function SiteSubmitDashboardPage() {
         data={selectedPropertyData}
         type="property"
         onDataUpdate={handlePropertyDataUpdate}
+        onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
         onOpenFullSiteSubmit={handleOpenFullSiteSubmit}
         rightOffset={isFullSiteSubmitOpen ? 800 : 0} // Shift left when full site submit is open
       />
