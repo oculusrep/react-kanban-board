@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import GoogleMapContainer from '../components/mapping/GoogleMapContainer';
 import BatchGeocodingPanel from '../components/mapping/BatchGeocodingPanel';
 import PropertyLayer, { PropertyLoadingConfig, PropertyLoadingMode } from '../components/mapping/layers/PropertyLayer';
@@ -7,6 +8,7 @@ import { geocodingService } from '../services/geocodingService';
 import { supabase } from '../lib/supabaseClient';
 
 const MappingPage: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const [testAddress, setTestAddress] = useState('1600 Amphitheatre Parkway, Mountain View, CA');
   const [geocodeResult, setGeocodeResult] = useState<string>('');
@@ -39,6 +41,59 @@ const MappingPage: React.FC = () => {
   useEffect(() => {
     document.title = "Map | OVIS";
   }, []);
+
+  // Handle property query parameter - center map on specific property
+  useEffect(() => {
+    const propertyId = searchParams.get('property');
+
+    if (!propertyId || !mapInstance) return;
+
+    const centerOnProperty = async () => {
+      try {
+        console.log('🗺️ Centering map on property:', propertyId);
+
+        // Fetch property data
+        const { data: property, error } = await supabase
+          .from('property')
+          .select('id, property_name, verified_latitude, verified_longitude, latitude, longitude')
+          .eq('id', propertyId)
+          .single();
+
+        if (error) {
+          console.error('❌ Error fetching property for map centering:', error);
+          return;
+        }
+
+        if (!property) {
+          console.warn('⚠️ Property not found:', propertyId);
+          return;
+        }
+
+        // Use verified coordinates if available, otherwise use regular coordinates
+        const lat = property.verified_latitude ?? property.latitude;
+        const lng = property.verified_longitude ?? property.longitude;
+
+        if (!lat || !lng) {
+          console.warn('⚠️ Property has no coordinates:', property.property_name);
+          return;
+        }
+
+        // Center map on property
+        console.log(`📍 Centering on ${property.property_name} at ${lat}, ${lng}`);
+        mapInstance.setCenter({ lat, lng });
+        mapInstance.setZoom(16); // Zoom in to see the property clearly
+
+        // Make sure Properties layer is visible
+        if (!showProperties) {
+          setShowProperties(true);
+        }
+      } catch (err) {
+        console.error('❌ Exception while centering on property:', err);
+      }
+    };
+
+    centerOnProperty();
+  }, [searchParams, mapInstance]); // Re-run when searchParams or mapInstance changes
 
   // Load clients for filtering
   useEffect(() => {
