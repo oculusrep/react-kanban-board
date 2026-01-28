@@ -8,6 +8,10 @@ import { geocodingService } from '../services/geocodingService';
 import { supabase } from '../lib/supabaseClient';
 
 const MappingPage: React.FC = () => {
+  console.log('🏁 MappingPage component MOUNTING/RENDERING');
+  console.log('🌐 window.location.href:', window.location.href);
+  console.log('🔗 window.location.search:', window.location.search);
+
   const [searchParams] = useSearchParams();
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const [testAddress, setTestAddress] = useState('1600 Amphitheatre Parkway, Mountain View, CA');
@@ -44,12 +48,21 @@ const MappingPage: React.FC = () => {
   const handleMapLoad = (map: google.maps.Map) => {
     setMapInstance(map);
     console.log('Map loaded successfully:', map);
+    console.log('📍 Map loaded - checking for property parameter:', searchParams.get('property'));
   };
 
   // Set page title
   useEffect(() => {
     document.title = "Map | OVIS";
+    console.log('📄 Page title set');
   }, []);
+
+  // Log on mount and whenever search params might change
+  useEffect(() => {
+    console.log('🆕 Component mounted or search params updated');
+    console.log('🔎 Current searchParams.get(property):', searchParams.get('property'));
+    console.log('🔎 Current window.location.search:', window.location.search);
+  }, [searchParams]);
 
   // Handle property query parameter - center map on specific property
   useEffect(() => {
