@@ -32,6 +32,15 @@ const MappingPage: React.FC = () => {
   const [clients, setClients] = useState<Array<{id: string; client_name: string}>>([]);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
 
+  // DEBUG: Log component render and URL params
+  console.log('🔍 MappingPage RENDER:', {
+    windowLocationSearch: window.location.search,
+    windowLocationHref: window.location.href,
+    searchParamsPropertyValue: searchParams.get('property'),
+    searchParamsAll: Array.from(searchParams.entries()),
+    hasMapInstance: !!mapInstance
+  });
+
   const handleMapLoad = (map: google.maps.Map) => {
     setMapInstance(map);
     console.log('Map loaded successfully:', map);
@@ -44,26 +53,41 @@ const MappingPage: React.FC = () => {
 
   // Handle property query parameter - center map on specific property
   useEffect(() => {
+    console.log('🚀 useEffect TRIGGERED - Property centering effect');
+
     const propertyId = searchParams.get('property');
+    const urlParams = new URLSearchParams(window.location.search);
+    const propertyIdFromUrl = urlParams.get('property');
 
-    console.log('🗺️ Property centering effect running:', { propertyId, hasMap: !!mapInstance });
+    console.log('🗺️ Property centering effect running:', {
+      propertyIdFromSearchParams: propertyId,
+      propertyIdFromWindowLocation: propertyIdFromUrl,
+      hasMap: !!mapInstance,
+      searchParamsObject: searchParams,
+      mapInstanceType: mapInstance ? typeof mapInstance : 'null'
+    });
 
-    if (!propertyId || !mapInstance) {
-      if (propertyId && !mapInstance) {
-        console.log('⏳ Waiting for map to load before centering on property...');
+    // Use property ID from either source
+    const finalPropertyId = propertyId || propertyIdFromUrl;
+
+    if (!finalPropertyId || !mapInstance) {
+      if (finalPropertyId && !mapInstance) {
+        console.log('⏳ Waiting for map to load before centering on property...', finalPropertyId);
+      } else if (!finalPropertyId) {
+        console.log('❌ No property ID found in URL');
       }
       return;
     }
 
     const centerOnProperty = async () => {
       try {
-        console.log('🗺️ Centering map on property:', propertyId);
+        console.log('🗺️ Centering map on property:', finalPropertyId);
 
         // Fetch property data
         const { data: property, error } = await supabase
           .from('property')
           .select('id, property_name, verified_latitude, verified_longitude, latitude, longitude')
-          .eq('id', propertyId)
+          .eq('id', finalPropertyId)
           .single();
 
         if (error) {
@@ -72,7 +96,7 @@ const MappingPage: React.FC = () => {
         }
 
         if (!property) {
-          console.warn('⚠️ Property not found:', propertyId);
+          console.warn('⚠️ Property not found:', finalPropertyId);
           return;
         }
 
