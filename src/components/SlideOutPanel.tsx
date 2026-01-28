@@ -11,6 +11,7 @@ interface SlideOutPanelProps {
   rightOffset?: number; // Offset from right edge in pixels (for layering slideouts)
   isMinimized?: boolean; // Optional controlled minimize state
   onMinimizeChange?: (minimized: boolean) => void; // Callback when minimize state changes
+  headerActions?: React.ReactNode; // Custom actions/buttons to display in header
 }
 
 export default function SlideOutPanel({
@@ -22,7 +23,8 @@ export default function SlideOutPanel({
   canMinimize = true,
   rightOffset = 0,
   isMinimized: controlledMinimized,
-  onMinimizeChange
+  onMinimizeChange,
+  headerActions
 }: SlideOutPanelProps) {
 
   const [internalMinimized, setInternalMinimized] = useState(false);
@@ -112,13 +114,16 @@ export default function SlideOutPanel({
           <>
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
               <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
-              <button
-                onClick={onClose}
-                className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
-                aria-label="Close panel"
-              >
-                <X size={20} />
-              </button>
+              <div className="flex items-center gap-2">
+                {headerActions}
+                <button
+                  onClick={onClose}
+                  className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                  aria-label="Close panel"
+                >
+                  <X size={20} />
+                </button>
+              </div>
             </div>
 
             {/* Content */}

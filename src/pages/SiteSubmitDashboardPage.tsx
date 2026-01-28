@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
-import { ChevronDown, ChevronUp, Download, X, Filter, Check } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, X, Filter, Check, RefreshCw } from "lucide-react";
 import PinDetailsSlideout from "../components/mapping/slideouts/PinDetailsSlideout";
 import SiteSubmitSlideOut from "../components/SiteSubmitSlideOut";
 import { exportClientSubmitReport } from "../lib/excelExport";
@@ -84,6 +84,7 @@ export default function SiteSubmitDashboardPage() {
   const [filteredClientSubmitData, setFilteredClientSubmitData] = useState<ClientSubmitReportRow[]>([]);
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Filters
@@ -411,6 +412,16 @@ export default function SiteSubmitDashboardPage() {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetchReportData();
+      await fetchAssignments();
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -1437,13 +1448,24 @@ export default function SiteSubmitDashboardPage() {
                 Showing {paginatedData.length} of {filteredData.length} site submits
                 {(selectedStageIds.length > 0 || selectedClientId || quickFilter !== 'all') && " (filtered)"}
               </p>
-              <button
-                onClick={exportToCSV}
-                className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-              >
-                <Download className="h-4 w-4" />
-                <span>Export CSV</span>
-              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                  title="Refresh data while keeping filters"
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                  <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+                </button>
+                <button
+                  onClick={exportToCSV}
+                  className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                >
+                  <Download className="h-4 w-4" />
+                  <span>Export CSV</span>
+                </button>
+              </div>
             </div>
 
             {/* Table */}
@@ -1634,14 +1656,25 @@ export default function SiteSubmitDashboardPage() {
                 Showing {filteredClientSubmitData.length} site submits
                 {(selectedStageIds.length > 0 || selectedClientId || selectedCity || quickFilter !== 'all') && " (filtered)"}
               </p>
-              <button
-                onClick={exportClientSubmitToExcel}
-                disabled={exporting}
-                className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Download className="h-4 w-4" />
-                <span>{exporting ? 'Exporting...' : 'Export Excel'}</span>
-              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                  title="Refresh data while keeping filters"
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                  <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+                </button>
+                <button
+                  onClick={exportClientSubmitToExcel}
+                  disabled={exporting}
+                  className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Download className="h-4 w-4" />
+                  <span>{exporting ? 'Exporting...' : 'Export Excel'}</span>
+                </button>
+              </div>
             </div>
 
             {/* Client Submit Report Table */}
@@ -1924,6 +1957,7 @@ export default function SiteSubmitDashboardPage() {
           onClose={handleFullSiteSubmitClose}
           siteSubmitId={fullSiteSubmitId}
           rightOffset={0} // Always at the right edge
+          onDelete={handleRefresh} // Refresh dashboard when site submit is deleted
         />
       )}
 
