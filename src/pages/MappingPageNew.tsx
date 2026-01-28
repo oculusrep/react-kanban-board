@@ -359,10 +359,10 @@ const MappingPageContent: React.FC = () => {
     if (propertyId && !verifyMode && mapInstance) {
       console.log('🗺️ Property centering requested (non-verify):', propertyId);
 
-      // Fetch the property data
+      // Fetch the FULL property data (needed for slideout)
       supabase
         .from('property')
-        .select('id, property_name, address, verified_latitude, verified_longitude, latitude, longitude')
+        .select('*')
         .eq('id', propertyId)
         .single()
         .then(({ data, error }) => {
@@ -387,7 +387,16 @@ const MappingPageContent: React.FC = () => {
               toggleLayer('properties');
             }
 
-            console.log('✅ Map centered on property');
+            // Open the pin details slideout for this property
+            setSelectedPinData(data);
+            setSelectedPinType('property');
+            setPinDetailsInitialTab(undefined); // Default tab
+            setIsPinDetailsOpen(true);
+
+            // Add to recently created IDs to highlight the pin in orange
+            setRecentlyCreatedPropertyIds(prev => new Set([...prev, propertyId]));
+
+            console.log('✅ Map centered on property, slideout opened, and pin highlighted');
           } else {
             console.warn('⚠️ Property has no coordinates:', data.property_name || data.address);
           }
