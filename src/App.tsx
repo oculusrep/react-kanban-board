@@ -38,6 +38,7 @@ import RobReport2025Page from "./pages/RobReport2025Page";
 import CoachDashboardPage from "./pages/CoachDashboardPage";
 import GoalManagementPage from "./pages/GoalManagementPage";
 import GoalDashboardPage from "./pages/GoalDashboardPage";
+import CashflowDashboardPage from "./pages/CashflowDashboardPage";
 import ProspectingDashboardPage from "./pages/ProspectingDashboardPage";
 import QuickBooksAdminPage from "./pages/QuickBooksAdminPage";
 import GmailSettingsPage from "./pages/GmailSettingsPage";
@@ -121,6 +122,7 @@ function App() {
           <Route path="reports/rob-report-2025" element={<CoachRoute><RobReport2025Page /></CoachRoute>} />
           <Route path="reports/goals" element={<AdminRoute><GoalManagementPage /></AdminRoute>} />
           <Route path="reports/goal-dashboard" element={<CoachRoute><GoalDashboardPage /></CoachRoute>} />
+          <Route path="reports/cashflow-dashboard" element={<CoachRoute><CashflowDashboardPage /></CoachRoute>} />
           <Route path="prospecting" element={<AdminRoute><ProspectingDashboardPage /></AdminRoute>} />
           <Route path="kpi-dashboard" element={<CoachRoute><KPIDashboardPage /></CoachRoute>} />
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
