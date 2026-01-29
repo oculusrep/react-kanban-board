@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Deal, Broker, CommissionSplit, DealUpdateHandler } from '../lib/types';
 import CommissionDetailsSection from './CommissionDetailsSection';
 import CommissionSplitSection from './CommissionSplitSection';
+import { useCommissionCalculations } from '../hooks/useCommissionCalculations';
 
 interface CommissionTabProps {
   dealId: string;
@@ -88,6 +89,19 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
   // Memoize expensive calculations (must be at top level)
   const hasPayments = useMemo(() => payments.length > 0, [payments.length]);
   const validationWarnings = useMemo(() => getValidationWarnings(deal || propDeal), [deal, propDeal, getValidationWarnings]);
+
+  // Calculate commission amounts on-the-fly for accurate Quick Summary
+  const { baseAmounts } = useCommissionCalculations(deal || propDeal, commissionSplits);
+
+  // Calculate broker total on-the-fly (instead of using stale stored values)
+  const calculatedBrokerTotal = useMemo(() => {
+    return commissionSplits.reduce((sum, split) => {
+      const origUSD = ((split.split_origination_percent || 0) / 100) * baseAmounts.originationUSD;
+      const siteUSD = ((split.split_site_percent || 0) / 100) * baseAmounts.siteUSD;
+      const dealUSD = ((split.split_deal_percent || 0) / 100) * baseAmounts.dealUSD;
+      return sum + origUSD + siteUSD + dealUSD;
+    }, 0);
+  }, [commissionSplits, baseAmounts]);
 
   // Update local deal state when prop changes
   useEffect(() => {
@@ -496,9 +510,7 @@ const CommissionTab: React.FC<CommissionTabProps> = ({ dealId, deal: propDeal, o
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <h4 className="text-xs font-medium text-blue-800 mb-1">Total Broker Amount</h4>
               <p className="text-lg font-bold text-blue-900">
-                {formatCurrency(
-                  commissionSplits.reduce((sum, split) => sum + (split.split_broker_total || 0), 0)
-                )}
+                {formatCurrency(calculatedBrokerTotal)}
               </p>
             </div>
             

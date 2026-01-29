@@ -158,31 +158,33 @@ const InlinePercentageEdit: React.FC<InlinePercentageEditProps> = ({ value, onCh
   // Update a commission split field
   const updateCommissionSplit = async (splitId: string, field: string, value: number | null) => {
     console.log('🔧 updateCommissionSplit called:', { splitId, field, value });
-    
+
     try {
       // Find the current split
       const currentSplit = commissionSplits.find(s => s.id === splitId);
       if (!currentSplit) return;
 
-      // Calculate new USD amounts
+      // Update the specific percentage field that changed
       const updatedSplit = { ...currentSplit };
-      
+
       if (field === 'split_origination_percent') {
         updatedSplit.split_origination_percent = value || 0;
-        updatedSplit.split_origination_usd = (value || 0) / 100 * baseAmounts.originationUSD;
       } else if (field === 'split_site_percent') {
         updatedSplit.split_site_percent = value || 0;
-        updatedSplit.split_site_usd = (value || 0) / 100 * baseAmounts.siteUSD;
       } else if (field === 'split_deal_percent') {
         updatedSplit.split_deal_percent = value || 0;
-        updatedSplit.split_deal_usd = (value || 0) / 100 * baseAmounts.dealUSD;
       }
 
-      // Recalculate total
-      updatedSplit.split_broker_total = 
-        (updatedSplit.split_origination_usd || 0) + 
-        (updatedSplit.split_site_usd || 0) + 
-        (updatedSplit.split_deal_usd || 0);
+      // ALWAYS recalculate ALL USD amounts from current baseAmounts (fixes stale value bug)
+      updatedSplit.split_origination_usd = (updatedSplit.split_origination_percent || 0) / 100 * baseAmounts.originationUSD;
+      updatedSplit.split_site_usd = (updatedSplit.split_site_percent || 0) / 100 * baseAmounts.siteUSD;
+      updatedSplit.split_deal_usd = (updatedSplit.split_deal_percent || 0) / 100 * baseAmounts.dealUSD;
+
+      // Recalculate total from fresh USD values
+      updatedSplit.split_broker_total =
+        updatedSplit.split_origination_usd +
+        updatedSplit.split_site_usd +
+        updatedSplit.split_deal_usd;
 
       // Update in database
       const { error } = await supabase
