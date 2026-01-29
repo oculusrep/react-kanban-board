@@ -19,6 +19,8 @@ OVIS integrates with QuickBooks Online (QBO) for:
 | `qb_item` | Items/products with income account mappings |
 | `qb_expense` | All transactions (synced from QBO) |
 | `qb_sync_log` | Audit trail of sync operations |
+| `qb_commission_mapping` | Configuration for broker/referral commission payments |
+| `qb_commission_entry` | Tracks QBO entries created for commission payments |
 
 ### Edge Functions
 
@@ -33,6 +35,9 @@ OVIS integrates with QuickBooks Online (QBO) for:
 | `quickbooks-reconcile` | Payment reconciliation |
 | `quickbooks-sync-invoice` | Create/link invoices in QBO from OVIS payments |
 | `quickbooks-update-invoice` | Update invoice fields (e.g., DueDate) in QBO |
+| `quickbooks-list-accounts` | Fetch QBO accounts and vendors for commission mapping UI |
+| `quickbooks-create-commission-entry` | Create Bills/Journal Entries for broker payments |
+| `quickbooks-create-referral-entry` | Create Bills for referral fee payments |
 
 ### Frontend Pages
 
@@ -675,6 +680,179 @@ COMMENT ON COLUMN qb_expense.balance IS 'Remaining balance (0 = fully paid)';
 
 ---
 
+---
+
+## Commission Payment Mapping (January 29, 2026)
+
+### Overview
+
+When broker or referral commission payments are marked as paid in OVIS, the system can automatically create corresponding entries in QuickBooks:
+
+| Entity | Payment Method | QBO Object Created |
+|--------|---------------|-------------------|
+| **Arty** | Journal Entry | Debit: Commission Paid Out expense / Credit: Commission Draw asset |
+| **Greg** | Bill | Creates Accounts Payable to vendor Bennett Retail Group |
+| **Referral Partners** | Bill | Creates Accounts Payable to the referral partner vendor |
+
+### Database Tables
+
+#### `qb_commission_mapping`
+
+Stores configuration for how each broker/referral partner's payments are recorded in QBO.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `entity_type` | TEXT | `'broker'` or `'referral_partner'` |
+| `broker_id` | UUID | FK to `broker` table (for brokers) |
+| `client_id` | UUID | FK to `client` table (for referral partners) |
+| `payment_method` | TEXT | `'bill'` or `'journal_entry'` |
+| `qb_vendor_id` | TEXT | QBO Vendor ID (required for bills) |
+| `qb_vendor_name` | TEXT | QBO Vendor display name |
+| `qb_debit_account_id` | TEXT | QBO Account ID for expense/COGS |
+| `qb_debit_account_name` | TEXT | Account name (e.g., "Commissions Paid Out:Bennett Retail Group") |
+| `qb_credit_account_id` | TEXT | QBO Account ID for credit (journal entries only) |
+| `qb_credit_account_name` | TEXT | Credit account name (e.g., "Santos Real Estate Commission Draw") |
+| `description_template` | TEXT | Template with placeholders: `{deal_name}`, `{payment_name}`, `{broker_name}`, `{payment_date}` |
+| `is_active` | BOOLEAN | Whether this mapping is active |
+
+#### `qb_commission_entry`
+
+Tracks QBO entries created for commission payments.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `payment_split_id` | UUID | FK to `payment_split` (the trigger) |
+| `commission_mapping_id` | UUID | FK to the mapping used |
+| `qb_entity_type` | TEXT | `'Bill'` or `'JournalEntry'` |
+| `qb_entity_id` | TEXT | QBO entity ID |
+| `qb_doc_number` | TEXT | QBO document number |
+| `amount` | NUMERIC | Payment amount |
+| `transaction_date` | DATE | Date of the QBO entry |
+| `status` | TEXT | `'created'`, `'paid'`, `'voided'`, `'error'` |
+
+#### Additional Columns
+
+- **`broker.qb_vendor_id`** / **`broker.qb_vendor_name`** - Links broker to QBO Vendor
+- **`client.qb_vendor_id`** / **`client.qb_vendor_name`** - Links referral partner to QBO Vendor
+
+### Edge Functions
+
+| Function | Purpose |
+|----------|---------|
+| `quickbooks-list-accounts` | Fetches all QBO accounts and vendors for dropdown selection |
+| `quickbooks-create-commission-entry` | Creates Bill or Journal Entry for broker payment splits |
+| `quickbooks-create-referral-entry` | Creates Bill for referral fee payments |
+
+### Shared Utilities Added to `_shared/quickbooks.ts`
+
+```typescript
+// Vendor operations
+findOrCreateVendor(connection, vendorName, options?)
+getVendor(connection, vendorId)
+
+// Bill operations
+createBill(connection, bill)
+getBill(connection, billId)
+deleteBill(connection, billId, syncToken)
+
+// Journal Entry operations
+createJournalEntry(connection, journalEntry)
+getJournalEntry(connection, journalEntryId)
+deleteJournalEntry(connection, journalEntryId, syncToken)
+
+// Account lookup
+findAccountByName(connection, accountName)
+findAccountByFullName(connection, fullName)
+listAccountsByType(connection, accountType)
+```
+
+### Admin UI
+
+The **Commission Payment Mappings** section is on the QuickBooks Integration page (`/admin/quickbooks`).
+
+**Features:**
+- View all configured mappings in a table
+- Add new mappings for brokers or referral partners
+- Edit existing mappings
+- Delete mappings
+- **"Refresh QBO Data"** button loads accounts and vendors from QuickBooks for dropdown selection
+
+**Form Fields:**
+1. **Entity Type**: Broker or Referral Partner
+2. **Broker/Partner**: Dropdown of available entities
+3. **Payment Method**: Bill (Accounts Payable) or Journal Entry (Commission Draw)
+4. **QBO Vendor**: Required for Bills - dropdown of QBO vendors
+5. **Debit Account**: Expense account (dropdown of Expense/COGS accounts)
+6. **Credit Account**: Required for Journal Entries (dropdown of Asset accounts)
+7. **Description Template**: Text with placeholders
+
+### Setup Instructions
+
+1. **Run the migration** (creates tables and columns):
+   ```sql
+   -- Already applied: 20260129_qb_commission_mapping.sql
+   ```
+
+2. **Deploy Edge Functions**:
+   ```bash
+   supabase functions deploy quickbooks-list-accounts --project-ref YOUR_PROJECT_REF
+   supabase functions deploy quickbooks-create-commission-entry --project-ref YOUR_PROJECT_REF
+   supabase functions deploy quickbooks-create-referral-entry --project-ref YOUR_PROJECT_REF
+   ```
+
+3. **Configure Mappings** (in OVIS):
+   - Go to **QuickBooks Integration** page
+   - Click **"Refresh QBO Data"** to load accounts and vendors
+   - Click **"Add Mapping"** for each broker/referral partner
+
+**Example Configurations:**
+
+| Entity | Type | Method | Vendor | Debit Account | Credit Account |
+|--------|------|--------|--------|---------------|----------------|
+| Arty Santos | Broker | Journal Entry | - | Commission Paid Out: Santos Real Estate Partners, LLC | Santos Real Estate Commission Draw |
+| Greg Bennett | Broker | Bill | Bennett Retail Group | Commissions Paid Out: Bennett Retail Group | - |
+| (Default Referral) | Referral Partner | Bill | (per partner) | Commissions Paid Out: Referral Fee to Other Broker | - |
+
+### Referral Partner Setup
+
+1. **Mark client as Referral Partner**:
+   - Go to the Client record
+   - Set **Client Type** = "Referral Partner"
+   - This makes them appear in the Referral Payee dropdown on deals
+
+2. **Create QBO mapping**:
+   - On QuickBooks Integration page, add a mapping
+   - Entity Type = "Referral Partner"
+   - Select the client from dropdown
+   - Configure the Bill settings
+
+3. **Link to deal**:
+   - On the deal's Commission tab, select the Referral Payee
+   - Only clients with type "Referral Partner" appear in the dropdown
+
+### Files Created/Modified
+
+```
+src/components/
+  admin/CommissionMappingAdmin.tsx    # Admin UI component
+  ReferralPayeeAutocomplete.tsx       # Updated to filter by Referral Partner type
+  ClientOverviewTab.tsx               # Added "Referral Partner" to client types
+
+src/pages/
+  QuickBooksAdminPage.tsx             # Added CommissionMappingAdmin section
+
+supabase/functions/
+  _shared/quickbooks.ts               # Added vendor, bill, journal entry utilities
+  quickbooks-list-accounts/           # New: Lists QBO accounts and vendors
+  quickbooks-create-commission-entry/ # New: Creates Bill/JE for broker payments
+  quickbooks-create-referral-entry/   # New: Creates Bill for referral fees
+
+supabase/migrations/
+  20260129_qb_commission_mapping.sql  # Tables and columns
+```
+
+---
+
 ## Edge Function Deployment Commands
 
 After making changes to Edge Functions, deploy with:
@@ -685,4 +863,9 @@ npx supabase functions deploy quickbooks-sync-pl-report --no-verify-jwt
 
 # Expense Sync (for payment status tracking)
 npx supabase functions deploy quickbooks-sync-expenses --no-verify-jwt
+
+# Commission Mapping (for broker/referral payments)
+supabase functions deploy quickbooks-list-accounts --project-ref YOUR_PROJECT_REF
+supabase functions deploy quickbooks-create-commission-entry --project-ref YOUR_PROJECT_REF
+supabase functions deploy quickbooks-create-referral-entry --project-ref YOUR_PROJECT_REF
 ```
