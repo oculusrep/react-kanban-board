@@ -104,8 +104,16 @@ serve(async (req) => {
     const expenseAccounts = accounts.filter(a =>
       a.type === 'Expense' || a.type === 'Cost of Goods Sold' || a.type === 'Other Expense'
     )
+    // Include all asset types for credit accounts (commission draws, etc.)
     const assetAccounts = accounts.filter(a =>
-      a.type === 'Other Current Asset' || a.type === 'Other Asset' || a.type === 'Fixed Asset'
+      a.type === 'Other Current Asset' ||
+      a.type === 'Other Asset' ||
+      a.type === 'Fixed Asset' ||
+      a.type === 'Bank' ||
+      a.type === 'Equity' ||
+      // Also check lowercase/different formats
+      a.type?.toLowerCase().includes('asset') ||
+      a.type?.toLowerCase().includes('equity')
     )
 
     return new Response(
