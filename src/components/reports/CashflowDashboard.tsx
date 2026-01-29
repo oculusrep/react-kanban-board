@@ -18,6 +18,7 @@ const STAGE_IDS = {
   booked: '0fc71094-e33e-49ba-b675-d097bd477618',
   executedPayable: '70d9449c-c589-4b92-ac5d-f84c5eaef049',
   closedPaid: 'afa9a62e-9821-4c60-9db3-c0d51d009208',
+  lost: '0e318cd6-a738-400a-98af-741479585057',
 };
 
 type ViewMode = 'personal' | 'admin';
@@ -29,9 +30,12 @@ interface PaymentDetail {
   dealName: string;
   paymentName: string;
   invoiceNumber: string | null;
-  totalAmount: number;
+  totalAmount: number;  // GCI = payment_amount - referral_fee
   brokerAmount: number;
   houseAmount: number;
+  mikeSplit: number;
+  artySplit: number;
+  gregSplit: number;
   estimatedDate: string | null;
   category: 'invoiced' | 'pipeline' | 'ucContingent';
   stageLabel: string;
@@ -91,9 +95,6 @@ export default function CashflowDashboard() {
     return [BROKER_IDS.mike, BROKER_IDS.arty, BROKER_IDS.greg];
   }, [viewMode, brokerFilter, currentUserBrokerId]);
 
-  // Include house in calculations for admin view
-  const includeHouse = viewMode === 'admin' || currentUserBrokerId === BROKER_IDS.mike;
-
   useEffect(() => {
     fetchPayments();
   }, []);
@@ -151,41 +152,53 @@ export default function CashflowDashboard() {
         splitsByPayment.set(split.payment_id, existing);
       });
 
-      // Process payments
-      const processedPayments: PaymentDetail[] = (paymentData || []).map(p => {
-        const deal = p.deal as any;
-        const stageId = deal?.stage_id;
-        const splits = splitsByPayment.get(p.id) || { mike: 0, arty: 0, greg: 0 };
+      // Process payments - filter out Lost deals and payments without estimated dates
+      const processedPayments: PaymentDetail[] = (paymentData || [])
+        .filter(p => {
+          const deal = p.deal as any;
+          // Filter out Lost deals
+          if (deal?.stage_id === STAGE_IDS.lost) return false;
+          // Filter out payments without estimated dates
+          if (!p.payment_date_estimated) return false;
+          return true;
+        })
+        .map(p => {
+          const deal = p.deal as any;
+          const stageId = deal?.stage_id;
+          const splits = splitsByPayment.get(p.id) || { mike: 0, arty: 0, greg: 0 };
 
-        // Calculate house amount from payment AGCI
-        const housePercent = deal?.house_percent || 0;
-        const houseAmount = (p.agci || 0) * (housePercent / 100);
+          // Calculate house amount from payment AGCI
+          const housePercent = deal?.house_percent || 0;
+          const houseAmount = (p.agci || 0) * (housePercent / 100);
 
-        // Determine category based on deal stage
-        let category: 'invoiced' | 'pipeline' | 'ucContingent' = 'invoiced';
-        if ([STAGE_IDS.negotiatingLOI, STAGE_IDS.atLeasePSA].includes(stageId)) {
-          category = 'pipeline';
-        } else if (stageId === STAGE_IDS.underContractContingent) {
-          category = 'ucContingent';
-        }
+          // Determine category based on deal stage
+          let category: 'invoiced' | 'pipeline' | 'ucContingent' = 'invoiced';
+          if ([STAGE_IDS.negotiatingLOI, STAGE_IDS.atLeasePSA].includes(stageId)) {
+            category = 'pipeline';
+          } else if (stageId === STAGE_IDS.underContractContingent) {
+            category = 'ucContingent';
+          }
 
-        // Total broker amount
-        const brokerAmount = splits.mike + splits.arty + splits.greg;
+          // Total broker amount
+          const brokerAmount = splits.mike + splits.arty + splits.greg;
 
-        return {
-          id: p.id,
-          dealId: p.deal_id,
-          dealName: deal?.deal_name || 'Unknown Deal',
-          paymentName: p.payment_name || 'Payment',
-          invoiceNumber: p.orep_invoice,
-          totalAmount: (p.payment_amount || 0) - (p.referral_fee_usd || 0),
-          brokerAmount,
-          houseAmount,
-          estimatedDate: p.payment_date_estimated,
-          category,
-          stageLabel: (deal?.stage as any)?.label || '',
-        };
-      });
+          return {
+            id: p.id,
+            dealId: p.deal_id,
+            dealName: deal?.deal_name || 'Unknown Deal',
+            paymentName: p.payment_name || 'Payment',
+            invoiceNumber: p.orep_invoice,
+            totalAmount: (p.payment_amount || 0) - (p.referral_fee_usd || 0),
+            brokerAmount,
+            houseAmount,
+            mikeSplit: splits.mike,
+            artySplit: splits.arty,
+            gregSplit: splits.greg,
+            estimatedDate: p.payment_date_estimated,
+            category,
+            stageLabel: (deal?.stage as any)?.label || '',
+          };
+        });
 
       setPayments(processedPayments);
     } catch (err) {
@@ -195,23 +208,19 @@ export default function CashflowDashboard() {
     }
   };
 
-  // Filter and calculate amounts based on current view/filters
-  const getPaymentAmount = (payment: PaymentDetail, splitData: any): number => {
-    // For admin view with "all" filter, show total broker amounts + house
-    if (viewMode === 'admin' && brokerFilter === 'all') {
-      return payment.brokerAmount + (includeHouse ? payment.houseAmount : 0);
+  // Filter payments based on broker selection
+  const filteredPayments = useMemo(() => {
+    if (brokerFilter === 'all') {
+      return payments;
     }
-
-    // For specific broker filter, we need to recalculate
-    // This requires fetching individual splits - for now use proportion
-    if (brokerFilter !== 'all') {
-      // We'll need to refetch with specific broker data
-      // For simplicity, using total for now
-      return payment.brokerAmount;
-    }
-
-    return payment.brokerAmount + (includeHouse ? payment.houseAmount : 0);
-  };
+    // Only include payments where the selected broker has money coming
+    return payments.filter(payment => {
+      if (brokerFilter === 'mike') return payment.mikeSplit > 0;
+      if (brokerFilter === 'arty') return payment.artySplit > 0;
+      if (brokerFilter === 'greg') return payment.gregSplit > 0;
+      return true;
+    });
+  }, [payments, brokerFilter]);
 
   // Calculate monthly breakdown
   const monthlyData = useMemo(() => {
@@ -231,29 +240,12 @@ export default function CashflowDashboard() {
       payments: [],
     }));
 
-    // Add "Unknown" bucket for payments without dates
-    const unknownBucket: MonthlyData = {
-      month: 'TBD',
-      monthKey: 'unknown',
-      invoiced: 0,
-      pipeline: 0,
-      ucContingent: 0,
-      total: 0,
-      payments: [],
-    };
+    filteredPayments.forEach(payment => {
+      // Use GCI (totalAmount) instead of broker amounts
+      const amount = payment.totalAmount;
 
-    payments.forEach(payment => {
-      const amount = payment.brokerAmount + (includeHouse ? payment.houseAmount : 0);
-
-      if (!payment.estimatedDate) {
-        if (payment.category === 'invoiced') unknownBucket.invoiced += amount;
-        else if (payment.category === 'pipeline') unknownBucket.pipeline += amount;
-        else if (payment.category === 'ucContingent') unknownBucket.ucContingent += amount;
-        unknownBucket.payments.push(payment);
-        return;
-      }
-
-      const date = new Date(payment.estimatedDate);
+      // All payments should have estimated dates (filtered earlier)
+      const date = new Date(payment.estimatedDate!);
       const monthIdx = date.getMonth();
       const year = date.getFullYear();
 
@@ -273,17 +265,9 @@ export default function CashflowDashboard() {
     data.forEach(d => {
       d.total = d.invoiced + (showPipeline ? d.pipeline : 0) + (showUcContingent ? d.ucContingent : 0);
     });
-    unknownBucket.total = unknownBucket.invoiced +
-      (showPipeline ? unknownBucket.pipeline : 0) +
-      (showUcContingent ? unknownBucket.ucContingent : 0);
-
-    // Add unknown bucket if it has any payments
-    if (unknownBucket.payments.length > 0) {
-      data.push(unknownBucket);
-    }
 
     return data;
-  }, [payments, showPipeline, showUcContingent, includeHouse]);
+  }, [filteredPayments, showPipeline, showUcContingent]);
 
   // Calculate summary totals
   const summaryTotals = useMemo(() => {
@@ -291,8 +275,9 @@ export default function CashflowDashboard() {
     let pipeline = 0;
     let ucContingent = 0;
 
-    payments.forEach(payment => {
-      const amount = payment.brokerAmount + (includeHouse ? payment.houseAmount : 0);
+    filteredPayments.forEach(payment => {
+      // Use GCI (totalAmount) instead of broker amounts
+      const amount = payment.totalAmount;
 
       if (payment.category === 'invoiced') invoiced += amount;
       else if (payment.category === 'pipeline') pipeline += amount;
@@ -300,7 +285,7 @@ export default function CashflowDashboard() {
     });
 
     return { invoiced, pipeline, ucContingent };
-  }, [payments, includeHouse]);
+  }, [filteredPayments]);
 
   // Chart data
   const chartData = useMemo(() => {
@@ -584,16 +569,16 @@ export default function CashflowDashboard() {
                               </div>
                             </td>
                             <td className="px-4 py-2 text-sm text-right text-gray-600 bg-green-50/50">
-                              {payment.category === 'invoiced' ? formatCurrency(payment.brokerAmount + (includeHouse ? payment.houseAmount : 0)) : '-'}
+                              {payment.category === 'invoiced' ? formatCurrency(payment.totalAmount) : '-'}
                             </td>
                             {showPipeline && (
                               <td className="px-4 py-2 text-sm text-right text-gray-600 bg-blue-50/50">
-                                {payment.category === 'pipeline' ? formatCurrency(payment.brokerAmount + (includeHouse ? payment.houseAmount : 0)) : '-'}
+                                {payment.category === 'pipeline' ? formatCurrency(payment.totalAmount) : '-'}
                               </td>
                             )}
                             {showUcContingent && (
                               <td className="px-4 py-2 text-sm text-right text-gray-600 bg-yellow-50/50">
-                                {payment.category === 'ucContingent' ? formatCurrency(payment.brokerAmount + (includeHouse ? payment.houseAmount : 0)) : '-'}
+                                {payment.category === 'ucContingent' ? formatCurrency(payment.totalAmount) : '-'}
                               </td>
                             )}
                             <td className="px-4 py-2 text-sm text-right text-gray-600">
@@ -654,7 +639,8 @@ export default function CashflowDashboard() {
           <p><strong>Invoiced:</strong> Payments on Booked or Executed Payable deals</p>
           <p><strong>Pipeline 50%+:</strong> Payments on deals in Negotiating LOI or At Lease/PSA stages</p>
           <p><strong>UC/Contingent:</strong> Payments on deals in Under Contract / Contingent stage</p>
-          <p><strong>Amounts:</strong> Based on payment splits for selected broker(s) {includeHouse ? '+ House' : ''}</p>
+          <p><strong>GCI:</strong> Payment Amount - Referral Fee (filtered by selected broker involvement)</p>
+          <p><strong>Filter:</strong> Excludes Lost deals and payments without estimated dates</p>
         </div>
       </div>
     </div>
