@@ -51,6 +51,16 @@ interface ProspectingMetrics {
   byMonth: { month: string; calls: number; completed: number; meetings: number }[];
 }
 
+interface HistoricalYearMetrics {
+  year: number;
+  totalGci: number;
+  totalDeals: number;
+  avgTransactionGci: number;
+  mikeDeals: number;
+  artyDeals: number;
+  gregDeals: number;
+}
+
 const ENTITY_LABELS: Record<EntityType, string> = {
   company: 'Company',
   mike_arty: 'Mike & Arty',
@@ -95,6 +105,10 @@ export default function GoalDashboard2026() {
 
   // Expanded sections
   const [expandedProspecting, setExpandedProspecting] = useState(false);
+  const [expandedHistorical, setExpandedHistorical] = useState(true);
+
+  // Historical metrics
+  const [historicalMetrics, setHistoricalMetrics] = useState<HistoricalYearMetrics[]>([]);
 
   useEffect(() => {
     fetchAllData();
@@ -108,6 +122,7 @@ export default function GoalDashboard2026() {
         fetchGoals(),
         fetchCashflow2026(),
         fetchProspecting2025(),
+        fetchHistoricalMetrics(),
       ]);
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -394,6 +409,77 @@ export default function GoalDashboard2026() {
     });
   };
 
+  const fetchHistoricalMetrics = async () => {
+    const years = [2021, 2022, 2023, 2024, 2025];
+    const bookedClosedStages = [STAGE_IDS.booked, STAGE_IDS.executedPayable, STAGE_IDS.closedPaid];
+
+    // Fetch all deals at once for efficiency
+    const { data: allDeals } = await supabase
+      .from('deal')
+      .select('id, gci, booked_date, stage_id')
+      .in('stage_id', bookedClosedStages)
+      .gte('booked_date', '2021-01-01')
+      .lte('booked_date', '2025-12-31');
+
+    // Fetch all commission splits for these deals
+    const dealIds = (allDeals || []).map(d => d.id);
+    const { data: commissionSplits } = await supabase
+      .from('commission_split')
+      .select('deal_id, broker_id, split_broker_total')
+      .in('deal_id', dealIds)
+      .in('broker_id', [BROKER_IDS.mike, BROKER_IDS.arty, BROKER_IDS.greg]);
+
+    // Build splits map
+    const splitsByDeal = new Map<string, { mike: number; arty: number; greg: number }>();
+    (commissionSplits || []).forEach(split => {
+      const existing = splitsByDeal.get(split.deal_id) || { mike: 0, arty: 0, greg: 0 };
+      if (split.broker_id === BROKER_IDS.mike) existing.mike = split.split_broker_total || 0;
+      if (split.broker_id === BROKER_IDS.arty) existing.arty = split.split_broker_total || 0;
+      if (split.broker_id === BROKER_IDS.greg) existing.greg = split.split_broker_total || 0;
+      splitsByDeal.set(split.deal_id, existing);
+    });
+
+    // Calculate metrics for each year
+    const metrics: HistoricalYearMetrics[] = years.map(year => {
+      const yearStart = `${year}-01-01`;
+      const yearEnd = `${year}-12-31`;
+
+      const yearDeals = (allDeals || []).filter(d =>
+        d.booked_date && d.booked_date >= yearStart && d.booked_date <= yearEnd
+      );
+
+      const totalGci = yearDeals.reduce((sum, d) => sum + (d.gci || 0), 0);
+      const totalDeals = yearDeals.length;
+      const avgTransactionGci = totalDeals > 0 ? totalGci / totalDeals : 0;
+
+      // Count deals by broker
+      let mikeDeals = 0;
+      let artyDeals = 0;
+      let gregDeals = 0;
+
+      yearDeals.forEach(d => {
+        const splits = splitsByDeal.get(d.id);
+        if (splits) {
+          if (splits.mike > 0) mikeDeals++;
+          if (splits.arty > 0) artyDeals++;
+          if (splits.greg > 0) gregDeals++;
+        }
+      });
+
+      return {
+        year,
+        totalGci,
+        totalDeals,
+        avgTransactionGci,
+        mikeDeals,
+        artyDeals,
+        gregDeals,
+      };
+    });
+
+    setHistoricalMetrics(metrics);
+  };
+
   const getGoal = (goals: Goal[], entity: EntityType, type: 'gci' | 'deal_count'): number | null => {
     const goal = goals.find(g => g.entity_type === entity && g.goal_type === type);
     return goal?.target_value ?? null;
@@ -646,6 +732,127 @@ export default function GoalDashboard2026() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Historical Performance Section */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <button
+            onClick={() => setExpandedHistorical(!expandedHistorical)}
+            className="flex items-center gap-2 w-full text-left"
+          >
+            <svg
+              className={`h-5 w-5 text-gray-500 transition-transform ${expandedHistorical ? 'rotate-90' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Historical Performance</h2>
+              <p className="text-sm text-gray-500">Year-over-year metrics (2021-2025)</p>
+            </div>
+          </button>
+        </div>
+        {expandedHistorical && (
+          <div className="p-6">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead>
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Year</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total GCI</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Deals</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Avg Transaction GCI</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-blue-600 uppercase tracking-wider bg-blue-50">Mike Deals</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-green-600 uppercase tracking-wider bg-green-50">Arty Deals</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-purple-600 uppercase tracking-wider bg-purple-50">Greg Deals</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {historicalMetrics.map((metrics, idx) => (
+                    <tr key={metrics.year} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="px-4 py-3 text-sm font-semibold text-gray-900">{metrics.year}</td>
+                      <td className="px-4 py-3 text-sm text-right text-gray-900">{formatCurrency(metrics.totalGci)}</td>
+                      <td className="px-4 py-3 text-sm text-right text-gray-900">{metrics.totalDeals}</td>
+                      <td className="px-4 py-3 text-sm text-right text-gray-900">{formatCurrency(metrics.avgTransactionGci)}</td>
+                      <td className="px-4 py-3 text-sm text-right text-blue-900 bg-blue-50">{metrics.mikeDeals}</td>
+                      <td className="px-4 py-3 text-sm text-right text-green-900 bg-green-50">{metrics.artyDeals}</td>
+                      <td className="px-4 py-3 text-sm text-right text-purple-900 bg-purple-50">{metrics.gregDeals}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                {historicalMetrics.length > 0 && (
+                  <tfoot className="bg-gray-800 text-white">
+                    <tr>
+                      <td className="px-4 py-3 text-sm font-semibold">5-Year Totals</td>
+                      <td className="px-4 py-3 text-sm text-right font-semibold">
+                        {formatCurrency(historicalMetrics.reduce((sum, m) => sum + m.totalGci, 0))}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-semibold">
+                        {historicalMetrics.reduce((sum, m) => sum + m.totalDeals, 0)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-semibold">
+                        {formatCurrency(
+                          historicalMetrics.reduce((sum, m) => sum + m.totalGci, 0) /
+                          Math.max(historicalMetrics.reduce((sum, m) => sum + m.totalDeals, 0), 1)
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-semibold bg-blue-900">
+                        {historicalMetrics.reduce((sum, m) => sum + m.mikeDeals, 0)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-semibold bg-green-900">
+                        {historicalMetrics.reduce((sum, m) => sum + m.artyDeals, 0)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-semibold bg-purple-900">
+                        {historicalMetrics.reduce((sum, m) => sum + m.gregDeals, 0)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+
+            {/* Year-over-Year Growth */}
+            {historicalMetrics.length > 1 && (
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Year-over-Year Growth</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {historicalMetrics.slice(1).map((metrics, idx) => {
+                    const prevYear = historicalMetrics[idx];
+                    const gciGrowth = prevYear.totalGci > 0
+                      ? ((metrics.totalGci - prevYear.totalGci) / prevYear.totalGci) * 100
+                      : 0;
+                    const dealGrowth = prevYear.totalDeals > 0
+                      ? ((metrics.totalDeals - prevYear.totalDeals) / prevYear.totalDeals) * 100
+                      : 0;
+
+                    return (
+                      <div key={metrics.year} className="border border-gray-200 rounded-lg p-3">
+                        <p className="text-sm font-medium text-gray-600">{prevYear.year} → {metrics.year}</p>
+                        <div className="mt-2 space-y-1">
+                          <div className="flex justify-between">
+                            <span className="text-xs text-gray-500">GCI</span>
+                            <span className={`text-sm font-semibold ${gciGrowth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {gciGrowth >= 0 ? '+' : ''}{gciGrowth.toFixed(0)}%
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-xs text-gray-500">Deals</span>
+                            <span className={`text-sm font-semibold ${dealGrowth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {dealGrowth >= 0 ? '+' : ''}{dealGrowth.toFixed(0)}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Section 2: 2026 Goals */}
