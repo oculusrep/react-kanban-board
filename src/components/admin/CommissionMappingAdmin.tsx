@@ -165,7 +165,7 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
       entity_type: 'broker',
       payment_method: 'bill',
       is_active: true,
-      description_template: 'Commission payment for {deal_name}'
+      description_template: 'Commission Payment for {payment_name} - {deal_name}'
     });
     setEditingId(null);
     setShowAddForm(true);
