@@ -457,7 +457,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         mikeNet: sumBrokerSplitsForDeals(bookedClosedIds, BROKER_IDS.mike),
         artyNet: sumBrokerSplitsForDeals(bookedClosedIds, BROKER_IDS.arty),
         gregNet: sumBrokerSplitsForDeals(bookedClosedIds, BROKER_IDS.greg),
-        dealCount: countDealsWithoutGregSplit(bookedClosedIds),
+        dealCount: bookedClosedDeals.length,
         volume: bookedClosedDeals.reduce((sum, d) => sum + (d.deal_value || 0), 0),
         deals: buildDealDetails(bookedClosedDeals),
         missingSplitsCount: countDealsWithoutSplits(bookedClosedIds),
@@ -534,7 +534,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         mikeNet: sumBrokerSplitsForDeals(ucContingentIds, BROKER_IDS.mike),
         artyNet: sumBrokerSplitsForDeals(ucContingentIds, BROKER_IDS.arty),
         gregNet: sumBrokerSplitsForDeals(ucContingentIds, BROKER_IDS.greg),
-        dealCount: countDealsWithoutGregSplit(ucContingentIds),
+        dealCount: ucContingentDeals.length,
         volume: ucContingentDeals.reduce((sum, d) => sum + (d.deal_value || 0), 0),
         deals: buildDealDetails(ucContingentDeals),
         missingSplitsCount: countDealsWithoutSplits(ucContingentIds),
@@ -557,7 +557,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         mikeNet: sumBrokerSplitsForDeals(pipelineIds, BROKER_IDS.mike),
         artyNet: sumBrokerSplitsForDeals(pipelineIds, BROKER_IDS.arty),
         gregNet: sumBrokerSplitsForDeals(pipelineIds, BROKER_IDS.greg),
-        dealCount: countDealsWithoutGregSplit(pipelineIds),
+        dealCount: pipelineDeals.length,
         volume: pipelineDeals.reduce((sum, d) => sum + (d.deal_value || 0), 0),
         deals: buildDealDetails(pipelineDeals),
         missingSplitsCount: countDealsWithoutSplits(pipelineIds),
@@ -1403,7 +1403,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
           <p><strong>AGCI:</strong> GCI - House Cut</p>
           {!effectiveReadOnly && <p><strong>⚠️ Missing:</strong> Deals with no commission splits assigned - click to add splits</p>}
           {!effectiveReadOnly && <p><strong>⚠️ Overdue:</strong> Invoiced payments with no estimated date or past due</p>}
-          <p><strong># Deals:</strong> Deal count does not include any of Greg's deals</p>
+          <p><strong># Deals:</strong> Total count of deals in each category</p>
         </div>
       </div>
 
