@@ -1289,7 +1289,13 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
             <h2 className="text-lg font-semibold text-gray-900">{selectedYear} Metrics</h2>
           </div>
           <div className="px-6 py-4">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {/* Total GCI */}
+              <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Total GCI</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(yearMetrics.totalGci)}</p>
+              </div>
+
               {/* Avg Transaction GCI */}
               <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
                 <p className="text-xs text-gray-500 uppercase tracking-wide">Avg Transaction GCI</p>
