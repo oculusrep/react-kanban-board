@@ -74,6 +74,9 @@ interface CommissionSplitData {
   deal_id: string;
   broker_id: string;
   split_broker_total: number;
+  split_origination_percent: number;
+  split_site_percent: number;
+  split_deal_percent: number;
 }
 
 interface PaymentSplitData {
@@ -101,8 +104,26 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
   const [editingPaymentDate, setEditingPaymentDate] = useState<string | null>(null);
   const [savingPaymentDate, setSavingPaymentDate] = useState<string | null>(null);
 
+  // Year selector
   const currentYear = new Date().getFullYear();
-  const currentYearStart = `${currentYear}-01-01`;
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const isCurrentYear = selectedYear === currentYear;
+
+  // Generate year options from 2020 to current year
+  const yearOptions = useMemo(() => {
+    const years = [];
+    for (let year = currentYear; year >= 2020; year--) {
+      years.push(year);
+    }
+    return years;
+  }, [currentYear]);
+
+  // Date range for selected year
+  const yearStart = `${selectedYear}-01-01`;
+  const yearEnd = `${selectedYear}-12-31`;
+
+  // Make report effectively read-only for historical years
+  const effectiveReadOnly = readOnly || !isCurrentYear;
 
   const toggleRowExpanded = (idx: number) => {
     setExpandedRows(prev => {
@@ -130,7 +151,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
 
   useEffect(() => {
     fetchReportData();
-  }, []);
+  }, [selectedYear]);
 
   // Update payment estimated date
   const updatePaymentDate = async (paymentId: string, newDate: string | null) => {
@@ -158,7 +179,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
     setError(null);
 
     try {
-      // Fetch all deals with commission splits
+      // Fetch all deals with commission splits (include fields needed for on-the-fly calculation)
       const { data: deals, error: dealsError } = await supabase
         .from('deal')
         .select(`
@@ -166,8 +187,13 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
           deal_name,
           gci,
           agci,
+          fee,
+          referral_fee_usd,
           house_usd,
           house_percent,
+          origination_percent,
+          site_percent,
+          deal_percent,
           deal_value,
           stage_id,
           booked_date,
@@ -178,10 +204,10 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
 
       if (dealsError) throw dealsError;
 
-      // Fetch all commission splits for the three brokers
+      // Fetch all commission splits for the three brokers (include percentage fields for on-the-fly calculation)
       const { data: commissionSplits, error: splitsError } = await supabase
         .from('commission_split')
-        .select('deal_id, broker_id, split_broker_total')
+        .select('deal_id, broker_id, split_broker_total, split_origination_percent, split_site_percent, split_deal_percent')
         .in('broker_id', [BROKER_IDS.mike, BROKER_IDS.arty, BROKER_IDS.greg]);
 
       if (splitsError) throw splitsError;
@@ -233,15 +259,43 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         splitsByPayment.set(split.payment_id, existing);
       });
 
-      // Helper to sum broker splits for deals
+      // Build a map of deal IDs to deal data for easy lookup (needed for on-the-fly calculations)
+      const dealsById = new Map<string, any>();
+      (deals || []).forEach(d => dealsById.set(d.id, d));
+
+      // Helper to calculate broker total on-the-fly from percentages
+      const calculateBrokerTotalForDeal = (dealId: string, brokerId: string): number => {
+        const deal = dealsById.get(dealId);
+        if (!deal) return 0;
+
+        const splits = splitsByDeal.get(dealId) || [];
+        const brokerSplit = splits.find(s => s.broker_id === brokerId);
+        if (!brokerSplit) return 0;
+
+        // Calculate base amounts (same logic as useCommissionCalculations)
+        const gci = deal.fee || 0;
+        const referralFeeUsd = deal.referral_fee_usd || 0;
+        const houseUsd = deal.house_usd || 0;
+        const agci = gci - referralFeeUsd - houseUsd;
+
+        // Deal-level USD amounts
+        const originationUSD = ((deal.origination_percent || 0) / 100) * agci;
+        const siteUSD = ((deal.site_percent || 0) / 100) * agci;
+        const dealUSD = ((deal.deal_percent || 0) / 100) * agci;
+
+        // Calculate broker's share from percentages
+        const originationSplitUSD = ((brokerSplit.split_origination_percent || 0) / 100) * originationUSD;
+        const siteSplitUSD = ((brokerSplit.split_site_percent || 0) / 100) * siteUSD;
+        const dealSplitUSD = ((brokerSplit.split_deal_percent || 0) / 100) * dealUSD;
+
+        return originationSplitUSD + siteSplitUSD + dealSplitUSD;
+      };
+
+      // Helper to sum broker splits for deals (calculated on-the-fly)
       const sumBrokerSplitsForDeals = (dealIds: string[], brokerId: string): number => {
         let total = 0;
         dealIds.forEach(dealId => {
-          const splits = splitsByDeal.get(dealId) || [];
-          const brokerSplit = splits.find(s => s.broker_id === brokerId);
-          if (brokerSplit) {
-            total += brokerSplit.split_broker_total || 0;
-          }
+          total += calculateBrokerTotalForDeal(dealId, brokerId);
         });
         return total;
       };
@@ -259,18 +313,13 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         return total;
       };
 
-      // Helper to count deals where Greg has zero or no split
+      // Helper to count deals where Greg has zero or no split (calculated on-the-fly)
       const countDealsWithoutGregSplit = (dealIds: string[]): number => {
         return dealIds.filter(dealId => {
-          const splits = splitsByDeal.get(dealId) || [];
-          const gregSplit = splits.find(s => s.broker_id === BROKER_IDS.greg);
-          return !gregSplit || (gregSplit.split_broker_total || 0) === 0;
+          const calculatedGregTotal = calculateBrokerTotalForDeal(dealId, BROKER_IDS.greg);
+          return calculatedGregTotal === 0;
         }).length;
       };
-
-      // Build a map of deal IDs to deal data for easy lookup
-      const dealsById = new Map<string, any>();
-      (deals || []).forEach(d => dealsById.set(d.id, d));
 
       // Helper to count deals with NO commission splits or all $0 splits (excluding house_only deals)
       const countDealsWithoutSplits = (dealIds: string[]): number => {
@@ -281,27 +330,31 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
 
           const splits = splitsByDeal.get(dealId) || [];
           if (splits.length === 0) return true;
-          // Also flag deals where all splits have $0 totals
-          const totalSplitValue = splits.reduce((sum, s) => sum + (s.split_broker_total || 0), 0);
+          // Calculate total split value on-the-fly
+          const totalSplitValue = [BROKER_IDS.mike, BROKER_IDS.arty, BROKER_IDS.greg].reduce(
+            (sum, brokerId) => sum + calculateBrokerTotalForDeal(dealId, brokerId), 0
+          );
           return totalSplitValue === 0;
         }).length;
       };
 
-      // Helper to get broker split for a single deal
+      // Helper to get broker split for a single deal (calculated on-the-fly)
       const getBrokerSplitForDeal = (dealId: string, brokerId: string): number => {
-        const splits = splitsByDeal.get(dealId) || [];
-        const brokerSplit = splits.find(s => s.broker_id === brokerId);
-        return brokerSplit?.split_broker_total || 0;
+        return calculateBrokerTotalForDeal(dealId, brokerId);
       };
 
       // Helper to build deal details array
       const buildDealDetails = (dealList: any[]): DealDetail[] => {
         return dealList.map(d => {
           const dealSplits = splitsByDeal.get(d.id) || [];
+          // Calculate broker nets on-the-fly
+          const mikeNet = getBrokerSplitForDeal(d.id, BROKER_IDS.mike);
+          const artyNet = getBrokerSplitForDeal(d.id, BROKER_IDS.arty);
+          const gregNet = getBrokerSplitForDeal(d.id, BROKER_IDS.greg);
           // hasSplits is true if:
           // 1. Deal is marked as house_only, OR
-          // 2. Has splits with non-zero totals
-          const totalSplitValue = dealSplits.reduce((sum, s) => sum + (s.split_broker_total || 0), 0);
+          // 2. Has splits with non-zero calculated totals
+          const totalSplitValue = mikeNet + artyNet + gregNet;
           const hasSplits = d.house_only === true || (dealSplits.length > 0 && totalSplitValue > 0);
 
           return {
@@ -311,9 +364,9 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
             gci: d.gci || 0,
             agci: d.agci || 0,
             house: d.house_usd || 0,
-            mikeNet: getBrokerSplitForDeal(d.id, BROKER_IDS.mike),
-            artyNet: getBrokerSplitForDeal(d.id, BROKER_IDS.arty),
-            gregNet: getBrokerSplitForDeal(d.id, BROKER_IDS.greg),
+            mikeNet,
+            artyNet,
+            gregNet,
             dealValue: d.deal_value || 0,
             hasSplits,
             splitCount: dealSplits.length,
@@ -362,12 +415,13 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         });
       };
 
-      // Row 1: Booked/Closed (Booked, Executed Payable, Closed Paid with booked_date in current year)
+      // Row 1: Booked/Closed (Booked, Executed Payable, Closed Paid with booked_date in selected year)
       const bookedClosedStages = [STAGE_IDS.booked, STAGE_IDS.executedPayable, STAGE_IDS.closedPaid];
       const bookedClosedDeals = (deals || []).filter(d =>
         bookedClosedStages.includes(d.stage_id) &&
         d.booked_date &&
-        d.booked_date >= currentYearStart
+        d.booked_date >= yearStart &&
+        d.booked_date <= yearEnd
       );
       const bookedClosedIds = bookedClosedDeals.map(d => d.id);
 
@@ -432,11 +486,12 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         overduePaymentsCount: 0,  // N/A for deal rows
       };
 
-      // Row 4: Collected (payments with payment_received=true AND payment_received_date in current year)
+      // Row 4: Collected (payments with payment_received=true AND payment_received_date in selected year)
       const collectedPayments = (payments || []).filter(p =>
         p.payment_received === true &&
         p.payment_received_date &&
-        p.payment_received_date >= currentYearStart
+        p.payment_received_date >= yearStart &&
+        p.payment_received_date <= yearEnd
       ).sort((a, b) => {
         // Sort by payment_received_date ascending
         const dateA = a.payment_received_date || '';
@@ -513,13 +568,22 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         overduePaymentsCount: overdueInvoicedCount,
       };
 
-      setReportData([
-        bookedClosedRow,
-        ucContingentRow,
-        pipelineRow,
-        collectedRow,
-        invoicedRow,
-      ]);
+      // For current year: show all rows
+      // For previous years: only show Booked/Closed and Collected
+      if (isCurrentYear) {
+        setReportData([
+          bookedClosedRow,
+          ucContingentRow,
+          pipelineRow,
+          collectedRow,
+          invoicedRow,
+        ]);
+      } else {
+        setReportData([
+          bookedClosedRow,
+          collectedRow,
+        ]);
+      }
     } catch (err) {
       console.error('Error fetching Rob Report data:', err);
       setError(err instanceof Error ? err.message : 'Failed to load data');
@@ -548,8 +612,21 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
   };
 
   // Split data into deal rows and payment rows
-  const dealRows = useMemo(() => reportData.slice(0, 3), [reportData]);
-  const paymentRows = useMemo(() => reportData.slice(3), [reportData]);
+  // For current year: first 3 are deals, rest are payments
+  // For previous years: first 1 is deals (Booked/Closed), rest are payments (Collected)
+  const dealRows = useMemo(() => {
+    if (isCurrentYear) {
+      return reportData.slice(0, 3);
+    }
+    return reportData.slice(0, 1); // Just Booked/Closed for previous years
+  }, [reportData, isCurrentYear]);
+
+  const paymentRows = useMemo(() => {
+    if (isCurrentYear) {
+      return reportData.slice(3);
+    }
+    return reportData.slice(1); // Just Collected for previous years
+  }, [reportData, isCurrentYear]);
 
   // Calculate totals for deal rows only (first 3 rows)
   const dealTotals = useMemo(() => {
@@ -625,19 +702,34 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Rob Report</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Deal pipeline and commission summary for {currentYear}
+              Deal pipeline and commission summary for {selectedYear}
+              {!isCurrentYear && <span className="ml-2 text-amber-600 font-medium">(Historical)</span>}
             </p>
           </div>
-          <button
-            onClick={() => fetchReportData()}
-            disabled={loading}
-            className="px-4 py-2 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Refresh
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Year Selector */}
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {yearOptions.map(year => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => fetchReportData()}
+              disabled={loading}
+              className="px-4 py-2 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Refresh
+            </button>
+          </div>
         </div>
       </div>
 
@@ -698,7 +790,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                         </svg>
                       )}
                       {row.category}
-                      {!readOnly && row.missingSplitsCount > 0 && (
+                      {!effectiveReadOnly && row.missingSplitsCount > 0 && (
                         <span className="text-orange-500 text-xs font-normal">
                           ⚠️ {row.missingSplitsCount}
                         </span>
@@ -737,7 +829,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                       <tr
                         key={deal.id}
                         className={`border-l-4 ${
-                          readOnly || deal.hasSplits
+                          effectiveReadOnly || deal.hasSplits
                             ? 'bg-gray-50 border-blue-400'
                             : 'bg-orange-50 border-orange-400'
                         }`}
@@ -745,7 +837,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                         <td className="px-4 py-2 text-sm text-gray-600 pl-10">
                           <div className="flex items-start justify-between">
                             <div className="flex flex-col">
-                              {readOnly ? (
+                              {effectiveReadOnly ? (
                                 <span className="font-medium text-gray-900">
                                   {deal.deal_name}
                                 </span>
@@ -763,7 +855,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                               )}
                               <span className="text-xs text-gray-500">{deal.stage_label}</span>
                             </div>
-                            {!readOnly && (
+                            {!effectiveReadOnly && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -844,7 +936,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
             <tr className="bg-gray-800 text-white font-semibold">
               <td className="px-4 py-3 text-sm">
                 TOTALS
-                {!readOnly && dealTotals.missingSplitsCount > 0 && (
+                {!effectiveReadOnly && dealTotals.missingSplitsCount > 0 && (
                   <span className="ml-2 text-orange-300 text-xs font-normal">
                     ⚠️ {dealTotals.missingSplitsCount}
                   </span>
@@ -920,7 +1012,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                         </svg>
                       )}
                       {row.category}
-                      {!readOnly && row.overduePaymentsCount > 0 && (
+                      {!effectiveReadOnly && row.overduePaymentsCount > 0 && (
                         <span className="text-orange-500 text-xs font-normal">
                           ⚠️ {row.overduePaymentsCount}
                         </span>
@@ -962,14 +1054,14 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                       <tr
                         key={payment.id}
                         className={`border-l-4 ${
-                          isOverdue && !readOnly
+                          isOverdue && !effectiveReadOnly
                             ? 'bg-orange-50 border-orange-400'
                             : 'bg-gray-50 border-blue-400'
                         }`}
                       >
                         <td className="px-4 py-2 text-sm text-gray-600 pl-10">
                           <div className="flex flex-col">
-                            {readOnly ? (
+                            {effectiveReadOnly ? (
                               <span className="font-medium text-gray-900">{payment.deal_name}</span>
                             ) : (
                               <button
@@ -1013,10 +1105,10 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                         <td className="px-4 py-2 text-sm text-right text-gray-600 bg-purple-50/50">
                           {formatCurrency(payment.gregNet)}
                         </td>
-                        <td className={`px-4 py-2 text-sm text-right ${isOverdue && !readOnly ? 'text-orange-600 font-medium' : 'text-gray-600'}`}>
+                        <td className={`px-4 py-2 text-sm text-right ${isOverdue && !effectiveReadOnly ? 'text-orange-600 font-medium' : 'text-gray-600'}`}>
                           {row.category === 'Collected' ? (
                             formatDate(payment.payment_received_date)
-                          ) : readOnly ? (
+                          ) : effectiveReadOnly ? (
                             formatDate(payment.payment_due_date)
                           ) : editingPaymentDate === payment.id ? (
                             <input
@@ -1114,21 +1206,27 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
       {/* Footer Notes */}
       <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
         <div className="text-xs text-gray-500 space-y-1">
-          <p><strong>Booked/Closed:</strong> Deals in Booked, Executed Payable, or Closed Paid stages with booked date in {currentYear}</p>
-          <p><strong>UC/Contingent:</strong> All deals in Under Contract / Contingent stage</p>
-          <p><strong>Pipeline 50%+:</strong> All deals in Negotiating LOI or At Lease/PSA stages</p>
-          <p><strong>Collected:</strong> Payments received in {currentYear}</p>
-          <p><strong>Invoiced Payments:</strong> Pending payments on Booked or Executed Payable deals</p>
+          <p><strong>Booked/Closed:</strong> Deals in Booked, Executed Payable, or Closed Paid stages with booked date in {selectedYear}</p>
+          {isCurrentYear && (
+            <>
+              <p><strong>UC/Contingent:</strong> All deals in Under Contract / Contingent stage</p>
+              <p><strong>Pipeline 50%+:</strong> All deals in Negotiating LOI or At Lease/PSA stages</p>
+            </>
+          )}
+          <p><strong>Collected:</strong> Payments received in {selectedYear}</p>
+          {isCurrentYear && (
+            <p><strong>Invoiced Payments:</strong> Pending payments on Booked or Executed Payable deals</p>
+          )}
           <p><strong>GCI (Payments):</strong> Payment Amount - Referral Fee</p>
           <p><strong>AGCI:</strong> GCI - House Cut</p>
-          {!readOnly && <p><strong>⚠️ Missing:</strong> Deals with no commission splits assigned - click to add splits</p>}
-          {!readOnly && <p><strong>⚠️ Overdue:</strong> Invoiced payments with no estimated date or past due</p>}
+          {!effectiveReadOnly && <p><strong>⚠️ Missing:</strong> Deals with no commission splits assigned - click to add splits</p>}
+          {!effectiveReadOnly && <p><strong>⚠️ Overdue:</strong> Invoiced payments with no estimated date or past due</p>}
           <p><strong># Deals:</strong> Deal count does not include any of Greg's deals</p>
         </div>
       </div>
 
       {/* Quick Commission Split Modal - only in edit mode */}
-      {!readOnly && selectedDealForSplits && (
+      {!effectiveReadOnly && selectedDealForSplits && (
         <QuickCommissionSplitModal
           isOpen={!!selectedDealForSplits}
           onClose={() => setSelectedDealForSplits(null)}
@@ -1139,7 +1237,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
       )}
 
       {/* Deal Details Slideout - only in edit mode */}
-      {!readOnly && (
+      {!effectiveReadOnly && (
         <DealDetailsSlideout
           dealId={selectedDealId}
           isOpen={!!selectedDealId}
