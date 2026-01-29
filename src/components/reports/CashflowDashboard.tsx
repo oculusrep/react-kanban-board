@@ -222,6 +222,19 @@ export default function CashflowDashboard() {
     });
   }, [payments, brokerFilter]);
 
+  // Helper to get the correct amount based on broker filter
+  const getPaymentDisplayAmount = (payment: PaymentDetail): number => {
+    if (brokerFilter === 'all') {
+      // Company view: show total GCI
+      return payment.totalAmount;
+    }
+    // Broker-specific view: show that broker's split
+    if (brokerFilter === 'mike') return payment.mikeSplit;
+    if (brokerFilter === 'arty') return payment.artySplit;
+    if (brokerFilter === 'greg') return payment.gregSplit;
+    return payment.totalAmount;
+  };
+
   // Calculate monthly breakdown
   const monthlyData = useMemo(() => {
     const months = [
@@ -241,8 +254,8 @@ export default function CashflowDashboard() {
     }));
 
     filteredPayments.forEach(payment => {
-      // Use GCI (totalAmount) instead of broker amounts
-      const amount = payment.totalAmount;
+      // Use broker-specific amount or GCI depending on filter
+      const amount = getPaymentDisplayAmount(payment);
 
       // All payments should have estimated dates (filtered earlier)
       const date = new Date(payment.estimatedDate!);
@@ -267,7 +280,7 @@ export default function CashflowDashboard() {
     });
 
     return data;
-  }, [filteredPayments, showPipeline, showUcContingent]);
+  }, [filteredPayments, showPipeline, showUcContingent, brokerFilter]);
 
   // Calculate summary totals
   const summaryTotals = useMemo(() => {
@@ -276,8 +289,8 @@ export default function CashflowDashboard() {
     let ucContingent = 0;
 
     filteredPayments.forEach(payment => {
-      // Use GCI (totalAmount) instead of broker amounts
-      const amount = payment.totalAmount;
+      // Use broker-specific amount or GCI depending on filter
+      const amount = getPaymentDisplayAmount(payment);
 
       if (payment.category === 'invoiced') invoiced += amount;
       else if (payment.category === 'pipeline') pipeline += amount;
@@ -285,7 +298,7 @@ export default function CashflowDashboard() {
     });
 
     return { invoiced, pipeline, ucContingent };
-  }, [filteredPayments]);
+  }, [filteredPayments, brokerFilter]);
 
   // Chart data
   const chartData = useMemo(() => {
@@ -569,16 +582,16 @@ export default function CashflowDashboard() {
                               </div>
                             </td>
                             <td className="px-4 py-2 text-sm text-right text-gray-600 bg-green-50/50">
-                              {payment.category === 'invoiced' ? formatCurrency(payment.totalAmount) : '-'}
+                              {payment.category === 'invoiced' ? formatCurrency(getPaymentDisplayAmount(payment)) : '-'}
                             </td>
                             {showPipeline && (
                               <td className="px-4 py-2 text-sm text-right text-gray-600 bg-blue-50/50">
-                                {payment.category === 'pipeline' ? formatCurrency(payment.totalAmount) : '-'}
+                                {payment.category === 'pipeline' ? formatCurrency(getPaymentDisplayAmount(payment)) : '-'}
                               </td>
                             )}
                             {showUcContingent && (
                               <td className="px-4 py-2 text-sm text-right text-gray-600 bg-yellow-50/50">
-                                {payment.category === 'ucContingent' ? formatCurrency(payment.totalAmount) : '-'}
+                                {payment.category === 'ucContingent' ? formatCurrency(getPaymentDisplayAmount(payment)) : '-'}
                               </td>
                             )}
                             <td className="px-4 py-2 text-sm text-right text-gray-600">
@@ -639,7 +652,7 @@ export default function CashflowDashboard() {
           <p><strong>Invoiced:</strong> Payments on Booked or Executed Payable deals</p>
           <p><strong>Pipeline 50%+:</strong> Payments on deals in Negotiating LOI or At Lease/PSA stages</p>
           <p><strong>UC/Contingent:</strong> Payments on deals in Under Contract / Contingent stage</p>
-          <p><strong>GCI:</strong> Payment Amount - Referral Fee (filtered by selected broker involvement)</p>
+          <p><strong>Amounts:</strong> {brokerFilter === 'all' ? 'Total GCI (Payment Amount - Referral Fee)' : `${brokerFilter.charAt(0).toUpperCase() + brokerFilter.slice(1)}'s split amount from payment_split`}</p>
           <p><strong>Filter:</strong> Excludes Lost deals and payments without estimated dates</p>
         </div>
       </div>
