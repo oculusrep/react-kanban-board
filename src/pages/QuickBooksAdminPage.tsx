@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
 import { ArrowLeft, CheckCircle, XCircle, RefreshCw, Link2, Unlink } from "lucide-react";
+import CommissionMappingAdmin from "../components/admin/CommissionMappingAdmin";
 
 interface QBConnection {
   id: string;
@@ -335,6 +336,11 @@ export default function QuickBooksAdminPage() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Commission Mapping Admin */}
+        <div className="mb-6">
+          <CommissionMappingAdmin isConnected={!!connection} />
         </div>
 
         {/* Sync History */}

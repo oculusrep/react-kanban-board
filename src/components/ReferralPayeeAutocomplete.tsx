@@ -46,7 +46,7 @@ const ReferralPayeeAutocomplete: React.FC<ReferralPayeeAutocompleteProps> = ({
     loadClientName();
   }, [value]);
 
-  // Autocomplete search - EXACTLY like DealDetailsForm
+  // Autocomplete search - Only show clients with type 'Referral Partner'
   useEffect(() => {
     const run = async () => {
       const term = search.trim();
@@ -54,6 +54,7 @@ const ReferralPayeeAutocomplete: React.FC<ReferralPayeeAutocompleteProps> = ({
       const { data } = await supabase
         .from("client")
         .select("id, client_name")
+        .eq("sf_client_type", "Referral Partner")
         .ilike("client_name", `%${term}%`)
         .order("client_name", { ascending: true })
         .limit(5);

@@ -76,6 +76,7 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
     'Prospect',
     'Vendor',
     'Partner',
+    'Referral Partner',
     'Competitor',
     'Other'
   ];

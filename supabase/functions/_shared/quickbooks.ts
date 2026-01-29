@@ -625,7 +625,7 @@ export async function uploadAttachment(
  */
 export async function logSync(
   supabaseClient: SupabaseClient,
-  syncType: 'invoice' | 'payment' | 'expense' | 'customer' | 'vendor' | 'bill',
+  syncType: 'invoice' | 'payment' | 'expense' | 'customer' | 'vendor' | 'bill' | 'journal_entry',
   direction: 'inbound' | 'outbound',
   status: 'success' | 'failed' | 'pending',
   entityId?: string,
@@ -644,4 +644,377 @@ export async function logSync(
       qb_entity_id: qbEntityId,
       error_message: errorMessage
     })
+}
+
+// ============================================================================
+// Vendor Functions
+// ============================================================================
+
+export interface QBVendor {
+  Id?: string
+  DisplayName: string
+  CompanyName?: string
+  GivenName?: string
+  FamilyName?: string
+  PrimaryEmailAddr?: { Address: string }
+  PrimaryPhone?: { FreeFormNumber: string }
+  BillAddr?: {
+    Line1?: string
+    City?: string
+    CountrySubDivisionCode?: string
+    PostalCode?: string
+  }
+}
+
+/**
+ * Find or create a vendor in QuickBooks
+ */
+export async function findOrCreateVendor(
+  connection: QBConnection,
+  vendorName: string,
+  options?: {
+    companyName?: string
+    email?: string
+    phone?: string
+    street?: string
+    city?: string
+    state?: string
+    zip?: string
+  }
+): Promise<{ Id: string; DisplayName: string }> {
+  // Search for existing vendor by name
+  const searchQuery = `SELECT * FROM Vendor WHERE DisplayName = '${vendorName.replace(/'/g, "\\'")}'`
+  const searchResult = await qbApiRequest<{ QueryResponse: { Vendor?: QBVendor[] } }>(
+    connection,
+    'GET',
+    `query?query=${encodeURIComponent(searchQuery)}`
+  )
+
+  if (searchResult.QueryResponse.Vendor && searchResult.QueryResponse.Vendor.length > 0) {
+    const existingVendor = searchResult.QueryResponse.Vendor[0]
+    console.log('Found existing QBO vendor:', existingVendor.Id, existingVendor.DisplayName)
+    return { Id: existingVendor.Id!, DisplayName: existingVendor.DisplayName }
+  }
+
+  // Create new vendor
+  const newVendor: QBVendor = {
+    DisplayName: vendorName,
+    CompanyName: options?.companyName || vendorName
+  }
+
+  if (options?.email) {
+    newVendor.PrimaryEmailAddr = { Address: options.email }
+  }
+
+  if (options?.phone) {
+    newVendor.PrimaryPhone = { FreeFormNumber: options.phone }
+  }
+
+  if (options?.street || options?.city) {
+    newVendor.BillAddr = {
+      Line1: options?.street,
+      City: options?.city,
+      CountrySubDivisionCode: options?.state,
+      PostalCode: options?.zip
+    }
+  }
+
+  const createResult = await qbApiRequest<{ Vendor: QBVendor }>(
+    connection,
+    'POST',
+    'vendor',
+    newVendor
+  )
+
+  console.log('Created new QBO vendor:', createResult.Vendor.Id, createResult.Vendor.DisplayName)
+  return { Id: createResult.Vendor.Id!, DisplayName: createResult.Vendor.DisplayName }
+}
+
+/**
+ * Get a vendor by ID from QuickBooks
+ */
+export async function getVendor(
+  connection: QBConnection,
+  vendorId: string
+): Promise<QBVendor | null> {
+  try {
+    const result = await qbApiRequest<{ Vendor: QBVendor }>(
+      connection,
+      'GET',
+      `vendor/${vendorId}`
+    )
+    return result.Vendor
+  } catch (error) {
+    console.error(`Failed to get vendor ${vendorId}:`, error)
+    return null
+  }
+}
+
+// ============================================================================
+// Bill Functions
+// ============================================================================
+
+export interface QBBillLine {
+  Amount: number
+  DetailType: 'AccountBasedExpenseLineDetail'
+  AccountBasedExpenseLineDetail: {
+    AccountRef: { value: string; name?: string }
+    BillableStatus?: 'Billable' | 'NotBillable' | 'HasBeenBilled'
+    CustomerRef?: { value: string; name?: string }
+  }
+  Description?: string
+}
+
+export interface QBBill {
+  Id?: string
+  SyncToken?: string
+  DocNumber?: string
+  VendorRef: { value: string; name?: string }
+  Line: QBBillLine[]
+  TxnDate?: string  // YYYY-MM-DD format
+  DueDate?: string  // YYYY-MM-DD format
+  PrivateNote?: string
+  APAccountRef?: { value: string; name?: string }
+}
+
+/**
+ * Create a bill in QuickBooks
+ * Bills are used to record money owed to a vendor (Accounts Payable)
+ */
+export async function createBill(
+  connection: QBConnection,
+  bill: QBBill
+): Promise<{ Id: string; DocNumber?: string }> {
+  const result = await qbApiRequest<{ Bill: { Id: string; DocNumber?: string } }>(
+    connection,
+    'POST',
+    'bill',
+    bill
+  )
+
+  console.log('Created QBO bill:', result.Bill.Id, 'DocNumber:', result.Bill.DocNumber)
+  return {
+    Id: result.Bill.Id,
+    DocNumber: result.Bill.DocNumber
+  }
+}
+
+/**
+ * Get a bill by ID from QuickBooks
+ */
+export async function getBill(
+  connection: QBConnection,
+  billId: string
+): Promise<{ Id: string; SyncToken: string; DocNumber?: string } | null> {
+  try {
+    const result = await qbApiRequest<{ Bill: { Id: string; SyncToken: string; DocNumber?: string } }>(
+      connection,
+      'GET',
+      `bill/${billId}`
+    )
+    return result.Bill
+  } catch (error) {
+    console.error(`Failed to get bill ${billId}:`, error)
+    return null
+  }
+}
+
+/**
+ * Delete a bill from QuickBooks
+ */
+export async function deleteBill(
+  connection: QBConnection,
+  billId: string,
+  syncToken: string
+): Promise<void> {
+  await qbApiRequest(
+    connection,
+    'POST',
+    'bill?operation=delete',
+    {
+      Id: billId,
+      SyncToken: syncToken
+    }
+  )
+  console.log(`Deleted QBO bill ${billId}`)
+}
+
+// ============================================================================
+// Journal Entry Functions
+// ============================================================================
+
+export interface QBJournalEntryLine {
+  Amount: number
+  DetailType: 'JournalEntryLineDetail'
+  JournalEntryLineDetail: {
+    PostingType: 'Debit' | 'Credit'
+    AccountRef: { value: string; name?: string }
+    Entity?: {
+      Type: 'Customer' | 'Vendor' | 'Employee'
+      EntityRef: { value: string; name?: string }
+    }
+  }
+  Description?: string
+}
+
+export interface QBJournalEntry {
+  Id?: string
+  SyncToken?: string
+  DocNumber?: string
+  TxnDate?: string  // YYYY-MM-DD format
+  Line: QBJournalEntryLine[]
+  PrivateNote?: string
+  Adjustment?: boolean  // Set to true for adjusting entries
+}
+
+/**
+ * Create a journal entry in QuickBooks
+ * Journal entries are used for double-entry bookkeeping (debits and credits must balance)
+ */
+export async function createJournalEntry(
+  connection: QBConnection,
+  journalEntry: QBJournalEntry
+): Promise<{ Id: string; DocNumber?: string }> {
+  // Validate that debits and credits balance
+  let totalDebits = 0
+  let totalCredits = 0
+  for (const line of journalEntry.Line) {
+    if (line.JournalEntryLineDetail.PostingType === 'Debit') {
+      totalDebits += line.Amount
+    } else {
+      totalCredits += line.Amount
+    }
+  }
+
+  // Round to 2 decimal places for comparison
+  const roundedDebits = Math.round(totalDebits * 100) / 100
+  const roundedCredits = Math.round(totalCredits * 100) / 100
+
+  if (roundedDebits !== roundedCredits) {
+    throw new Error(`Journal entry is unbalanced: Debits=${roundedDebits}, Credits=${roundedCredits}`)
+  }
+
+  const result = await qbApiRequest<{ JournalEntry: { Id: string; DocNumber?: string } }>(
+    connection,
+    'POST',
+    'journalentry',
+    journalEntry
+  )
+
+  console.log('Created QBO journal entry:', result.JournalEntry.Id, 'DocNumber:', result.JournalEntry.DocNumber)
+  return {
+    Id: result.JournalEntry.Id,
+    DocNumber: result.JournalEntry.DocNumber
+  }
+}
+
+/**
+ * Get a journal entry by ID from QuickBooks
+ */
+export async function getJournalEntry(
+  connection: QBConnection,
+  journalEntryId: string
+): Promise<{ Id: string; SyncToken: string; DocNumber?: string } | null> {
+  try {
+    const result = await qbApiRequest<{ JournalEntry: { Id: string; SyncToken: string; DocNumber?: string } }>(
+      connection,
+      'GET',
+      `journalentry/${journalEntryId}`
+    )
+    return result.JournalEntry
+  } catch (error) {
+    console.error(`Failed to get journal entry ${journalEntryId}:`, error)
+    return null
+  }
+}
+
+/**
+ * Delete a journal entry from QuickBooks
+ */
+export async function deleteJournalEntry(
+  connection: QBConnection,
+  journalEntryId: string,
+  syncToken: string
+): Promise<void> {
+  await qbApiRequest(
+    connection,
+    'POST',
+    'journalentry?operation=delete',
+    {
+      Id: journalEntryId,
+      SyncToken: syncToken
+    }
+  )
+  console.log(`Deleted QBO journal entry ${journalEntryId}`)
+}
+
+// ============================================================================
+// Account Query Functions
+// ============================================================================
+
+export interface QBAccount {
+  Id: string
+  Name: string
+  FullyQualifiedName?: string
+  AccountType: string
+  AccountSubType?: string
+  Active: boolean
+}
+
+/**
+ * Find an account by name in QuickBooks
+ */
+export async function findAccountByName(
+  connection: QBConnection,
+  accountName: string
+): Promise<QBAccount | null> {
+  const searchQuery = `SELECT * FROM Account WHERE Name = '${accountName.replace(/'/g, "\\'")}'`
+  const searchResult = await qbApiRequest<{ QueryResponse: { Account?: QBAccount[] } }>(
+    connection,
+    'GET',
+    `query?query=${encodeURIComponent(searchQuery)}`
+  )
+
+  if (searchResult.QueryResponse.Account && searchResult.QueryResponse.Account.length > 0) {
+    return searchResult.QueryResponse.Account[0]
+  }
+  return null
+}
+
+/**
+ * Find an account by fully qualified name (includes parent account path)
+ * Example: "Commissions Paid Out:Bennett Retail Group"
+ */
+export async function findAccountByFullName(
+  connection: QBConnection,
+  fullName: string
+): Promise<QBAccount | null> {
+  const searchQuery = `SELECT * FROM Account WHERE FullyQualifiedName = '${fullName.replace(/'/g, "\\'")}'`
+  const searchResult = await qbApiRequest<{ QueryResponse: { Account?: QBAccount[] } }>(
+    connection,
+    'GET',
+    `query?query=${encodeURIComponent(searchQuery)}`
+  )
+
+  if (searchResult.QueryResponse.Account && searchResult.QueryResponse.Account.length > 0) {
+    return searchResult.QueryResponse.Account[0]
+  }
+  return null
+}
+
+/**
+ * List all accounts of a specific type
+ */
+export async function listAccountsByType(
+  connection: QBConnection,
+  accountType: string
+): Promise<QBAccount[]> {
+  const searchQuery = `SELECT * FROM Account WHERE AccountType = '${accountType}' AND Active = true`
+  const searchResult = await qbApiRequest<{ QueryResponse: { Account?: QBAccount[] } }>(
+    connection,
+    'GET',
+    `query?query=${encodeURIComponent(searchQuery)}`
+  )
+
+  return searchResult.QueryResponse.Account || []
 }
