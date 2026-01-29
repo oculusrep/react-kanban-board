@@ -853,11 +853,11 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
               <React.Fragment key={idx}>
                 <tr
                   className="hover:bg-gray-50 cursor-pointer"
-                  onClick={() => row.deals && row.deals.length > 0 && toggleRowExpanded(idx)}
+                  onClick={() => row.deals && toggleRowExpanded(idx)}
                 >
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">
                     <div className="flex items-center gap-2">
-                      {row.deals && row.deals.length > 0 && (
+                      {row.deals && (
                         <svg
                           className={`h-4 w-4 text-gray-500 transition-transform ${expandedRows.has(idx) ? 'rotate-90' : ''}`}
                           fill="none"
@@ -903,6 +903,13 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                 {/* Expanded deal details */}
                 {expandedRows.has(idx) && row.deals && (
                   <>
+                    {row.deals.length === 0 && (
+                      <tr className="bg-gray-50 border-l-4 border-gray-300">
+                        <td colSpan={9} className="px-4 py-3 text-sm text-gray-500 text-center italic">
+                          No deals in this category yet
+                        </td>
+                      </tr>
+                    )}
                     {row.deals.map((deal) => (
                       <tr
                         key={deal.id}
@@ -977,6 +984,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                       </tr>
                     ))}
                     {/* Subtotal row for expanded section */}
+                    {row.deals.length > 0 && (
                     <tr className="bg-gray-200 border-l-4 border-blue-400 font-medium">
                       <td className="px-4 py-2 text-sm text-gray-700 pl-10">
                         Subtotal ({row.deals.length} deals)
@@ -1006,6 +1014,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
                         {formatCurrency(row.deals.reduce((sum, d) => sum + d.dealValue, 0))}
                       </td>
                     </tr>
+                    )}
                   </>
                 )}
               </React.Fragment>
