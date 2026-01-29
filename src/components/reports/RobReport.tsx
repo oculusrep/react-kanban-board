@@ -89,6 +89,23 @@ interface RobReportProps {
   readOnly?: boolean;
 }
 
+interface YearMetrics {
+  avgTransactionGci: number;
+  totalDeals: number;
+  mikeDeals: number;
+  artyDeals: number;
+  gregDeals: number;
+  totalGci: number;
+}
+
+interface ClientMetrics {
+  clientId: string;
+  clientName: string;
+  totalGci: number;
+  dealCount: number;
+  avgTransactionGci: number;
+}
+
 export default function RobReport({ readOnly = false }: RobReportProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +120,10 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
   const [selectedDealInitialTab, setSelectedDealInitialTab] = useState<'overview' | 'payments'>('overview');
   const [editingPaymentDate, setEditingPaymentDate] = useState<string | null>(null);
   const [savingPaymentDate, setSavingPaymentDate] = useState<string | null>(null);
+
+  // Metrics state
+  const [yearMetrics, setYearMetrics] = useState<YearMetrics | null>(null);
+  const [clientMetrics, setClientMetrics] = useState<ClientMetrics[]>([]);
 
   // Year selector
   const currentYear = new Date().getFullYear();
@@ -198,7 +219,9 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
           stage_id,
           booked_date,
           house_only,
-          stage:stage_id(label)
+          client_id,
+          stage:stage_id(label),
+          client:client_id(id, client_name)
         `)
         .neq('stage_id', '0e318cd6-a738-400a-98af-741479585057'); // Exclude Lost
 
@@ -440,6 +463,61 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         missingSplitsCount: countDealsWithoutSplits(bookedClosedIds),
         overduePaymentsCount: 0,  // N/A for deal rows
       };
+
+      // Calculate year metrics for Booked/Closed deals
+      const totalGci = bookedClosedDeals.reduce((sum, d) => sum + (d.gci || 0), 0);
+      const totalDeals = bookedClosedDeals.length;
+      const avgTransactionGci = totalDeals > 0 ? totalGci / totalDeals : 0;
+
+      // Count deals by broker - if broker has a split on the deal, they get credit
+      let mikeDeals = 0;
+      let artyDeals = 0;
+      let gregDeals = 0;
+      bookedClosedIds.forEach(dealId => {
+        const splits = splitsByDeal.get(dealId) || [];
+        if (splits.some(s => s.broker_id === BROKER_IDS.mike && calculateBrokerTotalForDeal(dealId, BROKER_IDS.mike) > 0)) {
+          mikeDeals++;
+        }
+        if (splits.some(s => s.broker_id === BROKER_IDS.arty && calculateBrokerTotalForDeal(dealId, BROKER_IDS.arty) > 0)) {
+          artyDeals++;
+        }
+        if (splits.some(s => s.broker_id === BROKER_IDS.greg && calculateBrokerTotalForDeal(dealId, BROKER_IDS.greg) > 0)) {
+          gregDeals++;
+        }
+      });
+
+      setYearMetrics({
+        avgTransactionGci,
+        totalDeals,
+        mikeDeals,
+        artyDeals,
+        gregDeals,
+        totalGci,
+      });
+
+      // Calculate client metrics - group by client
+      const clientMetricsMap = new Map<string, { clientName: string; totalGci: number; dealCount: number }>();
+      bookedClosedDeals.forEach(deal => {
+        const clientId = deal.client_id || 'unknown';
+        const clientName = (deal.client as any)?.client_name || 'Unknown Client';
+        const existing = clientMetricsMap.get(clientId) || { clientName, totalGci: 0, dealCount: 0 };
+        existing.totalGci += deal.gci || 0;
+        existing.dealCount += 1;
+        clientMetricsMap.set(clientId, existing);
+      });
+
+      // Convert to array and calculate avg, then sort by totalGci descending
+      const clientMetricsArray: ClientMetrics[] = Array.from(clientMetricsMap.entries())
+        .map(([clientId, data]) => ({
+          clientId,
+          clientName: data.clientName,
+          totalGci: data.totalGci,
+          dealCount: data.dealCount,
+          avgTransactionGci: data.dealCount > 0 ? data.totalGci / data.dealCount : 0,
+        }))
+        .sort((a, b) => b.totalGci - a.totalGci);
+
+      setClientMetrics(clientMetricsArray);
 
       // Row 2: UC/Contingent (Under Contract / Contingent stage, no date filter)
       const ucContingentDeals = (deals || []).filter(d =>
@@ -1202,6 +1280,110 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
           </tbody>
         </table>
       </div>
+
+      {/* Metrics Section - only for Booked/Closed year data */}
+      {yearMetrics && yearMetrics.totalDeals > 0 && (
+        <>
+          {/* Metrics Cards */}
+          <div className="mt-8 px-6 py-3 bg-gray-100 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">{selectedYear} Metrics</h2>
+          </div>
+          <div className="px-6 py-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              {/* Avg Transaction GCI */}
+              <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Avg Transaction GCI</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(yearMetrics.avgTransactionGci)}</p>
+              </div>
+
+              {/* Total Deals */}
+              <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Total Deals Booked/Closed</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{yearMetrics.totalDeals}</p>
+              </div>
+
+              {/* Mike's Deals */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-blue-600 uppercase tracking-wide">Mike's Deals</p>
+                <p className="text-2xl font-bold text-blue-900 mt-1">{yearMetrics.mikeDeals}</p>
+              </div>
+
+              {/* Arty's Deals */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-green-600 uppercase tracking-wide">Arty's Deals</p>
+                <p className="text-2xl font-bold text-green-900 mt-1">{yearMetrics.artyDeals}</p>
+              </div>
+
+              {/* Greg's Deals */}
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 shadow-sm">
+                <p className="text-xs text-purple-600 uppercase tracking-wide">Greg's Deals</p>
+                <p className="text-2xl font-bold text-purple-900 mt-1">{yearMetrics.gregDeals}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Client Breakdown Table */}
+          {clientMetrics.length > 0 && (
+            <>
+              <div className="mt-4 px-6 py-3 bg-gray-100 border-b border-gray-200">
+                <h2 className="text-lg font-semibold text-gray-900">Client Breakdown ({selectedYear})</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Client
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Total GCI
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        # Deals
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Avg Transaction GCI
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {clientMetrics.map((client, idx) => (
+                      <tr key={client.clientId} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                          {client.clientName}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-right text-gray-700">
+                          {formatCurrency(client.totalGci)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-right text-gray-700">
+                          {client.dealCount}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-right text-gray-700">
+                          {formatCurrency(client.avgTransactionGci)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gray-800 text-white">
+                    <tr>
+                      <td className="px-4 py-3 text-sm font-semibold">TOTALS</td>
+                      <td className="px-4 py-3 text-sm text-right font-semibold">
+                        {formatCurrency(clientMetrics.reduce((sum, c) => sum + c.totalGci, 0))}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-semibold">
+                        {clientMetrics.reduce((sum, c) => sum + c.dealCount, 0)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-semibold">
+                        {formatCurrency(yearMetrics.avgTransactionGci)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
 
       {/* Footer Notes */}
       <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
