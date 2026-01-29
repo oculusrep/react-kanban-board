@@ -74,6 +74,9 @@ interface CommissionSplitData {
   deal_id: string;
   broker_id: string;
   split_broker_total: number;
+  split_origination_percent: number;
+  split_site_percent: number;
+  split_deal_percent: number;
 }
 
 interface PaymentSplitData {
@@ -160,7 +163,7 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
     setError(null);
 
     try {
-      // Fetch all deals with commission splits
+      // Fetch all deals with commission splits (include fields needed for on-the-fly calculation)
       const { data: deals, error: dealsError } = await supabase
         .from('deal')
         .select(`
@@ -168,8 +171,13 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
           deal_name,
           gci,
           agci,
+          fee,
+          referral_fee_usd,
           house_usd,
           house_percent,
+          origination_percent,
+          site_percent,
+          deal_percent,
           deal_value,
           stage_id,
           booked_date,
@@ -180,10 +188,10 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
 
       if (dealsError) throw dealsError;
 
-      // Fetch all commission splits for the three brokers
+      // Fetch all commission splits for the three brokers (include percentage fields for on-the-fly calculation)
       const { data: commissionSplits, error: splitsError } = await supabase
         .from('commission_split')
-        .select('deal_id, broker_id, split_broker_total')
+        .select('deal_id, broker_id, split_broker_total, split_origination_percent, split_site_percent, split_deal_percent')
         .in('broker_id', [BROKER_IDS.mike, BROKER_IDS.arty, BROKER_IDS.greg]);
 
       if (splitsError) throw splitsError;
@@ -235,15 +243,43 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         splitsByPayment.set(split.payment_id, existing);
       });
 
-      // Helper to sum broker splits for deals
+      // Build a map of deal IDs to deal data for easy lookup (needed for on-the-fly calculations)
+      const dealsById = new Map<string, any>();
+      (deals || []).forEach(d => dealsById.set(d.id, d));
+
+      // Helper to calculate broker total on-the-fly from percentages
+      const calculateBrokerTotalForDeal = (dealId: string, brokerId: string): number => {
+        const deal = dealsById.get(dealId);
+        if (!deal) return 0;
+
+        const splits = splitsByDeal.get(dealId) || [];
+        const brokerSplit = splits.find(s => s.broker_id === brokerId);
+        if (!brokerSplit) return 0;
+
+        // Calculate base amounts (same logic as useCommissionCalculations)
+        const gci = deal.fee || 0;
+        const referralFeeUsd = deal.referral_fee_usd || 0;
+        const houseUsd = deal.house_usd || 0;
+        const agci = gci - referralFeeUsd - houseUsd;
+
+        // Deal-level USD amounts
+        const originationUSD = ((deal.origination_percent || 0) / 100) * agci;
+        const siteUSD = ((deal.site_percent || 0) / 100) * agci;
+        const dealUSD = ((deal.deal_percent || 0) / 100) * agci;
+
+        // Calculate broker's share from percentages
+        const originationSplitUSD = ((brokerSplit.split_origination_percent || 0) / 100) * originationUSD;
+        const siteSplitUSD = ((brokerSplit.split_site_percent || 0) / 100) * siteUSD;
+        const dealSplitUSD = ((brokerSplit.split_deal_percent || 0) / 100) * dealUSD;
+
+        return originationSplitUSD + siteSplitUSD + dealSplitUSD;
+      };
+
+      // Helper to sum broker splits for deals (calculated on-the-fly)
       const sumBrokerSplitsForDeals = (dealIds: string[], brokerId: string): number => {
         let total = 0;
         dealIds.forEach(dealId => {
-          const splits = splitsByDeal.get(dealId) || [];
-          const brokerSplit = splits.find(s => s.broker_id === brokerId);
-          if (brokerSplit) {
-            total += brokerSplit.split_broker_total || 0;
-          }
+          total += calculateBrokerTotalForDeal(dealId, brokerId);
         });
         return total;
       };
@@ -261,18 +297,13 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         return total;
       };
 
-      // Helper to count deals where Greg has zero or no split
+      // Helper to count deals where Greg has zero or no split (calculated on-the-fly)
       const countDealsWithoutGregSplit = (dealIds: string[]): number => {
         return dealIds.filter(dealId => {
-          const splits = splitsByDeal.get(dealId) || [];
-          const gregSplit = splits.find(s => s.broker_id === BROKER_IDS.greg);
-          return !gregSplit || (gregSplit.split_broker_total || 0) === 0;
+          const calculatedGregTotal = calculateBrokerTotalForDeal(dealId, BROKER_IDS.greg);
+          return calculatedGregTotal === 0;
         }).length;
       };
-
-      // Build a map of deal IDs to deal data for easy lookup
-      const dealsById = new Map<string, any>();
-      (deals || []).forEach(d => dealsById.set(d.id, d));
 
       // Helper to count deals with NO commission splits or all $0 splits (excluding house_only deals)
       const countDealsWithoutSplits = (dealIds: string[]): number => {
@@ -283,27 +314,31 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
 
           const splits = splitsByDeal.get(dealId) || [];
           if (splits.length === 0) return true;
-          // Also flag deals where all splits have $0 totals
-          const totalSplitValue = splits.reduce((sum, s) => sum + (s.split_broker_total || 0), 0);
+          // Calculate total split value on-the-fly
+          const totalSplitValue = [BROKER_IDS.mike, BROKER_IDS.arty, BROKER_IDS.greg].reduce(
+            (sum, brokerId) => sum + calculateBrokerTotalForDeal(dealId, brokerId), 0
+          );
           return totalSplitValue === 0;
         }).length;
       };
 
-      // Helper to get broker split for a single deal
+      // Helper to get broker split for a single deal (calculated on-the-fly)
       const getBrokerSplitForDeal = (dealId: string, brokerId: string): number => {
-        const splits = splitsByDeal.get(dealId) || [];
-        const brokerSplit = splits.find(s => s.broker_id === brokerId);
-        return brokerSplit?.split_broker_total || 0;
+        return calculateBrokerTotalForDeal(dealId, brokerId);
       };
 
       // Helper to build deal details array
       const buildDealDetails = (dealList: any[]): DealDetail[] => {
         return dealList.map(d => {
           const dealSplits = splitsByDeal.get(d.id) || [];
+          // Calculate broker nets on-the-fly
+          const mikeNet = getBrokerSplitForDeal(d.id, BROKER_IDS.mike);
+          const artyNet = getBrokerSplitForDeal(d.id, BROKER_IDS.arty);
+          const gregNet = getBrokerSplitForDeal(d.id, BROKER_IDS.greg);
           // hasSplits is true if:
           // 1. Deal is marked as house_only, OR
-          // 2. Has splits with non-zero totals
-          const totalSplitValue = dealSplits.reduce((sum, s) => sum + (s.split_broker_total || 0), 0);
+          // 2. Has splits with non-zero calculated totals
+          const totalSplitValue = mikeNet + artyNet + gregNet;
           const hasSplits = d.house_only === true || (dealSplits.length > 0 && totalSplitValue > 0);
 
           return {
@@ -313,9 +348,9 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
             gci: d.gci || 0,
             agci: d.agci || 0,
             house: d.house_usd || 0,
-            mikeNet: getBrokerSplitForDeal(d.id, BROKER_IDS.mike),
-            artyNet: getBrokerSplitForDeal(d.id, BROKER_IDS.arty),
-            gregNet: getBrokerSplitForDeal(d.id, BROKER_IDS.greg),
+            mikeNet,
+            artyNet,
+            gregNet,
             dealValue: d.deal_value || 0,
             hasSplits,
             splitCount: dealSplits.length,
