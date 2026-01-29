@@ -130,6 +130,9 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const isCurrentYear = selectedYear === currentYear;
 
+  // Legend toggle
+  const [legendExpanded, setLegendExpanded] = useState(false);
+
   // Generate year options from 2020 to current year
   const yearOptions = useMemo(() => {
     const years = [];
@@ -1400,26 +1403,42 @@ export default function RobReport({ readOnly = false }: RobReportProps) {
         </>
       )}
 
-      {/* Footer Notes */}
-      <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-        <div className="text-xs text-gray-500 space-y-1">
-          <p><strong>Booked/Closed:</strong> Deals in Booked, Executed Payable, or Closed Paid stages with booked date in {selectedYear}</p>
-          {isCurrentYear && (
-            <>
-              <p><strong>UC/Contingent:</strong> All deals in Under Contract / Contingent stage</p>
-              <p><strong>Pipeline 50%+:</strong> All deals in Negotiating LOI or At Lease/PSA stages</p>
-            </>
-          )}
-          <p><strong>Collected:</strong> Payments received in {selectedYear}</p>
-          {isCurrentYear && (
-            <p><strong>Invoiced Payments:</strong> Pending payments on Booked or Executed Payable deals</p>
-          )}
-          <p><strong>GCI (Payments):</strong> Payment Amount - Referral Fee</p>
-          <p><strong>AGCI:</strong> GCI - House Cut</p>
-          {!effectiveReadOnly && <p><strong>⚠️ Missing:</strong> Deals with no commission splits assigned - click to add splits</p>}
-          {!effectiveReadOnly && <p><strong>⚠️ Overdue:</strong> Invoiced payments with no estimated date or past due</p>}
-          <p><strong># Deals:</strong> Total count of deals in each category</p>
-        </div>
+      {/* Footer Notes - Collapsible */}
+      <div className="px-6 py-2 bg-gray-50 border-t border-gray-200">
+        <button
+          onClick={() => setLegendExpanded(!legendExpanded)}
+          className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700"
+        >
+          <svg
+            className={`h-3 w-3 transition-transform ${legendExpanded ? 'rotate-90' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          <span className="font-medium">Legend</span>
+        </button>
+        {legendExpanded && (
+          <div className="text-xs text-gray-500 space-y-1 mt-2 pl-5">
+            <p><strong>Booked/Closed:</strong> Deals in Booked, Executed Payable, or Closed Paid stages with booked date in {selectedYear}</p>
+            {isCurrentYear && (
+              <>
+                <p><strong>UC/Contingent:</strong> All deals in Under Contract / Contingent stage</p>
+                <p><strong>Pipeline 50%+:</strong> All deals in Negotiating LOI or At Lease/PSA stages</p>
+              </>
+            )}
+            <p><strong>Collected:</strong> Payments received in {selectedYear}</p>
+            {isCurrentYear && (
+              <p><strong>Invoiced Payments:</strong> Pending payments on Booked or Executed Payable deals</p>
+            )}
+            <p><strong>GCI (Payments):</strong> Payment Amount - Referral Fee</p>
+            <p><strong>AGCI:</strong> GCI - House Cut</p>
+            {!effectiveReadOnly && <p><strong>⚠️ Missing:</strong> Deals with no commission splits assigned - click to add splits</p>}
+            {!effectiveReadOnly && <p><strong>⚠️ Overdue:</strong> Invoiced payments with no estimated date or past due</p>}
+            <p><strong># Deals:</strong> Total count of deals in each category</p>
+          </div>
+        )}
       </div>
 
       {/* Quick Commission Split Modal - only in edit mode */}
