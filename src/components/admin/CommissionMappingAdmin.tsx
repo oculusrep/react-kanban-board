@@ -138,6 +138,11 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
 
+      // Debug: Log all account types
+      const accountTypes = [...new Set((result.accounts || []).map((a: QBAccount) => a.type))];
+      console.log('QBO Account Types:', accountTypes);
+      console.log('All QBO Accounts:', result.accounts);
+
       setQbAccounts(result.accounts || []);
       setQbExpenseAccounts(result.expenseAccounts || []);
       setQbAssetAccounts(result.assetAccounts || []);
@@ -438,15 +443,15 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 >
                   <option value="">Select an account...</option>
-                  {/* Filter to Balance Sheet accounts only (exclude P&L: Income, Expense, COGS) */}
-                  {qbAccounts
-                    .filter(a => !['Income', 'Other Income', 'Expense', 'Other Expense', 'Cost of Goods Sold'].includes(a.type))
-                    .map(a => (
-                      <option key={a.id} value={a.id}>{a.fullName} ({a.type})</option>
-                    ))}
+                  {/* Show ALL accounts - no filter */}
+                  {qbAccounts.map(a => (
+                    <option key={a.id} value={a.id}>{a.fullName} ({a.type})</option>
+                  ))}
                 </select>
-                {qbAccounts.length === 0 && (
+                {qbAccounts.length === 0 ? (
                   <p className="text-xs text-gray-500 mt-1">Click "Refresh QBO Data" to load accounts</p>
+                ) : (
+                  <p className="text-xs text-gray-500 mt-1">Showing {qbAccounts.length} accounts (check browser console for account types)</p>
                 )}
               </div>
             )}
