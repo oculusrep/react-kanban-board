@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { usePortal } from '../../contexts/PortalContext';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
+import PortalDetailSidebar from '../../components/portal/PortalDetailSidebar';
 
 interface SiteSubmit {
   id: string;
@@ -59,10 +60,17 @@ const VISIBLE_STAGES = [
  */
 export default function PortalPipelinePage() {
   const { selectedClient, selectedClientId, accessibleClients, isInternalUser } = usePortal();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
   const [stages, setStages] = useState<SubmitStage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Detail sidebar
+  const [selectedSiteSubmitId, setSelectedSiteSubmitId] = useState<string | null>(
+    searchParams.get('selected')
+  );
+  const [sidebarOpen, setSidebarOpen] = useState(!!searchParams.get('selected'));
 
   // Filters
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
@@ -71,6 +79,20 @@ export default function PortalPipelinePage() {
   // Sorting
   const [sortColumn, setSortColumn] = useState<string>('property_name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  // Handle opening a site submit
+  const handleOpenSiteSubmit = (id: string) => {
+    setSelectedSiteSubmitId(id);
+    setSidebarOpen(true);
+    setSearchParams({ selected: id });
+  };
+
+  // Handle closing sidebar
+  const handleCloseSidebar = () => {
+    setSidebarOpen(false);
+    setSelectedSiteSubmitId(null);
+    setSearchParams({});
+  };
 
   useEffect(() => {
     document.title = `Pipeline - ${selectedClient?.client_name || 'Portal'} | OVIS`;
@@ -399,11 +421,10 @@ export default function PortalPipelinePage() {
               {sortedSubmits.map((ss) => (
                 <tr
                   key={ss.id}
-                  className="hover:bg-blue-50 cursor-pointer transition-colors"
-                  onClick={() => {
-                    // TODO: Open detail sidebar
-                    console.log('Open detail for:', ss.id);
-                  }}
+                  className={`hover:bg-blue-50 cursor-pointer transition-colors ${
+                    selectedSiteSubmitId === ss.id ? 'bg-blue-100' : ''
+                  }`}
+                  onClick={() => handleOpenSiteSubmit(ss.id)}
                 >
                   <td className="px-4 py-3 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">
@@ -454,6 +475,13 @@ export default function PortalPipelinePage() {
           </table>
         )}
       </div>
+
+      {/* Detail Sidebar */}
+      <PortalDetailSidebar
+        siteSubmitId={selectedSiteSubmitId}
+        isOpen={sidebarOpen}
+        onClose={handleCloseSidebar}
+      />
     </div>
   );
 }
