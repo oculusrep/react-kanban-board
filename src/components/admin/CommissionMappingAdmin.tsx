@@ -285,6 +285,28 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
     });
   };
 
+  const handleEntityTypeChange = (entityType: 'broker' | 'referral_partner') => {
+    const updates: Partial<CommissionMapping> = {
+      ...formData,
+      entity_type: entityType,
+      broker_id: null,
+      client_id: null
+    };
+
+    // Set default debit account for referral partners
+    if (entityType === 'referral_partner' && qbExpenseAccounts.length > 0) {
+      const referralAccount = qbExpenseAccounts.find(
+        a => a.fullName === 'Commissions Paid Out:Referral Fee to Other Broker'
+      );
+      if (referralAccount) {
+        updates.qb_debit_account_id = referralAccount.id;
+        updates.qb_debit_account_name = referralAccount.fullName;
+      }
+    }
+
+    setFormData(updates);
+  };
+
   if (loading) {
     return <div className="text-center py-8 text-gray-500">Loading commission mappings...</div>;
   }
@@ -345,7 +367,7 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
               <label className="block text-sm font-medium text-gray-700 mb-1">Entity Type</label>
               <select
                 value={formData.entity_type || 'broker'}
-                onChange={(e) => setFormData({ ...formData, entity_type: e.target.value as 'broker' | 'referral_partner', broker_id: null, client_id: null })}
+                onChange={(e) => handleEntityTypeChange(e.target.value as 'broker' | 'referral_partner')}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
               >
                 <option value="broker">Broker</option>

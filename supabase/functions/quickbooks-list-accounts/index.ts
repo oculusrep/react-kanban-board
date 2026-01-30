@@ -102,7 +102,8 @@ serve(async (req) => {
     }
 
     // Fetch expense accounts (for debit side)
-    const expenseQuery = `SELECT * FROM Account WHERE Active = true AND (AccountType = 'Expense' OR AccountType = 'Cost of Goods Sold' OR AccountType = 'Other Expense') ORDER BY FullyQualifiedName`
+    // QBO uses IN clause instead of parenthesized OR conditions
+    const expenseQuery = `SELECT * FROM Account WHERE Active = true AND AccountType IN ('Expense', 'Cost of Goods Sold', 'Other Expense') ORDER BY FullyQualifiedName`
     const expenseAccountsRaw = await fetchAllWithPagination<QBAccount>(expenseQuery, 'Account')
     const expenseAccounts = expenseAccountsRaw.map(acc => ({
       id: acc.Id,
@@ -114,7 +115,7 @@ serve(async (req) => {
 
     // Fetch all asset/equity accounts (for credit side - draw accounts, etc.)
     // This includes: Bank, Other Current Asset, Fixed Asset, Other Asset, Equity
-    const assetQuery = `SELECT * FROM Account WHERE Active = true AND (AccountType = 'Bank' OR AccountType = 'Other Current Asset' OR AccountType = 'Fixed Asset' OR AccountType = 'Other Asset' OR AccountType = 'Equity') ORDER BY FullyQualifiedName`
+    const assetQuery = `SELECT * FROM Account WHERE Active = true AND AccountType IN ('Bank', 'Other Current Asset', 'Fixed Asset', 'Other Asset', 'Equity') ORDER BY FullyQualifiedName`
     const assetAccountsRaw = await fetchAllWithPagination<QBAccount>(assetQuery, 'Account')
     const assetAccounts = assetAccountsRaw.map(acc => ({
       id: acc.Id,
