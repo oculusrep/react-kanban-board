@@ -138,10 +138,11 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
 
-      // Debug: Log all account types
-      const accountTypes = [...new Set((result.accounts || []).map((a: QBAccount) => a.type))];
-      console.log('QBO Account Types:', accountTypes);
-      console.log('All QBO Accounts:', result.accounts);
+      // Debug: Log account info
+      const assetAccountTypes = [...new Set((result.assetAccounts || []).map((a: QBAccount) => a.type))];
+      console.log('Asset Account Types:', assetAccountTypes);
+      console.log('Asset Accounts:', result.assetAccounts);
+      console.log('Expense Accounts:', result.expenseAccounts?.length);
 
       setQbAccounts(result.accounts || []);
       setQbExpenseAccounts(result.expenseAccounts || []);
@@ -267,7 +268,7 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
   };
 
   const handleCreditAccountChange = (accountId: string) => {
-    const account = qbAccounts.find(a => a.id === accountId);
+    const account = qbAssetAccounts.find(a => a.id === accountId);
     setFormData({
       ...formData,
       qb_credit_account_id: accountId,
@@ -443,15 +444,14 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 >
                   <option value="">Select an account...</option>
-                  {/* Show ALL accounts - no filter */}
-                  {qbAccounts.map(a => (
+                  {qbAssetAccounts.map(a => (
                     <option key={a.id} value={a.id}>{a.fullName} ({a.type})</option>
                   ))}
                 </select>
-                {qbAccounts.length === 0 ? (
+                {qbAssetAccounts.length === 0 ? (
                   <p className="text-xs text-gray-500 mt-1">Click "Refresh QBO Data" to load accounts</p>
                 ) : (
-                  <p className="text-xs text-gray-500 mt-1">Showing {qbAccounts.length} accounts (check browser console for account types)</p>
+                  <p className="text-xs text-gray-500 mt-1">Showing {qbAssetAccounts.length} asset/equity accounts</p>
                 )}
               </div>
             )}

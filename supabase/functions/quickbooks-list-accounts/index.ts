@@ -70,15 +70,41 @@ serve(async (req) => {
 
     connection = await refreshTokenIfNeeded(supabaseClient, connection)
 
-    // Fetch all active accounts
-    const accountQuery = `SELECT * FROM Account WHERE Active = true ORDER BY FullyQualifiedName`
-    const accountResult = await qbApiRequest<{ QueryResponse: { Account?: QBAccount[] } }>(
-      connection,
-      'GET',
-      `query?query=${encodeURIComponent(accountQuery)}`
-    )
+    // Helper function to fetch all results with pagination
+    const fetchAllWithPagination = async <T>(
+      baseQuery: string,
+      entityName: string
+    ): Promise<T[]> => {
+      const allResults: T[] = []
+      const pageSize = 1000  // QBO max is 1000
+      let startPosition = 1
+      let hasMore = true
 
-    const accounts = (accountResult.QueryResponse.Account || []).map(acc => ({
+      while (hasMore) {
+        const paginatedQuery = `${baseQuery} STARTPOSITION ${startPosition} MAXRESULTS ${pageSize}`
+        const result = await qbApiRequest<{ QueryResponse: { [key: string]: T[] } }>(
+          connection,
+          'GET',
+          `query?query=${encodeURIComponent(paginatedQuery)}`
+        )
+
+        const items = result.QueryResponse[entityName] || []
+        allResults.push(...items)
+
+        if (items.length < pageSize) {
+          hasMore = false
+        } else {
+          startPosition += pageSize
+        }
+      }
+
+      return allResults
+    }
+
+    // Fetch expense accounts (for debit side)
+    const expenseQuery = `SELECT * FROM Account WHERE Active = true AND (AccountType = 'Expense' OR AccountType = 'Cost of Goods Sold' OR AccountType = 'Other Expense') ORDER BY FullyQualifiedName`
+    const expenseAccountsRaw = await fetchAllWithPagination<QBAccount>(expenseQuery, 'Account')
+    const expenseAccounts = expenseAccountsRaw.map(acc => ({
       id: acc.Id,
       name: acc.Name,
       fullName: acc.FullyQualifiedName,
@@ -86,35 +112,35 @@ serve(async (req) => {
       subType: acc.AccountSubType
     }))
 
-    // Fetch all active vendors
-    const vendorQuery = `SELECT * FROM Vendor WHERE Active = true ORDER BY DisplayName`
-    const vendorResult = await qbApiRequest<{ QueryResponse: { Vendor?: QBVendor[] } }>(
-      connection,
-      'GET',
-      `query?query=${encodeURIComponent(vendorQuery)}`
-    )
+    // Fetch all asset/equity accounts (for credit side - draw accounts, etc.)
+    // This includes: Bank, Other Current Asset, Fixed Asset, Other Asset, Equity
+    const assetQuery = `SELECT * FROM Account WHERE Active = true AND (AccountType = 'Bank' OR AccountType = 'Other Current Asset' OR AccountType = 'Fixed Asset' OR AccountType = 'Other Asset' OR AccountType = 'Equity') ORDER BY FullyQualifiedName`
+    const assetAccountsRaw = await fetchAllWithPagination<QBAccount>(assetQuery, 'Account')
+    const assetAccounts = assetAccountsRaw.map(acc => ({
+      id: acc.Id,
+      name: acc.Name,
+      fullName: acc.FullyQualifiedName,
+      type: acc.AccountType,
+      subType: acc.AccountSubType
+    }))
 
-    const vendors = (vendorResult.QueryResponse.Vendor || []).map(v => ({
+    // Combine for full accounts list
+    const accounts = [...expenseAccounts, ...assetAccounts]
+
+    // Fetch all active vendors with pagination
+    const vendorQuery = `SELECT * FROM Vendor WHERE Active = true ORDER BY DisplayName`
+    const vendorsRaw = await fetchAllWithPagination<QBVendor>(vendorQuery, 'Vendor')
+    const vendors = vendorsRaw.map(v => ({
       id: v.Id,
       displayName: v.DisplayName,
       companyName: v.CompanyName
     }))
 
-    // Group accounts by type for easier selection
-    const expenseAccounts = accounts.filter(a =>
-      a.type === 'Expense' || a.type === 'Cost of Goods Sold' || a.type === 'Other Expense'
-    )
-    // Include all asset types for credit accounts (commission draws, etc.)
-    const assetAccounts = accounts.filter(a =>
-      a.type === 'Other Current Asset' ||
-      a.type === 'Other Asset' ||
-      a.type === 'Fixed Asset' ||
-      a.type === 'Bank' ||
-      a.type === 'Equity' ||
-      // Also check lowercase/different formats
-      a.type?.toLowerCase().includes('asset') ||
-      a.type?.toLowerCase().includes('equity')
-    )
+    console.log(`Fetched ${expenseAccounts.length} expense accounts, ${assetAccounts.length} asset accounts, ${vendors.length} vendors`)
+
+    // Log asset account types for debugging
+    const assetTypes = [...new Set(assetAccounts.map(a => a.type))]
+    console.log('Asset account types:', assetTypes)
 
     return new Response(
       JSON.stringify({
