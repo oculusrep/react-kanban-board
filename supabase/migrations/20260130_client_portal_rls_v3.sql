@@ -102,7 +102,7 @@ CREATE INDEX IF NOT EXISTS idx_portal_user_client_access_client ON portal_user_c
 CREATE INDEX IF NOT EXISTS idx_site_submit_client_id ON site_submit(client_id);
 
 -- Index for submit_stage name lookups
-CREATE INDEX IF NOT EXISTS idx_submit_stage_name ON submit_stage(stage_name);
+CREATE INDEX IF NOT EXISTS idx_submit_stage_name ON submit_stage(name);
 
 -- ============================================================================
 -- 1. PORTAL_USER_CLIENT_ACCESS TABLE RLS
@@ -150,7 +150,7 @@ USING (
     JOIN contact c ON c.id = puca.contact_id AND c.portal_access_enabled = TRUE
     JOIN auth.users au ON LOWER(au.email) = LOWER(c.email) AND au.id = auth.uid()
     WHERE ss.id = site_submit_comment.site_submit_id
-    AND st.stage_name IN (
+    AND st.name IN (
       'Submitted-Reviewing', 'Pass', 'Use Declined', 'Use Conflict',
       'Not Available', 'Lost / Killed', 'LOI', 'At Lease/PSA',
       'Under Contract/Contingent', 'Store Opened'
@@ -178,7 +178,7 @@ WITH CHECK (
     JOIN contact c ON c.id = puca.contact_id AND c.portal_access_enabled = TRUE
     JOIN auth.users au ON LOWER(au.email) = LOWER(c.email) AND au.id = auth.uid()
     WHERE ss.id = site_submit_comment.site_submit_id
-    AND st.stage_name IN (
+    AND st.name IN (
       'Submitted-Reviewing', 'Pass', 'Use Declined', 'Use Conflict',
       'Not Available', 'Lost / Killed', 'LOI', 'At Lease/PSA',
       'Under Contract/Contingent', 'Store Opened'
@@ -267,7 +267,7 @@ USING (
   AND EXISTS (
     SELECT 1 FROM submit_stage st
     WHERE st.id = site_submit.submit_stage_id
-    AND st.stage_name IN (
+    AND st.name IN (
       'Submitted-Reviewing', 'Pass', 'Use Declined', 'Use Conflict',
       'Not Available', 'Lost / Killed', 'LOI', 'At Lease/PSA',
       'Under Contract/Contingent', 'Store Opened'
@@ -294,7 +294,7 @@ USING (
     JOIN auth.users au ON LOWER(au.email) = LOWER(c.email)
     WHERE au.id = auth.uid()
     AND ss.property_id = property.id
-    AND st.stage_name IN (
+    AND st.name IN (
       'Submitted-Reviewing', 'Pass', 'Use Declined', 'Use Conflict',
       'Not Available', 'Lost / Killed', 'LOI', 'At Lease/PSA',
       'Under Contract/Contingent', 'Store Opened'
