@@ -743,6 +743,33 @@ Tracks QBO entries created for commission payments.
 | `quickbooks-create-commission-entry` | Creates Bill or Journal Entry for broker payment splits |
 | `quickbooks-create-referral-entry` | Creates Bill for referral fee payments |
 
+#### `quickbooks-list-accounts` Technical Details
+
+This function fetches accounts and vendors from QuickBooks for the commission mapping UI dropdowns.
+
+**Account Queries:**
+- Uses QBO's `IN` clause (not parentheses) for filtering by account type
+- Implements pagination with `STARTPOSITION` and `MAXRESULTS` to fetch all accounts (QBO default limit is 100)
+
+**Expense Accounts (Debit side):**
+```sql
+SELECT * FROM Account WHERE Active = true
+AND AccountType IN ('Expense', 'Cost of Goods Sold', 'Other Expense')
+ORDER BY FullyQualifiedName
+```
+
+**Asset/Equity Accounts (Credit side for Journal Entries):**
+```sql
+SELECT * FROM Account WHERE Active = true
+AND AccountType IN ('Bank', 'Other Current Asset', 'Fixed Asset', 'Other Asset', 'Equity')
+ORDER BY FullyQualifiedName
+```
+
+**Returns:**
+- `expenseAccounts` - For debit account dropdown
+- `assetAccounts` - For credit account dropdown (Journal Entries only)
+- `vendors` - For vendor dropdown (Bills only)
+
 ### Shared Utilities Added to `_shared/quickbooks.ts`
 
 ```typescript
@@ -783,8 +810,12 @@ The **Commission Payment Mappings** section is on the QuickBooks Integration pag
 3. **Payment Method**: Bill (Accounts Payable) or Journal Entry (Commission Draw)
 4. **QBO Vendor**: Required for Bills - dropdown of QBO vendors
 5. **Debit Account**: Expense account (dropdown of Expense/COGS accounts)
-6. **Credit Account**: Required for Journal Entries (dropdown of Asset accounts)
+6. **Credit Account**: Required for Journal Entries (dropdown of Asset/Equity accounts including Other Asset)
 7. **Description Template**: Text with placeholders
+
+**Smart Defaults:**
+- When Entity Type is changed to "Referral Partner", the Debit Account automatically defaults to "Commissions Paid Out:Referral Fee to Other Broker" (if QBO data has been loaded)
+- Default Description Template: `Commission Payment for {payment_name} - {deal_name}`
 
 ### Setup Instructions
 
