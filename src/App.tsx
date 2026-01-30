@@ -4,7 +4,11 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import AdminRoute from "./components/AdminRoute";
 import CoachRoute from "./components/CoachRoute";
 import GmailRoute from "./components/GmailRoute";
+import PortalRoute from "./components/PortalRoute";
 import CoachNavbar from "./components/CoachNavbar";
+import PortalLayout from "./components/portal/PortalLayout";
+import PortalMapPage from "./pages/portal/PortalMapPage";
+import PortalPipelinePage from "./pages/portal/PortalPipelinePage";
 import KanbanBoard from "./components/KanbanBoard";
 import DealDetailsPage from "./pages/DealDetailsPage";
 import PropertyDetailsPage from "./pages/PropertyDetailsPage";
@@ -85,6 +89,13 @@ function App() {
       <Routes>
         {/* Public route for password reset */}
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+        {/* Client Portal Routes - separate layout */}
+        <Route path="/portal" element={<PortalRoute><PortalLayout /></PortalRoute>}>
+          <Route index element={<Navigate to="/portal/map" replace />} />
+          <Route path="map" element={<PortalMapPage />} />
+          <Route path="pipeline" element={<PortalPipelinePage />} />
+        </Route>
 
         {/* All other routes are protected */}
         <Route path="/" element={<ProtectedLayout />}>
