@@ -5,6 +5,7 @@ import { useContactForm } from '../hooks/useContactForm';
 import { prepareInsert } from '../lib/supabaseHelpers';
 import { format, parseISO } from 'date-fns';
 import RecordMetadata from './RecordMetadata';
+import PortalAccessSection from './portal/PortalAccessSection';
 
 type Contact = Database['public']['Tables']['contact']['Row'];
 type ContactInsert = Database['public']['Tables']['contact']['Insert'];
@@ -544,6 +545,19 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Portal Access Section */}
+      <PortalAccessSection
+        contactId={contact?.id || null}
+        contactEmail={formData.email || null}
+        portalAccessEnabled={(formData as any).portal_access_enabled ?? null}
+        portalInviteStatus={(formData as any).portal_invite_status ?? null}
+        portalInviteSentAt={(formData as any).portal_invite_sent_at ?? null}
+        portalLastLoginAt={(formData as any).portal_last_login_at ?? null}
+        portalInviteExpiresAt={(formData as any).portal_invite_expires_at ?? null}
+        onFieldUpdate={handleFieldUpdate}
+        isNewContact={isNewContact}
+      />
 
       {/* Tags and Tracking Section */}
       <div className="bg-white shadow rounded-lg p-6 space-y-4">

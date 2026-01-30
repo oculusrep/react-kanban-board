@@ -9,6 +9,10 @@ import CoachNavbar from "./components/CoachNavbar";
 import PortalLayout from "./components/portal/PortalLayout";
 import PortalMapPage from "./pages/portal/PortalMapPage";
 import PortalPipelinePage from "./pages/portal/PortalPipelinePage";
+import PortalLoginPage from "./pages/portal/PortalLoginPage";
+import PortalInviteAcceptPage from "./pages/portal/PortalInviteAcceptPage";
+import PortalForgotPasswordPage from "./pages/portal/PortalForgotPasswordPage";
+import PortalResetPasswordPage from "./pages/portal/PortalResetPasswordPage";
 import KanbanBoard from "./components/KanbanBoard";
 import DealDetailsPage from "./pages/DealDetailsPage";
 import PropertyDetailsPage from "./pages/PropertyDetailsPage";
@@ -53,6 +57,7 @@ import FlaggedEmailQueuePage from "./pages/FlaggedEmailQueuePage";
 import HunterDashboardPage from "./pages/HunterDashboardPage";
 import HunterLeadDetailsPage from "./pages/HunterLeadDetailsPage";
 import BudgetDashboardPage from "./pages/BudgetDashboardPage";
+import PortalUserManagementPage from "./pages/PortalUserManagementPage";
 
 function ProtectedLayout() {
   const location = useLocation();
@@ -90,7 +95,13 @@ function App() {
         {/* Public route for password reset */}
         <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-        {/* Client Portal Routes - separate layout */}
+        {/* Portal Authentication Routes (public - before login) */}
+        <Route path="/portal/login" element={<PortalLoginPage />} />
+        <Route path="/portal/invite" element={<PortalInviteAcceptPage />} />
+        <Route path="/portal/forgot-password" element={<PortalForgotPasswordPage />} />
+        <Route path="/portal/reset-password" element={<PortalResetPasswordPage />} />
+
+        {/* Client Portal Routes - protected layout */}
         <Route path="/portal" element={<PortalRoute><PortalLayout /></PortalRoute>}>
           <Route index element={<Navigate to="/portal/map" replace />} />
           <Route path="map" element={<PortalMapPage />} />
@@ -139,6 +150,7 @@ function App() {
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
           <Route path="admin/quickbooks" element={<AdminRoute><QuickBooksAdminPage /></AdminRoute>} />
           <Route path="admin/budget" element={<AdminRoute><BudgetDashboardPage /></AdminRoute>} />
+          <Route path="admin/portal-users" element={<AdminRoute><PortalUserManagementPage /></AdminRoute>} />
           <Route path="admin/gmail" element={<GmailRoute><GmailSettingsPage /></GmailRoute>} />
           <Route path="admin/agent-rules" element={<GmailRoute><AgentRulesPage /></GmailRoute>} />
           <Route path="admin/email-review" element={<GmailRoute><EmailClassificationReviewPage /></GmailRoute>} />

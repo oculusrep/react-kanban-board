@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { usePortal } from '../../contexts/PortalContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import PortalDetailSidebar from '../../components/portal/PortalDetailSidebar';
@@ -60,11 +61,15 @@ const VISIBLE_STAGES = [
  */
 export default function PortalPipelinePage() {
   const { selectedClient, selectedClientId, accessibleClients, isInternalUser } = usePortal();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
   const [stages, setStages] = useState<SubmitStage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Read/unread tracking
+  const [viewedSiteSubmits, setViewedSiteSubmits] = useState<Set<string>>(new Set());
 
   // Detail sidebar
   const [selectedSiteSubmitId, setSelectedSiteSubmitId] = useState<string | null>(
@@ -85,6 +90,8 @@ export default function PortalPipelinePage() {
     setSelectedSiteSubmitId(id);
     setSidebarOpen(true);
     setSearchParams({ selected: id });
+    // Mark as viewed immediately for instant UI feedback
+    markAsViewed(id);
   };
 
   // Handle closing sidebar
@@ -208,6 +215,36 @@ export default function PortalPipelinePage() {
 
     fetchSiteSubmits();
   }, [selectedClientId, accessibleClients, selectedStageId]);
+
+  // Fetch viewed site submits for read/unread tracking
+  useEffect(() => {
+    async function fetchViewedSiteSubmits() {
+      if (!user?.id) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('portal_site_submit_view')
+          .select('site_submit_id')
+          .eq('user_id', user.id);
+
+        if (error) {
+          console.error('Error fetching viewed site submits:', error);
+          return;
+        }
+
+        setViewedSiteSubmits(new Set((data || []).map(v => v.site_submit_id)));
+      } catch (err) {
+        console.error('Error fetching viewed site submits:', err);
+      }
+    }
+
+    fetchViewedSiteSubmits();
+  }, [user?.id, siteSubmits]); // Refetch when site submits change
+
+  // Mark a site submit as viewed
+  const markAsViewed = useCallback((siteSubmitId: string) => {
+    setViewedSiteSubmits(prev => new Set([...prev, siteSubmitId]));
+  }, []);
 
   // If no client selected and multiple available, redirect to select
   if (!selectedClientId && accessibleClients.length > 1) {
@@ -418,17 +455,29 @@ export default function PortalPipelinePage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {sortedSubmits.map((ss) => (
+              {sortedSubmits.map((ss) => {
+                const isUnread = !viewedSiteSubmits.has(ss.id);
+                return (
                 <tr
                   key={ss.id}
                   className={`hover:bg-blue-50 cursor-pointer transition-colors ${
-                    selectedSiteSubmitId === ss.id ? 'bg-blue-100' : ''
+                    selectedSiteSubmitId === ss.id
+                      ? 'bg-blue-100'
+                      : isUnread
+                      ? 'bg-amber-50'
+                      : ''
                   }`}
                   onClick={() => handleOpenSiteSubmit(ss.id)}
                 >
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">
-                      {ss.property?.property_name || ss.site_submit_name || '-'}
+                    <div className="flex items-center space-x-2">
+                      {/* Unread indicator dot */}
+                      {isUnread && (
+                        <span className="flex-shrink-0 w-2 h-2 rounded-full bg-blue-500" title="New" />
+                      )}
+                      <div className={`text-sm ${isUnread ? 'font-semibold text-gray-900' : 'font-medium text-gray-900'}`}>
+                        {ss.property?.property_name || ss.site_submit_name || '-'}
+                      </div>
                     </div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
@@ -470,7 +519,7 @@ export default function PortalPipelinePage() {
                     </span>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         )}

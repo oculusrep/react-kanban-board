@@ -70,9 +70,9 @@ export default function PortalRoute({ children }: PortalRouteProps) {
     );
   }
 
-  // Not logged in
+  // Not logged in - redirect to portal login
   if (!user) {
-    return <Navigate to="/" state={{ from: location }} replace />;
+    return <Navigate to="/portal/login" state={{ from: location }} replace />;
   }
 
   // No portal access

@@ -25,6 +25,7 @@ interface FormData {
   shipping_zip: string | null;
   shipping_country: string | null;
   is_active_client: boolean;
+  logo_url: string | null;
 }
 
 interface ClientOverviewTabProps {
@@ -56,8 +57,11 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
     shipping_state: null,
     shipping_zip: null,
     shipping_country: null,
-    is_active_client: true
+    is_active_client: true,
+    logo_url: null
   });
+
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -145,7 +149,8 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
         shipping_state: client.shipping_state,
         shipping_zip: client.shipping_zip,
         shipping_country: client.shipping_country,
-        is_active_client: client.is_active_client ?? true
+        is_active_client: client.is_active_client ?? true,
+        logo_url: (client as any).logo_url || null
       };
       setFormData(newFormData);
       setOriginalFormData(newFormData);
@@ -224,7 +229,8 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
           shipping_zip: formData.shipping_zip,
           shipping_country: formData.shipping_country,
           parent_id: selectedParentId,
-          is_active_client: formData.is_active_client
+          is_active_client: formData.is_active_client,
+          logo_url: formData.logo_url
         };
 
         const { data, error } = await supabase
@@ -255,6 +261,7 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
           shipping_country: formData.shipping_country,
           is_active_client: formData.is_active_client,
           sf_client_type: formData.type,
+          logo_url: formData.logo_url,
           updated_at: new Date().toISOString()
         };
 
@@ -322,6 +329,91 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
     }
   };
 
+  // Handle logo upload
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setErrors(prev => ({ ...prev, logo: 'Please upload an image file' }));
+      return;
+    }
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      setErrors(prev => ({ ...prev, logo: 'Image must be less than 2MB' }));
+      return;
+    }
+
+    setUploadingLogo(true);
+    setErrors(prev => ({ ...prev, logo: '' }));
+
+    try {
+      // Generate unique filename
+      const fileExt = file.name.split('.').pop();
+      const fileName = `client-logos/${client?.id || 'new'}-${Date.now()}.${fileExt}`;
+
+      // Upload to Supabase storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('assets')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('assets')
+        .getPublicUrl(fileName);
+
+      const logoUrl = urlData.publicUrl;
+
+      // Update form data
+      handleInputChange('logo_url', logoUrl);
+
+      // If editing existing client, save immediately
+      if (client?.id) {
+        const { error: updateError } = await supabase
+          .from('client')
+          .update({ logo_url: logoUrl, updated_at: new Date().toISOString() })
+          .eq('id', client.id);
+
+        if (updateError) throw updateError;
+        onSave({ ...client, logo_url: logoUrl } as any);
+      }
+    } catch (err) {
+      console.error('Error uploading logo:', err);
+      setErrors(prev => ({ ...prev, logo: 'Failed to upload logo' }));
+    } finally {
+      setUploadingLogo(false);
+    }
+
+    // Clear input
+    event.target.value = '';
+  };
+
+  // Handle logo removal
+  const handleRemoveLogo = async () => {
+    handleInputChange('logo_url', null);
+
+    if (client?.id) {
+      try {
+        const { error } = await supabase
+          .from('client')
+          .update({ logo_url: null, updated_at: new Date().toISOString() })
+          .eq('id', client.id);
+
+        if (error) throw error;
+        onSave({ ...client, logo_url: null } as any);
+      } catch (err) {
+        console.error('Error removing logo:', err);
+      }
+    }
+  };
+
   const handleParentChange = async (parentId: string | null) => {
     if (!client?.id) return;
 
@@ -346,6 +438,76 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
       {/* Basic Information */}
       <div className="bg-white shadow rounded-lg p-6">
         <h3 className="text-lg font-medium text-gray-900 mb-6">Basic Information</h3>
+
+        {/* Logo Upload Section */}
+        <div className="mb-6 pb-6 border-b border-gray-200">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Company Logo
+          </label>
+          <p className="text-xs text-gray-500 mb-3">
+            This logo will be displayed in the client portal. Recommended size: 200x60px, max 2MB.
+          </p>
+          <div className="flex items-start space-x-4">
+            {/* Logo Preview */}
+            <div className="flex-shrink-0">
+              {formData.logo_url ? (
+                <div className="relative group">
+                  <img
+                    src={formData.logo_url}
+                    alt="Company logo"
+                    className="h-16 max-w-xs object-contain rounded border border-gray-200 bg-white p-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRemoveLogo}
+                    className="absolute -top-2 -right-2 p-1 bg-red-100 text-red-600 rounded-full hover:bg-red-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Remove logo"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <div className="h-16 w-32 flex items-center justify-center rounded border-2 border-dashed border-gray-300 bg-gray-50">
+                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+              )}
+            </div>
+
+            {/* Upload Button */}
+            <div className="flex-1">
+              <label className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer">
+                {uploadingLogo ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    {formData.logo_url ? 'Change Logo' : 'Upload Logo'}
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  disabled={uploadingLogo}
+                  className="hidden"
+                />
+              </label>
+              {errors.logo && (
+                <p className="mt-1 text-sm text-red-600">{errors.logo}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
