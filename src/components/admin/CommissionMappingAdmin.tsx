@@ -438,9 +438,12 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 >
                   <option value="">Select an account...</option>
-                  {qbAccounts.map(a => (
-                    <option key={a.id} value={a.id}>{a.fullName} ({a.type})</option>
-                  ))}
+                  {/* Filter to Balance Sheet accounts only (exclude P&L: Income, Expense, COGS) */}
+                  {qbAccounts
+                    .filter(a => !['Income', 'Other Income', 'Expense', 'Other Expense', 'Cost of Goods Sold'].includes(a.type))
+                    .map(a => (
+                      <option key={a.id} value={a.id}>{a.fullName} ({a.type})</option>
+                    ))}
                 </select>
                 {qbAccounts.length === 0 && (
                   <p className="text-xs text-gray-500 mt-1">Click "Refresh QBO Data" to load accounts</p>
