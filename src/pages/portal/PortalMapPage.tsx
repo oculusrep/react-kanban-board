@@ -50,7 +50,7 @@ export default function PortalMapPage() {
     return new Set(PORTAL_VISIBLE_STAGES);
   });
   const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
-  const [isLegendExpanded, setIsLegendExpanded] = useState(false);
+  const [isLegendExpanded, setIsLegendExpanded] = useState(true); // Expanded by default for portal users
 
   // Search state
   const [searchAddress, setSearchAddress] = useState('');
