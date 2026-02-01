@@ -511,7 +511,7 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments }: Po
       >
         {/* Action buttons */}
         {isHovered && !isEditing && !isDeleting && (
-          <div className="absolute right-2 -top-3 flex items-center bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden z-10">
+          <div className="absolute right-2 top-1 flex items-center bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden z-10">
             {!isReply && (
               <button
                 onClick={() => startReplying(comment.id)}
@@ -550,7 +550,7 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments }: Po
 
         {/* Delete confirmation */}
         {isDeleting && (
-          <div className="absolute right-2 -top-3 flex items-center bg-white border border-red-200 rounded-lg shadow-sm overflow-hidden z-10">
+          <div className="absolute right-2 top-1 flex items-center bg-white border border-red-200 rounded-lg shadow-sm overflow-hidden z-10">
             <span className="px-2 py-1 text-xs text-red-600">Delete?</span>
             <button
               onClick={() => handleDelete(comment.id, isReply, parentId)}
