@@ -56,6 +56,9 @@ backups/
 # Archive folder (old troubleshooting files)
 supabase/archive/
 
+# Supabase CLI temp files
+supabase/.temp/
+
 # Restaurant Trends ETL
 data/incoming/          # Excel source files
 data/processed/         # Generated CSV files
