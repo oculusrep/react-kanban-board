@@ -3,7 +3,7 @@ import { useDropboxFiles } from '../../hooks/useDropboxFiles';
 
 interface PortalFilesTabProps {
   propertyId: string | null;
-  dropboxPath: string | null | undefined;
+  dropboxPath?: string | null | undefined; // Optional - hook fetches path from dropbox_mapping
   canUpload: boolean;
 }
 
@@ -13,30 +13,37 @@ interface PortalFilesTabProps {
  * - View-only for clients
  * - Upload/delete capabilities for brokers
  */
-export default function PortalFilesTab({ propertyId, dropboxPath, canUpload }: PortalFilesTabProps) {
+export default function PortalFilesTab({ propertyId, canUpload }: PortalFilesTabProps) {
   const {
     files,
+    folderPath,
     loading,
     error,
     refreshFiles,
     uploadFiles,
     downloadFile,
+    getSharedLink,
     uploading,
   } = useDropboxFiles('property', propertyId || '');
 
   const [currentPath, setCurrentPath] = useState('');
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  // Filter files by current path
-  const currentFiles = files.filter((file) => {
-    const fileDir = file.path_lower?.substring(0, file.path_lower.lastIndexOf('/')) || '';
-    const targetDir = currentPath || (dropboxPath?.toLowerCase() || '');
-    return fileDir === targetDir || (currentPath === '' && fileDir === dropboxPath?.toLowerCase());
-  });
+  // Filter files based on current path - same approach as FileManager
+  const getCurrentFiles = () => {
+    if (!folderPath) return [];
+    const targetPath = folderPath + currentPath;
+    return files.filter((file: any) => {
+      const parentPath = file.path?.substring(0, file.path.lastIndexOf('/')) || '';
+      return parentPath === targetPath;
+    });
+  };
+
+  const currentFiles = getCurrentFiles();
 
   // Get folders and files separately
-  const folders = currentFiles.filter((f) => f['.tag'] === 'folder');
-  const regularFiles = currentFiles.filter((f) => f['.tag'] === 'file');
+  const folders = currentFiles.filter((f: any) => f.type === 'folder');
+  const regularFiles = currentFiles.filter((f: any) => f.type === 'file');
 
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
@@ -85,14 +92,15 @@ export default function PortalFilesTab({ propertyId, dropboxPath, canUpload }: P
     );
   };
 
-  const formatFileSize = (bytes: number | undefined) => {
-    if (!bytes) return '-';
+  const formatFileSize = (bytes: number | null | undefined) => {
+    if (bytes === null || bytes === undefined) return '-';
+    if (bytes === 0) return '0 B';
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const formatDate = (dateStr: string | undefined) => {
+  const formatDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return '-';
     return new Date(dateStr).toLocaleDateString();
   };
@@ -116,14 +124,26 @@ export default function PortalFilesTab({ propertyId, dropboxPath, canUpload }: P
 
   const handleDownload = async (file: any) => {
     try {
-      await downloadFile(file.path_lower);
+      await downloadFile(file.path, file.name);
     } catch (err) {
       console.error('Download error:', err);
     }
   };
 
-  const navigateToFolder = (folderPath: string) => {
-    setCurrentPath(folderPath);
+  const handleFileView = async (file: any) => {
+    if (file.type === 'file') {
+      try {
+        const link = await getSharedLink(file.path);
+        window.open(link, '_blank');
+      } catch (err) {
+        console.error('Error opening file:', err);
+      }
+    }
+  };
+
+  const navigateToFolder = (file: any) => {
+    // Set currentPath to the path relative to the base folder
+    setCurrentPath(file.path.replace(folderPath || '', ''));
   };
 
   const navigateUp = () => {
@@ -136,18 +156,6 @@ export default function PortalFilesTab({ propertyId, dropboxPath, canUpload }: P
     return (
       <div className="p-4 text-center text-gray-500">
         <p>No property linked to this site submit</p>
-      </div>
-    );
-  }
-
-  if (!dropboxPath) {
-    return (
-      <div className="p-4 text-center text-gray-500">
-        <svg className="mx-auto h-12 w-12 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-        </svg>
-        <p>No Dropbox folder linked</p>
-        <p className="text-sm mt-1">Files will appear here once a Dropbox folder is set up</p>
       </div>
     );
   }
@@ -261,10 +269,10 @@ export default function PortalFilesTab({ propertyId, dropboxPath, canUpload }: P
         ) : (
           <div className="divide-y divide-gray-100">
             {/* Folders first */}
-            {folders.map((folder) => (
+            {folders.map((folder: any) => (
               <button
                 key={folder.id}
-                onClick={() => navigateToFolder(folder.path_lower || '')}
+                onClick={() => navigateToFolder(folder)}
                 className="w-full px-4 py-3 flex items-center space-x-3 hover:bg-gray-50 transition-colors text-left"
               >
                 <svg className="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
@@ -280,20 +288,24 @@ export default function PortalFilesTab({ propertyId, dropboxPath, canUpload }: P
             ))}
 
             {/* Files */}
-            {regularFiles.map((file) => (
+            {regularFiles.map((file: any) => (
               <div
                 key={file.id}
-                className="px-4 py-3 flex items-center space-x-3 hover:bg-gray-50 transition-colors"
+                className="px-4 py-3 flex items-center space-x-3 hover:bg-gray-50 transition-colors cursor-pointer"
+                onClick={() => handleFileView(file)}
               >
                 {getFileIcon(file.name || '')}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
                   <p className="text-xs text-gray-500">
-                    {formatFileSize(file.size)} • {formatDate(file.client_modified)}
+                    {formatFileSize(file.size)} • {formatDate(file.modified)}
                   </p>
                 </div>
                 <button
-                  onClick={() => handleDownload(file)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDownload(file);
+                  }}
                   className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
                   title="Download"
                 >

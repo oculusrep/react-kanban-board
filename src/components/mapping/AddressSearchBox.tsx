@@ -45,11 +45,12 @@ interface SearchSuggestion {
 interface AddressSearchBoxProps {
   value: string;
   onChange: (value: string) => void;
-  onSearch: () => void;
+  onSearch: (address?: string) => void; // Optional address param for when suggestion is selected
   onPropertySelect?: (property: PropertyResult) => void; // Callback for when property is selected
   disabled?: boolean;
   placeholder?: string;
   className?: string;
+  isSearching?: boolean;
 }
 
 const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
@@ -59,7 +60,8 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
   onPropertySelect,
   disabled = false,
   placeholder = "Search Address, City, State, or Property Name...",
-  className = ""
+  className = "",
+  isSearching = false
 }) => {
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -359,21 +361,21 @@ const AddressSearchBox: React.FC<AddressSearchBoxProps> = ({
         // Don't automatically re-enable search - let user input do it
       }, 0);
     } else if (suggestion.type === 'address' && suggestion.addressData) {
-      // Handle address selection
-      console.log('📍 Handling address selection:', suggestion.addressData.description);
-      onChange(suggestion.addressData.description);
+      // Handle address selection - pass address directly to avoid state timing issues
+      const address = suggestion.addressData.description;
+      console.log('📍 Handling address selection:', address);
+      onChange(address);
       setTimeout(() => {
-        onSearch();
-        // Don't automatically re-enable search - let user input do it
-      }, 100);
+        onSearch(address); // Pass address directly
+      }, 50);
     } else if (suggestion.type === 'place' && suggestion.placeData) {
-      // Handle place/business selection
-      console.log('🏪 Handling place selection:', suggestion.placeData.description);
-      onChange(suggestion.placeData.description);
+      // Handle place/business selection - pass address directly to avoid state timing issues
+      const address = suggestion.placeData.description;
+      console.log('🏪 Handling place selection:', address);
+      onChange(address);
       setTimeout(() => {
-        onSearch();
-        // Don't automatically re-enable search - let user input do it
-      }, 100);
+        onSearch(address); // Pass address directly
+      }, 50);
     }
   };
 

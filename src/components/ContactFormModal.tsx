@@ -136,7 +136,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
               title: contactData.title,
               company: contactData.company,
               client_id: contactData.client_id,
-              source_type: contactData.source_type,
+              source_type: contactData.source_type || 'Contact',
               mailing_street: contactData.mailing_street,
               mailing_city: contactData.mailing_city,
               mailing_state: contactData.mailing_state,
@@ -212,9 +212,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
     if (!formData.last_name?.trim()) {
       newErrors.last_name = 'Last name is required';
     }
-    if (!formData.source_type?.trim()) {
-      newErrors.source_type = 'Source type is required';
-    }
+    // source_type always defaults to 'Contact', no validation needed
     if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
       newErrors.email = 'Please enter a valid email address';
     }
@@ -422,25 +420,19 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
 
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                      Source Type *
+                      Source Type
                     </label>
                     <select
                       value={formData.source_type}
                       onChange={(e) => updateFormData('source_type', e.target.value)}
-                      className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm ${
-                        errors.source_type ? 'border-red-300' : ''
-                      }`}
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
                     >
-                      <option value="">Select source...</option>
                       {sourceTypes.map((source) => (
                         <option key={source} value={source}>
                           {source}
                         </option>
                       ))}
                     </select>
-                    {errors.source_type && (
-                      <p className="mt-1 text-sm text-red-600">{errors.source_type}</p>
-                    )}
                   </div>
                 </div>
               </div>

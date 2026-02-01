@@ -76,6 +76,7 @@ interface GPSControlsProps {
   onToggleAutoCenter: () => void;
   rulerActive: boolean;
   onToggleRuler: () => void;
+  topOffset?: number;
 }
 
 /**
@@ -87,15 +88,16 @@ export const GPSControls: React.FC<GPSControlsProps> = ({
   onToggleTracking,
   onToggleAutoCenter,
   rulerActive,
-  onToggleRuler
+  onToggleRuler,
+  topOffset = 0
 }) => {
-  console.log('🎮 GPSControls rendering:', { isTracking, autoCenterEnabled, rulerActive });
+  console.log('🎮 GPSControls rendering:', { isTracking, autoCenterEnabled, rulerActive, topOffset });
 
   return (
     <div
       style={{
         position: 'absolute',
-        top: '10px',
+        top: `${10 + topOffset}px`,
         left: '152px', // Position flush to the right of Map/Satellite buttons (container width + margin)
         zIndex: 10000,
         display: 'flex',

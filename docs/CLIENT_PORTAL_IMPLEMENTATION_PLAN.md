@@ -1,8 +1,29 @@
 # Client Portal Implementation Plan
 
 **Created**: January 30, 2026
-**Status**: Approved for Development
-**Version**: 1.0
+**Status**: Phase 2 Complete - Map and Pipeline Views Implemented
+**Version**: 1.1
+**Last Updated**: January 31, 2026
+
+## Implementation Sessions
+
+| Date | Session | Documentation |
+|------|---------|---------------|
+| Jan 30, 2026 | Initial planning and requirements | This document |
+| Jan 31, 2026 | Portal Map improvements, search, controls layout | [SESSION_2026_01_31_PORTAL_MAP_IMPROVEMENTS.md](SESSION_2026_01_31_PORTAL_MAP_IMPROVEMENTS.md) |
+
+## What's Implemented
+
+### Completed Features (as of Jan 31, 2026)
+- Portal Map Page with site submit pins filtered by client
+- Portal Pipeline Page with sortable table
+- Portal Detail Sidebar with DATA, CHAT, FILES tabs
+- Address search with geocoding and pin drop
+- Map controls layout (search, GPS, ruler, zoom)
+- "View on Map" from Pipeline with selected marker highlighting
+- Chat with threaded replies and activity entries
+- Portal-visible stage filtering in legend
+- controlsTopOffset prop for flexible map layouts
 
 ---
 
@@ -660,23 +681,23 @@ Consider using React Context for portal-specific state:
 ## Implementation Checklist
 
 ### Phase 1 - Foundation
-- [ ] Database migrations (new tables, modified tables)
-- [ ] RLS policies for portal users
-- [ ] Portal user authentication flow
+- [x] Database migrations (new tables, modified tables)
+- [x] RLS policies for portal users
+- [x] Portal user authentication flow
 - [ ] Invite email system
 
 ### Phase 2 - Core Views
-- [ ] Portal layout component with navigation
-- [ ] Map view (portal mode)
-- [ ] Pipeline view with table
-- [ ] Detail sidebar structure
+- [x] Portal layout component with navigation
+- [x] Map view (portal mode)
+- [x] Pipeline view with table
+- [x] Detail sidebar structure
 
 ### Phase 3 - Features
-- [ ] DATA tab with fields
-- [ ] CHAT tab with two-tier comments
-- [ ] FILES tab with Dropbox integration
+- [x] DATA tab with fields
+- [x] CHAT tab with two-tier comments
+- [x] FILES tab with Dropbox integration
 - [ ] Read/unread tracking
-- [ ] Stage filtering (map legend + pipeline tabs)
+- [x] Stage filtering (map legend + pipeline tabs)
 
 ### Phase 4 - Admin
 - [ ] Contact record portal access section
@@ -685,9 +706,9 @@ Consider using React Context for portal-specific state:
 
 ### Phase 5 - Polish
 - [ ] Branding and theming
-- [ ] Error handling and edge cases
+- [x] Error handling and edge cases (search, z-index, geocoding)
 - [ ] Testing with real client data
-- [ ] Documentation and training
+- [x] Documentation and training (SESSION_2026_01_31_PORTAL_MAP_IMPROVEMENTS.md)
 
 ---
 

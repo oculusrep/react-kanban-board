@@ -1,4 +1,5 @@
 import { useAuth } from '../../contexts/AuthContext';
+import { usePortal } from '../../contexts/PortalContext';
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -30,13 +31,16 @@ const getUserInitials = (firstName?: string, lastName?: string): string => {
  */
 export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarProps) {
   const { user, signOut, userRole } = useAuth();
+  const { accessibleClients, selectedClientId, setSelectedClientId, isInternalUser: isInternalPortalUser } = usePortal();
   const navigate = useNavigate();
   const location = useLocation();
   const [userProfile, setUserProfile] = useState<{ first_name?: string; last_name?: string } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [clientMenuOpen, setClientMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const clientMenuRef = useRef<HTMLDivElement>(null);
 
   // Determine current view from URL
   const currentView = location.pathname.includes('/portal/pipeline') ? 'Pipeline' : 'Map';
@@ -85,11 +89,20 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setUserMenuOpen(false);
       }
+      if (clientMenuRef.current && !clientMenuRef.current.contains(event.target as Node)) {
+        setClientMenuOpen(false);
+      }
     }
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Handle client selection
+  const handleSelectClient = (clientId: string | null) => {
+    setSelectedClientId(clientId);
+    setClientMenuOpen(false);
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -113,10 +126,10 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
 
   return (
     <nav
-      className="shadow-sm px-4 py-3"
+      className="shadow-sm px-4 h-16 flex items-center"
       style={{ backgroundColor: '#011742' }}
     >
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center w-full">
         {/* Left side - Hamburger menu and view title */}
         <div className="flex items-center space-x-3">
           {/* Hamburger Menu */}
@@ -180,34 +193,129 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
           <span className="text-lg font-semibold text-white">{currentView}</span>
         </div>
 
-        {/* Center - Oculus Logo (subtle) */}
+        {/* Center - Oculus Logo */}
         <div className="hidden sm:flex items-center">
-          <span
-            className="text-sm font-medium tracking-wider"
-            style={{ color: '#9bbadb' }}
-          >
-            OCULUS
-          </span>
+          <img
+            src="/Images/Oculus_02-Long - white.png"
+            alt="Oculus"
+            className="h-8"
+          />
         </div>
 
         {/* Right side - Client logo and user menu */}
         <div className="flex items-center space-x-4">
-          {/* Client Logo */}
-          {clientLogo ? (
-            <img
-              src={clientLogo}
-              alt={clientName || 'Client'}
-              className="h-8 w-auto max-w-[120px] object-contain"
-              title={clientName}
-            />
-          ) : clientName ? (
-            <span
-              className="text-sm font-medium px-3 py-1 rounded"
-              style={{ backgroundColor: '#104073', color: '#ffffff' }}
-            >
-              {clientName}
-            </span>
-          ) : null}
+          {/* Client Logo/Switcher */}
+          {isInternalPortalUser ? (
+            // Internal users get a dropdown to switch clients
+            <div className="relative" ref={clientMenuRef}>
+              <button
+                onClick={() => setClientMenuOpen(!clientMenuOpen)}
+                className="flex items-center space-x-2 px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              >
+                {clientLogo ? (
+                  <img
+                    src={clientLogo}
+                    alt={clientName || 'Client'}
+                    className="h-7 w-auto max-w-[100px] object-contain"
+                  />
+                ) : (
+                  <span
+                    className="text-sm font-medium"
+                    style={{ color: '#ffffff' }}
+                  >
+                    {clientName || 'All Clients'}
+                  </span>
+                )}
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* Client Dropdown */}
+              {clientMenuOpen && (
+                <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg py-1 z-50 max-h-80 overflow-y-auto">
+                  <div className="px-4 py-2 border-b border-gray-200">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Switch Client</p>
+                  </div>
+
+                  {/* All Clients option */}
+                  <button
+                    onClick={() => handleSelectClient(null)}
+                    className={`w-full px-4 py-2 text-left flex items-center space-x-3 hover:bg-gray-100 ${
+                      !selectedClientId ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                    }`}
+                  >
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+                      <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">All Clients</p>
+                      <p className="text-xs text-gray-500">{accessibleClients.length} clients</p>
+                    </div>
+                    {!selectedClientId && (
+                      <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </button>
+
+                  <div className="border-t border-gray-200 my-1"></div>
+
+                  {/* Client list */}
+                  {accessibleClients.map((client) => (
+                    <button
+                      key={client.id}
+                      onClick={() => handleSelectClient(client.id)}
+                      className={`w-full px-4 py-2 text-left flex items-center space-x-3 hover:bg-gray-100 ${
+                        selectedClientId === client.id ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                      }`}
+                    >
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
+                        {client.logo_url ? (
+                          <img
+                            src={client.logo_url}
+                            alt={client.client_name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-xs font-medium text-gray-500">
+                            {client.client_name.substring(0, 2).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{client.client_name}</p>
+                      </div>
+                      {selectedClientId === client.id && (
+                        <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            // Regular portal users just see their client logo/name
+            clientLogo ? (
+              <img
+                src={clientLogo}
+                alt={clientName || 'Client'}
+                className="h-8 w-auto max-w-[120px] object-contain"
+                title={clientName}
+              />
+            ) : clientName ? (
+              <span
+                className="text-sm font-medium px-3 py-1 rounded"
+                style={{ backgroundColor: '#104073', color: '#ffffff' }}
+              >
+                {clientName}
+              </span>
+            ) : null
+          )}
 
           {/* User Menu */}
           {user && (

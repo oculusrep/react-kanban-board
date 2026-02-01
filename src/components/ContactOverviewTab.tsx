@@ -293,25 +293,19 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Source Type *
+              Source Type
             </label>
             <select
-              value={formData.source_type}
+              value={formData.source_type || 'Contact'}
               onChange={(e) => handleFieldUpdate('source_type', e.target.value)}
-              className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm ${
-                validation.errors.source_type ? 'border-red-300' : ''
-              }`}
+              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
             >
-              <option value="">Select source...</option>
               {sourceTypes.map((source) => (
                 <option key={source} value={source}>
                   {source}
                 </option>
               ))}
             </select>
-            {validation.errors.source_type && (
-              <p className="mt-1 text-sm text-red-600">{validation.errors.source_type}</p>
-            )}
           </div>
         </div>
       </div>

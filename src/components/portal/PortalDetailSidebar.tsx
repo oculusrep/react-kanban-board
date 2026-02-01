@@ -33,11 +33,14 @@ interface SiteSubmitData {
     rent_psf: number | null;
     nnn_psf: number | null;
     all_in_rent: number | null;
-    dropbox_folder_path: string | null;
+    property_record_type: {
+      id: string;
+      label: string | null;
+    } | null;
   } | null;
   submit_stage: {
     id: string;
-    stage_name: string;
+    name: string;
   } | null;
 }
 
@@ -116,11 +119,14 @@ export default function PortalDetailSidebar({
               rent_psf,
               nnn_psf,
               all_in_rent,
-              dropbox_folder_path
+              property_record_type:property_record_type_id (
+                id,
+                label
+              )
             ),
-            submit_stage:submit_stage_id (
+            submit_stage!site_submit_submit_stage_id_fkey (
               id,
-              stage_name
+              name
             )
           `)
           .eq('id', siteSubmitId)
@@ -188,55 +194,61 @@ export default function PortalDetailSidebar({
 
   return (
     <>
-      {/* Backdrop */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-30 z-40 transition-opacity"
-          onClick={onClose}
-        />
-      )}
-
-      {/* Sidebar Panel */}
+      {/* Sidebar Panel - no backdrop, map remains interactive */}
       <div
-        className={`fixed top-0 right-0 h-full bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col ${
+        className={`fixed right-0 bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
-        style={{ width: '500px', maxWidth: '90vw' }}
+        style={{ width: '500px', maxWidth: '90vw', top: '64px', height: 'calc(100vh - 64px)' }}
       >
         {/* Header */}
         <div
           className="flex-shrink-0 px-4 py-3 border-b border-gray-200"
           style={{ backgroundColor: '#011742' }}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-start justify-between">
             <div className="flex-1 min-w-0">
               <h2 className="text-lg font-semibold text-white truncate">
                 {siteSubmit?.property?.property_name || siteSubmit?.site_submit_name || 'Site Details'}
               </h2>
               {siteSubmit?.property?.address && (
-                <p className="text-sm text-gray-300 truncate">
-                  {siteSubmit.property.address}
-                  {siteSubmit.property.city && `, ${siteSubmit.property.city}, ${siteSubmit.property.state}`}
-                </p>
+                <div className="text-sm text-gray-300">
+                  <p className="truncate">{siteSubmit.property.address}</p>
+                  {siteSubmit.property.city && (
+                    <p className="truncate">
+                      {siteSubmit.property.city}, {siteSubmit.property.state}
+                      {siteSubmit.property.zip && ` ${siteSubmit.property.zip}`}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
+            {/* Close button - chevron pointing right */}
             <button
               onClick={onClose}
-              className="ml-4 p-2 rounded-lg hover:bg-white/10 transition-colors"
+              className="ml-2 p-1.5 rounded hover:bg-white/10 transition-colors"
               aria-label="Close sidebar"
             >
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </button>
           </div>
 
-          {/* View Toggle Button */}
-          <button
-            onClick={handleToggleView}
-            className="mt-3 w-full py-2 px-4 rounded-lg font-medium text-sm transition-colors flex items-center justify-center space-x-2"
-            style={{ backgroundColor: '#f97316', color: '#ffffff' }}
-          >
+          {/* Status Badge and View Toggle Button */}
+          <div className="mt-3 flex items-center justify-between">
+            {/* Status Badge */}
+            <span
+              className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium"
+              style={{ backgroundColor: '#dbeafe', color: '#1e40af' }}
+            >
+              {siteSubmit?.submit_stage?.name || 'Unknown Status'}
+            </span>
+            <button
+              onClick={handleToggleView}
+              className="py-1.5 px-3 rounded-lg font-medium text-sm transition-colors flex items-center space-x-2 hover:opacity-90"
+              style={{ backgroundColor: '#f97316', color: '#ffffff' }}
+            >
             {isMapView ? (
               <>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -252,7 +264,8 @@ export default function PortalDetailSidebar({
                 <span>View on Map</span>
               </>
             )}
-          </button>
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -276,7 +289,7 @@ export default function PortalDetailSidebar({
         </div>
 
         {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 flex flex-col">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -312,7 +325,6 @@ export default function PortalDetailSidebar({
               {activeTab === 'files' && (
                 <PortalFilesTab
                   propertyId={siteSubmit.property_id}
-                  dropboxPath={siteSubmit.property?.dropbox_folder_path}
                   canUpload={isInternalUser}
                 />
               )}

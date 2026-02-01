@@ -27,11 +27,14 @@ interface SiteSubmitData {
     rent_psf: number | null;
     nnn_psf: number | null;
     all_in_rent: number | null;
-    dropbox_folder_path: string | null;
+    property_record_type: {
+      id: string;
+      label: string | null;
+    } | null;
   } | null;
   submit_stage: {
     id: string;
-    stage_name: string;
+    name: string;
   } | null;
 }
 
@@ -52,7 +55,12 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
 
   const formatCurrency = (value: number | null | undefined) => {
     if (value === null || value === undefined) return '-';
-    return `$${value.toLocaleString()}`;
+    return value.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
   };
 
   const formatNumber = (value: number | null | undefined) => {
@@ -129,7 +137,7 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
       >
         {title}
       </h3>
-      <div className="space-y-3">
+      <div className="space-y-1">
         {children}
       </div>
     </div>
@@ -143,6 +151,7 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
     field,
     isCurrency = false,
     isNumber = false,
+    suffix = '',
   }: {
     label: string;
     value: any;
@@ -151,12 +160,13 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
     field?: string;
     isCurrency?: boolean;
     isNumber?: boolean;
+    suffix?: string;
   }) => {
     const editKey = table && field ? `${table}.${field}` : null;
     const editedValue = editKey ? editedFields[editKey] : undefined;
     const displayValue = editedValue !== undefined ? editedValue : value;
 
-    const formattedValue = isCurrency
+    const baseFormattedValue = isCurrency
       ? formatCurrency(value)
       : isNumber
       ? formatNumber(value)
@@ -164,23 +174,35 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
       ? formatDate(value)
       : value || '-';
 
+    const formattedValue = baseFormattedValue !== '-' && suffix
+      ? `${baseFormattedValue} ${suffix}`
+      : baseFormattedValue;
+
     if (!isEditable || !table || !field) {
+      // Textarea fields use stacked layout (label on top, content below)
+      if (type === 'textarea') {
+        return (
+          <div className="py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded">
+            <span className="block text-sm text-gray-500 mb-1">{label}</span>
+            <div className="text-sm font-medium text-gray-900 whitespace-pre-wrap bg-white border border-gray-100 rounded-lg p-3">
+              {value || '-'}
+            </div>
+          </div>
+        );
+      }
+      // Other fields use grid layout for better readability
       return (
-        <div className="flex justify-between items-start py-2 border-b border-gray-100">
+        <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded">
           <span className="text-sm text-gray-500">{label}</span>
-          <span className="text-sm font-medium text-gray-900 text-right max-w-[60%]">
-            {type === 'textarea' ? (
-              <span className="whitespace-pre-wrap">{value || '-'}</span>
-            ) : (
-              formattedValue
-            )}
+          <span className="text-sm font-medium text-gray-900">
+            {formattedValue}
           </span>
         </div>
       );
     }
 
     return (
-      <div className="py-2 border-b border-gray-100">
+      <div className="py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded">
         <label className="block text-sm text-gray-500 mb-1">{label}</label>
         {type === 'textarea' ? (
           <textarea
@@ -231,174 +253,178 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
         </div>
       )}
 
-      {/* Status Badge */}
-      <div className="mb-4">
-        <span
-          className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium"
-          style={{ backgroundColor: '#dbeafe', color: '#1e40af' }}
-        >
-          {siteSubmit.submit_stage?.stage_name || 'Unknown Status'}
-        </span>
-      </div>
+      {/* Submit Date */}
+      {siteSubmit.date_submitted && (
+        <div className="mb-4">
+          <span className="text-sm text-gray-500">
+            Submitted On: {formatDate(siteSubmit.date_submitted)}
+          </span>
+        </div>
+      )}
 
-      {/* Site Submit Fields */}
-      <FieldGroup title="Site Submit Information">
-        <Field
-          label="Site Name"
-          value={siteSubmit.site_submit_name}
-          table={isEditable ? 'site_submit' : undefined}
-          field={isEditable ? 'site_submit_name' : undefined}
-        />
-        <Field
-          label="Date Submitted"
-          value={siteSubmit.date_submitted}
-          type="date"
-        />
-        <Field
-          label="Delivery Timeframe"
-          value={siteSubmit.delivery_timeframe}
-          table={isEditable ? 'site_submit' : undefined}
-          field={isEditable ? 'delivery_timeframe' : undefined}
-        />
-        <Field
-          label="TI (Tenant Improvement)"
-          value={siteSubmit.ti}
-          type="number"
-          isCurrency
-          table={isEditable ? 'site_submit' : undefined}
-          field={isEditable ? 'ti' : undefined}
-        />
-        <Field
-          label="Year 1 Rent"
-          value={siteSubmit.year_1_rent}
-          type="number"
-          isCurrency
-          table={isEditable ? 'site_submit' : undefined}
-          field={isEditable ? 'year_1_rent' : undefined}
-        />
-        <Field
-          label="Notes"
-          value={siteSubmit.notes}
-          type="textarea"
-          table={isEditable ? 'site_submit' : undefined}
-          field={isEditable ? 'notes' : undefined}
-        />
-        <Field
-          label="Competitor Data"
-          value={siteSubmit.competitor_data}
-          type="textarea"
-          table={isEditable ? 'site_submit' : undefined}
-          field={isEditable ? 'competitor_data' : undefined}
-        />
-      </FieldGroup>
+      {/* Deal Details - All fields combined */}
+      {(() => {
+        // Determine property type for conditional field display based on label
+        const recordTypeLabel = siteSubmit.property?.property_record_type?.label?.toLowerCase() || '';
+        const isLand = recordTypeLabel.includes('land');
+        const isShoppingCenter = recordTypeLabel.includes('shopping') || recordTypeLabel.includes('retail');
 
-      {/* Property Fields */}
-      {siteSubmit.property && (
-        <FieldGroup title="Property Information">
+        return (
+        <FieldGroup title="Deal Details">
+          {/* Property Fields */}
+          {siteSubmit.property && (
+            <>
+              {/* Available Sqft - Hide for Land */}
+              {!isLand && (
+                <Field
+                  label="Available Sqft"
+                  value={siteSubmit.property.available_sqft}
+                  type="number"
+                  isNumber
+                  suffix="sqft"
+                  table={isEditable ? 'property' : undefined}
+                  field={isEditable ? 'available_sqft' : undefined}
+                />
+              )}
+              {/* Building Sqft - Hide for Shopping Center */}
+              {!isShoppingCenter && (
+                <Field
+                  label="Building Sqft"
+                  value={siteSubmit.property.building_sqft}
+                  type="number"
+                  isNumber
+                  suffix="sqft"
+                  table={isEditable ? 'property' : undefined}
+                  field={isEditable ? 'building_sqft' : undefined}
+                />
+              )}
+              {/* Acres - Hide for Shopping Center */}
+              {!isShoppingCenter && (
+                <Field
+                  label="Acres"
+                  value={siteSubmit.property.acres}
+                  type="number"
+                  isNumber
+                  table={isEditable ? 'property' : undefined}
+                  field={isEditable ? 'acres' : undefined}
+                />
+              )}
+              {/* Asking Lease Price - Hide for Shopping Center */}
+              {!isShoppingCenter && (
+                <Field
+                  label="Asking Lease Price"
+                  value={siteSubmit.property.asking_lease_price}
+                  type="number"
+                  isCurrency
+                  table={isEditable ? 'property' : undefined}
+                  field={isEditable ? 'asking_lease_price' : undefined}
+                />
+              )}
+              {/* Asking Purchase Price - Hide for Shopping Center */}
+              {!isShoppingCenter && (
+                <Field
+                  label="Asking Purchase Price"
+                  value={siteSubmit.property.asking_purchase_price}
+                  type="number"
+                  isCurrency
+                  table={isEditable ? 'property' : undefined}
+                  field={isEditable ? 'asking_purchase_price' : undefined}
+                />
+              )}
+              {/* Rent PSF - Hide for Land */}
+              {!isLand && (
+                <Field
+                  label="Rent PSF"
+                  value={siteSubmit.property.rent_psf}
+                  type="number"
+                  isCurrency
+                  table={isEditable ? 'property' : undefined}
+                  field={isEditable ? 'rent_psf' : undefined}
+                />
+              )}
+              {/* NNN PSF - Hide for Land */}
+              {!isLand && (
+                <Field
+                  label="NNN PSF"
+                  value={siteSubmit.property.nnn_psf}
+                  type="number"
+                  isCurrency
+                  table={isEditable ? 'property' : undefined}
+                  field={isEditable ? 'nnn_psf' : undefined}
+                />
+              )}
+              {/* All-in Rent with calculated annual rent - Hide for Land */}
+              {!isLand && (
+                isEditable ? (
+                  <Field
+                    label="All-in Rent"
+                    value={siteSubmit.property.all_in_rent}
+                    type="number"
+                    isCurrency
+                    table="property"
+                    field="all_in_rent"
+                  />
+                ) : (
+                  <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded">
+                    <span className="text-sm text-gray-500">All-in Rent</span>
+                    <span className="text-sm font-medium text-gray-900">
+                      {siteSubmit.property.all_in_rent != null ? (
+                        <>
+                          {formatCurrency(siteSubmit.property.all_in_rent)}/sf
+                          {siteSubmit.property.available_sqft != null && (
+                            <span className="text-gray-500 ml-2 text-xs italic">
+                              ({formatCurrency(siteSubmit.property.all_in_rent * siteSubmit.property.available_sqft)}/yr)
+                            </span>
+                          )}
+                        </>
+                      ) : '-'}
+                    </span>
+                  </div>
+                )
+              )}
+            </>
+          )}
+
+          {/* Site Submit Fields */}
           <Field
-            label="Property Name"
-            value={siteSubmit.property.property_name}
-            table={isEditable ? 'property' : undefined}
-            field={isEditable ? 'property_name' : undefined}
+            label="Delivery Timeframe"
+            value={siteSubmit.delivery_timeframe}
+            table={isEditable ? 'site_submit' : undefined}
+            field={isEditable ? 'delivery_timeframe' : undefined}
           />
           <Field
-            label="Address"
-            value={siteSubmit.property.address}
-            table={isEditable ? 'property' : undefined}
-            field={isEditable ? 'address' : undefined}
-          />
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <Field
-                label="City"
-                value={siteSubmit.property.city}
-                table={isEditable ? 'property' : undefined}
-                field={isEditable ? 'city' : undefined}
-              />
-            </div>
-            <div>
-              <Field
-                label="State"
-                value={siteSubmit.property.state}
-                table={isEditable ? 'property' : undefined}
-                field={isEditable ? 'state' : undefined}
-              />
-            </div>
-            <div>
-              <Field
-                label="ZIP"
-                value={siteSubmit.property.zip}
-                table={isEditable ? 'property' : undefined}
-                field={isEditable ? 'zip' : undefined}
-              />
-            </div>
-          </div>
-          <Field
-            label="Available Sqft"
-            value={siteSubmit.property.available_sqft}
-            type="number"
-            isNumber
-            table={isEditable ? 'property' : undefined}
-            field={isEditable ? 'available_sqft' : undefined}
-          />
-          <Field
-            label="Building Sqft"
-            value={siteSubmit.property.building_sqft}
-            type="number"
-            isNumber
-            table={isEditable ? 'property' : undefined}
-            field={isEditable ? 'building_sqft' : undefined}
-          />
-          <Field
-            label="Acres"
-            value={siteSubmit.property.acres}
-            type="number"
-            isNumber
-            table={isEditable ? 'property' : undefined}
-            field={isEditable ? 'acres' : undefined}
-          />
-          <Field
-            label="Asking Lease Price"
-            value={siteSubmit.property.asking_lease_price}
+            label="TI (Tenant Improvement)"
+            value={siteSubmit.ti}
             type="number"
             isCurrency
-            table={isEditable ? 'property' : undefined}
-            field={isEditable ? 'asking_lease_price' : undefined}
+            table={isEditable ? 'site_submit' : undefined}
+            field={isEditable ? 'ti' : undefined}
           />
           <Field
-            label="Asking Purchase Price"
-            value={siteSubmit.property.asking_purchase_price}
+            label="Year 1 Rent"
+            value={siteSubmit.year_1_rent}
             type="number"
             isCurrency
-            table={isEditable ? 'property' : undefined}
-            field={isEditable ? 'asking_purchase_price' : undefined}
+            table={isEditable ? 'site_submit' : undefined}
+            field={isEditable ? 'year_1_rent' : undefined}
           />
           <Field
-            label="Rent PSF"
-            value={siteSubmit.property.rent_psf}
-            type="number"
-            isCurrency
-            table={isEditable ? 'property' : undefined}
-            field={isEditable ? 'rent_psf' : undefined}
+            label="Notes"
+            value={siteSubmit.notes}
+            type="textarea"
+            table={isEditable ? 'site_submit' : undefined}
+            field={isEditable ? 'notes' : undefined}
           />
           <Field
-            label="NNN PSF"
-            value={siteSubmit.property.nnn_psf}
-            type="number"
-            isCurrency
-            table={isEditable ? 'property' : undefined}
-            field={isEditable ? 'nnn_psf' : undefined}
-          />
-          <Field
-            label="All-in Rent"
-            value={siteSubmit.property.all_in_rent}
-            type="number"
-            isCurrency
-            table={isEditable ? 'property' : undefined}
-            field={isEditable ? 'all_in_rent' : undefined}
+            label="Competitor Data"
+            value={siteSubmit.competitor_data}
+            type="textarea"
+            table={isEditable ? 'site_submit' : undefined}
+            field={isEditable ? 'competitor_data' : undefined}
           />
         </FieldGroup>
-      )}
+        );
+      })()}
     </div>
   );
 }

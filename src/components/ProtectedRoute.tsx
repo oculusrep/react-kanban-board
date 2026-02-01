@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import LoginForm from './LoginForm';
 
@@ -8,7 +8,7 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { user, loading } = useAuth();
+  const { user, loading, isPortalUser, userRole } = useAuth();
 
   if (loading) {
     return (
@@ -20,6 +20,12 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (!user) {
     return <LoginForm />;
+  }
+
+  // Portal-only users should be redirected to the portal
+  // (They are authenticated but don't have an internal role)
+  if (isPortalUser && !userRole) {
+    return <Navigate to="/portal" replace />;
   }
 
   return (

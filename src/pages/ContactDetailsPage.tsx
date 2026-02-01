@@ -111,7 +111,23 @@ const ContactDetailsPage: React.FC = () => {
     setShowDeleteConfirm(false);
 
     try {
-      // First, delete all activities associated with this contact
+      // If contact has portal access, clean up the auth user first
+      if (contact?.portal_auth_user_id || contact?.portal_access_enabled) {
+        try {
+          const response = await supabase.functions.invoke('delete-portal-user', {
+            body: { contactId }
+          });
+          if (response.error) {
+            console.warn('Portal user cleanup warning:', response.error);
+            // Continue with deletion even if auth cleanup fails
+          }
+        } catch (portalError) {
+          console.warn('Portal user cleanup failed:', portalError);
+          // Continue with deletion - auth user will be orphaned but harmless
+        }
+      }
+
+      // Delete all activities associated with this contact
       const { error: activitiesError } = await supabase
         .from('activity')
         .delete()

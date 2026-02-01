@@ -18,15 +18,26 @@ interface UseContactFormResult {
 }
 
 export const useContactForm = (initialContact?: Contact): UseContactFormResult => {
-  const [formData, setFormDataState] = useState<Partial<Contact>>(
-    initialContact || {
-      first_name: '',
-      last_name: '',
-      source_type: 'Contact',
-      linked_in_connection: false,
-      is_site_selector: false,
-      tenant_repped: false,
+  // Always ensure source_type defaults to 'Contact' if not set
+  const getInitialData = (contact?: Contact): Partial<Contact> => {
+    if (!contact) {
+      return {
+        first_name: '',
+        last_name: '',
+        source_type: 'Contact',
+        linked_in_connection: false,
+        is_site_selector: false,
+        tenant_repped: false,
+      };
     }
+    return {
+      ...contact,
+      source_type: contact.source_type || 'Contact',
+    };
+  };
+
+  const [formData, setFormDataState] = useState<Partial<Contact>>(
+    getInitialData(initialContact)
   );
 
   const [originalData, setOriginalData] = useState<Partial<Contact>>(
@@ -45,7 +56,7 @@ export const useContactForm = (initialContact?: Contact): UseContactFormResult =
   }, []);
 
   const resetForm = useCallback((contact?: Contact) => {
-    const newData = contact || {};
+    const newData = getInitialData(contact);
     setFormDataState(newData);
     setOriginalData(newData);
   }, []);
@@ -66,9 +77,7 @@ export const useContactForm = (initialContact?: Contact): UseContactFormResult =
       errors.last_name = 'Last name is required';
     }
 
-    if (!formData.source_type?.trim()) {
-      errors.source_type = 'Source type is required';
-    }
+    // source_type always defaults to 'Contact', no validation needed
 
     // Email format validation
     if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {

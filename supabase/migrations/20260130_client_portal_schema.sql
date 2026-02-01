@@ -25,6 +25,9 @@ ADD COLUMN IF NOT EXISTS portal_invite_expires_at TIMESTAMP WITH TIME ZONE;
 ALTER TABLE contact
 ADD COLUMN IF NOT EXISTS portal_last_login_at TIMESTAMP WITH TIME ZONE;
 
+ALTER TABLE contact
+ADD COLUMN IF NOT EXISTS portal_auth_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+
 -- Index for finding portal-enabled contacts
 CREATE INDEX IF NOT EXISTS idx_contact_portal_access
 ON contact(portal_access_enabled) WHERE portal_access_enabled = TRUE;

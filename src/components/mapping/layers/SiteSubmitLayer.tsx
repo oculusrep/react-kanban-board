@@ -9,6 +9,7 @@ import {
   getMarkerLibrary,
   isMarkerLibraryLoaded,
   createStageMarkerElement,
+  createSelectedStageMarkerElement,
   MarkerShape,
   getStageConfig
 } from '../utils/advancedMarkers';
@@ -86,6 +87,8 @@ interface SiteSubmitLayerProps {
   verifyingSiteSubmitId?: string | null; // Site submit being verified
   verifyingSiteSubmit?: SiteSubmit | null; // Full site submit data for the one being verified
   onLocationVerified?: (siteSubmitId: string, lat: number, lng: number) => void;
+  selectedSiteSubmitId?: string | null; // Site submit to highlight (from Pipeline "View on Map")
+  onSelectedSiteSubmitPosition?: (lat: number, lng: number) => void; // Callback with position of selected site submit
 }
 
 
@@ -99,7 +102,9 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
   onSiteSubmitRightClick,
   verifyingSiteSubmitId = null,
   verifyingSiteSubmit = null,
-  onLocationVerified
+  onLocationVerified,
+  selectedSiteSubmitId = null,
+  onSelectedSiteSubmitPosition
 }) => {
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
   // Support both legacy Marker and AdvancedMarkerElement
@@ -507,11 +512,17 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
       const coords = getDisplayCoordinates(siteSubmit);
       if (!coords) return null;
 
-      // Skip if stage is not visible (unless this is the verifying site submit)
+      // Skip if stage is not visible (unless this is the verifying site submit or selected)
       const isBeingVerified = verifyingSiteSubmitId === siteSubmit.id;
+      const isSelected = selectedSiteSubmitId === siteSubmit.id;
       const stageName = siteSubmit.submit_stage?.name || 'Monitor';
 
-      if (!isBeingVerified && loadingConfig.visibleStages && !loadingConfig.visibleStages.has(stageName)) {
+      // Report selected site submit position for map centering
+      if (isSelected && onSelectedSiteSubmitPosition) {
+        onSelectedSiteSubmitPosition(coords.lat, coords.lng);
+      }
+
+      if (!isBeingVerified && !isSelected && loadingConfig.visibleStages && !loadingConfig.visibleStages.has(stageName)) {
         console.log(`🙈 Hiding marker for stage: ${stageName} (not in visible stages:`, Array.from(loadingConfig.visibleStages));
         return null;
       }
@@ -561,19 +572,18 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
         // Create AdvancedMarkerElement using the cached library (not google.maps.marker directly)
         const markerLib = getMarkerLibrary();
         const { AdvancedMarkerElement } = markerLib;
-        const content = createStageMarkerElement(
-          stageName,
-          markerStyle.shape,
-          coords.verified,
-          38 // 20% larger than original 32px
-        );
+
+        // Use larger orange marker for selected site submit (from "View on Map")
+        const content = isSelected
+          ? createSelectedStageMarkerElement(stageName, markerStyle.shape, coords.verified, 52)
+          : createStageMarkerElement(stageName, markerStyle.shape, coords.verified, 38);
 
         marker = new AdvancedMarkerElement({
-          map: isBeingVerified ? map : null,
+          map: isBeingVerified || isSelected ? map : null, // Show selected marker immediately (not just in cluster)
           position: { lat: coords.lat, lng: coords.lng },
           content,
           title: siteSubmit.site_submit_name || `Site Submit - ${siteSubmit.client?.client_name}`,
-          zIndex: isBeingVerified ? 2000 : 1000,
+          zIndex: isBeingVerified ? 2000 : isSelected ? 1500 : 1000, // Selected marker above others
           gmpDraggable: isBeingVerified
         });
 

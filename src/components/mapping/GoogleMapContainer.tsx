@@ -12,6 +12,7 @@ interface GoogleMapContainerProps {
   className?: string;
   onMapLoad?: (map: google.maps.Map) => void;
   onCenterOnLocationReady?: (centerFunction: () => void) => void;
+  controlsTopOffset?: number; // Offset in pixels to push map controls down (e.g., when search box is overlaid)
 }
 
 const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
@@ -19,7 +20,8 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
   width = '100%',
   className = '',
   onMapLoad,
-  onCenterOnLocationReady
+  onCenterOnLocationReady,
+  controlsTopOffset = 0
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
@@ -297,7 +299,8 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
   const createCustomMapTypeControl = (
     map: google.maps.Map,
     onToggleLabels: (newValue: boolean) => void,
-    onMapRecreated?: (newMap: google.maps.Map) => void
+    onMapRecreated?: (newMap: google.maps.Map) => void,
+    topOffset: number = 0
   ) => {
     let currentLabelsVisible = labelsVisible;
 
@@ -305,7 +308,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
     const mapIdWithPoi = import.meta.env.VITE_GOOGLE_MAP_ID;
     const mapIdNoPoi = import.meta.env.VITE_GOOGLE_MAP_ID_NO_POI;
     const controlDiv = document.createElement('div');
-    controlDiv.style.margin = '10px';
+    controlDiv.style.margin = `${10 + topOffset}px 10px 10px 10px`;
 
     // Main container
     const mainContainer = document.createElement('div');
@@ -766,7 +769,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           mapInstanceRef.current = newMap;
 
           // Re-add the map type control to the new map
-          const newMapTypeControl = createCustomMapTypeControl(newMap, setLabelsVisible, handleMapRecreated);
+          const newMapTypeControl = createCustomMapTypeControl(newMap, setLabelsVisible, handleMapRecreated, controlsTopOffset);
           labelsControlRef.current = newMapTypeControl;
           newMap.controls[google.maps.ControlPosition.TOP_LEFT].push(newMapTypeControl.controlDiv);
 
@@ -777,9 +780,17 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         };
 
         // Add custom map type control with labels toggle
-        const mapTypeControl = createCustomMapTypeControl(map, setLabelsVisible, handleMapRecreated);
+        const mapTypeControl = createCustomMapTypeControl(map, setLabelsVisible, handleMapRecreated, controlsTopOffset);
         labelsControlRef.current = mapTypeControl;
         map.controls[google.maps.ControlPosition.TOP_LEFT].push(mapTypeControl.controlDiv);
+
+        // If there's a top offset (e.g., for search box), add a spacer for native controls at LEFT_TOP
+        if (controlsTopOffset > 0) {
+          const nativeControlSpacer = document.createElement('div');
+          nativeControlSpacer.style.height = `${controlsTopOffset}px`;
+          nativeControlSpacer.style.width = '1px';
+          map.controls[google.maps.ControlPosition.LEFT_TOP].insertAt(0, nativeControlSpacer);
+        }
 
         // Note: GPS controls are now handled by React component in top-right corner
         // Keeping Google Maps control creation for reference but not adding to map
@@ -1703,6 +1714,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
           onToggleAutoCenter={() => setAutoCenterEnabled(prev => !prev)}
           rulerActive={rulerActive}
           onToggleRuler={toggleRulerTool}
+          topOffset={controlsTopOffset}
         />
       )}
 

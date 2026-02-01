@@ -11,8 +11,9 @@ import { STAGE_CATEGORIES } from '../../components/mapping/SiteSubmitPin';
 import { geocodingService } from '../../services/geocodingService';
 
 // Portal-visible stages (from spec)
+// Note: Stage names must match database format exactly (no spaces around dashes)
 const PORTAL_VISIBLE_STAGES = [
-  'Submitted - Reviewing',
+  'Submitted-Reviewing',
   'Pass',
   'Use Declined',
   'Use Conflict',
@@ -42,7 +43,7 @@ export default function PortalMapPage() {
   const [selectedSiteSubmitId, setSelectedSiteSubmitId] = useState<string | null>(
     searchParams.get('selected')
   );
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(!!searchParams.get('selected')); // Open if URL has selection
 
   // Legend state - initialize with portal-visible stages
   const [visibleStages, setVisibleStages] = useState<Set<string>>(() => {
@@ -56,6 +57,9 @@ export default function PortalMapPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchMarkers, setSearchMarkers] = useState<google.maps.Marker[]>([]);
 
+  // Track if we've already centered on the selected marker from URL
+  const [hasCenteredOnSelected, setHasCenteredOnSelected] = useState(false);
+
   // Update document title
   useEffect(() => {
     document.title = 'Map | Client Portal';
@@ -67,6 +71,7 @@ export default function PortalMapPage() {
     if (selectedId && selectedId !== selectedSiteSubmitId) {
       setSelectedSiteSubmitId(selectedId);
       setIsSidebarOpen(true);
+      setHasCenteredOnSelected(false); // Reset centering flag for new selection
     }
   }, [searchParams]);
 
@@ -117,6 +122,16 @@ export default function PortalMapPage() {
     setSearchParams({ selected: siteSubmit.id });
   }, [setSearchParams]);
 
+  // Handle selected site submit position - center map on it (from "View on Map" in Pipeline)
+  const handleSelectedSiteSubmitPosition = useCallback((lat: number, lng: number) => {
+    if (!mapInstance || hasCenteredOnSelected) return;
+
+    console.log('🎯 Centering map on selected property:', { lat, lng });
+    mapInstance.setCenter({ lat, lng });
+    mapInstance.setZoom(15); // Zoom in to show the property clearly
+    setHasCenteredOnSelected(true);
+  }, [mapInstance, hasCenteredOnSelected]);
+
   // Handle sidebar close
   const handleCloseSidebar = () => {
     setIsSidebarOpen(false);
@@ -136,22 +151,25 @@ export default function PortalMapPage() {
     setStageCounts(filteredCounts);
   }, []);
 
-  // Handle address search
-  const handleSearch = async () => {
-    if (!searchAddress.trim() || !mapInstance) return;
+  // Handle address search - address param is used when suggestion is selected (to avoid state timing issues)
+  const handleSearch = async (address?: string) => {
+    const addressToSearch = address || searchAddress;
+    if (!addressToSearch.trim() || !mapInstance) return;
 
+    console.log('🔍 Searching for address:', addressToSearch);
     setIsSearching(true);
     try {
-      const result = await geocodingService.geocode(searchAddress);
-      if (result) {
+      const result = await geocodingService.geocodeAddress(addressToSearch);
+      console.log('📍 Geocode result:', result);
+      if (result && 'latitude' in result) {
         // Clear existing search markers
         searchMarkers.forEach(m => m.setMap(null));
 
         // Create new marker
         const marker = new google.maps.Marker({
-          position: { lat: result.lat, lng: result.lng },
+          position: { lat: result.latitude, lng: result.longitude },
           map: mapInstance,
-          title: searchAddress,
+          title: addressToSearch,
           icon: {
             path: google.maps.SymbolPath.CIRCLE,
             scale: 10,
@@ -163,8 +181,11 @@ export default function PortalMapPage() {
         });
 
         setSearchMarkers([marker]);
-        mapInstance.panTo({ lat: result.lat, lng: result.lng });
+        mapInstance.panTo({ lat: result.latitude, lng: result.longitude });
         mapInstance.setZoom(14);
+        console.log('✅ Map centered on:', result.latitude, result.longitude);
+      } else {
+        console.warn('⚠️ No geocode result for:', addressToSearch);
       }
     } catch (err) {
       console.error('Search error:', err);
@@ -238,6 +259,7 @@ export default function PortalMapPage() {
         <GoogleMapContainer
           height="100%"
           onMapLoad={setMapInstance}
+          controlsTopOffset={42}
         />
 
         {/* Site Submit Layer */}
@@ -248,17 +270,19 @@ export default function PortalMapPage() {
             loadingConfig={siteSubmitConfig}
             onPinClick={handleSiteSubmitClick}
             onStageCountsUpdate={handleStageCountsUpdate}
+            selectedSiteSubmitId={selectedSiteSubmitId}
+            onSelectedSiteSubmitPosition={handleSelectedSiteSubmitPosition}
           />
         )}
 
-        {/* Search Box */}
-        <div className="absolute top-4 left-4 z-10" style={{ maxWidth: '400px' }}>
+        {/* Search Box - positioned at top of map, above other controls */}
+        <div className="absolute top-2 left-2" style={{ width: '400px', zIndex: 10002 }}>
           <AddressSearchBox
             value={searchAddress}
             onChange={setSearchAddress}
             onSearch={handleSearch}
             isSearching={isSearching}
-            placeholder="Search by address..."
+            placeholder="Search Address, City, State, or Property Name"
           />
         </div>
 
@@ -266,14 +290,13 @@ export default function PortalMapPage() {
         <div className="absolute bottom-4 left-4 z-10">
           <SiteSubmitLegend
             visibleStages={visibleStages}
-            stageCounts={stageCounts}
-            isExpanded={isLegendExpanded}
-            onToggleExpand={() => setIsLegendExpanded(!isLegendExpanded)}
+            totalCounts={stageCounts}
+            forceExpanded={isLegendExpanded}
+            onToggleExpanded={(expanded) => setIsLegendExpanded(expanded)}
             onStageToggle={handleStageToggle}
             onCategoryToggle={handleCategoryToggle}
             onShowAll={handleShowAll}
             onHideAll={handleHideAll}
-            stageCategories={filteredStageCategories}
           />
         </div>
 

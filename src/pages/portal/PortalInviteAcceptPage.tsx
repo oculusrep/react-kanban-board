@@ -137,25 +137,16 @@ export default function PortalInviteAcceptPage() {
         return;
       }
 
-      // Update contact record with accepted status
-      const { error: updateError } = await supabase
-        .from('contact')
-        .update({
-          portal_invite_status: 'accepted',
-          portal_invite_token: null, // Clear token after use
-          portal_auth_user_id: authData.user?.id,
-          portal_access_enabled: true,
-        })
-        .eq('id', contact.id);
-
-      if (updateError) throw updateError;
-
-      // Log the acceptance
-      await supabase.from('portal_invite_log').insert({
-        contact_id: contact.id,
-        status: 'accepted',
-        invite_email: contact.email,
+      // Update contact record with accepted status using RPC (bypasses RLS)
+      const { data: rpcResult, error: rpcError } = await supabase.rpc('accept_portal_invite', {
+        p_contact_id: contact.id,
+        p_auth_user_id: authData.user?.id,
       });
+
+      if (rpcError) throw rpcError;
+      if (rpcResult && !rpcResult.success) {
+        throw new Error(rpcResult.error || 'Failed to complete invite acceptance');
+      }
 
       setSuccess(true);
 
@@ -263,17 +254,14 @@ export default function PortalInviteAcceptPage() {
       style={{ backgroundColor: '#011742' }}
     >
       {/* Logo */}
-      <div className="mb-8">
+      <div className="mb-8 text-center">
         <img
-          src="/oculus-logo-white.png"
+          src="/Images/Oculus_02-Long - white.png"
           alt="Oculus"
-          className="h-12"
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = 'none';
-          }}
+          className="h-12 mx-auto"
         />
         <h1 className="text-2xl font-bold text-white text-center mt-4">
-          Client Portal
+          OVIS Client Portal
         </h1>
       </div>
 

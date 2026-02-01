@@ -62,14 +62,23 @@ export default function PortalAccessSection({
 
       setLoading(true);
       try {
-        // Get contact's client relationships
+        // Get contact's many-to-many client relationships (include parent_id for parent client lookup)
         const { data: relations, error: relError } = await supabase
           .from('contact_client_relation')
-          .select('client_id, client:client_id(id, client_name)')
+          .select('client_id, client:client_id(id, client_name, parent_id)')
           .eq('contact_id', contactId)
           .eq('is_active', true);
 
         if (relError) throw relError;
+
+        // Also get contact's direct client_id (some contacts have this instead of relations)
+        const { data: contactData, error: contactError } = await supabase
+          .from('contact')
+          .select('client_id, client:client_id(id, client_name, parent_id)')
+          .eq('id', contactId)
+          .single();
+
+        if (contactError && contactError.code !== 'PGRST116') throw contactError;
 
         // Get explicit portal access grants
         const { data: accessGrants, error: accessError } = await supabase
@@ -84,14 +93,66 @@ export default function PortalAccessSection({
           (accessGrants || []).map(g => [g.client_id, g.is_active])
         );
 
-        // Combine relations with access grants
-        const access: ClientAccess[] = (relations || []).map(r => ({
-          client_id: (r.client as any)?.id || r.client_id,
-          client_name: (r.client as any)?.client_name || 'Unknown',
-          is_active: accessMap.get(r.client_id) ?? false,
-        }));
+        // Build list of all associated clients
+        const clientsMap = new Map<string, ClientAccess>();
+        const parentIdsToFetch: string[] = [];
 
-        setClientAccess(access);
+        // Add many-to-many relations
+        (relations || []).forEach(r => {
+          const client = r.client as any;
+          const clientId = client?.id || r.client_id;
+          const clientName = client?.client_name || 'Unknown';
+          if (clientId && !clientsMap.has(clientId)) {
+            clientsMap.set(clientId, {
+              client_id: clientId,
+              client_name: clientName,
+              is_active: accessMap.get(clientId) ?? false,
+            });
+            // Track parent clients to fetch
+            if (client?.parent_id && !clientsMap.has(client.parent_id)) {
+              parentIdsToFetch.push(client.parent_id);
+            }
+          }
+        });
+
+        // Add direct client_id if not already present
+        if (contactData?.client_id && contactData.client) {
+          const directClient = contactData.client as any;
+          if (directClient?.id && !clientsMap.has(directClient.id)) {
+            clientsMap.set(directClient.id, {
+              client_id: directClient.id,
+              client_name: directClient.client_name || 'Unknown',
+              is_active: accessMap.get(directClient.id) ?? false,
+            });
+            // Track parent client to fetch
+            if (directClient?.parent_id && !clientsMap.has(directClient.parent_id)) {
+              parentIdsToFetch.push(directClient.parent_id);
+            }
+          }
+        }
+
+        // Fetch and add parent clients
+        const uniqueParentIds = [...new Set(parentIdsToFetch)].filter(id => !clientsMap.has(id));
+        if (uniqueParentIds.length > 0) {
+          const { data: parentClients, error: parentError } = await supabase
+            .from('client')
+            .select('id, client_name')
+            .in('id', uniqueParentIds);
+
+          if (!parentError && parentClients) {
+            parentClients.forEach(parent => {
+              if (!clientsMap.has(parent.id)) {
+                clientsMap.set(parent.id, {
+                  client_id: parent.id,
+                  client_name: parent.client_name + ' (Parent)',
+                  is_active: accessMap.get(parent.id) ?? false,
+                });
+              }
+            });
+          }
+        }
+
+        setClientAccess(Array.from(clientsMap.values()));
 
         // Get all active clients for adding new access
         const { data: clients } = await supabase

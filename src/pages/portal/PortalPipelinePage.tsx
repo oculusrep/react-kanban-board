@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { usePortal } from '../../contexts/PortalContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { Navigate, useSearchParams } from 'react-router-dom';
@@ -33,13 +33,13 @@ interface SiteSubmit {
   } | null;
   submit_stage: {
     id: string;
-    stage_name: string;
+    name: string;
   } | null;
 }
 
 interface SubmitStage {
   id: string;
-  stage_name: string;
+  name: string;
 }
 
 // Client-visible stages
@@ -85,6 +85,9 @@ export default function PortalPipelinePage() {
   const [sortColumn, setSortColumn] = useState<string>('property_name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
+  // Track if we've scrolled to the selected row
+  const hasScrolledToSelected = useRef(false);
+
   // Handle opening a site submit
   const handleOpenSiteSubmit = (id: string) => {
     setSelectedSiteSubmitId(id);
@@ -110,9 +113,8 @@ export default function PortalPipelinePage() {
     async function fetchStages() {
       const { data, error } = await supabase
         .from('submit_stage')
-        .select('id, stage_name')
-        .in('stage_name', VISIBLE_STAGES)
-        .order('sort_order');
+        .select('id, name')
+        .in('name', VISIBLE_STAGES);
 
       if (error) {
         console.error('Error fetching stages:', error);
@@ -149,7 +151,7 @@ export default function PortalPipelinePage() {
         const { data: stageData } = await supabase
           .from('submit_stage')
           .select('id')
-          .in('stage_name', VISIBLE_STAGES);
+          .in('name', VISIBLE_STAGES);
 
         const visibleStageIds = stageData?.map(s => s.id) || [];
 
@@ -158,8 +160,8 @@ export default function PortalPipelinePage() {
           return;
         }
 
-        // Fetch site submits
-        let query = supabase
+        // Fetch site submits - always fetch all visible stages, filter client-side
+        const { data, error: fetchError } = await supabase
           .from('site_submit')
           .select(`
             id,
@@ -187,20 +189,13 @@ export default function PortalPipelinePage() {
               nnn_psf,
               all_in_rent
             ),
-            submit_stage:submit_stage_id (
+            submit_stage!site_submit_submit_stage_id_fkey (
               id,
-              stage_name
+              name
             )
           `)
           .in('client_id', clientIds)
           .in('submit_stage_id', visibleStageIds);
-
-        // Apply stage filter if selected
-        if (selectedStageId) {
-          query = query.eq('submit_stage_id', selectedStageId);
-        }
-
-        const { data, error: fetchError } = await query;
 
         if (fetchError) throw fetchError;
 
@@ -214,7 +209,7 @@ export default function PortalPipelinePage() {
     }
 
     fetchSiteSubmits();
-  }, [selectedClientId, accessibleClients, selectedStageId]);
+  }, [selectedClientId, accessibleClients]);
 
   // Fetch viewed site submits for read/unread tracking
   useEffect(() => {
@@ -246,13 +241,38 @@ export default function PortalPipelinePage() {
     setViewedSiteSubmits(prev => new Set([...prev, siteSubmitId]));
   }, []);
 
+  // Scroll to selected row when coming from "View in Pipeline"
+  useEffect(() => {
+    if (selectedSiteSubmitId && !loading && siteSubmits.length > 0 && !hasScrolledToSelected.current) {
+      // Find the row element by data-id
+      const rowElement = document.querySelector(`tr[data-id="${selectedSiteSubmitId}"]`);
+      if (rowElement) {
+        // Scroll the row into view with some padding
+        rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        hasScrolledToSelected.current = true;
+      }
+    }
+  }, [selectedSiteSubmitId, loading, siteSubmits]);
+
+  // Reset scroll tracking when selection changes via URL
+  useEffect(() => {
+    const selectedFromUrl = searchParams.get('selected');
+    if (selectedFromUrl && selectedFromUrl !== selectedSiteSubmitId) {
+      hasScrolledToSelected.current = false;
+    }
+  }, [searchParams]);
+
   // If no client selected and multiple available, redirect to select
   if (!selectedClientId && accessibleClients.length > 1) {
     return <Navigate to="/portal" replace />;
   }
 
-  // Filter by search term
+  // Filter by stage and search term
   const filteredSubmits = siteSubmits.filter(ss => {
+    // Stage filter
+    if (selectedStageId && ss.submit_stage_id !== selectedStageId) return false;
+
+    // Search term filter
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
     return (
@@ -302,8 +322,8 @@ export default function PortalPipelinePage() {
         bVal = b.ti || 0;
         break;
       case 'status':
-        aVal = a.submit_stage?.stage_name || '';
-        bVal = b.submit_stage?.stage_name || '';
+        aVal = a.submit_stage?.name || '';
+        bVal = b.submit_stage?.name || '';
         break;
       default:
         aVal = a.property?.property_name || '';
@@ -330,7 +350,12 @@ export default function PortalPipelinePage() {
 
   const formatCurrency = (value: number | null) => {
     if (value === null || value === undefined) return '-';
-    return `$${value.toLocaleString()}`;
+    return value.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
   };
 
   const formatNumber = (value: number | null) => {
@@ -360,7 +385,10 @@ export default function PortalPipelinePage() {
   );
 
   return (
-    <div className="h-[calc(100vh-64px)] flex flex-col">
+    <div
+      className="h-[calc(100vh-64px)] flex flex-col transition-[margin] duration-300 ease-in-out"
+      style={{ marginRight: sidebarOpen ? '500px' : '0px' }}
+    >
       {/* Filters Bar */}
       <div className="bg-white border-b border-gray-200 px-4 py-3">
         <div className="flex flex-wrap items-center gap-4">
@@ -388,7 +416,7 @@ export default function PortalPipelinePage() {
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
-                  {stage.stage_name} ({count})
+                  {stage.name} ({count})
                 </button>
               );
             })}
@@ -460,6 +488,7 @@ export default function PortalPipelinePage() {
                 return (
                 <tr
                   key={ss.id}
+                  data-id={ss.id}
                   className={`hover:bg-blue-50 cursor-pointer transition-colors ${
                     selectedSiteSubmitId === ss.id
                       ? 'bg-blue-100'
@@ -515,7 +544,7 @@ export default function PortalPipelinePage() {
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
-                      {ss.submit_stage?.stage_name || '-'}
+                      {ss.submit_stage?.name || '-'}
                     </span>
                   </td>
                 </tr>

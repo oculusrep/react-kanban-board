@@ -240,6 +240,37 @@ DATABASE_URL=your_database_connection_string
 
 ---
 
+## 🌐 Portal Map Page
+
+The Client Portal has its own map page at `/portal/map` that reuses the core mapping components with portal-specific configuration.
+
+### Portal Map Features
+- **Address Search**: Top of map with geocoding and pin drop
+- **Site Submit Pins**: Filtered by client and portal-visible stages
+- **Stage Legend**: Only shows portal-visible stages
+- **View on Map**: Pipeline "View on Map" button centers on selected property
+- **Selected Marker**: Orange, larger marker for the selected property
+
+### controlsTopOffset Pattern
+When placing overlay elements (like a search box) at the top of the map, use the `controlsTopOffset` prop:
+
+```tsx
+<GoogleMapContainer
+  height="100%"
+  onMapLoad={setMapInstance}
+  controlsTopOffset={42}  // Push controls down by 42px
+/>
+```
+
+This pattern pushes Google Maps controls (Map/Satellite toggle, GPS, Ruler) down to avoid overlapping with your custom overlay elements.
+
+### Documentation
+For complete portal map implementation details, see:
+- `docs/SESSION_2026_01_31_PORTAL_MAP_IMPROVEMENTS.md`
+- `docs/CLIENT_PORTAL_IMPLEMENTATION_PLAN.md`
+
+---
+
 ## 🚨 SCALING CONSIDERATIONS (Future Planning)
 
 ### **Performance Thresholds**

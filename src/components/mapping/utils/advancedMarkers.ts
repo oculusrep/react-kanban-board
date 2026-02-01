@@ -688,6 +688,27 @@ export function createStageMarkerElement(
 }
 
 /**
+ * Create a SELECTED marker element - orange, larger, higher visibility
+ * Used when a property is selected from the Pipeline view
+ */
+export function createSelectedStageMarkerElement(
+  stageName: string,
+  shape: MarkerShape,
+  verified: boolean = false,
+  size: number = 52 // Larger than normal markers
+): HTMLElement {
+  // Use orange color for selected markers
+  const SELECTED_COLOR = '#f97316'; // Orange - matches View on Map button
+  return createMarkerElement({
+    color: SELECTED_COLOR,
+    shape,
+    size,
+    icon: stageName,
+    verified
+  });
+}
+
+/**
  * Create a property marker element
  * Uses larger size (44px) and brighter colors for better visibility against POIs
  */

@@ -8,6 +8,7 @@ interface AuthContextType {
   loading: boolean;
   userRole: string | null;
   userTableId: string | null; // ID from user table (not auth.users)
+  isPortalUser: boolean; // True if user is a portal-only user (not internal)
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
@@ -33,6 +34,31 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userTableId, setUserTableId] = useState<string | null>(null);
+  const [isPortalUser, setIsPortalUser] = useState(false);
+
+  // Check if user is a portal-only user (contact with portal_access_enabled)
+  const checkIfPortalUser = async (email: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('contact')
+        .select('id, portal_access_enabled')
+        .ilike('email', email)
+        .eq('portal_access_enabled', true)
+        .single();
+
+      if (!error && data) {
+        setIsPortalUser(true);
+        // Cache portal user status
+        const cacheKey = `user_data_${email}`;
+        localStorage.setItem(cacheKey, JSON.stringify({ role: null, id: null, isPortal: true }));
+      } else {
+        setIsPortalUser(false);
+      }
+    } catch (err) {
+      console.error('Error checking portal user:', err);
+      setIsPortalUser(false);
+    }
+  };
 
   // Fetch user role and table ID from user table
   const fetchUserData = async (authUser: User) => {
@@ -51,9 +77,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       if (cachedData) {
         // Use cached data immediately for instant loading
-        const { role, id } = JSON.parse(cachedData);
+        const { role, id, isPortal } = JSON.parse(cachedData);
         setUserRole(role);
         setUserTableId(id);
+        setIsPortalUser(isPortal || false);
         // Continue to refresh in background
       }
 
@@ -74,19 +101,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       if (error) {
         console.error('Error fetching user data:', error);
-        // If we have cached data, keep it; otherwise set to null (no access)
+        // If we have cached data, keep it; otherwise check if portal user
         if (!cachedData) {
           setUserRole(null);
           setUserTableId(null);
+          // Check if this is a portal user (has contact with portal_access_enabled)
+          await checkIfPortalUser(email);
         }
       } else {
         const role = data?.ovis_role || null;
         const id = data?.id || null;
         setUserRole(role);
         setUserTableId(id);
+        setIsPortalUser(false); // Internal users are not portal-only users
         // Cache the data for instant loading on next visit
         if (role && id) {
-          localStorage.setItem(cacheKey, JSON.stringify({ role, id }));
+          localStorage.setItem(cacheKey, JSON.stringify({ role, id, isPortal: false }));
         }
       }
     } catch (err) {
@@ -97,13 +127,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const cacheKey = `user_data_${email}`;
         const cachedData = localStorage.getItem(cacheKey);
         if (cachedData) {
-          const { role, id } = JSON.parse(cachedData);
+          const { role, id, isPortal } = JSON.parse(cachedData);
           setUserRole(role);
           setUserTableId(id);
+          setIsPortalUser(isPortal || false);
         } else {
           // Set to null - user won't have access to admin routes
           setUserRole(null);
           setUserTableId(null);
+          // Check if portal user
+          await checkIfPortalUser(email);
         }
       }
     }
@@ -137,6 +170,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } else {
         setUserRole(null);
         setUserTableId(null);
+        setIsPortalUser(false);
       }
 
       setLoading(false);
@@ -163,6 +197,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     loading,
     userRole,
     userTableId,
+    isPortalUser,
     signIn,
     signUp,
     signOut,
