@@ -18,6 +18,7 @@ interface SiteSubmitData {
   year_1_rent: number | null;
   competitor_data: string | null;
   property_id: string | null;
+  deal_id: string | null; // Deal associated with this site submit (if at LOI stage or beyond)
   property: {
     id: string;
     property_name: string | null;
@@ -91,6 +92,7 @@ export default function PortalDetailSidebar({
       setError(null);
 
       try {
+        // First fetch site submit data
         const { data, error: fetchError } = await supabase
           .from('site_submit')
           .select(`
@@ -132,9 +134,20 @@ export default function PortalDetailSidebar({
           .eq('id', siteSubmitId)
           .single();
 
+        // Fetch associated deal (if any) - deals are linked via site_submit_id
+        const { data: dealData } = await supabase
+          .from('deal')
+          .select('id')
+          .eq('site_submit_id', siteSubmitId)
+          .maybeSingle();
+
         if (fetchError) throw fetchError;
 
-        setSiteSubmit(data as unknown as SiteSubmitData);
+        // Combine site submit data with deal_id
+        setSiteSubmit({
+          ...(data as unknown as SiteSubmitData),
+          deal_id: dealData?.id || null,
+        });
 
         // Record the view for read/unread tracking
         await supabase.rpc('record_portal_site_submit_view', {
@@ -325,7 +338,10 @@ export default function PortalDetailSidebar({
               {activeTab === 'files' && (
                 <PortalFilesTab
                   propertyId={siteSubmit.property_id}
+                  dealId={siteSubmit.deal_id}
+                  siteSubmitId={siteSubmit.id}
                   canUpload={isInternalUser}
+                  isInternalUser={isInternalUser}
                 />
               )}
             </>
