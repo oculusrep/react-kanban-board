@@ -173,7 +173,7 @@ export default function PortalFilesTab({
         // If sharing a deal file, add chat notification
         if (entityType === 'deal' && newVisibility && siteSubmitId) {
           const fileName = path.split('/').pop() || 'file';
-          await addFileShareNotification(siteSubmitId, fileName);
+          await addFileShareNotification(siteSubmitId, fileName, path);
         }
       } catch (err) {
         console.error('Error toggling visibility:', err);
@@ -183,17 +183,28 @@ export default function PortalFilesTab({
   );
 
   // Add chat notification for file share
-  const addFileShareNotification = async (siteSubmitId: string, fileName: string) => {
+  const addFileShareNotification = async (siteSubmitId: string, fileName: string, dropboxPath: string) => {
+    console.log('📢 addFileShareNotification called:', { siteSubmitId, fileName, dropboxPath });
     try {
       const { data: user } = await supabase.auth.getUser();
-      if (!user.user) return;
+      if (!user.user) {
+        console.error('❌ No user found for file share notification');
+        return;
+      }
 
-      await supabase.from('site_submit_comment').insert({
+      // Store path encoded in content for later retrieval: "shared a file: filename||/path/to/file"
+      const { data, error } = await supabase.from('site_submit_comment').insert({
         site_submit_id: siteSubmitId,
         author_id: user.user.id,
-        content: `Shared file: ${fileName}`,
+        content: `shared a file: ${fileName}||${dropboxPath}`,
         visibility: 'client',
-      });
+      }).select();
+
+      if (error) {
+        console.error('❌ Error inserting file share notification:', error);
+      } else {
+        console.log('✅ File share notification added:', data);
+      }
     } catch (err) {
       console.error('Error adding file share notification:', err);
     }
@@ -272,10 +283,30 @@ export default function PortalFilesTab({
         setPropertyUploadError(null);
         await propertyFiles.uploadFiles(Array.from(files) as any);
         await propertyFiles.refreshFiles();
+        // Notify about uploaded files (property files are visible by default)
+        console.log('📁 Property upload complete. siteSubmitId:', siteSubmitId, 'folderPath:', propertyFiles.folderPath);
+        if (siteSubmitId && propertyFiles.folderPath) {
+          for (const file of Array.from(files)) {
+            const filePath = `${propertyFiles.folderPath}/${file.name}`;
+            await addFileShareNotification(siteSubmitId, file.name, filePath);
+          }
+        } else {
+          console.warn('⚠️ Cannot add notification - missing siteSubmitId or folderPath');
+        }
       } else {
         setDealUploadError(null);
         await dealFiles.uploadFiles(Array.from(files) as any);
         await dealFiles.refreshFiles();
+        // Notify about uploaded files
+        console.log('📁 Deal upload complete. siteSubmitId:', siteSubmitId, 'folderPath:', dealFiles.folderPath);
+        if (siteSubmitId && dealFiles.folderPath) {
+          for (const file of Array.from(files)) {
+            const filePath = `${dealFiles.folderPath}/${file.name}`;
+            await addFileShareNotification(siteSubmitId, file.name, filePath);
+          }
+        } else {
+          console.warn('⚠️ Cannot add notification - missing siteSubmitId or folderPath');
+        }
       }
     } catch (err) {
       console.error('Upload error:', err);
@@ -300,10 +331,30 @@ export default function PortalFilesTab({
         setPropertyUploadError(null);
         await propertyFiles.uploadFiles(selectedFiles as any);
         await propertyFiles.refreshFiles();
+        // Notify about uploaded files (property files are visible by default)
+        console.log('📁 Property file input upload complete. siteSubmitId:', siteSubmitId, 'folderPath:', propertyFiles.folderPath);
+        if (siteSubmitId && propertyFiles.folderPath) {
+          for (const file of Array.from(selectedFiles)) {
+            const filePath = `${propertyFiles.folderPath}/${file.name}`;
+            await addFileShareNotification(siteSubmitId, file.name, filePath);
+          }
+        } else {
+          console.warn('⚠️ Cannot add notification - missing siteSubmitId or folderPath');
+        }
       } else {
         setDealUploadError(null);
         await dealFiles.uploadFiles(selectedFiles as any);
         await dealFiles.refreshFiles();
+        // Notify about uploaded files
+        console.log('📁 Deal file input upload complete. siteSubmitId:', siteSubmitId, 'folderPath:', dealFiles.folderPath);
+        if (siteSubmitId && dealFiles.folderPath) {
+          for (const file of Array.from(selectedFiles)) {
+            const filePath = `${dealFiles.folderPath}/${file.name}`;
+            await addFileShareNotification(siteSubmitId, file.name, filePath);
+          }
+        } else {
+          console.warn('⚠️ Cannot add notification - missing siteSubmitId or folderPath');
+        }
       }
     } catch (err) {
       console.error('Upload error:', err);

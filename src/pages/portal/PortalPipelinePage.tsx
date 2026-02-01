@@ -15,6 +15,7 @@ interface SiteSubmit {
   ti: number | null;
   year_1_rent: number | null;
   competitor_data: string | null;
+  property_unit_id: string | null;
   property: {
     id: string;
     property_name: string | null;
@@ -30,6 +31,13 @@ interface SiteSubmit {
     rent_psf: number | null;
     nnn_psf: number | null;
     all_in_rent: number | null;
+  } | null;
+  property_unit: {
+    id: string;
+    property_unit_name: string | null;
+    sqft: number | null;
+    rent: number | null;
+    nnn: number | null;
   } | null;
   submit_stage: {
     id: string;
@@ -173,6 +181,7 @@ export default function PortalPipelinePage() {
             ti,
             year_1_rent,
             competitor_data,
+            property_unit_id,
             property:property_id (
               id,
               property_name,
@@ -188,6 +197,13 @@ export default function PortalPipelinePage() {
               rent_psf,
               nnn_psf,
               all_in_rent
+            ),
+            property_unit:property_unit_id (
+              id,
+              property_unit_name,
+              sqft,
+              rent,
+              nnn
             ),
             submit_stage!site_submit_submit_stage_id_fkey (
               id,
@@ -283,6 +299,22 @@ export default function PortalPipelinePage() {
     );
   });
 
+  // Helper functions to get values with unit fallback
+  const getSqft = (ss: SiteSubmit) =>
+    ss.property_unit?.sqft ?? ss.property?.available_sqft ?? null;
+  const getRentPsf = (ss: SiteSubmit) =>
+    ss.property_unit?.rent ?? ss.property?.rent_psf ?? null;
+  const getNnnPsf = (ss: SiteSubmit) =>
+    ss.property_unit?.nnn ?? ss.property?.nnn_psf ?? null;
+  const getAllInRent = (ss: SiteSubmit) => {
+    // If unit has both rent and nnn, calculate all-in rent from unit
+    if (ss.property_unit?.rent != null && ss.property_unit?.nnn != null) {
+      return ss.property_unit.rent + ss.property_unit.nnn;
+    }
+    // Otherwise fall back to property all-in rent
+    return ss.property?.all_in_rent ?? null;
+  };
+
   // Sort
   const sortedSubmits = [...filteredSubmits].sort((a, b) => {
     let aVal: any = '';
@@ -298,20 +330,20 @@ export default function PortalPipelinePage() {
         bVal = b.property?.address || '';
         break;
       case 'available_sqft':
-        aVal = a.property?.available_sqft || 0;
-        bVal = b.property?.available_sqft || 0;
+        aVal = getSqft(a) || 0;
+        bVal = getSqft(b) || 0;
         break;
       case 'rent_psf':
-        aVal = a.property?.rent_psf || 0;
-        bVal = b.property?.rent_psf || 0;
+        aVal = getRentPsf(a) || 0;
+        bVal = getRentPsf(b) || 0;
         break;
       case 'nnn_psf':
-        aVal = a.property?.nnn_psf || 0;
-        bVal = b.property?.nnn_psf || 0;
+        aVal = getNnnPsf(a) || 0;
+        bVal = getNnnPsf(b) || 0;
         break;
       case 'all_in_rent':
-        aVal = a.property?.all_in_rent || 0;
-        bVal = b.property?.all_in_rent || 0;
+        aVal = getAllInRent(a) || 0;
+        bVal = getAllInRent(b) || 0;
         break;
       case 'year_1_rent':
         aVal = a.year_1_rent || 0;
@@ -518,18 +550,23 @@ export default function PortalPipelinePage() {
                         </span>
                       )}
                     </div>
+                    {ss.property_unit?.property_unit_name && (
+                      <div className="text-xs text-gray-400">
+                        {ss.property_unit.property_unit_name}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                    {formatNumber(ss.property?.available_sqft)}
+                    {formatNumber(getSqft(ss))}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                    {formatCurrency(ss.property?.rent_psf)}
+                    {formatCurrency(getRentPsf(ss))}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                    {formatCurrency(ss.property?.nnn_psf)}
+                    {formatCurrency(getNnnPsf(ss))}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                    {formatCurrency(ss.property?.all_in_rent)}
+                    {formatCurrency(getAllInRent(ss))}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
                     {formatCurrency(ss.year_1_rent)}

@@ -18,6 +18,7 @@ interface SiteSubmitData {
   year_1_rent: number | null;
   competitor_data: string | null;
   property_id: string | null;
+  property_unit_id: string | null;
   deal_id: string | null; // Deal associated with this site submit (if at LOI stage or beyond)
   property: {
     id: string;
@@ -38,6 +39,13 @@ interface SiteSubmitData {
       id: string;
       label: string | null;
     } | null;
+  } | null;
+  property_unit: {
+    id: string;
+    property_unit_name: string | null;
+    sqft: number | null;
+    rent: number | null;
+    nnn: number | null;
   } | null;
   submit_stage: {
     id: string;
@@ -106,6 +114,7 @@ export default function PortalDetailSidebar({
             year_1_rent,
             competitor_data,
             property_id,
+            property_unit_id,
             property:property_id (
               id,
               property_name,
@@ -125,6 +134,13 @@ export default function PortalDetailSidebar({
                 id,
                 label
               )
+            ),
+            property_unit:property_unit_id (
+              id,
+              property_unit_name,
+              sqft,
+              rent,
+              nnn
             ),
             submit_stage!site_submit_submit_stage_id_fkey (
               id,
@@ -224,6 +240,11 @@ export default function PortalDetailSidebar({
               <h2 className="text-lg font-semibold text-white truncate">
                 {siteSubmit?.property?.property_name || siteSubmit?.site_submit_name || 'Site Details'}
               </h2>
+              {siteSubmit?.property_unit && (
+                <p className="text-sm text-blue-200 truncate">
+                  {siteSubmit.property_unit.property_unit_name || 'Unit'}
+                </p>
+              )}
               {siteSubmit?.property?.address && (
                 <div className="text-sm text-gray-300">
                   <p className="truncate">{siteSubmit.property.address}</p>
@@ -333,6 +354,8 @@ export default function PortalDetailSidebar({
                 <PortalChatTab
                   siteSubmitId={siteSubmit.id}
                   showInternalComments={isInternalUser}
+                  propertyId={siteSubmit.property_id}
+                  dealId={siteSubmit.deal_id}
                 />
               )}
               {activeTab === 'files' && (

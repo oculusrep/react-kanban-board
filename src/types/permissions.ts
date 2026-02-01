@@ -86,6 +86,9 @@ export interface RolePermissions {
 
   // Map Features
   can_verify_restaurant_locations?: boolean;
+
+  // Client Portal
+  can_access_client_portal?: boolean;
 }
 
 export interface PermissionDefinition {
@@ -483,6 +486,15 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     label: 'Verify Restaurant Locations',
     description: 'Right-click on Restaurant Trends pins to verify/update pin location',
     category: 'map_features',
+    defaultValue: false,
+  },
+
+  // Client Portal
+  {
+    key: 'can_access_client_portal',
+    label: 'Access Client Portal',
+    description: 'Access the client portal to view site submits from a client perspective',
+    category: 'integrations',
     defaultValue: false,
   },
 ];

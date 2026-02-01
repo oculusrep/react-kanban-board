@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
+import { useDropboxFiles } from '../../hooks/useDropboxFiles';
 
 interface Comment {
   id: string;
@@ -21,9 +22,11 @@ interface Comment {
 interface PortalChatTabProps {
   siteSubmitId: string;
   showInternalComments: boolean;
+  propertyId?: string | null;
+  dealId?: string | null;
 }
 
-export default function PortalChatTab({ siteSubmitId, showInternalComments }: PortalChatTabProps) {
+export default function PortalChatTab({ siteSubmitId, showInternalComments, propertyId, dealId }: PortalChatTabProps) {
   const { user, userRole } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,6 +45,10 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments }: Po
   const commentsEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const replyInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Dropbox hooks for file attachments
+  const propertyFiles = useDropboxFiles('property', propertyId || '');
+  const dealFiles = useDropboxFiles('deal', dealId || '');
 
   const isAdmin = userRole === 'admin';
 
@@ -418,6 +425,59 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments }: Po
     return name.substring(0, 2).toUpperCase();
   };
 
+  // Open a file attachment from chat
+  const openFileAttachment = async (dropboxPath: string) => {
+    console.log('📎 openFileAttachment called with path:', dropboxPath);
+    try {
+      // Determine if this is a property or deal file based on path
+      const isPropertyFile = dropboxPath.toLowerCase().includes('/properties/');
+      const isDealFile = dropboxPath.toLowerCase().includes('/opportunities/');
+
+      let link: string | null = null;
+
+      if (isPropertyFile && propertyFiles.getSharedLink) {
+        console.log('📎 Getting shared link via property files hook...');
+        link = await propertyFiles.getSharedLink(dropboxPath);
+      } else if (isDealFile && dealFiles.getSharedLink) {
+        console.log('📎 Getting shared link via deal files hook...');
+        link = await dealFiles.getSharedLink(dropboxPath);
+      } else {
+        // Fallback: try property first, then deal
+        console.log('📎 Path type unclear, trying property hook first...');
+        try {
+          link = await propertyFiles.getSharedLink(dropboxPath);
+        } catch {
+          link = await dealFiles.getSharedLink(dropboxPath);
+        }
+      }
+
+      if (link) {
+        console.log('📎 Got link:', link);
+        window.open(link, '_blank');
+      } else {
+        console.error('Could not get shared link for file');
+      }
+    } catch (err) {
+      console.error('Error opening file attachment:', err);
+    }
+  };
+
+  // Parse file attachment content: "shared a file: filename||/path/to/file"
+  const parseFileAttachment = (content: string): { fileName: string; dropboxPath: string | null } => {
+    // Handle new format with path: "shared a file: filename||/path"
+    const pipeMatch = content.match(/shared a file:\s*(.+?)\|\|(.+)/i);
+    if (pipeMatch) {
+      return { fileName: pipeMatch[1].trim(), dropboxPath: pipeMatch[2].trim() };
+    }
+    // Handle old format without path: "Shared file: filename"
+    const oldMatch = content.match(/shared file:\s*(.+)/i);
+    if (oldMatch) {
+      return { fileName: oldMatch[1].trim(), dropboxPath: null };
+    }
+    // Fallback
+    return { fileName: content, dropboxPath: null };
+  };
+
   // Generate a consistent color for a user based on their name/id
   const getUserColor = (identifier: string) => {
     const colors = [
@@ -459,6 +519,45 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments }: Po
   ) => {
     // Render activity entries differently
     if (comment.activity_type) {
+      // For file_added activities, make the filename clickable
+      if (comment.activity_type === 'file_added') {
+        const { fileName, dropboxPath } = parseFileAttachment(comment.content);
+        return (
+          <div
+            key={comment.id}
+            className="px-4 py-1.5 flex items-center gap-2"
+          >
+            <div className="flex-1 flex items-center gap-2">
+              <div className="h-px flex-1 bg-gray-200" />
+              <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span>
+                  <span className="font-medium text-gray-700">{comment.author_name}</span>
+                  {' '}shared a file:{' '}
+                  {dropboxPath ? (
+                    <button
+                      onClick={() => openFileAttachment(dropboxPath)}
+                      className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                      title="Click to view attachment"
+                    >
+                      {fileName}
+                    </button>
+                  ) : (
+                    <span className="font-medium">{fileName}</span>
+                  )}
+                </span>
+                <span className="text-gray-400">·</span>
+                <span className="text-gray-400">{formatTimestamp(comment.created_at)}</span>
+              </div>
+              <div className="h-px flex-1 bg-gray-200" />
+            </div>
+          </div>
+        );
+      }
+
+      // Other activity types (status_change, field_update, etc.)
       return (
         <div
           key={comment.id}
@@ -468,9 +567,7 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments }: Po
             <div className="h-px flex-1 bg-gray-200" />
             <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                {comment.activity_type === 'file_added' ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                ) : comment.activity_type === 'status_change' ? (
+                {comment.activity_type === 'status_change' ? (
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                 ) : (
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -629,7 +726,26 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments }: Po
               </div>
             ) : (
               <p className={`text-gray-800 whitespace-pre-wrap break-words ${isReply ? 'text-[11px]' : 'text-xs'}`}>
-                {comment.content}
+                {/* Check if content is a file share notification (old format without activity_type) */}
+                {/shared\s*a?\s*file:/i.test(comment.content) ? (() => {
+                  const { fileName, dropboxPath } = parseFileAttachment(comment.content);
+                  return (
+                    <>
+                      shared a file:{' '}
+                      {dropboxPath ? (
+                        <button
+                          onClick={() => openFileAttachment(dropboxPath)}
+                          className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                          title="Click to view attachment"
+                        >
+                          {fileName}
+                        </button>
+                      ) : (
+                        <span className="font-medium">{fileName}</span>
+                      )}
+                    </>
+                  );
+                })() : comment.content}
               </p>
             )}
           </div>

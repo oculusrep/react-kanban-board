@@ -12,6 +12,7 @@ interface SiteSubmitData {
   year_1_rent: number | null;
   competitor_data: string | null;
   property_id: string | null;
+  property_unit_id: string | null;
   property: {
     id: string;
     property_name: string | null;
@@ -32,6 +33,13 @@ interface SiteSubmitData {
       label: string | null;
     } | null;
   } | null;
+  property_unit: {
+    id: string;
+    property_unit_name: string | null;
+    sqft: number | null;
+    rent: number | null;
+    nnn: number | null;
+  } | null;
   submit_stage: {
     id: string;
     name: string;
@@ -47,11 +55,12 @@ interface PortalDataTabProps {
 /**
  * PortalDataTab - Displays site submit and property data fields
  *
- * Read-only for clients, editable for brokers
+ * Read-only for clients, inline editable for brokers (click pencil to edit)
  */
 export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: PortalDataTabProps) {
   const [saving, setSaving] = useState(false);
-  const [editedFields, setEditedFields] = useState<Record<string, any>>({});
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState<any>(null);
 
   const formatCurrency = (value: number | null | undefined) => {
     if (value === null || value === undefined) return '-';
@@ -73,61 +82,53 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
     return new Date(value).toLocaleDateString();
   };
 
-  const handleFieldChange = (table: 'site_submit' | 'property', field: string, value: any) => {
-    setEditedFields(prev => ({
-      ...prev,
-      [`${table}.${field}`]: value,
-    }));
+  const startEditing = (table: string, field: string, currentValue: any) => {
+    setEditingField(`${table}.${field}`);
+    setEditValue(currentValue);
   };
 
-  const handleSave = async () => {
+  const cancelEditing = () => {
+    setEditingField(null);
+    setEditValue(null);
+  };
+
+  const saveField = async (table: 'site_submit' | 'property' | 'property_unit', field: string) => {
     setSaving(true);
     try {
-      // Group edits by table
-      const siteSubmitUpdates: Record<string, any> = {};
-      const propertyUpdates: Record<string, any> = {};
-
-      Object.entries(editedFields).forEach(([key, value]) => {
-        const [table, field] = key.split('.');
-        if (table === 'site_submit') {
-          siteSubmitUpdates[field] = value;
-        } else if (table === 'property') {
-          propertyUpdates[field] = value;
-        }
-      });
-
-      // Update site_submit if there are changes
-      if (Object.keys(siteSubmitUpdates).length > 0) {
+      if (table === 'site_submit') {
         const { error } = await supabase
           .from('site_submit')
-          .update(siteSubmitUpdates)
+          .update({ [field]: editValue })
           .eq('id', siteSubmit.id);
         if (error) throw error;
-      }
-
-      // Update property if there are changes
-      if (Object.keys(propertyUpdates).length > 0 && siteSubmit.property_id) {
+        onUpdate({ [field]: editValue });
+      } else if (table === 'property' && siteSubmit.property_id) {
         const { error } = await supabase
           .from('property')
-          .update(propertyUpdates)
+          .update({ [field]: editValue })
           .eq('id', siteSubmit.property_id);
         if (error) throw error;
+        onUpdate({
+          property: siteSubmit.property ? { ...siteSubmit.property, [field]: editValue } : null,
+        });
+      } else if (table === 'property_unit' && siteSubmit.property_unit_id) {
+        const { error } = await supabase
+          .from('property_unit')
+          .update({ [field]: editValue })
+          .eq('id', siteSubmit.property_unit_id);
+        if (error) throw error;
+        onUpdate({
+          property_unit: siteSubmit.property_unit ? { ...siteSubmit.property_unit, [field]: editValue } : null,
+        });
       }
-
-      setEditedFields({});
-      // Notify parent of updates
-      onUpdate({
-        ...siteSubmitUpdates,
-        property: siteSubmit.property ? { ...siteSubmit.property, ...propertyUpdates } : null,
-      });
+      setEditingField(null);
+      setEditValue(null);
     } catch (err) {
       console.error('Error saving:', err);
     } finally {
       setSaving(false);
     }
   };
-
-  const hasChanges = Object.keys(editedFields).length > 0;
 
   const FieldGroup = ({ title, children }: { title: string; children: React.ReactNode }) => (
     <div className="mb-6">
@@ -156,15 +157,14 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
     label: string;
     value: any;
     type?: 'text' | 'number' | 'date' | 'textarea';
-    table?: 'site_submit' | 'property';
+    table?: 'site_submit' | 'property' | 'property_unit';
     field?: string;
     isCurrency?: boolean;
     isNumber?: boolean;
     suffix?: string;
   }) => {
     const editKey = table && field ? `${table}.${field}` : null;
-    const editedValue = editKey ? editedFields[editKey] : undefined;
-    const displayValue = editedValue !== undefined ? editedValue : value;
+    const isCurrentlyEditing = editKey === editingField;
 
     const baseFormattedValue = isCurrency
       ? formatCurrency(value)
@@ -178,81 +178,119 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
       ? `${baseFormattedValue} ${suffix}`
       : baseFormattedValue;
 
-    if (!isEditable || !table || !field) {
-      // Textarea fields use stacked layout (label on top, content below)
-      if (type === 'textarea') {
-        return (
-          <div className="py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded">
-            <span className="block text-sm text-gray-500 mb-1">{label}</span>
+    // Pencil icon for editable fields
+    const PencilButton = () => (
+      <button
+        onClick={() => startEditing(table!, field!, value)}
+        className="ml-2 p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+        title="Edit"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+        </svg>
+      </button>
+    );
+
+    // Save/Cancel buttons for editing mode
+    const EditActions = () => (
+      <div className="flex items-center gap-1 ml-2">
+        <button
+          onClick={() => saveField(table!, field!)}
+          disabled={saving}
+          className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
+          title="Save"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        </button>
+        <button
+          onClick={cancelEditing}
+          className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+          title="Cancel"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    );
+
+    // Textarea field layout (stacked)
+    if (type === 'textarea') {
+      return (
+        <div className="py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-sm text-gray-500">{label}</span>
+            {isEditable && table && field && !isCurrentlyEditing && <PencilButton />}
+            {isCurrentlyEditing && <EditActions />}
+          </div>
+          {isCurrentlyEditing ? (
+            <textarea
+              value={editValue || ''}
+              onChange={(e) => setEditValue(e.target.value || null)}
+              className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              rows={3}
+              autoFocus
+            />
+          ) : (
             <div className="text-sm font-medium text-gray-900 whitespace-pre-wrap bg-white border border-gray-100 rounded-lg p-3">
               {value || '-'}
             </div>
-          </div>
-        );
-      }
-      // Other fields use grid layout for better readability
-      return (
-        <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded">
-          <span className="text-sm text-gray-500">{label}</span>
-          <span className="text-sm font-medium text-gray-900">
-            {formattedValue}
-          </span>
+          )}
         </div>
       );
     }
 
+    // Regular field layout (grid)
     return (
-      <div className="py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded">
-        <label className="block text-sm text-gray-500 mb-1">{label}</label>
-        {type === 'textarea' ? (
-          <textarea
-            value={displayValue || ''}
-            onChange={(e) => handleFieldChange(table, field, e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            rows={3}
-          />
-        ) : type === 'number' ? (
-          <input
-            type="number"
-            value={displayValue || ''}
-            onChange={(e) => handleFieldChange(table, field, e.target.value ? parseFloat(e.target.value) : null)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-        ) : type === 'date' ? (
-          <input
-            type="date"
-            value={displayValue || ''}
-            onChange={(e) => handleFieldChange(table, field, e.target.value || null)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-        ) : (
-          <input
-            type="text"
-            value={displayValue || ''}
-            onChange={(e) => handleFieldChange(table, field, e.target.value || null)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-        )}
+      <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded items-center">
+        <span className="text-sm text-gray-500">{label}</span>
+        <div className="flex items-center">
+          {isCurrentlyEditing ? (
+            <>
+              {type === 'number' ? (
+                <input
+                  type="number"
+                  value={editValue ?? ''}
+                  onChange={(e) => setEditValue(e.target.value ? parseFloat(e.target.value) : null)}
+                  className="flex-1 px-2 py-1 border border-blue-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  autoFocus
+                />
+              ) : type === 'date' ? (
+                <input
+                  type="date"
+                  value={editValue || ''}
+                  onChange={(e) => setEditValue(e.target.value || null)}
+                  className="flex-1 px-2 py-1 border border-blue-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  autoFocus
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={editValue || ''}
+                  onChange={(e) => setEditValue(e.target.value || null)}
+                  className="flex-1 px-2 py-1 border border-blue-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  autoFocus
+                />
+              )}
+              <EditActions />
+            </>
+          ) : (
+            <>
+              <span className="text-sm font-medium text-gray-900 flex-1">
+                {formattedValue}
+              </span>
+              {isEditable && table && field && <PencilButton />}
+            </>
+          )}
+        </div>
       </div>
     );
   };
 
   return (
-    <div className="p-4">
-      {/* Save Button (for editable mode) */}
-      {isEditable && hasChanges && (
-        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center justify-between">
-          <span className="text-sm text-yellow-800">You have unsaved changes</span>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
-            {saving ? 'Saving...' : 'Save Changes'}
-          </button>
-        </div>
-      )}
-
+    <div className="p-4 overflow-y-auto">
       {/* Submit Date */}
       {siteSubmit.date_submitted && (
         <div className="mb-4">
@@ -269,22 +307,38 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
         const isLand = recordTypeLabel.includes('land');
         const isShoppingCenter = recordTypeLabel.includes('shopping') || recordTypeLabel.includes('retail');
 
+        // Check if we have unit data - use unit values when available
+        const hasUnit = !!siteSubmit.property_unit;
+        const unitName = siteSubmit.property_unit?.property_unit_name || 'Unit';
+
         return (
-        <FieldGroup title="Deal Details">
+        <FieldGroup title={hasUnit ? `Deal Details (${unitName})` : 'Deal Details'}>
           {/* Property Fields */}
           {siteSubmit.property && (
             <>
-              {/* Available Sqft - Hide for Land */}
+              {/* Available Sqft - Use unit sqft if available, otherwise property available_sqft */}
               {!isLand && (
-                <Field
-                  label="Available Sqft"
-                  value={siteSubmit.property.available_sqft}
-                  type="number"
-                  isNumber
-                  suffix="sqft"
-                  table={isEditable ? 'property' : undefined}
-                  field={isEditable ? 'available_sqft' : undefined}
-                />
+                hasUnit && siteSubmit.property_unit?.sqft != null ? (
+                  <Field
+                    label="Available Sqft"
+                    value={siteSubmit.property_unit.sqft}
+                    type="number"
+                    isNumber
+                    suffix="sqft"
+                    table="property_unit"
+                    field="sqft"
+                  />
+                ) : (
+                  <Field
+                    label="Available Sqft"
+                    value={siteSubmit.property.available_sqft}
+                    type="number"
+                    isNumber
+                    suffix="sqft"
+                    table="property"
+                    field="available_sqft"
+                  />
+                )
               )}
               {/* Building Sqft - Hide for Shopping Center */}
               {!isShoppingCenter && (
@@ -294,8 +348,8 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
                   type="number"
                   isNumber
                   suffix="sqft"
-                  table={isEditable ? 'property' : undefined}
-                  field={isEditable ? 'building_sqft' : undefined}
+                  table="property"
+                  field="building_sqft"
                 />
               )}
               {/* Acres - Hide for Shopping Center */}
@@ -305,8 +359,8 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
                   value={siteSubmit.property.acres}
                   type="number"
                   isNumber
-                  table={isEditable ? 'property' : undefined}
-                  field={isEditable ? 'acres' : undefined}
+                  table="property"
+                  field="acres"
                 />
               )}
               {/* Asking Lease Price - Hide for Shopping Center */}
@@ -316,8 +370,8 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
                   value={siteSubmit.property.asking_lease_price}
                   type="number"
                   isCurrency
-                  table={isEditable ? 'property' : undefined}
-                  field={isEditable ? 'asking_lease_price' : undefined}
+                  table="property"
+                  field="asking_lease_price"
                 />
               )}
               {/* Asking Purchase Price - Hide for Shopping Center */}
@@ -327,61 +381,82 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
                   value={siteSubmit.property.asking_purchase_price}
                   type="number"
                   isCurrency
-                  table={isEditable ? 'property' : undefined}
-                  field={isEditable ? 'asking_purchase_price' : undefined}
+                  table="property"
+                  field="asking_purchase_price"
                 />
               )}
-              {/* Rent PSF - Hide for Land */}
+              {/* Rent PSF - Use unit rent if available, otherwise property rent_psf */}
               {!isLand && (
-                <Field
-                  label="Rent PSF"
-                  value={siteSubmit.property.rent_psf}
-                  type="number"
-                  isCurrency
-                  table={isEditable ? 'property' : undefined}
-                  field={isEditable ? 'rent_psf' : undefined}
-                />
-              )}
-              {/* NNN PSF - Hide for Land */}
-              {!isLand && (
-                <Field
-                  label="NNN PSF"
-                  value={siteSubmit.property.nnn_psf}
-                  type="number"
-                  isCurrency
-                  table={isEditable ? 'property' : undefined}
-                  field={isEditable ? 'nnn_psf' : undefined}
-                />
-              )}
-              {/* All-in Rent with calculated annual rent - Hide for Land */}
-              {!isLand && (
-                isEditable ? (
+                hasUnit && siteSubmit.property_unit?.rent != null ? (
                   <Field
-                    label="All-in Rent"
-                    value={siteSubmit.property.all_in_rent}
+                    label="Rent PSF"
+                    value={siteSubmit.property_unit.rent}
+                    type="number"
+                    isCurrency
+                    table="property_unit"
+                    field="rent"
+                  />
+                ) : (
+                  <Field
+                    label="Rent PSF"
+                    value={siteSubmit.property.rent_psf}
                     type="number"
                     isCurrency
                     table="property"
-                    field="all_in_rent"
+                    field="rent_psf"
+                  />
+                )
+              )}
+              {/* NNN PSF - Use unit nnn if available, otherwise property nnn_psf */}
+              {!isLand && (
+                hasUnit && siteSubmit.property_unit?.nnn != null ? (
+                  <Field
+                    label="NNN PSF"
+                    value={siteSubmit.property_unit.nnn}
+                    type="number"
+                    isCurrency
+                    table="property_unit"
+                    field="nnn"
                   />
                 ) : (
-                  <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded">
+                  <Field
+                    label="NNN PSF"
+                    value={siteSubmit.property.nnn_psf}
+                    type="number"
+                    isCurrency
+                    table="property"
+                    field="nnn_psf"
+                  />
+                )
+              )}
+              {/* All-in Rent - Always calculated, not editable */}
+              {!isLand && (() => {
+                // Calculate all-in rent from unit values if available, otherwise use property value
+                const allInRent = hasUnit && siteSubmit.property_unit?.rent != null && siteSubmit.property_unit?.nnn != null
+                  ? siteSubmit.property_unit.rent + siteSubmit.property_unit.nnn
+                  : siteSubmit.property.all_in_rent;
+                const availableSqft = hasUnit && siteSubmit.property_unit?.sqft != null
+                  ? siteSubmit.property_unit.sqft
+                  : siteSubmit.property.available_sqft;
+
+                return (
+                  <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded items-center">
                     <span className="text-sm text-gray-500">All-in Rent</span>
                     <span className="text-sm font-medium text-gray-900">
-                      {siteSubmit.property.all_in_rent != null ? (
+                      {allInRent != null ? (
                         <>
-                          {formatCurrency(siteSubmit.property.all_in_rent)}/sf
-                          {siteSubmit.property.available_sqft != null && (
+                          {formatCurrency(allInRent)}/sf
+                          {availableSqft != null && (
                             <span className="text-gray-500 ml-2 text-xs italic">
-                              ({formatCurrency(siteSubmit.property.all_in_rent * siteSubmit.property.available_sqft)}/yr)
+                              ({formatCurrency(allInRent * availableSqft)}/yr)
                             </span>
                           )}
                         </>
                       ) : '-'}
                     </span>
                   </div>
-                )
-              )}
+                );
+              })()}
             </>
           )}
 
@@ -389,38 +464,38 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
           <Field
             label="Delivery Timeframe"
             value={siteSubmit.delivery_timeframe}
-            table={isEditable ? 'site_submit' : undefined}
-            field={isEditable ? 'delivery_timeframe' : undefined}
+            table="site_submit"
+            field="delivery_timeframe"
           />
           <Field
             label="TI (Tenant Improvement)"
             value={siteSubmit.ti}
             type="number"
             isCurrency
-            table={isEditable ? 'site_submit' : undefined}
-            field={isEditable ? 'ti' : undefined}
+            table="site_submit"
+            field="ti"
           />
           <Field
             label="Year 1 Rent"
             value={siteSubmit.year_1_rent}
             type="number"
             isCurrency
-            table={isEditable ? 'site_submit' : undefined}
-            field={isEditable ? 'year_1_rent' : undefined}
+            table="site_submit"
+            field="year_1_rent"
           />
           <Field
             label="Notes"
             value={siteSubmit.notes}
             type="textarea"
-            table={isEditable ? 'site_submit' : undefined}
-            field={isEditable ? 'notes' : undefined}
+            table="site_submit"
+            field="notes"
           />
           <Field
             label="Competitor Data"
             value={siteSubmit.competitor_data}
             type="textarea"
-            table={isEditable ? 'site_submit' : undefined}
-            field={isEditable ? 'competitor_data' : undefined}
+            table="site_submit"
+            field="competitor_data"
           />
         </FieldGroup>
         );

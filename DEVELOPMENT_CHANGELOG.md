@@ -1,5 +1,50 @@
 # Development Changelog
 
+## February 1, 2026
+
+### 📤 **Portal File Sharing Notifications**
+
+#### **Background**
+User requested that when files are uploaded via the Portal Files tab, a notification should automatically appear in the Chat tab. Additionally, file names in chat should be clickable to open the file directly in Dropbox.
+
+#### **Changes Made**
+
+**1. File Upload Chat Notifications (PortalFilesTab.tsx)**
+- Added `addFileShareNotification()` function that creates a chat entry when files are uploaded
+- Notification format: `shared a file: filename||/dropbox/path`
+- Called after both drag & drop and file picker uploads
+- Posts to `site_submit_comment` table with `client` visibility
+
+**2. Clickable File Attachments (PortalChatTab.tsx)**
+- Added `parseFileAttachment()` function to extract filename and path from notification content
+- Added `openFileAttachment()` function using `useDropboxFiles` hook for proper token refresh
+- File names render as blue clickable buttons that open Dropbox in new tab
+- Path-based detection determines property vs deal files for correct Dropbox hook usage
+
+**3. Props Integration (PortalDetailSidebar.tsx)**
+- Added `propertyId` and `dealId` props to PortalChatTab
+- Required for Dropbox hooks to generate shared links
+
+#### **Bug Fixes**
+- **activity_type column error**: Removed non-existent column from insert, rely on content pattern matching
+- **invalid_access_token error**: Switched from creating new DropboxService to using `useDropboxFiles` hook which handles token refresh
+
+#### **Technical Details**
+- **Content Format**: `shared a file: {filename}||{dropbox_path}`
+- **Pattern Detection**: `/shared\s*a?\s*file:/i` regex for identifying file share messages
+- **Path Detection**: `/properties/` vs `/opportunities/` in path determines hook to use
+
+#### **Files Modified**
+```
+src/components/portal/PortalFilesTab.tsx    # Upload notifications
+src/components/portal/PortalChatTab.tsx     # Clickable attachments
+src/components/portal/PortalDetailSidebar.tsx # Props passing
+```
+
+**Full Documentation:** [SESSION_2026_02_01_PORTAL_FILE_SHARING_NOTIFICATIONS.md](docs/SESSION_2026_02_01_PORTAL_FILE_SHARING_NOTIFICATIONS.md)
+
+---
+
 ## November 6, 2025
 
 ### 🗺️ **Site Submit Layer Visibility Fix**
