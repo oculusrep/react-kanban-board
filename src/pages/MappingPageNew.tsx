@@ -20,6 +20,8 @@ import { LayerManagerProvider, useLayerManager } from '../components/mapping/lay
 import DrawingToolbar from '../components/mapping/DrawingToolbar';
 import SaveShapeModal from '../components/modals/SaveShapeModal';
 import ShareLayerModal from '../components/modals/ShareLayerModal';
+import BoundaryBuilderPanel from '../components/mapping/BoundaryBuilderPanel';
+import { boundaryService, FetchedBoundary } from '../services/boundaryService';
 import { geocodingService } from '../services/geocodingService';
 import SiteSubmitFormModal from '../components/SiteSubmitFormModal';
 import InlinePropertyCreationModal from '../components/mapping/InlinePropertyCreationModal';
@@ -222,6 +224,66 @@ const MappingPageContent: React.FC = () => {
   // Share layer modal state
   const [showShareLayerModal, setShowShareLayerModal] = useState(false);
   const [layerToShare, setLayerToShare] = useState<typeof customLayers[0] | null>(null);
+
+  // Boundary builder panel state
+  const [showBoundaryBuilder, setShowBoundaryBuilder] = useState(false);
+
+  // Handler for saving boundaries as a collection (individual shapes)
+  const handleSaveBoundaryCollection = async (boundaries: FetchedBoundary[], layerName: string) => {
+    const { mapLayerService } = await import('../services/mapLayerService');
+
+    // Create a new layer
+    const layer = await mapLayerService.createLayer({
+      name: layerName,
+      description: `Collection of ${boundaries.length} boundaries`,
+      layer_type: 'custom',
+    });
+
+    // Create one shape per boundary
+    for (const boundary of boundaries) {
+      const geometry = boundaryService.convertToMapLayerGeometry(boundary.geometry);
+      await mapLayerService.createShape({
+        layer_id: layer.id,
+        name: boundary.displayName,
+        shape_type: 'polygon',
+        geometry,
+      });
+    }
+
+    // Refresh custom layers and enable visibility
+    await refreshCustomLayers();
+    toggleCustomLayer(layer.id);
+    showToast(`Created layer "${layerName}" with ${boundaries.length} boundaries`, { type: 'success' });
+  };
+
+  // Handler for saving boundaries as a merged polygon
+  const handleSaveBoundaryMerged = async (boundaries: FetchedBoundary[], layerName: string) => {
+    const { mapLayerService } = await import('../services/mapLayerService');
+
+    // Merge the boundaries into a single polygon
+    const mergedGeometry = boundaryService.mergePolygons(boundaries);
+
+    // Create a new layer
+    const layer = await mapLayerService.createLayer({
+      name: layerName,
+      description: `Merged territory from ${boundaries.length} boundaries`,
+      layer_type: 'custom',
+    });
+
+    // Create a single merged shape
+    await mapLayerService.createShape({
+      layer_id: layer.id,
+      name: layerName,
+      shape_type: 'polygon',
+      geometry: mergedGeometry,
+      description: `Merged from: ${boundaries.map(b => b.displayName).join(', ')}`,
+    });
+
+    // Refresh custom layers and enable visibility
+    await refreshCustomLayers();
+    toggleCustomLayer(layer.id);
+    showToast(`Created merged territory "${layerName}"`, { type: 'success' });
+  };
 
   // Track shapes created during current edit session (for cancel functionality)
   const [sessionShapeIds, setSessionShapeIds] = useState<string[]>([]);
@@ -1990,6 +2052,21 @@ const MappingPageContent: React.FC = () => {
                         ))
                       )}
                     </div>
+                    {/* Build Territory Button */}
+                    <div className="p-2 border-t border-gray-100">
+                      <button
+                        onClick={() => {
+                          setShowBoundaryBuilder(true);
+                          setShowCustomLayersMenu(false);
+                        }}
+                        className="w-full px-3 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg text-sm font-medium hover:from-blue-700 hover:to-indigo-700 flex items-center justify-center space-x-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                        </svg>
+                        <span>Build Territory from Boundaries</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -2441,6 +2518,15 @@ const MappingPageContent: React.FC = () => {
           refreshCustomLayers();
           showToast('Shape saved successfully!', { type: 'success' });
         }}
+      />
+
+      {/* Boundary Builder Panel */}
+      <BoundaryBuilderPanel
+        isOpen={showBoundaryBuilder}
+        onClose={() => setShowBoundaryBuilder(false)}
+        map={mapInstance}
+        onSaveCollection={handleSaveBoundaryCollection}
+        onSaveMerged={handleSaveBoundaryMerged}
       />
 
       {/* Share Layer Modal */}

@@ -175,7 +175,11 @@ const LayerGroup: React.FC<LayerGroupProps> = ({
 };
 
 // Custom Layers Section Component
-const CustomLayersSection: React.FC = () => {
+interface CustomLayersSectionProps {
+  onBuildTerritory?: () => void;
+}
+
+const CustomLayersSection: React.FC<CustomLayersSectionProps> = ({ onBuildTerritory }) => {
   const {
     customLayers,
     customLayerVisibility,
@@ -204,6 +208,19 @@ const CustomLayersSection: React.FC = () => {
           Manage
         </Link>
       </div>
+
+      {/* Build Territory Button */}
+      {onBuildTerritory && (
+        <button
+          onClick={onBuildTerritory}
+          className="w-full mb-3 px-3 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg text-sm font-medium hover:from-blue-700 hover:to-indigo-700 flex items-center justify-center space-x-2 shadow-sm"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+          </svg>
+          <span>Build Territory from Boundaries</span>
+        </button>
+      )}
 
       {customLayers.length === 0 ? (
         <div className="text-xs text-gray-500 p-3 bg-gray-50 rounded border-2 border-dashed border-gray-200">
@@ -255,7 +272,11 @@ const CustomLayersSection: React.FC = () => {
   );
 };
 
-const LayerPanel: React.FC = () => {
+interface LayerPanelProps {
+  onBuildTerritory?: () => void;
+}
+
+const LayerPanel: React.FC<LayerPanelProps> = ({ onBuildTerritory }) => {
   const {
     layers,
     layerState,
@@ -336,7 +357,7 @@ const LayerPanel: React.FC = () => {
           </div>
 
           {/* Custom Layers Section */}
-          <CustomLayersSection />
+          <CustomLayersSection onBuildTerritory={onBuildTerritory} />
         </div>
 
         {/* Create Mode Status */}
