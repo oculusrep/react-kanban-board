@@ -19,6 +19,7 @@ import AddressSearchBox from '../components/mapping/AddressSearchBox';
 import { LayerManagerProvider, useLayerManager } from '../components/mapping/layers/LayerManager';
 import DrawingToolbar from '../components/mapping/DrawingToolbar';
 import SaveShapeModal from '../components/modals/SaveShapeModal';
+import ShareLayerModal from '../components/modals/ShareLayerModal';
 import { geocodingService } from '../services/geocodingService';
 import SiteSubmitFormModal from '../components/SiteSubmitFormModal';
 import InlinePropertyCreationModal from '../components/mapping/InlinePropertyCreationModal';
@@ -217,6 +218,10 @@ const MappingPageContent: React.FC = () => {
     geometry: any;
   } | null>(null);
   const [showSaveShapeModal, setShowSaveShapeModal] = useState(false);
+
+  // Share layer modal state
+  const [showShareLayerModal, setShowShareLayerModal] = useState(false);
+  const [layerToShare, setLayerToShare] = useState<typeof customLayers[0] | null>(null);
 
   // Track shapes created during current edit session (for cancel functionality)
   const [sessionShapeIds, setSessionShapeIds] = useState<string[]>([]);
@@ -1945,6 +1950,18 @@ const MappingPageContent: React.FC = () => {
                                 {editingLayerId === layer.id ? 'Stop' : 'Edit'}
                               </button>
                               <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLayerToShare(layer);
+                                  setShowShareLayerModal(true);
+                                  setShowCustomLayersMenu(false);
+                                }}
+                                className="ml-1 px-1 py-1 text-xs rounded text-blue-600 hover:bg-blue-50"
+                                title="Share layer with clients"
+                              >
+                                📤
+                              </button>
+                              <button
                                 onClick={async (e) => {
                                   e.stopPropagation();
                                   if (!confirm(`Delete layer "${layer.name}"? This will also delete all shapes.`)) return;
@@ -2064,7 +2081,7 @@ const MappingPageContent: React.FC = () => {
                 isVisible={customLayerVisibility[layer.id] ?? false}
                 layerId={layer.id}
                 editMode={editingLayerId === layer.id}
-                refreshTrigger={editingLayerId === layer.id ? customLayerRefreshTrigger : undefined}
+                refreshTrigger={customLayerRefreshTrigger}
                 selectedShapeId={editingLayerId === layer.id ? selectedShapeId : null}
                 onShapeClick={(shape) => {
                   if (editingLayerId === layer.id) {
@@ -2295,6 +2312,8 @@ const MappingPageContent: React.FC = () => {
                 setSelectedShapeId(null);
                 setSelectedShapeData(null);
                 setSessionShapeIds([]); // Clear session tracking
+                // Refresh to show saved geometry changes
+                setCustomLayerRefreshTrigger(prev => prev + 1);
                 showToast('Changes saved', { type: 'success' });
               }}
               onCancel={async () => {
@@ -2423,6 +2442,23 @@ const MappingPageContent: React.FC = () => {
           showToast('Shape saved successfully!', { type: 'success' });
         }}
       />
+
+      {/* Share Layer Modal */}
+      {layerToShare && (
+        <ShareLayerModal
+          isOpen={showShareLayerModal}
+          layer={layerToShare}
+          onClose={() => {
+            setShowShareLayerModal(false);
+            setLayerToShare(null);
+          }}
+          onSuccess={() => {
+            setShowShareLayerModal(false);
+            setLayerToShare(null);
+            refreshCustomLayers();
+          }}
+        />
+      )}
     </div>
   );
 };

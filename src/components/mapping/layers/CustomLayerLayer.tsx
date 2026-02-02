@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { mapLayerService, MapLayerShape, GeoJSONGeometry } from '../../../services/mapLayerService';
+import { supabase } from '../../../lib/supabaseClient';
 
 interface CustomLayerLayerProps {
   map: google.maps.Map | null;
@@ -66,6 +67,47 @@ const CustomLayerLayer: React.FC<CustomLayerLayerProps> = ({
   useEffect(() => {
     fetchShapes();
   }, [fetchShapes, refreshTrigger]);
+
+  // Subscribe to realtime changes for this layer's shapes
+  useEffect(() => {
+    if (!layerId) return;
+
+    console.log('🔌 Setting up realtime subscription for layer:', layerId);
+
+    // Use a unique channel name per subscription to avoid conflicts
+    const channelName = `layer-shapes-${layerId}-${Date.now()}`;
+
+    // Subscribe to INSERT, UPDATE, DELETE on map_layer_shape for this layer
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: 'map_layer_shape',
+          filter: `layer_id=eq.${layerId}`,
+        },
+        (payload) => {
+          console.log('🔄 Realtime shape update received:', payload.eventType, 'for layer:', layerId);
+          // Refresh shapes when any change occurs
+          fetchShapes();
+        }
+      )
+      .subscribe((status) => {
+        console.log('🔌 Realtime subscription status for layer', layerId, ':', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Realtime subscription active for layer:', layerId);
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Realtime subscription failed - make sure replication is enabled for map_layer_shape table in Supabase Dashboard > Database > Replication');
+        }
+      });
+
+    return () => {
+      console.log('🔌 Removing realtime subscription for layer:', layerId);
+      supabase.removeChannel(channel);
+    };
+  }, [layerId, fetchShapes]);
 
   // Create/update Google Maps shapes
   useEffect(() => {
@@ -160,7 +202,7 @@ function createGoogleShape(
       const path = geometry.coordinates.map(([lat, lng]) => ({ lat, lng }));
       googleShape = new google.maps.Polygon({
         paths: path,
-        strokeColor: shape.color,
+        strokeColor: shape.stroke_color || shape.color,
         strokeOpacity: 1,
         strokeWeight: shape.stroke_width,
         fillColor: shape.color,
@@ -179,7 +221,7 @@ function createGoogleShape(
       googleShape = new google.maps.Circle({
         center: { lat, lng },
         radius: geometry.radius,
-        strokeColor: shape.color,
+        strokeColor: shape.stroke_color || shape.color,
         strokeOpacity: 1,
         strokeWeight: shape.stroke_width,
         fillColor: shape.color,
@@ -197,7 +239,7 @@ function createGoogleShape(
       const path = geometry.coordinates.map(([lat, lng]) => ({ lat, lng }));
       googleShape = new google.maps.Polyline({
         path,
-        strokeColor: shape.color,
+        strokeColor: shape.stroke_color || shape.color,
         strokeOpacity: 1,
         strokeWeight: shape.stroke_width,
         map,
@@ -213,17 +255,37 @@ function createGoogleShape(
       return null;
   }
 
-  // Add click listener - use mouseup for better compatibility with editable shapes
+  // Add click listener - use multiple events for better compatibility with editable shapes
   if (googleShape && onClick) {
+    // Track if we're in a drag operation
+    let isDragging = false;
+    let mouseDownTime = 0;
+
+    google.maps.event.addListener(googleShape, 'mousedown', () => {
+      isDragging = false;
+      mouseDownTime = Date.now();
+    });
+
+    google.maps.event.addListener(googleShape, 'drag', () => {
+      isDragging = true;
+    });
+
     google.maps.event.addListener(googleShape, 'click', (e: google.maps.MapMouseEvent) => {
       console.log('🎯 Shape clicked:', shape.name || shape.id);
       onClick(shape);
     });
-    // Also listen for mouseup as backup (works better when shape is editable)
-    google.maps.event.addListener(googleShape, 'mouseup', (e: google.maps.MapMouseEvent) => {
-      // Only trigger if it wasn't a drag operation
-      console.log('🎯 Shape mouseup:', shape.name || shape.id);
-    });
+
+    // For editable shapes, click may not fire - use mouseup as backup
+    if (editable) {
+      google.maps.event.addListener(googleShape, 'mouseup', () => {
+        // Only trigger if it was a quick click (not a drag)
+        const clickDuration = Date.now() - mouseDownTime;
+        if (!isDragging && clickDuration < 300) {
+          console.log('🎯 Shape mouseup (editable, selecting):', shape.name || shape.id);
+          onClick(shape);
+        }
+      });
+    }
   }
 
   // Add edit listeners if editable
@@ -346,7 +408,7 @@ function extractPolylineCoords(polyline: google.maps.Polyline): [number, number]
 // Update shape style (for selection)
 function updateShapeStyle(googleShape: GoogleShape, shape: MapLayerShape, isSelected: boolean) {
   const strokeWeight = isSelected ? shape.stroke_width + 2 : shape.stroke_width;
-  const strokeColor = isSelected ? '#1d4ed8' : shape.color;
+  const strokeColor = isSelected ? '#1d4ed8' : (shape.stroke_color || shape.color);
   const zIndex = isSelected ? 1000 : 100;
 
   if (googleShape instanceof google.maps.Polygon) {

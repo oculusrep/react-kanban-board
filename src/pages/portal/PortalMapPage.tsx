@@ -10,7 +10,12 @@ import { LayerManagerProvider } from '../../components/mapping/layers/LayerManag
 import { STAGE_CATEGORIES } from '../../components/mapping/SiteSubmitPin';
 import { geocodingService } from '../../services/geocodingService';
 import CustomLayerLayer from '../../components/mapping/layers/CustomLayerLayer';
-import { useClientMapLayers } from '../../hooks/useMapLayers';
+import { useClientMapLayers, useMapLayers } from '../../hooks/useMapLayers';
+import DrawingToolbar from '../../components/mapping/DrawingToolbar';
+import SaveShapeModal from '../../components/modals/SaveShapeModal';
+import ShareLayerModal from '../../components/modals/ShareLayerModal';
+import { mapLayerService, MapLayer, MapLayerShape, UpdateShapeInput } from '../../services/mapLayerService';
+import ShapeEditorPanel from '../../components/mapping/ShapeEditorPanel';
 
 // Portal-visible stages (from spec)
 // Note: Stage names must match database format exactly (no spaces around dashes)
@@ -39,7 +44,10 @@ const PORTAL_VISIBLE_STAGES = [
  */
 export default function PortalMapPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { selectedClientId, accessibleClients, isInternalUser } = usePortal();
+  const { selectedClientId, accessibleClients, isInternalUser, viewMode } = usePortal();
+
+  // Show broker features only when internal user AND in broker view mode
+  const showBrokerFeatures = isInternalUser && viewMode === 'broker';
 
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const [selectedSiteSubmitId, setSelectedSiteSubmitId] = useState<string | null>(
@@ -62,8 +70,48 @@ export default function PortalMapPage() {
   // Track if we've already centered on the selected marker from URL
   const [hasCenteredOnSelected, setHasCenteredOnSelected] = useState(false);
 
-  // Shared map layers for this client
-  const { layers: sharedLayers } = useClientMapLayers(selectedClientId);
+  // Shared map layers for this client (for portal users)
+  const { layers: sharedLayers, fetchLayers: fetchClientLayers } = useClientMapLayers(selectedClientId);
+
+  // All layers (for brokers/admins to draw and manage)
+  const { layers: allLayers, fetchLayers: fetchAllLayers } = useMapLayers({ autoFetch: isInternalUser });
+
+  // Determine which layers to show based on user type and view mode
+  // In client view mode, show only shared layers (what client sees)
+  const displayLayers = showBrokerFeatures ? allLayers : sharedLayers;
+
+  // Layer visibility state
+  const [layerVisibility, setLayerVisibility] = useState<Record<string, boolean>>({});
+  const [showLayersPanel, setShowLayersPanel] = useState(false);
+
+  // Drawing state (brokers only)
+  const [isDrawMode, setIsDrawMode] = useState(false);
+  const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
+  const [pendingShape, setPendingShape] = useState<{
+    type: 'polygon' | 'circle' | 'polyline' | 'rectangle';
+    geometry: any;
+  } | null>(null);
+  const [showSaveShapeModal, setShowSaveShapeModal] = useState(false);
+  const [customLayerRefreshTrigger, setCustomLayerRefreshTrigger] = useState(0);
+
+  // Share layer modal state (brokers only)
+  const [showShareLayerModal, setShowShareLayerModal] = useState(false);
+  const [layerToShare, setLayerToShare] = useState<MapLayer | null>(null);
+
+  // Shape editor state (brokers only)
+  const [selectedShape, setSelectedShape] = useState<MapLayerShape | null>(null);
+  const [showShapeEditor, setShowShapeEditor] = useState(false);
+
+  // Initialize layer visibility when layers change
+  useEffect(() => {
+    const newVisibility: Record<string, boolean> = { ...layerVisibility };
+    displayLayers.forEach(layer => {
+      if (newVisibility[layer.id] === undefined) {
+        newVisibility[layer.id] = true; // Default to visible
+      }
+    });
+    setLayerVisibility(newVisibility);
+  }, [displayLayers]);
 
   // Update document title
   useEffect(() => {
@@ -85,7 +133,7 @@ export default function PortalMapPage() {
   // For portal users: must have a client selected (auto-selected if only one)
   const siteSubmitConfig: SiteSubmitLoadingConfig = useMemo(() => {
     // Internal users viewing all clients
-    if (isInternalUser && !selectedClientId) {
+    if (showBrokerFeatures && !selectedClientId) {
       return {
         mode: 'static-all',
         visibleStages,
@@ -240,6 +288,66 @@ export default function PortalMapPage() {
     setVisibleStages(new Set());
   }, []);
 
+  // Handle shape click (for editing - brokers only)
+  // Only selects the shape; user must click Format button to open editor
+  const handleShapeClick = useCallback((shape: MapLayerShape) => {
+    if (showBrokerFeatures && editingLayerId) {
+      setSelectedShape(shape);
+      // Don't auto-open editor - user clicks Format button in toolbar
+    }
+  }, [showBrokerFeatures, editingLayerId]);
+
+  // Handle Format button click
+  const handleFormatClick = useCallback(() => {
+    if (selectedShape) {
+      setShowShapeEditor(true);
+    }
+  }, [selectedShape]);
+
+  // Handle updating layer defaults from shape editor
+  const handleUpdateLayerDefaults = useCallback(async (defaults: {
+    default_color: string;
+    default_stroke_color: string;
+    default_opacity: number;
+    default_stroke_width: number;
+  }) => {
+    if (!editingLayerId) return;
+    try {
+      await mapLayerService.updateLayer(editingLayerId, {
+        default_color: defaults.default_color,
+        default_stroke_color: defaults.default_stroke_color,
+        default_opacity: defaults.default_opacity,
+        default_stroke_width: defaults.default_stroke_width,
+      });
+      fetchAllLayers(); // Refresh layers to get updated defaults
+    } catch (err) {
+      console.error('Failed to update layer defaults:', err);
+      throw err;
+    }
+  }, [editingLayerId, fetchAllLayers]);
+
+  // Handle shape save
+  const handleShapeSave = async (shapeId: string, updates: UpdateShapeInput) => {
+    try {
+      await mapLayerService.updateShape(shapeId, updates);
+      setCustomLayerRefreshTrigger(prev => prev + 1);
+    } catch (err) {
+      console.error('Failed to save shape:', err);
+      throw err;
+    }
+  };
+
+  // Handle shape delete
+  const handleShapeDelete = async (shapeId: string) => {
+    try {
+      await mapLayerService.deleteShape(shapeId);
+      setCustomLayerRefreshTrigger(prev => prev + 1);
+    } catch (err) {
+      console.error('Failed to delete shape:', err);
+      throw err;
+    }
+  };
+
   // Filter stage categories to only show portal-visible stages
   const filteredStageCategories = useMemo(() => {
     const filtered: Record<string, { label: string; stages: string[] }> = {};
@@ -280,16 +388,75 @@ export default function PortalMapPage() {
           />
         )}
 
-        {/* Shared Custom Map Layers (view-only for portal users) */}
-        {mapInstance && sharedLayers.map(layer => (
+        {/* Custom Map Layers */}
+        {mapInstance && displayLayers.map(layer => (
           <CustomLayerLayer
             key={layer.id}
             map={mapInstance}
-            isVisible={true}
+            isVisible={layerVisibility[layer.id] ?? true}
             layerId={layer.id}
-            editMode={false}
+            editMode={showBrokerFeatures && editingLayerId === layer.id}
+            refreshTrigger={customLayerRefreshTrigger}
+            selectedShapeId={selectedShape?.id}
+            onShapeClick={showBrokerFeatures && editingLayerId === layer.id ? handleShapeClick : undefined}
+            onShapeUpdated={showBrokerFeatures ? async (updatedShape) => {
+              // Save geometry changes when shape is edited
+              try {
+                await mapLayerService.updateShape(updatedShape.id, {
+                  geometry: updatedShape.geometry,
+                });
+                console.log('Shape geometry saved:', updatedShape.name || updatedShape.id);
+              } catch (err) {
+                console.error('Failed to save shape geometry:', err);
+              }
+            } : undefined}
           />
         ))}
+
+        {/* Drawing Toolbar (brokers only) */}
+        {showBrokerFeatures && (isDrawMode || editingLayerId) && (
+          <DrawingToolbar
+            map={mapInstance}
+            isActive={isDrawMode || !!editingLayerId}
+            selectedLayerId={editingLayerId}
+            onShapeComplete={(drawnShape) => {
+              if (isDrawMode) {
+                // Quick draw mode: show save modal
+                setPendingShape(drawnShape);
+                setShowSaveShapeModal(true);
+                setIsDrawMode(false);
+              } else if (editingLayerId) {
+                // Layer edit mode: save directly to layer
+                mapLayerService.createShape({
+                  layer_id: editingLayerId,
+                  name: `${drawnShape.type} ${new Date().toLocaleTimeString()}`,
+                  shape_type: drawnShape.type,
+                  geometry: drawnShape.geometry,
+                }).then(() => {
+                  setCustomLayerRefreshTrigger(prev => prev + 1);
+                }).catch(err => {
+                  console.error('Failed to save shape:', err);
+                });
+              }
+            }}
+            onDone={() => {
+              setEditingLayerId(null);
+              setIsDrawMode(false);
+              setSelectedShape(null);
+              // Refresh to show saved geometry changes
+              setCustomLayerRefreshTrigger(prev => prev + 1);
+            }}
+            onCancel={() => {
+              setEditingLayerId(null);
+              setIsDrawMode(false);
+              setSelectedShape(null);
+              // Refresh to discard unsaved visual changes
+              setCustomLayerRefreshTrigger(prev => prev + 1);
+            }}
+            onFormatClick={handleFormatClick}
+            hasSelectedShape={!!selectedShape}
+          />
+        )}
 
         {/* Search Box - positioned at top of map, above other controls */}
         <div className="absolute top-2 left-2" style={{ width: '400px', zIndex: 10002 }}>
@@ -300,6 +467,141 @@ export default function PortalMapPage() {
             isSearching={isSearching}
             placeholder="Search Address, City, State, or Property Name"
           />
+        </div>
+
+        {/* Draw and Layers Controls - positioned to the right of Map/Satellite and ruler buttons */}
+        <div className="absolute top-[52px] left-[240px] z-[1000] flex items-center gap-1">
+          {/* Quick Draw Button (brokers only) - just pencil icon */}
+          {showBrokerFeatures && (
+            <button
+              onClick={() => {
+                setIsDrawMode(true);
+                setEditingLayerId(null);
+              }}
+              className={`w-10 h-10 rounded shadow flex items-center justify-center text-lg ${
+                isDrawMode
+                  ? 'bg-green-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-gray-100'
+              }`}
+              title="Draw a shape"
+              style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}
+            >
+              ✏️
+            </button>
+          )}
+
+          {/* Layers Button */}
+          {displayLayers.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => setShowLayersPanel(!showLayersPanel)}
+                className={`h-10 px-3 rounded shadow flex items-center space-x-1 text-sm font-medium ${
+                  editingLayerId
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-100'
+                }`}
+                title="Custom Layers"
+                style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}
+              >
+                Layers
+              </button>
+
+              {showLayersPanel && (
+                <div className="absolute left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-[10001]">
+                  <div className="p-2 border-b border-gray-100">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-900">
+                        {showBrokerFeatures ? 'Custom Layers' : 'Shared Layers'}
+                      </span>
+                      {showBrokerFeatures && (
+                        <a
+                          href="/admin/layers"
+                          className="text-xs text-blue-600 hover:underline"
+                          onClick={() => setShowLayersPanel(false)}
+                        >
+                          Manage
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto">
+                    {displayLayers.map(layer => (
+                      <div
+                        key={layer.id}
+                        className={`p-2 border-b border-gray-50 hover:bg-gray-50 ${
+                          editingLayerId === layer.id ? 'bg-blue-50' : ''
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2 flex-1 min-w-0">
+                            {/* Visibility toggle */}
+                            <button
+                              onClick={() => setLayerVisibility(prev => ({
+                                ...prev,
+                                [layer.id]: !prev[layer.id]
+                              }))}
+                              className={`w-8 h-5 rounded-full transition-colors ${
+                                layerVisibility[layer.id] ? 'bg-blue-600' : 'bg-gray-300'
+                              }`}
+                            >
+                              <span
+                                className={`block w-3 h-3 bg-white rounded-full transform transition-transform ${
+                                  layerVisibility[layer.id] ? 'translate-x-4' : 'translate-x-1'
+                                }`}
+                              />
+                            </button>
+                            <div
+                              className="w-3 h-3 rounded-sm flex-shrink-0"
+                              style={{ backgroundColor: layer.default_color }}
+                            />
+                            <span className="text-sm text-gray-900 truncate">{layer.name}</span>
+                          </div>
+                          {/* Broker-only actions */}
+                          {showBrokerFeatures && (
+                            <div className="flex items-center">
+                              <button
+                                onClick={() => {
+                                  if (editingLayerId === layer.id) {
+                                    setEditingLayerId(null);
+                                  } else {
+                                    setEditingLayerId(layer.id);
+                                    setIsDrawMode(false);
+                                    if (!layerVisibility[layer.id]) {
+                                      setLayerVisibility(prev => ({ ...prev, [layer.id]: true }));
+                                    }
+                                  }
+                                  setShowLayersPanel(false);
+                                }}
+                                className={`ml-2 px-2 py-1 text-xs rounded ${
+                                  editingLayerId === layer.id
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }`}
+                              >
+                                {editingLayerId === layer.id ? 'Stop' : 'Edit'}
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLayerToShare(layer);
+                                  setShowShareLayerModal(true);
+                                  setShowLayersPanel(false);
+                                }}
+                                className="ml-1 px-1 py-1 text-xs rounded text-blue-600 hover:bg-blue-50"
+                                title="Share layer with clients"
+                              >
+                                📤
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Stage Legend */}
@@ -336,6 +638,60 @@ export default function PortalMapPage() {
           isOpen={isSidebarOpen}
           onClose={handleCloseSidebar}
         />
+
+        {/* Save Shape Modal - After quick draw (brokers only) */}
+        {showBrokerFeatures && (
+          <SaveShapeModal
+            isOpen={showSaveShapeModal}
+            drawnShape={pendingShape}
+            onClose={() => {
+              setShowSaveShapeModal(false);
+              setPendingShape(null);
+            }}
+            onSaved={(layerId) => {
+              setShowSaveShapeModal(false);
+              setPendingShape(null);
+              // Enable the layer visibility and refresh
+              if (!layerVisibility[layerId]) {
+                setLayerVisibility(prev => ({ ...prev, [layerId]: true }));
+              }
+              setCustomLayerRefreshTrigger(prev => prev + 1);
+              fetchAllLayers();
+            }}
+          />
+        )}
+
+        {/* Share Layer Modal (brokers only) */}
+        {showBrokerFeatures && layerToShare && (
+          <ShareLayerModal
+            isOpen={showShareLayerModal}
+            layer={layerToShare}
+            onClose={() => {
+              setShowShareLayerModal(false);
+              setLayerToShare(null);
+            }}
+            onSuccess={() => {
+              setShowShareLayerModal(false);
+              setLayerToShare(null);
+              fetchAllLayers();
+            }}
+          />
+        )}
+
+        {/* Shape Editor Panel (brokers only - when editing a layer) */}
+        {showBrokerFeatures && (
+          <ShapeEditorPanel
+            isOpen={showShapeEditor}
+            shape={selectedShape}
+            onClose={() => {
+              setShowShapeEditor(false);
+              setSelectedShape(null);
+            }}
+            onSave={handleShapeSave}
+            onDelete={handleShapeDelete}
+            onUpdateLayerDefaults={editingLayerId ? handleUpdateLayerDefaults : undefined}
+          />
+        )}
       </div>
     </LayerManagerProvider>
   );

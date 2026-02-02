@@ -10,6 +10,7 @@ export interface MapLayer {
   description: string | null;
   layer_type: 'custom' | 'us_state' | 'county';
   default_color: string;
+  default_stroke_color: string;
   default_opacity: number;
   default_stroke_width: number;
   is_active: boolean;
@@ -28,6 +29,7 @@ export interface MapLayerShape {
   shape_type: 'polygon' | 'circle' | 'polyline' | 'rectangle';
   geometry: GeoJSONGeometry;
   color: string;
+  stroke_color: string;
   fill_opacity: number;
   stroke_width: number;
   description: string | null;
@@ -68,6 +70,7 @@ export interface CreateLayerInput {
   description?: string;
   layer_type?: 'custom' | 'us_state' | 'county';
   default_color?: string;
+  default_stroke_color?: string;
   default_opacity?: number;
   default_stroke_width?: number;
 }
@@ -76,6 +79,7 @@ export interface UpdateLayerInput {
   name?: string;
   description?: string;
   default_color?: string;
+  default_stroke_color?: string;
   default_opacity?: number;
   default_stroke_width?: number;
   is_active?: boolean;
@@ -87,6 +91,7 @@ export interface CreateShapeInput {
   shape_type: 'polygon' | 'circle' | 'polyline' | 'rectangle';
   geometry: GeoJSONGeometry;
   color?: string;
+  stroke_color?: string;
   fill_opacity?: number;
   stroke_width?: number;
   description?: string;
@@ -97,6 +102,7 @@ export interface UpdateShapeInput {
   name?: string;
   geometry?: GeoJSONGeometry;
   color?: string;
+  stroke_color?: string;
   fill_opacity?: number;
   stroke_width?: number;
   description?: string;
@@ -236,13 +242,15 @@ class MapLayerService {
 
     // Get layer defaults if color/opacity not specified
     let color = data.color;
+    let strokeColor = data.stroke_color;
     let fillOpacity = data.fill_opacity;
     let strokeWidth = data.stroke_width;
 
-    if (!color || fillOpacity === undefined || strokeWidth === undefined) {
+    if (!color || !strokeColor || fillOpacity === undefined || strokeWidth === undefined) {
       const layer = await this.getLayer(data.layer_id);
       if (layer) {
         color = color || layer.default_color;
+        strokeColor = strokeColor || layer.default_stroke_color || layer.default_color;
         fillOpacity = fillOpacity ?? layer.default_opacity;
         strokeWidth = strokeWidth ?? layer.default_stroke_width;
       }
@@ -256,6 +264,7 @@ class MapLayerService {
         shape_type: data.shape_type,
         geometry: data.geometry,
         color: color || '#3b82f6',
+        stroke_color: strokeColor || color || '#3b82f6',
         fill_opacity: fillOpacity ?? 0.35,
         stroke_width: strokeWidth ?? 2,
         description: data.description || null,
@@ -362,6 +371,7 @@ class MapLayerService {
             shape_type: shape.shape_type,
             geometry: shape.geometry,
             color: shape.color,
+            stroke_color: shape.stroke_color,
             fill_opacity: shape.fill_opacity,
             stroke_width: shape.stroke_width,
             description: shape.description || undefined,

@@ -7,6 +7,12 @@ interface ShapeEditorPanelProps {
   onClose: () => void;
   onSave: (shapeId: string, updates: UpdateShapeInput) => Promise<void>;
   onDelete: (shapeId: string) => Promise<void>;
+  onUpdateLayerDefaults?: (defaults: {
+    default_color: string;
+    default_stroke_color: string;
+    default_opacity: number;
+    default_stroke_width: number;
+  }) => Promise<void>;
 }
 
 const ShapeEditorPanel: React.FC<ShapeEditorPanelProps> = ({
@@ -15,12 +21,15 @@ const ShapeEditorPanel: React.FC<ShapeEditorPanelProps> = ({
   onClose,
   onSave,
   onDelete,
+  onUpdateLayerDefaults,
 }) => {
   const [name, setName] = useState('');
   const [color, setColor] = useState('#3b82f6');
+  const [strokeColor, setStrokeColor] = useState('#3b82f6');
   const [fillOpacity, setFillOpacity] = useState(0.35);
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [description, setDescription] = useState('');
+  const [makeDefault, setMakeDefault] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -29,9 +38,11 @@ const ShapeEditorPanel: React.FC<ShapeEditorPanelProps> = ({
     if (shape) {
       setName(shape.name || '');
       setColor(shape.color);
+      setStrokeColor(shape.stroke_color || shape.color);
       setFillOpacity(shape.fill_opacity);
       setStrokeWidth(shape.stroke_width);
       setDescription(shape.description || '');
+      setMakeDefault(false); // Reset checkbox when editing a new shape
     }
   }, [shape]);
 
@@ -43,10 +54,22 @@ const ShapeEditorPanel: React.FC<ShapeEditorPanelProps> = ({
       await onSave(shape.id, {
         name: name.trim() || undefined,
         color,
+        stroke_color: strokeColor,
         fill_opacity: fillOpacity,
         stroke_width: strokeWidth,
         description: description.trim() || undefined,
       });
+
+      // Update layer defaults if checkbox is checked
+      if (makeDefault && onUpdateLayerDefaults) {
+        await onUpdateLayerDefaults({
+          default_color: color,
+          default_stroke_color: strokeColor,
+          default_opacity: fillOpacity,
+          default_stroke_width: strokeWidth,
+        });
+      }
+
       onClose();
     } finally {
       setIsSaving(false);
@@ -111,27 +134,29 @@ const ShapeEditorPanel: React.FC<ShapeEditorPanelProps> = ({
           />
         </div>
 
-        {/* Color */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Color
-          </label>
-          <div className="flex items-center space-x-2">
-            <input
-              type="color"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              className="w-10 h-10 rounded cursor-pointer border border-gray-300"
-            />
-            <input
-              type="text"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              pattern="^#[0-9A-Fa-f]{6}$"
-            />
+        {/* Fill Color (not for polylines) */}
+        {shape.shape_type !== 'polyline' && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Fill Color
+            </label>
+            <div className="flex items-center space-x-2">
+              <input
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                className="w-10 h-10 rounded cursor-pointer border border-gray-300"
+              />
+              <input
+                type="text"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                pattern="^#[0-9A-Fa-f]{6}$"
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Fill Opacity (not for polylines) */}
         {shape.shape_type !== 'polyline' && (
@@ -155,6 +180,28 @@ const ShapeEditorPanel: React.FC<ShapeEditorPanelProps> = ({
             </div>
           </div>
         )}
+
+        {/* Stroke Color */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Stroke Color
+          </label>
+          <div className="flex items-center space-x-2">
+            <input
+              type="color"
+              value={strokeColor}
+              onChange={(e) => setStrokeColor(e.target.value)}
+              className="w-10 h-10 rounded cursor-pointer border border-gray-300"
+            />
+            <input
+              type="text"
+              value={strokeColor}
+              onChange={(e) => setStrokeColor(e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              pattern="^#[0-9A-Fa-f]{6}$"
+            />
+          </div>
+        </div>
 
         {/* Stroke Width */}
         <div>
@@ -197,11 +244,31 @@ const ShapeEditorPanel: React.FC<ShapeEditorPanelProps> = ({
               style={{
                 backgroundColor: shape.shape_type === 'polyline' ? 'transparent' : color,
                 opacity: shape.shape_type === 'polyline' ? 1 : fillOpacity,
-                border: `${strokeWidth}px solid ${color}`,
+                border: `${strokeWidth}px solid ${strokeColor}`,
               }}
             />
           </div>
         </div>
+
+        {/* Make Default */}
+        {onUpdateLayerDefaults && (
+          <div className="pt-3 border-t border-gray-100">
+            <label className="flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={makeDefault}
+                onChange={(e) => setMakeDefault(e.target.checked)}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <span className="ml-2 text-sm text-gray-700">
+                Make default for new shapes
+              </span>
+            </label>
+            <p className="mt-1 text-xs text-gray-500 ml-6">
+              Apply these colors and settings to all new shapes in this layer
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Footer */}

@@ -50,6 +50,15 @@ interface SubmitStage {
   name: string;
 }
 
+// Stage tab configuration
+const HIDDEN_STAGE_NAMES = ['Use Conflict', 'Not Available', 'Use Declined', 'Lost / Killed'];
+const SIGNED_STAGE_NAMES = ['Under Contract/Contingent', 'Booked', 'Executed Payable'];
+const STAGE_DISPLAY_NAMES: Record<string, string> = {
+  'Submitted-Reviewing': 'For Review',
+};
+// Define tab order: Signed comes after At Lease/PSA, Pass comes after Signed
+const STAGE_TAB_ORDER = ['Submitted-Reviewing', 'LOI', 'At Lease/PSA', 'Pass', 'Store Opened'];
+
 // Client-visible stages
 const VISIBLE_STAGES = [
   'Submitted-Reviewing',
@@ -112,6 +121,17 @@ export default function PortalPipelinePage() {
     setSearchParams({});
   };
 
+  // Handle stage filter change - also closes sidebar to prevent accidental edits
+  const handleStageChange = (stageId: string | null) => {
+    setSelectedStageId(stageId);
+    // Close sidebar when switching stages
+    if (sidebarOpen) {
+      setSidebarOpen(false);
+      setSelectedSiteSubmitId(null);
+      setSearchParams({});
+    }
+  };
+
   useEffect(() => {
     document.title = `Pipeline - ${selectedClient?.client_name || 'Portal'} | OVIS`;
   }, [selectedClient]);
@@ -133,6 +153,27 @@ export default function PortalPipelinePage() {
 
     fetchStages();
   }, []);
+
+  // Auto-select tab based on URL stage param (when navigating from "View in Pipeline")
+  useEffect(() => {
+    const stageParam = searchParams.get('stage');
+    if (stageParam && stages.length > 0) {
+      if (stageParam === 'signed') {
+        // Signed tab
+        setSelectedStageId('signed');
+      } else {
+        // Find the stage ID for the given stage name
+        const stage = stages.find(s => s.name === stageParam);
+        if (stage) {
+          setSelectedStageId(stage.id);
+        }
+      }
+      // Clear the stage param from URL to avoid re-triggering
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('stage');
+      setSearchParams(newParams, { replace: true });
+    }
+  }, [stages, searchParams]);
 
   // Fetch site submits
   useEffect(() => {
@@ -283,10 +324,23 @@ export default function PortalPipelinePage() {
     return <Navigate to="/portal" replace />;
   }
 
+  // Get stage IDs for the "Signed" group
+  const signedStageIds = stages
+    .filter(s => SIGNED_STAGE_NAMES.includes(s.name))
+    .map(s => s.id);
+
   // Filter by stage and search term
   const filteredSubmits = siteSubmits.filter(ss => {
     // Stage filter
-    if (selectedStageId && ss.submit_stage_id !== selectedStageId) return false;
+    if (selectedStageId) {
+      if (selectedStageId === 'signed') {
+        // "Signed" tab - match any of the signed stages
+        if (!signedStageIds.includes(ss.submit_stage_id)) return false;
+      } else {
+        // Normal stage filter
+        if (ss.submit_stage_id !== selectedStageId) return false;
+      }
+    }
 
     // Search term filter
     if (!searchTerm) return true;
@@ -424,38 +478,80 @@ export default function PortalPipelinePage() {
       {/* Filters Bar */}
       <div className="bg-white border-b border-gray-200 px-4 py-3">
         <div className="flex flex-wrap items-center gap-4">
-          {/* Stage Filter Tabs */}
-          <div className="flex items-center space-x-2 overflow-x-auto pb-1">
-            <button
-              onClick={() => setSelectedStageId(null)}
-              className={`px-3 py-1.5 text-sm font-medium rounded-full whitespace-nowrap transition-colors ${
-                !selectedStageId
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              All Sites ({siteSubmits.length})
-            </button>
-            {stages.map(stage => {
+          {/* Stage Filter Tabs - Option C: Minimal Chips */}
+          <div className="flex items-center space-x-1.5 overflow-x-auto pb-1">
+            {/* Individual stage tabs in defined order, with Signed inserted after At Lease/PSA */}
+            {STAGE_TAB_ORDER.map(stageName => {
+              const stage = stages.find(s => s.name === stageName);
+              if (!stage) return null;
+
+              // Render the stage tab
               const count = siteSubmits.filter(ss => ss.submit_stage_id === stage.id).length;
+              const displayName = STAGE_DISPLAY_NAMES[stage.name] || stage.name;
+
               return (
-                <button
-                  key={stage.id}
-                  onClick={() => setSelectedStageId(stage.id)}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-full whitespace-nowrap transition-colors ${
-                    selectedStageId === stage.id
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {stage.name} ({count})
-                </button>
+                <div key={stage.id} className="contents">
+                  <button
+                    onClick={() => handleStageChange(stage.id)}
+                    className={`px-3 py-2 text-sm font-medium rounded-md whitespace-nowrap transition-all border ${
+                      selectedStageId === stage.id
+                        ? 'bg-blue-50 text-blue-700 border-blue-200 shadow-sm'
+                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300'
+                    }`}
+                  >
+                    {displayName}
+                    <span className={`ml-1.5 text-xs ${
+                      selectedStageId === stage.id ? 'text-blue-500' : 'text-gray-400'
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+
+                  {/* Insert Signed tab after At Lease/PSA */}
+                  {stageName === 'At Lease/PSA' && (() => {
+                    const signedCount = siteSubmits.filter(ss => signedStageIds.includes(ss.submit_stage_id)).length;
+                    return (
+                      <button
+                        onClick={() => handleStageChange('signed')}
+                        className={`px-3 py-2 text-sm font-medium rounded-md whitespace-nowrap transition-all border ${
+                          selectedStageId === 'signed'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200 shadow-sm'
+                            : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300'
+                        }`}
+                      >
+                        Signed
+                        <span className={`ml-1.5 text-xs ${
+                          selectedStageId === 'signed' ? 'text-blue-500' : 'text-gray-400'
+                        }`}>
+                          {signedCount}
+                        </span>
+                      </button>
+                    );
+                  })()}
+                </div>
               );
             })}
+
+            {/* All Sites - moved to far right */}
+            <button
+              onClick={() => handleStageChange(null)}
+              className={`px-3 py-2 text-sm font-medium rounded-md whitespace-nowrap transition-all border ${
+                !selectedStageId
+                  ? 'bg-blue-50 text-blue-700 border-blue-200 shadow-sm'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300'
+              }`}
+            >
+              All Sites
+              <span className={`ml-1.5 text-xs ${
+                !selectedStageId ? 'text-blue-500' : 'text-gray-400'
+              }`}>
+                {siteSubmits.length}
+              </span>
+            </button>
           </div>
 
-          {/* Search */}
-          <div className="flex-1 max-w-xs">
+          {/* Search - aligned to right */}
+          <div className="max-w-xs ml-auto">
             <div className="relative">
               <svg
                 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"

@@ -15,6 +15,8 @@ interface DrawingToolbarProps {
   onShapeComplete: (shape: DrawnShape) => void;
   onDone: () => void;
   onCancel: () => void;
+  onFormatClick?: () => void;
+  hasSelectedShape?: boolean;
 }
 
 const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
@@ -24,6 +26,8 @@ const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
   onShapeComplete,
   onDone,
   onCancel,
+  onFormatClick,
+  hasSelectedShape = false,
 }) => {
   const [selectedTool, setSelectedTool] = useState<DrawingTool>(null);
   const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
@@ -256,6 +260,26 @@ const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
               <span className="text-xs mt-0.5">{tool.label}</span>
             </button>
           ))}
+
+          {/* Separator */}
+          <div className="h-8 w-px bg-gray-200 mx-1" />
+
+          {/* Format button - opens shape editor */}
+          <button
+            onClick={onFormatClick}
+            disabled={!hasSelectedShape}
+            className={`flex flex-col items-center px-3 py-2 rounded transition-colors ${
+              hasSelectedShape
+                ? 'hover:bg-gray-100 text-gray-700'
+                : 'text-gray-300 cursor-not-allowed'
+            }`}
+            title={hasSelectedShape ? 'Format selected shape' : 'Select a shape to format'}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+            </svg>
+            <span className="text-xs mt-0.5">Format</span>
+          </button>
 
           {/* Done button - saves and closes */}
           <button

@@ -31,7 +31,7 @@ const getUserInitials = (firstName?: string, lastName?: string): string => {
  */
 export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarProps) {
   const { user, signOut, userRole } = useAuth();
-  const { accessibleClients, selectedClientId, setSelectedClientId, isInternalUser: isInternalPortalUser } = usePortal();
+  const { accessibleClients, selectedClientId, setSelectedClientId, isInternalUser: isInternalPortalUser, viewMode, setViewMode } = usePortal();
   const navigate = useNavigate();
   const location = useLocation();
   const [userProfile, setUserProfile] = useState<{ first_name?: string; last_name?: string } | null>(null);
@@ -170,9 +170,52 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
                   <span>Pipeline</span>
                 </button>
 
-                {/* Separator and CRM link for internal users */}
+                {/* View mode toggle for internal users */}
                 {isInternalUser && (
                   <>
+                    <div className="border-t border-gray-200 my-1"></div>
+                    <div className="px-4 py-2">
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">View Mode</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setViewMode('broker');
+                        setMenuOpen(false);
+                      }}
+                      className={`w-full px-4 py-2 text-left flex items-center space-x-2 hover:bg-gray-100 ${
+                        viewMode === 'broker' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                      }`}
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                      <span>Broker View</span>
+                      {viewMode === 'broker' && (
+                        <svg className="w-4 h-4 ml-auto text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setViewMode('client');
+                        setMenuOpen(false);
+                      }}
+                      className={`w-full px-4 py-2 text-left flex items-center space-x-2 hover:bg-gray-100 ${
+                        viewMode === 'client' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                      }`}
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                      <span>Client View</span>
+                      {viewMode === 'client' && (
+                        <svg className="w-4 h-4 ml-auto text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </button>
                     <div className="border-t border-gray-200 my-1"></div>
                     <button
                       onClick={handleNavigateToCRM}
@@ -191,6 +234,13 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
 
           {/* View Title */}
           <span className="text-lg font-semibold text-white">{currentView}</span>
+
+          {/* Client View indicator */}
+          {isInternalUser && viewMode === 'client' && (
+            <span className="ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-yellow-500 text-yellow-900">
+              Client Preview
+            </span>
+          )}
         </div>
 
         {/* Center - Oculus Logo */}

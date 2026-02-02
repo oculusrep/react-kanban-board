@@ -8,6 +8,8 @@ interface Client {
   logo_url: string | null;
 }
 
+type PortalViewMode = 'broker' | 'client';
+
 interface PortalContextType {
   // Client access
   accessibleClients: Client[];
@@ -18,6 +20,10 @@ interface PortalContextType {
   // User info
   isInternalUser: boolean;
   contactId: string | null;
+
+  // View mode (for brokers to preview client view)
+  viewMode: PortalViewMode;
+  setViewMode: (mode: PortalViewMode) => void;
 
   // Loading states
   loading: boolean;
@@ -33,15 +39,36 @@ interface PortalProviderProps {
   children: ReactNode;
 }
 
+const PORTAL_SELECTED_CLIENT_KEY = 'portal_selected_client_id';
+
 export function PortalProvider({ children }: PortalProviderProps) {
   const { user, userRole } = useAuth();
   const [accessibleClients, setAccessibleClients] = useState<Client[]>([]);
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [selectedClientId, setSelectedClientIdState] = useState<string | null>(() => {
+    // Initialize from sessionStorage for persistence across refreshes
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem(PORTAL_SELECTED_CLIENT_KEY);
+    }
+    return null;
+  });
   const [contactId, setContactId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<PortalViewMode>('broker');
 
   const isInternalUser = userRole ? ['admin', 'broker_full', 'broker_limited', 'assistant'].includes(userRole) : false;
+
+  // Wrapper to persist selection to sessionStorage
+  const setSelectedClientId = (clientId: string | null) => {
+    setSelectedClientIdState(clientId);
+    if (typeof window !== 'undefined') {
+      if (clientId) {
+        sessionStorage.setItem(PORTAL_SELECTED_CLIENT_KEY, clientId);
+      } else {
+        sessionStorage.removeItem(PORTAL_SELECTED_CLIENT_KEY);
+      }
+    }
+  };
 
   const selectedClient = accessibleClients.find(c => c.id === selectedClientId) || null;
 
@@ -68,6 +95,11 @@ export function PortalProvider({ children }: PortalProviderProps) {
         if (fetchError) throw fetchError;
 
         setAccessibleClients(data || []);
+
+        // Validate that persisted selectedClientId is still valid
+        if (selectedClientId && data && !data.find(c => c.id === selectedClientId)) {
+          setSelectedClientId(null);
+        }
       } else {
         // Portal users - find their contact and get accessible clients
         const { data: contactData, error: contactError } = await supabase
@@ -108,6 +140,11 @@ export function PortalProvider({ children }: PortalProviderProps) {
 
         setAccessibleClients(clients);
 
+        // Validate that persisted selectedClientId is still valid
+        if (selectedClientId && !clients.find(c => c.id === selectedClientId)) {
+          setSelectedClientId(null);
+        }
+
         // Auto-select if only one client
         if (clients.length === 1 && !selectedClientId) {
           setSelectedClientId(clients[0].id);
@@ -133,6 +170,8 @@ export function PortalProvider({ children }: PortalProviderProps) {
     setSelectedClientId,
     isInternalUser,
     contactId,
+    viewMode,
+    setViewMode,
     loading,
     error,
     refreshClients,

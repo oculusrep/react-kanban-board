@@ -78,7 +78,10 @@ export default function PortalDetailSidebar({
   const navigate = useNavigate();
   const location = useLocation();
   const { userRole } = useAuth();
-  const { isInternalUser } = usePortal();
+  const { isInternalUser, viewMode } = usePortal();
+
+  // Show broker features only when internal user AND in broker view mode
+  const showBrokerFeatures = isInternalUser && viewMode === 'broker';
 
   const [activeTab, setActiveTab] = useState<TabType>('data');
   const [siteSubmit, setSiteSubmit] = useState<SiteSubmitData | null>(null);
@@ -183,9 +186,24 @@ export default function PortalDetailSidebar({
     }
   }, [siteSubmitId, isOpen]);
 
+  // Stages that should open to their specific tab in pipeline
+  const PIPELINE_TAB_STAGES = ['LOI', 'Submitted-Reviewing', 'At Lease/PSA'];
+  const SIGNED_STAGES = ['Under Contract/Contingent', 'Booked', 'Executed Payable'];
+
   const handleToggleView = () => {
     if (isMapView) {
-      navigate(`/portal/pipeline?selected=${siteSubmitId}`);
+      const stageName = siteSubmit?.submit_stage?.name;
+      let stageParam = '';
+
+      // Determine which tab to open based on stage
+      if (stageName && PIPELINE_TAB_STAGES.includes(stageName)) {
+        stageParam = `&stage=${encodeURIComponent(stageName)}`;
+      } else if (stageName && SIGNED_STAGES.includes(stageName)) {
+        stageParam = '&stage=signed';
+      }
+      // Otherwise no stage param = All Sites
+
+      navigate(`/portal/pipeline?selected=${siteSubmitId}${stageParam}`);
     } else {
       navigate(`/portal/map?selected=${siteSubmitId}`);
     }
@@ -346,14 +364,14 @@ export default function PortalDetailSidebar({
               {activeTab === 'data' && (
                 <PortalDataTab
                   siteSubmit={siteSubmit}
-                  isEditable={isInternalUser}
+                  isEditable={showBrokerFeatures}
                   onUpdate={(updated) => setSiteSubmit({ ...siteSubmit, ...updated })}
                 />
               )}
               {activeTab === 'chat' && (
                 <PortalChatTab
                   siteSubmitId={siteSubmit.id}
-                  showInternalComments={isInternalUser}
+                  showInternalComments={showBrokerFeatures}
                   propertyId={siteSubmit.property_id}
                   dealId={siteSubmit.deal_id}
                 />
@@ -363,8 +381,8 @@ export default function PortalDetailSidebar({
                   propertyId={siteSubmit.property_id}
                   dealId={siteSubmit.deal_id}
                   siteSubmitId={siteSubmit.id}
-                  canUpload={isInternalUser}
-                  isInternalUser={isInternalUser}
+                  canUpload={showBrokerFeatures}
+                  isInternalUser={showBrokerFeatures}
                 />
               )}
             </>
