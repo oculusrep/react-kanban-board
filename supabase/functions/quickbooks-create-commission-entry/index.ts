@@ -257,6 +257,29 @@ serve(async (req) => {
         )
       }
 
+      // Get vendor ID for entity reference on journal entry lines
+      let vendorId = mapping.qb_vendor_id
+      let vendorName = mapping.qb_vendor_name
+
+      if (!vendorId && vendorName) {
+        // Try to find or create the vendor
+        const vendor = await findOrCreateVendor(connection, vendorName)
+        vendorId = vendor.Id
+        vendorName = vendor.DisplayName
+
+        // Update the mapping with the vendor ID for future use
+        await supabaseClient
+          .from('qb_commission_mapping')
+          .update({ qb_vendor_id: vendorId, qb_vendor_name: vendorName })
+          .eq('id', mapping.id)
+      }
+
+      // Build entity reference if we have a vendor
+      const entityRef = vendorId ? {
+        Type: 'Vendor' as const,
+        EntityRef: { value: vendorId, name: vendorName }
+      } : undefined
+
       const journalLines: QBJournalEntryLine[] = [
         // Debit line (expense account)
         {
@@ -264,7 +287,8 @@ serve(async (req) => {
           DetailType: 'JournalEntryLineDetail',
           JournalEntryLineDetail: {
             PostingType: 'Debit',
-            AccountRef: { value: mapping.qb_debit_account_id, name: mapping.qb_debit_account_name }
+            AccountRef: { value: mapping.qb_debit_account_id, name: mapping.qb_debit_account_name },
+            Entity: entityRef
           },
           Description: description
         },
@@ -274,7 +298,8 @@ serve(async (req) => {
           DetailType: 'JournalEntryLineDetail',
           JournalEntryLineDetail: {
             PostingType: 'Credit',
-            AccountRef: { value: mapping.qb_credit_account_id, name: mapping.qb_credit_account_name }
+            AccountRef: { value: mapping.qb_credit_account_id, name: mapping.qb_credit_account_name },
+            Entity: entityRef
           },
           Description: description
         }
