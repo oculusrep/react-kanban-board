@@ -1,5 +1,6 @@
 import React from 'react';
 import { useLayerManager, CreateMode } from './layers/LayerManager';
+import { Link } from 'react-router-dom';
 
 interface CreateModeButtonProps {
   layerId: string;
@@ -173,6 +174,87 @@ const LayerGroup: React.FC<LayerGroupProps> = ({
   );
 };
 
+// Custom Layers Section Component
+const CustomLayersSection: React.FC = () => {
+  const {
+    customLayers,
+    customLayerVisibility,
+    customLayersLoading,
+    toggleCustomLayer,
+    refreshCustomLayers,
+  } = useLayerManager();
+
+  if (customLayersLoading) {
+    return (
+      <div className="mt-6 pt-4 border-t border-gray-200">
+        <h3 className="text-sm font-medium text-gray-700 mb-2">Custom Layers</h3>
+        <div className="text-xs text-gray-500 p-3">Loading...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-6 pt-4 border-t border-gray-200">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-medium text-gray-700">Custom Layers</h3>
+        <Link
+          to="/admin/layers"
+          className="text-xs text-blue-600 hover:text-blue-800"
+        >
+          Manage
+        </Link>
+      </div>
+
+      {customLayers.length === 0 ? (
+        <div className="text-xs text-gray-500 p-3 bg-gray-50 rounded border-2 border-dashed border-gray-200">
+          No custom layers created yet.{' '}
+          <Link to="/admin/layers" className="text-blue-600 hover:underline">
+            Create one
+          </Link>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {customLayers.map(layer => (
+            <div
+              key={layer.id}
+              className="flex items-center justify-between p-2 bg-white border rounded-lg"
+            >
+              <div className="flex items-center space-x-2">
+                <div
+                  className="w-4 h-4 rounded"
+                  style={{ backgroundColor: layer.default_color }}
+                />
+                <div>
+                  <div className="text-sm font-medium text-gray-900">{layer.name}</div>
+                  <div className="text-xs text-gray-500">
+                    {layer.shapes?.length || 0} shapes
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => toggleCustomLayer(layer.id)}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                  customLayerVisibility[layer.id]
+                    ? 'bg-blue-600'
+                    : 'bg-gray-200'
+                }`}
+                role="switch"
+                aria-checked={customLayerVisibility[layer.id]}
+              >
+                <span
+                  className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                    customLayerVisibility[layer.id] ? 'translate-x-5' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const LayerPanel: React.FC = () => {
   const {
     layers,
@@ -253,13 +335,8 @@ const LayerPanel: React.FC = () => {
             })}
           </div>
 
-          {/* Future: Custom Layers Section */}
-          <div className="mt-6 pt-4 border-t border-gray-200">
-            <h3 className="text-sm font-medium text-gray-700 mb-2">Custom Layers</h3>
-            <div className="text-xs text-gray-500 p-3 bg-gray-50 rounded border-2 border-dashed border-gray-200">
-              💡 Custom layer creation coming in Phase 2.4
-            </div>
-          </div>
+          {/* Custom Layers Section */}
+          <CustomLayersSection />
         </div>
 
         {/* Create Mode Status */}

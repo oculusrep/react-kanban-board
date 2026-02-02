@@ -58,6 +58,7 @@ import HunterDashboardPage from "./pages/HunterDashboardPage";
 import HunterLeadDetailsPage from "./pages/HunterLeadDetailsPage";
 import BudgetDashboardPage from "./pages/BudgetDashboardPage";
 import PortalUserManagementPage from "./pages/PortalUserManagementPage";
+import LayerManagementPage from "./pages/LayerManagementPage";
 
 function ProtectedLayout() {
   const location = useLocation();
@@ -151,6 +152,7 @@ function App() {
           <Route path="admin/quickbooks" element={<AdminRoute><QuickBooksAdminPage /></AdminRoute>} />
           <Route path="admin/budget" element={<AdminRoute><BudgetDashboardPage /></AdminRoute>} />
           <Route path="admin/portal-users" element={<AdminRoute><PortalUserManagementPage /></AdminRoute>} />
+          <Route path="admin/layers" element={<AdminRoute><LayerManagementPage /></AdminRoute>} />
           <Route path="admin/gmail" element={<GmailRoute><GmailSettingsPage /></GmailRoute>} />
           <Route path="admin/agent-rules" element={<GmailRoute><AgentRulesPage /></GmailRoute>} />
           <Route path="admin/email-review" element={<GmailRoute><EmailClassificationReviewPage /></GmailRoute>} />

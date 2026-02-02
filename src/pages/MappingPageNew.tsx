@@ -6,6 +6,7 @@ import PropertyLayer, { PropertyLoadingConfig } from '../components/mapping/laye
 import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/layers/SiteSubmitLayer';
 import { MarkerShape } from '../components/mapping/utils/advancedMarkers';
 import RestaurantLayer from '../components/mapping/layers/RestaurantLayer';
+import CustomLayerLayer from '../components/mapping/layers/CustomLayerLayer';
 import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
 import RestaurantSlideout from '../components/mapping/slideouts/RestaurantSlideout';
 import MapContextMenu from '../components/mapping/MapContextMenu';
@@ -16,6 +17,8 @@ import ClientSelector from '../components/mapping/ClientSelector';
 import { ClientSearchResult } from '../hooks/useClientSearch';
 import AddressSearchBox from '../components/mapping/AddressSearchBox';
 import { LayerManagerProvider, useLayerManager } from '../components/mapping/layers/LayerManager';
+import DrawingToolbar from '../components/mapping/DrawingToolbar';
+import SaveShapeModal from '../components/modals/SaveShapeModal';
 import { geocodingService } from '../services/geocodingService';
 import SiteSubmitFormModal from '../components/SiteSubmitFormModal';
 import InlinePropertyCreationModal from '../components/mapping/InlinePropertyCreationModal';
@@ -93,9 +96,6 @@ const MappingPageContent: React.FC = () => {
   });
   const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
   const [isLegendExpanded, setIsLegendExpanded] = useState(false);
-
-  // Layer navigation panel state
-  const [isLayerPanelOpen, setIsLayerPanelOpen] = useState(true);
 
   // Clustering configuration
   const [clusterConfig, setClusterConfig] = useState({
@@ -201,7 +201,25 @@ const MappingPageContent: React.FC = () => {
   }, [recentlyCreatedPropertyIds]);
 
   // Get layer state from context
-  const { layerState, setLayerCount, setLayerLoading, createMode, refreshLayer, toggleLayer } = useLayerManager();
+  const { layerState, setLayerCount, setLayerLoading, createMode, refreshLayer, toggleLayer, customLayers, customLayerVisibility, toggleCustomLayer, refreshCustomLayers } = useLayerManager();
+
+  // Custom layer editing state
+  const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
+  const [showCustomLayersMenu, setShowCustomLayersMenu] = useState(false);
+  const [customLayerRefreshTrigger, setCustomLayerRefreshTrigger] = useState(0);
+  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
+  const [selectedShapeData, setSelectedShapeData] = useState<any>(null);
+
+  // Quick draw mode state (draw first, save later)
+  const [isQuickDrawMode, setIsQuickDrawMode] = useState(false);
+  const [pendingShape, setPendingShape] = useState<{
+    type: 'polygon' | 'circle' | 'polyline' | 'rectangle';
+    geometry: any;
+  } | null>(null);
+  const [showSaveShapeModal, setShowSaveShapeModal] = useState(false);
+
+  // Track shapes created during current edit session (for cancel functionality)
+  const [sessionShapeIds, setSessionShapeIds] = useState<string[]>([]);
 
   // Check for property creation success and refresh layer
   useEffect(() => {
@@ -1818,6 +1836,148 @@ const MappingPageContent: React.FC = () => {
               className={createMode ? 'cursor-crosshair' : ''}
             />
 
+            {/* Draw and Layers Controls - positioned to the right of GPS/ruler buttons */}
+            <div className="absolute top-[10px] left-[240px] z-[1000] flex items-center gap-1">
+              {/* Quick Draw Button - just pencil icon */}
+              <button
+                onClick={() => {
+                  setIsQuickDrawMode(true);
+                  setEditingLayerId(null);
+                }}
+                className={`w-10 h-10 rounded shadow flex items-center justify-center text-lg ${
+                  isQuickDrawMode
+                    ? 'bg-green-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-100'
+                }`}
+                title="Draw a shape"
+                style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}
+              >
+                ✏️
+              </button>
+
+              {/* Layers Button */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowCustomLayersMenu(!showCustomLayersMenu)}
+                  className={`h-10 px-3 rounded shadow flex items-center space-x-1 text-sm font-medium ${
+                    editingLayerId
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-700 hover:bg-gray-100'
+                  }`}
+                  title="Custom Layers"
+                  style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}
+                >
+                  Layers
+                </button>
+
+                {showCustomLayersMenu && (
+                  <div className="absolute left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-[10001]">
+                    <div className="p-2 border-b border-gray-100">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-900">Custom Layers</span>
+                        <a
+                          href="/admin/layers"
+                          className="text-xs text-blue-600 hover:underline"
+                          onClick={() => setShowCustomLayersMenu(false)}
+                        >
+                          Manage
+                        </a>
+                      </div>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      {customLayers.length === 0 ? (
+                        <div className="p-4 text-center text-sm text-gray-500">
+                          No custom layers yet.{' '}
+                          <a href="/admin/layers" className="text-blue-600 hover:underline">
+                            Create one
+                          </a>
+                        </div>
+                      ) : (
+                        customLayers.map(layer => (
+                          <div
+                            key={layer.id}
+                            className={`p-2 border-b border-gray-50 hover:bg-gray-50 ${
+                              editingLayerId === layer.id ? 'bg-blue-50' : ''
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2 flex-1 min-w-0">
+                                <button
+                                  onClick={() => toggleCustomLayer(layer.id)}
+                                  className={`w-8 h-5 rounded-full transition-colors ${
+                                    customLayerVisibility[layer.id] ? 'bg-blue-600' : 'bg-gray-300'
+                                  }`}
+                                >
+                                  <span
+                                    className={`block w-3 h-3 bg-white rounded-full transform transition-transform ${
+                                      customLayerVisibility[layer.id] ? 'translate-x-4' : 'translate-x-1'
+                                    }`}
+                                  />
+                                </button>
+                                <div
+                                  className="w-3 h-3 rounded-sm flex-shrink-0"
+                                  style={{ backgroundColor: layer.default_color }}
+                                />
+                                <span className="text-sm text-gray-900 truncate">{layer.name}</span>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  if (editingLayerId === layer.id) {
+                                    setEditingLayerId(null);
+                                    setSelectedShapeId(null);
+                                    setSelectedShapeData(null);
+                                  } else {
+                                    setEditingLayerId(layer.id);
+                                    setSelectedShapeId(null);
+                                    setSelectedShapeData(null);
+                                    if (!customLayerVisibility[layer.id]) {
+                                      toggleCustomLayer(layer.id);
+                                    }
+                                  }
+                                  setShowCustomLayersMenu(false);
+                                }}
+                                className={`ml-2 px-2 py-1 text-xs rounded ${
+                                  editingLayerId === layer.id
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }`}
+                              >
+                                {editingLayerId === layer.id ? 'Stop' : 'Edit'}
+                              </button>
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (!confirm(`Delete layer "${layer.name}"? This will also delete all shapes.`)) return;
+                                  try {
+                                    const { mapLayerService } = await import('../services/mapLayerService');
+                                    await mapLayerService.deleteLayer(layer.id);
+                                    if (editingLayerId === layer.id) {
+                                      setEditingLayerId(null);
+                                      setSelectedShapeId(null);
+                                      setSelectedShapeData(null);
+                                    }
+                                    refreshCustomLayers();
+                                    showToast('Layer deleted', { type: 'success' });
+                                    setShowCustomLayersMenu(false);
+                                  } catch (err: any) {
+                                    showToast(`Failed to delete: ${err?.message}`, { type: 'error' });
+                                  }
+                                }}
+                                className="ml-1 px-1 py-1 text-xs rounded text-red-600 hover:bg-red-50"
+                                title="Delete layer"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Create Mode Overlay */}
             {createMode && (
               <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-[10001]">
@@ -1895,6 +2055,40 @@ const MappingPageContent: React.FC = () => {
                 setIsPinDetailsOpen(true);
               }}
             />
+
+            {/* Custom Map Layers */}
+            {customLayers.map(layer => (
+              <CustomLayerLayer
+                key={layer.id}
+                map={mapInstance}
+                isVisible={customLayerVisibility[layer.id] ?? false}
+                layerId={layer.id}
+                editMode={editingLayerId === layer.id}
+                refreshTrigger={editingLayerId === layer.id ? customLayerRefreshTrigger : undefined}
+                selectedShapeId={editingLayerId === layer.id ? selectedShapeId : null}
+                onShapeClick={(shape) => {
+                  if (editingLayerId === layer.id) {
+                    setSelectedShapeId(shape.id);
+                    setSelectedShapeData(shape);
+                    console.log('🎯 Shape selected:', shape);
+                  }
+                }}
+                onShapeUpdated={async (updatedShape) => {
+                  if (editingLayerId !== layer.id) return;
+                  console.log('✏️ Shape updated:', updatedShape);
+                  try {
+                    const { mapLayerService } = await import('../services/mapLayerService');
+                    await mapLayerService.updateShape(updatedShape.id, {
+                      geometry: updatedShape.geometry,
+                    });
+                    console.log('✅ Shape geometry saved');
+                  } catch (err: any) {
+                    console.error('Failed to save shape update:', err);
+                    showToast(`Failed to save shape: ${err?.message || 'Unknown error'}`, { type: 'error' });
+                  }
+                }}
+              />
+            ))}
 
             {/* Pin Details Slideout - for properties and site submits */}
             {selectedPinType !== 'restaurant' && (
@@ -2056,6 +2250,121 @@ const MappingPageContent: React.FC = () => {
               />
             )}
 
+            {/* Drawing Toolbar - Show when editing a custom layer OR in quick draw mode */}
+            <DrawingToolbar
+              map={mapInstance}
+              isActive={!!editingLayerId || isQuickDrawMode}
+              selectedLayerId={editingLayerId}
+              onShapeComplete={async (drawnShape) => {
+                console.log('✏️ Shape drawn:', drawnShape);
+
+                // Quick draw mode: show the save modal
+                if (isQuickDrawMode) {
+                  setPendingShape(drawnShape);
+                  setShowSaveShapeModal(true);
+                  setIsQuickDrawMode(false); // Exit draw mode
+                  return;
+                }
+
+                // Layer editing mode: save directly to the layer
+                if (!editingLayerId) return;
+                try {
+                  // Save the shape to the database
+                  const { mapLayerService } = await import('../services/mapLayerService');
+                  const savedShape = await mapLayerService.createShape({
+                    layer_id: editingLayerId,
+                    name: `${drawnShape.type} ${new Date().toLocaleTimeString()}`,
+                    shape_type: drawnShape.type,
+                    geometry: drawnShape.geometry,
+                  });
+                  console.log('✅ Shape saved to database:', savedShape);
+                  // Track this shape ID for potential cancel
+                  setSessionShapeIds(prev => [...prev, savedShape.id]);
+                  // Trigger refresh of the layer's shapes
+                  setCustomLayerRefreshTrigger(prev => prev + 1);
+                  showToast('Shape added', { type: 'success' });
+                } catch (err: any) {
+                  console.error('Failed to save shape:', err);
+                  showToast(`Failed to save shape: ${err?.message || 'Unknown error'}`, { type: 'error' });
+                }
+              }}
+              onDone={() => {
+                // Done - keep all shapes, just exit edit mode
+                setEditingLayerId(null);
+                setIsQuickDrawMode(false);
+                setSelectedShapeId(null);
+                setSelectedShapeData(null);
+                setSessionShapeIds([]); // Clear session tracking
+                showToast('Changes saved', { type: 'success' });
+              }}
+              onCancel={async () => {
+                // Cancel - delete shapes created in this session
+                if (sessionShapeIds.length > 0) {
+                  try {
+                    const { mapLayerService } = await import('../services/mapLayerService');
+                    for (const shapeId of sessionShapeIds) {
+                      await mapLayerService.deleteShape(shapeId);
+                    }
+                    setCustomLayerRefreshTrigger(prev => prev + 1);
+                    showToast('Changes discarded', { type: 'info' });
+                  } catch (err) {
+                    console.error('Failed to delete session shapes:', err);
+                  }
+                }
+                setEditingLayerId(null);
+                setIsQuickDrawMode(false);
+                setSelectedShapeId(null);
+                setSelectedShapeData(null);
+                setSessionShapeIds([]);
+              }}
+            />
+
+            {/* Selected Shape Actions - Show when a shape is selected in edit mode */}
+            {editingLayerId && selectedShapeId && selectedShapeData && (
+              <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 z-[10000]">
+                <div className="bg-white rounded-lg shadow-xl border-2 border-blue-500 p-3">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2">
+                      <div
+                        className="w-4 h-4 rounded"
+                        style={{ backgroundColor: selectedShapeData.color }}
+                      />
+                      <span className="text-sm font-medium text-gray-900">
+                        {selectedShapeData.name || `${selectedShapeData.shape_type} shape`}
+                      </span>
+                    </div>
+                    <div className="h-4 w-px bg-gray-300" />
+                    <button
+                      onClick={() => setSelectedShapeId(null)}
+                      className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded"
+                    >
+                      Deselect
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!selectedShapeId) return;
+                        if (!confirm('Delete this shape? This cannot be undone.')) return;
+                        try {
+                          const { mapLayerService } = await import('../services/mapLayerService');
+                          await mapLayerService.deleteShape(selectedShapeId);
+                          setSelectedShapeId(null);
+                          setSelectedShapeData(null);
+                          setCustomLayerRefreshTrigger(prev => prev + 1);
+                          showToast('Shape deleted', { type: 'success' });
+                        } catch (err: any) {
+                          console.error('Failed to delete shape:', err);
+                          showToast(`Failed to delete shape: ${err?.message || 'Unknown error'}`, { type: 'error' });
+                        }
+                      }}
+                      className="px-3 py-1.5 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                    >
+                      🗑️ Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       </div>
@@ -2092,6 +2401,27 @@ const MappingPageContent: React.FC = () => {
         title="Delete Site Submit"
         itemName={siteSubmitToDelete?.name || 'this site submit'}
         message="This action cannot be undone."
+      />
+
+      {/* Save Shape Modal - After quick draw */}
+      <SaveShapeModal
+        isOpen={showSaveShapeModal}
+        drawnShape={pendingShape}
+        onClose={() => {
+          setShowSaveShapeModal(false);
+          setPendingShape(null);
+        }}
+        onSaved={(layerId) => {
+          setShowSaveShapeModal(false);
+          setPendingShape(null);
+          // Enable the layer visibility and refresh
+          if (!customLayerVisibility[layerId]) {
+            toggleCustomLayer(layerId);
+          }
+          setCustomLayerRefreshTrigger(prev => prev + 1);
+          refreshCustomLayers();
+          showToast('Shape saved successfully!', { type: 'success' });
+        }}
       />
     </div>
   );

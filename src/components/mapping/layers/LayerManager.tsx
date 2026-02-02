@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { mapLayerService, MapLayer } from '../../../services/mapLayerService';
 
 // Layer configuration types
 export interface LayerConfig {
@@ -56,6 +57,13 @@ export interface LayerManagerContextType {
   // Create modes (for future pin dropping)
   createMode: CreateMode | null;
   setCreateMode: (mode: CreateMode | null) => void;
+
+  // Custom map layers
+  customLayers: MapLayer[];
+  customLayerVisibility: { [layerId: string]: boolean };
+  customLayersLoading: boolean;
+  toggleCustomLayer: (layerId: string) => void;
+  refreshCustomLayers: () => void;
 }
 
 export type CreateMode = 'property' | 'site_submit';
@@ -113,6 +121,11 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
   const [createMode, setCreateMode] = useState<CreateMode | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState<{[layerId: string]: number}>({});
 
+  // Custom map layers state
+  const [customLayers, setCustomLayers] = useState<MapLayer[]>([]);
+  const [customLayerVisibility, setCustomLayerVisibility] = useState<{ [layerId: string]: boolean }>({});
+  const [customLayersLoading, setCustomLayersLoading] = useState(false);
+
   // Initialize layer state once
   useEffect(() => {
     console.log('🗺️ LayerManager initializing with layers:', DEFAULT_LAYERS.map(l => l.id));
@@ -128,6 +141,34 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     console.log('🗺️ LayerManager initial state:', initialState);
     setLayerState(initialState);
   }, []); // Empty dependency array - run only once
+
+  // Fetch custom map layers
+  const fetchCustomLayers = useCallback(async () => {
+    setCustomLayersLoading(true);
+    try {
+      const layers = await mapLayerService.getLayers({ includeShapes: true });
+      setCustomLayers(layers);
+      // Initialize visibility for new layers (default to false)
+      setCustomLayerVisibility(prev => {
+        const updated = { ...prev };
+        layers.forEach(layer => {
+          if (updated[layer.id] === undefined) {
+            updated[layer.id] = false;
+          }
+        });
+        return updated;
+      });
+    } catch (err) {
+      console.error('Error fetching custom layers:', err);
+    } finally {
+      setCustomLayersLoading(false);
+    }
+  }, []);
+
+  // Fetch custom layers on mount
+  useEffect(() => {
+    fetchCustomLayers();
+  }, [fetchCustomLayers]);
 
   const toggleLayer = useCallback((layerId: string) => {
     setLayerState(prev => ({
@@ -191,6 +232,19 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     setIsPanelOpen(prev => !prev);
   }, []);
 
+  // Toggle custom layer visibility
+  const toggleCustomLayer = useCallback((layerId: string) => {
+    setCustomLayerVisibility(prev => ({
+      ...prev,
+      [layerId]: !prev[layerId],
+    }));
+  }, []);
+
+  // Refresh custom layers
+  const refreshCustomLayers = useCallback(() => {
+    fetchCustomLayers();
+  }, [fetchCustomLayers]);
+
   const memoizedRefreshTrigger = useMemo(() => refreshTrigger, [
     JSON.stringify(refreshTrigger)
   ]);
@@ -208,6 +262,11 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     togglePanel,
     createMode,
     setCreateMode,
+    customLayers,
+    customLayerVisibility,
+    customLayersLoading,
+    toggleCustomLayer,
+    refreshCustomLayers,
   }), [
     layers,
     layerState,
@@ -221,6 +280,11 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     togglePanel,
     createMode,
     setCreateMode,
+    customLayers,
+    customLayerVisibility,
+    customLayersLoading,
+    toggleCustomLayer,
+    refreshCustomLayers,
   ]);
 
   return (

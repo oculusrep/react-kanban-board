@@ -9,6 +9,8 @@ import PortalDetailSidebar from '../../components/portal/PortalDetailSidebar';
 import { LayerManagerProvider } from '../../components/mapping/layers/LayerManager';
 import { STAGE_CATEGORIES } from '../../components/mapping/SiteSubmitPin';
 import { geocodingService } from '../../services/geocodingService';
+import CustomLayerLayer from '../../components/mapping/layers/CustomLayerLayer';
+import { useClientMapLayers } from '../../hooks/useMapLayers';
 
 // Portal-visible stages (from spec)
 // Note: Stage names must match database format exactly (no spaces around dashes)
@@ -59,6 +61,9 @@ export default function PortalMapPage() {
 
   // Track if we've already centered on the selected marker from URL
   const [hasCenteredOnSelected, setHasCenteredOnSelected] = useState(false);
+
+  // Shared map layers for this client
+  const { layers: sharedLayers } = useClientMapLayers(selectedClientId);
 
   // Update document title
   useEffect(() => {
@@ -274,6 +279,17 @@ export default function PortalMapPage() {
             onSelectedSiteSubmitPosition={handleSelectedSiteSubmitPosition}
           />
         )}
+
+        {/* Shared Custom Map Layers (view-only for portal users) */}
+        {mapInstance && sharedLayers.map(layer => (
+          <CustomLayerLayer
+            key={layer.id}
+            map={mapInstance}
+            isVisible={true}
+            layerId={layer.id}
+            editMode={false}
+          />
+        ))}
 
         {/* Search Box - positioned at top of map, above other controls */}
         <div className="absolute top-2 left-2" style={{ width: '400px', zIndex: 10002 }}>
