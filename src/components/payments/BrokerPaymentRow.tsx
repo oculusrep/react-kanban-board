@@ -12,6 +12,15 @@ interface BrokerPaymentRowProps {
   onOptimisticUpdate?: (splitId: string, updates: { paid?: boolean; paid_date?: string | null }) => void;
 }
 
+interface QBCommissionResult {
+  success: boolean;
+  message?: string;
+  qbEntityType?: 'Bill' | 'JournalEntry';
+  qbDocNumber?: string;
+  alreadyExists?: boolean;
+  error?: string;
+}
+
 const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, onUpdate, onOptimisticUpdate }) => {
   const formatCurrency = (amount: number | null) => {
     if (amount === null) return '-';
@@ -47,12 +56,35 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, o
 
   const [localPaid, setLocalPaid] = useState(split.paid);
   const [localPaidDate, setLocalPaidDate] = useState(split.paid_date);
+  const [isCreatingQBEntry, setIsCreatingQBEntry] = useState(false);
 
   // Sync with props when they change
   useEffect(() => {
     setLocalPaid(split.paid);
     setLocalPaidDate(split.paid_date);
   }, [split.paid, split.paid_date]);
+
+  // Create QBO commission entry (Bill or Journal Entry) when marking as paid
+  const createQBCommissionEntry = async (paidDate: string): Promise<QBCommissionResult> => {
+    try {
+      const { data, error } = await supabase.functions.invoke('quickbooks-create-commission-entry', {
+        body: {
+          paymentSplitId: split.payment_split_id,
+          paidDate: paidDate,
+        },
+      });
+
+      if (error) {
+        console.error('QBO commission entry error:', error);
+        return { success: false, error: error.message };
+      }
+
+      return data as QBCommissionResult;
+    } catch (err) {
+      console.error('QBO commission entry exception:', err);
+      return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+    }
+  };
 
   const handleTogglePaid = async (paid: boolean) => {
     const newDate = paid ? getLocalDateString() : null;
@@ -82,6 +114,34 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, o
       setLocalPaidDate(split.paid_date);
       if (onOptimisticUpdate) {
         onOptimisticUpdate(split.payment_split_id, { paid: split.paid, paid_date: split.paid_date });
+      }
+      return;
+    }
+
+    // If marking as paid, create QBO commission entry (Bill or Journal Entry)
+    if (paid && newDate) {
+      setIsCreatingQBEntry(true);
+      const result = await createQBCommissionEntry(newDate);
+      setIsCreatingQBEntry(false);
+
+      if (result.success) {
+        if (result.alreadyExists) {
+          // Entry already exists, no action needed
+          console.log('QBO commission entry already exists for this payment split');
+        } else {
+          // Show success message
+          const entryType = result.qbEntityType === 'Bill' ? 'Bill' : 'Journal Entry';
+          console.log(`Created QBO ${entryType} #${result.qbDocNumber} for ${split.broker_name}`);
+        }
+      } else if (result.error?.includes('No QuickBooks commission mapping configured')) {
+        // No mapping configured - this is expected for brokers without QBO setup
+        console.log(`No QBO mapping for ${split.broker_name} - skipping commission entry`);
+      } else if (result.error?.includes('QuickBooks is not connected')) {
+        // QBO not connected - silent fail, just log
+        console.log('QuickBooks not connected - skipping commission entry');
+      } else {
+        // Other error - log but don't block the paid status update
+        console.error('Failed to create QBO commission entry:', result.error);
       }
     }
   };
@@ -141,9 +201,13 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, o
             type="checkbox"
             checked={localPaid}
             onChange={(e) => handleTogglePaid(e.target.checked)}
-            className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+            disabled={isCreatingQBEntry}
+            className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded disabled:opacity-50"
           />
-          {localPaid && localPaidDate && (
+          {isCreatingQBEntry && (
+            <span className="text-xs text-blue-600 animate-pulse">Syncing to QBO...</span>
+          )}
+          {localPaid && localPaidDate && !isCreatingQBEntry && (
             <input
               type="date"
               value={localPaidDate}

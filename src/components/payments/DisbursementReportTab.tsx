@@ -16,6 +16,37 @@ import {
 } from '@heroicons/react/24/outline';
 import { PaymentDashboardRow } from '../../types/payment-dashboard';
 
+interface QBCommissionResult {
+  success: boolean;
+  message?: string;
+  qbEntityType?: 'Bill' | 'JournalEntry';
+  qbDocNumber?: string;
+  alreadyExists?: boolean;
+  error?: string;
+}
+
+// Create QBO commission entry (Bill or Journal Entry) when marking as paid
+const createQBCommissionEntry = async (paymentSplitId: string, paidDate: string): Promise<QBCommissionResult> => {
+  try {
+    const { data, error } = await supabase.functions.invoke('quickbooks-create-commission-entry', {
+      body: {
+        paymentSplitId,
+        paidDate,
+      },
+    });
+
+    if (error) {
+      console.error('QBO commission entry error:', error);
+      return { success: false, error: error.message };
+    }
+
+    return data as QBCommissionResult;
+  } catch (err) {
+    console.error('QBO commission entry exception:', err);
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+};
+
 const DisbursementReportTab: React.FC = () => {
   const [disbursements, setDisbursements] = useState<DisbursementRow[]>([]);
   const [filteredDisbursements, setFilteredDisbursements] = useState<DisbursementRow[]>([]);
@@ -427,6 +458,8 @@ const DisbursementReportTab: React.FC = () => {
       if (disbursement.type === 'broker') {
         // Update broker split paid_date
         const splitId = disbursement.id.replace('broker-', '');
+        const wasPreviouslyUnpaid = !disbursement.disbursement_paid;
+
         const { error } = await supabase
           .from('payment_split')
           .update({
@@ -436,6 +469,16 @@ const DisbursementReportTab: React.FC = () => {
           .eq('id', splitId);
 
         if (error) throw error;
+
+        // If setting a date on a previously unpaid split, create QBO commission entry
+        if (newDate && wasPreviouslyUnpaid) {
+          const result = await createQBCommissionEntry(splitId, newDate);
+          if (result.success && !result.alreadyExists) {
+            console.log(`Created QBO ${result.qbEntityType} #${result.qbDocNumber} for ${disbursement.payee_name}`);
+          } else if (result.error && !result.error.includes('No QuickBooks commission mapping') && !result.error.includes('QuickBooks is not connected')) {
+            console.error('Failed to create QBO commission entry:', result.error);
+          }
+        }
       } else {
         // Update referral fee paid_date
         const { error } = await supabase
@@ -447,6 +490,8 @@ const DisbursementReportTab: React.FC = () => {
           .eq('id', disbursement.payment_id);
 
         if (error) throw error;
+
+        // TODO: Add referral fee QBO bill creation here when needed
       }
 
       // Refresh the disbursements list
@@ -461,6 +506,7 @@ const DisbursementReportTab: React.FC = () => {
     try {
       const newPaidStatus = !disbursement.disbursement_paid;
       const today = new Date().toISOString().split('T')[0];
+      const paidDate = newPaidStatus ? (disbursement.paid_date || today) : null;
 
       if (disbursement.type === 'broker') {
         // Update broker split
@@ -469,22 +515,34 @@ const DisbursementReportTab: React.FC = () => {
           .from('payment_split')
           .update({
             paid: newPaidStatus,
-            paid_date: newPaidStatus ? (disbursement.paid_date || today) : null
+            paid_date: paidDate
           })
           .eq('id', splitId);
 
         if (error) throw error;
+
+        // If marking as paid, create QBO commission entry (Bill or Journal Entry)
+        if (newPaidStatus && paidDate) {
+          const result = await createQBCommissionEntry(splitId, paidDate);
+          if (result.success && !result.alreadyExists) {
+            console.log(`Created QBO ${result.qbEntityType} #${result.qbDocNumber} for ${disbursement.payee_name}`);
+          } else if (result.error && !result.error.includes('No QuickBooks commission mapping') && !result.error.includes('QuickBooks is not connected')) {
+            console.error('Failed to create QBO commission entry:', result.error);
+          }
+        }
       } else {
         // Update referral fee
         const { error } = await supabase
           .from('payment')
           .update({
             referral_fee_paid: newPaidStatus,
-            referral_fee_paid_date: newPaidStatus ? (disbursement.paid_date || today) : null
+            referral_fee_paid_date: paidDate
           })
           .eq('id', disbursement.payment_id);
 
         if (error) throw error;
+
+        // TODO: Add referral fee QBO bill creation here when needed
       }
 
       // Refresh the disbursements list
