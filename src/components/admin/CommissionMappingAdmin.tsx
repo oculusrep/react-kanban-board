@@ -210,8 +210,9 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
         broker_id: formData.entity_type === 'broker' ? formData.broker_id : null,
         client_id: formData.entity_type === 'referral_partner' ? formData.client_id : null,
         payment_method: formData.payment_method,
-        qb_vendor_id: formData.payment_method === 'bill' ? formData.qb_vendor_id : null,
-        qb_vendor_name: formData.payment_method === 'bill' ? formData.qb_vendor_name : null,
+        // Vendor is required for bills, optional for journal entries (used for entity tracking)
+        qb_vendor_id: formData.qb_vendor_id || null,
+        qb_vendor_name: formData.qb_vendor_name || null,
         qb_debit_account_id: formData.qb_debit_account_id,
         qb_debit_account_name: formData.qb_debit_account_name,
         qb_credit_account_id: formData.payment_method === 'journal_entry' ? formData.qb_credit_account_id : null,
@@ -418,25 +419,28 @@ export default function CommissionMappingAdmin({ isConnected }: CommissionMappin
               </select>
             </div>
 
-            {/* Vendor (for Bills) */}
-            {formData.payment_method === 'bill' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">QBO Vendor</label>
-                <select
-                  value={formData.qb_vendor_id || ''}
-                  onChange={(e) => handleVendorChange(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                >
-                  <option value="">Select a vendor...</option>
-                  {qbVendors.map(v => (
-                    <option key={v.id} value={v.id}>{v.displayName}</option>
-                  ))}
-                </select>
-                {qbVendors.length === 0 && (
-                  <p className="text-xs text-gray-500 mt-1">Click "Refresh QBO Data" to load vendors</p>
-                )}
-              </div>
-            )}
+            {/* Vendor - for Bills (required) and Journal Entries (optional, for entity tracking) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                QBO Vendor {formData.payment_method === 'bill' ? '(Required)' : '(Optional)'}
+              </label>
+              <select
+                value={formData.qb_vendor_id || ''}
+                onChange={(e) => handleVendorChange(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="">Select a vendor...</option>
+                {qbVendors.map(v => (
+                  <option key={v.id} value={v.id}>{v.displayName}</option>
+                ))}
+              </select>
+              {qbVendors.length === 0 && (
+                <p className="text-xs text-gray-500 mt-1">Click "Refresh QBO Data" to load vendors</p>
+              )}
+              {formData.payment_method === 'journal_entry' && (
+                <p className="text-xs text-gray-500 mt-1">Vendor will be attached to journal entry lines for tracking</p>
+              )}
+            </div>
 
             {/* Debit Account (Expense) */}
             <div>
