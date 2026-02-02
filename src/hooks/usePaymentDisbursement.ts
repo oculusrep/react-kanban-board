@@ -7,6 +7,37 @@ interface DisbursementData {
   paymentSplits: PaymentSplit[];
 }
 
+interface QBCommissionResult {
+  success: boolean;
+  message?: string;
+  qbEntityType?: 'Bill' | 'JournalEntry';
+  qbDocNumber?: string;
+  alreadyExists?: boolean;
+  error?: string;
+}
+
+// Create QBO commission entry (Bill or Journal Entry) when marking as paid
+const createQBCommissionEntry = async (paymentSplitId: string, paidDate: string): Promise<QBCommissionResult> => {
+  try {
+    const { data, error } = await supabase.functions.invoke('quickbooks-create-commission-entry', {
+      body: {
+        paymentSplitId,
+        paidDate,
+      },
+    });
+
+    if (error) {
+      console.error('QBO commission entry error:', error);
+      return { success: false, error: error.message };
+    }
+
+    return data as QBCommissionResult;
+  } catch (err) {
+    console.error('QBO commission entry exception:', err);
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+};
+
 export const usePaymentDisbursement = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,14 +122,8 @@ export const usePaymentDisbursement = () => {
     console.log('🔧 Updating payment split paid status:', { splitId, paid });
 
     try {
-      const updateData: { paid: boolean; paid_date?: string | null } = { paid };
-
-      // If marking as paid, set paid_date to now; if unchecking, clear the date
-      if (paid) {
-        updateData.paid_date = new Date().toISOString();
-      } else {
-        updateData.paid_date = null;
-      }
+      const paidDate = paid ? new Date().toISOString().split('T')[0] : null;
+      const updateData: { paid: boolean; paid_date?: string | null } = { paid, paid_date: paidDate };
 
       const { error, data } = await supabase
         .from('payment_split')
@@ -112,6 +137,27 @@ export const usePaymentDisbursement = () => {
       }
 
       console.log('✅ Payment split updated successfully:', data);
+
+      // If marking as paid, create QBO commission entry (Bill or Journal Entry)
+      if (paid && paidDate) {
+        const result = await createQBCommissionEntry(splitId, paidDate);
+        if (result.success) {
+          if (result.alreadyExists) {
+            console.log('📋 QBO commission entry already exists for this payment split');
+          } else {
+            console.log(`✅ Created QBO ${result.qbEntityType} #${result.qbDocNumber}`);
+          }
+        } else if (result.error?.includes('No QuickBooks commission mapping configured')) {
+          // No mapping configured - this is expected for brokers without QBO setup
+          console.log('ℹ️ No QBO commission mapping configured - skipping');
+        } else if (result.error?.includes('QuickBooks is not connected')) {
+          // QBO not connected - silent fail
+          console.log('ℹ️ QuickBooks not connected - skipping commission entry');
+        } else {
+          // Other error - log but don't block the paid status update
+          console.error('⚠️ Failed to create QBO commission entry:', result.error);
+        }
+      }
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update payment split status';
