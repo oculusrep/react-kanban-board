@@ -18,6 +18,7 @@ import { ClientSearchResult } from '../hooks/useClientSearch';
 import AddressSearchBox from '../components/mapping/AddressSearchBox';
 import { LayerManagerProvider, useLayerManager } from '../components/mapping/layers/LayerManager';
 import DrawingToolbar from '../components/mapping/DrawingToolbar';
+import ShapeEditorPanel from '../components/mapping/ShapeEditorPanel';
 import SaveShapeModal from '../components/modals/SaveShapeModal';
 import ShareLayerModal from '../components/modals/ShareLayerModal';
 import BoundaryBuilderPanel from '../components/mapping/BoundaryBuilderPanel';
@@ -225,8 +226,38 @@ const MappingPageContent: React.FC = () => {
   const [showShareLayerModal, setShowShareLayerModal] = useState(false);
   const [layerToShare, setLayerToShare] = useState<typeof customLayers[0] | null>(null);
 
+  // Shape editor panel state
+  const [showShapeEditor, setShowShapeEditor] = useState(false);
+
+  // Merge layer state
+  const [mergingLayerId, setMergingLayerId] = useState<string | null>(null);
+
   // Boundary builder panel state
   const [showBoundaryBuilder, setShowBoundaryBuilder] = useState(false);
+
+  // Handler for merging all shapes in a layer into one
+  const handleMergeLayerShapes = async (layerId: string, layerName: string) => {
+    if (!confirm(`Merge all shapes in "${layerName}" into a single polygon? This cannot be undone.`)) {
+      return;
+    }
+
+    setMergingLayerId(layerId);
+    try {
+      const { mapLayerService } = await import('../services/mapLayerService');
+      await mapLayerService.mergeLayerShapes(layerId, layerName);
+      // Small delay to ensure DB changes propagate before refresh
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await refreshCustomLayers();
+      // Force the layer renderer to re-fetch shapes from DB
+      setCustomLayerRefreshTrigger(prev => prev + 1);
+      showToast('Shapes merged successfully', { type: 'success' });
+    } catch (error: any) {
+      console.error('Failed to merge shapes:', error);
+      showToast(`Failed to merge: ${error?.message || 'Unknown error'}`, { type: 'error' });
+    } finally {
+      setMergingLayerId(null);
+    }
+  };
 
   // Handler for saving boundaries as a collection (individual shapes)
   const handleSaveBoundaryCollection = async (boundaries: FetchedBoundary[], layerName: string) => {
@@ -2048,6 +2079,31 @@ const MappingPageContent: React.FC = () => {
                                 🗑️
                               </button>
                             </div>
+                            {/* Merge button - show when layer has multiple shapes */}
+                            {layer.shapes && layer.shapes.length > 1 && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMergeLayerShapes(layer.id, layer.name);
+                                  setShowCustomLayersMenu(false);
+                                }}
+                                disabled={mergingLayerId === layer.id}
+                                className="mt-1 w-full text-xs px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-1"
+                                title="Merge all shapes into one polygon"
+                              >
+                                {mergingLayerId === layer.id ? (
+                                  <>
+                                    <span className="animate-spin">⏳</span>
+                                    <span>Merging...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span>🔗</span>
+                                    <span>Merge {layer.shapes.length} shapes into one</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
                           </div>
                         ))
                       )}
@@ -2413,6 +2469,8 @@ const MappingPageContent: React.FC = () => {
                 setSelectedShapeData(null);
                 setSessionShapeIds([]);
               }}
+              hasSelectedShape={!!selectedShapeId && !!selectedShapeData}
+              onFormatClick={() => setShowShapeEditor(true)}
             />
 
             {/* Selected Shape Actions - Show when a shape is selected in edit mode */}
@@ -2436,6 +2494,34 @@ const MappingPageContent: React.FC = () => {
                     >
                       Deselect
                     </button>
+                    {/* Only show Simplify for polygon shapes */}
+                    {selectedShapeData.shape_type === 'polygon' && (
+                      <button
+                        onClick={async () => {
+                          if (!selectedShapeId) return;
+                          const pointCount = selectedShapeData.geometry?.coordinates?.length || 0;
+                          if (pointCount < 10) {
+                            showToast('Shape already has minimal points', { type: 'info' });
+                            return;
+                          }
+                          try {
+                            const { mapLayerService } = await import('../services/mapLayerService');
+                            const updated = await mapLayerService.simplifyShape(selectedShapeId);
+                            setSelectedShapeData(updated);
+                            setCustomLayerRefreshTrigger(prev => prev + 1);
+                            const newPointCount = updated.geometry?.coordinates?.length || 0;
+                            showToast(`Simplified: ${pointCount} → ${newPointCount} points`, { type: 'success' });
+                          } catch (err: any) {
+                            console.error('Failed to simplify shape:', err);
+                            showToast(`Failed to simplify: ${err?.message || 'Unknown error'}`, { type: 'error' });
+                          }
+                        }}
+                        className="px-3 py-1.5 text-sm text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded"
+                        title={`Reduce polygon points (currently ${selectedShapeData.geometry?.coordinates?.length || 0})`}
+                      >
+                        ✂️ Simplify ({selectedShapeData.geometry?.coordinates?.length || 0} pts)
+                      </button>
+                    )}
                     <button
                       onClick={async () => {
                         if (!selectedShapeId) return;
@@ -2545,6 +2631,37 @@ const MappingPageContent: React.FC = () => {
           }}
         />
       )}
+
+      {/* Shape Editor Panel */}
+      <ShapeEditorPanel
+        isOpen={showShapeEditor}
+        shape={selectedShapeData}
+        onClose={() => setShowShapeEditor(false)}
+        onSave={async (shapeId, updates) => {
+          const { mapLayerService } = await import('../services/mapLayerService');
+          await mapLayerService.updateShape(shapeId, updates);
+          // Update local state
+          setSelectedShapeData((prev: any) => prev ? { ...prev, ...updates } : null);
+          // Refresh the layer
+          setCustomLayerRefreshTrigger(prev => prev + 1);
+          showToast('Shape updated', { type: 'success' });
+        }}
+        onDelete={async (shapeId) => {
+          const { mapLayerService } = await import('../services/mapLayerService');
+          await mapLayerService.deleteShape(shapeId);
+          setSelectedShapeId(null);
+          setSelectedShapeData(null);
+          setShowShapeEditor(false);
+          setCustomLayerRefreshTrigger(prev => prev + 1);
+          showToast('Shape deleted', { type: 'success' });
+        }}
+        onUpdateLayerDefaults={editingLayerId ? async (defaults) => {
+          const { mapLayerService } = await import('../services/mapLayerService');
+          await mapLayerService.updateLayer(editingLayerId, defaults);
+          refreshCustomLayers();
+          showToast('Layer defaults updated', { type: 'success' });
+        } : undefined}
+      />
     </div>
   );
 };

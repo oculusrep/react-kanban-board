@@ -124,6 +124,9 @@ class BoundaryService {
   private readonly RATE_LIMIT_MS = 100; // 10 requests per second max
   private lastRequest = 0;
 
+  // Cache for counties by state FIPS
+  private countiesCache: Map<string, BoundarySearchResult[]> = new Map();
+
   /**
    * Rate limiter utility
    */
@@ -143,6 +146,7 @@ class BoundaryService {
 
   /**
    * Search counties by name
+   * Uses client-side filtering for reliable case-insensitive search
    */
   async searchCounties(
     query: string,
@@ -152,43 +156,37 @@ class BoundaryService {
       return [];
     }
 
+    const searchTerm = query.trim().toLowerCase();
+    console.log('🔍 Searching counties:', { query: searchTerm, stateFips });
+
     try {
-      await this.waitForRateLimit();
-
-      // Build WHERE clause
-      let where = `UPPER(NAME) LIKE UPPER('%${query.trim()}%')`;
+      // Strategy: If state is selected, load all counties for that state and filter
+      // If no state, load counties from SE states (primary market) and filter
       if (stateFips) {
-        where += ` AND STATE='${stateFips}'`;
+        const allCounties = await this.getCountiesForState(stateFips);
+        const filtered = allCounties.filter(c =>
+          c.name.toLowerCase().includes(searchTerm)
+        );
+        console.log('✅ Found counties (state filter):', filtered.length);
+        return filtered;
       }
 
-      const params = new URLSearchParams({
-        where,
-        outFields: 'GEOID,NAME,STATE,STUSPS',
-        f: 'json',
-        returnGeometry: 'false',
-        resultRecordCount: '20',
-      });
+      // No state specified - search across SE states for better UX
+      // Load counties from primary market states
+      const seStates = SOUTHEASTERN_STATES.map(abbr => STATE_FIPS[abbr]).filter(Boolean);
+      const allCounties: BoundarySearchResult[] = [];
 
-      const response = await fetch(`${COUNTIES_ENDPOINT}?${params}`);
-
-      if (!response.ok) {
-        throw new Error(`Census API responded with status: ${response.status}`);
+      for (const fips of seStates) {
+        await this.waitForRateLimit();
+        const stateCounties = await this.getCountiesForState(fips);
+        allCounties.push(...stateCounties);
       }
 
-      const data = await response.json();
-
-      if (!data.features || data.features.length === 0) {
-        return [];
-      }
-
-      return data.features.map((feature: any) => ({
-        type: 'county' as BoundaryType,
-        geoid: feature.attributes.GEOID,
-        name: feature.attributes.NAME,
-        state: feature.attributes.STUSPS || FIPS_TO_STATE[feature.attributes.STATE] || '',
-        stateFips: feature.attributes.STATE,
-        displayName: `${feature.attributes.NAME} County, ${feature.attributes.STUSPS || FIPS_TO_STATE[feature.attributes.STATE] || ''}`,
-      }));
+      const filtered = allCounties.filter(c =>
+        c.name.toLowerCase().includes(searchTerm)
+      );
+      console.log('✅ Found counties (SE states):', filtered.length);
+      return filtered.slice(0, 20); // Limit results
     } catch (error) {
       console.error('❌ County search error:', error);
       return [];
@@ -196,43 +194,70 @@ class BoundaryService {
   }
 
   /**
-   * Get all counties for a state
+   * Get all counties for a state (with caching)
    */
   async getCountiesForState(stateFips: string): Promise<BoundarySearchResult[]> {
+    // Check cache first
+    const cached = this.countiesCache.get(stateFips);
+    if (cached) {
+      console.log('📦 Using cached counties for state:', stateFips, cached.length);
+      return cached;
+    }
+
+    console.log('🗺️ Loading counties for state:', stateFips);
     try {
       await this.waitForRateLimit();
 
-      const params = new URLSearchParams({
-        where: `STATE='${stateFips}'`,
-        outFields: 'GEOID,NAME,STATE,STUSPS',
-        f: 'json',
-        returnGeometry: 'false',
-        resultRecordCount: '500', // Most states have < 300 counties
-        orderByFields: 'NAME ASC',
-      });
+      // Build URL manually for consistent encoding
+      // Note: STUSPS field doesn't exist, use FIPS_TO_STATE mapping
+      const where = `STATE='${stateFips}'`;
+      const encodedWhere = encodeURIComponent(where);
+      const url = `${COUNTIES_ENDPOINT}?where=${encodedWhere}&outFields=GEOID,NAME,STATE&f=json&returnGeometry=false&resultRecordCount=500&orderByFields=${encodeURIComponent('NAME ASC')}`;
 
-      const response = await fetch(`${COUNTIES_ENDPOINT}?${params}`);
+      console.log('🔍 Census API state query:', url);
+
+      const response = await fetch(url);
 
       if (!response.ok) {
         throw new Error(`Census API responded with status: ${response.status}`);
       }
 
       const data = await response.json();
+      console.log('📊 State counties response:', { features: data.features?.length || 0, error: data.error });
+
+      if (data.error) {
+        console.error('❌ Census API error:', data.error);
+        return [];
+      }
 
       if (!data.features || data.features.length === 0) {
+        console.log('⚠️ No counties found for state:', stateFips);
         return [];
       }
 
       const stateAbbr = FIPS_TO_STATE[stateFips] || '';
 
-      return data.features.map((feature: any) => ({
-        type: 'county' as BoundaryType,
-        geoid: feature.attributes.GEOID,
-        name: feature.attributes.NAME,
-        state: feature.attributes.STUSPS || stateAbbr,
-        stateFips: feature.attributes.STATE,
-        displayName: `${feature.attributes.NAME} County, ${feature.attributes.STUSPS || stateAbbr}`,
-      }));
+      const results = data.features.map((feature: any) => {
+        const rawName = feature.attributes.NAME;
+        // Census API returns names like "Cobb County" - don't duplicate "County"
+        const displayName = rawName.toLowerCase().includes('county')
+          ? `${rawName}, ${stateAbbr}`
+          : `${rawName} County, ${stateAbbr}`;
+
+        return {
+          type: 'county' as BoundaryType,
+          geoid: feature.attributes.GEOID,
+          name: rawName,
+          state: stateAbbr,
+          stateFips: feature.attributes.STATE,
+          displayName,
+        };
+      });
+
+      // Cache results
+      this.countiesCache.set(stateFips, results);
+      console.log('✅ Loaded & cached counties for state:', results.length);
+      return results;
     } catch (error) {
       console.error('❌ Get counties for state error:', error);
       return [];
@@ -246,15 +271,14 @@ class BoundaryService {
     try {
       await this.waitForRateLimit();
 
-      const params = new URLSearchParams({
-        where: `GEOID='${geoid}'`,
-        outFields: 'GEOID,NAME,STATE,STUSPS',
-        f: 'geojson',
-        returnGeometry: 'true',
-        outSR: '4326', // WGS84 coordinates
-      });
+      // Build URL manually - STUSPS field doesn't exist, use FIPS_TO_STATE mapping
+      const where = `GEOID='${geoid}'`;
+      const encodedWhere = encodeURIComponent(where);
+      const url = `${COUNTIES_ENDPOINT}?where=${encodedWhere}&outFields=GEOID,NAME,STATE&f=geojson&returnGeometry=true&outSR=4326`;
 
-      const response = await fetch(`${COUNTIES_ENDPOINT}?${params}`);
+      console.log('🔍 Fetching county geometry:', { geoid, url });
+
+      const response = await fetch(url);
 
       if (!response.ok) {
         throw new Error(`Census API responded with status: ${response.status}`);
@@ -268,7 +292,11 @@ class BoundaryService {
 
       const feature = data.features[0];
       const props = feature.properties;
-      const stateAbbr = props.STUSPS || FIPS_TO_STATE[props.STATE] || '';
+      const stateAbbr = FIPS_TO_STATE[props.STATE] || '';
+      // Census API returns names like "Cobb County" - don't duplicate "County"
+      const displayName = props.NAME.toLowerCase().includes('county')
+        ? `${props.NAME}, ${stateAbbr}`
+        : `${props.NAME} County, ${stateAbbr}`;
 
       return {
         type: 'county',
@@ -276,7 +304,7 @@ class BoundaryService {
         name: props.NAME,
         state: stateAbbr,
         stateFips: props.STATE,
-        displayName: `${props.NAME} County, ${stateAbbr}`,
+        displayName,
         geometry: feature.geometry,
       };
     } catch (error) {
@@ -406,15 +434,13 @@ class BoundaryService {
     // Convert all boundaries to Turf features
     const features = boundaries.map(b => this.censusTurfPolygon(b.geometry));
 
-    // Progressive union
-    let merged: Feature<Polygon | MultiPolygon> | null = features[0];
+    // Union all features using FeatureCollection (Turf v7+ API)
+    const featureCollection = {
+      type: 'FeatureCollection' as const,
+      features: features as Feature<Polygon | MultiPolygon>[],
+    };
 
-    for (let i = 1; i < features.length; i++) {
-      const result = union(merged as Feature<Polygon | MultiPolygon>, features[i] as Feature<Polygon | MultiPolygon>);
-      if (result) {
-        merged = result;
-      }
-    }
+    const merged = union(featureCollection);
 
     if (!merged || !merged.geometry) {
       throw new Error('Merge operation failed');

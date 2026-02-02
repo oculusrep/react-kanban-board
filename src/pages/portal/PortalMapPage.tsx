@@ -756,16 +756,16 @@ export default function PortalMapPage() {
         {/* Shape Editor Panel (brokers only - when editing a layer) */}
         {showBrokerFeatures && (
           <ShapeEditorPanel
-            isOpen={showShapeEditor}
-            shape={selectedShape}
-            onClose={() => {
-              setShowShapeEditor(false);
-              setSelectedShape(null);
-            }}
-            onSave={handleShapeSave}
-            onDelete={handleShapeDelete}
-            onUpdateLayerDefaults={editingLayerId ? handleUpdateLayerDefaults : undefined}
-          />
+              isOpen={showShapeEditor}
+              shape={selectedShape}
+              onClose={() => {
+                setShowShapeEditor(false);
+                setSelectedShape(null);
+              }}
+              onSave={handleShapeSave}
+              onDelete={handleShapeDelete}
+              onUpdateLayerDefaults={editingLayerId ? handleUpdateLayerDefaults : undefined}
+            />
         )}
 
         {/* Boundary Builder Panel (brokers only) */}

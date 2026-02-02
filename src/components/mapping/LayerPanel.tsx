@@ -188,6 +188,62 @@ const CustomLayersSection: React.FC<CustomLayersSectionProps> = ({ onBuildTerrit
     refreshCustomLayers,
   } = useLayerManager();
 
+  const [mergingLayerId, setMergingLayerId] = React.useState<string | null>(null);
+  const [shapeCounts, setShapeCounts] = React.useState<Record<string, number>>({});
+
+  // Fetch shape counts for layers that don't have shapes loaded
+  React.useEffect(() => {
+    const fetchShapeCounts = async () => {
+      const layersNeedingCounts = customLayers.filter(l => l.shapes === undefined);
+      if (layersNeedingCounts.length === 0) return;
+
+      const { mapLayerService } = await import('../../services/mapLayerService');
+      const counts: Record<string, number> = {};
+
+      for (const layer of layersNeedingCounts) {
+        try {
+          const shapes = await mapLayerService.getShapesForLayer(layer.id);
+          counts[layer.id] = shapes.length;
+        } catch (err) {
+          console.error('Error fetching shapes for layer:', layer.id, err);
+          counts[layer.id] = 0;
+        }
+      }
+
+      setShapeCounts(prev => ({ ...prev, ...counts }));
+    };
+
+    fetchShapeCounts();
+  }, [customLayers]);
+
+  const handleMergeShapes = async (layerId: string, layerName: string) => {
+    if (!confirm(`Merge all shapes in "${layerName}" into a single polygon? This cannot be undone.`)) {
+      return;
+    }
+
+    setMergingLayerId(layerId);
+    try {
+      const { mapLayerService } = await import('../../services/mapLayerService');
+      await mapLayerService.mergeLayerShapes(layerId, layerName);
+      await refreshCustomLayers();
+      // Reset shape counts to trigger refetch
+      setShapeCounts({});
+    } catch (error) {
+      console.error('Failed to merge shapes:', error);
+      alert('Failed to merge shapes. Please try again.');
+    } finally {
+      setMergingLayerId(null);
+    }
+  };
+
+  // Helper to get shape count - use loaded shapes or fallback to fetched count
+  const getShapeCount = (layer: typeof customLayers[0]) => {
+    if (layer.shapes !== undefined) {
+      return layer.shapes.length;
+    }
+    return shapeCounts[layer.id] ?? 0;
+  };
+
   if (customLayersLoading) {
     return (
       <div className="mt-6 pt-4 border-t border-gray-200">
@@ -231,41 +287,74 @@ const CustomLayersSection: React.FC<CustomLayersSectionProps> = ({ onBuildTerrit
         </div>
       ) : (
         <div className="space-y-2">
-          {customLayers.map(layer => (
-            <div
-              key={layer.id}
-              className="flex items-center justify-between p-2 bg-white border rounded-lg"
-            >
-              <div className="flex items-center space-x-2">
-                <div
-                  className="w-4 h-4 rounded"
-                  style={{ backgroundColor: layer.default_color }}
-                />
-                <div>
-                  <div className="text-sm font-medium text-gray-900">{layer.name}</div>
-                  <div className="text-xs text-gray-500">
-                    {layer.shapes?.length || 0} shapes
-                  </div>
-                </div>
-              </div>
-              <button
-                onClick={() => toggleCustomLayer(layer.id)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                  customLayerVisibility[layer.id]
-                    ? 'bg-blue-600'
-                    : 'bg-gray-200'
-                }`}
-                role="switch"
-                aria-checked={customLayerVisibility[layer.id]}
+          {customLayers.map(layer => {
+            const shapeCount = getShapeCount(layer);
+            const canMerge = shapeCount > 1;
+            const isMerging = mergingLayerId === layer.id;
+            // Debug logging
+            console.log('🗺️ Layer:', layer.name, 'shapes:', shapeCount, 'canMerge:', canMerge);
+
+            return (
+              <div
+                key={layer.id}
+                className="p-2 bg-white border rounded-lg"
               >
-                <span
-                  className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
-                    customLayerVisibility[layer.id] ? 'translate-x-5' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-          ))}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <div
+                      className="w-4 h-4 rounded"
+                      style={{ backgroundColor: layer.default_color }}
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">{layer.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {shapeCount} shape{shapeCount !== 1 ? 's' : ''}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => toggleCustomLayer(layer.id)}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                      customLayerVisibility[layer.id]
+                        ? 'bg-blue-600'
+                        : 'bg-gray-200'
+                    }`}
+                    role="switch"
+                    aria-checked={customLayerVisibility[layer.id]}
+                  >
+                    <span
+                      className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                        customLayerVisibility[layer.id] ? 'translate-x-5' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Merge button for layers with multiple shapes */}
+                {canMerge && (
+                  <button
+                    onClick={() => handleMergeShapes(layer.id, layer.name)}
+                    disabled={isMerging}
+                    className="mt-2 w-full text-xs px-2 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-1"
+                  >
+                    {isMerging ? (
+                      <>
+                        <div className="animate-spin h-3 w-3 border-2 border-amber-600 border-t-transparent rounded-full"></div>
+                        <span>Merging...</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                        </svg>
+                        <span>Merge {shapeCount} shapes into one</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

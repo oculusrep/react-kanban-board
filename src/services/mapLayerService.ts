@@ -1,4 +1,10 @@
 import { supabase } from '../lib/supabaseClient';
+import { union, simplify } from '@turf/turf';
+import type { Feature, Polygon, MultiPolygon } from 'geojson';
+
+// Simplification tolerance in degrees (roughly 0.001 = ~100m at equator)
+// This gives a good balance between reducing points and maintaining shape accuracy
+const SIMPLIFY_TOLERANCE = 0.0005;
 
 // ============================================================================
 // Types
@@ -229,6 +235,11 @@ class MapLayerService {
       throw error;
     }
 
+    // Debug: log first layer to verify shapes are loaded
+    if (data && data.length > 0) {
+      console.log('🗺️ getLayers first layer:', { name: data[0].name, shapesCount: data[0].shapes?.length, hasShapes: !!data[0].shapes });
+    }
+
     return (data || []) as MapLayer[];
   }
 
@@ -315,6 +326,24 @@ class MapLayerService {
       console.error('Error deleting shape:', error);
       throw error;
     }
+  }
+
+  async getShape(shapeId: string): Promise<MapLayerShape | null> {
+    const { data, error } = await supabase
+      .from('map_layer_shape')
+      .select('*')
+      .eq('id', shapeId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null; // Not found
+      }
+      console.error('Error getting shape:', error);
+      throw error;
+    }
+
+    return data as MapLayerShape;
   }
 
   async getShapesForLayer(layerId: string): Promise<MapLayerShape[]> {
@@ -634,6 +663,186 @@ class MapLayerService {
         return [lat, lng] as [number, number];
       })
       .filter(coord => !isNaN(coord[0]) && !isNaN(coord[1]));
+  }
+
+  /**
+   * Merge all shapes in a layer into a single polygon
+   */
+  async mergeLayerShapes(layerId: string, newShapeName?: string): Promise<MapLayerShape> {
+    // Get all shapes for the layer
+    const shapes = await this.getShapesForLayer(layerId);
+
+    if (shapes.length === 0) {
+      throw new Error('No shapes to merge');
+    }
+
+    if (shapes.length === 1) {
+      // Only one shape, just return it (optionally rename)
+      if (newShapeName) {
+        return await this.updateShape(shapes[0].id, { name: newShapeName });
+      }
+      return shapes[0];
+    }
+
+    // Filter to only polygon shapes
+    const polygonShapes = shapes.filter(s => s.geometry.type === 'polygon');
+    if (polygonShapes.length === 0) {
+      throw new Error('No polygon shapes to merge');
+    }
+
+    // Convert shapes to Turf features
+    const features: Feature<Polygon>[] = polygonShapes.map(shape => {
+      const geom = shape.geometry as { type: 'polygon'; coordinates: [number, number][] };
+      // Convert [lat, lng] to [lng, lat] for GeoJSON standard
+      const coords = geom.coordinates.map(([lat, lng]) => [lng, lat] as [number, number]);
+      // Ensure the polygon is closed
+      if (coords.length > 0) {
+        const first = coords[0];
+        const last = coords[coords.length - 1];
+        if (first[0] !== last[0] || first[1] !== last[1]) {
+          coords.push([...first] as [number, number]);
+        }
+      }
+      return {
+        type: 'Feature' as const,
+        properties: {},
+        geometry: {
+          type: 'Polygon' as const,
+          coordinates: [coords],
+        },
+      };
+    });
+
+    // Union all features using FeatureCollection (Turf v7+ API)
+    const featureCollection = {
+      type: 'FeatureCollection' as const,
+      features: features,
+    };
+
+    const merged = union(featureCollection);
+
+    if (!merged || !merged.geometry) {
+      throw new Error('Merge operation failed');
+    }
+
+    // Simplify the merged polygon to reduce points
+    const simplified = simplify(merged, { tolerance: SIMPLIFY_TOLERANCE, highQuality: true });
+    const finalGeometry = simplified?.geometry || merged.geometry;
+
+    console.log(`🔗 Merge: ${shapes.reduce((sum, s) => sum + (s.geometry.coordinates?.length || 0), 0)} points → simplified`);
+
+    // Convert result back to our format
+    let mergedCoords: [number, number][];
+    if (finalGeometry.type === 'Polygon') {
+      mergedCoords = (finalGeometry as Polygon).coordinates[0].map(
+        ([lng, lat]) => [lat, lng] as [number, number]
+      );
+    } else if (finalGeometry.type === 'MultiPolygon') {
+      // Take the largest polygon
+      const multiCoords = (finalGeometry as MultiPolygon).coordinates;
+      let largestPolygon = multiCoords[0];
+      let maxPoints = multiCoords[0][0].length;
+      for (const polygon of multiCoords) {
+        if (polygon[0].length > maxPoints) {
+          maxPoints = polygon[0].length;
+          largestPolygon = polygon;
+        }
+      }
+      mergedCoords = largestPolygon[0].map(
+        ([lng, lat]) => [lat, lng] as [number, number]
+      );
+    } else {
+      throw new Error(`Unsupported result geometry type: ${finalGeometry.type}`);
+    }
+
+    console.log(`🔗 Merge result: ${mergedCoords.length} points`);
+
+    // Get layer info for defaults
+    const layer = await this.getLayer(layerId);
+
+    // Create the merged shape
+    const mergedShape = await this.createShape({
+      layer_id: layerId,
+      name: newShapeName || 'Merged Territory',
+      shape_type: 'polygon',
+      geometry: { type: 'polygon', coordinates: mergedCoords },
+      color: layer?.default_color,
+      stroke_color: layer?.default_stroke_color,
+      fill_opacity: layer?.default_opacity,
+      stroke_width: layer?.default_stroke_width,
+      description: `Merged from ${polygonShapes.length} shapes: ${polygonShapes.map(s => s.name || 'Unnamed').join(', ')}`,
+    });
+
+    // Delete old shapes (captured before creating merged shape, so won't include mergedShape)
+    console.log(`🗑️ Deleting ${shapes.length} old shapes...`);
+    for (const shape of shapes) {
+      console.log(`🗑️ Deleting shape: ${shape.id} (${shape.name})`);
+      await this.deleteShape(shape.id);
+    }
+    console.log(`✅ Merge complete. New shape ID: ${mergedShape.id}`);
+
+    return mergedShape;
+  }
+
+  /**
+   * Simplify a polygon shape to reduce the number of points
+   * Uses Douglas-Peucker algorithm via Turf.js
+   */
+  async simplifyShape(shapeId: string, tolerance?: number): Promise<MapLayerShape> {
+    const shape = await this.getShape(shapeId);
+    if (!shape) {
+      throw new Error('Shape not found');
+    }
+
+    if (shape.geometry.type !== 'polygon') {
+      throw new Error('Can only simplify polygon shapes');
+    }
+
+    const geom = shape.geometry as { type: 'polygon'; coordinates: [number, number][] };
+    const originalPointCount = geom.coordinates.length;
+
+    // Convert [lat, lng] to [lng, lat] for GeoJSON standard
+    const coords = geom.coordinates.map(([lat, lng]) => [lng, lat] as [number, number]);
+
+    // Ensure the polygon is closed
+    if (coords.length > 0) {
+      const first = coords[0];
+      const last = coords[coords.length - 1];
+      if (first[0] !== last[0] || first[1] !== last[1]) {
+        coords.push([...first] as [number, number]);
+      }
+    }
+
+    const feature: Feature<Polygon> = {
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [coords],
+      },
+    };
+
+    // Simplify with the specified tolerance or default
+    const simplified = simplify(feature, {
+      tolerance: tolerance ?? SIMPLIFY_TOLERANCE,
+      highQuality: true
+    });
+
+    if (!simplified || !simplified.geometry) {
+      throw new Error('Simplification failed');
+    }
+
+    // Convert back to our format [lat, lng]
+    const simplifiedCoords = simplified.geometry.coordinates[0].map(
+      ([lng, lat]) => [lat, lng] as [number, number]
+    );
+
+    console.log(`✂️ Simplify: ${originalPointCount} points → ${simplifiedCoords.length} points`);
+
+    // Update the shape with simplified geometry
+    return await this.updateShape(shapeId, {
+      geometry: { type: 'polygon', coordinates: simplifiedCoords },
+    });
   }
 }
 
