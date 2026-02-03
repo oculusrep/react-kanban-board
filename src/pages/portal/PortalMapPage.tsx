@@ -834,6 +834,12 @@ export default function PortalMapPage() {
               setCustomLayerRefreshTrigger(prev => prev + 1);
               fetchAllLayers();
             }}
+            onContinueEditing={() => {
+              // Close modal and return to drawing mode
+              setShowSaveShapeModal(false);
+              setPendingShape(null);
+              setIsDrawMode(true);
+            }}
           />
         )}
 

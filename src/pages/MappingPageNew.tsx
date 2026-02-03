@@ -2623,6 +2623,12 @@ const MappingPageContent: React.FC = () => {
           refreshCustomLayers();
           showToast('Shape saved successfully!', { type: 'success' });
         }}
+        onContinueEditing={() => {
+          // Close modal and return to drawing mode
+          setShowSaveShapeModal(false);
+          setPendingShape(null);
+          setIsQuickDrawMode(true);
+        }}
       />
 
       {/* Boundary Builder Panel */}
