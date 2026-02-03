@@ -56,11 +56,11 @@ async function fetchAccountTransactions(
   endDate: string
 ): Promise<any> {
   // Use the GeneralLedger report with account filter
+  // Don't specify columns - let QBO return default columns which include amounts
   const reportQuery = new URLSearchParams({
     account: accountId,
     start_date: startDate,
     end_date: endDate,
-    columns: 'tx_date,txn_type,doc_num,name,memo,debit_amount,credit_amount,subt_nat_home_amount',
     sort_by: 'tx_date',
     sort_order: 'ascend'
   })
