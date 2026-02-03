@@ -7,7 +7,6 @@
  */
 
 import React from 'react';
-import { Ruler } from 'lucide-react';
 
 interface RulerToolProps {
   isActive: boolean;
@@ -19,8 +18,8 @@ export const RulerTool: React.FC<RulerToolProps> = ({ isActive, onToggle }) => {
     <div
       style={{
         position: 'absolute',
-        top: '10px',
-        left: '240px', // Position to the right of GPS controls (152px + 40px + 4px gap + 40px + 4px gap)
+        top: '70px', // Position below GPS controls
+        right: '10px',
         zIndex: 1000,
       }}
     >
@@ -37,13 +36,13 @@ export const RulerTool: React.FC<RulerToolProps> = ({ isActive, onToggle }) => {
           title={isActive ? "Stop measuring" : "Measure distance"}
           aria-label={isActive ? "Stop measuring" : "Measure distance"}
           style={{
-            backgroundColor: isActive ? '#1a73e8' : '#fff',
+            backgroundColor: isActive ? '#1a73e8' : 'transparent',
             color: isActive ? '#fff' : 'rgb(25,25,25)',
             border: 'none',
             cursor: 'pointer',
-            padding: '0',
-            width: '40px',
-            height: '40px',
+            padding: '12px', // Larger padding for better touch targets
+            minWidth: '48px', // Minimum 48px for accessibility
+            minHeight: '48px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -51,8 +50,8 @@ export const RulerTool: React.FC<RulerToolProps> = ({ isActive, onToggle }) => {
             fontSize: '14px',
             fontWeight: 500,
             transition: 'all 0.2s',
-            WebkitTapHighlightColor: 'transparent',
-            touchAction: 'manipulation',
+            WebkitTapHighlightColor: 'transparent', // Remove blue highlight on mobile
+            touchAction: 'manipulation', // Improve touch responsiveness
           }}
           onMouseEnter={(e) => {
             if (!isActive) {
@@ -61,14 +60,33 @@ export const RulerTool: React.FC<RulerToolProps> = ({ isActive, onToggle }) => {
           }}
           onMouseLeave={(e) => {
             if (!isActive) {
-              e.currentTarget.style.backgroundColor = '#fff';
+              e.currentTarget.style.backgroundColor = 'transparent';
             }
           }}
         >
-          <Ruler size={24} strokeWidth={2} style={{ transform: 'rotate(90deg)' }} />
+          {/* Ruler icon SVG */}
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M4 4 L20 20" />
+            <circle cx="4" cy="4" r="2" fill="currentColor" stroke="none" />
+            <circle cx="20" cy="20" r="2" fill="currentColor" stroke="none" />
+            <line x1="8" y1="8" x2="9" y2="9" />
+            <line x1="12" y1="12" x2="13" y2="13" />
+            <line x1="16" y1="16" x2="17" y2="17" />
+          </svg>
         </button>
       </div>
 
+      {/* Instruction tooltip when active */}
       {isActive && (
         <div
           style={{
@@ -83,13 +101,13 @@ export const RulerTool: React.FC<RulerToolProps> = ({ isActive, onToggle }) => {
             whiteSpace: 'nowrap',
             fontFamily: 'Roboto,Arial,sans-serif',
             boxShadow: '0 2px 6px rgba(0,0,0,.3)',
-            pointerEvents: 'none',
+            pointerEvents: 'none', // Don't interfere with map clicks
           }}
         >
-          Click points to measure distance
+          Tap/click on map to measure
           <br />
           <span style={{ fontSize: '11px', opacity: 0.8 }}>
-            Press ESC or click ruler to finish
+            Tap points to remove them
           </span>
         </div>
       )}

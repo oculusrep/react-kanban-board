@@ -60,6 +60,7 @@ import BudgetDashboardPage from "./pages/BudgetDashboardPage";
 import PortalUserManagementPage from "./pages/PortalUserManagementPage";
 import LayerManagementPage from "./pages/LayerManagementPage";
 import ArtyDrawReportPage from "./pages/ArtyDrawReportPage";
+import TypographyTestPage from "./pages/TypographyTestPage";
 
 function ProtectedLayout() {
   const location = useLocation();
@@ -162,6 +163,7 @@ function App() {
           <Route path="contacts/suggested" element={<SuggestedContactsPage />} />
           <Route path="hunter" element={<AdminRoute><HunterDashboardPage /></AdminRoute>} />
           <Route path="hunter/lead/:leadId" element={<AdminRoute><HunterLeadDetailsPage /></AdminRoute>} />
+          <Route path="typography-test" element={<TypographyTestPage />} />
         </Route>
       </Routes>
     </AuthProvider>
