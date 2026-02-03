@@ -96,89 +96,123 @@ async function getAccountDetails(
 
 /**
  * Parse the General Ledger report into a structured format
+ * QBO Report structure can vary - this handles the common formats
  */
-function parseGeneralLedgerReport(reportData: any): TransactionLine[] {
+function parseGeneralLedgerReport(reportData: any): { transactions: TransactionLine[], debug: any } {
   const transactions: TransactionLine[] = []
+  const debug: any = {
+    hasRows: !!reportData?.Rows,
+    hasRowArray: !!reportData?.Rows?.Row,
+    rowCount: reportData?.Rows?.Row?.length || 0,
+    columns: reportData?.Columns?.Column?.map((c: any) => c.ColTitle) || [],
+    sampleRows: []
+  }
 
   if (!reportData || !reportData.Rows || !reportData.Rows.Row) {
-    return transactions
+    return { transactions, debug }
   }
+
+  // Get column mapping from the report
+  const columns = reportData.Columns?.Column || []
+  const colMap: Record<string, number> = {}
+  columns.forEach((col: any, idx: number) => {
+    const title = (col.ColTitle || col.ColType || '').toLowerCase()
+    if (title.includes('date')) colMap['date'] = idx
+    if (title.includes('type') || title === 'transaction type') colMap['type'] = idx
+    if (title.includes('num') || title.includes('doc')) colMap['docNum'] = idx
+    if (title.includes('name')) colMap['name'] = idx
+    if (title.includes('memo') || title.includes('description')) colMap['memo'] = idx
+    if (title.includes('debit') || title === 'amount') colMap['debit'] = idx
+    if (title.includes('credit')) colMap['credit'] = idx
+    if (title.includes('balance')) colMap['balance'] = idx
+  })
+  debug.columnMapping = colMap
 
   let runningBalance = 0
   const rows = reportData.Rows.Row
 
-  // Find the section with the account data
-  for (const section of rows) {
-    // Skip header rows, look for Row arrays
-    if (section.Rows && section.Rows.Row) {
-      for (const row of section.Rows.Row) {
-        if (row.ColData && Array.isArray(row.ColData)) {
-          const colData = row.ColData
-
-          // Parse columns: date, type, doc_num, name, memo, debit, credit, balance
-          const date = colData[0]?.value || ''
-          const type = colData[1]?.value || ''
-          const docNum = colData[2]?.value || null
-          const name = colData[3]?.value || null
-          const memo = colData[4]?.value || null
-          const debit = parseFloat(colData[5]?.value) || 0
-          const credit = parseFloat(colData[6]?.value) || 0
-
-          // Skip if no date (likely a subtotal row)
-          if (!date || date === '') continue
-
-          runningBalance = runningBalance + debit - credit
-
-          transactions.push({
-            id: `${date}-${docNum || Math.random()}`,
-            date,
-            type,
-            docNumber: docNum,
-            name,
-            memo,
-            debit,
-            credit,
-            balance: runningBalance
-          })
-        }
+  // Recursive function to extract data rows
+  function extractRows(rowArray: any[], depth = 0) {
+    for (const row of rowArray) {
+      // Capture sample for debugging
+      if (debug.sampleRows.length < 5 && row.ColData) {
+        debug.sampleRows.push({
+          depth,
+          type: row.type,
+          colData: row.ColData?.map((c: any) => ({ value: c.value, id: c.id }))
+        })
       }
-    } else if (section.ColData && Array.isArray(section.ColData)) {
-      // Direct row data
-      const colData = section.ColData
-      const date = colData[0]?.value || ''
-      const type = colData[1]?.value || ''
-      const docNum = colData[2]?.value || null
-      const name = colData[3]?.value || null
-      const memo = colData[4]?.value || null
-      const debit = parseFloat(colData[5]?.value) || 0
-      const credit = parseFloat(colData[6]?.value) || 0
 
-      if (!date || date === '' || type === 'Beginning Balance') {
-        if (type === 'Beginning Balance') {
-          // Handle beginning balance
-          const balance = parseFloat(colData[7]?.value) || 0
-          runningBalance = balance
-        }
+      // If this row has nested rows, recurse
+      if (row.Rows && row.Rows.Row) {
+        extractRows(row.Rows.Row, depth + 1)
         continue
       }
 
-      runningBalance = runningBalance + debit - credit
+      // Process data rows
+      if (row.ColData && Array.isArray(row.ColData) && row.type === 'Data') {
+        const colData = row.ColData
 
-      transactions.push({
-        id: `${date}-${docNum || Math.random()}`,
-        date,
-        type,
-        docNumber: docNum,
-        name,
-        memo,
-        debit,
-        credit,
-        balance: runningBalance
-      })
+        // Try to extract values using column mapping, with fallbacks
+        const date = colData[colMap['date']]?.value || colData[0]?.value || ''
+        const type = colData[colMap['type']]?.value || colData[1]?.value || ''
+        const docNum = colData[colMap['docNum']]?.value || colData[2]?.value || null
+        const name = colData[colMap['name']]?.value || colData[3]?.value || null
+        const memo = colData[colMap['memo']]?.value || colData[4]?.value || null
+
+        // For debit/credit, look for 'Amount' column or specific debit/credit columns
+        let debit = 0
+        let credit = 0
+
+        if (colMap['debit'] !== undefined) {
+          debit = parseFloat(colData[colMap['debit']]?.value) || 0
+        }
+        if (colMap['credit'] !== undefined) {
+          credit = parseFloat(colData[colMap['credit']]?.value) || 0
+        }
+
+        // If there's an 'amount' column without separate debit/credit
+        // positive = debit (money out), negative = credit (money in)
+        if (colMap['debit'] === colMap['credit'] || (debit === 0 && credit === 0)) {
+          const amountIdx = colMap['debit'] !== undefined ? colMap['debit'] : 5
+          const amount = parseFloat(colData[amountIdx]?.value) || 0
+          if (amount > 0) {
+            debit = amount
+          } else if (amount < 0) {
+            credit = Math.abs(amount)
+          }
+        }
+
+        // Skip if no date (likely a subtotal row)
+        if (!date || date === '') continue
+        // Skip beginning balance rows
+        if (type.toLowerCase().includes('beginning balance')) {
+          const balanceVal = parseFloat(colData[colMap['balance']]?.value || colData[7]?.value) || 0
+          runningBalance = balanceVal
+          continue
+        }
+
+        runningBalance = runningBalance + debit - credit
+
+        transactions.push({
+          id: `${date}-${docNum || transactions.length}`,
+          date,
+          type,
+          docNumber: docNum,
+          name,
+          memo,
+          debit,
+          credit,
+          balance: runningBalance
+        })
+      }
     }
   }
 
-  return transactions
+  extractRows(rows)
+  debug.transactionCount = transactions.length
+
+  return { transactions, debug }
 }
 
 serve(async (req) => {
@@ -257,15 +291,19 @@ serve(async (req) => {
       effectiveEndDate
     )
 
+    console.log('Raw QBO Report structure:', JSON.stringify(reportData, null, 2).substring(0, 2000))
+
     // Parse the report
-    const transactions = parseGeneralLedgerReport(reportData)
+    const { transactions, debug } = parseGeneralLedgerReport(reportData)
+
+    console.log('Parse debug:', JSON.stringify(debug, null, 2))
 
     // Calculate summary
     const totalDebits = transactions.reduce((sum, t) => sum + t.debit, 0)
     const totalCredits = transactions.reduce((sum, t) => sum + t.credit, 0)
     const netChange = totalDebits - totalCredits
 
-    const response: AccountTransactionsResponse = {
+    const response: AccountTransactionsResponse & { debug?: any } = {
       accountId,
       accountName: accountName || accountDetails.name,
       accountType: accountDetails.type,
@@ -277,7 +315,9 @@ serve(async (req) => {
         totalDebits,
         totalCredits,
         netChange
-      }
+      },
+      // Include debug info temporarily to help diagnose the parsing issue
+      debug
     }
 
     return new Response(

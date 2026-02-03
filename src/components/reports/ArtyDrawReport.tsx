@@ -28,6 +28,15 @@ interface AccountTransactionsResponse {
     totalCredits: number;
     netChange: number;
   };
+  debug?: {
+    hasRows: boolean;
+    hasRowArray: boolean;
+    rowCount: number;
+    columns: string[];
+    columnMapping: Record<string, number>;
+    sampleRows: any[];
+    transactionCount: number;
+  };
 }
 
 interface CommissionMapping {
@@ -50,9 +59,8 @@ export default function ArtyDrawReport() {
   // Permission check
   const canViewReport = hasPermission('can_view_arty_draw_report');
 
-  // Date range
-  const currentYear = new Date().getFullYear();
-  const [startDate, setStartDate] = useState(`${currentYear}-01-01`);
+  // Date range - default to 2024-01-01 to capture full draw history
+  const [startDate, setStartDate] = useState('2024-01-01');
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Sort state
@@ -473,6 +481,27 @@ export default function ArtyDrawReport() {
           <p><strong>Source:</strong> QuickBooks Online General Ledger Report for {mapping?.qb_credit_account_name || 'Draw Account'}</p>
         </div>
       </div>
+
+      {/* Debug Info - temporary for diagnosing parsing issues */}
+      {data?.debug && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg shadow p-4">
+          <h3 className="font-semibold text-yellow-800 mb-2">Debug Info (temporary)</h3>
+          <div className="text-xs font-mono text-yellow-900 space-y-2">
+            <p><strong>Columns from QBO:</strong> {data.debug.columns?.join(', ') || 'none'}</p>
+            <p><strong>Column Mapping:</strong> {JSON.stringify(data.debug.columnMapping)}</p>
+            <p><strong>Row Count:</strong> {data.debug.rowCount}</p>
+            <p><strong>Transactions Parsed:</strong> {data.debug.transactionCount}</p>
+            {data.debug.sampleRows?.length > 0 && (
+              <div>
+                <p><strong>Sample Rows:</strong></p>
+                <pre className="bg-yellow-100 p-2 rounded overflow-x-auto text-xs">
+                  {JSON.stringify(data.debug.sampleRows, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
