@@ -431,10 +431,15 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
               )}
               {/* All-in Rent - Always calculated, not editable */}
               {!isLand && (() => {
-                // Calculate all-in rent from unit values if available, otherwise use property value
-                const allInRent = hasUnit && siteSubmit.property_unit?.rent != null && siteSubmit.property_unit?.nnn != null
-                  ? siteSubmit.property_unit.rent + siteSubmit.property_unit.nnn
-                  : siteSubmit.property.all_in_rent;
+                // Calculate all-in rent from unit values if available, otherwise calculate from property values
+                let allInRent: number | null = null;
+                if (hasUnit && siteSubmit.property_unit?.rent != null && siteSubmit.property_unit?.nnn != null) {
+                  allInRent = siteSubmit.property_unit.rent + siteSubmit.property_unit.nnn;
+                } else if (siteSubmit.property.rent_psf != null && siteSubmit.property.nnn_psf != null) {
+                  allInRent = siteSubmit.property.rent_psf + siteSubmit.property.nnn_psf;
+                } else {
+                  allInRent = siteSubmit.property.all_in_rent;
+                }
                 const availableSqft = hasUnit && siteSubmit.property_unit?.sqft != null
                   ? siteSubmit.property_unit.sqft
                   : siteSubmit.property.available_sqft;
