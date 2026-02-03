@@ -1969,7 +1969,7 @@ const MappingPageContent: React.FC = () => {
                 </button>
 
                 {showCustomLayersMenu && (
-                  <div className="absolute left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-[10001]">
+                  <div className="absolute left-0 mt-1 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-[10001]">
                     <div className="p-2 border-b border-gray-100">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-900">Custom Layers</span>
@@ -1998,17 +1998,17 @@ const MappingPageContent: React.FC = () => {
                               editingLayerId === layer.id ? 'bg-blue-50' : ''
                             }`}
                           >
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between gap-2">
                               <div className="flex items-center space-x-2 flex-1 min-w-0">
                                 <button
                                   onClick={() => toggleCustomLayer(layer.id)}
-                                  className={`w-8 h-5 rounded-full transition-colors ${
-                                    customLayerVisibility[layer.id] ? 'bg-blue-600' : 'bg-gray-300'
+                                  className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                                    customLayerVisibility[layer.id] !== false ? 'bg-blue-600' : 'bg-gray-300'
                                   }`}
                                 >
                                   <span
-                                    className={`block w-3 h-3 bg-white rounded-full transform transition-transform ${
-                                      customLayerVisibility[layer.id] ? 'translate-x-4' : 'translate-x-1'
+                                    className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                      customLayerVisibility[layer.id] !== false ? 'translate-x-4' : 'translate-x-0'
                                     }`}
                                   />
                                 </button>
