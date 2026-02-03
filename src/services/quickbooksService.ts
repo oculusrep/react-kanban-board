@@ -124,3 +124,43 @@ export async function hasQBInvoice(paymentId: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Delete a QuickBooks invoice for a payment
+ * This voids the invoice in QuickBooks and clears the QB fields in the payment record
+ * @param paymentId - The payment ID whose invoice should be deleted
+ * @returns SyncResult with success status and details
+ */
+export async function deleteQBInvoice(paymentId: string): Promise<SyncResult> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      return { success: false, error: 'You must be logged in to delete from QuickBooks' };
+    }
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/quickbooks-delete-invoice`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': anonKey
+      },
+      body: JSON.stringify({ paymentId })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result?.success) {
+      return { success: false, error: result?.error || 'Failed to delete invoice' };
+    }
+
+    return {
+      success: true,
+      message: result.message || 'Invoice deleted successfully'
+    };
+  } catch (error: any) {
+    console.error('QuickBooks delete error:', error);
+    return { success: false, error: error.message || 'Failed to delete from QuickBooks' };
+  }
+}
