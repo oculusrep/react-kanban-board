@@ -105,6 +105,14 @@ export default function ReportsPage() {
       route: "/reports/goals",
       icon: "🎯",
       adminOnly: true
+    },
+    {
+      id: "arty-draw",
+      name: "Arty's Draw Account",
+      description: "View commission draws and credits for Arty's draw account from QuickBooks",
+      route: "/reports/arty-draw",
+      icon: "💳",
+      adminOnly: true
     }
   ];
 
