@@ -16,6 +16,8 @@ import SaveShapeModal from '../../components/modals/SaveShapeModal';
 import ShareLayerModal from '../../components/modals/ShareLayerModal';
 import { mapLayerService, MapLayer, MapLayerShape, UpdateShapeInput } from '../../services/mapLayerService';
 import ShapeEditorPanel from '../../components/mapping/ShapeEditorPanel';
+import BoundaryBuilderPanel from '../../components/mapping/BoundaryBuilderPanel';
+import { boundaryService, FetchedBoundary } from '../../services/boundaryService';
 
 // Portal-visible stages (from spec)
 // Note: Stage names must match database format exactly (no spaces around dashes)
@@ -97,6 +99,9 @@ export default function PortalMapPage() {
   // Share layer modal state (brokers only)
   const [showShareLayerModal, setShowShareLayerModal] = useState(false);
   const [layerToShare, setLayerToShare] = useState<MapLayer | null>(null);
+
+  // Boundary builder panel state (brokers only)
+  const [showBoundaryBuilder, setShowBoundaryBuilder] = useState(false);
 
   // Shape editor state (brokers only)
   const [selectedShape, setSelectedShape] = useState<MapLayerShape | null>(null);
@@ -348,6 +353,59 @@ export default function PortalMapPage() {
     }
   };
 
+  // Handler for saving boundaries as a collection (individual shapes)
+  const handleSaveBoundaryCollection = async (boundaries: FetchedBoundary[], layerName: string) => {
+    // Create a new layer
+    const layer = await mapLayerService.createLayer({
+      name: layerName,
+      description: `Collection of ${boundaries.length} boundaries`,
+      layer_type: 'custom',
+    });
+
+    // Create one shape per boundary
+    for (const boundary of boundaries) {
+      const geometry = boundaryService.convertToMapLayerGeometry(boundary.geometry);
+      await mapLayerService.createShape({
+        layer_id: layer.id,
+        name: boundary.displayName,
+        shape_type: 'polygon',
+        geometry,
+      });
+    }
+
+    // Refresh layers and enable visibility
+    await fetchAllLayers();
+    setLayerVisibility(prev => ({ ...prev, [layer.id]: true }));
+    setCustomLayerRefreshTrigger(prev => prev + 1);
+  };
+
+  // Handler for saving boundaries as a merged polygon
+  const handleSaveBoundaryMerged = async (boundaries: FetchedBoundary[], layerName: string) => {
+    // Merge the boundaries into a single polygon
+    const mergedGeometry = boundaryService.mergePolygons(boundaries);
+
+    // Create a new layer
+    const layer = await mapLayerService.createLayer({
+      name: layerName,
+      description: `Merged territory from ${boundaries.length} boundaries`,
+      layer_type: 'custom',
+    });
+
+    // Create a single merged shape
+    await mapLayerService.createShape({
+      layer_id: layer.id,
+      name: layerName,
+      shape_type: 'polygon',
+      geometry: mergedGeometry,
+      description: `Merged from: ${boundaries.map(b => b.displayName).join(', ')}`,
+    });
+
+    // Refresh layers and enable visibility
+    await fetchAllLayers();
+    setLayerVisibility(prev => ({ ...prev, [layer.id]: true }));
+    setCustomLayerRefreshTrigger(prev => prev + 1);
+  };
+
   // Filter stage categories to only show portal-visible stages
   const filteredStageCategories = useMemo(() => {
     const filtered: Record<string, { label: string; stages: string[] }> = {};
@@ -458,6 +516,69 @@ export default function PortalMapPage() {
           />
         )}
 
+        {/* Selected Shape Actions - Show when a shape is selected in edit mode */}
+        {showBrokerFeatures && editingLayerId && selectedShape && (
+          <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 z-[10000]">
+            <div className="bg-white rounded-lg shadow-xl border-2 border-blue-500 p-3">
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <div
+                    className="w-4 h-4 rounded"
+                    style={{ backgroundColor: selectedShape.color }}
+                  />
+                  <span className="text-sm font-medium text-gray-900">
+                    {selectedShape.name || `${selectedShape.shape_type} shape`}
+                  </span>
+                </div>
+                <div className="h-4 w-px bg-gray-300" />
+                <button
+                  onClick={() => setSelectedShape(null)}
+                  className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded"
+                >
+                  Deselect
+                </button>
+                {/* Only show Simplify for polygon shapes */}
+                {selectedShape.shape_type === 'polygon' && (
+                  <button
+                    onClick={async () => {
+                      const pointCount = (selectedShape.geometry as any)?.coordinates?.length || 0;
+                      if (pointCount < 10) {
+                        return;
+                      }
+                      try {
+                        const updated = await mapLayerService.simplifyShape(selectedShape.id);
+                        setSelectedShape(updated);
+                        setCustomLayerRefreshTrigger(prev => prev + 1);
+                      } catch (err: any) {
+                        console.error('Failed to simplify shape:', err);
+                      }
+                    }}
+                    className="px-3 py-1.5 text-sm text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded"
+                    title={`Reduce polygon points (currently ${(selectedShape.geometry as any)?.coordinates?.length || 0})`}
+                  >
+                    ✂️ Simplify ({(selectedShape.geometry as any)?.coordinates?.length || 0} pts)
+                  </button>
+                )}
+                <button
+                  onClick={async () => {
+                    if (!confirm('Delete this shape? This cannot be undone.')) return;
+                    try {
+                      await mapLayerService.deleteShape(selectedShape.id);
+                      setSelectedShape(null);
+                      setCustomLayerRefreshTrigger(prev => prev + 1);
+                    } catch (err: any) {
+                      console.error('Failed to delete shape:', err);
+                    }
+                  }}
+                  className="px-3 py-1.5 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                >
+                  🗑️ Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Search Box - positioned at top of map, above other controls */}
         <div className="absolute top-2 left-2" style={{ width: '400px', zIndex: 10002 }}>
           <AddressSearchBox
@@ -507,7 +628,7 @@ export default function PortalMapPage() {
               </button>
 
               {showLayersPanel && (
-                <div className="absolute left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-[10001]">
+                <div className="absolute left-0 mt-1 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-[10001]">
                   <div className="p-2 border-b border-gray-100">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-gray-900">
@@ -532,7 +653,7 @@ export default function PortalMapPage() {
                           editingLayerId === layer.id ? 'bg-blue-50' : ''
                         }`}
                       >
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center space-x-2 flex-1 min-w-0">
                             {/* Visibility toggle */}
                             <button
@@ -540,13 +661,13 @@ export default function PortalMapPage() {
                                 ...prev,
                                 [layer.id]: !prev[layer.id]
                               }))}
-                              className={`w-8 h-5 rounded-full transition-colors ${
-                                layerVisibility[layer.id] ? 'bg-blue-600' : 'bg-gray-300'
+                              className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${
+                                layerVisibility[layer.id] !== false ? 'bg-blue-600' : 'bg-gray-300'
                               }`}
                             >
                               <span
-                                className={`block w-3 h-3 bg-white rounded-full transform transition-transform ${
-                                  layerVisibility[layer.id] ? 'translate-x-4' : 'translate-x-1'
+                                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                  layerVisibility[layer.id] !== false ? 'translate-x-4' : 'translate-x-0'
                                 }`}
                               />
                             </button>
@@ -581,6 +702,24 @@ export default function PortalMapPage() {
                                 {editingLayerId === layer.id ? 'Stop' : 'Edit'}
                               </button>
                               <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const newName = prompt('Rename layer:', layer.name);
+                                  if (!newName || newName === layer.name) return;
+                                  try {
+                                    await mapLayerService.updateLayer(layer.id, { name: newName });
+                                    setCustomLayerRefreshTrigger(prev => prev + 1);
+                                    fetchAllLayers();
+                                  } catch (err) {
+                                    console.error('Failed to rename layer:', err);
+                                  }
+                                }}
+                                className="ml-1 px-1 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
+                                title="Rename layer"
+                              >
+                                ✏️
+                              </button>
+                              <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setLayerToShare(layer);
@@ -592,12 +731,49 @@ export default function PortalMapPage() {
                               >
                                 📤
                               </button>
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (!confirm(`Delete layer "${layer.name}"? This will also delete all shapes.`)) return;
+                                  try {
+                                    await mapLayerService.deleteLayer(layer.id);
+                                    if (editingLayerId === layer.id) {
+                                      setEditingLayerId(null);
+                                    }
+                                    setCustomLayerRefreshTrigger(prev => prev + 1);
+                                    fetchAllLayers();
+                                  } catch (err) {
+                                    console.error('Failed to delete layer:', err);
+                                  }
+                                }}
+                                className="ml-1 px-1 py-1 text-xs rounded text-red-600 hover:bg-red-50"
+                                title="Delete layer"
+                              >
+                                🗑️
+                              </button>
                             </div>
                           )}
                         </div>
                       </div>
                     ))}
                   </div>
+                  {/* Build Territory Button (brokers only) */}
+                  {showBrokerFeatures && (
+                    <div className="p-2 border-t border-gray-100">
+                      <button
+                        onClick={() => {
+                          setShowBoundaryBuilder(true);
+                          setShowLayersPanel(false);
+                        }}
+                        className="w-full px-3 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg text-sm font-medium hover:from-blue-700 hover:to-indigo-700 flex items-center justify-center space-x-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                        </svg>
+                        <span>Build Territory</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -658,6 +834,12 @@ export default function PortalMapPage() {
               setCustomLayerRefreshTrigger(prev => prev + 1);
               fetchAllLayers();
             }}
+            onContinueEditing={() => {
+              // Close modal and return to drawing mode
+              setShowSaveShapeModal(false);
+              setPendingShape(null);
+              setIsDrawMode(true);
+            }}
           />
         )}
 
@@ -681,15 +863,26 @@ export default function PortalMapPage() {
         {/* Shape Editor Panel (brokers only - when editing a layer) */}
         {showBrokerFeatures && (
           <ShapeEditorPanel
-            isOpen={showShapeEditor}
-            shape={selectedShape}
-            onClose={() => {
-              setShowShapeEditor(false);
-              setSelectedShape(null);
-            }}
-            onSave={handleShapeSave}
-            onDelete={handleShapeDelete}
-            onUpdateLayerDefaults={editingLayerId ? handleUpdateLayerDefaults : undefined}
+              isOpen={showShapeEditor}
+              shape={selectedShape}
+              onClose={() => {
+                setShowShapeEditor(false);
+                setSelectedShape(null);
+              }}
+              onSave={handleShapeSave}
+              onDelete={handleShapeDelete}
+              onUpdateLayerDefaults={editingLayerId ? handleUpdateLayerDefaults : undefined}
+            />
+        )}
+
+        {/* Boundary Builder Panel (brokers only) */}
+        {showBrokerFeatures && (
+          <BoundaryBuilderPanel
+            isOpen={showBoundaryBuilder}
+            onClose={() => setShowBoundaryBuilder(false)}
+            map={mapInstance}
+            onSaveCollection={handleSaveBoundaryCollection}
+            onSaveMerged={handleSaveBoundaryMerged}
           />
         )}
       </div>

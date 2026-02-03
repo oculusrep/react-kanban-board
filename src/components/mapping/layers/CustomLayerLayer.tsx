@@ -209,7 +209,7 @@ function createGoogleShape(
         fillOpacity: shape.fill_opacity,
         map,
         editable,
-        draggable: editable,
+        draggable: false,
         clickable: true,
         zIndex: 100,
       });
@@ -228,7 +228,7 @@ function createGoogleShape(
         fillOpacity: shape.fill_opacity,
         map,
         editable,
-        draggable: editable,
+        draggable: false,
         clickable: true,
         zIndex: 100,
       });

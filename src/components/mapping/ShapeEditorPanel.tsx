@@ -101,9 +101,9 @@ const ShapeEditorPanel: React.FC<ShapeEditorPanelProps> = ({
   }[shape.shape_type] || 'Shape';
 
   return (
-    <div className="fixed right-4 top-32 w-80 z-[1000] bg-white rounded-lg shadow-xl border border-gray-200">
+    <div className="fixed right-4 top-32 w-80 z-[1000] bg-white rounded-lg shadow-xl border border-gray-200 flex flex-col max-h-[calc(100vh-9rem)]">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200">
+      <div className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
         <div>
           <h3 className="font-semibold text-gray-900">Edit {shapeTypeLabel}</h3>
           <p className="text-xs text-gray-500">Modify shape properties</p>
@@ -118,8 +118,8 @@ const ShapeEditorPanel: React.FC<ShapeEditorPanelProps> = ({
         </button>
       </div>
 
-      {/* Form */}
-      <div className="p-4 space-y-4">
+      {/* Form - scrollable */}
+      <div className="p-4 space-y-4 overflow-y-auto flex-1">
         {/* Name */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -271,8 +271,8 @@ const ShapeEditorPanel: React.FC<ShapeEditorPanelProps> = ({
         )}
       </div>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-gray-200 flex items-center justify-between">
+      {/* Footer - fixed at bottom */}
+      <div className="p-4 border-t border-gray-200 flex items-center justify-between flex-shrink-0">
         <button
           onClick={handleDelete}
           disabled={isDeleting || isSaving}

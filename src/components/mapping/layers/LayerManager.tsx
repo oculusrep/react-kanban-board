@@ -63,7 +63,7 @@ export interface LayerManagerContextType {
   customLayerVisibility: { [layerId: string]: boolean };
   customLayersLoading: boolean;
   toggleCustomLayer: (layerId: string) => void;
-  refreshCustomLayers: () => void;
+  refreshCustomLayers: () => Promise<void>;
 }
 
 export type CreateMode = 'property' | 'site_submit';
@@ -147,6 +147,7 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     setCustomLayersLoading(true);
     try {
       const layers = await mapLayerService.getLayers({ includeShapes: true });
+      console.log('🗺️ Fetched custom layers:', layers.map(l => ({ name: l.name, shapes: l.shapes?.length })));
       setCustomLayers(layers);
       // Initialize visibility for new layers (default to false)
       setCustomLayerVisibility(prev => {
@@ -240,9 +241,9 @@ export const LayerManagerProvider: React.FC<LayerManagerProviderProps> = ({ chil
     }));
   }, []);
 
-  // Refresh custom layers
-  const refreshCustomLayers = useCallback(() => {
-    fetchCustomLayers();
+  // Refresh custom layers (returns promise so callers can await)
+  const refreshCustomLayers = useCallback(async () => {
+    await fetchCustomLayers();
   }, [fetchCustomLayers]);
 
   const memoizedRefreshTrigger = useMemo(() => refreshTrigger, [
