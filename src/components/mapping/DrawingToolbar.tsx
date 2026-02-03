@@ -52,7 +52,7 @@ const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
             strokeColor: '#3b82f6',
             strokeWeight: 2,
             editable: true,
-            draggable: true,
+            draggable: false,
           },
           circleOptions: {
             fillColor: '#3b82f6',
@@ -60,7 +60,7 @@ const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
             strokeColor: '#3b82f6',
             strokeWeight: 2,
             editable: true,
-            draggable: true,
+            draggable: false,
           },
           polylineOptions: {
             strokeColor: '#3b82f6',
@@ -73,7 +73,7 @@ const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
             strokeColor: '#3b82f6',
             strokeWeight: 2,
             editable: true,
-            draggable: true,
+            draggable: false,
           },
         });
 
