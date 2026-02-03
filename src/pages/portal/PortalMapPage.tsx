@@ -702,6 +702,24 @@ export default function PortalMapPage() {
                                 {editingLayerId === layer.id ? 'Stop' : 'Edit'}
                               </button>
                               <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const newName = prompt('Rename layer:', layer.name);
+                                  if (!newName || newName === layer.name) return;
+                                  try {
+                                    await mapLayerService.updateLayer(layer.id, { name: newName });
+                                    setCustomLayerRefreshTrigger(prev => prev + 1);
+                                    fetchAllLayers();
+                                  } catch (err) {
+                                    console.error('Failed to rename layer:', err);
+                                  }
+                                }}
+                                className="ml-1 px-1 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
+                                title="Rename layer"
+                              >
+                                ✏️
+                              </button>
+                              <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setLayerToShare(layer);
@@ -712,6 +730,26 @@ export default function PortalMapPage() {
                                 title="Share layer with clients"
                               >
                                 📤
+                              </button>
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (!confirm(`Delete layer "${layer.name}"? This will also delete all shapes.`)) return;
+                                  try {
+                                    await mapLayerService.deleteLayer(layer.id);
+                                    if (editingLayerId === layer.id) {
+                                      setEditingLayerId(null);
+                                    }
+                                    setCustomLayerRefreshTrigger(prev => prev + 1);
+                                    fetchAllLayers();
+                                  } catch (err) {
+                                    console.error('Failed to delete layer:', err);
+                                  }
+                                }}
+                                className="ml-1 px-1 py-1 text-xs rounded text-red-600 hover:bg-red-50"
+                                title="Delete layer"
+                              >
+                                🗑️
                               </button>
                             </div>
                           )}
