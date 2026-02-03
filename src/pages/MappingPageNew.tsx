@@ -2043,6 +2043,25 @@ const MappingPageContent: React.FC = () => {
                                 {editingLayerId === layer.id ? 'Stop' : 'Edit'}
                               </button>
                               <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const newName = prompt('Rename layer:', layer.name);
+                                  if (!newName || newName === layer.name) return;
+                                  try {
+                                    const { mapLayerService } = await import('../services/mapLayerService');
+                                    await mapLayerService.updateLayer(layer.id, { name: newName });
+                                    refreshCustomLayers();
+                                    showToast('Layer renamed', { type: 'success' });
+                                  } catch (err: any) {
+                                    showToast(`Failed to rename: ${err?.message}`, { type: 'error' });
+                                  }
+                                }}
+                                className="ml-1 px-1 py-1 text-xs rounded text-gray-600 hover:bg-gray-100"
+                                title="Rename layer"
+                              >
+                                ✏️
+                              </button>
+                              <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setLayerToShare(layer);
