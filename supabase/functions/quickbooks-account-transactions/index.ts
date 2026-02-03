@@ -98,20 +98,11 @@ async function getAccountDetails(
  * Parse the General Ledger report into a structured format
  * QBO Report structure can vary - this handles the common formats
  */
-function parseGeneralLedgerReport(reportData: any): { transactions: TransactionLine[], debug: any } {
+function parseGeneralLedgerReport(reportData: any): TransactionLine[] {
   const transactions: TransactionLine[] = []
-  const debug: any = {
-    hasRows: !!reportData?.Rows,
-    hasRowArray: !!reportData?.Rows?.Row,
-    rowCount: reportData?.Rows?.Row?.length || 0,
-    columns: reportData?.Columns?.Column?.map((c: any) => ({ title: c.ColTitle, type: c.ColType })) || [],
-    sampleRows: [],
-    skippedRows: 0,
-    processedRows: 0
-  }
 
   if (!reportData || !reportData.Rows || !reportData.Rows.Row) {
-    return { transactions, debug }
+    return transactions
   }
 
   // Get column mapping from the report - QBO uses ColTitle or ColType
@@ -159,7 +150,6 @@ function parseGeneralLedgerReport(reportData: any): { transactions: TransactionL
       colMap['balance'] = idx
     }
   })
-  debug.columnMapping = colMap
 
   let runningBalance = 0
   const rows = reportData.Rows.Row
@@ -167,18 +157,6 @@ function parseGeneralLedgerReport(reportData: any): { transactions: TransactionL
   // Recursive function to extract data rows
   function extractRows(rowArray: any[], depth = 0) {
     for (const row of rowArray) {
-      // Capture sample for debugging (capture more rows to understand structure)
-      if (debug.sampleRows.length < 10 && row.ColData) {
-        debug.sampleRows.push({
-          depth,
-          type: row.type,
-          header: row.Header,
-          summary: row.Summary,
-          colDataCount: row.ColData?.length,
-          colData: row.ColData?.map((c: any) => ({ value: c.value, id: c.id }))
-        })
-      }
-
       // If this row has nested rows, recurse
       if (row.Rows && row.Rows.Row) {
         extractRows(row.Rows.Row, depth + 1)
@@ -189,11 +167,9 @@ function parseGeneralLedgerReport(reportData: any): { transactions: TransactionL
       // Some QBO reports don't have type='Data', they just have ColData
       if (row.ColData && Array.isArray(row.ColData)) {
         const colData = row.ColData
-        debug.processedRows++
 
         // Skip rows that don't have enough columns or are summary rows
         if (colData.length < 3) {
-          debug.skippedRows++
           continue
         }
 
@@ -251,7 +227,6 @@ function parseGeneralLedgerReport(reportData: any): { transactions: TransactionL
 
         // Skip if no date (likely a subtotal or header row)
         if (!date || date === '' || date === 'Total' || date.toLowerCase().includes('total')) {
-          debug.skippedRows++
           continue
         }
 
@@ -264,7 +239,6 @@ function parseGeneralLedgerReport(reportData: any): { transactions: TransactionL
               runningBalance = parseFloat(String(balanceVal).replace(/[,$]/g, '')) || 0
             }
           }
-          debug.skippedRows++
           continue
         }
 
@@ -286,9 +260,8 @@ function parseGeneralLedgerReport(reportData: any): { transactions: TransactionL
   }
 
   extractRows(rows)
-  debug.transactionCount = transactions.length
 
-  return { transactions, debug }
+  return transactions
 }
 
 serve(async (req) => {
@@ -367,19 +340,15 @@ serve(async (req) => {
       effectiveEndDate
     )
 
-    console.log('Raw QBO Report structure:', JSON.stringify(reportData, null, 2).substring(0, 2000))
-
     // Parse the report
-    const { transactions, debug } = parseGeneralLedgerReport(reportData)
-
-    console.log('Parse debug:', JSON.stringify(debug, null, 2))
+    const transactions = parseGeneralLedgerReport(reportData)
 
     // Calculate summary
     const totalDebits = transactions.reduce((sum, t) => sum + t.debit, 0)
     const totalCredits = transactions.reduce((sum, t) => sum + t.credit, 0)
     const netChange = totalDebits - totalCredits
 
-    const response: AccountTransactionsResponse & { debug?: any } = {
+    const response: AccountTransactionsResponse = {
       accountId,
       accountName: accountName || accountDetails.name,
       accountType: accountDetails.type,
@@ -391,9 +360,7 @@ serve(async (req) => {
         totalDebits,
         totalCredits,
         netChange
-      },
-      // Include debug info temporarily to help diagnose the parsing issue
-      debug
+      }
     }
 
     return new Response(
