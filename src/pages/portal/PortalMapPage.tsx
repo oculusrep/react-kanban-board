@@ -516,6 +516,69 @@ export default function PortalMapPage() {
           />
         )}
 
+        {/* Selected Shape Actions - Show when a shape is selected in edit mode */}
+        {showBrokerFeatures && editingLayerId && selectedShape && (
+          <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 z-[10000]">
+            <div className="bg-white rounded-lg shadow-xl border-2 border-blue-500 p-3">
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <div
+                    className="w-4 h-4 rounded"
+                    style={{ backgroundColor: selectedShape.color }}
+                  />
+                  <span className="text-sm font-medium text-gray-900">
+                    {selectedShape.name || `${selectedShape.shape_type} shape`}
+                  </span>
+                </div>
+                <div className="h-4 w-px bg-gray-300" />
+                <button
+                  onClick={() => setSelectedShape(null)}
+                  className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded"
+                >
+                  Deselect
+                </button>
+                {/* Only show Simplify for polygon shapes */}
+                {selectedShape.shape_type === 'polygon' && (
+                  <button
+                    onClick={async () => {
+                      const pointCount = (selectedShape.geometry as any)?.coordinates?.length || 0;
+                      if (pointCount < 10) {
+                        return;
+                      }
+                      try {
+                        const updated = await mapLayerService.simplifyShape(selectedShape.id);
+                        setSelectedShape(updated);
+                        setCustomLayerRefreshTrigger(prev => prev + 1);
+                      } catch (err: any) {
+                        console.error('Failed to simplify shape:', err);
+                      }
+                    }}
+                    className="px-3 py-1.5 text-sm text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded"
+                    title={`Reduce polygon points (currently ${(selectedShape.geometry as any)?.coordinates?.length || 0})`}
+                  >
+                    ✂️ Simplify ({(selectedShape.geometry as any)?.coordinates?.length || 0} pts)
+                  </button>
+                )}
+                <button
+                  onClick={async () => {
+                    if (!confirm('Delete this shape? This cannot be undone.')) return;
+                    try {
+                      await mapLayerService.deleteShape(selectedShape.id);
+                      setSelectedShape(null);
+                      setCustomLayerRefreshTrigger(prev => prev + 1);
+                    } catch (err: any) {
+                      console.error('Failed to delete shape:', err);
+                    }
+                  }}
+                  className="px-3 py-1.5 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                >
+                  🗑️ Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Search Box - positioned at top of map, above other controls */}
         <div className="absolute top-2 left-2" style={{ width: '400px', zIndex: 10002 }}>
           <AddressSearchBox
