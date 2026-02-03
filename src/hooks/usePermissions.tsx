@@ -4,7 +4,11 @@ import { supabase } from '../lib/supabaseClient';
 import { RolePermissions } from '../types/permissions';
 
 /**
- * Hook for checking user permissions based on their role
+ * Hook for checking user permissions based on their role AND user-level overrides
+ *
+ * Permission resolution order:
+ * 1. User-level permission overrides (highest priority)
+ * 2. Role permissions (base permissions)
  *
  * Usage:
  * ```typescript
@@ -16,15 +20,19 @@ import { RolePermissions } from '../types/permissions';
  * ```
  */
 export function usePermissions() {
-  const { userRole } = useAuth();
+  const { userRole, userTableId } = useAuth();
   const [permissions, setPermissions] = useState<RolePermissions>({});
+  const [rolePermissions, setRolePermissions] = useState<RolePermissions>({});
+  const [userOverrides, setUserOverrides] = useState<RolePermissions>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchPermissions = async () => {
-      if (!userRole) {
+      if (!userRole && !userTableId) {
         setPermissions({});
+        setRolePermissions({});
+        setUserOverrides({});
         setLoading(false);
         return;
       }
@@ -33,15 +41,45 @@ export function usePermissions() {
         setLoading(true);
         setError(null);
 
-        const { data, error: fetchError } = await supabase
-          .from('role')
-          .select('permissions')
-          .eq('name', userRole)
-          .single();
+        // Fetch role permissions and user overrides in parallel
+        const [roleResult, userResult] = await Promise.all([
+          // Fetch role permissions
+          userRole
+            ? supabase
+                .from('role')
+                .select('permissions')
+                .eq('name', userRole)
+                .single()
+            : Promise.resolve({ data: null, error: null }),
+          // Fetch user-level permission overrides
+          userTableId
+            ? supabase
+                .from('user')
+                .select('permissions')
+                .eq('id', userTableId)
+                .single()
+            : Promise.resolve({ data: null, error: null }),
+        ]);
 
-        if (fetchError) throw fetchError;
+        if (roleResult.error && userRole) {
+          console.error('Error fetching role permissions:', roleResult.error);
+        }
 
-        setPermissions((data?.permissions as RolePermissions) || {});
+        const rolePerm = (roleResult.data?.permissions as RolePermissions) || {};
+        const userPerm = (userResult.data?.permissions as RolePermissions) || {};
+
+        setRolePermissions(rolePerm);
+        setUserOverrides(userPerm);
+
+        // Merge permissions: user overrides take precedence
+        const merged: RolePermissions = { ...rolePerm };
+        for (const key of Object.keys(userPerm) as (keyof RolePermissions)[]) {
+          if (userPerm[key] !== undefined) {
+            merged[key] = userPerm[key];
+          }
+        }
+
+        setPermissions(merged);
       } catch (err) {
         console.error('Error fetching permissions:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch permissions');
@@ -52,7 +90,7 @@ export function usePermissions() {
     };
 
     fetchPermissions();
-  }, [userRole]);
+  }, [userRole, userTableId]);
 
   /**
    * Check if user has a specific permission
@@ -75,13 +113,23 @@ export function usePermissions() {
     return permissionKeys.every(key => permissions[key] === true);
   };
 
+  /**
+   * Check if a specific permission is overridden at the user level
+   */
+  const isUserOverride = (permission: keyof RolePermissions): boolean => {
+    return userOverrides[permission] !== undefined;
+  };
+
   return {
     permissions,
+    rolePermissions,
+    userOverrides,
     loading,
     error,
     hasPermission,
     hasAnyPermission,
     hasAllPermissions,
+    isUserOverride,
   };
 }
 

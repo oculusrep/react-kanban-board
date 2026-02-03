@@ -8541,6 +8541,7 @@ export type Database = {
           mobile_phone: string | null
           name: string | null
           ovis_role: string | null
+          permissions: Json | null
           sf_id: string | null
           sf_profile_id: string | null
           sf_user_role_id: string | null
@@ -8563,6 +8564,7 @@ export type Database = {
           mobile_phone?: string | null
           name?: string | null
           ovis_role?: string | null
+          permissions?: Json | null
           sf_id?: string | null
           sf_profile_id?: string | null
           sf_user_role_id?: string | null
@@ -8585,6 +8587,7 @@ export type Database = {
           mobile_phone?: string | null
           name?: string | null
           ovis_role?: string | null
+          permissions?: Json | null
           sf_id?: string | null
           sf_profile_id?: string | null
           sf_user_role_id?: string | null
