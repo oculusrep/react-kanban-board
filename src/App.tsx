@@ -147,7 +147,7 @@ function App() {
           <Route path="reports/goals" element={<AdminRoute><GoalManagementPage /></AdminRoute>} />
           <Route path="reports/goal-dashboard" element={<CoachRoute><GoalDashboardPage /></CoachRoute>} />
           <Route path="reports/cashflow-dashboard" element={<CoachRoute><CashflowDashboardPage /></CoachRoute>} />
-          <Route path="reports/arty-draw" element={<AdminRoute><ArtyDrawReportPage /></AdminRoute>} />
+          <Route path="reports/arty-draw" element={<CoachRoute><ArtyDrawReportPage /></CoachRoute>} />
           <Route path="prospecting" element={<AdminRoute><ProspectingDashboardPage /></AdminRoute>} />
           <Route path="kpi-dashboard" element={<CoachRoute><KPIDashboardPage /></CoachRoute>} />
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />

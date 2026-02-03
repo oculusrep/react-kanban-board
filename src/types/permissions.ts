@@ -61,6 +61,7 @@ export interface RolePermissions {
   can_view_dropbox_sync_admin?: boolean;
   can_view_rob_report?: boolean;
   can_view_goal_dashboard?: boolean;
+  can_view_arty_draw_report?: boolean;
 
   // Tab-Level Visibility (Deal Page)
   can_view_deal_commission_tab?: boolean;
@@ -386,6 +387,13 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     key: 'can_view_goal_dashboard',
     label: 'Goal Dashboard',
     description: 'View the Goal Dashboard for coaching sessions and goal tracking',
+    category: 'reporting',
+    defaultValue: false,
+  },
+  {
+    key: 'can_view_arty_draw_report',
+    label: "Arty's Draw Report",
+    description: "View Arty's draw account transactions from QuickBooks (restricted access)",
     category: 'reporting',
     defaultValue: false,
   },

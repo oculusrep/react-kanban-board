@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { RefreshCw, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { RefreshCw, Download, ChevronDown, ChevronUp, ShieldAlert } from 'lucide-react';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface TransactionLine {
   id: string;
@@ -40,10 +41,14 @@ interface CommissionMapping {
 }
 
 export default function ArtyDrawReport() {
+  const { hasPermission, loading: permLoading } = usePermissions();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<AccountTransactionsResponse | null>(null);
   const [mapping, setMapping] = useState<CommissionMapping | null>(null);
+
+  // Permission check
+  const canViewReport = hasPermission('can_view_arty_draw_report');
 
   // Date range
   const currentYear = new Date().getFullYear();
@@ -213,6 +218,31 @@ export default function ArtyDrawReport() {
   const toggleSortOrder = () => {
     setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
   };
+
+  // Show loading while checking permissions
+  if (permLoading) {
+    return (
+      <div className="p-8 text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+        <p className="mt-2 text-sm text-gray-600">Checking permissions...</p>
+      </div>
+    );
+  }
+
+  // Access denied if no permission
+  if (!canViewReport) {
+    return (
+      <div className="p-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+          <ShieldAlert className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-red-800">Access Denied</h3>
+          <p className="mt-2 text-sm text-red-600">
+            You do not have permission to view this report. Contact an administrator if you need access.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading && !data) {
     return (

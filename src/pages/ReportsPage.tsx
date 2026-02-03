@@ -112,7 +112,7 @@ export default function ReportsPage() {
       description: "View commission draws and credits for Arty's draw account from QuickBooks",
       route: "/reports/arty-draw",
       icon: "💳",
-      adminOnly: true
+      permission: "can_view_arty_draw_report"
     }
   ];
 
