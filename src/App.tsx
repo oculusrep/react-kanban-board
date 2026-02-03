@@ -61,6 +61,7 @@ import BudgetDashboardPage from "./pages/BudgetDashboardPage";
 import PortalUserManagementPage from "./pages/PortalUserManagementPage";
 import LayerManagementPage from "./pages/LayerManagementPage";
 import ArtyDrawReportPage from "./pages/ArtyDrawReportPage";
+import MikeIsOwedReportPage from "./pages/MikeIsOwedReportPage";
 import TypographyTestPage from "./pages/TypographyTestPage";
 
 function ProtectedLayout() {
@@ -150,6 +151,7 @@ function App() {
           <Route path="reports/goal-dashboard" element={<CoachRoute><GoalDashboardPage /></CoachRoute>} />
           <Route path="reports/cashflow-dashboard" element={<CoachRoute><CashflowDashboardPage /></CoachRoute>} />
           <Route path="reports/arty-draw" element={<CoachRoute><ArtyDrawReportPage /></CoachRoute>} />
+          <Route path="reports/mike-is-owed" element={<CoachRoute><MikeIsOwedReportPage /></CoachRoute>} />
           <Route path="prospecting" element={<AdminRoute><ProspectingDashboardPage /></AdminRoute>} />
           <Route path="kpi-dashboard" element={<CoachRoute><KPIDashboardPage /></CoachRoute>} />
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
