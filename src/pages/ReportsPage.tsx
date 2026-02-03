@@ -113,6 +113,14 @@ export default function ReportsPage() {
       route: "/reports/arty-draw",
       icon: "💳",
       permission: "can_view_arty_draw_report"
+    },
+    {
+      id: "mike-is-owed",
+      name: "Mike Is Owed",
+      description: "Unpaid commission splits on received payments since Jan 2025",
+      route: "/reports/mike-is-owed",
+      icon: "💵",
+      permission: "can_view_goal_dashboard"
     }
   ];
 
