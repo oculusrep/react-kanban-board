@@ -230,8 +230,26 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
         </span>
       </div>
 
-      {/* Date - 3 cols */}
-      <div className="col-span-3">
+      {/* QuickBooks Status - 2 cols */}
+      <div className="col-span-2">
+        {payment.qb_invoice_id ? (
+          <div className="flex flex-col">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 w-fit">
+              QB Synced
+            </span>
+            <span className="text-xs text-gray-500 mt-0.5">
+              #{payment.qb_invoice_number}
+            </span>
+          </div>
+        ) : (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+            Not Synced
+          </span>
+        )}
+      </div>
+
+      {/* Date - 2 cols (reduced from 3) */}
+      <div className="col-span-2">
         {payment.payment_received ? (
           // Show static paid date when payment is received
           <div className="w-full px-2 py-1 text-sm">
@@ -263,8 +281,8 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
         )}
       </div>
 
-      {/* Actions - 2 cols */}
-      <div className="col-span-2 text-right relative">
+      {/* Actions - 1 col */}
+      <div className="col-span-1 text-right relative">
         <button
           onClick={() => setShowMenu(!showMenu)}
           className="text-gray-400 hover:text-gray-600 focus:outline-none p-1"

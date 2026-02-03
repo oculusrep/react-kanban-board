@@ -49,6 +49,7 @@ import GoalDashboardPage from "./pages/GoalDashboardPage";
 import CashflowDashboardPage from "./pages/CashflowDashboardPage";
 import ProspectingDashboardPage from "./pages/ProspectingDashboardPage";
 import QuickBooksAdminPage from "./pages/QuickBooksAdminPage";
+import QuickBooksCustomerMappingPage from "./pages/QuickBooksCustomerMappingPage";
 import GmailSettingsPage from "./pages/GmailSettingsPage";
 import SuggestedContactsPage from "./pages/SuggestedContactsPage";
 import AgentRulesPage from "./pages/AgentRulesPage";
@@ -153,6 +154,7 @@ function App() {
           <Route path="kpi-dashboard" element={<CoachRoute><KPIDashboardPage /></CoachRoute>} />
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
           <Route path="admin/quickbooks" element={<AdminRoute><QuickBooksAdminPage /></AdminRoute>} />
+          <Route path="admin/quickbooks/customers" element={<AdminRoute><QuickBooksCustomerMappingPage /></AdminRoute>} />
           <Route path="admin/budget" element={<AdminRoute><BudgetDashboardPage /></AdminRoute>} />
           <Route path="admin/portal-users" element={<AdminRoute><PortalUserManagementPage /></AdminRoute>} />
           <Route path="admin/layers" element={<AdminRoute><LayerManagementPage /></AdminRoute>} />

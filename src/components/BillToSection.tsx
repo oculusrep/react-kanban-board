@@ -9,7 +9,6 @@ interface BillToSectionProps {
   clientId?: string;
   commissionSplits: CommissionSplit[];
   brokers: Broker[];
-  onBillToUpdate?: (updates: { bill_to_company_name?: string; bill_to_contact_name?: string; bill_to_email?: string }) => void;
 }
 
 const DEFAULT_BCC_EMAIL = 'mike@oculusrep.com';
@@ -18,8 +17,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
   dealId,
   clientId,
   commissionSplits,
-  brokers,
-  onBillToUpdate
+  brokers
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -105,17 +103,6 @@ const BillToSection: React.FC<BillToSectionProps> = ({
 
         if (error) throw error;
 
-        // Notify parent of bill-to field changes (for validation)
-        if (onBillToUpdate) {
-          const billToUpdates: { bill_to_company_name?: string; bill_to_contact_name?: string; bill_to_email?: string } = {};
-          if ('bill_to_company_name' in fieldsToSave) billToUpdates.bill_to_company_name = fieldsToSave.bill_to_company_name || undefined;
-          if ('bill_to_contact_name' in fieldsToSave) billToUpdates.bill_to_contact_name = fieldsToSave.bill_to_contact_name || undefined;
-          if ('bill_to_email' in fieldsToSave) billToUpdates.bill_to_email = fieldsToSave.bill_to_email || undefined;
-          if (Object.keys(billToUpdates).length > 0) {
-            onBillToUpdate(billToUpdates);
-          }
-        }
-
         // Auto-resync QuickBooks invoices when bill-to fields change
         // This runs in the background and doesn't block the UI
         resyncDealInvoices(dealId).then(results => {
@@ -131,7 +118,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
         setSaving(false);
       }
     }, 800);
-  }, [dealId, onBillToUpdate]);
+  }, [dealId]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -166,6 +153,14 @@ const BillToSection: React.FC<BillToSectionProps> = ({
   const handleBccChange = (value: string) => {
     setBillToBccEmails(value);
     saveField('bill_to_bcc_emails', value);
+  };
+
+  // Manual populate CC button
+  const handlePopulateCc = () => {
+    if (defaultCcEmails) {
+      setBillToCcEmails(defaultCcEmails);
+      saveField('bill_to_cc_emails', defaultCcEmails);
+    }
   };
 
   // Ensure BCC has default email
@@ -262,26 +257,19 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                   </p>
                 </div>
 
-                {/* CC email */}
+                {/* CC emails */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-sm font-medium text-gray-700">
-                      CC Email
+                      CC Email(s)
                     </label>
-                    {defaultCcEmails && !billToCcEmails && (
+                    {defaultCcEmails && (
                       <button
                         type="button"
-                        onClick={() => {
-                          // Only use first email from deal team
-                          const firstEmail = defaultCcEmails.split(',')[0]?.trim();
-                          if (firstEmail) {
-                            setBillToCcEmails(firstEmail);
-                            saveField('bill_to_cc_emails', firstEmail);
-                          }
-                        }}
+                        onClick={handlePopulateCc}
                         className="text-xs text-blue-600 hover:text-blue-700 hover:underline"
                       >
-                        + Add first deal team email
+                        + Add deal team emails
                       </button>
                     )}
                   </div>
@@ -289,26 +277,21 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                     type="text"
                     value={billToCcEmails}
                     onChange={(e) => handleCcChange(e.target.value)}
-                    placeholder="e.g., broker@company.com"
+                    placeholder="e.g., broker1@company.com, broker2@company.com"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
                   />
-                  {billToCcEmails.includes(',') && (
-                    <p className="mt-1 text-xs text-amber-600">
-                      QuickBooks only supports one CC email. Only the first address will be used.
-                    </p>
-                  )}
-                  {defaultCcEmails && !billToCcEmails.includes(',') && (
+                  {defaultCcEmails && (
                     <p className="mt-1 text-xs text-gray-500">
                       Deal team: {defaultCcEmails}
                     </p>
                   )}
                 </div>
 
-                {/* BCC email */}
+                {/* BCC emails */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-sm font-medium text-gray-700">
-                      BCC Email
+                      BCC Email(s)
                     </label>
                     {!billToBccEmails.toLowerCase().includes(DEFAULT_BCC_EMAIL.toLowerCase()) && (
                       <button
@@ -327,15 +310,9 @@ const BillToSection: React.FC<BillToSectionProps> = ({
                     placeholder={DEFAULT_BCC_EMAIL}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
                   />
-                  {billToBccEmails.includes(',') ? (
-                    <p className="mt-1 text-xs text-amber-600">
-                      QuickBooks only supports one BCC email. Only the first address will be used.
-                    </p>
-                  ) : (
-                    <p className="mt-1 text-xs text-gray-500">
-                      Always include {DEFAULT_BCC_EMAIL} for records
-                    </p>
-                  )}
+                  <p className="mt-1 text-xs text-gray-500">
+                    Always include {DEFAULT_BCC_EMAIL} for records
+                  </p>
                 </div>
               </div>
 

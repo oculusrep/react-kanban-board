@@ -2,901 +2,1126 @@
 
 ## Overview
 
-OVIS integrates with QuickBooks Online (QBO) for:
-1. **Invoice sync** - Push OVIS invoices to QBO
-2. **Payment reconciliation** - Match OVIS payments with QBO
-3. **Expense tracking** - Pull expenses from QBO for P&L reporting
-4. **Chart of Accounts sync** - Pull account structure for categorization
+OVIS CRM integrates with QuickBooks Online (QBO) to sync invoices for deal payments. This allows users to:
+- Create invoices in QuickBooks from payment records
+- Send invoices via email through QuickBooks
+- Delete/void invoices in QuickBooks
+- Track sync status and invoice numbers
 
 ## Architecture
 
-### Database Tables
+### Database Schema
 
-| Table | Purpose |
-|-------|---------|
-| `qb_connection` | OAuth tokens and connection status |
-| `qb_account` | Chart of accounts (synced from QBO) |
-| `qb_item` | Items/products with income account mappings |
-| `qb_expense` | All transactions (synced from QBO) |
-| `qb_sync_log` | Audit trail of sync operations |
-| `qb_commission_mapping` | Configuration for broker/referral commission payments |
-| `qb_commission_entry` | Tracks QBO entries created for commission payments |
+#### `qb_connection` Table
+Stores the OAuth connection to QuickBooks Online.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid | Primary key |
+| `realm_id` | text | QuickBooks company ID |
+| `access_token` | text | OAuth access token (encrypted) |
+| `refresh_token` | text | OAuth refresh token (encrypted) |
+| `access_token_expires_at` | timestamptz | Access token expiration |
+| `refresh_token_expires_at` | timestamptz | Refresh token expiration (100 days) |
+| `status` | text | Connection status: 'connected', 'expired', 'disconnected' |
+| `last_sync_at` | timestamptz | Last successful sync timestamp |
+| `created_at` | timestamptz | Connection creation date |
+| `updated_at` | timestamptz | Last update timestamp |
+
+#### `qb_sync_log` Table
+Audit log of all sync operations.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid | Primary key |
+| `sync_type` | text | Type: 'invoice', 'payment', 'expense', 'customer', 'vendor', 'bill' |
+| `direction` | text | 'inbound' or 'outbound' |
+| `status` | text | 'success', 'failed', 'pending' |
+| `entity_id` | uuid | OVIS entity ID (e.g., payment_id) |
+| `entity_type` | text | Entity type (e.g., 'payment') |
+| `qb_entity_id` | text | QuickBooks entity ID |
+| `error_message` | text | Error details if failed |
+| `created_at` | timestamptz | Log entry timestamp |
+
+#### Broker Table Extensions
+The `broker` table includes a link to user accounts for email lookup:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `user_id` | uuid | Foreign key to `user` table for email lookup |
+
+This enables the BillToSection to auto-populate CC emails from deal team brokers via their linked user accounts.
+
+**Migration:** `supabase/migrations/20251210_add_broker_user_fk.sql`
+
+#### Deal Table Extensions
+The `deal` table includes bill-to fields for QuickBooks invoicing:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `bill_to_company_name` | text | Company name on invoice |
+| `bill_to_contact_name` | text | Contact person name |
+| `bill_to_email` | text | Primary invoice recipient(s) |
+| `bill_to_cc_emails` | text | CC recipients (comma-separated) |
+| `bill_to_bcc_emails` | text | BCC recipients (defaults to mike@oculusrep.com) |
+
+These fields are managed via the BillToSection component in the Payment tab.
+
+#### Payment Table Extensions
+The `payment` table includes QuickBooks-related fields:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `qb_invoice_id` | text | QuickBooks Invoice ID |
+| `qb_invoice_number` | text | QuickBooks Invoice Number (e.g., "1001") |
+| `qb_sync_status` | text | Sync status |
+| `qb_last_sync` | timestamptz | Last sync timestamp |
+| `invoice_sent` | boolean | Whether invoice was emailed via QB |
 
 ### Edge Functions
 
-| Function | Purpose |
-|----------|---------|
-| `quickbooks-auth` | OAuth flow initiation |
-| `quickbooks-callback` | OAuth callback handler |
-| `quickbooks-sync-accounts` | Pull chart of accounts from QBO |
-| `quickbooks-sync-items` | Pull items/products with income account mappings |
-| `quickbooks-sync-expenses` | Pull all transaction types from QBO |
-| `quickbooks-update-expense` | Push category changes back to QBO |
-| `quickbooks-reconcile` | Payment reconciliation |
-| `quickbooks-sync-invoice` | Create/link invoices in QBO from OVIS payments |
-| `quickbooks-update-invoice` | Update invoice fields (e.g., DueDate) in QBO |
-| `quickbooks-list-accounts` | Fetch QBO accounts and vendors for commission mapping UI |
-| `quickbooks-create-commission-entry` | Create Bills/Journal Entries for broker payments |
-| `quickbooks-create-referral-entry` | Create Bills for referral fee payments |
+All Edge Functions are located in `supabase/functions/`:
 
-### Frontend Pages
+#### 1. `quickbooks-connect`
+Initiates OAuth flow to connect to QuickBooks.
 
-| Page | Route | Purpose |
-|------|-------|---------|
-| QuickBooks Settings | `/admin/quickbooks` | Connection management |
-| P&L Statement | `/admin/budget` | Profit & Loss reporting |
+**Endpoint:** `POST /functions/v1/quickbooks-connect`
 
----
-
-## Connection Flow
-
-### OAuth 2.0 Setup
-
-1. User clicks "Connect to QuickBooks" on `/admin/quickbooks`
-2. `quickbooks-auth` generates OAuth URL and redirects to Intuit
-3. User authorizes in QBO
-4. `quickbooks-callback` receives auth code, exchanges for tokens
-5. Tokens stored in `qb_connection` table
-
-### Token Management
-
-- **Access token**: 1 hour expiry, auto-refreshed
-- **Refresh token**: 100 day expiry
-- `refreshTokenIfNeeded()` in `_shared/quickbooks.ts` handles refresh
-- If refresh fails, connection marked as `expired`
-
-### Environment Variables
-
-```
-QUICKBOOKS_CLIENT_ID=your_client_id
-QUICKBOOKS_CLIENT_SECRET=your_client_secret
-QUICKBOOKS_REDIRECT_URI=https://your-app.com/api/quickbooks/callback
-QUICKBOOKS_ENVIRONMENT=production  # or 'sandbox'
-```
-
----
-
-## Chart of Accounts Sync
-
-### What Gets Synced
-
-Account types pulled from QBO:
-- Income
-- Other Income
-- Cost of Goods Sold
-- Expense
-- Other Expense
-
-### Data Stored
-
-```sql
-qb_account:
-  - qb_account_id (stable QBO ID - never changes)
-  - name (current account name)
-  - account_type (Income, Expense, etc.)
-  - account_sub_type
-  - fully_qualified_name (hierarchy path, e.g., "Expenses:Auto:Fuel")
-  - active
-  - current_balance
-  - budget_amount (OVIS-specific)
-  - last_synced_at
-```
-
-### Key Design Decision
-
-**Account matching uses `qb_account_id`** (QBO's internal ID), not the name. This means:
-- Renaming accounts in QBO automatically reflects in OVIS after account sync
-- Moving accounts to different parent categories reflects after account sync
-- No need to re-sync transactions when account structure changes
-
----
-
-## Transaction Sync
-
-### Transaction Types Pulled
-
-**Expenses:**
-1. **Purchase** - Credit card charges, checks, cash expenses
-2. **Bill** - Vendor bills/invoices
-
-**Income:**
-3. **Invoice** - Customer invoices (income)
-4. **SalesReceipt** - Point-of-sale transactions (income)
-
-**Both:**
-5. **JournalEntry** - Manual journal entries (can be income or expense)
-
-### Line Item Handling
-
-Each transaction can have multiple line items. We store each line as a separate record:
-
-```
-Transaction ID format: {type}_{entity_id}_line{line_num}
-Examples:
-  purchase_123_line1, bill_456_line2
-  invoice_789_line1, salesreceipt_101_line1
-  journalentry_202_line1
-```
-
-### Data Stored
-
-```sql
-qb_expense:
-  - qb_transaction_id (unique composite ID)
-  - transaction_type (Purchase, Bill, Invoice, SalesReceipt, JournalEntry-Credit, JournalEntry-Debit)
-  - transaction_date
-  - vendor_name (vendor for expenses, customer for income)
-  - account_id (QBO account ID, or Item ID for invoices - see Items section)
-  - account_name (display fallback)
-  - category (display fallback)
-  - description
-  - amount
-  - sync_token (for optimistic locking on updates)
-  - qb_entity_type (Purchase, Bill, Invoice, SalesReceipt, JournalEntry)
-  - qb_entity_id (parent transaction ID in QBO)
-  - qb_line_id (line number within transaction)
-```
-
-### Invoice Income Mapping
-
-**Important:** QuickBooks Invoices don't reference Income accounts directly. They reference **Items** (products/services), and each Item has an `IncomeAccountRef` that specifies which Income account to use.
-
-When syncing invoices:
-1. The `account_id` stored is actually the **Item ID**, not an Account ID
-2. We sync Items separately via `quickbooks-sync-items`
-3. The P&L display code looks up the Item to find the real Income account
-
-This is why the Items sync is required for income to display correctly.
-
-### Pagination
-
-QBO limits queries to 1000 results. The sync uses `STARTPOSITION` and `MAXRESULTS`:
-
-```typescript
-while (true) {
-  const query = `SELECT * FROM Purchase WHERE TxnDate >= '${startDate}'
-                 ORDERBY TxnDate DESC
-                 STARTPOSITION ${startPosition}
-                 MAXRESULTS 1000`
-  // ... process results
-  if (results.length < 1000) break
-  startPosition += 1000
+**Response:**
+```json
+{
+  "authUrl": "https://appcenter.intuit.com/connect/oauth2?..."
 }
 ```
 
-Similarly, Supabase queries use `.range()` for pagination beyond 1000 rows.
+#### 2. `quickbooks-callback`
+Handles OAuth callback from QuickBooks after user authorization.
 
----
+**Endpoint:** `GET /functions/v1/quickbooks-callback?code=...&realmId=...&state=...`
 
-## P&L Statement Display
+**Actions:**
+- Exchanges authorization code for tokens
+- Stores tokens in `qb_connection` table
+- Redirects to settings page with success/error message
 
-### Hierarchy Building
+#### 3. `quickbooks-sync-invoice`
+Creates or updates an invoice in QuickBooks for a payment.
 
-The `fully_qualified_name` field contains the account hierarchy:
-```
-"Cost of Goods Sold:Product Costs:Materials"
-```
+**Endpoint:** `POST /functions/v1/quickbooks-sync-invoice`
 
-This is parsed to build a tree structure:
-```
-Cost of Goods Sold (parent)
-  └── Product Costs (parent)
-      └── Materials (leaf with transactions)
-```
-
-### Sections
-
-| Section | Account Types | Color |
-|---------|--------------|-------|
-| Income | Income, Other Income | Green |
-| Cost of Goods Sold | Cost of Goods Sold | Orange |
-| **Gross Profit** | Income - COGS | Blue |
-| Operating Expenses | Expense, Other Expense | Red |
-| **Net Income** | Gross Profit - Expenses | Dark |
-
-### Features
-
-- **Collapsible categories**: Click parent to expand/collapse children
-- **Transaction drill-down**: Click leaf category to see individual transactions
-- **Budget tracking**: Set budget amounts per account, see % used
-- **Recategorization**: Change transaction categories (pushes to QBO)
-- **Period filtering**: View by month or full year
-
----
-
-## Expense Recategorization
-
-### Flow
-
-1. User clicks "Change" on a transaction
-2. Selects new category from dropdown
-3. `quickbooks-update-expense` is called with:
-   - `expenseId` (OVIS UUID)
-   - `newAccountId` (QBO account ID)
-   - `newAccountName`
-
-### QBO Update Process
-
-1. Look up expense record to get `qb_entity_type`, `qb_entity_id`, `qb_line_id`
-2. Fetch current Purchase/Bill from QBO (need full entity for update)
-3. Find matching line item by `LineNum`
-4. Update `AccountBasedExpenseLineDetail.AccountRef`
-5. POST full entity back to QBO
-6. Update local `qb_expense` record
-
-### SyncToken
-
-QBO uses optimistic locking. Each entity has a `SyncToken` that increments on update. Updates must include the current `SyncToken` or they fail with a stale data error.
-
----
-
-## Migrations
-
-### 20251208_create_quickbooks_tables.sql
-
-Creates core tables:
-- `qb_connection`
-- `qb_sync_log`
-- `qb_expense`
-
-### 20251231_add_expense_recategorization.sql
-
-Adds columns for recategorization support:
-```sql
-ALTER TABLE qb_expense ADD COLUMN sync_token TEXT;
-ALTER TABLE qb_expense ADD COLUMN qb_entity_type TEXT;
-ALTER TABLE qb_expense ADD COLUMN qb_entity_id TEXT;
-ALTER TABLE qb_expense ADD COLUMN qb_line_id TEXT;
+**Request:**
+```json
+{
+  "paymentId": "uuid",
+  "sendEmail": false,
+  "forceResync": false
+}
 ```
 
-### 20251231_add_qb_item_table.sql
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `paymentId` | string | Required. The payment UUID |
+| `sendEmail` | boolean | Optional. Send invoice via email after sync |
+| `forceResync` | boolean | Optional. Update existing invoice instead of skipping |
 
-Creates table for Item-to-Income-Account mappings:
-```sql
-CREATE TABLE qb_item (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    qb_item_id TEXT NOT NULL UNIQUE,  -- QBO Item ID
-    name TEXT NOT NULL,
-    fully_qualified_name TEXT,
-    item_type TEXT,  -- 'Service', 'Inventory', 'NonInventory', etc.
-    active BOOLEAN DEFAULT true,
-    income_account_id TEXT,  -- QBO Account ID for income
-    income_account_name TEXT,
-    expense_account_id TEXT,  -- QBO Account ID for COGS/expense
-    expense_account_name TEXT,
-    description TEXT,
-    last_synced_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+**Response:**
+```json
+{
+  "success": true,
+  "qbInvoiceId": "123",
+  "qbInvoiceNumber": "1001",
+  "emailSent": false,
+  "wasUpdate": false
+}
 ```
 
----
+**Response Fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | boolean | Whether the operation succeeded |
+| `qbInvoiceId` | string | QuickBooks Invoice ID |
+| `qbInvoiceNumber` | string | Invoice number (e.g., "1001") |
+| `emailSent` | boolean | Whether invoice was emailed |
+| `wasUpdate` | boolean | True if existing invoice was updated |
 
-## Common Operations
+**Actions:**
+1. Fetches payment, deal, client, and property data
+2. Checks if invoice already exists (`qb_invoice_id`)
+3. If exists and `forceResync=false`, returns existing invoice info
+4. If exists and `forceResync=true`, fetches SyncToken and updates invoice
+5. If new, finds or creates customer in QuickBooks
+6. Finds or creates service item in QuickBooks
+7. Creates or updates invoice with line items
+8. Optionally sends invoice via email
+9. Updates payment record with QB invoice info
+10. Logs sync operation
 
-### Initial Setup
+#### 4. `quickbooks-send-invoice`
+Sends an existing QuickBooks invoice via email.
 
-1. Configure environment variables in Supabase
-2. Run migrations (including `20251231_add_qb_item_table.sql`)
-3. Deploy Edge Functions:
-   ```bash
-   npx supabase functions deploy quickbooks-auth --no-verify-jwt
-   npx supabase functions deploy quickbooks-callback --no-verify-jwt
-   npx supabase functions deploy quickbooks-sync-accounts --no-verify-jwt
-   npx supabase functions deploy quickbooks-sync-items --no-verify-jwt
-   npx supabase functions deploy quickbooks-sync-expenses --no-verify-jwt
-   npx supabase functions deploy quickbooks-update-expense --no-verify-jwt
-   ```
+**Endpoint:** `POST /functions/v1/quickbooks-send-invoice`
 
-### Connect to QuickBooks
-
-1. Go to `/admin/quickbooks`
-2. Click "Connect to QuickBooks"
-3. Authorize in QBO popup
-4. Connection status shows "Connected"
-
-### Sync All Data
-
-1. Go to P&L Statement page (`/admin/budget`)
-2. Click **"Sync from QuickBooks"** button
-3. This single button syncs everything in order:
-   - Accounts (chart of accounts)
-   - Items (products/services with income account mappings)
-   - Transactions (purchases, bills, invoices, sales receipts, journal entries)
-4. Progress is shown during sync ("Syncing accounts...", "Syncing items...", etc.)
-5. Summary shows counts when complete
-
-### After Changing Chart of Accounts in QBO
-
-Just click "Sync from QuickBooks" - the P&L will reflect new names and hierarchy because matching is by stable `account_id`, not names.
-
-### Full Refresh (if needed)
-
-If data is corrupted or you want a clean slate:
-```sql
-TRUNCATE TABLE qb_expense;
-TRUNCATE TABLE qb_item;
-```
-Then click "Sync from QuickBooks".
-
----
-
-## Troubleshooting
-
-### "QuickBooks not connected"
-
-- Check `qb_connection` table for status
-- May need to reconnect if refresh token expired (100 days)
-
-### Duplicate transactions
-
-- Old transaction ID format was `purchase_123_0`
-- New format is `purchase_123_line1` (uses LineNum)
-- Fix: Truncate `qb_expense` and re-sync
-
-### Missing transactions
-
-- Check date range (syncs from January of selected year)
-- Check pagination - should fetch all pages automatically
-- Check Edge Function logs for errors
-
-### Stale SyncToken error on recategorization
-
-- The transaction was modified in QBO after we synced
-- Re-sync transactions to get fresh SyncToken
-
----
-
-## File Locations
-
-```
-src/pages/
-  BudgetDashboardPage.tsx      # P&L Statement UI
-  QuickBooksSettingsPage.tsx   # Connection management
-
-supabase/functions/
-  _shared/quickbooks.ts        # Shared utilities (auth, API calls)
-  quickbooks-auth/             # OAuth initiation
-  quickbooks-callback/         # OAuth callback
-  quickbooks-sync-accounts/    # Chart of accounts sync
-  quickbooks-sync-items/       # Items sync (for income mapping)
-  quickbooks-sync-expenses/    # Transaction sync (all types)
-  quickbooks-update-expense/   # Recategorization
-  quickbooks-reconcile/        # Payment reconciliation
-  quickbooks-create-invoice/   # Invoice push
-
-supabase/migrations/
-  20251208_create_quickbooks_tables.sql
-  20251231_add_expense_recategorization.sql
-  20251231_add_qb_item_table.sql
+**Request:**
+```json
+{
+  "paymentId": "uuid"
+}
 ```
 
----
-
-## Session History
-
-### December 31, 2025
-
-1. **Fixed OAuth flow for production**
-   - Added `--no-verify-jwt` flag for callback
-   - Fixed redirect URI configuration
-
-2. **Built expense recategorization feature**
-   - Added schema columns for tracking QBO entity info
-   - Created `quickbooks-update-expense` Edge Function
-   - Added UI for changing categories
-
-3. **Fixed pagination issues**
-   - QBO API: Added `STARTPOSITION` loop for >1000 transactions
-   - Supabase: Added `.range()` pagination for >1000 rows
-   - Added secondary sort by `id` for consistent pagination
-
-4. **Fixed duplicate transactions**
-   - Changed transaction ID to use `LineNum` instead of index
-   - Format: `purchase_123_line1` instead of `purchase_123_0`
-
-5. **Redesigned Budget Dashboard as P&L Statement**
-   - Added Income account types to sync
-   - Built hierarchical category structure from `fully_qualified_name`
-   - Added sections: Income, COGS, Gross Profit, Expenses, Net Income
-   - Collapsible parent categories with subtotals
-   - Color-coded sections
-   - Summary cards at bottom
-
-6. **Improved account matching**
-   - Uses stable `qb_account_id` (never changes) for matching
-   - Account renames/reorganization in QBO reflect after account sync only
-   - No need to re-sync transactions when structure changes
-
-### January 1, 2026
-
-7. **Added income transaction syncing**
-   - Added Invoice, SalesReceipt, and JournalEntry sync to `quickbooks-sync-expenses`
-   - Invoices store Item ID (not Account ID) - requires Items sync for proper mapping
-
-8. **Added Items sync for income account mapping**
-   - Created `qb_item` table to store Items with their income account references
-   - Created `quickbooks-sync-items` Edge Function
-   - Updated P&L display to look up Items and map to correct Income accounts
-
-9. **Consolidated sync buttons**
-   - Replaced 3 separate buttons with single "Sync from QuickBooks"
-   - Syncs accounts, items, and transactions in sequence
-   - Shows progress during sync
-
-10. **Improved transaction display**
-    - Removed 15-transaction limit
-    - Added scrollable container (max-height 384px) for long lists
-    - Sticky header stays visible while scrolling
-    - Shows total transaction count
-
-### January 5, 2026
-
-11. **Fixed Invoice Sync "Payment not found" error**
-    - **Root cause**: The `client` table in the database doesn't have an `email` column, but the Edge Function query was trying to select `client.email`
-    - **Error message**: `column client_2.email does not exist`
-    - Removed `email` from the client join in `quickbooks-sync-invoice`
-    - Changed all `client.email` fallbacks to use only `deal.bill_to_email`
-    - Files modified: `supabase/functions/quickbooks-sync-invoice/index.ts`
-
-12. **Added Due Date sync from OVIS to QuickBooks**
-    - Created `getInvoice()` and `updateInvoice()` functions in shared `quickbooks.ts`
-    - Created new Edge Function `quickbooks-update-invoice` for updating invoice due dates
-    - When `payment_date_estimated` is changed on a payment linked to QBO, the due date automatically syncs
-    - Uses QBO's sparse update with SyncToken for optimistic locking
-    - Files created: `supabase/functions/quickbooks-update-invoice/index.ts`
-    - Files modified: `supabase/functions/_shared/quickbooks.ts`, `src/components/payments/PaymentDashboardTable.tsx`
-
-**Field Mapping (OVIS → QuickBooks):**
-| OVIS Field | QBO Invoice Field | Notes |
-|------------|------------------|-------|
-| `payment_date_estimated` | `DueDate` | Auto-syncs when changed on linked payments |
-| `payment_invoice_date` | `TxnDate` | Set when creating new invoice |
-| `orep_invoice` | `DocNumber` | Used to match/link existing QBO invoices |
-
----
-
-## TODO / Known Issues
-
-**Pending: Run `qb_item` table migration**
-
-The `qb_item` table needs to be created in the database. Run this SQL in Supabase Dashboard > SQL Editor:
-
-```sql
-CREATE TABLE IF NOT EXISTS qb_item (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    qb_item_id TEXT NOT NULL UNIQUE,
-    name TEXT NOT NULL,
-    fully_qualified_name TEXT,
-    item_type TEXT,
-    active BOOLEAN DEFAULT true,
-    income_account_id TEXT,
-    income_account_name TEXT,
-    expense_account_id TEXT,
-    expense_account_name TEXT,
-    description TEXT,
-    last_synced_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS qb_item_income_account_idx ON qb_item (income_account_id);
-CREATE INDEX IF NOT EXISTS qb_item_active_idx ON qb_item (active) WHERE active = true;
-
-GRANT ALL ON qb_item TO service_role;
-GRANT SELECT ON qb_item TO authenticated;
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Invoice 1001 sent to email@example.com",
+  "qbInvoiceId": "123",
+  "qbInvoiceNumber": "1001",
+  "sentTo": "email@example.com"
+}
 ```
 
-**Testing needed:**
-- Verify invoice income appears under correct Income accounts after Items sync
-- Verify Commission Income and other income accounts show correct totals
+**Requirements:**
+- Invoice must already exist in QuickBooks (`qb_invoice_id` set)
+- Deal must have `bill_to_email` configured
 
----
+#### 5. `quickbooks-delete-invoice`
+Deletes (voids) an invoice in QuickBooks.
 
-### January 6, 2026
+**Endpoint:** `POST /functions/v1/quickbooks-delete-invoice`
 
-13. **Added broker names to QBO invoices**
-    - Invoice line items now include a second line showing broker name(s)
-    - Broker line is description-only with $0 amount
-    - Format: `Broker(s): Mike Minihan and Arty Santos`
-    - Maps short deal_team labels to full broker names:
-      - `'Mike'` → `'Mike Minihan'`
-      - `'Arty'` → `'Arty Santos'`
-      - `'Greg'` → `'Greg Bennett'`
-      - `'Mike & Arty'` → `'Mike Minihan and Arty Santos'`
-      - etc.
-    - Required separate query for deal_team (no FK constraint between deal and deal_team tables)
-
-14. **Fixed forceResync overwriting invoice details**
-    - **Root cause**: The `forceResync` code path (used when re-syncing existing invoices) was using OLD logic that didn't include all the new features added to the create invoice path
-    - **Symptoms**: Clicking "Resync" would remove: broker names, payment terms, bill-to formatting, CC/BCC emails, proper dates
-    - **Fix**: Synchronized the forceResync code block (lines ~175-331) with all create invoice features:
-      - Broker line with full names mapping
-      - `SalesTermRef: { value: '1', name: 'Due on receipt' }`
-      - Bill-to address format: Line1=Contact Name, Line2=Company Name, Line3=Street Address
-      - CC/BCC email support (`BillEmailCc`, `BillEmailBcc`)
-      - `TxnDate` = `payment_date_estimated` (not `payment_invoice_date`)
-      - `ServiceDate` from `contract_signed_date`
-      - Full description with payment name
-    - Files modified: `supabase/functions/quickbooks-sync-invoice/index.ts`
-
-15. **Standardized invoice field mappings**
-
-| OVIS Field | QBO Invoice Field | Notes |
-|------------|------------------|-------|
-| `payment_date_estimated` | `TxnDate` | Invoice date |
-| `payment_date_estimated` | `DueDate` | Due date |
-| `deal.contract_signed_date` | `Line[].SalesItemLineDetail.ServiceDate` | Service date on line items |
-| `deal.bill_to_contact_name` | `BillAddr.Line1` | Contact name |
-| `deal.bill_to_company_name` | `BillAddr.Line2` | Company name |
-| `deal.bill_to_address_street` | `BillAddr.Line3` | Street address |
-| `deal.bill_to_email` | `BillEmail.Address` | Primary invoice email |
-| `deal.bill_to_cc_emails` | `BillEmailCc.Address` | CC email (first in comma-separated list) |
-| `deal_team.label` | Line description | `Broker(s): Full Name(s)` |
-| (hardcoded) | `SalesTermRef` | `{ value: '1', name: 'Due on receipt' }` |
-
-16. **Two code paths now synchronized**
-    - **Create Invoice** (new payments): Creates invoice with all features
-    - **Force Resync** (existing invoices): Full entity update with `sparse: false`, includes all same features
-    - Both paths now produce identical invoices in QuickBooks
-
-17. **Invoice date now syncs with due date**
-    - When `payment_date_estimated` is changed on a synced invoice, both `TxnDate` (invoice date) and `DueDate` are updated to the same value
-    - Files modified: `supabase/functions/quickbooks-update-invoice/index.ts`, `supabase/functions/_shared/quickbooks.ts`
-
-18. **Broker line changed to DescriptionOnly type**
-    - Broker line (line 2) now uses QBO's `DescriptionOnly` detail type instead of `SalesItemLineDetail`
-    - Result: No product/service, service date, qty, rate, or amount columns on line 2
-    - Only shows the description text: `Broker(s): Full Name(s)`
-    - Updated `QBInvoiceLine` interface to support both `SalesItemLineDetail` and `DescriptionOnly` types
-    - Files modified: `supabase/functions/quickbooks-sync-invoice/index.ts`, `supabase/functions/_shared/quickbooks.ts`
-
-19. **Automatic invoice attachments from Dropbox**
-    - Three standard documents are automatically downloaded from Dropbox and attached to every new invoice in QuickBooks:
-      1. `W9-Oculus REP - CURRENT.pdf`
-      2. `OCULUS WIRING INSTRUCTIONS.PDF`
-      3. `ACH_eCHECK INSTRUCTIONS.PDF`
-    - Attachments are marked with `IncludeOnSend: true` so they are included when sending the invoice via QBO email
-    - Files are stored in Dropbox at `/Salesforce Documents/Invoice Attachments/`
-    - Dropbox access token auto-refreshes using OAuth refresh token flow
-    - If attachment download/upload fails, invoice creation still succeeds (graceful degradation)
-    - Files created: `supabase/functions/_shared/dropbox.ts`
-    - Files modified: `supabase/functions/quickbooks-sync-invoice/index.ts`, `supabase/functions/_shared/quickbooks.ts` (added `uploadAttachment()`)
-
-**Required Supabase secrets for Dropbox:**
-```
-DROPBOX_ACCESS_TOKEN=your_access_token
-DROPBOX_REFRESH_TOKEN=your_refresh_token
-DROPBOX_APP_KEY=your_app_key
-DROPBOX_APP_SECRET=your_app_secret
+**Request:**
+```json
+{
+  "paymentId": "uuid"
+}
 ```
 
----
-
-### January 9, 2026
-
-20. **CFO Agent schema migration applied**
-    - Added AI-native financial data schema to support future CFO Agent
-    - New tables: `financial_snapshot`, `ai_financial_context`, `ai_financial_queries`
-    - Enhanced `qb_expense` with: `is_recurring`, `recurring_pattern`, `anomaly_score`, `ai_parsed_memo`
-    - Enhanced `qb_account` with: `budget_monthly`, `budget_annual`, `alert_threshold_pct`, `budget_notes`
-    - Created views: `invoice_aging`, `budget_vs_actual`
-    - See [CFO_AGENT_SPEC.md](./CFO_AGENT_SPEC.md) for full details
-
-**Next Steps:**
-- Verify P&L expense sync from QBO is working correctly
-- Test expense recategorization sync back to QBO (OVIS as source of truth)
-- Review and recategorize all 2025 expenses
-- Set up budgets by expense account
-
----
-
-### January 14, 2026
-
-21. **Added Cash/Accrual Basis Toggle to P&L Statement**
-    - New toggle in the date filter bar to switch between Accrual (default) and Cash basis
-    - Both OVIS local filtering and QBO P&L Report API calls respect the selected basis
-    - Files modified:
-      - `src/pages/BudgetDashboardPage.tsx` - Added `accountingBasis` state, toggle UI, updated `fetchPayrollData()` to pass `accountingMethod`
-      - `supabase/functions/quickbooks-sync-pl-report/index.ts` - Added `accountingMethod` parameter, passes to QBO Reports API
-
-22. **Added Bill/Invoice Payment Status Tracking**
-    - **Purpose**: Accurate Cash basis reporting requires knowing which Bills are paid (expenses incurred) and which Invoices are collected (income received)
-    - **New database columns** on `qb_expense`:
-      - `is_paid` (BOOLEAN) - `true` = paid, `false` = unpaid, `null` = immediate payment type (Purchase/SalesReceipt)
-      - `payment_date` (DATE) - Date payment was received/made (for future Cash basis by payment date)
-      - `balance` (NUMERIC) - Remaining balance from QBO (0 = fully paid)
-    - **Sync logic**: QBO Bills and Invoices have a `Balance` field - if `Balance === 0`, the transaction is paid
-    - **Cash basis filter**: Excludes Bills/Invoices where `is_paid === false`
-    - **UI indicator**: Unpaid transactions show with yellow highlight and "(Unpaid)" label
-    - Files modified:
-      - `supabase/functions/quickbooks-sync-expenses/index.ts` - Added `Balance` to QBBill/QBInvoice interfaces, set `is_paid` and `balance` on upsert
-      - `src/pages/BudgetDashboardPage.tsx` - Added payment tracking interface fields, Cash basis filtering logic, unpaid visual indicator
-    - Migration created: `supabase/migrations/20260114_add_bill_payment_tracking.sql`
-
-**Migration SQL (run in Supabase Dashboard):**
-```sql
--- Add payment tracking columns to qb_expense for accurate Cash basis reporting
-ALTER TABLE qb_expense ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT NULL;
-ALTER TABLE qb_expense ADD COLUMN IF NOT EXISTS payment_date DATE DEFAULT NULL;
-ALTER TABLE qb_expense ADD COLUMN IF NOT EXISTS balance NUMERIC(12, 2) DEFAULT NULL;
-
--- Index for filtering by payment status
-CREATE INDEX IF NOT EXISTS qb_expense_is_paid_idx ON qb_expense (is_paid) WHERE is_paid = false;
-CREATE INDEX IF NOT EXISTS qb_expense_payment_date_idx ON qb_expense (payment_date) WHERE payment_date IS NOT NULL;
-
-COMMENT ON COLUMN qb_expense.is_paid IS 'Payment status: true=paid, false=unpaid, null=immediate payment (Purchase/SalesReceipt)';
-COMMENT ON COLUMN qb_expense.payment_date IS 'Date payment was received/made (for Cash basis reporting)';
-COMMENT ON COLUMN qb_expense.balance IS 'Remaining balance (0 = fully paid)';
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Invoice 1001 deleted from QuickBooks",
+  "deletedInvoiceNumber": "1001"
+}
 ```
 
-23. **Fixed Cash Basis Income Not Showing**
-    - **Problem**: Income was not displaying on Cash P&L because the filter was excluding Invoices with `is_paid = null` (not yet synced with payment status)
-    - **Solution**: Changed filter to only exclude when `is_paid === false` (explicitly unpaid), include when `is_paid` is null/undefined (not synced yet)
-    - This is a graceful fallback until the migration is run and data is re-synced
-    - File modified: `src/pages/BudgetDashboardPage.tsx`
+**Actions:**
+1. Fetches invoice from QuickBooks to get SyncToken
+2. Voids invoice in QuickBooks (QB doesn't truly delete)
+3. Clears QB fields from payment record
+4. Logs sync operation
 
-**Cash vs Accrual Basis - How It Works:**
+### Shared Utilities
 
-| Basis | Income Recognized | Expenses Recognized |
-|-------|-------------------|---------------------|
-| **Accrual** | When invoiced (Invoice date) | When billed (Bill date) |
-| **Cash** | When collected (Invoice paid) | When paid (Bill paid) |
+`supabase/functions/_shared/quickbooks.ts` contains shared functions:
 
-**Transaction Type Behavior:**
-| Transaction Type | `is_paid` Value | Cash Basis Behavior |
-|------------------|-----------------|---------------------|
-| Purchase | `null` | Always included (immediate payment) |
-| SalesReceipt | `null` | Always included (immediate payment) |
-| Bill | `true`/`false` | Included only if `is_paid = true` |
-| Invoice | `true`/`false` | Included only if `is_paid = true` |
+- `postgrestQuery()` - Query database via PostgREST (supports `eq.` and `in.()` filters)
+- `postgrestInsert()` - Insert records via PostgREST
+- `postgrestUpdate()` - Update records via PostgREST
+- `getQBConnection()` - Get active QuickBooks connection
+- `refreshTokenIfNeeded()` - Refresh OAuth token if expired
+- `getQBApiUrl()` - Get API URL (sandbox vs production)
+- `qbApiRequest()` - Make authenticated QB API requests
+- `findOrCreateParentCustomer()` - Find or create parent QB customer (Client)
+- `findOrCreateSubCustomer()` - Find or create sub-customer (Deal) under parent
+- `findOrCreateCustomer()` - Full hierarchy creation (parent + sub-customer)
+- `findOrCreateServiceItem()` - Find or create QB service item
+- `createInvoice()` - Create QB invoice
+- `updateInvoice()` - Update existing invoice (sparse update with SyncToken)
+- `sendInvoice()` - Send invoice via email
+- `getInvoice()` - Get invoice (for SyncToken)
+- `deleteInvoice()` - Delete/void invoice
+- `logSync()` - Log sync operation
+- `updateConnectionLastSync()` - Update connection timestamp
 
-**To Enable Full Cash Basis Accuracy:**
-1. Run the migration SQL above in Supabase Dashboard
-2. Re-sync from QuickBooks on the P&L page
-3. The sync will populate `is_paid` and `balance` for all Bills/Invoices
-4. Cash basis will then accurately exclude unpaid transactions
+### Frontend QuickBooks Service
 
----
+`src/services/quickbooksService.ts` provides frontend utilities:
 
----
+- `resyncInvoice(paymentId, sendEmail?)` - Resync a single payment's invoice
+- `resyncDealInvoices(dealId)` - Resync all invoices for a deal
+- `hasQBInvoice(paymentId)` - Check if payment has a synced invoice
 
-## Commission Payment Mapping (January 29, 2026)
+## Environment Variables
+
+Required Supabase secrets (set via `npx supabase secrets set`):
+
+| Variable | Description |
+|----------|-------------|
+| `QUICKBOOKS_CLIENT_ID` | Intuit Developer App Client ID |
+| `QUICKBOOKS_CLIENT_SECRET` | Intuit Developer App Client Secret |
+| `QUICKBOOKS_REDIRECT_URI` | OAuth callback URL |
+| `QUICKBOOKS_ENVIRONMENT` | 'sandbox' or 'production' |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key for DB access |
+| `DROPBOX_ACCESS_TOKEN` | Dropbox API access token (for invoice attachments) |
+| `DROPBOX_REFRESH_TOKEN` | Dropbox refresh token for auto-renewal |
+| `DROPBOX_APP_KEY` | Dropbox app key |
+| `DROPBOX_APP_SECRET` | Dropbox app secret |
+
+## Customer Hierarchy (Client → Deal)
 
 ### Overview
 
-When broker or referral commission payments are marked as paid in OVIS, the system can automatically create corresponding entries in QuickBooks:
+QuickBooks customers are organized in a **two-level hierarchy**:
+1. **Parent Customer** = OVIS Client (e.g., "Fuqua Development")
+2. **Sub-Customer (Job)** = OVIS Deal (e.g., "Fuqua Development - 1234 Main St")
 
-| Entity | Payment Method | QBO Object Created |
-|--------|---------------|-------------------|
-| **Arty** | Journal Entry | Debit: Commission Paid Out expense / Credit: Commission Draw asset |
-| **Greg** | Bill | Creates Accounts Payable to vendor Bennett Retail Group |
-| **Referral Partners** | Bill | Creates Accounts Payable to the referral partner vendor |
+This structure allows:
+- Multiple deals per client to be tracked separately
+- Bill-to information to be stored at the deal level
+- Reports to be grouped by client in QuickBooks
 
-### Database Tables
+### Automatic Customer Creation
 
-#### `qb_commission_mapping`
+When syncing an invoice, the system automatically:
+1. Finds or creates the **parent customer** (Client)
+2. Finds or creates the **sub-customer** (Deal) under that parent
+3. Associates bill-to information with the sub-customer
 
-Stores configuration for how each broker/referral partner's payments are recorded in QBO.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `entity_type` | TEXT | `'broker'` or `'referral_partner'` |
-| `broker_id` | UUID | FK to `broker` table (for brokers) |
-| `client_id` | UUID | FK to `client` table (for referral partners) |
-| `payment_method` | TEXT | `'bill'` or `'journal_entry'` |
-| `qb_vendor_id` | TEXT | QBO Vendor ID (required for bills) |
-| `qb_vendor_name` | TEXT | QBO Vendor display name |
-| `qb_debit_account_id` | TEXT | QBO Account ID for expense/COGS |
-| `qb_debit_account_name` | TEXT | Account name (e.g., "Commissions Paid Out:Bennett Retail Group") |
-| `qb_credit_account_id` | TEXT | QBO Account ID for credit (journal entries only) |
-| `qb_credit_account_name` | TEXT | Credit account name (e.g., "Santos Real Estate Commission Draw") |
-| `description_template` | TEXT | Template with placeholders: `{deal_name}`, `{payment_name}`, `{broker_name}`, `{payment_date}` |
-| `is_active` | BOOLEAN | Whether this mapping is active |
-
-#### `qb_commission_entry`
-
-Tracks QBO entries created for commission payments.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `payment_split_id` | UUID | FK to `payment_split` (the trigger) |
-| `commission_mapping_id` | UUID | FK to the mapping used |
-| `qb_entity_type` | TEXT | `'Bill'` or `'JournalEntry'` |
-| `qb_entity_id` | TEXT | QBO entity ID |
-| `qb_doc_number` | TEXT | QBO document number |
-| `amount` | NUMERIC | Payment amount |
-| `transaction_date` | DATE | Date of the QBO entry |
-| `status` | TEXT | `'created'`, `'paid'`, `'voided'`, `'error'` |
-
-#### Additional Columns
-
-- **`broker.qb_vendor_id`** / **`broker.qb_vendor_name`** - Links broker to QBO Vendor
-- **`client.qb_vendor_id`** / **`client.qb_vendor_name`** - Links referral partner to QBO Vendor
-
-### Edge Functions
-
-| Function | Purpose |
-|----------|---------|
-| `quickbooks-list-accounts` | Fetches all QBO accounts and vendors for dropdown selection |
-| `quickbooks-create-commission-entry` | Creates Bill or Journal Entry for broker payment splits |
-| `quickbooks-create-referral-entry` | Creates Bill for referral fee payments |
-
-#### `quickbooks-list-accounts` Technical Details
-
-This function fetches accounts and vendors from QuickBooks for the commission mapping UI dropdowns.
-
-**Account Queries:**
-- Uses QBO's `IN` clause (not parentheses) for filtering by account type
-- Implements pagination with `STARTPOSITION` and `MAXRESULTS` to fetch all accounts (QBO default limit is 100)
-
-**Expense Accounts (Debit side):**
-```sql
-SELECT * FROM Account WHERE Active = true
-AND AccountType IN ('Expense', 'Cost of Goods Sold', 'Other Expense')
-ORDER BY FullyQualifiedName
+### Sub-Customer Display Name Format
 ```
-
-**Asset/Equity Accounts (Credit side for Journal Entries):**
-```sql
-SELECT * FROM Account WHERE Active = true
-AND AccountType IN ('Bank', 'Other Current Asset', 'Fixed Asset', 'Other Asset', 'Equity')
-ORDER BY FullyQualifiedName
+{Client Name} - {Deal Name}
 ```
+Example: `Fuqua Development - 1234 Main Street`
 
-**Returns:**
-- `expenseAccounts` - For debit account dropdown
-- `assetAccounts` - For credit account dropdown (Journal Entries only)
-- `vendors` - For vendor dropdown (Bills only)
+### Bill-To Information on Sub-Customers
 
-### Shared Utilities Added to `_shared/quickbooks.ts`
+The sub-customer stores deal-specific billing information:
+- **CompanyName**: Bill-to company (from deal's `bill_to_company_name`)
+- **GivenName/FamilyName**: Contact name parsed from `bill_to_contact_name`
+- **PrimaryEmailAddr**: Bill-to email for invoices
+- **BillAddr**: Billing address (street, city, state, zip)
+- **PrimaryPhone**: Contact phone number
+- **PrintOnCheckName**: Set to client name for check printing
+
+### Shared Utilities for Customer Hierarchy
 
 ```typescript
-// Vendor operations
-findOrCreateVendor(connection, vendorName, options?)
-getVendor(connection, vendorId)
+// Find or create parent customer (Client level)
+findOrCreateParentCustomer(connection, clientName, email?)
 
-// Bill operations
-createBill(connection, bill)
-getBill(connection, billId)
-deleteBill(connection, billId, syncToken)
+// Find or create sub-customer (Deal level) under a parent
+findOrCreateSubCustomer(connection, parentCustomerId, clientName, dealName, billTo?)
 
-// Journal Entry operations
-createJournalEntry(connection, journalEntry)
-getJournalEntry(connection, journalEntryId)
-deleteJournalEntry(connection, journalEntryId, syncToken)
-
-// Account lookup
-findAccountByName(connection, accountName)
-findAccountByFullName(connection, fullName)
-listAccountsByType(connection, accountType)
-```
-
-### Admin UI
-
-The **Commission Payment Mappings** section is on the QuickBooks Integration page (`/admin/quickbooks`).
-
-**Features:**
-- View all configured mappings in a table
-- Add new mappings for brokers or referral partners
-- Edit existing mappings
-- Delete mappings
-- **"Refresh QBO Data"** button loads accounts and vendors from QuickBooks for dropdown selection
-
-**Form Fields:**
-1. **Entity Type**: Broker or Referral Partner
-2. **Broker/Partner**: Dropdown of available entities
-3. **Payment Method**: Bill (Accounts Payable) or Journal Entry (Commission Draw)
-4. **QBO Vendor**: Required for Bills - dropdown of QBO vendors
-5. **Debit Account**: Expense account (dropdown of Expense/COGS accounts)
-6. **Credit Account**: Required for Journal Entries (dropdown of Asset/Equity accounts including Other Asset)
-7. **Description Template**: Text with placeholders
-
-**Smart Defaults:**
-- When Entity Type is changed to "Referral Partner", the Debit Account automatically defaults to "Commissions Paid Out:Referral Fee to Other Broker" (if QBO data has been loaded)
-- Default Description Template: `Commission Payment for {payment_name} - {deal_name}`
-
-### Setup Instructions
-
-1. **Run the migration** (creates tables and columns):
-   ```sql
-   -- Already applied: 20260129_qb_commission_mapping.sql
-   ```
-
-2. **Deploy Edge Functions**:
-   ```bash
-   supabase functions deploy quickbooks-list-accounts --project-ref YOUR_PROJECT_REF
-   supabase functions deploy quickbooks-create-commission-entry --project-ref YOUR_PROJECT_REF
-   supabase functions deploy quickbooks-create-referral-entry --project-ref YOUR_PROJECT_REF
-   ```
-
-3. **Configure Mappings** (in OVIS):
-   - Go to **QuickBooks Integration** page
-   - Click **"Refresh QBO Data"** to load accounts and vendors
-   - Click **"Add Mapping"** for each broker/referral partner
-
-**Example Configurations:**
-
-| Entity | Type | Method | Vendor | Debit Account | Credit Account |
-|--------|------|--------|--------|---------------|----------------|
-| Arty Santos | Broker | Journal Entry | - | Commission Paid Out: Santos Real Estate Partners, LLC | Santos Real Estate Commission Draw |
-| Greg Bennett | Broker | Bill | Bennett Retail Group | Commissions Paid Out: Bennett Retail Group | - |
-| (Default Referral) | Referral Partner | Bill | (per partner) | Commissions Paid Out: Referral Fee to Other Broker | - |
-
-### Referral Partner Setup
-
-1. **Mark client as Referral Partner**:
-   - Go to the Client record
-   - Set **Client Type** = "Referral Partner"
-   - This makes them appear in the Referral Payee dropdown on deals
-
-2. **Create QBO mapping**:
-   - On QuickBooks Integration page, add a mapping
-   - Entity Type = "Referral Partner"
-   - Select the client from dropdown
-   - Configure the Bill settings
-
-3. **Link to deal**:
-   - On the deal's Commission tab, select the Referral Payee
-   - Only clients with type "Referral Partner" appear in the dropdown
-
-### Files Created/Modified
-
-```
-src/components/
-  admin/CommissionMappingAdmin.tsx    # Admin UI component
-  ReferralPayeeAutocomplete.tsx       # Updated to filter by Referral Partner type
-  ClientOverviewTab.tsx               # Added "Referral Partner" to client types
-
-src/pages/
-  QuickBooksAdminPage.tsx             # Added CommissionMappingAdmin section
-
-supabase/functions/
-  _shared/quickbooks.ts               # Added vendor, bill, journal entry utilities
-  quickbooks-list-accounts/           # New: Lists QBO accounts and vendors
-  quickbooks-create-commission-entry/ # New: Creates Bill/JE for broker payments
-  quickbooks-create-referral-entry/   # New: Creates Bill for referral fees
-
-supabase/migrations/
-  20260129_qb_commission_mapping.sql  # Tables and columns
+// Complete hierarchy creation (calls both above)
+findOrCreateCustomer(connection, clientName, dealName, email?, billTo?)
 ```
 
 ---
 
-## Edge Function Deployment Commands
+## Customer Mapping
 
-After making changes to Edge Functions, deploy with:
+### Overview
+
+OVIS clients can be linked to QuickBooks customers to ensure invoices are created under the correct customer account. The Customer Mapping page (`/admin/quickbooks/customers`) provides a comprehensive interface for managing these relationships.
+
+### Database Schema
+
+#### Client Table Extensions
+The `client` table includes QuickBooks-related fields:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `qb_customer_id` | text | QuickBooks Customer ID |
+| `parent_id` | uuid | Parent client reference (for sub-customers) |
+| `is_active_client` | boolean | Whether client is active |
+
+### Edge Functions
+
+#### 1. `quickbooks-list-customers`
+Fetches all customers from QuickBooks for the mapping modal.
+
+**Endpoint:** `POST /functions/v1/quickbooks-list-customers`
+
+**Request:**
+```json
+{
+  "search": "optional search term",
+  "maxResults": 1000
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "customers": [
+    {
+      "id": "123",
+      "displayName": "Acme Corp",
+      "companyName": "Acme Corporation",
+      "email": "billing@acme.com",
+      "isSubCustomer": false,
+      "parentId": null,
+      "parentName": null,
+      "fullyQualifiedName": "Acme Corp",
+      "active": true
+    }
+  ],
+  "count": 1
+}
+```
+
+#### 2. `quickbooks-sync-customer`
+Creates or updates a customer in QuickBooks from an OVIS client.
+
+**Endpoint:** `POST /functions/v1/quickbooks-sync-customer`
+
+**Request:**
+```json
+{
+  "clientId": "uuid"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "action": "created | updated | linked",
+  "qbCustomerId": "123",
+  "qbDisplayName": "Client Name",
+  "message": "Customer created in QuickBooks: Client Name"
+}
+```
+
+**Actions:**
+1. Checks if client is already linked to a QB customer
+2. If linked, updates the existing QB customer with OVIS data
+3. If not linked, searches QB for exact name match
+4. If match found, links to existing QB customer
+5. If no match, creates new QB customer
+6. Handles parent/sub-customer relationships via `ParentRef`
+7. Logs sync operation
+
+#### 3. `quickbooks-link-customer`
+Manually links an OVIS client to an existing QuickBooks customer.
+
+**Endpoint:** `POST /functions/v1/quickbooks-link-customer`
+
+**Request:**
+```json
+{
+  "clientId": "uuid",
+  "qbCustomerId": "123",
+  "qbDisplayName": "Customer Name"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Linked \"OVIS Client\" to QuickBooks customer \"QB Customer\"",
+  "clientId": "uuid",
+  "clientName": "OVIS Client",
+  "qbCustomerId": "123"
+}
+```
+
+### Parent/Sub-Customer Relationships
+
+QuickBooks supports hierarchical customer relationships. OVIS mirrors this through the `parent_id` field:
+
+1. **Setting a Parent in OVIS:**
+   - If the child client is linked to QB, the child's QB customer is updated with `ParentRef`
+   - If the parent is not yet in QB, it's automatically created first
+   - The child is then synced with the parent reference
+
+2. **Removing a Parent:**
+   - Note: QuickBooks API doesn't support removing parent relationships
+   - The OVIS relationship is updated, but QB may retain the hierarchy
+
+3. **Sync Discrepancy Detection:**
+   - The UI compares OVIS client data with QB customer data
+   - Checks: name mismatch, parent relationship mismatch
+   - Shows "Sync Changes" button only when discrepancies exist
+
+### Customer Mapping Page Features
+
+#### Active Client Management
+- Checkbox to toggle `is_active_client` status
+- "Show inactive" filter with count of inactive clients
+- Inactive clients shown with visual indicator
+
+#### Parent Assignment
+- Dropdown to set/change parent client
+- Only top-level active clients available as parents
+- Changes auto-sync to QuickBooks when applicable
+- Auto-creates parent in QB if not already linked
+
+#### Smart Link Suggestions
+The UI intelligently suggests actions based on potential matches:
+
+| Scenario | Primary Action | Secondary Action |
+|----------|---------------|------------------|
+| Exact match found in QB | "Link to QB" | "Create New" |
+| Close match found in QB | "Link to QB" | "Create New" |
+| Partial match (may be parent) | "Create in QB" | "Search QB" |
+| No match found in QB | "Create in QB" | "Search QB" |
+
+**Match Types:**
+- **Exact match**: QB customer name exactly equals OVIS client name
+- **Close match**: QB customer name contains the full OVIS client name (e.g., QB: "Acme Corp - Main" contains OVIS: "Acme Corp")
+- **Partial match**: OVIS client name contains the QB customer name (e.g., OVIS: "Cheeky Monkeys - Nicki Patel" contains QB: "Cheeky Monkeys") - this typically indicates a parent/child relationship where the parent exists but the child doesn't
+
+#### Discrepancy Detection
+For linked clients, the system compares:
+- Client name vs QB DisplayName
+- Parent relationship (OVIS parent_id vs QB ParentRef)
+
+Visual indicators:
+- **Green checkmark + "Synced"**: Data matches between OVIS and QB
+- **Orange refresh + "Linked (needs sync)"**: Discrepancy detected
+- **Orange "Sync Changes" button**: Appears only when sync is needed
+
+### Deployment
+
+Deploy customer-related Edge Functions:
+```bash
+npx supabase functions deploy quickbooks-list-customers --no-verify-jwt
+npx supabase functions deploy quickbooks-sync-customer --no-verify-jwt
+npx supabase functions deploy quickbooks-link-customer --no-verify-jwt
+```
+
+## UI Components
+
+### QuickBooksAdminPage (`src/pages/QuickBooksAdminPage.tsx`)
+Admin settings page for managing QuickBooks connection:
+- Shows connection status
+- Connect/Disconnect buttons
+- Last sync timestamp
+- Link to Customer Mapping page
+- Sync logs table
+
+### QuickBooksCustomerMappingPage (`src/pages/QuickBooksCustomerMappingPage.tsx`)
+Customer mapping management page:
+- List of all OVIS clients with QB link status
+- Active/inactive toggle checkboxes
+- Parent client dropdown (with auto-sync to QB)
+- Smart action buttons based on QB match detection
+- Discrepancy detection with conditional sync button
+- Modal for searching and linking to QB customers
+- Stats showing total/linked/unlinked counts
+
+### PaymentSummaryRow (`src/components/payments/PaymentSummaryRow.tsx`)
+Shows QuickBooks sync status in payment list:
+- "QB Synced" badge with invoice number
+- "Not Synced" badge when no invoice exists
+
+### PaymentDetailPanel (`src/components/payments/PaymentDetailPanel.tsx`)
+Full QuickBooks management when payment is expanded:
+- **Not Synced:** "Create Invoice" and "Create & Send" buttons
+- **Synced:** Shows invoice number, "Resync Invoice", "Send Invoice" (if not sent), "Delete Invoice" buttons
+
+### BillToSection (`src/components/BillToSection.tsx`)
+Collapsible section in PaymentTab for managing invoice billing info:
+- **Bill-To Company**: Company name that appears on the invoice
+- **Bill-To Contact**: Contact person name
+- **Invoice Email (TO)**: Primary recipient(s), comma-separated
+- **CC Emails**: Carbon copy recipients with "Add deal team emails" button
+- **BCC Emails**: Blind copy with default `mike@oculusrep.com`
+
+**Features:**
+- Auto-saves with 800ms debounce (no save button needed)
+- Fetches its own data to avoid re-render loops
+- "Add deal team emails" auto-populates CC from broker emails
+- Displays QuickBooks info box explaining field usage
+
+**Props:**
+```typescript
+interface BillToSectionProps {
+  dealId: string;
+  clientId?: string;
+  commissionSplits: CommissionSplit[];
+  brokers: Broker[];
+}
+```
+
+### ClientOverviewTab (`src/components/ClientOverviewTab.tsx`)
+Client detail page shows QuickBooks integration status:
+- **QB Customer ID**: Read-only display of linked QuickBooks customer ID
+- Shows "Linked" badge when connected, "Not linked to QuickBooks" when not
+- Helper text directs users to Customer Mapping page for changes
+- Field is intentionally read-only to prevent accidental sync issues
+- **Synced:** Shows invoice number, "Sent" badge if emailed
+- **Actions:** "Send Invoice" button (if not sent), "Delete Invoice" button
+- Success/error messages after operations
+
+## Invoice Data Mapping
+
+When creating an invoice, data is mapped as follows:
+
+| QuickBooks Field | OVIS Source |
+|------------------|-------------|
+| Customer | Sub-customer (Deal) under parent (Client) - auto-created |
+| Invoice Amount | Payment amount |
+| Due Date | Payment estimated date |
+| Transaction Date | Current date |
+| Memo | Deal name + Property address |
+| Bill Email (TO) | Deal's `bill_to_email` |
+| Bill Email (CC) | Deal's `bill_to_cc_emails` |
+| Bill Email (BCC) | Deal's `bill_to_bcc_emails` |
+| Bill Address | Deal's `bill_to_*` fields |
+| Line Item | "Consulting Services" service item |
+
+### Invoice Email Recipients
+
+Invoices can be sent to multiple recipients:
+- **TO**: Primary recipient(s) from `bill_to_email`
+- **CC**: Deal team members from `bill_to_cc_emails` (can auto-populate from brokers)
+- **BCC**: Internal tracking via `bill_to_bcc_emails` (defaults to `mike@oculusrep.com`)
+
+## Token Refresh Flow
+
+OAuth tokens are automatically refreshed:
+1. Access tokens expire after ~1 hour
+2. Before each API call, `refreshTokenIfNeeded()` checks expiration
+3. If expiring within 5 minutes, refresh token is used to get new access token
+4. New tokens are stored in database
+5. Refresh tokens expire after 100 days - user must reconnect
+
+## Error Handling
+
+Common errors and resolutions:
+
+| Error | Cause | Resolution |
+|-------|-------|------------|
+| "QuickBooks is not connected" | No active connection | Go to Settings > QuickBooks and connect |
+| "Failed to refresh token" | Refresh token expired | Reconnect to QuickBooks |
+| "No bill-to email configured" | Missing email on deal | Add bill_to_email to deal |
+| "Payment not found" | Invalid payment ID | Check payment exists |
+| "Invoice already exists" | Re-syncing same payment | Delete existing invoice first |
+
+## Troubleshooting
+
+### Issue: "Invalid authorization token - Legacy API keys are disabled" (December 2025)
+
+**Symptoms:**
+- Invoice creation fails with error: `"Invalid authorization token"`
+- Console shows: `"Legacy API keys are disabled"`
+- Error occurred after Supabase disabled legacy JWT keys on October 23, 2025
+
+**Root Cause:**
+Supabase migrated to a new API key format in late 2025:
+- **Legacy format (deprecated):** JWT tokens starting with `eyJ...`
+- **New format:** Keys starting with `sb_secret_*` or `sb_publishable_*`
+
+The Edge Functions were using direct PostgREST calls with legacy JWT keys, which stopped working after the deprecation.
+
+**Solution:**
+Migrated the shared utilities (`supabase/functions/_shared/quickbooks.ts`) to use the Supabase JS client instead of direct PostgREST calls:
+
+```typescript
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+// Create a Supabase client for Edge Functions
+// Uses the new secret key format (sb_secret_*)
+export function createSupabaseClient(): SupabaseClient {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  return createClient(supabaseUrl, supabaseKey)
+}
+```
+
+The legacy helper functions (`postgrestQuery`, `postgrestInsert`, `postgrestUpdate`) were updated to internally use the Supabase client while maintaining their existing signatures for backward compatibility.
+
+**Key Changes:**
+1. Added `createSupabaseClient()` function
+2. Added new `dbQuery`, `dbInsert`, `dbUpdate` helpers using Supabase client
+3. Modified legacy PostgREST helpers to internally use the Supabase client
+4. All Edge Functions now use `SUPABASE_SERVICE_ROLE_KEY` (new `sb_secret_*` format)
+
+**Environment Variable:**
+Ensure `SUPABASE_SERVICE_ROLE_KEY` is set in Supabase secrets with the new format key:
+```bash
+npx supabase secrets set SUPABASE_SERVICE_ROLE_KEY=sb_secret_xxxxx
+```
+
+---
+
+### Issue: "column client.email does not exist" (December 2025)
+
+**Symptoms:**
+- Invoice creation fails with PostgREST error
+- Error message: `column client.email does not exist`
+
+**Root Cause:**
+The `client` table does not have an `email` column. The code was incorrectly referencing `client.email` in several places.
+
+**Solution:**
+All invoice email needs should use the deal's bill-to fields instead:
+- Use `deal.bill_to_email` for the primary invoice recipient
+- Use `deal.bill_to_cc_emails` for CC recipients
+- Use `deal.bill_to_bcc_emails` for BCC recipients
+
+**Code Fix in `quickbooks-sync-invoice/index.ts`:**
+```typescript
+// INCORRECT - client table has no email column
+// const clients = await postgrestQuery(..., `select=id,client_name,email,qb_customer_id...`)
+
+// CORRECT - client table only has id, client_name, qb_customer_id
+const clients = await postgrestQuery(
+  supabaseUrl,
+  secretKey,
+  'client',
+  `select=id,client_name,qb_customer_id&id=eq.${deal.client_id}`
+)
+
+// Use deal.bill_to_email for invoice recipients
+const customerId = await findOrCreateCustomer(
+  connection,
+  client.client_name,
+  deal.deal_name || 'Deal',
+  deal.bill_to_email,  // Use deal's bill-to email, NOT client.email
+  { ... }
+)
+```
+
+**Schema Reference:**
+- The `client` table contains: `id`, `client_name`, `qb_customer_id`, `parent_id`, `is_active_client`
+- Email fields are on the `deal` table: `bill_to_email`, `bill_to_cc_emails`, `bill_to_bcc_emails`
+
+---
+
+## Security Considerations
+
+1. **OAuth Tokens:** Stored in database, accessed only via service role key
+2. **CORS:** Edge functions allow all origins (adjust for production)
+3. **Authorization:** Functions check for valid auth header
+4. **Service Role:** Used for database operations to bypass RLS
+
+## Testing
+
+### Sandbox Testing
+1. Set `QUICKBOOKS_ENVIRONMENT=sandbox`
+2. Use Intuit sandbox company
+3. Create test invoices without affecting production data
+
+### Production Deployment
+1. Set `QUICKBOOKS_ENVIRONMENT=production`
+2. Update `QUICKBOOKS_REDIRECT_URI` to production URL
+3. Ensure Intuit app is approved for production
+
+## Deployment
+
+Deploy Edge Functions:
+```bash
+npx supabase functions deploy quickbooks-connect --no-verify-jwt
+npx supabase functions deploy quickbooks-callback --no-verify-jwt
+npx supabase functions deploy quickbooks-sync-invoice --no-verify-jwt
+npx supabase functions deploy quickbooks-send-invoice --no-verify-jwt
+npx supabase functions deploy quickbooks-delete-invoice --no-verify-jwt
+```
+
+## Automatic Invoice Resync
+
+Invoices are automatically resynced to QuickBooks when relevant data changes in OVIS. This ensures QuickBooks always has the latest information without manual intervention.
+
+### Triggers
+
+| Trigger Location | Fields Monitored | Behavior |
+|-----------------|------------------|----------|
+| BillToSection | All bill-to fields | Resyncs all invoices for the deal |
+| PaymentAmountOverrideModal | payment_amount | Resyncs the specific payment's invoice |
+| PaymentTab | payment_amount, payment_invoice_date, payment_date_estimated | Resyncs the specific payment's invoice |
+
+### How It Works
+
+1. **Bill-To Field Changes** (`BillToSection.tsx`)
+   - When any bill-to field is saved (company, contact, email, CC, BCC)
+   - Calls `resyncDealInvoices(dealId)` to update all invoices for the deal
+   - Runs in the background without blocking the UI
+
+2. **Payment Amount Override** (`PaymentAmountOverrideModal.tsx`)
+   - When payment amount is manually overridden
+   - Checks if payment has a QB invoice via `hasQBInvoice()`
+   - If yes, calls `resyncInvoice(paymentId)`
+
+3. **Payment Field Updates** (`PaymentTab.tsx`)
+   - Monitors changes to: `payment_amount`, `payment_invoice_date`, `payment_date_estimated`
+   - If payment has `qb_invoice_id`, automatically resyncs
+
+### Manual Resync
+
+Users can manually trigger a resync via the **"Resync Invoice"** button in PaymentDetailPanel. This is useful when:
+- Automatic resync failed
+- Testing invoice updates
+- Forcing a refresh after external changes
+
+### Implementation Details
+
+```typescript
+// Frontend service (src/services/quickbooksService.ts)
+await resyncInvoice(paymentId);           // Single invoice
+await resyncDealInvoices(dealId);         // All invoices for a deal
+const hasInvoice = await hasQBInvoice(paymentId);  // Check if synced
+
+// Edge function call
+POST /functions/v1/quickbooks-sync-invoice
+{
+  "paymentId": "uuid",
+  "forceResync": true  // Required to update existing invoice
+}
+```
+
+### Error Handling
+
+- Auto-resync errors are logged to console but don't block the UI
+- Failed resyncs can be manually retried via the "Resync Invoice" button
+- Sync status and errors are logged to `qb_sync_log` table
+
+---
+
+## Automatic Invoice Attachments
+
+When a new invoice is created in QuickBooks, standard documents are automatically attached. These documents are downloaded from Dropbox and uploaded to QuickBooks via the Attachable API.
+
+### Attached Documents
+
+The following documents are attached to every new invoice:
+
+| Document | Description |
+|----------|-------------|
+| `W9-Oculus REP - CURRENT.pdf` | Current W9 tax form |
+| `OCULUS WIRING INSTRUCTIONS.PDF` | Wire transfer instructions |
+| `ACH_eCHECK INSTRUCTIONS.PDF` | ACH/eCheck payment instructions |
+
+### Dropbox Storage
+
+Documents are stored in Dropbox at:
+```
+/Salesforce Documents/Invoice Attachments/
+├── W9-Oculus REP - CURRENT.pdf
+├── OCULUS WIRING INSTRUCTIONS.PDF
+└── ACH_eCHECK INSTRUCTIONS.PDF
+```
+
+### How It Works
+
+1. **New Invoice Creation Only**: Attachments are added only when a NEW invoice is created, not when resyncing/updating an existing invoice
+2. **Download from Dropbox**: Files are downloaded from the configured Dropbox folder
+3. **Upload to QuickBooks**: Each file is uploaded via the QuickBooks Attachable API
+4. **Linked to Invoice**: Attachments are automatically linked to the newly created invoice
+
+### Updating Documents
+
+To update a document (e.g., new W9 for the year):
+1. Upload the new file to Dropbox with the exact same filename
+2. Delete/replace the old file
+3. New invoices will automatically use the updated document
+
+**Note**: Existing invoices retain their original attachments. To update attachments on an existing invoice, delete the invoice in QuickBooks and recreate it.
+
+### Shared Utilities
+
+`supabase/functions/_shared/dropbox.ts` provides Dropbox integration:
+
+- `getDropboxCredentials()` - Get Dropbox API credentials from environment
+- `downloadFile(path)` - Download a single file from Dropbox
+- `downloadFiles(paths)` - Download multiple files
+- `downloadInvoiceAttachments()` - Download all standard invoice attachments
+- `getInvoiceAttachmentPaths()` - Get paths to standard attachment files
+
+`supabase/functions/_shared/quickbooks.ts` attachment functions:
+
+- `uploadAttachment(connection, fileData, fileName, contentType, entityType?, entityId?)` - Upload file to QuickBooks
+- `linkAttachmentToEntity(connection, attachableId, syncToken, entityType, entityId)` - Link existing attachment to entity
+
+### Error Handling
+
+- Attachment failures don't block invoice creation
+- Each attachment is uploaded independently - if one fails, others continue
+- Errors are logged but invoice is still created successfully
+- Response includes `attachmentsUploaded` count
+
+### Response Format
+
+```json
+{
+  "success": true,
+  "message": "Invoice created in QuickBooks with 3 attachments",
+  "qbInvoiceId": "123",
+  "qbInvoiceNumber": "1001",
+  "attachmentsUploaded": 3
+}
+```
+
+---
+
+## Broker Attribution Line
+
+Each invoice includes a second line item that lists the brokers involved in the deal. This line has no dollar amount - it's purely informational.
+
+### Format
+
+The broker line appears as:
+- Single broker: `Brokers: Mike Minihan`
+- Two brokers: `Brokers: Mike Minihan and Arty Santos`
+- Three+ brokers: `Brokers: Mike Minihan, Arty Santos, and Greg Bennett`
+
+### How It Works
+
+1. **Fetch Commission Splits**: Query the `commission_split` table for all splits associated with the deal
+2. **Get Broker Names**: Fetch broker names from the `broker` table using the broker IDs from the splits
+3. **Filter Invalid Names**: Remove any null, empty, or "Unknown Broker" entries
+4. **Add Description Line**: Add a `DescriptionOnly` line type to the invoice with the formatted broker list
+
+### Technical Details
+
+The broker line uses QuickBooks' `DescriptionOnly` line type:
+```typescript
+{
+  Amount: 0,
+  DetailType: 'DescriptionOnly',
+  DescriptionLineDetail: {},
+  Description: 'Brokers: Mike Minihan and Arty Santos'
+}
+```
+
+### Important Notes
+
+- Broker names come from the `broker.name` column (not `broker_name`)
+- Only brokers with commission splits on the specific deal are included
+- The `postgrestQuery` function must support `in.()` filters for this to work correctly
+- Resyncing an invoice will update the broker line if the deal team changes
+
+---
+
+## Invoice Send Behavior
+
+When an invoice is sent via the "Send Invoice" button, the following occurs:
+
+### Automatic Field Updates
+
+| Field | Value Set | Description |
+|-------|-----------|-------------|
+| `invoice_sent` | `true` | Marks the invoice as sent |
+| `payment_invoice_date` | Today's date | Sets the invoice date to when it was sent |
+
+### How It Works
+
+1. User clicks "Send Invoice" button in PaymentDetailPanel
+2. Edge function `quickbooks-send-invoice` is called
+3. QuickBooks API sends the invoice email to `bill_to_email`
+4. Payment record is updated with `invoice_sent=true` and `payment_invoice_date=today`
+5. Sync operation is logged to `qb_sync_log`
+
+### Code Reference
+
+```typescript
+// In quickbooks-send-invoice/index.ts
+const today = new Date().toISOString().split('T')[0]
+await postgrestUpdate(supabaseUrl, secretKey, 'payment', `id=eq.${paymentId}`, {
+  invoice_sent: true,
+  payment_invoice_date: today
+})
+```
+
+---
+
+## Invoice Creation Validation
+
+Before creating a new invoice, the system validates that required fields are present.
+
+### Required Fields
+
+| Field | Table | Validation |
+|-------|-------|------------|
+| `payment_date_estimated` | payment | Must be set before creating invoice |
+| `bill_to_company_name` | deal | Must be set before creating invoice |
+| `bill_to_contact_name` | deal | Must be set before creating invoice |
+| `bill_to_email` | deal | Must be set before creating invoice |
+
+### Validation Behavior
+
+- Validation occurs in the frontend (`PaymentDetailPanel.tsx`)
+- Only applies to NEW invoice creation, not resyncing existing invoices
+- User sees error messages:
+  - *"Estimated payment date is required before creating an invoice. Please set it in Payment Details."*
+  - *"Missing required fields: Bill-To Company, Bill-To Contact, Bill-To Email. Please fill these in the Bill-To section."*
+
+### Why This Validation Exists
+
+**Estimated Payment Date**: Used as the invoice **Due Date** in QuickBooks. Without it:
+- The invoice would have no due date
+- Payment tracking would be inaccurate
+- Collections workflows would be affected
+
+**Bill-To Fields**: Used for the QuickBooks customer and invoice delivery:
+- `bill_to_company_name` - Displayed on the invoice as the billing company
+- `bill_to_contact_name` - Contact name on the invoice
+- `bill_to_email` - Required for sending the invoice via email
+
+### Code Reference
+
+```typescript
+// In PaymentDetailPanel.tsx handleSyncToQuickBooks()
+
+// Estimated payment date validation
+if (!forceResync && !payment.qb_invoice_id && !payment.payment_date_estimated) {
+  setQbSyncMessage({
+    type: 'error',
+    text: 'Estimated payment date is required before creating an invoice. Please set it in Payment Details.'
+  });
+  return;
+}
+
+// Bill-to fields validation
+if (!forceResync && !payment.qb_invoice_id) {
+  const missingFields: string[] = [];
+  if (!deal.bill_to_company_name) missingFields.push('Bill-To Company');
+  if (!deal.bill_to_contact_name) missingFields.push('Bill-To Contact');
+  if (!deal.bill_to_email) missingFields.push('Bill-To Email');
+
+  if (missingFields.length > 0) {
+    setQbSyncMessage({
+      type: 'error',
+      text: `Missing required fields: ${missingFields.join(', ')}. Please fill these in the Bill-To section.`
+    });
+    return;
+  }
+}
+```
+
+---
+
+## Moving to Production
+
+This section covers the steps to migrate from QuickBooks Sandbox to Production.
+
+### Prerequisites
+
+1. **Intuit Developer Account**: Must have a production-ready app in the Intuit Developer Portal
+2. **App Review**: Intuit may require app review before production access
+3. **Production Credentials**: Obtain production Client ID and Client Secret
+
+### Step 1: Create Production App (or Update Existing)
+
+1. Go to [Intuit Developer Portal](https://developer.intuit.com/)
+2. Navigate to your app or create a new one
+3. Under "Keys & credentials", switch to **Production** tab
+4. Note the **Client ID** and **Client Secret**
+5. Add production redirect URI (same as sandbox, typically):
+   ```
+   https://rqbvcvwbziilnycqtmnc.supabase.co/functions/v1/quickbooks-callback
+   ```
+
+### Step 2: Update Supabase Secrets
 
 ```bash
-# P&L Report (for Cash/Accrual toggle)
-npx supabase functions deploy quickbooks-sync-pl-report --no-verify-jwt
+# Update environment to production
+npx supabase secrets set QUICKBOOKS_ENVIRONMENT=production
 
-# Expense Sync (for payment status tracking)
-npx supabase functions deploy quickbooks-sync-expenses --no-verify-jwt
+# Update with production credentials
+npx supabase secrets set QUICKBOOKS_CLIENT_ID=your_production_client_id
+npx supabase secrets set QUICKBOOKS_CLIENT_SECRET=your_production_client_secret
 
-# Commission Mapping (for broker/referral payments)
-supabase functions deploy quickbooks-list-accounts --project-ref YOUR_PROJECT_REF
-supabase functions deploy quickbooks-create-commission-entry --project-ref YOUR_PROJECT_REF
-supabase functions deploy quickbooks-create-referral-entry --project-ref YOUR_PROJECT_REF
+# Redirect URI typically stays the same
+npx supabase secrets set QUICKBOOKS_REDIRECT_URI=https://rqbvcvwbziilnycqtmnc.supabase.co/functions/v1/quickbooks-callback
 ```
+
+### Step 3: Redeploy Edge Functions
+
+After updating secrets, redeploy all QuickBooks Edge Functions:
+
+```bash
+npx supabase functions deploy quickbooks-connect --no-verify-jwt
+npx supabase functions deploy quickbooks-callback --no-verify-jwt
+npx supabase functions deploy quickbooks-sync-invoice --no-verify-jwt
+npx supabase functions deploy quickbooks-send-invoice --no-verify-jwt
+npx supabase functions deploy quickbooks-delete-invoice --no-verify-jwt
+npx supabase functions deploy quickbooks-list-customers --no-verify-jwt
+npx supabase functions deploy quickbooks-sync-customer --no-verify-jwt
+npx supabase functions deploy quickbooks-link-customer --no-verify-jwt
+```
+
+### Step 4: Reconnect to QuickBooks
+
+1. Go to Settings > QuickBooks in OVIS
+2. Click "Disconnect" if currently connected to sandbox
+3. Click "Connect to QuickBooks"
+4. Log in with your **production** QuickBooks Online account
+5. Authorize the application
+6. Verify connection shows "Connected" status
+
+### Step 5: Verify Production Connection
+
+1. **Check API URL**: The `getQBApiUrl()` function in `quickbooks.ts` returns:
+   - Sandbox: `https://sandbox-quickbooks.api.intuit.com`
+   - Production: `https://quickbooks.api.intuit.com`
+
+2. **Test Invoice Creation**: Create a test invoice on a real deal
+3. **Verify in QuickBooks**: Log into QuickBooks Online and confirm the invoice appears
+4. **Test Email Send**: Send a test invoice (use your own email first)
+
+### Step 6: Remap Customers (Important!)
+
+QuickBooks sandbox and production are completely separate. Customer IDs from sandbox **will not exist** in production.
+
+1. Go to Admin > QuickBooks > Customer Mapping
+2. All clients will show as "Not Linked"
+3. For each client:
+   - Click "Create in QB" to create new, OR
+   - Click "Search QB" to find and link to existing production customer
+
+### Production Checklist
+
+- [ ] Production app created in Intuit Developer Portal
+- [ ] Production Client ID and Secret obtained
+- [ ] `QUICKBOOKS_ENVIRONMENT` set to `production`
+- [ ] `QUICKBOOKS_CLIENT_ID` updated with production value
+- [ ] `QUICKBOOKS_CLIENT_SECRET` updated with production value
+- [ ] All Edge Functions redeployed
+- [ ] Disconnected from sandbox
+- [ ] Connected to production QuickBooks account
+- [ ] Test invoice created successfully
+- [ ] Test email sent successfully
+- [ ] Customer mappings recreated for production
+
+### Rollback to Sandbox
+
+If you need to return to sandbox for testing:
+
+```bash
+npx supabase secrets set QUICKBOOKS_ENVIRONMENT=sandbox
+npx supabase secrets set QUICKBOOKS_CLIENT_ID=your_sandbox_client_id
+npx supabase secrets set QUICKBOOKS_CLIENT_SECRET=your_sandbox_client_secret
+```
+
+Then redeploy Edge Functions and reconnect to sandbox QuickBooks account.
+
+### Environment Differences
+
+| Aspect | Sandbox | Production |
+|--------|---------|------------|
+| API URL | `sandbox-quickbooks.api.intuit.com` | `quickbooks.api.intuit.com` |
+| Data | Test data only | Real business data |
+| Emails | Not delivered | Delivered to real recipients |
+| Rate Limits | More lenient | Standard limits apply |
+| Customer IDs | Sandbox-specific | Production-specific |
+
+### Security Considerations for Production
+
+1. **Never commit credentials**: Keep Client ID/Secret in Supabase secrets only
+2. **Monitor sync logs**: Review `qb_sync_log` for failed operations
+3. **Token expiration**: Refresh tokens expire after 100 days - set calendar reminder
+4. **Email recipients**: Double-check `bill_to_email` before sending invoices
+5. **Test thoroughly**: Use a test deal before sending real invoices
+
+---
+
+## Future Enhancements
+
+Potential future features:
+- [ ] Sync payments received back from QuickBooks
+- [ ] Batch invoice creation for multiple payments
+- [ ] Invoice PDF download
+- [x] Customer sync (OVIS → QuickBooks) - Completed
+- [ ] Customer sync (QuickBooks → OVIS) - Inbound sync
+- [ ] Expense/bill sync for broker payments
+- [ ] Webhook integration for real-time updates
+- [ ] Automatic sync on client name change in OVIS
+- [ ] Bulk customer sync operation
+- [x] Automatic document attachments on invoices - Completed

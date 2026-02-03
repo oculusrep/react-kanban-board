@@ -1,0 +1,6 @@
+# Supabase configuration
+
+# QuickBooks OAuth callback needs to be publicly accessible
+# because it's called by QuickBooks redirect (no apikey header possible)
+[functions.quickbooks-callback]
+verify_jwt = false
