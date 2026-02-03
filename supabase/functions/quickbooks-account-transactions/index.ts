@@ -104,27 +104,60 @@ function parseGeneralLedgerReport(reportData: any): { transactions: TransactionL
     hasRows: !!reportData?.Rows,
     hasRowArray: !!reportData?.Rows?.Row,
     rowCount: reportData?.Rows?.Row?.length || 0,
-    columns: reportData?.Columns?.Column?.map((c: any) => c.ColTitle) || [],
-    sampleRows: []
+    columns: reportData?.Columns?.Column?.map((c: any) => ({ title: c.ColTitle, type: c.ColType })) || [],
+    sampleRows: [],
+    skippedRows: 0,
+    processedRows: 0
   }
 
   if (!reportData || !reportData.Rows || !reportData.Rows.Row) {
     return { transactions, debug }
   }
 
-  // Get column mapping from the report
+  // Get column mapping from the report - QBO uses ColTitle or ColType
   const columns = reportData.Columns?.Column || []
   const colMap: Record<string, number> = {}
+
   columns.forEach((col: any, idx: number) => {
-    const title = (col.ColTitle || col.ColType || '').toLowerCase()
-    if (title.includes('date')) colMap['date'] = idx
-    if (title.includes('type') || title === 'transaction type') colMap['type'] = idx
-    if (title.includes('num') || title.includes('doc')) colMap['docNum'] = idx
-    if (title.includes('name')) colMap['name'] = idx
-    if (title.includes('memo') || title.includes('description')) colMap['memo'] = idx
-    if (title.includes('debit') || title === 'amount') colMap['debit'] = idx
-    if (title.includes('credit')) colMap['credit'] = idx
-    if (title.includes('balance')) colMap['balance'] = idx
+    const title = (col.ColTitle || '').toLowerCase()
+    const colType = (col.ColType || '').toLowerCase()
+
+    // Date column
+    if (title.includes('date') || colType === 'date' || colType === 'tx_date') {
+      colMap['date'] = idx
+    }
+    // Transaction type
+    if (title.includes('type') || title === 'transaction type' || colType === 'txn_type') {
+      colMap['type'] = idx
+    }
+    // Document number
+    if (title.includes('num') || title.includes('doc') || colType === 'doc_num') {
+      colMap['docNum'] = idx
+    }
+    // Name
+    if (title.includes('name') || colType === 'name') {
+      colMap['name'] = idx
+    }
+    // Memo/Description
+    if (title.includes('memo') || title.includes('description') || colType === 'memo') {
+      colMap['memo'] = idx
+    }
+    // Amount - QBO GL often uses single Amount column
+    if (title === 'amount' || colType === 'amount' || colType === 'subt_nat_amount' || colType === 'subt_nat_home_amount') {
+      colMap['amount'] = idx
+    }
+    // Debit
+    if (title.includes('debit') || colType === 'debit_amount' || colType === 'debit') {
+      colMap['debit'] = idx
+    }
+    // Credit
+    if (title.includes('credit') || colType === 'credit_amount' || colType === 'credit') {
+      colMap['credit'] = idx
+    }
+    // Balance
+    if (title.includes('balance') || colType === 'balance' || colType === 'nat_home_open_bal' || colType === 'running_balance') {
+      colMap['balance'] = idx
+    }
   })
   debug.columnMapping = colMap
 
@@ -134,11 +167,14 @@ function parseGeneralLedgerReport(reportData: any): { transactions: TransactionL
   // Recursive function to extract data rows
   function extractRows(rowArray: any[], depth = 0) {
     for (const row of rowArray) {
-      // Capture sample for debugging
-      if (debug.sampleRows.length < 5 && row.ColData) {
+      // Capture sample for debugging (capture more rows to understand structure)
+      if (debug.sampleRows.length < 10 && row.ColData) {
         debug.sampleRows.push({
           depth,
           type: row.type,
+          header: row.Header,
+          summary: row.Summary,
+          colDataCount: row.ColData?.length,
           colData: row.ColData?.map((c: any) => ({ value: c.value, id: c.id }))
         })
       }
@@ -149,9 +185,17 @@ function parseGeneralLedgerReport(reportData: any): { transactions: TransactionL
         continue
       }
 
-      // Process data rows
-      if (row.ColData && Array.isArray(row.ColData) && row.type === 'Data') {
+      // Process data rows - be more lenient about row.type
+      // Some QBO reports don't have type='Data', they just have ColData
+      if (row.ColData && Array.isArray(row.ColData)) {
         const colData = row.ColData
+        debug.processedRows++
+
+        // Skip rows that don't have enough columns or are summary rows
+        if (colData.length < 3) {
+          debug.skippedRows++
+          continue
+        }
 
         // Try to extract values using column mapping, with fallbacks
         const date = colData[colMap['date']]?.value || colData[0]?.value || ''
@@ -160,35 +204,67 @@ function parseGeneralLedgerReport(reportData: any): { transactions: TransactionL
         const name = colData[colMap['name']]?.value || colData[3]?.value || null
         const memo = colData[colMap['memo']]?.value || colData[4]?.value || null
 
-        // For debit/credit, look for 'Amount' column or specific debit/credit columns
+        // For debit/credit - try multiple approaches
         let debit = 0
         let credit = 0
 
-        if (colMap['debit'] !== undefined) {
-          debit = parseFloat(colData[colMap['debit']]?.value) || 0
+        // First try explicit debit/credit columns
+        if (colMap['debit'] !== undefined && colData[colMap['debit']]?.value) {
+          const val = colData[colMap['debit']].value
+          debit = parseFloat(String(val).replace(/[,$]/g, '')) || 0
         }
-        if (colMap['credit'] !== undefined) {
-          credit = parseFloat(colData[colMap['credit']]?.value) || 0
+        if (colMap['credit'] !== undefined && colData[colMap['credit']]?.value) {
+          const val = colData[colMap['credit']].value
+          credit = parseFloat(String(val).replace(/[,$]/g, '')) || 0
         }
 
-        // If there's an 'amount' column without separate debit/credit
-        // positive = debit (money out), negative = credit (money in)
-        if (colMap['debit'] === colMap['credit'] || (debit === 0 && credit === 0)) {
-          const amountIdx = colMap['debit'] !== undefined ? colMap['debit'] : 5
-          const amount = parseFloat(colData[amountIdx]?.value) || 0
-          if (amount > 0) {
-            debit = amount
-          } else if (amount < 0) {
-            credit = Math.abs(amount)
+        // If no debit/credit found, try the amount column
+        if (debit === 0 && credit === 0 && colMap['amount'] !== undefined) {
+          const amountVal = colData[colMap['amount']]?.value
+          if (amountVal) {
+            const amount = parseFloat(String(amountVal).replace(/[,$]/g, '')) || 0
+            // For liability accounts (like draw accounts), positive usually means credit (commission earned)
+            // negative means debit (draw taken)
+            if (amount > 0) {
+              credit = amount  // Commission credited to account
+            } else if (amount < 0) {
+              debit = Math.abs(amount)  // Draw from account
+            }
           }
         }
 
-        // Skip if no date (likely a subtotal row)
-        if (!date || date === '') continue
+        // Last resort: try to find any numeric value in the later columns
+        if (debit === 0 && credit === 0) {
+          for (let i = 5; i < colData.length; i++) {
+            const val = colData[i]?.value
+            if (val && typeof val === 'string' && /^-?\$?[\d,]+\.?\d*$/.test(val.trim())) {
+              const amount = parseFloat(val.replace(/[,$]/g, '')) || 0
+              if (amount > 0) {
+                credit = amount
+              } else if (amount < 0) {
+                debit = Math.abs(amount)
+              }
+              break
+            }
+          }
+        }
+
+        // Skip if no date (likely a subtotal or header row)
+        if (!date || date === '' || date === 'Total' || date.toLowerCase().includes('total')) {
+          debug.skippedRows++
+          continue
+        }
+
         // Skip beginning balance rows
         if (type.toLowerCase().includes('beginning balance')) {
-          const balanceVal = parseFloat(colData[colMap['balance']]?.value || colData[7]?.value) || 0
-          runningBalance = balanceVal
+          // Try to capture beginning balance
+          if (colMap['balance'] !== undefined) {
+            const balanceVal = colData[colMap['balance']]?.value
+            if (balanceVal) {
+              runningBalance = parseFloat(String(balanceVal).replace(/[,$]/g, '')) || 0
+            }
+          }
+          debug.skippedRows++
           continue
         }
 
