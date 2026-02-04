@@ -49,6 +49,7 @@ export default function ClientPortalUsersSection({
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteLinkForId, setInviteLinkForId] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [generatingLinkForId, setGeneratingLinkForId] = useState<string | null>(null);
 
   // Compose invite modal state
   const [showComposeModal, setShowComposeModal] = useState(false);
@@ -431,6 +432,76 @@ Best regards`;
     }
   };
 
+  // Generate or get existing invite link and copy to clipboard (without sending email)
+  const handleCopyInviteLink = async (portalUser: PortalUser) => {
+    setGeneratingLinkForId(portalUser.contact_id);
+
+    try {
+      // Check if there's an existing valid invite token
+      const { data: contact } = await supabase
+        .from('contact')
+        .select('portal_invite_token, portal_invite_expires_at')
+        .eq('id', portalUser.contact_id)
+        .single();
+
+      let token = contact?.portal_invite_token;
+      const expiresAt = contact?.portal_invite_expires_at;
+      const isExpired = expiresAt ? new Date(expiresAt) < new Date() : true;
+
+      // If no valid token exists, generate a new one
+      if (!token || isExpired) {
+        token = crypto.randomUUID();
+        const newExpiresAt = new Date();
+        newExpiresAt.setDate(newExpiresAt.getDate() + 7); // 7 days expiry
+
+        // Update contact with new invite token
+        const { error: updateError } = await supabase
+          .from('contact')
+          .update({
+            portal_invite_token: token,
+            portal_invite_status: 'pending',
+            portal_invite_expires_at: newExpiresAt.toISOString(),
+          })
+          .eq('id', portalUser.contact_id);
+
+        if (updateError) throw updateError;
+
+        // Log the invite generation
+        await supabase.from('portal_invite_log').insert({
+          contact_id: portalUser.contact_id,
+          invited_by_id: user?.id,
+          invite_email: portalUser.contact_email,
+          invite_token: token,
+          status: 'link_copied',
+          expires_at: newExpiresAt.toISOString(),
+        });
+
+        // Update local state
+        setPortalUsers(prev =>
+          prev.map(u =>
+            u.contact_id === portalUser.contact_id
+              ? { ...u, portal_invite_status: 'pending', portal_invite_expires_at: newExpiresAt.toISOString() }
+              : u
+          )
+        );
+      }
+
+      // Generate the link and copy to clipboard
+      const link = `${window.location.origin}/portal/invite?token=${token}`;
+      await navigator.clipboard.writeText(link);
+
+      // Show copied feedback
+      setInviteLink(link);
+      setInviteLinkForId(portalUser.contact_id);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (err) {
+      console.error('Error generating invite link:', err);
+    } finally {
+      setGeneratingLinkForId(null);
+    }
+  };
+
   const getStatusBadge = (user: PortalUser) => {
     if (user.portal_last_login_at) {
       return (
@@ -558,6 +629,25 @@ Best regards`;
                 </div>
               </div>
               <div className="relative flex items-center space-x-3">
+                {/* Copy Link button - always available */}
+                <button
+                  type="button"
+                  onClick={() => handleCopyInviteLink(portalUser)}
+                  disabled={generatingLinkForId === portalUser.contact_id}
+                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                  title="Copy invite link"
+                >
+                  {generatingLinkForId === portalUser.contact_id ? (
+                    <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                  )}
+                </button>
                 {/* Status badge - clickable for non-active users to send/resend invite */}
                 {portalUser.portal_last_login_at ? (
                   getStatusBadge(portalUser)
@@ -598,7 +688,9 @@ Best regards`;
                 {inviteLinkForId === portalUser.contact_id && inviteLink && (
                   <div className="absolute z-10 mt-1 right-0 top-full bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-80">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-medium text-green-600">Invite sent!</span>
+                      <span className="text-xs font-medium text-green-600">
+                        {linkCopied ? 'Link copied to clipboard!' : 'Invite link ready'}
+                      </span>
                       <button
                         type="button"
                         onClick={() => { setInviteLink(null); setInviteLinkForId(null); }}
@@ -609,7 +701,7 @@ Best regards`;
                         </svg>
                       </button>
                     </div>
-                    <p className="text-xs text-gray-500 mb-2">Copy link to share manually:</p>
+                    <p className="text-xs text-gray-500 mb-2">Share this link via text, email, or any other method:</p>
                     <div className="flex items-center space-x-2">
                       <input
                         type="text"
