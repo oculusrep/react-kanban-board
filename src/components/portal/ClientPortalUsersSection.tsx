@@ -220,17 +220,41 @@ export default function ClientPortalUsersSection({
       }
 
       // Grant access to this client
-      const { error } = await supabase
+      // First try to update existing record (if previously revoked)
+      const { data: existingAccess } = await supabase
         .from('portal_user_client_access')
-        .upsert({
-          contact_id: contactId,
-          client_id: clientId,
-          is_active: true,
-          granted_by_id: user?.id,
-          granted_at: new Date().toISOString(),
-        });
+        .select('id')
+        .eq('contact_id', contactId)
+        .eq('client_id', clientId)
+        .single();
 
-      if (error) throw error;
+      if (existingAccess) {
+        // Re-activate existing record
+        const { error } = await supabase
+          .from('portal_user_client_access')
+          .update({
+            is_active: true,
+            granted_by_id: user?.id,
+            granted_at: new Date().toISOString(),
+          })
+          .eq('contact_id', contactId)
+          .eq('client_id', clientId);
+
+        if (error) throw error;
+      } else {
+        // Insert new record
+        const { error } = await supabase
+          .from('portal_user_client_access')
+          .insert({
+            contact_id: contactId,
+            client_id: clientId,
+            is_active: true,
+            granted_by_id: user?.id,
+            granted_at: new Date().toISOString(),
+          });
+
+        if (error) throw error;
+      }
 
       // Add to local state
       if (contact) {
