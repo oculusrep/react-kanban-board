@@ -142,7 +142,42 @@ This allows granting specific permissions to individual users without changing t
 5. **Arty's Draw Report:** Log in as Arty Santos, verify report loads without 406 error
 6. **Tooltip:** On Arty's Draw Report, hover over truncated Name/Memo text, verify tooltip shows full content
 
+### 6. QuickBooks Invoice CC/BCC Email Fix
+
+Fixed issue where CC emails weren't being sent when invoices were emailed from QuickBooks.
+
+**Problem:** When Arty added his email as CC on invoice emails, he wasn't receiving the CC copy. Mike (BCC) was receiving his copy.
+
+**Root Cause:** The `sendInvoice` function was using QuickBooks' `sendTo` query parameter:
+```
+invoice/${invoiceId}/send?sendTo=${email}
+```
+
+According to QuickBooks API behavior, the `sendTo` parameter **overrides all recipients** and ignores the `BillEmailCc` and `BillEmailBcc` fields stored on the invoice.
+
+**Fix Applied:** `supabase/functions/_shared/quickbooks.ts`
+
+Changed from:
+```typescript
+const endpoint = email
+  ? `invoice/${invoiceId}/send?sendTo=${encodeURIComponent(email)}`
+  : `invoice/${invoiceId}/send`
+```
+
+To:
+```typescript
+// Always send without sendTo param so QB uses BillEmail, BillEmailCc, and BillEmailBcc from the invoice
+const endpoint = `invoice/${invoiceId}/send`
+```
+
+Now QuickBooks uses the email addresses already stored on the invoice object (`BillEmail`, `BillEmailCc`, `BillEmailBcc`) which are set during invoice sync.
+
+**Edge Functions Deployed:**
+- `quickbooks-send-invoice`
+- `quickbooks-sync-invoice`
+
 ## Commits
 
 1. `a394c4df` - Add portal email customization, admin menu permissions, and fix logout
 2. `a9002e38` - Add hover tooltip to Arty's Draw Report name/memo column
+3. `4ac2fbde` - Fix invoice CC/BCC emails not being sent
