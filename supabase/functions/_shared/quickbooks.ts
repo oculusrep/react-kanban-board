@@ -426,15 +426,18 @@ export async function createInvoice(
 
 /**
  * Send an invoice via email through QuickBooks
+ *
+ * Note: We do NOT use the sendTo query parameter because it overrides ALL recipients
+ * and ignores the BillEmailCc and BillEmailBcc fields stored on the invoice.
+ * Instead, we rely on the BillEmail, BillEmailCc, and BillEmailBcc already set on the invoice.
  */
 export async function sendInvoice(
   connection: QBConnection,
   invoiceId: string,
-  email?: string
+  _email?: string  // Kept for backwards compatibility but no longer used
 ): Promise<void> {
-  const endpoint = email
-    ? `invoice/${invoiceId}/send?sendTo=${encodeURIComponent(email)}`
-    : `invoice/${invoiceId}/send`
+  // Always send without sendTo param so QB uses BillEmail, BillEmailCc, and BillEmailBcc from the invoice
+  const endpoint = `invoice/${invoiceId}/send`
 
   await qbApiRequest(connection, 'POST', endpoint)
   console.log('Invoice sent via QBO:', invoiceId)
