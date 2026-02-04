@@ -104,11 +104,20 @@ Added hover tooltip to show full Name/Memo content.
 ### New Files
 - `src/pages/admin/PortalEmailSettingsPage.tsx` - Admin page for email template settings
 - `supabase/migrations/20260204_portal_email_template_settings.sql` - Database migration
+- `src/components/portal/StatusBadgeDropdown.tsx` - Clickable status badge for changing deal status
 
 ### Modified Components
 - `src/components/Navbar.tsx` - Permission checks for admin menu items
-- `src/components/portal/ClientPortalUsersSection.tsx` - Compose modal, template loading
+- `src/components/portal/ClientPortalUsersSection.tsx` - Compose modal, template loading, copy link button
+- `src/components/portal/PortalAccessSection.tsx` - Compose modal, template loading (unified behavior)
 - `src/components/reports/ArtyDrawReport.tsx` - Tooltip for truncated text
+- `src/pages/portal/PortalPipelinePage.tsx` - StatusBadgeDropdown, real-time subscription
+- `src/components/portal/PortalDetailSidebar.tsx` - StatusBadgeDropdown integration
+- `src/components/mapping/layers/SiteSubmitLayer.tsx` - Real-time subscription for map pins
+
+### Modified Edge Functions
+- `supabase/functions/_shared/gmail.ts` - Changed MIME encoding to 7bit
+- `supabase/functions/send-portal-invite/index.ts` - Simplified HTML template
 
 ### Modified Contexts
 - `src/contexts/AuthContext.tsx` - Fixed logout scope
@@ -176,8 +185,60 @@ Now QuickBooks uses the email addresses already stored on the invoice object (`B
 - `quickbooks-send-invoice`
 - `quickbooks-sync-invoice`
 
+### 7. Portal Status Badge Dropdown (Broker View)
+
+Added ability for brokers to change deal status directly from the client portal pipeline view.
+
+**New Component:** `src/components/portal/StatusBadgeDropdown.tsx`
+- Clickable status badge that opens dropdown with all available stages
+- Only editable when `canEdit` prop is true (broker view)
+- Updates `site_submit.site_submit_stage_id` in database
+- Logs status change as a comment visible to clients
+- Color-coded stages with hover states
+
+**Files Modified:**
+- `src/pages/portal/PortalPipelinePage.tsx` - Added StatusBadgeDropdown, real-time subscription for site_submit updates
+- `src/components/portal/PortalDetailSidebar.tsx` - Added StatusBadgeDropdown with stages fetch
+- `src/components/mapping/layers/SiteSubmitLayer.tsx` - Added real-time subscription for map pin auto-refresh
+
+### 8. Copy Invite Link Button
+
+Added ability to copy portal invite links without sending an email, for sharing via text or personal email.
+
+**File Modified:** `src/components/portal/ClientPortalUsersSection.tsx`
+- Added link icon button next to each portal user
+- Generates new token if none exists or existing one is expired
+- Copies link directly to clipboard
+- Shows popover with link for easy copying
+- Logs action as `link_copied` in `portal_invite_log`
+
+### 9. Unified Portal Invite Email Behavior
+
+Made Contact page and Client page behave consistently when sending portal invites.
+
+**File Modified:** `src/components/portal/PortalAccessSection.tsx`
+- Added compose modal (matching Client page behavior)
+- Loads email template from `app_settings` table
+- Passes `customSubject` and `customMessage` to edge function
+- Previously, Contact page sent emails with hardcoded defaults
+
+### 10. HTML Email Button Fix
+
+Fixed issue where HTML email buttons weren't rendering properly in some email clients.
+
+**Files Modified:**
+- `supabase/functions/_shared/gmail.ts` - Changed MIME encoding from `quoted-printable` to `7bit`
+- `supabase/functions/send-portal-invite/index.ts` - Simplified HTML template, removed VML conditional comments
+
 ## Commits
 
 1. `a394c4df` - Add portal email customization, admin menu permissions, and fix logout
 2. `a9002e38` - Add hover tooltip to Arty's Draw Report name/memo column
 3. `4ac2fbde` - Fix invoice CC/BCC emails not being sent
+4. `dc408005` - Document QuickBooks invoice CC/BCC email fix
+5. `03eaa107` - Add portal status dropdown and improve invite email formatting
+6. `10001cd0` - Fix portal user re-add after revocation
+7. `d747c5d1` - Fix MIME encoding for HTML emails
+8. `bc0c5d79` - Simplify HTML email template for better compatibility
+9. `18135edb` - Add copy invite link button for portal users
+10. `5b1a217a` - Unify portal invite email behavior across Contact and Client pages
