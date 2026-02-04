@@ -11,8 +11,8 @@ export default function MikeIsOwedReportPage() {
     document.title = "Mike Is Owed | OVIS";
   }, []);
 
-  // Check permission - reuse goal dashboard permission
-  if (!permissionsLoading && !hasPermission('can_view_goal_dashboard')) {
+  // Check permission
+  if (!permissionsLoading && !hasPermission('can_view_mike_is_owed_report')) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
         <div className="max-w-4xl mx-auto text-center">

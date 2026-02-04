@@ -120,7 +120,7 @@ export default function ReportsPage() {
       description: "Unpaid commission splits on received payments since Jan 2025",
       route: "/reports/mike-is-owed",
       icon: "💵",
-      permission: "can_view_goal_dashboard"
+      permission: "can_view_mike_is_owed_report"
     }
   ];
 
