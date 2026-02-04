@@ -787,18 +787,19 @@ function buildMimeMessage(
 
   if (options.bodyHtml && options.bodyText) {
     // Multipart alternative (both text and HTML)
+    // Use 7bit encoding which is simpler and works well for UTF-8 content
     headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
     mimeBody = [
       '',
       `--${boundary}`,
       'Content-Type: text/plain; charset="UTF-8"',
-      'Content-Transfer-Encoding: quoted-printable',
+      'Content-Transfer-Encoding: 7bit',
       '',
       options.bodyText,
       '',
       `--${boundary}`,
       'Content-Type: text/html; charset="UTF-8"',
-      'Content-Transfer-Encoding: quoted-printable',
+      'Content-Transfer-Encoding: 7bit',
       '',
       options.bodyHtml,
       '',
@@ -807,10 +808,12 @@ function buildMimeMessage(
   } else if (options.bodyHtml) {
     // HTML only
     headers.push('Content-Type: text/html; charset="UTF-8"');
+    headers.push('Content-Transfer-Encoding: 7bit');
     mimeBody = '\r\n' + options.bodyHtml;
   } else {
     // Plain text only
     headers.push('Content-Type: text/plain; charset="UTF-8"');
+    headers.push('Content-Transfer-Encoding: 7bit');
     mimeBody = '\r\n' + (options.bodyText || '');
   }
 
