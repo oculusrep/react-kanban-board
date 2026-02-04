@@ -72,7 +72,7 @@ export default function ClientPortalUsersSection({
           setDefaultTemplate(data.value as { subject: string; message: string });
         }
       } catch (err) {
-        // Silently fail - will use hardcoded defaults
+        console.error('[Portal Invite Template] Error loading:', err);
       }
     }
     loadDefaultTemplate();

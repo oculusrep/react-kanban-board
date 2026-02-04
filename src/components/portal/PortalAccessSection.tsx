@@ -55,6 +55,32 @@ export default function PortalAccessSection({
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
 
+  // Compose modal state
+  const [showComposeModal, setShowComposeModal] = useState(false);
+  const [emailSubject, setEmailSubject] = useState("You're Invited to the Oculus Client Portal");
+  const [emailMessage, setEmailMessage] = useState('');
+  const [defaultTemplate, setDefaultTemplate] = useState<{ subject: string; message: string } | null>(null);
+
+  // Load default email template from settings
+  useEffect(() => {
+    async function loadDefaultTemplate() {
+      try {
+        const { data } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'portal_invite_email_template')
+          .single();
+
+        if (data?.value) {
+          setDefaultTemplate(data.value as { subject: string; message: string });
+        }
+      } catch (err) {
+        // Silently fail - will use hardcoded defaults
+      }
+    }
+    loadDefaultTemplate();
+  }, []);
+
   // Load client access data
   useEffect(() => {
     async function loadClientAccess() {
@@ -211,12 +237,47 @@ export default function PortalAccessSection({
     }
   };
 
-  const handleSendInvite = async () => {
+  const getDefaultMessage = (firstName: string) => {
+    if (defaultTemplate?.message) {
+      return defaultTemplate.message.replace(/\{\{firstName\}\}/g, firstName);
+    }
+    return `Hi ${firstName},
+
+You've been invited to access the Oculus Client Portal. This portal gives you visibility into your real estate projects, including property details, documents, and direct communication with your broker team.
+
+Click the button below to set up your account.
+
+If you have any questions, simply reply to this email or reach out to your broker representative.
+
+Best regards`;
+  };
+
+  const getDefaultSubject = () => {
+    return defaultTemplate?.subject || "You're Invited to the Oculus Client Portal";
+  };
+
+  const openComposeModal = () => {
+    if (!contactEmail) {
+      setInviteError('Contact must have an email address to receive an invite');
+      return;
+    }
+    // Use "there" as fallback since we don't have the contact's first name in props
+    setEmailSubject(getDefaultSubject());
+    setEmailMessage(getDefaultMessage('there'));
+    setShowComposeModal(true);
+  };
+
+  const closeComposeModal = () => {
+    setShowComposeModal(false);
+  };
+
+  const handleSendInvite = async (customSubject?: string, customMessage?: string) => {
     if (!contactId || !contactEmail) {
       setInviteError('Contact must have an email address to receive an invite');
       return;
     }
 
+    closeComposeModal();
     setSendingInvite(true);
     setInviteError(null);
     setInviteSuccess(false);
@@ -262,13 +323,14 @@ export default function PortalAccessSection({
             email: contactEmail,
             inviteLink: link,
             expiresAt: expiresAt.toISOString(),
-            invitedByUserId: user?.id,  // Pass the current user's ID for Gmail lookup
+            invitedByUserId: user?.id,
+            customSubject,
+            customMessage,
           },
         });
 
         if (emailError) {
           console.log('Edge function error, email not sent:', emailError);
-          // Continue - the link is still available for manual copying
         } else if (emailResult?.useManualLink) {
           console.log('Gmail not available:', emailResult.message);
         } else if (emailResult?.success) {
@@ -504,7 +566,7 @@ export default function PortalAccessSection({
             <div className="flex space-x-3">
               <button
                 type="button"
-                onClick={handleSendInvite}
+                onClick={openComposeModal}
                 disabled={sendingInvite || !contactEmail}
                 className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -537,6 +599,93 @@ export default function PortalAccessSection({
             )}
           </div>
         </>
+      )}
+
+      {/* Compose Invite Email Modal */}
+      {showComposeModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-10 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-900">
+                {portalInviteStatus === 'pending' ? 'Resend' : 'Send'} Portal Invite
+              </h3>
+              <button
+                type="button"
+                onClick={closeComposeModal}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* To field (read-only) */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">To</label>
+              <div className="px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-sm text-gray-700">
+                {contactEmail}
+              </div>
+            </div>
+
+            {/* Subject field */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+              <input
+                type="text"
+                value={emailSubject}
+                onChange={e => setEmailSubject(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+
+            {/* Message field */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+              <textarea
+                value={emailMessage}
+                onChange={e => setEmailMessage(e.target.value)}
+                rows={10}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 font-mono"
+                placeholder="Enter your message..."
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                The invite button and expiration notice will be added automatically below your message.
+              </p>
+            </div>
+
+            {/* Note about CC */}
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+              <p className="text-xs text-blue-700">
+                <strong>Note:</strong> You will be CC'd on this email so you have a record of it being sent.
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={closeComposeModal}
+                className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSendInvite(emailSubject, emailMessage)}
+                disabled={!emailSubject.trim() || !emailMessage.trim()}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="flex items-center">
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  Send Invite
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
