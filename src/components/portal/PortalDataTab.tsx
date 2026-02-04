@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 
 interface SiteSubmitData {
@@ -52,6 +52,208 @@ interface PortalDataTabProps {
   onUpdate: (updated: Partial<SiteSubmitData>) => void;
 }
 
+// Helper functions defined outside component to prevent recreation
+const formatCurrency = (value: number | null | undefined) => {
+  if (value === null || value === undefined) return '-';
+  return value.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+
+const formatNumber = (value: number | null | undefined) => {
+  if (value === null || value === undefined) return '-';
+  return value.toLocaleString();
+};
+
+const formatDate = (value: string | null | undefined) => {
+  if (!value) return '-';
+  return new Date(value).toLocaleDateString();
+};
+
+// FieldGroup component moved outside to prevent recreation
+function FieldGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-6">
+      <h3
+        className="text-xs font-semibold uppercase tracking-wider mb-3 px-4 py-2 -mx-4"
+        style={{ backgroundColor: '#f1f5f9', color: '#475569' }}
+      >
+        {title}
+      </h3>
+      <div className="space-y-1">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// Field component moved outside to prevent recreation on every parent render
+interface FieldProps {
+  label: string;
+  value: any;
+  type?: 'text' | 'number' | 'date' | 'textarea';
+  table?: 'site_submit' | 'property' | 'property_unit';
+  field?: string;
+  isCurrency?: boolean;
+  isNumber?: boolean;
+  suffix?: string;
+  isEditable: boolean;
+  editingField: string | null;
+  editValue: any;
+  saving: boolean;
+  onStartEditing: (table: string, field: string, currentValue: any) => void;
+  onCancelEditing: () => void;
+  onSaveField: (table: 'site_submit' | 'property' | 'property_unit', field: string) => void;
+  onEditValueChange: (value: any) => void;
+}
+
+function Field({
+  label,
+  value,
+  type = 'text',
+  table,
+  field,
+  isCurrency = false,
+  isNumber = false,
+  suffix = '',
+  isEditable,
+  editingField,
+  editValue,
+  saving,
+  onStartEditing,
+  onCancelEditing,
+  onSaveField,
+  onEditValueChange,
+}: FieldProps) {
+  const editKey = table && field ? `${table}.${field}` : null;
+  const isCurrentlyEditing = editKey === editingField;
+
+  const baseFormattedValue = isCurrency
+    ? formatCurrency(value)
+    : isNumber
+    ? formatNumber(value)
+    : type === 'date'
+    ? formatDate(value)
+    : value || '-';
+
+  const formattedValue = baseFormattedValue !== '-' && suffix
+    ? `${baseFormattedValue} ${suffix}`
+    : baseFormattedValue;
+
+  // Pencil icon for editable fields
+  const PencilButton = () => (
+    <button
+      onClick={() => onStartEditing(table!, field!, value)}
+      className="ml-2 p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+      title="Edit"
+    >
+      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+      </svg>
+    </button>
+  );
+
+  // Save/Cancel buttons for editing mode
+  const EditActions = () => (
+    <div className="flex items-center gap-1 ml-2">
+      <button
+        onClick={() => onSaveField(table!, field!)}
+        disabled={saving}
+        className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
+        title="Save"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      </button>
+      <button
+        onClick={onCancelEditing}
+        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+        title="Cancel"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  );
+
+  // Textarea field layout (stacked)
+  if (type === 'textarea') {
+    return (
+      <div className="py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-sm text-gray-500">{label}</span>
+          {isEditable && table && field && !isCurrentlyEditing && <PencilButton />}
+          {isCurrentlyEditing && <EditActions />}
+        </div>
+        {isCurrentlyEditing ? (
+          <textarea
+            value={editValue ?? ''}
+            onChange={(e) => onEditValueChange(e.target.value)}
+            className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            rows={3}
+            autoFocus
+          />
+        ) : (
+          <div className="text-sm font-medium text-gray-900 whitespace-pre-wrap bg-white border border-gray-100 rounded-lg p-3">
+            {value || '-'}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Regular field layout (grid)
+  return (
+    <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded items-center">
+      <span className="text-sm text-gray-500">{label}</span>
+      <div className="flex items-center">
+        {isCurrentlyEditing ? (
+          <>
+            {type === 'number' ? (
+              <input
+                type="number"
+                value={editValue ?? ''}
+                onChange={(e) => onEditValueChange(e.target.value ? parseFloat(e.target.value) : null)}
+                className="flex-1 px-2 py-1 border border-blue-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                autoFocus
+              />
+            ) : type === 'date' ? (
+              <input
+                type="date"
+                value={editValue ?? ''}
+                onChange={(e) => onEditValueChange(e.target.value || null)}
+                className="flex-1 px-2 py-1 border border-blue-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                autoFocus
+              />
+            ) : (
+              <input
+                type="text"
+                value={editValue ?? ''}
+                onChange={(e) => onEditValueChange(e.target.value)}
+                className="flex-1 px-2 py-1 border border-blue-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                autoFocus
+              />
+            )}
+            <EditActions />
+          </>
+        ) : (
+          <>
+            <span className="text-sm font-medium text-gray-900 flex-1">
+              {formattedValue}
+            </span>
+            {isEditable && table && field && <PencilButton />}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * PortalDataTab - Displays site submit and property data fields
  *
@@ -62,37 +264,18 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<any>(null);
 
-  const formatCurrency = (value: number | null | undefined) => {
-    if (value === null || value === undefined) return '-';
-    return value.toLocaleString('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  };
-
-  const formatNumber = (value: number | null | undefined) => {
-    if (value === null || value === undefined) return '-';
-    return value.toLocaleString();
-  };
-
-  const formatDate = (value: string | null | undefined) => {
-    if (!value) return '-';
-    return new Date(value).toLocaleDateString();
-  };
-
-  const startEditing = (table: string, field: string, currentValue: any) => {
+  // Use useCallback to memoize handlers so Field component doesn't re-render unnecessarily
+  const handleStartEditing = useCallback((table: string, field: string, currentValue: any) => {
     setEditingField(`${table}.${field}`);
     setEditValue(currentValue);
-  };
+  }, []);
 
-  const cancelEditing = () => {
+  const handleCancelEditing = useCallback(() => {
     setEditingField(null);
     setEditValue(null);
-  };
+  }, []);
 
-  const saveField = async (table: 'site_submit' | 'property' | 'property_unit', field: string) => {
+  const handleSaveField = useCallback(async (table: 'site_submit' | 'property' | 'property_unit', field: string) => {
     setSaving(true);
     try {
       if (table === 'site_submit') {
@@ -128,165 +311,22 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
     } finally {
       setSaving(false);
     }
-  };
+  }, [editValue, siteSubmit.id, siteSubmit.property_id, siteSubmit.property_unit_id, siteSubmit.property, siteSubmit.property_unit, onUpdate]);
 
-  const FieldGroup = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <div className="mb-6">
-      <h3
-        className="text-xs font-semibold uppercase tracking-wider mb-3 px-4 py-2 -mx-4"
-        style={{ backgroundColor: '#f1f5f9', color: '#475569' }}
-      >
-        {title}
-      </h3>
-      <div className="space-y-1">
-        {children}
-      </div>
-    </div>
-  );
+  const handleEditValueChange = useCallback((value: any) => {
+    setEditValue(value);
+  }, []);
 
-  const Field = ({
-    label,
-    value,
-    type = 'text',
-    table,
-    field,
-    isCurrency = false,
-    isNumber = false,
-    suffix = '',
-  }: {
-    label: string;
-    value: any;
-    type?: 'text' | 'number' | 'date' | 'textarea';
-    table?: 'site_submit' | 'property' | 'property_unit';
-    field?: string;
-    isCurrency?: boolean;
-    isNumber?: boolean;
-    suffix?: string;
-  }) => {
-    const editKey = table && field ? `${table}.${field}` : null;
-    const isCurrentlyEditing = editKey === editingField;
-
-    const baseFormattedValue = isCurrency
-      ? formatCurrency(value)
-      : isNumber
-      ? formatNumber(value)
-      : type === 'date'
-      ? formatDate(value)
-      : value || '-';
-
-    const formattedValue = baseFormattedValue !== '-' && suffix
-      ? `${baseFormattedValue} ${suffix}`
-      : baseFormattedValue;
-
-    // Pencil icon for editable fields
-    const PencilButton = () => (
-      <button
-        onClick={() => startEditing(table!, field!, value)}
-        className="ml-2 p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-        title="Edit"
-      >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-        </svg>
-      </button>
-    );
-
-    // Save/Cancel buttons for editing mode
-    const EditActions = () => (
-      <div className="flex items-center gap-1 ml-2">
-        <button
-          onClick={() => saveField(table!, field!)}
-          disabled={saving}
-          className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
-          title="Save"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-        </button>
-        <button
-          onClick={cancelEditing}
-          className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-          title="Cancel"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-    );
-
-    // Textarea field layout (stacked)
-    if (type === 'textarea') {
-      return (
-        <div className="py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-sm text-gray-500">{label}</span>
-            {isEditable && table && field && !isCurrentlyEditing && <PencilButton />}
-            {isCurrentlyEditing && <EditActions />}
-          </div>
-          {isCurrentlyEditing ? (
-            <textarea
-              value={editValue || ''}
-              onChange={(e) => setEditValue(e.target.value || null)}
-              className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              rows={3}
-              autoFocus
-            />
-          ) : (
-            <div className="text-sm font-medium text-gray-900 whitespace-pre-wrap bg-white border border-gray-100 rounded-lg p-3">
-              {value || '-'}
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    // Regular field layout (grid)
-    return (
-      <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 odd:bg-[#f0f3f7] rounded items-center">
-        <span className="text-sm text-gray-500">{label}</span>
-        <div className="flex items-center">
-          {isCurrentlyEditing ? (
-            <>
-              {type === 'number' ? (
-                <input
-                  type="number"
-                  value={editValue ?? ''}
-                  onChange={(e) => setEditValue(e.target.value ? parseFloat(e.target.value) : null)}
-                  className="flex-1 px-2 py-1 border border-blue-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  autoFocus
-                />
-              ) : type === 'date' ? (
-                <input
-                  type="date"
-                  value={editValue || ''}
-                  onChange={(e) => setEditValue(e.target.value || null)}
-                  className="flex-1 px-2 py-1 border border-blue-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  autoFocus
-                />
-              ) : (
-                <input
-                  type="text"
-                  value={editValue || ''}
-                  onChange={(e) => setEditValue(e.target.value || null)}
-                  className="flex-1 px-2 py-1 border border-blue-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  autoFocus
-                />
-              )}
-              <EditActions />
-            </>
-          ) : (
-            <>
-              <span className="text-sm font-medium text-gray-900 flex-1">
-                {formattedValue}
-              </span>
-              {isEditable && table && field && <PencilButton />}
-            </>
-          )}
-        </div>
-      </div>
-    );
+  // Common props to pass to all Field components
+  const fieldProps = {
+    isEditable,
+    editingField,
+    editValue,
+    saving,
+    onStartEditing: handleStartEditing,
+    onCancelEditing: handleCancelEditing,
+    onSaveField: handleSaveField,
+    onEditValueChange: handleEditValueChange,
   };
 
   return (
@@ -320,6 +360,7 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
               {!isLand && (
                 hasUnit && siteSubmit.property_unit?.sqft != null ? (
                   <Field
+                    {...fieldProps}
                     label="Available Sqft"
                     value={siteSubmit.property_unit.sqft}
                     type="number"
@@ -330,6 +371,7 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
                   />
                 ) : (
                   <Field
+                    {...fieldProps}
                     label="Available Sqft"
                     value={siteSubmit.property.available_sqft}
                     type="number"
@@ -343,6 +385,7 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
               {/* Building Sqft - Hide for Shopping Center */}
               {!isShoppingCenter && (
                 <Field
+                  {...fieldProps}
                   label="Building Sqft"
                   value={siteSubmit.property.building_sqft}
                   type="number"
@@ -355,6 +398,7 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
               {/* Acres - Hide for Shopping Center */}
               {!isShoppingCenter && (
                 <Field
+                  {...fieldProps}
                   label="Acres"
                   value={siteSubmit.property.acres}
                   type="number"
@@ -366,6 +410,7 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
               {/* Asking Lease Price - Hide for Shopping Center */}
               {!isShoppingCenter && (
                 <Field
+                  {...fieldProps}
                   label="Asking Lease Price"
                   value={siteSubmit.property.asking_lease_price}
                   type="number"
@@ -377,6 +422,7 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
               {/* Asking Purchase Price - Hide for Shopping Center */}
               {!isShoppingCenter && (
                 <Field
+                  {...fieldProps}
                   label="Asking Purchase Price"
                   value={siteSubmit.property.asking_purchase_price}
                   type="number"
@@ -389,6 +435,7 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
               {!isLand && (
                 hasUnit && siteSubmit.property_unit?.rent != null ? (
                   <Field
+                    {...fieldProps}
                     label="Rent PSF"
                     value={siteSubmit.property_unit.rent}
                     type="number"
@@ -398,6 +445,7 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
                   />
                 ) : (
                   <Field
+                    {...fieldProps}
                     label="Rent PSF"
                     value={siteSubmit.property.rent_psf}
                     type="number"
@@ -411,6 +459,7 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
               {!isLand && (
                 hasUnit && siteSubmit.property_unit?.nnn != null ? (
                   <Field
+                    {...fieldProps}
                     label="NNN PSF"
                     value={siteSubmit.property_unit.nnn}
                     type="number"
@@ -420,6 +469,7 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
                   />
                 ) : (
                   <Field
+                    {...fieldProps}
                     label="NNN PSF"
                     value={siteSubmit.property.nnn_psf}
                     type="number"
@@ -467,12 +517,14 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
 
           {/* Site Submit Fields */}
           <Field
+            {...fieldProps}
             label="Delivery Timeframe"
             value={siteSubmit.delivery_timeframe}
             table="site_submit"
             field="delivery_timeframe"
           />
           <Field
+            {...fieldProps}
             label="TI (Tenant Improvement)"
             value={siteSubmit.ti}
             type="number"
@@ -481,6 +533,7 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
             field="ti"
           />
           <Field
+            {...fieldProps}
             label="Year 1 Rent"
             value={siteSubmit.year_1_rent}
             type="number"
@@ -489,6 +542,7 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
             field="year_1_rent"
           />
           <Field
+            {...fieldProps}
             label="Notes"
             value={siteSubmit.notes}
             type="textarea"
@@ -496,6 +550,7 @@ export default function PortalDataTab({ siteSubmit, isEditable, onUpdate }: Port
             field="notes"
           />
           <Field
+            {...fieldProps}
             label="Competitor Data"
             value={siteSubmit.competitor_data}
             type="textarea"
