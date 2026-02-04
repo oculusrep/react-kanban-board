@@ -145,20 +145,10 @@ serve(async (req: Request) => {
         ${messageHtml}
       </div>
 
-      <!-- Button with inline styles and VML fallback for Outlook -->
       <div style="text-align: center; margin: 30px 0;">
-        <!--[if mso]>
-        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${inviteLink}" style="height:50px;v-text-anchor:middle;width:220px;" arcsize="12%" stroke="f" fillcolor="#104073">
-          <w:anchorlock/>
-          <center style="color:#ffffff;font-family:sans-serif;font-size:16px;font-weight:bold;">Set Up Your Account</center>
-        </v:roundrect>
-        <![endif]-->
-        <!--[if !mso]><!-->
-        <a href="${inviteLink}" style="display: inline-block; padding: 14px 30px; background-color: #104073; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; mso-hide: all;">Set Up Your Account</a>
-        <!--<![endif]-->
+        <a href="${inviteLink}" style="display: inline-block; padding: 14px 30px; background-color: #104073; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">Set Up Your Account</a>
       </div>
 
-      <!-- Fallback link in case button doesn't render -->
       <p style="color: #666; font-size: 12px; text-align: center; margin-top: 10px;">
         Or copy and paste this link into your browser:<br>
         <a href="${inviteLink}" style="color: #104073; word-break: break-all;">${inviteLink}</a>
