@@ -95,12 +95,24 @@ export function useUsers() {
 
   const updateUser = async (userId: string, updates: UserUpdate): Promise<{ success: boolean; error?: string }> => {
     try {
-      const { error: updateError } = await supabase
-        .from('user')
-        .update(updates)
-        .eq('id', userId);
+      console.log('📝 Updating user:', userId, 'with updates:', JSON.stringify(updates, null, 2));
+
+      // Use RPC function to bypass RLS for admin user updates
+      const { data, error: updateError } = await supabase.rpc('admin_update_user', {
+        p_user_id: userId,
+        p_name: updates.name || null,
+        p_first_name: updates.first_name || null,
+        p_last_name: updates.last_name || null,
+        p_email: updates.email || null,
+        p_ovis_role: updates.ovis_role || null,
+        p_mobile_phone: updates.mobile_phone || null,
+        p_active: updates.active ?? null,
+        p_permissions: updates.permissions || null,
+      });
 
       if (updateError) throw updateError;
+
+      console.log('✅ Update response:', data);
 
       // Refresh users list
       await fetchUsers();

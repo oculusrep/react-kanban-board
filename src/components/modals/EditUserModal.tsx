@@ -47,6 +47,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, onClose, user, ro
   // Populate form when user changes
   useEffect(() => {
     if (user) {
+      console.log('📥 Loading user data:', user.name, 'permissions:', user.permissions);
       setEmail(user.email || '');
       setName(user.name || '');
       setFirstName(user.first_name || '');
@@ -74,6 +75,10 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, onClose, user, ro
     try {
       // Only include permissions if there are overrides
       const hasOverrides = Object.keys(permissionOverrides).length > 0;
+
+      console.log('🔐 Permission overrides:', permissionOverrides);
+      console.log('🔐 Has overrides:', hasOverrides);
+      console.log('🔐 Permissions to save:', hasOverrides ? permissionOverrides : null);
 
       const result = await onUpdateUser(user.id, {
         name: name || undefined,
