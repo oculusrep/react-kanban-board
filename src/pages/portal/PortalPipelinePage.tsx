@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import PortalDetailSidebar from '../../components/portal/PortalDetailSidebar';
+import StatusBadgeDropdown from '../../components/portal/StatusBadgeDropdown';
 
 interface SiteSubmit {
   id: string;
@@ -77,7 +78,7 @@ const VISIBLE_STAGES = [
  * PortalPipelinePage - Pipeline table view for the client portal
  */
 export default function PortalPipelinePage() {
-  const { selectedClient, selectedClientId, accessibleClients, isInternalUser } = usePortal();
+  const { selectedClient, selectedClientId, accessibleClients, isInternalUser, viewMode } = usePortal();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
@@ -349,6 +350,67 @@ export default function PortalPipelinePage() {
       hasScrolledToSelected.current = false;
     }
   }, [searchParams]);
+
+  // Real-time subscription for site_submit updates (status changes)
+  useEffect(() => {
+    if (!selectedClientId && accessibleClients.length > 1) return;
+
+    const clientIds = selectedClientId
+      ? [selectedClientId]
+      : accessibleClients.map(c => c.id);
+
+    if (clientIds.length === 0) return;
+
+    const channel = supabase.channel('portal-site-submit-changes');
+
+    channel
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'site_submit',
+        },
+        (payload) => {
+          // Update local state with the changed site submit
+          setSiteSubmits((prev) =>
+            prev.map((ss) => {
+              if (ss.id === payload.new.id) {
+                // Find the stage name for the new stage_id
+                const newStage = stages.find(s => s.id === payload.new.submit_stage_id);
+                return {
+                  ...ss,
+                  submit_stage_id: payload.new.submit_stage_id,
+                  submit_stage: newStage ? { id: newStage.id, name: newStage.name } : ss.submit_stage,
+                };
+              }
+              return ss;
+            })
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedClientId, accessibleClients, stages]);
+
+  // Handler for optimistic status updates from dropdown
+  const handleStatusChange = useCallback((siteSubmitId: string, newStageId: string, newStageName: string) => {
+    setSiteSubmits((prev) =>
+      prev.map((ss) => {
+        if (ss.id === siteSubmitId) {
+          return {
+            ...ss,
+            submit_stage_id: newStageId,
+            submit_stage: { id: newStageId, name: newStageName },
+          };
+        }
+        return ss;
+      })
+    );
+  }, []);
 
   // If no client selected and multiple available, redirect to select
   if (!selectedClientId && accessibleClients.length > 1) {
@@ -707,9 +769,14 @@ export default function PortalPipelinePage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
-                      {ss.submit_stage?.name || '-'}
-                    </span>
+                    <StatusBadgeDropdown
+                      currentStageId={ss.submit_stage_id}
+                      currentStageName={ss.submit_stage?.name || null}
+                      siteSubmitId={ss.id}
+                      stages={stages}
+                      canEdit={isInternalUser && viewMode === 'broker'}
+                      onStatusChange={(newStageId, newStageName) => handleStatusChange(ss.id, newStageId, newStageName)}
+                    />
                   </td>
                 </tr>
               )})}

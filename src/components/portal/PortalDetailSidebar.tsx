@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabaseClient';
 import PortalDataTab from './PortalDataTab';
 import PortalChatTab from './PortalChatTab';
 import PortalFilesTab from './PortalFilesTab';
+import StatusBadgeDropdown from './StatusBadgeDropdown';
 
 interface SiteSubmitData {
   id: string;
@@ -87,9 +88,40 @@ export default function PortalDetailSidebar({
   const [siteSubmit, setSiteSubmit] = useState<SiteSubmitData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
 
   // Determine current view from URL
   const isMapView = location.pathname.includes('/portal/map');
+
+  // Client-visible stages
+  const VISIBLE_STAGES = [
+    'Submitted-Reviewing',
+    'Pass',
+    'Use Declined',
+    'Use Conflict',
+    'Not Available',
+    'Lost / Killed',
+    'LOI',
+    'At Lease/PSA',
+    'Under Contract/Contingent',
+    'Store Opened'
+  ];
+
+  // Fetch stages for the dropdown
+  useEffect(() => {
+    async function fetchStages() {
+      const { data, error } = await supabase
+        .from('submit_stage')
+        .select('id, name')
+        .in('name', VISIBLE_STAGES);
+
+      if (!error && data) {
+        setStages(data);
+      }
+    }
+
+    fetchStages();
+  }, []);
 
   // Fetch site submit data
   useEffect(() => {
@@ -289,13 +321,30 @@ export default function PortalDetailSidebar({
 
           {/* Status Badge and View Toggle Button */}
           <div className="mt-3 flex items-center justify-between">
-            {/* Status Badge */}
-            <span
-              className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium"
-              style={{ backgroundColor: '#dbeafe', color: '#1e40af' }}
-            >
-              {siteSubmit?.submit_stage?.name || 'Unknown Status'}
-            </span>
+            {/* Status Badge - clickable dropdown for brokers */}
+            {siteSubmit ? (
+              <StatusBadgeDropdown
+                currentStageId={siteSubmit.submit_stage_id}
+                currentStageName={siteSubmit.submit_stage?.name || null}
+                siteSubmitId={siteSubmit.id}
+                stages={stages}
+                canEdit={showBrokerFeatures}
+                onStatusChange={(newStageId, newStageName) => {
+                  setSiteSubmit({
+                    ...siteSubmit,
+                    submit_stage_id: newStageId,
+                    submit_stage: { id: newStageId, name: newStageName },
+                  });
+                }}
+              />
+            ) : (
+              <span
+                className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium"
+                style={{ backgroundColor: '#dbeafe', color: '#1e40af' }}
+              >
+                Unknown Status
+              </span>
+            )}
             <button
               onClick={handleToggleView}
               className="py-1.5 px-3 rounded-lg font-medium text-sm transition-colors flex items-center space-x-2 hover:opacity-90"

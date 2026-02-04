@@ -914,12 +914,40 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
   const { refreshTrigger } = useLayerManager();
   const siteSubmitRefreshTrigger = refreshTrigger.site_submits || 0;
 
+  // Local refresh trigger for real-time updates
+  const [localRefreshTrigger, setLocalRefreshTrigger] = useState(0);
+
+  // Real-time subscription for site_submit updates (status changes)
+  useEffect(() => {
+    const channel = supabase.channel('site-submit-layer-changes');
+
+    channel
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'site_submit',
+        },
+        (payload) => {
+          console.log('📍 Site submit updated (real-time):', payload.new.id);
+          // Trigger local refresh
+          setLocalRefreshTrigger(prev => prev + 1);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   // Load site submits when component mounts or map/config changes or refresh is triggered
   useEffect(() => {
     if (map) {
       fetchSiteSubmits();
     }
-  }, [map, loadingConfig, siteSubmitRefreshTrigger]);
+  }, [map, loadingConfig, siteSubmitRefreshTrigger, localRefreshTrigger]);
 
   // Create markers when site submits load or stage visibility changes or marker style changes
   useEffect(() => {

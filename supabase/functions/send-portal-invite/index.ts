@@ -125,7 +125,7 @@ serve(async (req: Request) => {
     // Use custom subject or default
     const emailSubject = customSubject || "You're Invited to the Oculus Client Portal";
 
-    // Email HTML template
+    // Email HTML template - using inline styles for maximum email client compatibility
     const emailHtml = `
 <!DOCTYPE html>
 <html>
@@ -133,41 +133,45 @@ serve(async (req: Request) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Portal Invitation</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5; }
-    .container { max-width: 600px; margin: 0 auto; padding: 40px 20px; }
-    .card { background: white; border-radius: 8px; padding: 40px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .header { text-align: center; margin-bottom: 30px; }
-    .logo { height: 40px; margin-bottom: 20px; }
-    h1 { color: #011742; margin: 0 0 10px; font-size: 24px; }
-    p { color: #444; line-height: 1.6; margin: 0 0 20px; }
-    .button { display: inline-block; padding: 14px 30px; background-color: #104073; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; }
-    .button:hover { background-color: #0d3560; }
-    .footer { text-align: center; margin-top: 30px; color: #888; font-size: 12px; }
-    .expire-note { background: #f8f9fa; padding: 15px; border-radius: 6px; margin-top: 20px; font-size: 14px; color: #666; }
-  </style>
 </head>
-<body>
-  <div class="container">
-    <div class="card">
-      <div class="header">
-        <h1>You're Invited!</h1>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+    <div style="background: white; border-radius: 8px; padding: 40px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h1 style="color: #011742; margin: 0 0 10px; font-size: 24px;">You're Invited!</h1>
       </div>
 
-      ${messageHtml}
+      <div style="color: #444; line-height: 1.6;">
+        ${messageHtml}
+      </div>
 
-      <p style="text-align: center; margin: 30px 0;">
-        <a href="${inviteLink}" class="button">Set Up Your Account</a>
+      <!-- Button with inline styles and VML fallback for Outlook -->
+      <div style="text-align: center; margin: 30px 0;">
+        <!--[if mso]>
+        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${inviteLink}" style="height:50px;v-text-anchor:middle;width:220px;" arcsize="12%" stroke="f" fillcolor="#104073">
+          <w:anchorlock/>
+          <center style="color:#ffffff;font-family:sans-serif;font-size:16px;font-weight:bold;">Set Up Your Account</center>
+        </v:roundrect>
+        <![endif]-->
+        <!--[if !mso]><!-->
+        <a href="${inviteLink}" style="display: inline-block; padding: 14px 30px; background-color: #104073; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; mso-hide: all;">Set Up Your Account</a>
+        <!--<![endif]-->
+      </div>
+
+      <!-- Fallback link in case button doesn't render -->
+      <p style="color: #666; font-size: 12px; text-align: center; margin-top: 10px;">
+        Or copy and paste this link into your browser:<br>
+        <a href="${inviteLink}" style="color: #104073; word-break: break-all;">${inviteLink}</a>
       </p>
 
-      <div class="expire-note">
+      <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-top: 20px; font-size: 14px; color: #666;">
         <strong>Note:</strong> This invitation link will expire on ${expiresDate}. If you need a new link, please contact your broker.
       </div>
     </div>
 
-    <div class="footer">
-      <p>Oculus Real Estate Advisors</p>
-      <p>This email was sent to ${email}</p>
+    <div style="text-align: center; margin-top: 30px; color: #888; font-size: 12px;">
+      <p style="margin: 0 0 5px;">Oculus Real Estate Advisors</p>
+      <p style="margin: 0;">This email was sent to ${email}</p>
     </div>
   </div>
 </body>
