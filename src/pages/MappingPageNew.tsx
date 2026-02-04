@@ -44,6 +44,7 @@ const MappingPageContent: React.FC = () => {
   const { userRole } = useAuth();
   const { hasPermission } = usePermissions();
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
+  const [isStreetViewActive, setIsStreetViewActive] = useState(false);
   const [searchAddress, setSearchAddress] = useState('');
   const [searchResult, setSearchResult] = useState<string>('');
   const [isSearching, setIsSearching] = useState(false);
@@ -523,6 +524,14 @@ const MappingPageContent: React.FC = () => {
   const handleMapLoad = (map: google.maps.Map) => {
     setMapInstance(map);
     console.log('Map loaded successfully:', map);
+
+    // Listen for Street View visibility changes to hide map controls when active
+    const streetView = map.getStreetView();
+    streetView.addListener('visible_changed', () => {
+      const isVisible = streetView.getVisible();
+      console.log('🚶 Street View visibility changed:', isVisible);
+      setIsStreetViewActive(isVisible);
+    });
 
     // Add click listener for pin dropping
     map.addListener('click', (event: google.maps.MapMouseEvent) => {
@@ -1935,7 +1944,8 @@ const MappingPageContent: React.FC = () => {
             />
 
             {/* Draw and Layers Controls - positioned to the right of GPS/ruler buttons */}
-            <div className="absolute top-[10px] left-[240px] z-[1000] flex items-center gap-1">
+            {/* Hidden when Street View is active to prevent z-index conflicts */}
+            <div className={`absolute top-[10px] left-[240px] z-[1000] flex items-center gap-1 ${isStreetViewActive ? 'hidden' : ''}`}>
               {/* Quick Draw Button - just pencil icon */}
               <button
                 onClick={() => {
@@ -2148,7 +2158,7 @@ const MappingPageContent: React.FC = () => {
             </div>
 
             {/* Create Mode Overlay */}
-            {createMode && (
+            {createMode && !isStreetViewActive && (
               <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-[10001]">
                 <div className="flex items-center space-x-2">
                   <span>🎯</span>
@@ -2406,7 +2416,8 @@ const MappingPageContent: React.FC = () => {
             />
 
             {/* Site Submit Legend - Show when site submit layer is visible */}
-            {layerState.site_submits?.isVisible && (
+            {/* Hidden when Street View is active */}
+            {layerState.site_submits?.isVisible && !isStreetViewActive && (
               <SiteSubmitLegend
                 visibleStages={visibleStages}
                 onStageToggle={handleStageToggle}
@@ -2420,9 +2431,10 @@ const MappingPageContent: React.FC = () => {
             )}
 
             {/* Drawing Toolbar - Show when editing a custom layer OR in quick draw mode */}
+            {/* Hidden when Street View is active */}
             <DrawingToolbar
               map={mapInstance}
-              isActive={!!editingLayerId || isQuickDrawMode}
+              isActive={(!!editingLayerId || isQuickDrawMode) && !isStreetViewActive}
               selectedLayerId={editingLayerId}
               onShapeComplete={async (drawnShape) => {
                 console.log('✏️ Shape drawn:', drawnShape);
@@ -2493,7 +2505,7 @@ const MappingPageContent: React.FC = () => {
             />
 
             {/* Selected Shape Actions - Show when a shape is selected in edit mode */}
-            {editingLayerId && selectedShapeId && selectedShapeData && (
+            {editingLayerId && selectedShapeId && selectedShapeData && !isStreetViewActive && (
               <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 z-[10000]">
                 <div className="bg-white rounded-lg shadow-xl border-2 border-blue-500 p-3">
                   <div className="flex items-center space-x-4">
