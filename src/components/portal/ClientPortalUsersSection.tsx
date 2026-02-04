@@ -10,6 +10,7 @@ interface PortalUser {
   portal_invite_status: string | null;
   portal_last_login_at: string | null;
   granted_at: string | null;
+  portal_invite_expires_at: string | null;
 }
 
 interface AvailableContact {
@@ -44,6 +45,37 @@ export default function ClientPortalUsersSection({
   const [showAddUser, setShowAddUser] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [addingContactId, setAddingContactId] = useState<string | null>(null);
+  const [sendingInviteForId, setSendingInviteForId] = useState<string | null>(null);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteLinkForId, setInviteLinkForId] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  // Compose invite modal state
+  const [showComposeModal, setShowComposeModal] = useState(false);
+  const [composeForUser, setComposeForUser] = useState<PortalUser | null>(null);
+  const [emailSubject, setEmailSubject] = useState("You're Invited to the Oculus Client Portal");
+  const [emailMessage, setEmailMessage] = useState('');
+  const [defaultTemplate, setDefaultTemplate] = useState<{ subject: string; message: string } | null>(null);
+
+  // Load default email template from settings
+  useEffect(() => {
+    async function loadDefaultTemplate() {
+      try {
+        const { data } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'portal_invite_email_template')
+          .single();
+
+        if (data?.value) {
+          setDefaultTemplate(data.value as { subject: string; message: string });
+        }
+      } catch (err) {
+        // Silently fail - will use hardcoded defaults
+      }
+    }
+    loadDefaultTemplate();
+  }, []);
 
   // Load portal users for this client
   useEffect(() => {
@@ -66,7 +98,8 @@ export default function ClientPortalUsersSection({
               email,
               portal_access_enabled,
               portal_invite_status,
-              portal_last_login_at
+              portal_last_login_at,
+              portal_invite_expires_at
             )
           `)
           .eq('client_id', clientId)
@@ -85,6 +118,7 @@ export default function ClientPortalUsersSection({
               is_active: g.is_active,
               portal_invite_status: contact.portal_invite_status,
               portal_last_login_at: contact.portal_last_login_at,
+              portal_invite_expires_at: contact.portal_invite_expires_at,
               granted_at: g.granted_at,
             };
           });
@@ -209,6 +243,7 @@ export default function ClientPortalUsersSection({
             is_active: true,
             portal_invite_status: null,
             portal_last_login_at: null,
+            portal_invite_expires_at: null,
             granted_at: new Date().toISOString(),
           },
         ]);
@@ -241,6 +276,134 @@ export default function ClientPortalUsersSection({
       setPortalUsers(prev => prev.filter(u => u.contact_id !== contactId));
     } catch (err) {
       console.error('Error revoking access:', err);
+    }
+  };
+
+  const getDefaultMessage = (firstName: string) => {
+    // Use template from settings if available, otherwise use hardcoded default
+    if (defaultTemplate?.message) {
+      return defaultTemplate.message.replace(/\{\{firstName\}\}/g, firstName);
+    }
+    return `Hi ${firstName},
+
+You've been invited to access the Oculus Client Portal. This portal gives you visibility into your real estate projects, including property details, documents, and direct communication with your broker team.
+
+Click the button below to set up your account.
+
+If you have any questions, simply reply to this email or reach out to your broker representative.
+
+Best regards`;
+  };
+
+  const getDefaultSubject = () => {
+    return defaultTemplate?.subject || "You're Invited to the Oculus Client Portal";
+  };
+
+  const openComposeModal = (portalUser: PortalUser) => {
+    const firstName = portalUser.contact_name.split(' ')[0] || 'there';
+    setComposeForUser(portalUser);
+    setEmailSubject(getDefaultSubject());
+    setEmailMessage(getDefaultMessage(firstName));
+    setShowComposeModal(true);
+  };
+
+  const closeComposeModal = () => {
+    setShowComposeModal(false);
+    setComposeForUser(null);
+    setEmailSubject("You're Invited to the Oculus Client Portal");
+    setEmailMessage('');
+  };
+
+  const handleSendInvite = async (portalUser: PortalUser, customSubject?: string, customMessage?: string) => {
+    if (!portalUser.contact_email) {
+      console.error('Contact must have an email address to receive an invite');
+      return;
+    }
+
+    closeComposeModal();
+    setSendingInviteForId(portalUser.contact_id);
+    setInviteLink(null);
+    setInviteLinkForId(null);
+
+    try {
+      // Generate invite token
+      const token = crypto.randomUUID();
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7); // 7 days expiry
+
+      // Update contact with invite token
+      const { error: updateError } = await supabase
+        .from('contact')
+        .update({
+          portal_invite_token: token,
+          portal_invite_status: 'pending',
+          portal_invite_sent_at: new Date().toISOString(),
+          portal_invite_expires_at: expiresAt.toISOString(),
+        })
+        .eq('id', portalUser.contact_id);
+
+      if (updateError) throw updateError;
+
+      // Log the invite
+      await supabase.from('portal_invite_log').insert({
+        contact_id: portalUser.contact_id,
+        invited_by_id: user?.id,
+        invite_email: portalUser.contact_email,
+        invite_token: token,
+        status: 'sent',
+        expires_at: expiresAt.toISOString(),
+      });
+
+      // Generate the invite link
+      const link = `${window.location.origin}/portal/invite?token=${token}`;
+      setInviteLink(link);
+      setInviteLinkForId(portalUser.contact_id);
+
+      // Try to send the email via edge function (using Gmail API)
+      try {
+        const { data: emailResult, error: emailError } = await supabase.functions.invoke('send-portal-invite', {
+          body: {
+            contactId: portalUser.contact_id,
+            email: portalUser.contact_email,
+            inviteLink: link,
+            expiresAt: expiresAt.toISOString(),
+            invitedByUserId: user?.id,  // Pass the current user's ID for Gmail lookup
+            customSubject: customSubject,  // Custom subject if provided
+            customMessage: customMessage,  // Custom message if provided
+          },
+        });
+
+        if (emailError) {
+          console.log('Edge function error, email not sent:', emailError);
+        } else if (emailResult?.useManualLink) {
+          console.log('Gmail not available:', emailResult.message);
+        } else if (emailResult?.success) {
+          console.log('Email sent via Gmail:', emailResult.sentFrom);
+        }
+      } catch (fnErr) {
+        console.log('Edge function not configured, invite link available for manual copy');
+      }
+
+      // Update local state to reflect new invite status
+      setPortalUsers(prev =>
+        prev.map(u =>
+          u.contact_id === portalUser.contact_id
+            ? { ...u, portal_invite_status: 'pending', portal_invite_expires_at: expiresAt.toISOString() }
+            : u
+        )
+      );
+    } catch (err) {
+      console.error('Error sending invite:', err);
+    } finally {
+      setSendingInviteForId(null);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    if (inviteLink) {
+      await navigator.clipboard.writeText(inviteLink);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
     }
   };
 
@@ -370,8 +533,76 @@ export default function ClientPortalUsersSection({
                   <p className="text-xs text-gray-500">{portalUser.contact_email}</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-3">
-                {getStatusBadge(portalUser)}
+              <div className="relative flex items-center space-x-3">
+                {/* Status badge - clickable for non-active users to send/resend invite */}
+                {portalUser.portal_last_login_at ? (
+                  getStatusBadge(portalUser)
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openComposeModal(portalUser)}
+                    disabled={sendingInviteForId === portalUser.contact_id}
+                    className="group relative"
+                    title={portalUser.portal_invite_status === 'pending' ? 'Resend invite' : 'Send invite'}
+                  >
+                    {sendingInviteForId === portalUser.contact_id ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                        <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Sending...
+                      </span>
+                    ) : (
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium cursor-pointer transition-colors ${
+                        portalUser.portal_invite_status === 'pending'
+                          ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                          : portalUser.portal_invite_status === 'expired'
+                          ? 'bg-red-100 text-red-800 hover:bg-red-200'
+                          : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                      }`}>
+                        {portalUser.portal_invite_status === 'pending' ? 'Invite Pending' :
+                         portalUser.portal_invite_status === 'expired' ? 'Invite Expired' : 'Not Invited'}
+                        <svg className="ml-1 w-3 h-3 opacity-60 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                      </span>
+                    )}
+                  </button>
+                )}
+                {/* Show invite link popover */}
+                {inviteLinkForId === portalUser.contact_id && inviteLink && (
+                  <div className="absolute z-10 mt-1 right-0 top-full bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-80">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium text-green-600">Invite sent!</span>
+                      <button
+                        type="button"
+                        onClick={() => { setInviteLink(null); setInviteLinkForId(null); }}
+                        className="text-gray-400 hover:text-gray-600"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-2">Copy link to share manually:</p>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="text"
+                        value={inviteLink}
+                        readOnly
+                        className="flex-1 text-xs px-2 py-1 border border-gray-300 rounded bg-gray-50 truncate"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleCopyLink}
+                        className="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 rounded transition-colors"
+                      >
+                        {linkCopied ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {portalUser.portal_last_login_at && (
                   <span className="text-xs text-gray-400">
                     Last login: {formatDate(portalUser.portal_last_login_at)}
@@ -478,6 +709,93 @@ export default function ClientPortalUsersSection({
                 className="w-full px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-200 transition-colors"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Compose Invite Email Modal */}
+      {showComposeModal && composeForUser && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-10 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-900">
+                {composeForUser.portal_invite_status === 'pending' ? 'Resend' : 'Send'} Portal Invite
+              </h3>
+              <button
+                type="button"
+                onClick={closeComposeModal}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* To field (read-only) */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">To</label>
+              <div className="px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-sm text-gray-700">
+                {composeForUser.contact_name} &lt;{composeForUser.contact_email}&gt;
+              </div>
+            </div>
+
+            {/* Subject field */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+              <input
+                type="text"
+                value={emailSubject}
+                onChange={e => setEmailSubject(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+
+            {/* Message field */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+              <textarea
+                value={emailMessage}
+                onChange={e => setEmailMessage(e.target.value)}
+                rows={10}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 font-mono"
+                placeholder="Enter your message..."
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                The invite button and expiration notice will be added automatically below your message.
+              </p>
+            </div>
+
+            {/* Note about CC */}
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+              <p className="text-xs text-blue-700">
+                <strong>Note:</strong> You will be CC'd on this email so you have a record of it being sent.
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={closeComposeModal}
+                className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSendInvite(composeForUser, emailSubject, emailMessage)}
+                disabled={!emailSubject.trim() || !emailMessage.trim()}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="flex items-center">
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  Send Invite
+                </span>
               </button>
             </div>
           </div>

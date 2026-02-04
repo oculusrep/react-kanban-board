@@ -254,20 +254,25 @@ export default function PortalAccessSection({
       const link = `${window.location.origin}/portal/invite?token=${token}`;
       setInviteLink(link);
 
-      // Try to send the email via edge function (if configured)
+      // Try to send the email via edge function (using Gmail API)
       try {
-        const { error: emailError } = await supabase.functions.invoke('send-portal-invite', {
+        const { data: emailResult, error: emailError } = await supabase.functions.invoke('send-portal-invite', {
           body: {
             contactId,
             email: contactEmail,
             inviteLink: link,
             expiresAt: expiresAt.toISOString(),
+            invitedByUserId: user?.id,  // Pass the current user's ID for Gmail lookup
           },
         });
 
         if (emailError) {
-          console.log('Edge function not available, email not sent:', emailError);
+          console.log('Edge function error, email not sent:', emailError);
           // Continue - the link is still available for manual copying
+        } else if (emailResult?.useManualLink) {
+          console.log('Gmail not available:', emailResult.message);
+        } else if (emailResult?.success) {
+          console.log('Email sent via Gmail:', emailResult.sentFrom);
         }
       } catch (fnErr) {
         console.log('Edge function not configured, invite link available for manual copy');

@@ -1,46 +1,51 @@
 // Portal Invite Email Edge Function
 //
-// This function sends portal invite emails to contacts.
-// Requires configuration of an email service (e.g., Resend, SendGrid).
+// This function sends portal invite emails to contacts using Gmail API.
+// Sends through the inviting user's connected Gmail account.
 //
 // To deploy:
 // 1. Set up Supabase CLI: npx supabase login
-// 2. Configure secrets: npx supabase secrets set RESEND_API_KEY=your_key
+// 2. Ensure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are configured
 // 3. Deploy: npx supabase functions deploy send-portal-invite
 
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
-
-// Configure email service (using Resend as example)
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-const FROM_EMAIL = Deno.env.get('FROM_EMAIL') || 'noreply@yourdomain.com';
+import {
+  sendEmail,
+  refreshAccessToken,
+  isTokenExpired,
+  type GmailConnection,
+} from '../_shared/gmail.ts';
 
 interface InviteRequest {
   contactId: string;
   email: string;
   inviteLink: string;
   expiresAt: string;
+  invitedByUserId?: string;  // User ID of person sending the invite
+  customSubject?: string;    // Custom email subject
+  customMessage?: string;    // Custom email message body
 }
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 serve(async (req: Request) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
-    return new Response('ok', {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-      },
-    });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const { contactId, email, inviteLink, expiresAt }: InviteRequest = await req.json();
+    const { contactId, email, inviteLink, expiresAt, invitedByUserId, customSubject, customMessage }: InviteRequest = await req.json();
 
     if (!contactId || !email || !inviteLink) {
       return new Response(
         JSON.stringify({ error: 'Missing required fields' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -67,6 +72,58 @@ serve(async (req: Request) => {
       month: 'long',
       day: 'numeric',
     });
+
+    // Get Gmail connection for the inviting user
+    // If no invitedByUserId provided, try to get a default/system Gmail connection
+    let gmailConnection: GmailConnection | null = null;
+
+    if (invitedByUserId) {
+      const { data: connection } = await supabase
+        .from('gmail_connection')
+        .select('*')
+        .eq('user_id', invitedByUserId)
+        .eq('is_active', true)
+        .single();
+
+      gmailConnection = connection as GmailConnection | null;
+    }
+
+    // If no connection found for the user, try to find any active Gmail connection
+    // (fallback for system-level sending)
+    if (!gmailConnection) {
+      const { data: anyConnection } = await supabase
+        .from('gmail_connection')
+        .select('*')
+        .eq('is_active', true)
+        .limit(1)
+        .single();
+
+      gmailConnection = anyConnection as GmailConnection | null;
+    }
+
+    if (!gmailConnection) {
+      console.log('No Gmail connection available, returning link for manual sharing');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: 'No Gmail connection available. Use the invite link directly.',
+          useManualLink: true,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Convert custom message to HTML paragraphs (if provided)
+    const messageHtml = customMessage
+      ? customMessage.split('\n\n').map(para => `<p>${para.replace(/\n/g, '<br>')}</p>`).join('\n      ')
+      : `<p>Hi ${firstName},</p>
+
+      <p>You've been invited to access the Oculus Client Portal. This portal gives you visibility into your real estate projects, including property details, documents, and direct communication with your broker team.</p>
+
+      <p>Click the button below to set up your account:</p>`;
+
+    // Use custom subject or default
+    const emailSubject = customSubject || "You're Invited to the Oculus Client Portal";
 
     // Email HTML template
     const emailHtml = `
@@ -97,11 +154,7 @@ serve(async (req: Request) => {
         <h1>You're Invited!</h1>
       </div>
 
-      <p>Hi ${firstName},</p>
-
-      <p>You've been invited to access the Oculus Client Portal. This portal gives you visibility into your real estate projects, including property details, documents, and direct communication with your broker team.</p>
-
-      <p>Click the button below to set up your account:</p>
+      ${messageHtml}
 
       <p style="text-align: center; margin: 30px 0;">
         <a href="${inviteLink}" class="button">Set Up Your Account</a>
@@ -110,10 +163,6 @@ serve(async (req: Request) => {
       <div class="expire-note">
         <strong>Note:</strong> This invitation link will expire on ${expiresDate}. If you need a new link, please contact your broker.
       </div>
-
-      <p style="margin-top: 30px;">If you have any questions, simply reply to this email or reach out to your broker representative.</p>
-
-      <p>Best regards,<br>The Oculus Team</p>
     </div>
 
     <div class="footer">
@@ -125,66 +174,101 @@ serve(async (req: Request) => {
 </html>
     `;
 
-    // Send email via Resend
-    if (!RESEND_API_KEY) {
-      console.log('RESEND_API_KEY not configured, skipping email send');
+    // Check if token needs refresh
+    let accessToken = gmailConnection.access_token;
+
+    if (isTokenExpired(gmailConnection.token_expires_at)) {
+      console.log(`[Portal Invite] Refreshing token for ${gmailConnection.google_email}`);
+
+      const clientId = Deno.env.get('GOOGLE_CLIENT_ID')!;
+      const clientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
+
+      try {
+        const refreshResult = await refreshAccessToken(
+          gmailConnection.refresh_token,
+          clientId,
+          clientSecret
+        );
+
+        accessToken = refreshResult.access_token;
+
+        // Update stored token
+        const newExpiresAt = new Date(Date.now() + refreshResult.expires_in * 1000).toISOString();
+        await supabase
+          .from('gmail_connection')
+          .update({
+            access_token: accessToken,
+            token_expires_at: newExpiresAt,
+          })
+          .eq('id', gmailConnection.id);
+      } catch (refreshError) {
+        console.error('[Portal Invite] Token refresh failed:', refreshError);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            message: 'Gmail token refresh failed. Use the invite link directly.',
+            useManualLink: true,
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // Build plain text version
+    const plainTextMessage = customMessage
+      ? `${customMessage}\n\nClick here to set up your account: ${inviteLink}\n\nThis invitation link will expire on ${expiresDate}.`
+      : `Hi ${firstName},\n\nYou've been invited to access the Oculus Client Portal. This portal gives you visibility into your real estate projects.\n\nClick here to set up your account: ${inviteLink}\n\nThis invitation link will expire on ${expiresDate}.\n\nBest regards,\nThe Oculus Team`;
+
+    // Send email via Gmail API (CC the sender so they have a record)
+    const sendResult = await sendEmail(
+      accessToken,
+      gmailConnection.google_email,
+      {
+        to: [email],
+        cc: [gmailConnection.google_email],  // CC the sender
+        subject: emailSubject,
+        bodyHtml: emailHtml,
+        bodyText: plainTextMessage,
+      }
+    );
+
+    if (!sendResult.success) {
+      console.error('[Portal Invite] Gmail send failed:', sendResult.error);
       return new Response(
         JSON.stringify({
           success: false,
-          message: 'Email service not configured. Use the invite link directly.'
+          error: sendResult.error,
+          message: 'Failed to send email via Gmail. Use the invite link directly.',
+          useManualLink: true,
         }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    const emailResponse = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: FROM_EMAIL,
-        to: email,
-        subject: 'You\'re Invited to the Oculus Client Portal',
-        html: emailHtml,
-      }),
-    });
-
-    if (!emailResponse.ok) {
-      const errorData = await emailResponse.json();
-      console.error('Resend error:', errorData);
-      return new Response(
-        JSON.stringify({ error: 'Failed to send email', details: errorData }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const emailData = await emailResponse.json();
 
     // Log the successful send
     await supabase.from('portal_invite_log').insert({
       contact_id: contactId,
       invite_email: email,
       status: 'email_sent',
-      email_id: emailData.id,
+      email_id: sendResult.messageId,
     });
 
+    console.log(`[Portal Invite] Email sent successfully to ${email} via ${gmailConnection.google_email}`);
+
     return new Response(
-      JSON.stringify({ success: true, emailId: emailData.id }),
-      {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        }
-      }
+      JSON.stringify({
+        success: true,
+        messageId: sendResult.messageId,
+        threadId: sendResult.threadId,
+        sentFrom: gmailConnection.google_email,
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    console.error('Error:', error);
+    console.error('[Portal Invite] Error:', error);
     return new Response(
       JSON.stringify({ error: 'Internal server error', message: error.message }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

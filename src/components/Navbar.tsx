@@ -473,27 +473,27 @@ export default function Navbar() {
                   >
                     📋 2025 Rob Report
                   </button>
-                  {userRole === 'admin' && (
-                    <>
-                      <button
-                        onClick={() => {
-                          navigate('/payments');
-                          setIsReportsMenuOpen(false);
-                        }}
-                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
-                      >
-                        💰 Payments
-                      </button>
-                      <button
-                        onClick={() => {
-                          navigate('/admin/users');
-                          setIsReportsMenuOpen(false);
-                        }}
-                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
-                      >
-                        👥 User Management
-                      </button>
-                    </>
+                  {(userRole === 'admin' || hasPermission('can_access_payments_dashboard')) && (
+                    <button
+                      onClick={() => {
+                        navigate('/payments');
+                        setIsReportsMenuOpen(false);
+                      }}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                    >
+                      💰 Payments
+                    </button>
+                  )}
+                  {(userRole === 'admin' || hasPermission('can_access_user_management')) && (
+                    <button
+                      onClick={() => {
+                        navigate('/admin/users');
+                        setIsReportsMenuOpen(false);
+                      }}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                    >
+                      👥 User Management
+                    </button>
                   )}
                   <button
                     onClick={() => {
@@ -544,7 +544,7 @@ export default function Navbar() {
                   >
                     📝 Notes
                   </button>
-                  {userRole === 'admin' && (
+                  {(userRole === 'admin' || hasPermission('can_access_prospecting')) && (
                     <button
                       onClick={() => {
                         navigate('/prospecting');
@@ -555,7 +555,7 @@ export default function Navbar() {
                       📞 Prospecting
                     </button>
                   )}
-                  {userRole === 'admin' && (
+                  {(userRole === 'admin' || hasPermission('can_access_hunter_ai')) && (
                     <button
                       onClick={() => {
                         navigate('/hunter');
@@ -566,7 +566,7 @@ export default function Navbar() {
                       🎯 Hunter AI
                     </button>
                   )}
-                  {userRole === 'admin' && (
+                  {(userRole === 'admin' || hasPermission('can_access_quickbooks')) && (
                     <button
                       onClick={() => {
                         navigate('/admin/quickbooks');
@@ -577,7 +577,7 @@ export default function Navbar() {
                       📗 QuickBooks
                     </button>
                   )}
-                  {userRole === 'admin' && (
+                  {(userRole === 'admin' || hasPermission('can_access_budget_pl')) && (
                     <button
                       onClick={() => {
                         navigate('/admin/budget');
@@ -597,6 +597,17 @@ export default function Navbar() {
                       className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
                     >
                       📧 Gmail Integration
+                    </button>
+                  )}
+                  {(userRole === 'admin' || hasPermission('can_manage_portal_settings')) && (
+                    <button
+                      onClick={() => {
+                        navigate('/admin/portal-email-settings');
+                        setIsReportsMenuOpen(false);
+                      }}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                    >
+                      ✉️ Portal Email Template
                     </button>
                   )}
                   {hasPermission('can_access_client_portal') && (
@@ -1065,27 +1076,27 @@ export default function Navbar() {
                 >
                   📋 2025 Rob Report
                 </button>
-                {userRole === 'admin' && (
-                  <>
-                    <button
-                      onClick={() => {
-                        navigate('/payments');
-                        setIsMobileMenuOpen(false);
-                      }}
-                      className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
-                    >
-                      💰 Payments
-                    </button>
-                    <button
-                      onClick={() => {
-                        navigate('/admin/users');
-                        setIsMobileMenuOpen(false);
-                      }}
-                      className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
-                    >
-                      👥 User Management
-                    </button>
-                  </>
+                {(userRole === 'admin' || hasPermission('can_access_payments_dashboard')) && (
+                  <button
+                    onClick={() => {
+                      navigate('/payments');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                  >
+                    💰 Payments
+                  </button>
+                )}
+                {(userRole === 'admin' || hasPermission('can_access_user_management')) && (
+                  <button
+                    onClick={() => {
+                      navigate('/admin/users');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                  >
+                    👥 User Management
+                  </button>
                 )}
                 <button
                   onClick={() => {
@@ -1136,7 +1147,7 @@ export default function Navbar() {
                 >
                   📝 Notes
                 </button>
-                {userRole === 'admin' && (
+                {(userRole === 'admin' || hasPermission('can_access_prospecting')) && (
                   <button
                     onClick={() => {
                       navigate('/prospecting');
@@ -1147,7 +1158,7 @@ export default function Navbar() {
                     📞 Prospecting
                   </button>
                 )}
-                {userRole === 'admin' && (
+                {(userRole === 'admin' || hasPermission('can_access_hunter_ai')) && (
                   <button
                     onClick={() => {
                       navigate('/hunter');
@@ -1158,7 +1169,7 @@ export default function Navbar() {
                     🎯 Hunter AI
                   </button>
                 )}
-                {userRole === 'admin' && (
+                {(userRole === 'admin' || hasPermission('can_access_quickbooks')) && (
                   <button
                     onClick={() => {
                       navigate('/admin/quickbooks');
@@ -1169,7 +1180,7 @@ export default function Navbar() {
                     📗 QuickBooks
                   </button>
                 )}
-                {userRole === 'admin' && (
+                {(userRole === 'admin' || hasPermission('can_access_budget_pl')) && (
                   <button
                     onClick={() => {
                       navigate('/admin/budget');
@@ -1189,6 +1200,17 @@ export default function Navbar() {
                     className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                   >
                     📧 Gmail Integration
+                  </button>
+                )}
+                {(userRole === 'admin' || hasPermission('can_manage_portal_settings')) && (
+                  <button
+                    onClick={() => {
+                      navigate('/admin/portal-email-settings');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                  >
+                    ✉️ Portal Email Template
                   </button>
                 )}
                 {hasPermission('can_access_client_portal') && (

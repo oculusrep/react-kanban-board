@@ -188,7 +188,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    // Clear cached user data
+    if (user?.email) {
+      const cacheKey = `user_data_${user.email}`;
+      localStorage.removeItem(cacheKey);
+    }
+
+    // Use 'local' scope to avoid 403 errors from the global logout endpoint
+    // This clears the local session without requiring server confirmation
+    await supabase.auth.signOut({ scope: 'local' });
   };
 
   const value = {

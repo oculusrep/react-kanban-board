@@ -92,6 +92,15 @@ export interface RolePermissions {
 
   // Client Portal
   can_access_client_portal?: boolean;
+  can_manage_portal_settings?: boolean;
+
+  // Admin Menu Access
+  can_access_payments_dashboard?: boolean;
+  can_access_user_management?: boolean;
+  can_access_prospecting?: boolean;
+  can_access_hunter_ai?: boolean;
+  can_access_quickbooks?: boolean;
+  can_access_budget_pl?: boolean;
 }
 
 export interface PermissionDefinition {
@@ -519,6 +528,57 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     label: 'Access Client Portal',
     description: 'Access the client portal to view site submits from a client perspective',
     category: 'integrations',
+    defaultValue: false,
+  },
+  {
+    key: 'can_manage_portal_settings',
+    label: 'Manage Portal Settings',
+    description: 'Access portal email template settings and other portal configuration',
+    category: 'integrations',
+    defaultValue: false,
+  },
+
+  // Admin Menu Access
+  {
+    key: 'can_access_payments_dashboard',
+    label: 'Access Payments Dashboard',
+    description: 'Access the payments dashboard to view and manage payments',
+    category: 'system_admin',
+    defaultValue: false,
+  },
+  {
+    key: 'can_access_user_management',
+    label: 'Access User Management',
+    description: 'Access user management to view users and manage roles',
+    category: 'system_admin',
+    defaultValue: false,
+  },
+  {
+    key: 'can_access_prospecting',
+    label: 'Access Prospecting',
+    description: 'Access the prospecting module',
+    category: 'system_admin',
+    defaultValue: false,
+  },
+  {
+    key: 'can_access_hunter_ai',
+    label: 'Access Hunter AI',
+    description: 'Access the Hunter AI prospecting tool',
+    category: 'system_admin',
+    defaultValue: false,
+  },
+  {
+    key: 'can_access_quickbooks',
+    label: 'Access QuickBooks',
+    description: 'Access QuickBooks integration and settings',
+    category: 'system_admin',
+    defaultValue: false,
+  },
+  {
+    key: 'can_access_budget_pl',
+    label: 'Access Budget & P&L',
+    description: 'Access budget and profit & loss reports',
+    category: 'system_admin',
     defaultValue: false,
   },
 ];
