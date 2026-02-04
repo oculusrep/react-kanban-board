@@ -121,6 +121,14 @@ export default function ReportsPage() {
       route: "/reports/mike-is-owed",
       icon: "💵",
       permission: "can_view_mike_is_owed_report"
+    },
+    {
+      id: "unpaid-referral-fees",
+      name: "Unpaid Referral Fees",
+      description: "Referral fees owed on received payments since Jan 2025",
+      route: "/reports/unpaid-referral-fees",
+      icon: "🤝",
+      permission: "can_view_unpaid_referral_fees_report"
     }
   ];
 
