@@ -198,7 +198,7 @@ export default function UnpaidReferralFeesReport() {
                   <tr key={fee.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm text-gray-900">
                       <a
-                        href={`/deals/${fee.dealId}`}
+                        href={`/deal/${fee.dealId}`}
                         className="text-blue-600 hover:text-blue-800 hover:underline"
                       >
                         {fee.dealName}
