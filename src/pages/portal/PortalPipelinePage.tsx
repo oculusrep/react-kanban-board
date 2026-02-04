@@ -154,15 +154,18 @@ export default function PortalPipelinePage() {
     fetchStages();
   }, []);
 
-  // Auto-select tab based on URL stage param (when navigating from "View in Pipeline")
+  // Auto-select tab based on URL params or selected property's stage
   useEffect(() => {
+    if (stages.length === 0) return;
+
     const stageParam = searchParams.get('stage');
-    if (stageParam && stages.length > 0) {
+    const selectedParam = searchParams.get('selected');
+
+    // If stage param is explicitly set, use it
+    if (stageParam) {
       if (stageParam === 'signed') {
-        // Signed tab
         setSelectedStageId('signed');
       } else {
-        // Find the stage ID for the given stage name
         const stage = stages.find(s => s.name === stageParam);
         if (stage) {
           setSelectedStageId(stage.id);
@@ -172,8 +175,36 @@ export default function PortalPipelinePage() {
       const newParams = new URLSearchParams(searchParams);
       newParams.delete('stage');
       setSearchParams(newParams, { replace: true });
+      return;
     }
-  }, [stages, searchParams]);
+
+    // If a property is selected, switch to its stage's tab
+    if (selectedParam && siteSubmits.length > 0) {
+      const selectedSubmit = siteSubmits.find(ss => ss.id === selectedParam);
+      if (selectedSubmit?.submit_stage?.name) {
+        const stageName = selectedSubmit.submit_stage.name;
+        // Check if it's a "Signed" stage
+        if (SIGNED_STAGE_NAMES.includes(stageName)) {
+          setSelectedStageId('signed');
+        } else {
+          // Find the stage ID
+          const stage = stages.find(s => s.name === stageName);
+          if (stage) {
+            setSelectedStageId(stage.id);
+          }
+        }
+      }
+      return;
+    }
+
+    // Default: No selection - open to "For Review" (Submitted-Reviewing) tab
+    if (!selectedParam && selectedStageId === null) {
+      const forReviewStage = stages.find(s => s.name === 'Submitted-Reviewing');
+      if (forReviewStage) {
+        setSelectedStageId(forReviewStage.id);
+      }
+    }
+  }, [stages, searchParams, siteSubmits]);
 
   // Fetch site submits
   useEffect(() => {
