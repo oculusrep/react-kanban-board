@@ -424,7 +424,10 @@ export default function ArtyDrawReport() {
                       {txn.docNumber || '-'}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900 max-w-xs">
-                      <div className="truncate">
+                      <div
+                        className="truncate cursor-help"
+                        title={[txn.name, txn.memo].filter(Boolean).join(' - ') || '-'}
+                      >
                         {txn.name && <span className="font-medium">{txn.name}</span>}
                         {txn.name && txn.memo && ' - '}
                         {txn.memo && <span className="text-gray-500">{txn.memo}</span>}
