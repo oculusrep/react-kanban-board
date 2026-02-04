@@ -1718,8 +1718,8 @@ const MappingPageContent: React.FC = () => {
 
         {/* Main Panel - Map and Testing */}
         <div className="flex-1 flex flex-col">
-          {/* Top Control Bar */}
-          <div className="flex-shrink-0 bg-white shadow-sm border-b border-gray-200 px-4 py-3">
+          {/* Top Control Bar - Hidden when Street View is active */}
+          <div className={`flex-shrink-0 bg-white shadow-sm border-b border-gray-200 px-4 py-3 ${isStreetViewActive ? 'hidden' : ''}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 {/* Address Search with Auto-Suggest */}

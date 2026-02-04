@@ -52,6 +52,7 @@ export default function PortalMapPage() {
   const showBrokerFeatures = isInternalUser && viewMode === 'broker';
 
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
+  const [isStreetViewActive, setIsStreetViewActive] = useState(false);
   const [selectedSiteSubmitId, setSelectedSiteSubmitId] = useState<string | null>(
     searchParams.get('selected')
   );
@@ -122,6 +123,22 @@ export default function PortalMapPage() {
   useEffect(() => {
     document.title = 'Map | Client Portal';
   }, []);
+
+  // Listen for Street View visibility changes
+  useEffect(() => {
+    if (!mapInstance) return;
+
+    const streetView = mapInstance.getStreetView();
+    const listener = streetView.addListener('visible_changed', () => {
+      const isVisible = streetView.getVisible();
+      console.log('🚶 Portal Map - Street View visibility changed:', isVisible);
+      setIsStreetViewActive(isVisible);
+    });
+
+    return () => {
+      google.maps.event.removeListener(listener);
+    };
+  }, [mapInstance]);
 
   // Handle URL param changes for selected site submit
   useEffect(() => {
@@ -471,8 +488,8 @@ export default function PortalMapPage() {
           />
         ))}
 
-        {/* Drawing Toolbar (brokers only) */}
-        {showBrokerFeatures && (isDrawMode || editingLayerId) && (
+        {/* Drawing Toolbar (brokers only) - Hidden when Street View is active */}
+        {showBrokerFeatures && (isDrawMode || editingLayerId) && !isStreetViewActive && (
           <DrawingToolbar
             map={mapInstance}
             isActive={isDrawMode || !!editingLayerId}
@@ -516,8 +533,8 @@ export default function PortalMapPage() {
           />
         )}
 
-        {/* Selected Shape Actions - Show when a shape is selected in edit mode */}
-        {showBrokerFeatures && editingLayerId && selectedShape && (
+        {/* Selected Shape Actions - Show when a shape is selected in edit mode - Hidden when Street View is active */}
+        {showBrokerFeatures && editingLayerId && selectedShape && !isStreetViewActive && (
           <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 z-[10000]">
             <div className="bg-white rounded-lg shadow-xl border-2 border-blue-500 p-3">
               <div className="flex items-center space-x-4">
@@ -579,8 +596,8 @@ export default function PortalMapPage() {
           </div>
         )}
 
-        {/* Search Box - positioned at top of map, above other controls */}
-        <div className="absolute top-2 left-2" style={{ width: '400px', zIndex: 10002 }}>
+        {/* Search Box - positioned at top of map, above other controls - Hidden when Street View is active */}
+        <div className={`absolute top-2 left-2 ${isStreetViewActive ? 'hidden' : ''}`} style={{ width: '400px', zIndex: 10002 }}>
           <AddressSearchBox
             value={searchAddress}
             onChange={setSearchAddress}
@@ -590,8 +607,8 @@ export default function PortalMapPage() {
           />
         </div>
 
-        {/* Draw and Layers Controls - positioned to the right of Map/Satellite and ruler buttons */}
-        <div className="absolute top-[52px] left-[240px] z-[1000] flex items-center gap-1">
+        {/* Draw and Layers Controls - positioned to the right of Map/Satellite and ruler buttons - Hidden when Street View is active */}
+        <div className={`absolute top-[52px] left-[240px] z-[1000] flex items-center gap-1 ${isStreetViewActive ? 'hidden' : ''}`}>
           {/* Quick Draw Button (brokers only) - just pencil icon */}
           {showBrokerFeatures && (
             <button
@@ -780,8 +797,8 @@ export default function PortalMapPage() {
           )}
         </div>
 
-        {/* Stage Legend */}
-        <div className="absolute bottom-4 left-4 z-10">
+        {/* Stage Legend - Hidden when Street View is active */}
+        <div className={`absolute bottom-4 left-4 z-10 ${isStreetViewActive ? 'hidden' : ''}`}>
           <SiteSubmitLegend
             visibleStages={visibleStages}
             totalCounts={stageCounts}

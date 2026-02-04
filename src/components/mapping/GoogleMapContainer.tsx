@@ -29,6 +29,7 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [labelsVisible, setLabelsVisible] = useState(true);
+  const [isStreetViewActive, setIsStreetViewActive] = useState(false);
   const labelsControlRef = useRef<{
     updateButtonStates: () => void;
     showLabelsControl: () => void;
@@ -783,6 +784,19 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         const mapTypeControl = createCustomMapTypeControl(map, setLabelsVisible, handleMapRecreated, controlsTopOffset);
         labelsControlRef.current = mapTypeControl;
         map.controls[google.maps.ControlPosition.TOP_LEFT].push(mapTypeControl.controlDiv);
+
+        // Hide custom controls when Street View is active
+        const streetView = map.getStreetView();
+        streetView.addListener('visible_changed', () => {
+          const isVisible = streetView.getVisible();
+          console.log('🚶 Street View visibility changed:', isVisible);
+          // Update React state for conditional rendering of React components (GPSControls)
+          setIsStreetViewActive(isVisible);
+          // Hide/show the map type control (DOM-based control)
+          if (mapTypeControl.controlDiv) {
+            mapTypeControl.controlDiv.style.display = isVisible ? 'none' : 'block';
+          }
+        });
 
         // If there's a top offset (e.g., for search box), add a spacer for native controls at LEFT_TOP
         if (controlsTopOffset > 0) {
@@ -1705,8 +1719,8 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         style={{ minHeight: '200px' }}
       />
 
-      {/* React-based GPS controls - Fallback if map controls don't work */}
-      {!isLoading && mapInstanceRef.current && (
+      {/* React-based GPS controls - Hidden when Street View is active */}
+      {!isLoading && mapInstanceRef.current && !isStreetViewActive && (
         <GPSControls
           isTracking={isTracking}
           autoCenterEnabled={autoCenterEnabled}
@@ -1718,8 +1732,8 @@ const GoogleMapContainer: React.FC<GoogleMapContainerProps> = ({
         />
       )}
 
-      {/* Custom distance info box */}
-      {customInfoBox?.visible && (
+      {/* Custom distance info box - Hidden when Street View is active */}
+      {customInfoBox?.visible && !isStreetViewActive && (
         <DistanceInfoBox
           position={customInfoBox.position}
           straightDistance={customInfoBox.straightDistance}
