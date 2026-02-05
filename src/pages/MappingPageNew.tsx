@@ -7,6 +7,7 @@ import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../components/mapping/
 import { MarkerShape } from '../components/mapping/utils/advancedMarkers';
 import RestaurantLayer from '../components/mapping/layers/RestaurantLayer';
 import CustomLayerLayer from '../components/mapping/layers/CustomLayerLayer';
+import PlaceInfoLayer from '../components/mapping/layers/PlaceInfoLayer';
 import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
 import RestaurantSlideout from '../components/mapping/slideouts/RestaurantSlideout';
 import MapContextMenu from '../components/mapping/MapContextMenu';
@@ -2233,6 +2234,12 @@ const MappingPageContent: React.FC = () => {
                 setSelectedPinData(restaurant);
                 setIsPinDetailsOpen(true);
               }}
+            />
+
+            {/* Place Info Layer - Shows popup when clicking Google Places POIs */}
+            <PlaceInfoLayer
+              map={mapInstance}
+              isVisible={!isStreetViewActive}
             />
 
             {/* Custom Map Layers */}

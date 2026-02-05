@@ -18,6 +18,7 @@ import { mapLayerService, MapLayer, MapLayerShape, UpdateShapeInput } from '../.
 import ShapeEditorPanel from '../../components/mapping/ShapeEditorPanel';
 import BoundaryBuilderPanel from '../../components/mapping/BoundaryBuilderPanel';
 import { boundaryService, FetchedBoundary } from '../../services/boundaryService';
+import PlaceInfoLayer from '../../components/mapping/layers/PlaceInfoLayer';
 
 // Portal-visible stages (from spec)
 // Note: Stage names must match database format exactly (no spaces around dashes)
@@ -460,6 +461,14 @@ export default function PortalMapPage() {
             onStageCountsUpdate={handleStageCountsUpdate}
             selectedSiteSubmitId={selectedSiteSubmitId}
             onSelectedSiteSubmitPosition={handleSelectedSiteSubmitPosition}
+          />
+        )}
+
+        {/* Place Info Layer - Shows popup when clicking Google Places POIs */}
+        {mapInstance && (
+          <PlaceInfoLayer
+            map={mapInstance}
+            isVisible={!isStreetViewActive}
           />
         )}
 

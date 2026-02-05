@@ -48,7 +48,31 @@ export default function PortalInviteAcceptPage() {
           .single();
 
         if (fetchError || !data) {
-          setError('Invalid or expired invite link. Please contact your broker for a new invite.');
+          // Token not found - could be invalid, expired, or a new invite was sent (which regenerates the token)
+          // Try to provide more helpful information by checking the invite_log
+          const { data: logData } = await supabase
+            .from('portal_invite_log')
+            .select('status, sent_at, contact_id')
+            .eq('invite_token', token)
+            .order('sent_at', { ascending: false })
+            .limit(1);
+
+          if (logData && logData.length > 0) {
+            const log = logData[0];
+            if (log.status === 'accepted') {
+              setError('This invite link has already been used to create an account. Please sign in instead.');
+            } else if (log.status === 'expired') {
+              setError('This invite link has expired. Please contact your broker for a new invite.');
+            } else if (log.status === 'revoked') {
+              setError('This invite link has been revoked. Please contact your broker for a new invite.');
+            } else {
+              // Token was in log but not found on contact - likely a new invite was sent
+              setError('This invite link is no longer valid. A newer invite may have been sent - please check your email for the most recent invite, or contact your broker.');
+            }
+          } else {
+            // Token not found anywhere
+            setError('This invite link is not valid. Please check your email for the correct link, or contact your broker for a new invite.');
+          }
           setLoading(false);
           return;
         }
@@ -63,7 +87,13 @@ export default function PortalInviteAcceptPage() {
               .update({ portal_invite_status: 'expired' })
               .eq('id', data.id);
 
-            setError('This invite has expired. Please contact your broker for a new invite.');
+            // Update the log entry status to expired
+            await supabase
+              .from('portal_invite_log')
+              .update({ status: 'expired' })
+              .eq('invite_token', token);
+
+            setError('This invite link has expired. Please contact your broker for a new invite.');
             setLoading(false);
             return;
           }
@@ -71,7 +101,7 @@ export default function PortalInviteAcceptPage() {
 
         // Check if already accepted
         if (data.portal_invite_status === 'accepted') {
-          setError('This invite has already been used. Please sign in instead.');
+          setError('This invite link has already been used to create an account. Please sign in instead.');
           setLoading(false);
           return;
         }

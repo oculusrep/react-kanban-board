@@ -105,6 +105,8 @@ Added hover tooltip to show full Name/Memo content.
 - `src/pages/admin/PortalEmailSettingsPage.tsx` - Admin page for email template settings
 - `supabase/migrations/20260204_portal_email_template_settings.sql` - Database migration
 - `src/components/portal/StatusBadgeDropdown.tsx` - Clickable status badge for changing deal status
+- `src/components/mapping/popups/PlaceInfoPopup.tsx` - Popup for Google Places POI details
+- `src/components/mapping/layers/PlaceInfoLayer.tsx` - Layer handling POI click events
 
 ### Modified Components
 - `src/components/Navbar.tsx` - Permission checks for admin menu items
@@ -114,6 +116,8 @@ Added hover tooltip to show full Name/Memo content.
 - `src/pages/portal/PortalPipelinePage.tsx` - StatusBadgeDropdown, real-time subscription
 - `src/components/portal/PortalDetailSidebar.tsx` - StatusBadgeDropdown integration
 - `src/components/mapping/layers/SiteSubmitLayer.tsx` - Real-time subscription for map pins
+- `src/pages/portal/PortalMapPage.tsx` - Added PlaceInfoLayer for POI clicks
+- `src/pages/MappingPageNew.tsx` - Added PlaceInfoLayer for POI clicks
 
 ### Modified Edge Functions
 - `supabase/functions/_shared/gmail.ts` - Changed MIME encoding to 7bit
@@ -230,6 +234,73 @@ Fixed issue where HTML email buttons weren't rendering properly in some email cl
 - `supabase/functions/_shared/gmail.ts` - Changed MIME encoding from `quoted-printable` to `7bit`
 - `supabase/functions/send-portal-invite/index.ts` - Simplified HTML template, removed VML conditional comments
 
+### 11. Google Places POI Click Feature
+
+Added ability to click on Google Places POIs (businesses, restaurants, etc.) on the map to view place details including business status.
+
+**New Components:**
+- `src/components/mapping/popups/PlaceInfoPopup.tsx` - Popup component showing place details
+- `src/components/mapping/layers/PlaceInfoLayer.tsx` - Layer component handling POI click events
+
+**Features:**
+- Click any Google Places POI on the map to see details
+- Shows business status with color-coded badges:
+  - 🟢 **Open Now** - Currently open (green badge)
+  - ⚪ **Closed Now** - Currently closed but operational (gray badge)
+  - 🟡 **Temporarily Closed** - Business temporarily closed (yellow badge)
+  - 🔴 **Permanently Closed** - Business permanently closed (red badge)
+  - 🟢 **Open** - Operational but hours unknown (green badge)
+- Displays address, rating, reviews, phone number
+- Expandable hours of operation
+- Direct link to website
+- Works on both Portal Map and OVIS Map
+
+**Requirements:**
+- POI labels must be visible on the map (the "Labels" checkbox must be checked)
+- Works in both development and production environments
+
+**Business Status Logic:**
+1. Temporary/permanent closures take priority over opening hours
+2. If `isOpen()` returns `true` → "Open Now"
+3. If `isOpen()` returns `false` → "Closed Now"
+4. If `isOpen()` returns `undefined` but `business_status` is OPERATIONAL → "Open"
+5. If no data available → no badge shown
+
+**Google Places API Fields Used:**
+- `business_status` - OPERATIONAL | CLOSED_TEMPORARILY | CLOSED_PERMANENTLY
+- `opening_hours.isOpen()` - Real-time open/closed check
+- `opening_hours.weekday_text` - Weekly hours text
+- `rating` and `user_ratings_total` - Star rating and review count
+- `formatted_address`, `formatted_phone_number`, `website`, `types`
+
+**Files Modified:**
+- `src/pages/portal/PortalMapPage.tsx` - Added PlaceInfoLayer component
+- `src/pages/MappingPageNew.tsx` - Added PlaceInfoLayer component
+
+**Google Places API Fields Used:**
+- `business_status` - OPERATIONAL | CLOSED_TEMPORARILY | CLOSED_PERMANENTLY
+- `opening_hours` - Current open/closed status and weekly hours
+- `rating` and `user_ratings_total` - Star rating and review count
+- `formatted_address`, `formatted_phone_number`, `website`, `types`
+
+### 12. Portal Invite Error Message Improvements
+
+Improved error messages when a portal invite link is invalid to help diagnose issues.
+
+**File Modified:** `src/pages/portal/PortalInviteAcceptPage.tsx`
+
+**Previous Behavior:** Generic "Invalid or expired invite link" message for all token lookup failures.
+
+**New Behavior:** Checks `portal_invite_log` table to determine the specific reason:
+- **Already used**: "This invite link has already been used to create an account. Please sign in instead."
+- **Expired**: "This invite link has expired. Please contact your broker for a new invite."
+- **Revoked**: "This invite link has been revoked. Please contact your broker for a new invite."
+- **New invite sent**: "This invite link is no longer valid. A newer invite may have been sent - please check your email for the most recent invite, or contact your broker."
+- **Not found**: "This invite link is not valid. Please check your email for the correct link, or contact your broker for a new invite."
+
+**Common Cause of "Invalid" Errors:**
+When a new invite is sent (e.g., clicking "Send Invite" again), it generates a new token which invalidates any previous links. Users should always use the most recent invite email.
+
 ## Commits
 
 1. `a394c4df` - Add portal email customization, admin menu permissions, and fix logout
@@ -242,3 +313,5 @@ Fixed issue where HTML email buttons weren't rendering properly in some email cl
 8. `bc0c5d79` - Simplify HTML email template for better compatibility
 9. `18135edb` - Add copy invite link button for portal users
 10. `5b1a217a` - Unify portal invite email behavior across Contact and Client pages
+11. `[pending]` - Add Google Places POI click feature to Portal and OVIS maps
+12. `[pending]` - Improve portal invite error messages
