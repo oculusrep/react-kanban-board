@@ -30,7 +30,7 @@ export default function PortalInviteAcceptPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
-  // Validate token on mount
+  // Validate token on mount using RPC function (bypasses RLS for unauthenticated users)
   useEffect(() => {
     async function validateToken() {
       if (!token) {
@@ -40,79 +40,26 @@ export default function PortalInviteAcceptPage() {
       }
 
       try {
-        // Find contact with this invite token
-        const { data, error: fetchError } = await supabase
-          .from('contact')
-          .select('id, email, first_name, last_name, portal_invite_status, portal_invite_expires_at')
-          .eq('portal_invite_token', token)
-          .single();
+        // Use RPC function to validate token (SECURITY DEFINER bypasses RLS)
+        const { data: result, error: rpcError } = await supabase
+          .rpc('validate_portal_invite_token', { p_token: token });
 
-        if (fetchError || !data) {
-          // Token not found - could be invalid, expired, or a new invite was sent (which regenerates the token)
-          // Try to provide more helpful information by checking the invite_log
-          const { data: logData } = await supabase
-            .from('portal_invite_log')
-            .select('status, sent_at, contact_id')
-            .eq('invite_token', token)
-            .order('sent_at', { ascending: false })
-            .limit(1);
-
-          if (logData && logData.length > 0) {
-            const log = logData[0];
-            if (log.status === 'accepted') {
-              setError('This invite link has already been used to create an account. Please sign in instead.');
-            } else if (log.status === 'expired') {
-              setError('This invite link has expired. Please contact your broker for a new invite.');
-            } else if (log.status === 'revoked') {
-              setError('This invite link has been revoked. Please contact your broker for a new invite.');
-            } else {
-              // Token was in log but not found on contact - likely a new invite was sent
-              setError('This invite link is no longer valid. A newer invite may have been sent - please check your email for the most recent invite, or contact your broker.');
-            }
-          } else {
-            // Token not found anywhere
-            setError('This invite link is not valid. Please check your email for the correct link, or contact your broker for a new invite.');
-          }
+        if (rpcError) {
+          console.error('Error validating token:', rpcError);
+          setError('An error occurred while validating your invite. Please try again later.');
           setLoading(false);
           return;
         }
 
-        // Check if invite is expired
-        if (data.portal_invite_expires_at) {
-          const expiresAt = new Date(data.portal_invite_expires_at);
-          if (expiresAt < new Date()) {
-            // Mark invite as expired
-            await supabase
-              .from('contact')
-              .update({ portal_invite_status: 'expired' })
-              .eq('id', data.id);
-
-            // Update the log entry status to expired
-            await supabase
-              .from('portal_invite_log')
-              .update({ status: 'expired' })
-              .eq('invite_token', token);
-
-            setError('This invite link has expired. Please contact your broker for a new invite.');
-            setLoading(false);
-            return;
-          }
-        }
-
-        // Check if already accepted
-        if (data.portal_invite_status === 'accepted') {
-          setError('This invite link has already been used to create an account. Please sign in instead.');
+        if (!result.valid) {
+          // Show the specific error message from the function
+          setError(result.message || 'This invite link is not valid.');
           setLoading(false);
           return;
         }
 
-        if (!data.email) {
-          setError('No email address found for this contact. Please contact your broker.');
-          setLoading(false);
-          return;
-        }
-
-        setContact(data);
+        // Token is valid - set contact info
+        setContact(result.contact);
       } catch (err) {
         console.error('Error validating token:', err);
         setError('An error occurred. Please try again later.');
