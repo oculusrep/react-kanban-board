@@ -106,8 +106,14 @@ export default function PortalInviteAcceptPage() {
       });
 
       if (signUpError) {
-        if (signUpError.message.includes('already registered')) {
-          setError('An account with this email already exists. Please sign in instead.');
+        // Check for various "already exists" error messages from Supabase
+        const errorMsg = signUpError.message.toLowerCase();
+        if (errorMsg.includes('already registered') ||
+            errorMsg.includes('already been registered') ||
+            errorMsg.includes('user already exists') ||
+            errorMsg.includes('email already') ||
+            signUpError.status === 422) {
+          setError('An account with this email already exists. Please sign in instead, or use "Forgot Password" if needed.');
         } else {
           throw signUpError;
         }
