@@ -1658,7 +1658,20 @@ export default function BudgetDashboardPage() {
         </div>
 
         {/* QBO P&L Comparison - for validation */}
-        {qboTotals && (
+        {qboTotals && (() => {
+          // Calculate QBO totals from line items for accurate comparison
+          // This ensures we're comparing the same data source (line items) rather than
+          // QBO's pre-calculated totals which may include items handled differently
+          const qboFromLineItems = {
+            income: qboLineItems.filter(i => i.section === 'Income').reduce((sum, i) => sum + i.amount, 0),
+            cogs: qboLineItems.filter(i => i.section === 'COGS').reduce((sum, i) => sum + i.amount, 0),
+            expenses: qboLineItems.filter(i => i.section === 'Expense').reduce((sum, i) => sum + i.amount, 0),
+            otherIncome: qboLineItems.filter(i => i.section === 'Other Income').reduce((sum, i) => sum + i.amount, 0),
+            otherExpenses: qboLineItems.filter(i => i.section === 'Other Expense').reduce((sum, i) => sum + i.amount, 0),
+          };
+          qboFromLineItems.netIncome = qboFromLineItems.income - qboFromLineItems.cogs - qboFromLineItems.expenses + qboFromLineItems.otherIncome - qboFromLineItems.otherExpenses;
+
+          return (
           <div className="mt-6 bg-white rounded-lg shadow p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
               <AlertCircle className="h-4 w-4" />
@@ -1677,12 +1690,12 @@ export default function BudgetDashboardPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {[
-                    { label: 'Income', ovis: totalIncome, qbo: qboTotals.income, section: 'Income' },
-                    { label: 'COGS', ovis: totalCOGS, qbo: qboTotals.cogs, section: 'COGS' },
-                    { label: 'Expenses', ovis: totalExpenses, qbo: qboTotals.expenses, section: 'Expense' },
-                    { label: 'Other Income', ovis: totalOtherIncome, qbo: qboTotals.otherIncome, section: 'Other Income' },
-                    { label: 'Other Expenses', ovis: totalOtherExpenses, qbo: qboTotals.otherExpenses, section: 'Other Expense' },
-                    { label: 'Net Income', ovis: netIncome, qbo: qboTotals.netIncome, section: null },
+                    { label: 'Income', ovis: totalIncome, qbo: qboFromLineItems.income, section: 'Income' },
+                    { label: 'COGS', ovis: totalCOGS, qbo: qboFromLineItems.cogs, section: 'COGS' },
+                    { label: 'Expenses', ovis: totalExpenses, qbo: qboFromLineItems.expenses, section: 'Expense' },
+                    { label: 'Other Income', ovis: totalOtherIncome, qbo: qboFromLineItems.otherIncome, section: 'Other Income' },
+                    { label: 'Other Expenses', ovis: totalOtherExpenses, qbo: qboFromLineItems.otherExpenses, section: 'Other Expense' },
+                    { label: 'Net Income', ovis: netIncome, qbo: qboFromLineItems.netIncome, section: null },
                   ].map(row => {
                     const diff = row.ovis - row.qbo;
                     // Use 1.00 threshold to ignore rounding differences
@@ -1954,7 +1967,8 @@ export default function BudgetDashboardPage() {
               </p>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {/* Transaction-Level Comparison Modal */}
         {comparingAccount && (
