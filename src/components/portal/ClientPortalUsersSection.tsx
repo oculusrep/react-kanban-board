@@ -50,6 +50,9 @@ export default function ClientPortalUsersSection({
   const [inviteLinkForId, setInviteLinkForId] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [generatingLinkForId, setGeneratingLinkForId] = useState<string | null>(null);
+  const [sendingResetForId, setSendingResetForId] = useState<string | null>(null);
+  const [resetSentForId, setResetSentForId] = useState<string | null>(null);
+  const [showUserMenuForId, setShowUserMenuForId] = useState<string | null>(null);
 
   // Compose invite modal state
   const [showComposeModal, setShowComposeModal] = useState(false);
@@ -57,6 +60,17 @@ export default function ClientPortalUsersSection({
   const [emailSubject, setEmailSubject] = useState("You're Invited to the Oculus Client Portal");
   const [emailMessage, setEmailMessage] = useState('');
   const [defaultTemplate, setDefaultTemplate] = useState<{ subject: string; message: string } | null>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showUserMenuForId && !(event.target as Element).closest('.relative')) {
+        setShowUserMenuForId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showUserMenuForId]);
 
   // Load default email template from settings
   useEffect(() => {
@@ -502,6 +516,33 @@ Best regards`;
     }
   };
 
+  // Send password reset email to a portal user
+  const handleSendPasswordReset = async (portalUser: PortalUser) => {
+    if (!portalUser.contact_email) {
+      console.error('Contact must have an email address to receive a password reset');
+      return;
+    }
+
+    setSendingResetForId(portalUser.contact_id);
+    setShowUserMenuForId(null);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(portalUser.contact_email, {
+        redirectTo: `${window.location.origin}/portal/reset-password`,
+      });
+
+      if (error) throw error;
+
+      setResetSentForId(portalUser.contact_id);
+      // Clear the success message after 5 seconds
+      setTimeout(() => setResetSentForId(null), 5000);
+    } catch (err) {
+      console.error('Error sending password reset:', err);
+    } finally {
+      setSendingResetForId(null);
+    }
+  };
+
   const getStatusBadge = (user: PortalUser) => {
     if (user.portal_last_login_at) {
       return (
@@ -655,8 +696,59 @@ Best regards`;
                   )}
                 </button>
                 {/* Status badge - clickable for non-active users to send/resend invite */}
-                {portalUser.portal_last_login_at ? (
-                  getStatusBadge(portalUser)
+                {/* For active users or accepted invites, show dropdown with reset password option */}
+                {(portalUser.portal_last_login_at || portalUser.portal_invite_status === 'accepted') ? (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowUserMenuForId(showUserMenuForId === portalUser.contact_id ? null : portalUser.contact_id)}
+                      className="group flex items-center"
+                    >
+                      {getStatusBadge(portalUser)}
+                      <svg className="ml-1 w-3 h-3 text-gray-400 group-hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {/* Dropdown menu */}
+                    {showUserMenuForId === portalUser.contact_id && (
+                      <div className="absolute z-20 mt-1 right-0 bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-48">
+                        <button
+                          type="button"
+                          onClick={() => handleSendPasswordReset(portalUser)}
+                          disabled={sendingResetForId === portalUser.contact_id}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                        >
+                          {sendingResetForId === portalUser.contact_id ? (
+                            <>
+                              <svg className="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Sending...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                              </svg>
+                              Send Password Reset
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                    {/* Success message */}
+                    {resetSentForId === portalUser.contact_id && (
+                      <div className="absolute z-20 mt-1 right-0 bg-green-50 border border-green-200 rounded-lg shadow-lg p-3 w-64">
+                        <div className="flex items-center text-green-700">
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          <span className="text-sm">Password reset email sent!</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <button
                     type="button"
