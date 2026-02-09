@@ -13,6 +13,7 @@ interface QBCommissionResult {
   qbEntityType?: 'Bill' | 'JournalEntry';
   qbDocNumber?: string;
   alreadyExists?: boolean;
+  notFound?: boolean;
   error?: string;
 }
 
@@ -34,6 +35,27 @@ const createQBCommissionEntry = async (paymentSplitId: string, paidDate: string)
     return data as QBCommissionResult;
   } catch (err) {
     console.error('QBO commission entry exception:', err);
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+};
+
+// Delete QBO commission entry (Bill or Journal Entry) when unmarking as paid
+const deleteQBCommissionEntry = async (paymentSplitId: string): Promise<QBCommissionResult> => {
+  try {
+    const { data, error } = await supabase.functions.invoke('quickbooks-delete-commission-entry', {
+      body: {
+        paymentSplitId,
+      },
+    });
+
+    if (error) {
+      console.error('QBO commission delete error:', error);
+      return { success: false, error: error.message };
+    }
+
+    return data as QBCommissionResult;
+  } catch (err) {
+    console.error('QBO commission delete exception:', err);
     return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
   }
 };
@@ -156,6 +178,21 @@ export const usePaymentDisbursement = () => {
         } else {
           // Other error - log but don't block the paid status update
           console.error('⚠️ Failed to create QBO commission entry:', result.error);
+        }
+      }
+
+      // If unmarking as paid, delete the QBO commission entry
+      if (!paid) {
+        const result = await deleteQBCommissionEntry(splitId);
+        if (result.success) {
+          if (result.notFound) {
+            console.log('📋 No QBO commission entry to delete for this payment split');
+          } else {
+            console.log(`🗑️ Deleted QBO ${result.qbEntityType} #${result.qbDocNumber}`);
+          }
+        } else {
+          // Error deleting - log but don't block the unpaid status update
+          console.error('⚠️ Failed to delete QBO commission entry:', result.error);
         }
       }
 

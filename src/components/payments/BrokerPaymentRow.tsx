@@ -18,6 +18,7 @@ interface QBCommissionResult {
   qbEntityType?: 'Bill' | 'JournalEntry';
   qbDocNumber?: string;
   alreadyExists?: boolean;
+  notFound?: boolean;
   error?: string;
 }
 
@@ -86,6 +87,27 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, o
     }
   };
 
+  // Delete QBO commission entry (Bill or Journal Entry) when unmarking as paid
+  const deleteQBCommissionEntry = async (): Promise<QBCommissionResult> => {
+    try {
+      const { data, error } = await supabase.functions.invoke('quickbooks-delete-commission-entry', {
+        body: {
+          paymentSplitId: split.payment_split_id,
+        },
+      });
+
+      if (error) {
+        console.error('QBO commission delete error:', error);
+        return { success: false, error: error.message };
+      }
+
+      return data as QBCommissionResult;
+    } catch (err) {
+      console.error('QBO commission delete exception:', err);
+      return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+    }
+  };
+
   const handleTogglePaid = async (paid: boolean) => {
     const newDate = paid ? getLocalDateString() : null;
 
@@ -142,6 +164,27 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, o
       } else {
         // Other error - log but don't block the paid status update
         console.error('Failed to create QBO commission entry:', result.error);
+      }
+    }
+
+    // If unmarking as paid, delete the QBO commission entry (Bill or Journal Entry)
+    if (!paid) {
+      setIsCreatingQBEntry(true);
+      const result = await deleteQBCommissionEntry();
+      setIsCreatingQBEntry(false);
+
+      if (result.success) {
+        if (result.notFound) {
+          // No entry to delete, which is fine
+          console.log('No QBO commission entry to delete for this payment split');
+        } else {
+          // Show success message
+          const entryType = result.qbEntityType === 'Bill' ? 'Bill' : 'Journal Entry';
+          console.log(`Deleted QBO ${entryType} #${result.qbDocNumber} for ${split.broker_name}`);
+        }
+      } else {
+        // Error deleting - log but don't block the unpaid status update
+        console.error('Failed to delete QBO commission entry:', result.error);
       }
     }
   };

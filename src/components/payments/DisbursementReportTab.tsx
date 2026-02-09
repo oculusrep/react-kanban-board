@@ -22,6 +22,7 @@ interface QBCommissionResult {
   qbEntityType?: 'Bill' | 'JournalEntry';
   qbDocNumber?: string;
   alreadyExists?: boolean;
+  notFound?: boolean;
   error?: string;
 }
 
@@ -43,6 +44,27 @@ const createQBCommissionEntry = async (paymentSplitId: string, paidDate: string)
     return data as QBCommissionResult;
   } catch (err) {
     console.error('QBO commission entry exception:', err);
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+};
+
+// Delete QBO commission entry (Bill or Journal Entry) when unmarking as paid
+const deleteQBCommissionEntry = async (paymentSplitId: string): Promise<QBCommissionResult> => {
+  try {
+    const { data, error } = await supabase.functions.invoke('quickbooks-delete-commission-entry', {
+      body: {
+        paymentSplitId,
+      },
+    });
+
+    if (error) {
+      console.error('QBO commission delete error:', error);
+      return { success: false, error: error.message };
+    }
+
+    return data as QBCommissionResult;
+  } catch (err) {
+    console.error('QBO commission delete exception:', err);
     return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
   }
 };
@@ -458,6 +480,7 @@ const DisbursementReportTab: React.FC = () => {
       if (disbursement.type === 'broker') {
         // Update broker split paid_date
         const splitId = disbursement.id.replace('broker-', '');
+        const wasPreviouslyPaid = disbursement.disbursement_paid;
         const wasPreviouslyUnpaid = !disbursement.disbursement_paid;
 
         const { error } = await supabase
@@ -477,6 +500,16 @@ const DisbursementReportTab: React.FC = () => {
             console.log(`Created QBO ${result.qbEntityType} #${result.qbDocNumber} for ${disbursement.payee_name}`);
           } else if (result.error && !result.error.includes('No QuickBooks commission mapping') && !result.error.includes('QuickBooks is not connected')) {
             console.error('Failed to create QBO commission entry:', result.error);
+          }
+        }
+
+        // If clearing the date (and was previously paid), delete the QBO commission entry
+        if (!newDate && wasPreviouslyPaid) {
+          const result = await deleteQBCommissionEntry(splitId);
+          if (result.success && !result.notFound) {
+            console.log(`Deleted QBO ${result.qbEntityType} #${result.qbDocNumber} for ${disbursement.payee_name}`);
+          } else if (result.error) {
+            console.error('Failed to delete QBO commission entry:', result.error);
           }
         }
       } else {
@@ -528,6 +561,16 @@ const DisbursementReportTab: React.FC = () => {
             console.log(`Created QBO ${result.qbEntityType} #${result.qbDocNumber} for ${disbursement.payee_name}`);
           } else if (result.error && !result.error.includes('No QuickBooks commission mapping') && !result.error.includes('QuickBooks is not connected')) {
             console.error('Failed to create QBO commission entry:', result.error);
+          }
+        }
+
+        // If unmarking as paid, delete the QBO commission entry
+        if (!newPaidStatus) {
+          const result = await deleteQBCommissionEntry(splitId);
+          if (result.success && !result.notFound) {
+            console.log(`Deleted QBO ${result.qbEntityType} #${result.qbDocNumber} for ${disbursement.payee_name}`);
+          } else if (result.error) {
+            console.error('Failed to delete QBO commission entry:', result.error);
           }
         }
       } else {
