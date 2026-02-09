@@ -663,7 +663,9 @@ export default function BudgetDashboardPage() {
       if (accountsResult.accountCount) parts.push(`${accountsResult.accountCount} accounts`);
       if (itemsResult.itemCount) parts.push(`${itemsResult.itemCount} items`);
       if (expensesResult.transactionCount) parts.push(`${expensesResult.transactionCount} transactions`);
+      if (expensesResult.deletedOrphaned) parts.push(`deleted ${expensesResult.deletedOrphaned} orphaned`);
 
+      console.log('[Sync Result]', expensesResult);
       setMessage({ type: 'success', text: `Synced ${parts.join(', ')} from QuickBooks` });
       fetchData();
     } catch (error: any) {
