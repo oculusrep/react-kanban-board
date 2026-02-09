@@ -56,13 +56,14 @@ async function fetchAccountTransactions(
   endDate: string
 ): Promise<any> {
   // Use the GeneralLedger report with account filter
-  // Don't specify columns - let QBO return default columns which include amounts
+  // Request specific columns including doc_num for document numbers
   const reportQuery = new URLSearchParams({
     account: accountId,
     start_date: startDate,
     end_date: endDate,
     sort_by: 'tx_date',
-    sort_order: 'ascend'
+    sort_order: 'ascend',
+    columns: 'tx_date,txn_type,doc_num,name,memo,subt_nat_amount,rbal_nat_amount'
   })
 
   const result = await qbApiRequest<any>(
@@ -70,6 +71,8 @@ async function fetchAccountTransactions(
     'GET',
     `reports/GeneralLedger?${reportQuery.toString()}`
   )
+
+  console.log('GL Report columns:', JSON.stringify(result?.Columns?.Column?.map((c: any) => ({ title: c.ColTitle, type: c.ColType }))))
 
   return result
 }
@@ -173,6 +176,16 @@ function parseGeneralLedgerReport(reportData: any): TransactionLine[] {
           continue
         }
 
+        // Try to extract the transaction ID from ColData - QBO sometimes includes it as an 'id' attribute
+        // The ID is typically on the transaction type column or doc_num column
+        let txnId: string | null = null
+        for (const col of colData) {
+          if (col.id) {
+            txnId = col.id
+            break
+          }
+        }
+
         // Try to extract values using column mapping, with fallbacks
         const date = colData[colMap['date']]?.value || colData[0]?.value || ''
         const type = colData[colMap['type']]?.value || colData[1]?.value || ''
@@ -245,7 +258,7 @@ function parseGeneralLedgerReport(reportData: any): TransactionLine[] {
         runningBalance = runningBalance + debit - credit
 
         transactions.push({
-          id: `${date}-${docNum || transactions.length}`,
+          id: txnId || `${date}-${docNum || transactions.length}`,
           date,
           type,
           docNumber: docNum,
@@ -260,6 +273,11 @@ function parseGeneralLedgerReport(reportData: any): TransactionLine[] {
   }
 
   extractRows(rows)
+
+  // Log first few transactions for debugging
+  if (transactions.length > 0) {
+    console.log('Sample transactions:', JSON.stringify(transactions.slice(0, 3)))
+  }
 
   return transactions
 }
