@@ -257,8 +257,7 @@ export default function BudgetDashboardPage() {
         }
 
         // 3. Invoice transactions that were PAID in the period (use payment_date)
-        // Note: We'd need to sync Payment transactions from QBO to track invoice payments
-        // For now, include paid invoices by transaction_date (same as before)
+        // Payment transactions are synced from QBO to populate payment_date on invoices
         page = 0;
         while (true) {
           const { data: invoiceData, error: invoiceError } = await supabase
@@ -266,9 +265,9 @@ export default function BudgetDashboardPage() {
             .select('*')
             .eq('transaction_type', 'Invoice')
             .eq('is_paid', true)
-            .gte('transaction_date', startDate)
-            .lt('transaction_date', endDate)
-            .order('transaction_date', { ascending: false })
+            .gte('payment_date', startDate)
+            .lt('payment_date', endDate)
+            .order('payment_date', { ascending: false })
             .order('id', { ascending: true })
             .range(page * pageSize, (page + 1) * pageSize - 1);
 
