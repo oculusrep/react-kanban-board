@@ -452,6 +452,11 @@ export default function BudgetDashboardPage() {
           else if (isIncomeSection && (t.transaction_type === 'Purchase' || t.transaction_type === 'Bill')) {
             txnAmount = -txnAmount;
           }
+          // For income accounts, CreditCardCredit and VendorCredit are stored as negative
+          // but represent positive income (e.g., AmEx Cash Back), so flip the sign
+          else if (isIncomeSection && (t.transaction_type === 'CreditCardCredit' || t.transaction_type === 'VendorCredit')) {
+            txnAmount = -txnAmount;
+          }
 
           return sum + txnAmount;
         }, 0);
