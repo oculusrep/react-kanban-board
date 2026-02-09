@@ -296,6 +296,9 @@ Deno.serve(async (req) => {
     const now = new Date().toISOString()
     const PAGE_SIZE = 1000
 
+    // Track all synced transaction IDs for cleanup of deleted/voided transactions
+    const syncedTransactionIds = new Set<string>()
+
     // Helper function to process purchase line items
     // Credit Card Credits in QBO are Purchase transactions with Credit=true
     const processPurchase = async (purchase: QBPurchase) => {
@@ -309,6 +312,9 @@ Deno.serve(async (req) => {
           // Use LineNum (1-based, unique per transaction) for stable ID, fall back to Id or index
           const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
           const transactionId = `purchase_${purchase.Id}_line${lineId}`
+
+          // Track this transaction for cleanup
+          syncedTransactionIds.add(transactionId)
 
           // For credits, store as negative to reduce expense total
           const amount = isCredit ? -Math.abs(line.Amount) : line.Amount
@@ -360,6 +366,9 @@ Deno.serve(async (req) => {
           const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
           const transactionId = `bill_${bill.Id}_line${lineId}`
 
+          // Track this transaction for cleanup
+          syncedTransactionIds.add(transactionId)
+
           const { error: upsertError } = await supabaseClient
             .from('qb_expense')
             .upsert({
@@ -409,6 +418,9 @@ Deno.serve(async (req) => {
           const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
           const transactionId = `invoice_${invoice.Id}_line${lineId}`
 
+          // Track this transaction for cleanup
+          syncedTransactionIds.add(transactionId)
+
           const { error: upsertError } = await supabaseClient
             .from('qb_expense')
             .upsert({
@@ -453,6 +465,9 @@ Deno.serve(async (req) => {
           const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
           const transactionId = `salesreceipt_${receipt.Id}_line${lineId}`
 
+          // Track this transaction for cleanup
+          syncedTransactionIds.add(transactionId)
+
           const { error: upsertError } = await supabaseClient
             .from('qb_expense')
             .upsert({
@@ -494,6 +509,9 @@ Deno.serve(async (req) => {
           const postingType = line.JournalEntryLineDetail.PostingType
           const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
           const transactionId = `journalentry_${je.Id}_line${lineId}`
+
+          // Track this transaction for cleanup
+          syncedTransactionIds.add(transactionId)
 
           // For journal entries, Credit to income = income, Debit to expense = expense
           // We store both and let the P&L sort it out by account type
@@ -539,6 +557,9 @@ Deno.serve(async (req) => {
           const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
           const transactionId = `creditcardcredit_${credit.Id}_line${lineId}`
 
+          // Track this transaction for cleanup
+          syncedTransactionIds.add(transactionId)
+
           const { error: upsertError } = await supabaseClient
             .from('qb_expense')
             .upsert({
@@ -581,6 +602,9 @@ Deno.serve(async (req) => {
           const accountRef = line.AccountBasedExpenseLineDetail.AccountRef
           const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
           const transactionId = `vendorcredit_${credit.Id}_line${lineId}`
+
+          // Track this transaction for cleanup
+          syncedTransactionIds.add(transactionId)
 
           const { error: upsertError } = await supabaseClient
             .from('qb_expense')
@@ -626,6 +650,9 @@ Deno.serve(async (req) => {
           const accountRef = line.DepositLineDetail.AccountRef
           const lineId = line.LineNum?.toString() || line.Id || String(lineIndex)
           const transactionId = `deposit_${deposit.Id}_line${lineId}`
+
+          // Track this transaction for cleanup
+          syncedTransactionIds.add(transactionId)
 
           // In QBO P&L, deposit expense lines show as NEGATIVE because they reduce
           // the expense category total (e.g., bank charges deducted from deposit).
@@ -1098,6 +1125,59 @@ Deno.serve(async (req) => {
       console.error('Error fetching payments:', err.message)
     }
 
+    // ============================================
+    // Cleanup: Delete OVIS records for transactions deleted in QBO
+    // Only delete records within the sync date range that weren't in this sync
+    // ============================================
+    let deletedCount = 0
+    try {
+      console.log(`Checking for deleted transactions (${syncedTransactionIds.size} transactions synced)...`)
+
+      // Get all OVIS records in the sync date range
+      const { data: existingRecords, error: fetchError } = await supabaseClient
+        .from('qb_expense')
+        .select('id, qb_transaction_id')
+        .gte('transaction_date', startDate)
+
+      if (fetchError) {
+        console.error('Error fetching existing records for cleanup:', fetchError)
+      } else if (existingRecords) {
+        // Find records that exist in OVIS but weren't in this sync (deleted from QBO)
+        const orphanedIds: string[] = []
+        for (const record of existingRecords) {
+          if (!syncedTransactionIds.has(record.qb_transaction_id)) {
+            orphanedIds.push(record.id)
+          }
+        }
+
+        if (orphanedIds.length > 0) {
+          console.log(`Found ${orphanedIds.length} orphaned records to delete...`)
+
+          // Delete in batches of 100 to avoid hitting limits
+          const BATCH_SIZE = 100
+          for (let i = 0; i < orphanedIds.length; i += BATCH_SIZE) {
+            const batch = orphanedIds.slice(i, i + BATCH_SIZE)
+            const { error: deleteError } = await supabaseClient
+              .from('qb_expense')
+              .delete()
+              .in('id', batch)
+
+            if (deleteError) {
+              console.error('Error deleting orphaned records:', deleteError)
+              errorCount++
+            } else {
+              deletedCount += batch.length
+            }
+          }
+          console.log(`Deleted ${deletedCount} orphaned records (transactions deleted/voided in QBO)`)
+        } else {
+          console.log('No orphaned records found - OVIS is in sync with QBO')
+        }
+      }
+    } catch (err: any) {
+      console.error('Error during cleanup:', err.message)
+    }
+
     // Log the sync
     await logSync(
       supabaseClient,
@@ -1110,10 +1190,11 @@ Deno.serve(async (req) => {
       errorCount > 0 ? `${errorCount} expenses failed to sync` : undefined
     )
 
+    const deletedMsg = deletedCount > 0 ? `, deleted ${deletedCount} orphaned` : ''
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Synced ${totalExpenses} transactions from QuickBooks (${totalPurchases} purchases, ${totalBills} bills, ${totalInvoices} invoices, ${totalSalesReceipts} sales receipts, ${totalJournalEntries} journal entries, ${totalCreditCardCredits} credit card credits, ${totalVendorCredits} vendor credits, ${totalDeposits} deposits, ${totalBillPayments} bill payments, ${totalPayments} payments)`,
+        message: `Synced ${totalExpenses} transactions from QuickBooks (${totalPurchases} purchases, ${totalBills} bills, ${totalInvoices} invoices, ${totalSalesReceipts} sales receipts, ${totalJournalEntries} journal entries, ${totalCreditCardCredits} credit card credits, ${totalVendorCredits} vendor credits, ${totalDeposits} deposits, ${totalBillPayments} bill payments, ${totalPayments} payments${deletedMsg})`,
         transactionCount: totalExpenses,
         purchases: totalPurchases,
         bills: totalBills,
@@ -1127,6 +1208,7 @@ Deno.serve(async (req) => {
         payments: totalPayments,
         billsUpdatedWithPaymentDate: billsUpdated,
         invoicesUpdatedWithPaymentDate: invoicesUpdated,
+        deletedOrphaned: deletedCount,
         errors: errorCount,
         startDate: startDate
       }),
