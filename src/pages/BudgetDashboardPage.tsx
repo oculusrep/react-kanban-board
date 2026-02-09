@@ -1590,28 +1590,122 @@ export default function BudgetDashboardPage() {
                       };
                       const ovisAccounts = getAccountsWithTransactions(ovisSection.categories);
 
-                      // Build full path for QBO items
-                      const qboAccountMap = new Map<string, number>();
+                      // Build QBO account map - try multiple matching strategies
+                      // Strategy 1: Match by account_id (most reliable)
+                      // Strategy 2: Match by full path (ancestor_path + account_name)
+                      // Strategy 3: Match by account name only (for leaf accounts)
+                      const qboByAccountId = new Map<string, number>();
+                      const qboByFullPath = new Map<string, number>();
+                      const qboByName = new Map<string, number>();
+
                       for (const item of sectionQBOItems) {
+                        // By account ID (most reliable)
+                        if (item.account_id) {
+                          qboByAccountId.set(item.account_id, (qboByAccountId.get(item.account_id) || 0) + item.amount);
+                        }
+
+                        // By full path (ancestor_path + name)
                         const fullPath = item.ancestor_path.length > 0
                           ? [...item.ancestor_path, item.account_name].join(':')
                           : item.account_name;
-                        qboAccountMap.set(fullPath, (qboAccountMap.get(fullPath) || 0) + item.amount);
+                        qboByFullPath.set(fullPath, (qboByFullPath.get(fullPath) || 0) + item.amount);
+
+                        // By account name only
+                        qboByName.set(item.account_name, (qboByName.get(item.account_name) || 0) + item.amount);
                       }
 
-                      // Combine OVIS and QBO accounts
-                      const allAccountNames = new Set([
-                        ...ovisAccounts.map(a => a.name),
-                        ...qboAccountMap.keys()
-                      ]);
+                      // Build OVIS account maps for matching
+                      const ovisByAccountId = new Map<string, { name: string; amount: number }>();
+                      const ovisByName = new Map<string, { name: string; amount: number }>();
 
-                      for (const name of allAccountNames) {
-                        const ovisAmt = ovisAccounts.find(a => a.name === name)?.amount || 0;
-                        const qboAmt = qboAccountMap.get(name) || 0;
-                        const acctDiff = ovisAmt - qboAmt;
-                        // Only show accounts with differences >= $1
-                        if (Math.abs(acctDiff) >= 1.00) {
-                          accountComparison.push({ name, ovis: ovisAmt, qbo: qboAmt, diff: acctDiff });
+                      for (const acct of ovisAccounts) {
+                        // Get the QBO account ID for this OVIS account
+                        const qbAccount = accounts.find(a => a.fully_qualified_name === acct.name);
+                        if (qbAccount?.qb_account_id) {
+                          ovisByAccountId.set(qbAccount.qb_account_id, acct);
+                        }
+                        ovisByName.set(acct.name, acct);
+                        // Also store by just the account name (last part of path)
+                        const shortName = acct.name.split(':').pop() || acct.name;
+                        if (!ovisByName.has(shortName)) {
+                          ovisByName.set(shortName, acct);
+                        }
+                      }
+
+                      // Match accounts using best available method
+                      const matchedAccounts = new Set<string>();
+
+                      // First, match by account ID (most reliable)
+                      for (const [accountId, qboAmount] of qboByAccountId) {
+                        const ovisMatch = ovisByAccountId.get(accountId);
+                        if (ovisMatch) {
+                          matchedAccounts.add(ovisMatch.name);
+                          const acctDiff = ovisMatch.amount - qboAmount;
+                          if (Math.abs(acctDiff) >= 1.00) {
+                            accountComparison.push({
+                              name: ovisMatch.name,
+                              ovis: ovisMatch.amount,
+                              qbo: qboAmount,
+                              diff: acctDiff
+                            });
+                          }
+                        }
+                      }
+
+                      // Then, for unmatched QBO accounts, try matching by path/name
+                      for (const [qboPath, qboAmount] of qboByFullPath) {
+                        // Skip if already matched
+                        const qboItem = sectionQBOItems.find(item => {
+                          const fp = item.ancestor_path.length > 0
+                            ? [...item.ancestor_path, item.account_name].join(':')
+                            : item.account_name;
+                          return fp === qboPath;
+                        });
+                        if (qboItem?.account_id && ovisByAccountId.has(qboItem.account_id)) {
+                          continue; // Already matched by ID
+                        }
+
+                        // Try to find matching OVIS account by name
+                        let ovisMatch = ovisByName.get(qboPath);
+                        if (!ovisMatch) {
+                          // Try matching just the account name (last part)
+                          const shortName = qboPath.split(':').pop() || qboPath;
+                          ovisMatch = ovisByName.get(shortName);
+                        }
+
+                        if (ovisMatch && !matchedAccounts.has(ovisMatch.name)) {
+                          matchedAccounts.add(ovisMatch.name);
+                          const acctDiff = ovisMatch.amount - qboAmount;
+                          if (Math.abs(acctDiff) >= 1.00) {
+                            accountComparison.push({
+                              name: `${ovisMatch.name} (QBO: ${qboPath})`,
+                              ovis: ovisMatch.amount,
+                              qbo: qboAmount,
+                              diff: acctDiff
+                            });
+                          }
+                        } else if (!ovisMatch) {
+                          // QBO has account that OVIS doesn't
+                          if (Math.abs(qboAmount) >= 1.00) {
+                            accountComparison.push({
+                              name: `${qboPath} (QBO only)`,
+                              ovis: 0,
+                              qbo: qboAmount,
+                              diff: -qboAmount
+                            });
+                          }
+                        }
+                      }
+
+                      // Finally, add any OVIS accounts not matched to QBO
+                      for (const ovisAcct of ovisAccounts) {
+                        if (!matchedAccounts.has(ovisAcct.name) && Math.abs(ovisAcct.amount) >= 1.00) {
+                          accountComparison.push({
+                            name: `${ovisAcct.name} (OVIS only)`,
+                            ovis: ovisAcct.amount,
+                            qbo: 0,
+                            diff: ovisAcct.amount
+                          });
                         }
                       }
                       // Sort by absolute difference descending
