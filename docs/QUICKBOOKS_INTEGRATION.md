@@ -1199,6 +1199,278 @@ npx supabase functions deploy quickbooks-account-transactions --no-verify-jwt
 
 ---
 
+## Expense Sync (QBO → OVIS)
+
+The expense sync imports all expense transactions from QuickBooks into OVIS for P&L reporting and analysis. This is an **inbound sync** that pulls data from QBO.
+
+### Overview
+
+The expense sync:
+- Fetches Purchases, Bills, Bill Payments, Journal Entries, Deposits, Credit Card Credits, and Vendor Credits
+- Stores transactions in the `qb_expense` table
+- Handles transaction updates (upsert based on QBO transaction ID)
+- Cleans up orphaned records when transactions are deleted/voided in QBO
+- Supports pagination for large datasets (1000+ transactions)
+
+### Synced Transaction Types
+
+| Transaction Type | QBO Entity | Description |
+|-----------------|------------|-------------|
+| Purchase | Purchase | Credit card expenses, cash purchases |
+| Bill | Bill | Vendor bills (accounts payable) |
+| BillPayment | BillPayment | Payments made against bills |
+| JournalEntry | JournalEntry | Manual journal entries |
+| Deposit | Deposit | Bank deposits (often income-related) |
+| CreditCardCredit | CreditCardCredit | Credit card refunds/credits |
+| VendorCredit | VendorCredit | Vendor credits/refunds |
+
+### Edge Function
+
+#### `quickbooks-sync-expenses`
+
+**Endpoint:** `POST /functions/v1/quickbooks-sync-expenses`
+
+**Request:**
+```json
+{
+  "startDate": "2024-01-01",
+  "endDate": "2024-12-31"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Synced 1610 expense transactions (0 errors, 0 deleted)",
+  "syncedCount": 1610,
+  "errorCount": 0,
+  "deletedCount": 0,
+  "period": {
+    "startDate": "2024-01-01",
+    "endDate": "2024-12-31"
+  }
+}
+```
+
+### Database Schema
+
+#### `qb_expense` Table
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid | Primary key |
+| `qb_transaction_id` | text | QuickBooks transaction ID (unique) |
+| `transaction_type` | text | Type: 'Purchase', 'Bill', 'JournalEntry', etc. |
+| `transaction_date` | date | Date of the transaction |
+| `account_id` | text | QBO account ID |
+| `account_name` | text | Account name |
+| `vendor_id` | text | Vendor ID (if applicable) |
+| `vendor_name` | text | Vendor name |
+| `amount` | numeric | Transaction amount |
+| `memo` | text | Transaction memo/description |
+| `line_description` | text | Line item description |
+| `doc_number` | text | Document/reference number |
+| `created_at` | timestamptz | Record creation date |
+| `updated_at` | timestamptz | Last update timestamp |
+
+### Orphan Cleanup
+
+When syncing, the function identifies and deletes "orphaned" records:
+- Records in OVIS that no longer exist in QBO (deleted or voided transactions)
+- Only records within the sync date range are considered
+- Cleanup uses pagination to handle large datasets (1000+ records)
+
+### Deployment
+
+```bash
+npx supabase functions deploy quickbooks-sync-expenses --no-verify-jwt
+```
+
+---
+
+## P&L Report Integration
+
+The P&L (Profit & Loss) report integration fetches the official P&L report from QuickBooks for display in the Budget Dashboard. This is separate from expense sync - it gets the actual QBO report with proper accounting totals.
+
+### Overview
+
+The P&L integration:
+- Fetches the P&L report directly from QBO Reports API
+- Supports both **Accrual** and **Cash** accounting methods
+- Parses hierarchical account data (parent/child accounts)
+- Extracts payroll data (not available via standard Accounting API)
+- Only includes **leaf accounts** to avoid double-counting
+
+### Edge Function
+
+#### `quickbooks-sync-pl-report`
+
+**Endpoint:** `POST /functions/v1/quickbooks-sync-pl-report`
+
+**Request:**
+```json
+{
+  "startDate": "2024-01-01",
+  "endDate": "2024-12-31",
+  "accountingMethod": "Accrual"
+}
+```
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `startDate` | string | Jan 1 of current year | Start of report period |
+| `endDate` | string | Today | End of report period (inclusive) |
+| `accountingMethod` | string | "Accrual" | "Accrual" or "Cash" |
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "P&L report fetched for 2024-01-01 to 2024-12-31 (Accrual basis)",
+  "period": { "startDate": "2024-01-01", "endDate": "2024-12-31" },
+  "accountingMethod": "Accrual",
+  "lineItems": [...],
+  "payrollCOGSItems": [...],
+  "totalPayrollCOGS": 45000,
+  "payrollExpenseItems": [...],
+  "totalPayrollExpenses": 5000,
+  "totals": {
+    "income": 500000,
+    "cogs": 100000,
+    "grossProfit": 400000,
+    "expenses": 150000,
+    "operatingIncome": 250000,
+    "otherIncome": 1000,
+    "otherExpenses": 500,
+    "netIncome": 250500
+  },
+  "reportHeader": { ... }
+}
+```
+
+### Leaf-Only Account Parsing
+
+The P&L parser only includes **leaf accounts** (accounts with no children) to avoid double-counting:
+
+```
+Payroll (parent - SKIPPED, $50,000)
+├── Management (parent - SKIPPED, $30,000)
+│   ├── Salary - Mike (leaf - INCLUDED, $20,000)
+│   └── Salary - Arty (leaf - INCLUDED, $10,000)
+└── Staff (parent - SKIPPED, $20,000)
+    └── Wages (leaf - INCLUDED, $20,000)
+```
+
+This ensures totals are accurate without counting both parent roll-ups and individual items.
+
+### Payroll Extraction
+
+Payroll data is extracted separately because it's only available via the P&L Report (not via the Accounting API):
+
+- **COGS Payroll**: Wages/salaries under Cost of Goods Sold
+- **Expense Payroll**: Employer taxes (FUTA, Medicare, SS, SUTA) under Operating Expenses
+
+### Accrual vs Cash Method
+
+| Method | When Revenue is Recorded | When Expenses are Recorded |
+|--------|-------------------------|---------------------------|
+| Accrual | When earned (invoice sent) | When incurred (bill received) |
+| Cash | When cash received | When cash paid |
+
+The Budget Dashboard includes a toggle to switch between methods. Accrual shows business profitability; Cash shows actual cash flow.
+
+### Deployment
+
+```bash
+npx supabase functions deploy quickbooks-sync-pl-report --no-verify-jwt
+```
+
+---
+
+## Budget Dashboard
+
+The Budget Dashboard (`/reports/budget`) provides a comprehensive P&L view combining OVIS budget data with QuickBooks actuals.
+
+### Features
+
+- **Year Selection**: View any year's P&L data
+- **Accounting Method Toggle**: Switch between Accrual and Cash basis
+- **Real-Time QBO Sync**: Fetch latest P&L data from QuickBooks
+- **Expandable Sections**: Drill down into Income, COGS, and Operating Expenses
+- **Budget vs Actual**: Compare OVIS budgets against QBO actuals
+- **Payroll Integration**: Displays payroll costs from QBO P&L Report
+- **Edit Budgets**: Inline editing for budget amounts
+
+### P&L Structure
+
+The dashboard displays the standard P&L structure:
+
+```
+Income
+  - Consulting Income
+  - Other Income
+─────────────────────────
+Total Income
+
+Cost of Goods Sold (COGS)
+  - Broker Commissions
+  - Payroll (COGS)
+  - Referral Fees
+─────────────────────────
+Total COGS
+
+GROSS PROFIT = Income - COGS
+
+Operating Expenses
+  - Payroll Taxes
+  - Other Expenses
+─────────────────────────
+Total Operating Expenses
+
+NET PROFIT = Gross Profit - Operating Expenses
+```
+
+### Data Sources
+
+| Section | OVIS Source | QBO Source |
+|---------|-------------|------------|
+| Income | Budget categories | P&L Report line items |
+| COGS | Budget categories | P&L Report COGS section |
+| Payroll COGS | — | P&L Report (payroll under COGS) |
+| Expenses | Budget categories | P&L Report Expense section |
+| Payroll Taxes | — | P&L Report (payroll under Expenses) |
+
+### Budget Management
+
+Budgets are stored in the `budget` table:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid | Primary key |
+| `budget_category_id` | uuid | FK to budget_category |
+| `year` | integer | Budget year |
+| `amount` | numeric | Budgeted amount |
+| `created_at` | timestamptz | Creation timestamp |
+| `updated_at` | timestamptz | Last update |
+
+Budget categories are mapped to P&L sections via the `budget_category` table.
+
+### QBO Sync Flow
+
+1. User clicks "Sync QBO" button
+2. Dashboard calls `quickbooks-sync-expenses` (for transaction data)
+3. Dashboard calls `quickbooks-sync-pl-report` (for P&L totals)
+4. UI updates with latest QBO data
+5. Payroll items are merged into appropriate sections
+
+### File Location
+
+`src/pages/BudgetDashboardPage.tsx`
+
+---
+
 ## Future Enhancements
 
 Potential future features:
@@ -1207,7 +1479,10 @@ Potential future features:
 - [ ] Invoice PDF download
 - [x] Customer sync (OVIS → QuickBooks) - Completed
 - [ ] Customer sync (QuickBooks → OVIS) - Inbound sync
-- [ ] Expense/bill sync for broker payments
+- [x] Expense sync (QuickBooks → OVIS) - Completed
+- [x] P&L Report integration - Completed
+- [x] Budget Dashboard with QBO actuals - Completed
+- [ ] Cash-basis P&L view - Toggle exists, needs validation
 - [ ] Webhook integration for real-time updates
 - [ ] Automatic sync on client name change in OVIS
 - [ ] Bulk customer sync operation
