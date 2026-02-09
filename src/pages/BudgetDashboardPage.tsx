@@ -405,13 +405,38 @@ export default function BudgetDashboardPage() {
       const isIncomeSection = accountTypes.includes('Income') || accountTypes.includes('Other Income');
 
       // Helper to calculate amount for transactions with proper sign handling
+      // Journal entries need special handling based on posting type (Debit/Credit)
+      // Standard accounting rules:
+      // - Income accounts: Credits increase income, Debits decrease income
+      // - Expense/COGS accounts: Debits increase expense, Credits decrease expense
       const calculateAmount = (transactions: QBExpense[]) => {
         return transactions.reduce((sum, t) => {
           let txnAmount = t.amount;
+
+          // Handle Journal Entry transactions based on posting type
+          if (t.transaction_type.startsWith('JournalEntry-')) {
+            const isDebit = t.transaction_type === 'JournalEntry-Debit';
+            const isCredit = t.transaction_type === 'JournalEntry-Credit';
+
+            if (isIncomeSection) {
+              // Income accounts: Credits increase (+), Debits decrease (-)
+              if (isDebit) {
+                txnAmount = -txnAmount;
+              }
+              // Credits stay positive (already stored as positive)
+            } else {
+              // Expense/COGS accounts: Debits increase (+), Credits decrease (-)
+              if (isCredit) {
+                txnAmount = -txnAmount;
+              }
+              // Debits stay positive (already stored as positive)
+            }
+          }
           // For income accounts, flip the sign on Purchase/Bill transactions
-          if (isIncomeSection && (t.transaction_type === 'Purchase' || t.transaction_type === 'Bill')) {
+          else if (isIncomeSection && (t.transaction_type === 'Purchase' || t.transaction_type === 'Bill')) {
             txnAmount = -txnAmount;
           }
+
           return sum + txnAmount;
         }, 0);
       };
@@ -865,14 +890,38 @@ export default function BudgetDashboardPage() {
                       const canRecategorize = !!txn.qb_entity_type && !!txn.qb_entity_id;
                       const isRecategorizing = recategorizingExpense === txn.id;
                       const isUpdating = updatingExpense === txn.id;
-                      const isCredit = txn.amount < 0 || txn.transaction_type === 'CreditCardCredit' || txn.transaction_type === 'VendorCredit';
+                      // Check if this is a credit transaction (reduces the account balance)
+                      // For expense accounts: JournalEntry-Credit reduces expense
+                      // For income accounts: JournalEntry-Debit reduces income
+                      const isJournalEntryCredit = txn.transaction_type === 'JournalEntry-Credit' && !sectionIsIncome;
+                      const isJournalEntryDebitToIncome = txn.transaction_type === 'JournalEntry-Debit' && sectionIsIncome;
+                      const isCredit = txn.amount < 0 || txn.transaction_type === 'CreditCardCredit' || txn.transaction_type === 'VendorCredit' || isJournalEntryCredit || isJournalEntryDebitToIncome;
                       // Check if this is an unpaid Bill or Invoice
                       const isUnpaid = (txn.transaction_type === 'Bill' || txn.transaction_type === 'Invoice') && txn.is_paid === false;
                       const isPaid = (txn.transaction_type === 'Bill' || txn.transaction_type === 'Invoice') && txn.is_paid === true;
 
-                      // For income sections, flip the sign on Purchase/Bill transactions
+                      // Calculate display amount with proper sign handling
                       let displayAmount = txn.amount;
-                      if (sectionIsIncome && (txn.transaction_type === 'Purchase' || txn.transaction_type === 'Bill')) {
+
+                      // Handle Journal Entry transactions based on posting type
+                      if (txn.transaction_type.startsWith('JournalEntry-')) {
+                        const isDebit = txn.transaction_type === 'JournalEntry-Debit';
+                        const isJECredit = txn.transaction_type === 'JournalEntry-Credit';
+
+                        if (sectionIsIncome) {
+                          // Income accounts: Credits increase (+), Debits decrease (-)
+                          if (isDebit) {
+                            displayAmount = -displayAmount;
+                          }
+                        } else {
+                          // Expense/COGS accounts: Debits increase (+), Credits decrease (-)
+                          if (isJECredit) {
+                            displayAmount = -displayAmount;
+                          }
+                        }
+                      }
+                      // For income sections, flip the sign on Purchase/Bill transactions
+                      else if (sectionIsIncome && (txn.transaction_type === 'Purchase' || txn.transaction_type === 'Bill')) {
                         displayAmount = -displayAmount;
                       }
 
