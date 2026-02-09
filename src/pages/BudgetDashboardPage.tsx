@@ -452,9 +452,9 @@ export default function BudgetDashboardPage() {
           else if (isIncomeSection && (t.transaction_type === 'Purchase' || t.transaction_type === 'Bill')) {
             txnAmount = -txnAmount;
           }
-          // For income accounts, CreditCardCredit and VendorCredit are stored as negative
-          // but represent positive income (e.g., AmEx Cash Back), so flip the sign
-          else if (isIncomeSection && (t.transaction_type === 'CreditCardCredit' || t.transaction_type === 'VendorCredit')) {
+          // For income accounts, CreditCardCredit, VendorCredit, and Deposit are stored as negative
+          // but represent positive income (e.g., AmEx Cash Back, Interest Earned), so flip the sign
+          else if (isIncomeSection && (t.transaction_type === 'CreditCardCredit' || t.transaction_type === 'VendorCredit' || t.transaction_type === 'Deposit')) {
             txnAmount = -txnAmount;
           }
 
@@ -1143,7 +1143,7 @@ export default function BudgetDashboardPage() {
                       // For income accounts: JournalEntry-Debit reduces income
                       const isJournalEntryCredit = txn.transaction_type === 'JournalEntry-Credit' && !sectionIsIncome;
                       const isJournalEntryDebitToIncome = txn.transaction_type === 'JournalEntry-Debit' && sectionIsIncome;
-                      const isCredit = txn.amount < 0 || txn.transaction_type === 'CreditCardCredit' || txn.transaction_type === 'VendorCredit' || isJournalEntryCredit || isJournalEntryDebitToIncome;
+                      const isCredit = txn.amount < 0 || txn.transaction_type === 'CreditCardCredit' || txn.transaction_type === 'VendorCredit' || txn.transaction_type === 'Deposit' || isJournalEntryCredit || isJournalEntryDebitToIncome;
                       // Check if this is an unpaid Bill or Invoice
                       const isUnpaid = (txn.transaction_type === 'Bill' || txn.transaction_type === 'Invoice') && txn.is_paid === false;
                       const isPaid = (txn.transaction_type === 'Bill' || txn.transaction_type === 'Invoice') && txn.is_paid === true;
@@ -1170,6 +1170,11 @@ export default function BudgetDashboardPage() {
                       }
                       // For income sections, flip the sign on Purchase/Bill transactions
                       else if (sectionIsIncome && (txn.transaction_type === 'Purchase' || txn.transaction_type === 'Bill')) {
+                        displayAmount = -displayAmount;
+                      }
+                      // For income sections, CreditCardCredit, VendorCredit, and Deposit are stored as negative
+                      // but represent positive income, so flip the sign
+                      else if (sectionIsIncome && (txn.transaction_type === 'CreditCardCredit' || txn.transaction_type === 'VendorCredit' || txn.transaction_type === 'Deposit')) {
                         displayAmount = -displayAmount;
                       }
 
