@@ -106,16 +106,28 @@ export default function PortalInviteAcceptPage() {
       });
 
       if (signUpError) {
-        // Check for various "already exists" error messages from Supabase
+        // Log the full error for debugging
+        console.error('Signup error details:', {
+          message: signUpError.message,
+          status: signUpError.status,
+          name: signUpError.name,
+          full: signUpError
+        });
+
+        // Check for "already exists" error messages from Supabase
         const errorMsg = signUpError.message.toLowerCase();
         if (errorMsg.includes('already registered') ||
             errorMsg.includes('already been registered') ||
             errorMsg.includes('user already exists') ||
-            errorMsg.includes('email already') ||
-            signUpError.status === 422) {
+            errorMsg.includes('email already')) {
           setError('An account with this email already exists. Please sign in instead, or use "Forgot Password" if needed.');
+        } else if (errorMsg.includes('password') && errorMsg.includes('weak')) {
+          setError('Password is too weak. Please use at least 8 characters with a mix of letters and numbers.');
+        } else if (errorMsg.includes('rate limit') || errorMsg.includes('too many')) {
+          setError('Too many attempts. Please wait a few minutes and try again.');
         } else {
-          throw signUpError;
+          // Show the actual error message instead of assuming "already exists"
+          setError(signUpError.message || 'Failed to create account. Please try again.');
         }
         return;
       }
