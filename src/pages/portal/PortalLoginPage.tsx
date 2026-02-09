@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
+import { trackPortalLogin } from '../../hooks/usePortalActivityTracker';
 
 /**
  * PortalLoginPage - Login screen for portal users (clients)
@@ -51,6 +52,9 @@ export default function PortalLoginPage() {
         .from('contact')
         .update({ portal_last_login_at: new Date().toISOString() })
         .eq('id', contact.id);
+
+      // Track login event
+      await trackPortalLogin(contact.id);
 
       // Navigate to portal
       navigate('/portal');

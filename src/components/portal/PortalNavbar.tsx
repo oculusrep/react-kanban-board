@@ -3,6 +3,7 @@ import { usePortal } from '../../contexts/PortalContext';
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { trackPortalLogout } from '../../hooks/usePortalActivityTracker';
 
 interface PortalNavbarProps {
   clientLogo?: string | null;
@@ -107,6 +108,7 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
   };
 
   const handleSignOut = async () => {
+    await trackPortalLogout();
     await signOut();
     navigate('/');
   };
@@ -147,6 +149,11 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
 
   const handleNavigateToCRM = () => {
     navigate('/master-pipeline');
+    setMenuOpen(false);
+  };
+
+  const handleNavigateToAnalytics = () => {
+    navigate('/admin/portal-analytics');
     setMenuOpen(false);
   };
 
@@ -243,6 +250,15 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
                       )}
                     </button>
                     <div className="border-t border-gray-200 my-1"></div>
+                    <button
+                      onClick={handleNavigateToAnalytics}
+                      className="w-full px-4 py-2 text-left flex items-center space-x-2 hover:bg-gray-100 text-gray-700"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                      <span>Portal Analytics</span>
+                    </button>
                     <button
                       onClick={handleNavigateToCRM}
                       className="w-full px-4 py-2 text-left flex items-center space-x-2 hover:bg-gray-100 text-gray-700"

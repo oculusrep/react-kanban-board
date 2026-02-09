@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { usePortal } from '../../contexts/PortalContext';
+import { usePortalActivityTracker } from '../../hooks/usePortalActivityTracker';
 import GoogleMapContainer from '../../components/mapping/GoogleMapContainer';
 import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../../components/mapping/layers/SiteSubmitLayer';
 import SiteSubmitLegend from '../../components/mapping/SiteSubmitLegend';
@@ -48,6 +49,7 @@ const PORTAL_VISIBLE_STAGES = [
 export default function PortalMapPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { selectedClientId, accessibleClients, isInternalUser, viewMode } = usePortal();
+  const { trackEvent } = usePortalActivityTracker();
 
   // Show broker features only when internal user AND in broker view mode
   const showBrokerFeatures = isInternalUser && viewMode === 'broker';

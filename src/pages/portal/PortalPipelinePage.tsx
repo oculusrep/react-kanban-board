@@ -5,6 +5,7 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import PortalDetailSidebar from '../../components/portal/PortalDetailSidebar';
 import StatusBadgeDropdown from '../../components/portal/StatusBadgeDropdown';
+import { usePortalActivityTracker } from '../../hooks/usePortalActivityTracker';
 
 interface SiteSubmit {
   id: string;
@@ -81,6 +82,7 @@ export default function PortalPipelinePage() {
   const { selectedClient, selectedClientId, accessibleClients, isInternalUser, viewMode } = usePortal();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  usePortalActivityTracker(); // Auto-tracks page views
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmit[]>([]);
   const [stages, setStages] = useState<SubmitStage[]>([]);
   const [loading, setLoading] = useState(true);
