@@ -165,9 +165,11 @@ Deno.serve(async (req) => {
     )
 
     console.log('P&L Report received, parsing...')
+    console.log(`Report period: ${report.Header?.StartPeriod} to ${report.Header?.EndPeriod}`)
 
     // Parse the report into line items
     const lineItems: PLLineItem[] = []
+    let skippedParentAccounts = 0  // Track parent accounts we skip to avoid double-counting
     let currentSection = ''
 
     // Recursive function to parse report rows
@@ -196,6 +198,16 @@ Deno.serve(async (req) => {
         // IMPORTANT: Only include LEAF accounts (no children) to avoid double-counting
         // Parent accounts show rolled-up totals that include their children's amounts
         const hasChildren = row.Rows?.Row && row.Rows.Row.length > 0
+
+        if (row.ColData && row.ColData.length >= 2 && hasChildren) {
+          // Log parent accounts we're skipping to avoid double-counting
+          const skippedName = row.ColData[0]?.value || ''
+          const skippedAmount = row.ColData[1]?.value || '0'
+          if (skippedName && !skippedName.startsWith('Total ')) {
+            console.log(`Skipping parent account: ${skippedName} ($${skippedAmount}) - has children`)
+            skippedParentAccounts++
+          }
+        }
 
         if (row.ColData && row.ColData.length >= 2 && !hasChildren) {
           const accountName = row.ColData[0]?.value || ''
@@ -235,6 +247,8 @@ Deno.serve(async (req) => {
     if (report.Rows?.Row) {
       parseRows(report.Rows.Row)
     }
+
+    console.log(`Parsed ${lineItems.length} leaf accounts, skipped ${skippedParentAccounts} parent accounts`)
 
     // Calculate totals by section
     const totals = {
