@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { RefreshCw, Download, ChevronDown, ChevronUp, ShieldAlert } from 'lucide-react';
+import { RefreshCw, Download, ChevronDown, ChevronUp, ShieldAlert, Trash2 } from 'lucide-react';
 import { usePermissions } from '../../hooks/usePermissions';
 
 interface TransactionLine {
@@ -65,6 +65,10 @@ export default function ArtyDrawReport() {
 
   // Sort state
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Delete state
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Fetch Arty's commission mapping to get the draw account
   useEffect(() => {
@@ -227,6 +231,66 @@ export default function ArtyDrawReport() {
     setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
   };
 
+  // Delete a transaction from QBO
+  const handleDeleteTransaction = async (txn: TransactionLine) => {
+    // Map display type to QBO entity type
+    const typeMapping: Record<string, string> = {
+      'Journal Entry': 'JournalEntry',
+      'Bill': 'Bill',
+      'Check': 'Check',
+      'Expense': 'Purchase',
+      'Credit Card Expense': 'Purchase',
+    };
+
+    const qbEntityType = typeMapping[txn.type];
+    if (!qbEntityType) {
+      setDeleteError(`Cannot delete transaction type: ${txn.type}`);
+      return;
+    }
+
+    // Confirm deletion
+    const confirmed = window.confirm(
+      `Are you sure you want to delete this ${txn.type}?\n\n` +
+      `Date: ${formatDate(txn.date)}\n` +
+      `Doc #: ${txn.docNumber || 'N/A'}\n` +
+      `Amount: ${txn.debit > 0 ? formatCurrency(txn.debit) : formatCurrency(txn.credit)}\n\n` +
+      `This will permanently delete the entry from QuickBooks.`
+    );
+
+    if (!confirmed) return;
+
+    setDeletingId(txn.id);
+    setDeleteError(null);
+
+    try {
+      const { data: result, error: funcError } = await supabase.functions.invoke(
+        'quickbooks-delete-transaction',
+        {
+          body: {
+            entityType: qbEntityType,
+            entityId: txn.id,
+          }
+        }
+      );
+
+      if (funcError) {
+        throw new Error(funcError.message);
+      }
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to delete transaction');
+      }
+
+      // Refresh the transactions list
+      await fetchTransactions();
+    } catch (err) {
+      console.error('Error deleting transaction:', err);
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete transaction');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   // Show loading while checking permissions
   if (permLoading) {
     return (
@@ -364,6 +428,21 @@ export default function ArtyDrawReport() {
         </div>
       </div>
 
+      {/* Delete Error */}
+      {deleteError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between">
+          <div className="text-red-700">
+            <span className="font-medium">Error: </span>{deleteError}
+          </div>
+          <button
+            onClick={() => setDeleteError(null)}
+            className="text-red-500 hover:text-red-700"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Transactions Table */}
       <div className="bg-white rounded-lg shadow">
         <div className="px-6 py-4 border-b border-gray-200">
@@ -395,12 +474,13 @@ export default function ArtyDrawReport() {
                 <th className="px-4 py-3 text-right text-xs font-medium text-green-600 uppercase bg-green-50">Draws (Debit)</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-purple-600 uppercase bg-purple-50">Credits</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Balance</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase w-16"></th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {sortedTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
                     No transactions found for the selected date range.
                   </td>
                 </tr>
@@ -451,6 +531,22 @@ export default function ArtyDrawReport() {
                     <td className="px-4 py-3 text-sm text-right font-medium text-gray-900">
                       {formatCurrency(txn.balance)}
                     </td>
+                    <td className="px-4 py-3 text-center">
+                      {['Journal Entry', 'Bill'].includes(txn.type) && (
+                        <button
+                          onClick={() => handleDeleteTransaction(txn)}
+                          disabled={deletingId === txn.id}
+                          className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                          title={`Delete this ${txn.type}`}
+                        >
+                          {deletingId === txn.id ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))
               )}
@@ -468,6 +564,7 @@ export default function ArtyDrawReport() {
                   <td className="px-4 py-3 text-sm text-right font-semibold">
                     {formatCurrency(data?.currentBalance || 0)}
                   </td>
+                  <td></td>
                 </tr>
               </tfoot>
             )}
