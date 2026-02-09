@@ -193,7 +193,11 @@ Deno.serve(async (req) => {
         }
 
         // Data rows (actual account lines)
-        if (row.ColData && row.ColData.length >= 2) {
+        // IMPORTANT: Only include LEAF accounts (no children) to avoid double-counting
+        // Parent accounts show rolled-up totals that include their children's amounts
+        const hasChildren = row.Rows?.Row && row.Rows.Row.length > 0
+
+        if (row.ColData && row.ColData.length >= 2 && !hasChildren) {
           const accountName = row.ColData[0]?.value || ''
           const accountId = row.ColData[0]?.id || null
           const amountStr = row.ColData[1]?.value || '0'
