@@ -120,6 +120,10 @@ export default function BudgetDashboardPage() {
   const [updatingExpense, setUpdatingExpense] = useState<string | null>(null);
   const [payrollCOGSItems, setPayrollCOGSItems] = useState<PayrollItem[]>([]);
   const [payrollCOGSTotal, setPayrollCOGSTotal] = useState<number>(0);
+  // Payroll expense items (employer taxes: FUTA, Medicare, Social Security, SUTA)
+  // These are under "Taxes and Licenses" in QBO but only available via Reports API, not Accounting API
+  const [payrollExpenseItems, setPayrollExpenseItems] = useState<PayrollItem[]>([]);
+  const [payrollExpenseTotal, setPayrollExpenseTotal] = useState<number>(0);
   const [loadingPayroll, setLoadingPayroll] = useState(false);
   // QBO P&L totals for comparison/validation
   const [qboTotals, setQboTotals] = useState<{
@@ -337,7 +341,10 @@ export default function BudgetDashboardPage() {
         // COGS payroll (wages/salary) - these aren't available via Accounting API
         setPayrollCOGSItems(result.payrollCOGSItems || []);
         setPayrollCOGSTotal(result.totalPayrollCOGS || 0);
-        // Note: Payroll expense taxes are synced via normal expense sync (Taxes & Licenses)
+        // Payroll expense taxes (FUTA, Medicare, SS, SUTA) - also only available via Reports API
+        // These appear under "Taxes and Licenses" in QBO but aren't exposed via Accounting API
+        setPayrollExpenseItems(result.payrollExpenseItems || []);
+        setPayrollExpenseTotal(result.totalPayrollExpenses || 0);
         // QBO totals for validation
         if (result.totals) {
           setQboTotals({
@@ -1142,9 +1149,9 @@ export default function BudgetDashboardPage() {
   // Include payroll wages from Reports API in COGS total
   const totalCOGS = (cogsSection?.total || 0) + payrollCOGSTotal;
   const grossProfit = totalIncome - totalCOGS;
-  // Payroll taxes (employer taxes) are synced as part of Taxes & Licenses category
-  // via the normal expense sync, so we don't need to add them separately
-  const totalExpenses = expenseSection?.total || 0;
+  // Include payroll taxes (employer taxes: FUTA, Medicare, SS, SUTA) from Reports API
+  // These are under "Taxes and Licenses" in QBO but only available via Reports API, not Accounting API
+  const totalExpenses = (expenseSection?.total || 0) + payrollExpenseTotal;
   const operatingIncome = grossProfit - totalExpenses;
   const totalOtherIncome = otherIncomeSection?.total || 0;
   const totalOtherExpenses = otherExpenseSection?.total || 0;
@@ -1401,19 +1408,62 @@ export default function BudgetDashboardPage() {
                 </tr>
 
                 {/* Expenses Section */}
-                {expenseSection && expenseSection.categories.length > 0 && (
+                {((expenseSection && expenseSection.categories.length > 0) || payrollExpenseItems.length > 0) && (
                   <>
                     <tr className="bg-red-50/50">
                       <td colSpan={5} className="px-4 py-3 font-bold text-red-800 text-base">
                         Operating Expenses
                       </td>
                     </tr>
-                    {expenseSection.categories.map(cat => renderCategory(cat, false))}
+                    {expenseSection?.categories.map(cat => renderCategory(cat, false))}
+
+                    {/* Payroll taxes (FUTA, Medicare, SS, SUTA) from QBO Reports API (read-only) */}
+                    {payrollExpenseItems.length > 0 && (
+                      <>
+                        <tr className="hover:bg-gray-50">
+                          <td className="py-2 pr-4" style={{ paddingLeft: '16px' }}>
+                            <div className="flex items-center gap-2">
+                              <span className="w-5" />
+                              <span className="font-semibold text-gray-900">Payroll Taxes</span>
+                              <span className="text-xs text-gray-400 italic">(from QBO Payroll)</span>
+                            </div>
+                          </td>
+                          <td className="py-2 text-right tabular-nums font-semibold">
+                            {formatCurrency(payrollExpenseTotal)}
+                          </td>
+                          <td className="py-2 text-right tabular-nums text-gray-500">-</td>
+                          <td className="py-2 text-right tabular-nums"></td>
+                          <td className="py-2 pl-4 text-center w-20"></td>
+                        </tr>
+                        {/* Show individual payroll tax line items indented */}
+                        {payrollExpenseItems.map((item, idx) => (
+                          <tr key={`payroll-expense-${idx}`} className="hover:bg-gray-50 text-sm">
+                            <td className="py-1 pr-4" style={{ paddingLeft: '64px' }}>
+                              <span className="text-gray-600">{item.account_name}</span>
+                            </td>
+                            <td className="py-1 text-right tabular-nums text-gray-700">
+                              {formatCurrency(item.amount)}
+                            </td>
+                            <td className="py-1 text-right tabular-nums text-gray-400">-</td>
+                            <td className="py-1"></td>
+                            <td className="py-1"></td>
+                          </tr>
+                        ))}
+                      </>
+                    )}
+
+                    {loadingPayroll && payrollExpenseItems.length === 0 && expenseSection && expenseSection.categories.length > 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-2 text-center text-sm text-gray-500 italic">
+                          Loading payroll tax data...
+                        </td>
+                      </tr>
+                    )}
 
                     <tr className="border-t-2 border-red-200 bg-red-50/30">
                       <td className="px-4 py-2 font-bold text-red-800">Total Operating Expenses</td>
                       <td className="px-4 py-2 text-right font-bold text-red-800 tabular-nums">{formatCurrency(totalExpenses)}</td>
-                      <td className="px-4 py-2 text-right font-bold text-red-700 tabular-nums">{expenseSection.budgetTotal > 0 ? formatCurrency(expenseSection.budgetTotal) : '-'}</td>
+                      <td className="px-4 py-2 text-right font-bold text-red-700 tabular-nums">{expenseSection?.budgetTotal && expenseSection.budgetTotal > 0 ? formatCurrency(expenseSection.budgetTotal) : '-'}</td>
                       <td colSpan={2}></td>
                     </tr>
                   </>
@@ -1819,6 +1869,12 @@ export default function BudgetDashboardPage() {
             </div>
             {loadingPayroll && (
               <p className="text-xs text-gray-500 mt-2 italic">Loading QBO comparison data...</p>
+            )}
+            {(payrollCOGSItems.length > 0 || payrollExpenseItems.length > 0) && (
+              <p className="text-xs text-gray-500 mt-2">
+                ℹ️ Payroll items (wages, employer taxes) are sourced from QBO Reports API, not transaction sync.
+                These appear in totals but may show as "(QBO only)" in account details.
+              </p>
             )}
           </div>
         )}
