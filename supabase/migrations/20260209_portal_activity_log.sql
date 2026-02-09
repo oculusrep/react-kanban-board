@@ -49,7 +49,7 @@ CREATE POLICY "Admins can view all portal activity"
     EXISTS (
       SELECT 1 FROM public."user" u
       WHERE u.auth_user_id = auth.uid()
-      AND u.role IN ('admin', 'broker_full', 'broker_limited')
+      AND u.ovis_role IN ('admin', 'broker_full', 'broker_limited')
     )
   );
 
