@@ -250,13 +250,6 @@ Deno.serve(async (req) => {
 
     console.log(`Parsed ${lineItems.length} leaf accounts, skipped ${skippedParentAccounts} parent accounts`)
 
-    // Log section distribution for debugging
-    const sectionCounts: Record<string, number> = {}
-    for (const item of lineItems) {
-      sectionCounts[item.section] = (sectionCounts[item.section] || 0) + 1
-    }
-    console.log('Line items by section:', JSON.stringify(sectionCounts))
-
     // Calculate totals by section
     const totals = {
       income: 0,
@@ -283,12 +276,8 @@ Deno.serve(async (req) => {
         case 'Other Expense':
           totals.otherExpense += item.amount
           break
-        default:
-          console.log(`Unknown section for ${item.account_name}: "${item.section}" ($${item.amount})`)
       }
     }
-
-    console.log('Calculated totals:', JSON.stringify(totals))
 
     const grossProfit = totals.income - totals.cogs
     const operatingIncome = grossProfit - totals.expense
