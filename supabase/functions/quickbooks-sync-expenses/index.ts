@@ -1133,46 +1133,71 @@ Deno.serve(async (req) => {
     try {
       console.log(`Checking for deleted transactions (${syncedTransactionIds.size} transactions synced)...`)
 
-      // Get all OVIS records in the sync date range
-      const { data: existingRecords, error: fetchError } = await supabaseClient
-        .from('qb_expense')
-        .select('id, qb_transaction_id')
-        .gte('transaction_date', startDate)
+      // Get all OVIS records in the sync date range with pagination
+      // Supabase default limit is 1000, so we need to paginate to get all records
+      const orphanedIds: string[] = []
+      const CLEANUP_PAGE_SIZE = 1000
+      let cleanupOffset = 0
+      let totalExistingRecords = 0
 
-      if (fetchError) {
-        console.error('Error fetching existing records for cleanup:', fetchError)
-      } else if (existingRecords) {
+      while (true) {
+        const { data: existingRecords, error: fetchError } = await supabaseClient
+          .from('qb_expense')
+          .select('id, qb_transaction_id')
+          .gte('transaction_date', startDate)
+          .range(cleanupOffset, cleanupOffset + CLEANUP_PAGE_SIZE - 1)
+
+        if (fetchError) {
+          console.error('Error fetching existing records for cleanup:', fetchError)
+          break
+        }
+
+        if (!existingRecords || existingRecords.length === 0) {
+          break
+        }
+
+        totalExistingRecords += existingRecords.length
+
         // Find records that exist in OVIS but weren't in this sync (deleted from QBO)
-        const orphanedIds: string[] = []
         for (const record of existingRecords) {
           if (!syncedTransactionIds.has(record.qb_transaction_id)) {
             orphanedIds.push(record.id)
+            console.log(`Orphaned record found: ${record.qb_transaction_id}`)
           }
         }
 
-        if (orphanedIds.length > 0) {
-          console.log(`Found ${orphanedIds.length} orphaned records to delete...`)
-
-          // Delete in batches of 100 to avoid hitting limits
-          const BATCH_SIZE = 100
-          for (let i = 0; i < orphanedIds.length; i += BATCH_SIZE) {
-            const batch = orphanedIds.slice(i, i + BATCH_SIZE)
-            const { error: deleteError } = await supabaseClient
-              .from('qb_expense')
-              .delete()
-              .in('id', batch)
-
-            if (deleteError) {
-              console.error('Error deleting orphaned records:', deleteError)
-              errorCount++
-            } else {
-              deletedCount += batch.length
-            }
-          }
-          console.log(`Deleted ${deletedCount} orphaned records (transactions deleted/voided in QBO)`)
-        } else {
-          console.log('No orphaned records found - OVIS is in sync with QBO')
+        // If we got fewer than page size, we've reached the end
+        if (existingRecords.length < CLEANUP_PAGE_SIZE) {
+          break
         }
+
+        cleanupOffset += CLEANUP_PAGE_SIZE
+      }
+
+      console.log(`Scanned ${totalExistingRecords} existing OVIS records`)
+
+      if (orphanedIds.length > 0) {
+        console.log(`Found ${orphanedIds.length} orphaned records to delete...`)
+
+        // Delete in batches of 100 to avoid hitting limits
+        const DELETE_BATCH_SIZE = 100
+        for (let i = 0; i < orphanedIds.length; i += DELETE_BATCH_SIZE) {
+          const batch = orphanedIds.slice(i, i + DELETE_BATCH_SIZE)
+          const { error: deleteError } = await supabaseClient
+            .from('qb_expense')
+            .delete()
+            .in('id', batch)
+
+          if (deleteError) {
+            console.error('Error deleting orphaned records:', deleteError)
+            errorCount++
+          } else {
+            deletedCount += batch.length
+          }
+        }
+        console.log(`Deleted ${deletedCount} orphaned records (transactions deleted/voided in QBO)`)
+      } else {
+        console.log('No orphaned records found - OVIS is in sync with QBO')
       }
     } catch (err: any) {
       console.error('Error during cleanup:', err.message)
