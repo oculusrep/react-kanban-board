@@ -643,14 +643,14 @@ export default function BudgetDashboardPage() {
         console.warn('Items sync failed:', itemsResult.error);
       }
 
-      // 3. Sync Transactions
+      // 3. Sync Transactions (always sync from 2024 for full data and proper orphan cleanup)
       setMessage({ type: 'success', text: 'Syncing transactions...' });
       const expensesResponse = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quickbooks-sync-expenses`,
         {
           method: 'POST',
           headers,
-          body: JSON.stringify({ startDate: `${selectedYear}-01-01` })
+          body: JSON.stringify({ startDate: '2024-01-01' })
         }
       );
       const expensesResult = await expensesResponse.json();
