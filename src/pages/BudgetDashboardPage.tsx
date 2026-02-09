@@ -316,12 +316,13 @@ export default function BudgetDashboardPage() {
 
       if (selectedMonth !== null) {
         startDate = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
-        const nextMonth = selectedMonth === 11 ? 0 : selectedMonth + 1;
-        const nextYear = selectedMonth === 11 ? selectedYear + 1 : selectedYear;
-        endDate = `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-01`;
+        // QBO Reports API uses INCLUSIVE end dates, so use last day of month
+        const lastDayOfMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+        endDate = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${lastDayOfMonth}`;
       } else {
         startDate = `${selectedYear}-01-01`;
-        endDate = `${selectedYear + 1}-01-01`;
+        // QBO Reports API uses INCLUSIVE end dates, so use Dec 31 not Jan 1 of next year
+        endDate = `${selectedYear}-12-31`;
       }
 
       const response = await fetch(
