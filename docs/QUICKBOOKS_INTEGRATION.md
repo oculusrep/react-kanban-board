@@ -1112,6 +1112,93 @@ Then redeploy Edge Functions and reconnect to sandbox QuickBooks account.
 
 ---
 
+## Commission Entry Management
+
+When broker payments are marked as "paid" in OVIS, the system can automatically create accounting entries in QuickBooks. This supports both Bills (for vendor payments) and Journal Entries (for draw accounts).
+
+### Overview
+
+The commission entry system:
+- Creates Bills or Journal Entries when a payment split is marked "paid"
+- Deletes the corresponding entry when a payment split is unmarked (unchecked)
+- Tracks all entries in the `qb_commission_entry` table
+- Prevents duplicate entries for the same payment split
+
+### Commission Mapping Configuration
+
+Each broker can have a commission mapping that determines how their payments are recorded:
+
+| Field | Description |
+|-------|-------------|
+| `broker_id` | The broker this mapping applies to |
+| `entity_type` | Always `broker` |
+| `payment_method` | `bill` (creates a Bill) or `journal_entry` (creates a Journal Entry) |
+| `qb_vendor_id` | QuickBooks Vendor ID for the broker |
+| `qb_debit_account_id` | Account to debit (expense account) |
+| `qb_credit_account_id` | Account to credit (for journal entries - typically a draw account) |
+| `description_template` | Template for line descriptions (supports `{deal_name}`, `{payment_name}`, `{broker_name}`, `{payment_date}`) |
+
+### Journal Entry Numbering
+
+Journal entries created by OVIS use a sequential numbering system:
+
+- **Format**: `OVIS-XXX` (e.g., `OVIS-100`, `OVIS-101`, `OVIS-102`)
+- **Starting Number**: 100
+- **Sequence Logic**: The system queries `qb_commission_entry` for the highest existing `OVIS-` prefixed doc number and increments by 1
+
+This numbering makes OVIS-generated journal entries easily identifiable in QuickBooks.
+
+### Edge Functions
+
+| Function | Purpose |
+|----------|---------|
+| `quickbooks-create-commission-entry` | Creates Bill or Journal Entry when payment is marked paid |
+| `quickbooks-delete-commission-entry` | Deletes Bill or Journal Entry when payment is unmarked |
+| `quickbooks-delete-transaction` | Generic deletion for any QBO entity type |
+| `quickbooks-account-transactions` | Fetches General Ledger transactions for account reports |
+
+### Database Tables
+
+#### `qb_commission_mapping`
+
+Configures how commission payments should be recorded in QBO.
+
+#### `qb_commission_entry`
+
+Tracks commission entries created in QBO.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `payment_split_id` | uuid | Reference to the payment split |
+| `commission_mapping_id` | uuid | Reference to the mapping used |
+| `qb_entity_type` | text | `Bill` or `JournalEntry` |
+| `qb_entity_id` | text | QuickBooks entity ID |
+| `qb_doc_number` | text | Document number (e.g., `OVIS-100`) |
+| `amount` | numeric | Commission amount |
+| `transaction_date` | date | Date of the transaction |
+| `status` | text | `created` or `voided` |
+| `created_by_id` | uuid | User who created the entry |
+
+### Arty's Draw Account Report
+
+Located at **Reports > Arty's Draw Account**, this report displays:
+- All transactions from a broker's draw account in QBO
+- Draws (debits) and Credits (commissions earned)
+- Running balance
+- Delete button for Journal Entries and Bills created by OVIS
+
+### Deployment
+
+Deploy commission-related Edge Functions:
+```bash
+npx supabase functions deploy quickbooks-create-commission-entry --no-verify-jwt
+npx supabase functions deploy quickbooks-delete-commission-entry --no-verify-jwt
+npx supabase functions deploy quickbooks-delete-transaction --no-verify-jwt
+npx supabase functions deploy quickbooks-account-transactions --no-verify-jwt
+```
+
+---
+
 ## Future Enhancements
 
 Potential future features:
