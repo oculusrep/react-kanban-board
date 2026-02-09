@@ -1884,9 +1884,9 @@ export default function BudgetDashboardPage() {
                           <tr className="text-gray-500">
                             <th className="text-left py-1">Date</th>
                             <th className="text-left py-1">Type</th>
+                            <th className="text-left py-1">Transaction ID</th>
                             <th className="text-left py-1">Vendor</th>
                             <th className="text-left py-1">Description</th>
-                            <th className="text-left py-1">Account (ID)</th>
                             <th className="text-right py-1">Amount</th>
                           </tr>
                         </thead>
@@ -1895,12 +1895,12 @@ export default function BudgetDashboardPage() {
                             <tr key={idx} className="border-t border-blue-100">
                               <td className="py-1">{formatDate(txn.transaction_date)}</td>
                               <td className="py-1">{txn.transaction_type}</td>
+                              <td className="py-1 truncate max-w-[180px] font-mono text-[10px]" title={txn.qb_transaction_id}>
+                                {txn.qb_transaction_id}
+                              </td>
                               <td className="py-1 truncate max-w-[100px]">{txn.vendor_name || '-'}</td>
                               <td className="py-1 truncate max-w-[150px]" title={txn.description || undefined}>
                                 {txn.description || '-'}
-                              </td>
-                              <td className="py-1 truncate max-w-[150px]" title={`ID: ${txn.account_id}`}>
-                                {txn.account_name} <span className="text-gray-400">({txn.account_id})</span>
                               </td>
                               <td className="py-1 text-right font-medium">{formatCurrency(txn.amount)}</td>
                             </tr>
@@ -1908,7 +1908,7 @@ export default function BudgetDashboardPage() {
                         </tbody>
                         <tfoot className="border-t border-blue-200 font-medium">
                           <tr>
-                            <td colSpan={5} className="py-1 text-right">Total:</td>
+                            <td colSpan={5} className="py-1 text-right">Total (these should be deleted by sync cleanup):</td>
                             <td className="py-1 text-right text-blue-700">
                               {formatCurrency(comparisonData.onlyInOvis.reduce((sum, t) => sum + t.amount, 0))}
                             </td>
