@@ -146,7 +146,7 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
 
             {/* Dropdown Menu */}
             {menuOpen && (
-              <div className="absolute left-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 z-[10001]">
+              <div className="absolute left-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 z-[10010]">
                 <button
                   onClick={handleNavigateToMap}
                   className={`w-full px-4 py-2 text-left flex items-center space-x-2 hover:bg-gray-100 ${
@@ -283,7 +283,7 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
 
               {/* Client Dropdown */}
               {clientMenuOpen && (
-                <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg py-1 z-[10001] max-h-80 overflow-y-auto">
+                <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg py-1 z-[10010] max-h-80 overflow-y-auto">
                   <div className="px-4 py-2 border-b border-gray-200">
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Switch Client</p>
                   </div>
@@ -387,7 +387,7 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
 
               {/* User Dropdown */}
               {userMenuOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg py-1 z-[10001]">
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg py-1 z-[10010]">
                   <div className="px-4 py-2 border-b border-gray-200">
                     <p className="text-sm font-medium text-gray-900">
                       {userProfile?.first_name} {userProfile?.last_name}
