@@ -134,6 +134,16 @@ export default function BudgetDashboardPage() {
   const [qboLineItems, setQboLineItems] = useState<QBOLineItem[]>([]);
   // Which validation sections are expanded to show details
   const [expandedValidation, setExpandedValidation] = useState<Set<string>>(new Set());
+  // Transaction-level comparison for specific accounts
+  const [comparingAccount, setComparingAccount] = useState<{ name: string; qbId: string } | null>(null);
+  const [comparisonData, setComparisonData] = useState<{
+    ovisTransactions: QBExpense[];
+    qboTransactions: { date: string; type: string; docNumber: string | null; name: string | null; memo: string | null; debit: number; credit: number }[];
+    onlyInOvis: QBExpense[];
+    onlyInQbo: { date: string; type: string; docNumber: string | null; name: string | null; memo: string | null; debit: number; credit: number }[];
+    matched: { ovis: QBExpense; qbo: { date: string; type: string; docNumber: string | null; name: string | null; memo: string | null; debit: number; credit: number } }[];
+  } | null>(null);
+  const [loadingComparison, setLoadingComparison] = useState(false);
 
   // Date filter state
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
@@ -775,6 +785,114 @@ export default function BudgetDashboardPage() {
     const [year, month, day] = dateString.split('-').map(Number);
     const date = new Date(year, month - 1, day); // month is 0-indexed
     return date.toLocaleDateString();
+  };
+
+  // Compare transactions between OVIS and QBO for a specific account
+  const compareAccountTransactions = async (accountName: string, qbAccountId: string) => {
+    setComparingAccount({ name: accountName, qbId: qbAccountId });
+    setLoadingComparison(true);
+    setComparisonData(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setMessage({ type: 'error', text: 'You must be logged in' });
+        return;
+      }
+
+      // Build date range
+      let startDate: string;
+      let endDate: string;
+      if (selectedMonth !== null) {
+        startDate = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
+        const nextMonth = selectedMonth === 11 ? 0 : selectedMonth + 1;
+        const nextYear = selectedMonth === 11 ? selectedYear + 1 : selectedYear;
+        endDate = `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-01`;
+      } else {
+        startDate = `${selectedYear}-01-01`;
+        endDate = `${selectedYear + 1}-01-01`;
+      }
+
+      // Fetch QBO transactions for this account
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/quickbooks-account-transactions`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            accountId: qbAccountId,
+            accountName: accountName,
+            startDate,
+            endDate: endDate.replace(/-01$/, '-31') // End of period
+          })
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch QBO transactions');
+      }
+
+      const qboData = await response.json();
+      const qboTransactions = qboData.transactions || [];
+
+      // Get OVIS transactions for this account from the current expenses state
+      const ovisTransactions = expenses.filter(e => {
+        // Match by account_id or account_name
+        if (e.account_id === qbAccountId) return true;
+        // Also check if the account name matches (for hierarchical accounts like "Bank Charges:Interest Expense")
+        const qbAccount = accounts.find(a => a.qb_account_id === qbAccountId);
+        if (qbAccount && e.account_name === qbAccount.name) return true;
+        if (qbAccount && e.account_id === qbAccount.qb_account_id) return true;
+        return false;
+      });
+
+      // Match transactions by date and amount (approximate matching)
+      const matched: { ovis: QBExpense; qbo: typeof qboTransactions[0] }[] = [];
+      const usedQboIndices = new Set<number>();
+      const usedOvisIndices = new Set<number>();
+
+      // Try to match each OVIS transaction to a QBO transaction
+      ovisTransactions.forEach((ovisTxn, ovisIdx) => {
+        const ovisDate = ovisTxn.transaction_date;
+        const ovisAmount = Math.abs(ovisTxn.amount);
+
+        for (let qboIdx = 0; qboIdx < qboTransactions.length; qboIdx++) {
+          if (usedQboIndices.has(qboIdx)) continue;
+          const qboTxn = qboTransactions[qboIdx];
+          const qboDate = qboTxn.date;
+          const qboAmount = qboTxn.debit > 0 ? qboTxn.debit : qboTxn.credit;
+
+          // Match by date and amount (within $0.01)
+          if (ovisDate === qboDate && Math.abs(ovisAmount - qboAmount) < 0.02) {
+            matched.push({ ovis: ovisTxn, qbo: qboTxn });
+            usedQboIndices.add(qboIdx);
+            usedOvisIndices.add(ovisIdx);
+            break;
+          }
+        }
+      });
+
+      // Find unmatched transactions
+      const onlyInOvis = ovisTransactions.filter((_, idx) => !usedOvisIndices.has(idx));
+      const onlyInQbo = qboTransactions.filter((_: any, idx: number) => !usedQboIndices.has(idx));
+
+      setComparisonData({
+        ovisTransactions,
+        qboTransactions,
+        onlyInOvis,
+        onlyInQbo,
+        matched
+      });
+
+    } catch (error: any) {
+      console.error('Error comparing transactions:', error);
+      setMessage({ type: 'error', text: error.message || 'Failed to compare transactions' });
+    } finally {
+      setLoadingComparison(false);
+    }
   };
 
   // Render a category row with proper indentation
@@ -1543,10 +1661,15 @@ export default function BudgetDashboardPage() {
                                         <th className="text-right py-1 font-medium text-gray-600 w-24">OVIS</th>
                                         <th className="text-right py-1 font-medium text-gray-600 w-24">QBO</th>
                                         <th className="text-right py-1 font-medium text-gray-600 w-24">Diff</th>
+                                        <th className="text-center py-1 font-medium text-gray-600 w-20">Action</th>
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {accountComparison.map((acct, idx) => (
+                                      {accountComparison.map((acct, idx) => {
+                                        // Find the QBO account ID for this account
+                                        const qbAccount = accounts.find(a => a.fully_qualified_name === acct.name);
+                                        const qbAccountId = qbAccount?.qb_account_id;
+                                        return (
                                         <tr key={idx} className="border-b border-gray-100">
                                           <td className="py-1 text-gray-800 truncate max-w-xs" title={acct.name}>
                                             {acct.name}
@@ -1560,8 +1683,22 @@ export default function BudgetDashboardPage() {
                                           <td className={`py-1 text-right tabular-nums font-medium ${acct.diff > 0 ? 'text-blue-600' : 'text-red-600'}`}>
                                             {formatCurrency(acct.diff, true)}
                                           </td>
+                                          <td className="py-1 text-center">
+                                            {qbAccountId && (
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  compareAccountTransactions(acct.name, qbAccountId);
+                                                }}
+                                                className="text-xs text-blue-600 hover:text-blue-800 underline"
+                                              >
+                                                Compare
+                                              </button>
+                                            )}
+                                          </td>
                                         </tr>
-                                      ))}
+                                        );
+                                      })}
                                     </tbody>
                                   </table>
                                 </div>
@@ -1580,6 +1717,156 @@ export default function BudgetDashboardPage() {
             </div>
             {loadingPayroll && (
               <p className="text-xs text-gray-500 mt-2 italic">Loading QBO comparison data...</p>
+            )}
+          </div>
+        )}
+
+        {/* Transaction-Level Comparison Modal */}
+        {comparingAccount && (
+          <div className="mt-6 bg-white rounded-lg shadow p-4 border-2 border-blue-200">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700">
+                Transaction Comparison: {comparingAccount.name}
+              </h3>
+              <button
+                onClick={() => {
+                  setComparingAccount(null);
+                  setComparisonData(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {loadingComparison ? (
+              <div className="flex items-center gap-2 text-gray-500">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                <span>Loading comparison data...</span>
+              </div>
+            ) : comparisonData ? (
+              <div className="space-y-4">
+                {/* Summary */}
+                <div className="grid grid-cols-4 gap-4 text-sm">
+                  <div className="bg-gray-50 p-2 rounded">
+                    <p className="text-gray-500 text-xs">OVIS Transactions</p>
+                    <p className="font-semibold">{comparisonData.ovisTransactions.length}</p>
+                  </div>
+                  <div className="bg-gray-50 p-2 rounded">
+                    <p className="text-gray-500 text-xs">QBO Transactions</p>
+                    <p className="font-semibold">{comparisonData.qboTransactions.length}</p>
+                  </div>
+                  <div className="bg-green-50 p-2 rounded">
+                    <p className="text-gray-500 text-xs">Matched</p>
+                    <p className="font-semibold text-green-700">{comparisonData.matched.length}</p>
+                  </div>
+                  <div className="bg-yellow-50 p-2 rounded">
+                    <p className="text-gray-500 text-xs">Unmatched</p>
+                    <p className="font-semibold text-yellow-700">
+                      {comparisonData.onlyInOvis.length + comparisonData.onlyInQbo.length}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Only in OVIS - these may be causing the discrepancy */}
+                {comparisonData.onlyInOvis.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-medium text-blue-700 mb-1 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      Only in OVIS ({comparisonData.onlyInOvis.length}) - may be miscategorized or duplicate
+                    </h4>
+                    <div className="bg-blue-50 rounded p-2 max-h-48 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-gray-500">
+                            <th className="text-left py-1">Date</th>
+                            <th className="text-left py-1">Type</th>
+                            <th className="text-left py-1">Vendor</th>
+                            <th className="text-left py-1">Description</th>
+                            <th className="text-right py-1">Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {comparisonData.onlyInOvis.map((txn, idx) => (
+                            <tr key={idx} className="border-t border-blue-100">
+                              <td className="py-1">{formatDate(txn.transaction_date)}</td>
+                              <td className="py-1">{txn.transaction_type}</td>
+                              <td className="py-1 truncate max-w-[100px]">{txn.vendor_name || '-'}</td>
+                              <td className="py-1 truncate max-w-[150px]" title={txn.description || undefined}>
+                                {txn.description || '-'}
+                              </td>
+                              <td className="py-1 text-right font-medium">{formatCurrency(txn.amount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="border-t border-blue-200 font-medium">
+                          <tr>
+                            <td colSpan={4} className="py-1 text-right">Total:</td>
+                            <td className="py-1 text-right text-blue-700">
+                              {formatCurrency(comparisonData.onlyInOvis.reduce((sum, t) => sum + t.amount, 0))}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Only in QBO - these may be missing from OVIS */}
+                {comparisonData.onlyInQbo.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-medium text-red-700 mb-1 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      Only in QBO ({comparisonData.onlyInQbo.length}) - missing from OVIS
+                    </h4>
+                    <div className="bg-red-50 rounded p-2 max-h-48 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-gray-500">
+                            <th className="text-left py-1">Date</th>
+                            <th className="text-left py-1">Type</th>
+                            <th className="text-left py-1">Doc #</th>
+                            <th className="text-left py-1">Name</th>
+                            <th className="text-right py-1">Debit</th>
+                            <th className="text-right py-1">Credit</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {comparisonData.onlyInQbo.map((txn, idx) => (
+                            <tr key={idx} className="border-t border-red-100">
+                              <td className="py-1">{txn.date}</td>
+                              <td className="py-1">{txn.type}</td>
+                              <td className="py-1">{txn.docNumber || '-'}</td>
+                              <td className="py-1 truncate max-w-[100px]">{txn.name || '-'}</td>
+                              <td className="py-1 text-right">{txn.debit > 0 ? formatCurrency(txn.debit) : '-'}</td>
+                              <td className="py-1 text-right">{txn.credit > 0 ? formatCurrency(txn.credit) : '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="border-t border-red-200 font-medium">
+                          <tr>
+                            <td colSpan={4} className="py-1 text-right">Total:</td>
+                            <td className="py-1 text-right text-red-700">
+                              {formatCurrency(comparisonData.onlyInQbo.reduce((sum, t) => sum + t.debit, 0))}
+                            </td>
+                            <td className="py-1 text-right text-red-700">
+                              {formatCurrency(comparisonData.onlyInQbo.reduce((sum, t) => sum + t.credit, 0))}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {comparisonData.onlyInOvis.length === 0 && comparisonData.onlyInQbo.length === 0 && (
+                  <p className="text-sm text-green-600">
+                    All transactions matched between OVIS and QBO.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No comparison data available.</p>
             )}
           </div>
         )}
