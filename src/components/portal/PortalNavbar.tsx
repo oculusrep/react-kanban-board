@@ -38,6 +38,8 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [clientMenuOpen, setClientMenuOpen] = useState(false);
+  const [sendingPasswordReset, setSendingPasswordReset] = useState(false);
+  const [passwordResetSent, setPasswordResetSent] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const clientMenuRef = useRef<HTMLDivElement>(null);
@@ -107,6 +109,30 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
+  };
+
+  const handleResetPassword = async () => {
+    if (!user?.email) return;
+
+    setSendingPasswordReset(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+        redirectTo: `${window.location.origin}/portal/reset-password`,
+      });
+
+      if (error) throw error;
+
+      setPasswordResetSent(true);
+      // Clear the success message after 5 seconds
+      setTimeout(() => {
+        setPasswordResetSent(false);
+        setUserMenuOpen(false);
+      }, 3000);
+    } catch (err) {
+      console.error('Error sending password reset:', err);
+    } finally {
+      setSendingPasswordReset(false);
+    }
   };
 
   const handleNavigateToMap = () => {
@@ -399,6 +425,35 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
                       </span>
                     )}
                   </div>
+                  <button
+                    onClick={handleResetPassword}
+                    disabled={sendingPasswordReset || passwordResetSent}
+                    className="w-full px-4 py-2 text-left flex items-center space-x-2 hover:bg-gray-100 text-gray-700 disabled:opacity-50"
+                  >
+                    {sendingPasswordReset ? (
+                      <>
+                        <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Sending...</span>
+                      </>
+                    ) : passwordResetSent ? (
+                      <>
+                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span className="text-green-600">Email Sent!</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                        </svg>
+                        <span>Reset Password</span>
+                      </>
+                    )}
+                  </button>
                   <button
                     onClick={handleSignOut}
                     className="w-full px-4 py-2 text-left flex items-center space-x-2 hover:bg-red-50 text-red-600"
