@@ -838,6 +838,8 @@ export default function BudgetDashboardPage() {
       const qboData = await response.json();
       const qboTransactions = qboData.transactions || [];
 
+      console.log('[Compare] Looking for QBO Account ID:', qbAccountId, 'Account:', accountName);
+
       // Get OVIS transactions for this account from the current expenses state
       const ovisTransactions = expenses.filter(e => {
         // Match by account_id or account_name
@@ -848,6 +850,10 @@ export default function BudgetDashboardPage() {
         if (qbAccount && e.account_id === qbAccount.qb_account_id) return true;
         return false;
       });
+
+      console.log('[Compare] Found', ovisTransactions.length, 'OVIS transactions, Account IDs:',
+        [...new Set(ovisTransactions.map(e => `${e.account_id} (${e.account_name})`))]);
+      console.log('[Compare] QBO returned', qboTransactions.length, 'transactions');
 
       // Match transactions by date and amount (approximate matching)
       const matched: { ovis: QBExpense; qbo: typeof qboTransactions[0] }[] = [];
@@ -1821,6 +1827,9 @@ export default function BudgetDashboardPage() {
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-gray-700">
                 Transaction Comparison: {comparingAccount.name}
+                <span className="ml-2 text-xs font-normal text-gray-500">
+                  (Expected Account ID: {comparingAccount.qbId})
+                </span>
               </h3>
               <button
                 onClick={() => {
@@ -1877,6 +1886,7 @@ export default function BudgetDashboardPage() {
                             <th className="text-left py-1">Type</th>
                             <th className="text-left py-1">Vendor</th>
                             <th className="text-left py-1">Description</th>
+                            <th className="text-left py-1">Account (ID)</th>
                             <th className="text-right py-1">Amount</th>
                           </tr>
                         </thead>
@@ -1889,13 +1899,16 @@ export default function BudgetDashboardPage() {
                               <td className="py-1 truncate max-w-[150px]" title={txn.description || undefined}>
                                 {txn.description || '-'}
                               </td>
+                              <td className="py-1 truncate max-w-[150px]" title={`ID: ${txn.account_id}`}>
+                                {txn.account_name} <span className="text-gray-400">({txn.account_id})</span>
+                              </td>
                               <td className="py-1 text-right font-medium">{formatCurrency(txn.amount)}</td>
                             </tr>
                           ))}
                         </tbody>
                         <tfoot className="border-t border-blue-200 font-medium">
                           <tr>
-                            <td colSpan={4} className="py-1 text-right">Total:</td>
+                            <td colSpan={5} className="py-1 text-right">Total:</td>
                             <td className="py-1 text-right text-blue-700">
                               {formatCurrency(comparisonData.onlyInOvis.reduce((sum, t) => sum + t.amount, 0))}
                             </td>
