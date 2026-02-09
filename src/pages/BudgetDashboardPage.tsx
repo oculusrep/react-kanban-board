@@ -611,6 +611,109 @@ export default function BudgetDashboardPage() {
     setPLSections(sections);
   };
 
+  // Inject payroll expense items into "Taxes and Licenses" category when payroll data changes
+  useEffect(() => {
+    if (payrollExpenseItems.length === 0 || plSections.length === 0) return;
+
+    setPLSections(prevSections => {
+      // Find the Operating Expenses section
+      const expensesSectionIdx = prevSections.findIndex(s => s.title === 'Operating Expenses');
+      if (expensesSectionIdx === -1) return prevSections;
+
+      const newSections = [...prevSections];
+      const expensesSection = { ...newSections[expensesSectionIdx] };
+      expensesSection.categories = [...expensesSection.categories];
+
+      // Find "Taxes and Licenses" category (could be root or nested)
+      const findAndUpdateTaxesCategory = (categories: PLCategory[]): PLCategory[] => {
+        return categories.map(cat => {
+          // Check if this is "Taxes and Licenses" (match by name, case-insensitive)
+          if (cat.name.toLowerCase() === 'taxes and licenses') {
+            // Create payroll children from payroll expense items
+            const payrollChildren: PLCategory[] = payrollExpenseItems.map((item, idx) => ({
+              name: item.account_name,
+              fullPath: `${cat.fullPath}:${item.account_name}`,
+              account: undefined, // Virtual category from Reports API
+              amount: item.amount,
+              budgetAmount: 0,
+              transactions: [], // No individual transactions - from Reports API
+              children: [],
+              isParent: false,
+              depth: cat.depth + 1
+            }));
+
+            // Merge with existing children (avoid duplicates by name)
+            const existingNames = new Set(cat.children.map(c => c.name.toLowerCase()));
+            const newChildren = payrollChildren.filter(pc => !existingNames.has(pc.name.toLowerCase()));
+
+            // Update the category with payroll items and adjusted total
+            return {
+              ...cat,
+              children: [...cat.children, ...newChildren],
+              amount: cat.amount + payrollExpenseTotal,
+              isParent: cat.children.length > 0 || newChildren.length > 0
+            };
+          }
+
+          // Recursively check children
+          if (cat.children.length > 0) {
+            return {
+              ...cat,
+              children: findAndUpdateTaxesCategory(cat.children)
+            };
+          }
+
+          return cat;
+        });
+      };
+
+      // Check if "Taxes and Licenses" exists, if not create it
+      const taxesCategoryExists = expensesSection.categories.some(
+        cat => cat.name.toLowerCase() === 'taxes and licenses' ||
+               cat.children.some(c => c.name.toLowerCase() === 'taxes and licenses')
+      );
+
+      if (taxesCategoryExists) {
+        expensesSection.categories = findAndUpdateTaxesCategory(expensesSection.categories);
+      } else {
+        // Create "Taxes and Licenses" category with payroll items
+        const payrollChildren: PLCategory[] = payrollExpenseItems.map((item, idx) => ({
+          name: item.account_name,
+          fullPath: `Taxes and Licenses:${item.account_name}`,
+          account: undefined,
+          amount: item.amount,
+          budgetAmount: 0,
+          transactions: [],
+          children: [],
+          isParent: false,
+          depth: 1
+        }));
+
+        const taxesCategory: PLCategory = {
+          name: 'Taxes and Licenses',
+          fullPath: 'Taxes and Licenses',
+          account: undefined,
+          amount: payrollExpenseTotal,
+          budgetAmount: 0,
+          transactions: [],
+          children: payrollChildren,
+          isParent: true,
+          depth: 0
+        };
+
+        expensesSection.categories.push(taxesCategory);
+        // Re-sort alphabetically
+        expensesSection.categories.sort((a, b) => a.name.localeCompare(b.name));
+      }
+
+      // Update section total (payrollExpenseTotal is already added in the calculation below)
+      expensesSection.total = expensesSection.categories.reduce((sum, c) => sum + c.amount, 0);
+
+      newSections[expensesSectionIdx] = expensesSection;
+      return newSections;
+    });
+  }, [payrollExpenseItems, payrollExpenseTotal]);
+
   const handleSyncAll = async () => {
     setSyncing(true);
     setMessage(null);
@@ -1149,9 +1252,8 @@ export default function BudgetDashboardPage() {
   // Include payroll wages from Reports API in COGS total
   const totalCOGS = (cogsSection?.total || 0) + payrollCOGSTotal;
   const grossProfit = totalIncome - totalCOGS;
-  // Include payroll taxes (employer taxes: FUTA, Medicare, SS, SUTA) from Reports API
-  // These are under "Taxes and Licenses" in QBO but only available via Reports API, not Accounting API
-  const totalExpenses = (expenseSection?.total || 0) + payrollExpenseTotal;
+  // Payroll taxes are now injected into "Taxes and Licenses" category via useEffect
+  const totalExpenses = expenseSection?.total || 0;
   const operatingIncome = grossProfit - totalExpenses;
   const totalOtherIncome = otherIncomeSection?.total || 0;
   const totalOtherExpenses = otherExpenseSection?.total || 0;
@@ -1408,62 +1510,19 @@ export default function BudgetDashboardPage() {
                 </tr>
 
                 {/* Expenses Section */}
-                {((expenseSection && expenseSection.categories.length > 0) || payrollExpenseItems.length > 0) && (
+                {expenseSection && expenseSection.categories.length > 0 && (
                   <>
                     <tr className="bg-red-50/50">
                       <td colSpan={5} className="px-4 py-3 font-bold text-red-800 text-base">
                         Operating Expenses
                       </td>
                     </tr>
-                    {expenseSection?.categories.map(cat => renderCategory(cat, false))}
-
-                    {/* Payroll taxes (FUTA, Medicare, SS, SUTA) from QBO Reports API (read-only) */}
-                    {payrollExpenseItems.length > 0 && (
-                      <>
-                        <tr className="hover:bg-gray-50">
-                          <td className="py-2 pr-4" style={{ paddingLeft: '16px' }}>
-                            <div className="flex items-center gap-2">
-                              <span className="w-5" />
-                              <span className="font-semibold text-gray-900">Payroll Taxes</span>
-                              <span className="text-xs text-gray-400 italic">(from QBO Payroll)</span>
-                            </div>
-                          </td>
-                          <td className="py-2 text-right tabular-nums font-semibold">
-                            {formatCurrency(payrollExpenseTotal)}
-                          </td>
-                          <td className="py-2 text-right tabular-nums text-gray-500">-</td>
-                          <td className="py-2 text-right tabular-nums"></td>
-                          <td className="py-2 pl-4 text-center w-20"></td>
-                        </tr>
-                        {/* Show individual payroll tax line items indented */}
-                        {payrollExpenseItems.map((item, idx) => (
-                          <tr key={`payroll-expense-${idx}`} className="hover:bg-gray-50 text-sm">
-                            <td className="py-1 pr-4" style={{ paddingLeft: '64px' }}>
-                              <span className="text-gray-600">{item.account_name}</span>
-                            </td>
-                            <td className="py-1 text-right tabular-nums text-gray-700">
-                              {formatCurrency(item.amount)}
-                            </td>
-                            <td className="py-1 text-right tabular-nums text-gray-400">-</td>
-                            <td className="py-1"></td>
-                            <td className="py-1"></td>
-                          </tr>
-                        ))}
-                      </>
-                    )}
-
-                    {loadingPayroll && payrollExpenseItems.length === 0 && expenseSection && expenseSection.categories.length > 0 && (
-                      <tr>
-                        <td colSpan={5} className="py-2 text-center text-sm text-gray-500 italic">
-                          Loading payroll tax data...
-                        </td>
-                      </tr>
-                    )}
+                    {expenseSection.categories.map(cat => renderCategory(cat, false))}
 
                     <tr className="border-t-2 border-red-200 bg-red-50/30">
                       <td className="px-4 py-2 font-bold text-red-800">Total Operating Expenses</td>
                       <td className="px-4 py-2 text-right font-bold text-red-800 tabular-nums">{formatCurrency(totalExpenses)}</td>
-                      <td className="px-4 py-2 text-right font-bold text-red-700 tabular-nums">{expenseSection?.budgetTotal && expenseSection.budgetTotal > 0 ? formatCurrency(expenseSection.budgetTotal) : '-'}</td>
+                      <td className="px-4 py-2 text-right font-bold text-red-700 tabular-nums">{expenseSection.budgetTotal > 0 ? formatCurrency(expenseSection.budgetTotal) : '-'}</td>
                       <td colSpan={2}></td>
                     </tr>
                   </>
