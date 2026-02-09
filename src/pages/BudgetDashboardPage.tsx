@@ -9,6 +9,7 @@ import {
   TrendingUp,
   TrendingDown,
   AlertCircle,
+  CheckCircle,
   ChevronDown,
   ChevronRight,
   Edit2,
@@ -1660,9 +1661,33 @@ export default function BudgetDashboardPage() {
 
         {/* QBO P&L Comparison - for validation */}
         {qboTotals && (() => {
-          // Calculate QBO totals from line items for accurate comparison
-          // This ensures we're comparing the same data source (line items) rather than
-          // QBO's pre-calculated totals which may include items handled differently
+          // Use QBO's official totals from the P&L Report header for validation
+          // These are the authoritative totals that match the PDF
+          const qboNetIncome = qboTotals.netIncome;
+          const netIncomeDiff = Math.abs(netIncome - qboNetIncome);
+          const isValidated = netIncomeDiff < 1.00; // Within $1 tolerance
+
+          // If Net Income matches, show simple validated status
+          if (isValidated) {
+            return (
+              <div className="mt-6 bg-green-50 rounded-lg shadow p-4 border border-green-200">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                  <span className="text-sm font-semibold text-green-800">
+                    P&L Validated - OVIS matches QBO ({accountingBasis} basis)
+                  </span>
+                </div>
+                <div className="mt-2 text-sm text-green-700 flex gap-6">
+                  <span>OVIS Net Income: {formatCurrency(netIncome)}</span>
+                  <span>QBO Net Income: {formatCurrency(qboNetIncome)}</span>
+                  {netIncomeDiff > 0 && <span className="text-gray-500">(Diff: {formatCurrency(netIncomeDiff)})</span>}
+                </div>
+              </div>
+            );
+          }
+
+          // Only show detailed comparison if there's a Net Income discrepancy
+          // Calculate QBO totals from line items for detailed breakdown
           const qboFromLineItems = {
             income: qboLineItems.filter(i => i.section === 'Income').reduce((sum, i) => sum + i.amount, 0),
             cogs: qboLineItems.filter(i => i.section === 'COGS').reduce((sum, i) => sum + i.amount, 0),
@@ -1675,7 +1700,7 @@ export default function BudgetDashboardPage() {
           return (
           <div className="mt-6 bg-white rounded-lg shadow p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-              <AlertCircle className="h-4 w-4" />
+              <AlertCircle className="h-4 w-4 text-yellow-500" />
               P&L Validation (OVIS vs QBO {accountingBasis} Report)
               <span className="text-xs font-normal text-gray-500 ml-2">Click rows with discrepancies to see account details</span>
             </h3>
