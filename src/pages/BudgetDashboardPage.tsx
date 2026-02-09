@@ -612,8 +612,16 @@ export default function BudgetDashboardPage() {
   };
 
   // Inject payroll expense items into "Taxes and Licenses" category when payroll data changes
+  // QBO has two variations: "Taxes & Licenses" (synced expenses) and "Taxes and Licenses" (payroll)
+  // We need to merge payroll items into the existing category regardless of which variation exists
   useEffect(() => {
     if (payrollExpenseItems.length === 0 || plSections.length === 0) return;
+
+    // Helper to check if a category name matches "Taxes and Licenses" (with & or "and")
+    const isTaxesAndLicenses = (name: string) => {
+      const normalized = name.toLowerCase().replace('&', 'and');
+      return normalized === 'taxes and licenses';
+    };
 
     setPLSections(prevSections => {
       // Find the Operating Expenses section
@@ -624,13 +632,13 @@ export default function BudgetDashboardPage() {
       const expensesSection = { ...newSections[expensesSectionIdx] };
       expensesSection.categories = [...expensesSection.categories];
 
-      // Find "Taxes and Licenses" category (could be root or nested)
+      // Find "Taxes and Licenses" or "Taxes & Licenses" category and add payroll items
       const findAndUpdateTaxesCategory = (categories: PLCategory[]): PLCategory[] => {
         return categories.map(cat => {
-          // Check if this is "Taxes and Licenses" (match by name, case-insensitive)
-          if (cat.name.toLowerCase() === 'taxes and licenses') {
+          // Check if this is "Taxes and Licenses" or "Taxes & Licenses"
+          if (isTaxesAndLicenses(cat.name)) {
             // Create payroll children from payroll expense items
-            const payrollChildren: PLCategory[] = payrollExpenseItems.map((item, idx) => ({
+            const payrollChildren: PLCategory[] = payrollExpenseItems.map((item) => ({
               name: item.account_name,
               fullPath: `${cat.fullPath}:${item.account_name}`,
               account: undefined, // Virtual category from Reports API
@@ -667,17 +675,17 @@ export default function BudgetDashboardPage() {
         });
       };
 
-      // Check if "Taxes and Licenses" exists, if not create it
+      // Check if "Taxes and Licenses" or "Taxes & Licenses" exists
       const taxesCategoryExists = expensesSection.categories.some(
-        cat => cat.name.toLowerCase() === 'taxes and licenses' ||
-               cat.children.some(c => c.name.toLowerCase() === 'taxes and licenses')
+        cat => isTaxesAndLicenses(cat.name) ||
+               cat.children.some(c => isTaxesAndLicenses(c.name))
       );
 
       if (taxesCategoryExists) {
         expensesSection.categories = findAndUpdateTaxesCategory(expensesSection.categories);
       } else {
         // Create "Taxes and Licenses" category with payroll items
-        const payrollChildren: PLCategory[] = payrollExpenseItems.map((item, idx) => ({
+        const payrollChildren: PLCategory[] = payrollExpenseItems.map((item) => ({
           name: item.account_name,
           fullPath: `Taxes and Licenses:${item.account_name}`,
           account: undefined,
@@ -706,7 +714,7 @@ export default function BudgetDashboardPage() {
         expensesSection.categories.sort((a, b) => a.name.localeCompare(b.name));
       }
 
-      // Update section total (payrollExpenseTotal is already added in the calculation below)
+      // Update section total
       expensesSection.total = expensesSection.categories.reduce((sum, c) => sum + c.amount, 0);
 
       newSections[expensesSectionIdx] = expensesSection;
