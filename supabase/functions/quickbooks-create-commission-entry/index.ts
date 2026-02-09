@@ -193,6 +193,28 @@ serve(async (req) => {
     let qbDocNumber: string | undefined
     let qbEntityType: 'Bill' | 'JournalEntry'
 
+    // Generate next OVIS doc number for journal entries
+    const generateNextDocNumber = async (): Promise<string> => {
+      // Get the highest OVIS doc number from existing entries
+      const { data: maxEntry } = await supabaseClient
+        .from('qb_commission_entry')
+        .select('qb_doc_number')
+        .like('qb_doc_number', 'OVIS-%')
+        .order('qb_doc_number', { ascending: false })
+        .limit(1)
+        .single()
+
+      let nextNumber = 100  // Start at 100
+      if (maxEntry?.qb_doc_number) {
+        const match = maxEntry.qb_doc_number.match(/OVIS-(\d+)/)
+        if (match) {
+          nextNumber = parseInt(match[1], 10) + 1
+        }
+      }
+
+      return `OVIS-${nextNumber}`
+    }
+
     if (mapping.payment_method === 'bill') {
       // Create a Bill for this broker payment
       console.log('Creating QBO Bill for broker:', broker.name)
@@ -305,7 +327,11 @@ serve(async (req) => {
         }
       ]
 
+      // Generate a unique doc number for this journal entry
+      const docNumber = await generateNextDocNumber()
+
       const journalEntry: QBJournalEntry = {
+        DocNumber: docNumber,
         TxnDate: transactionDate,
         Line: journalLines,
         PrivateNote: `OVIS Payment Split: ${paymentSplitId}`
