@@ -5,7 +5,6 @@ import {
   refreshTokenIfNeeded,
   sendInvoice,
   logSync,
-  updateConnectionLastSync,
 } from '../_shared/quickbooks.ts'
 
 const corsHeaders = {
@@ -149,7 +148,10 @@ serve(async (req) => {
     )
 
     // Update last_sync_at on connection
-    await updateConnectionLastSync(supabaseClient, connection.id)
+    await supabaseClient
+      .from('qb_connection')
+      .update({ last_sync_at: new Date().toISOString() })
+      .eq('id', connection.id)
 
     return new Response(
       JSON.stringify({
