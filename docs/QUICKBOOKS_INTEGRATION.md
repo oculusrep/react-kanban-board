@@ -1365,6 +1365,27 @@ Payroll (parent - SKIPPED, $50,000)
 
 This ensures totals are accurate without counting both parent roll-ups and individual items.
 
+### Important: Direct Postings to Parent Accounts
+
+**QBO Limitation:** When expenses are posted directly to a parent account (rather than a child account), they may not appear correctly in OVIS. This is because:
+
+1. The P&L parser skips parent accounts to avoid double-counting rolled-up totals
+2. Direct postings to parent accounts are included in the parent's total but aren't leaf accounts
+
+**Solution:** In QuickBooks, always categorize expenses to **leaf accounts** (child accounts with no sub-accounts). If you have expenses posted directly to a parent account like "Taxes & Licenses", create a child account and move those transactions there.
+
+**Example Fix:**
+```
+Before (expenses missing):
+Taxes & Licenses ($500 posted directly here - NOT captured)
+
+After (expenses captured):
+Taxes & Licenses (parent - $500 rolled up)
+└── Taxes & Licenses - General (leaf - $500 - CAPTURED)
+```
+
+This ensures all expenses are properly captured in the P&L report.
+
 ### Payroll Extraction
 
 Payroll data is extracted separately because it's only available via the P&L Report (not via the Accounting API):
