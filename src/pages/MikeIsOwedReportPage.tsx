@@ -48,7 +48,7 @@ export default function MikeIsOwedReportPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Mike Is Owed</h1>
           <p className="mt-2 text-gray-600">
-            Unpaid commission splits on received payments since January 1, 2025
+            Unpaid commission splits on received payments since January 1, 2026
           </p>
         </div>
 

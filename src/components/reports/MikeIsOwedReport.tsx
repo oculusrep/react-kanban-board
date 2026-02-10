@@ -50,7 +50,7 @@ export default function MikeIsOwedReport() {
         `)
         .eq('payment_received', true)
         .eq('is_active', true)
-        .gte('payment_received_date', '2025-01-01')
+        .gte('payment_received_date', '2026-01-01')
         .order('payment_received_date', { ascending: false });
 
       if (paymentError) throw paymentError;
@@ -184,7 +184,7 @@ export default function MikeIsOwedReport() {
           </div>
         </div>
         <p className="text-sm opacity-75 mt-4">
-          From paid invoices since January 1, 2025
+          From paid invoices since January 1, 2026
         </p>
       </div>
 
@@ -193,7 +193,7 @@ export default function MikeIsOwedReport() {
         <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
           <p className="text-green-800 font-medium">All caught up!</p>
           <p className="text-green-600 text-sm mt-1">
-            No unpaid splits for Mike on received payments since 1/1/2025.
+            No unpaid splits for Mike on received payments since 1/1/2026.
           </p>
         </div>
       ) : (
