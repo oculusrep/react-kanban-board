@@ -200,11 +200,33 @@ Deno.serve(async (req) => {
         const hasChildren = row.Rows?.Row && row.Rows.Row.length > 0
 
         if (row.ColData && row.ColData.length >= 2 && hasChildren) {
-          // Log parent accounts we're skipping to avoid double-counting
+          // Parent accounts with children - the amount shown is the rolled-up total
+          // However, we need to check if there are direct transactions to this parent
+          // QBO sometimes shows a "(parent name)" row for direct postings
           const skippedName = row.ColData[0]?.value || ''
           const skippedAmount = row.ColData[1]?.value || '0'
           if (skippedName && !skippedName.startsWith('Total ')) {
-            console.log(`Skipping parent account: ${skippedName} ($${skippedAmount}) - has children`)
+            console.log(`Parent account with children: ${skippedName} ($${skippedAmount})`)
+
+            // Check if there's a child row with the same name as the parent
+            // This represents direct transactions to the parent account
+            const childRows = row.Rows?.Row || []
+            const directPostingRow = childRows.find(child => {
+              if (child.ColData && child.ColData.length >= 2) {
+                const childName = child.ColData[0]?.value || ''
+                // In QBO, direct postings to parent appear as a child with same name
+                return childName === skippedName
+              }
+              return false
+            })
+
+            if (directPostingRow && directPostingRow.ColData) {
+              const directAmount = parseFloat((directPostingRow.ColData[1]?.value || '0').replace(/,/g, '')) || 0
+              if (directAmount !== 0) {
+                console.log(`  -> Found direct postings to parent: ${skippedName} ($${directAmount})`)
+              }
+            }
+
             skippedParentAccounts++
           }
         }
@@ -222,6 +244,10 @@ Deno.serve(async (req) => {
               !accountName.includes('Net Operating Income') &&
               !accountName.includes('Net Income') &&
               amount !== 0) {
+            // Log accounts under Taxes & Licenses for debugging
+            if (parentAccount?.toLowerCase().includes('taxes') || accountName.toLowerCase().includes('taxes')) {
+              console.log(`  Leaf account: ${accountName} ($${amount}) under parent: ${parentAccount}`)
+            }
             lineItems.push({
               account_name: accountName,
               account_id: accountId,
