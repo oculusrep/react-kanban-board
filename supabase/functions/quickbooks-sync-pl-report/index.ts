@@ -202,28 +202,39 @@ Deno.serve(async (req) => {
         if (row.ColData && row.ColData.length >= 2 && hasChildren) {
           // Parent accounts with children - the amount shown is the rolled-up total
           // However, we need to check if there are direct transactions to this parent
-          // QBO sometimes shows a "(parent name)" row for direct postings
-          const skippedName = row.ColData[0]?.value || ''
-          const skippedAmount = row.ColData[1]?.value || '0'
-          if (skippedName && !skippedName.startsWith('Total ')) {
-            console.log(`Parent account with children: ${skippedName} ($${skippedAmount})`)
+          // QBO shows direct postings as a child row with the same name as the parent
+          const parentName = row.ColData[0]?.value || ''
+          const parentTotalAmount = row.ColData[1]?.value || '0'
+          if (parentName && !parentName.startsWith('Total ')) {
+            console.log(`Parent account with children: ${parentName} ($${parentTotalAmount})`)
 
             // Check if there's a child row with the same name as the parent
-            // This represents direct transactions to the parent account
+            // This represents direct transactions to the parent account (not rolled up from children)
             const childRows = row.Rows?.Row || []
             const directPostingRow = childRows.find(child => {
               if (child.ColData && child.ColData.length >= 2) {
                 const childName = child.ColData[0]?.value || ''
                 // In QBO, direct postings to parent appear as a child with same name
-                return childName === skippedName
+                return childName === parentName
               }
               return false
             })
 
             if (directPostingRow && directPostingRow.ColData) {
               const directAmount = parseFloat((directPostingRow.ColData[1]?.value || '0').replace(/,/g, '')) || 0
+              const directAccountId = directPostingRow.ColData[0]?.id || null
               if (directAmount !== 0) {
-                console.log(`  -> Found direct postings to parent: ${skippedName} ($${directAmount})`)
+                console.log(`  -> Including direct postings to parent: ${parentName} ($${directAmount})`)
+                // Include this as a line item - it represents transactions posted directly to the parent
+                lineItems.push({
+                  account_name: parentName,
+                  account_id: directAccountId,
+                  amount: directAmount,
+                  section: currentSection || 'Unknown',
+                  parent_account: parentAccount,
+                  ancestor_path: ancestorPath,
+                  depth: depth
+                })
               }
             }
 
@@ -237,12 +248,17 @@ Deno.serve(async (req) => {
           const amountStr = row.ColData[1]?.value || '0'
           const amount = parseFloat(amountStr.replace(/,/g, '')) || 0
 
-          // Skip total/summary rows and empty accounts
+          // Skip if this is a "direct posting" row (same name as parent)
+          // These are already captured in the parent processing block above
+          const isDirectPostingRow = accountName === parentAccount
+
+          // Skip total/summary rows, empty accounts, and direct posting rows (already captured)
           if (accountName &&
               !accountName.startsWith('Total ') &&
               !accountName.includes('Gross Profit') &&
               !accountName.includes('Net Operating Income') &&
               !accountName.includes('Net Income') &&
+              !isDirectPostingRow &&
               amount !== 0) {
             // Log accounts under Taxes & Licenses for debugging
             if (parentAccount?.toLowerCase().includes('taxes') || accountName.toLowerCase().includes('taxes')) {
