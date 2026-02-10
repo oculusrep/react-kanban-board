@@ -791,7 +791,7 @@ export default function BudgetDashboardPage() {
         {
           method: 'POST',
           headers,
-          body: JSON.stringify({ startDate: '2024-01-01' })
+          body: JSON.stringify({ startDate: '2025-01-01' })
         }
       );
       const expensesResult = await expensesResponse.json();
