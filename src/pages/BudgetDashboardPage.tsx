@@ -158,6 +158,11 @@ export default function BudgetDashboardPage() {
 
   useEffect(() => {
     document.title = "P&L Statement | OVIS Admin";
+    // Reset payroll state when period or basis changes to avoid stale data injection
+    setPayrollCOGSItems([]);
+    setPayrollCOGSTotal(0);
+    setPayrollExpenseItems([]);
+    setPayrollExpenseTotal(0);
     fetchData();
     fetchPayrollData();
   }, [selectedYear, selectedMonth, accountingBasis]);
@@ -629,6 +634,9 @@ export default function BudgetDashboardPage() {
       return normalized === 'taxes and licenses';
     };
 
+    // Known payroll tax account names that come from QBO Reports API
+    const payrollTaxNames = new Set(payrollExpenseItems.map(item => item.account_name.toLowerCase()));
+
     setPLSections(prevSections => {
       // Find the Operating Expenses section
       const expensesSectionIdx = prevSections.findIndex(s => s.title === 'Operating Expenses');
@@ -656,16 +664,21 @@ export default function BudgetDashboardPage() {
               depth: cat.depth + 1
             }));
 
-            // Merge with existing children (avoid duplicates by name)
-            const existingNames = new Set(cat.children.map(c => c.name.toLowerCase()));
-            const newChildren = payrollChildren.filter(pc => !existingNames.has(pc.name.toLowerCase()));
+            // Filter out existing children that are payroll items (they'll be replaced with fresh data)
+            // Keep non-payroll children intact
+            const nonPayrollChildren = cat.children.filter(
+              c => !payrollTaxNames.has(c.name.toLowerCase())
+            );
+
+            // Calculate base amount from non-payroll children
+            const baseAmount = nonPayrollChildren.reduce((sum, c) => sum + c.amount, 0);
 
             // Update the category with payroll items and adjusted total
             return {
               ...cat,
-              children: [...cat.children, ...newChildren],
-              amount: cat.amount + payrollExpenseTotal,
-              isParent: cat.children.length > 0 || newChildren.length > 0
+              children: [...nonPayrollChildren, ...payrollChildren],
+              amount: baseAmount + payrollExpenseTotal,
+              isParent: nonPayrollChildren.length > 0 || payrollChildren.length > 0
             };
           }
 
