@@ -196,8 +196,17 @@ export default function BudgetSetupPage() {
 
   // Copy prior year actuals as budget
   const copyFromPriorYear = (accountId: string) => {
+    console.log('copyFromPriorYear called with:', accountId);
+    console.log('priorYearActuals keys:', Array.from(priorYearActuals.keys()));
+
     const actuals = priorYearActuals.get(accountId);
-    if (!actuals) return;
+    console.log('Found actuals:', actuals);
+
+    if (!actuals) {
+      console.log('No actuals found for account:', accountId);
+      setMessage({ type: 'error', text: `No prior year actuals found for this account` });
+      return;
+    }
 
     const newBudgets = new Map(budgets);
     const budget = getBudget(accountId);
@@ -209,6 +218,7 @@ export default function BudgetSetupPage() {
     newBudgets.set(accountId, budget);
     setBudgets(newBudgets);
     setHasChanges(true);
+    setMessage({ type: 'success', text: `Copied ${priorYear} actuals to ${budgetYear} budget` });
   };
 
   // Save all budgets
