@@ -467,7 +467,7 @@ export default function BudgetSetupPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {accounts.map((account, idx) => {
+                {accounts.map((account) => {
                   const budget = getBudget(account.qb_account_id);
                   const actuals = priorYearActuals.get(account.qb_account_id);
                   const budgetTotal = getAccountTotal(budget);
@@ -475,23 +475,32 @@ export default function BudgetSetupPage() {
 
                   return (
                     <Fragment key={account.qb_account_id}>
-                      {/* Prior Year Actuals Row (gray) */}
-                      <tr className="bg-gray-50">
-                        <td className="sticky left-0 bg-gray-50 px-4 py-2 text-sm text-gray-500">
-                          <span className="text-xs">{priorYear} Actuals</span>
-                        </td>
-                        <td className="px-2 py-2 text-center text-xs text-gray-400">
-                          —
+                      {/* Account Header Row */}
+                      <tr className="bg-blue-50 border-t-2 border-blue-200">
+                        <td className="sticky left-0 bg-blue-50 px-4 py-2" colSpan={2}>
+                          <div className="flex items-center gap-3">
+                            <div className="font-semibold text-gray-900 text-sm truncate" title={account.fully_qualified_name}>
+                              {account.name}
+                            </div>
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${
+                              account.account_type === 'Cost of Goods Sold'
+                                ? 'bg-orange-100 text-orange-700'
+                                : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {account.account_type === 'Cost of Goods Sold' ? 'COGS' : 'Exp'}
+                            </span>
+                            {account.fully_qualified_name !== account.name && (
+                              <span className="text-xs text-gray-500 truncate" title={account.fully_qualified_name}>
+                                ({account.fully_qualified_name})
+                              </span>
+                            )}
+                          </div>
                         </td>
                         {MONTHS.map(month => (
-                          <td key={month} className="px-2 py-2 text-right text-sm text-gray-500 font-mono">
-                            {actuals && actuals[month] > 0 ? formatCurrency(actuals[month]) : '—'}
-                          </td>
+                          <td key={month} className="bg-blue-50"></td>
                         ))}
-                        <td className="px-3 py-2 text-right text-sm text-gray-600 font-mono font-medium">
-                          {priorTotal > 0 ? formatCurrency(priorTotal) : '—'}
-                        </td>
-                        <td className="px-2 py-2">
+                        <td className="bg-blue-50"></td>
+                        <td className="bg-blue-50 px-2 py-2">
                           <button
                             onClick={() => copyFromPriorYear(account.qb_account_id)}
                             className="p-1 text-gray-400 hover:text-blue-600 rounded"
@@ -502,26 +511,26 @@ export default function BudgetSetupPage() {
                         </td>
                       </tr>
 
-                      {/* Budget Row */}
-                      <tr className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                        <td className={`sticky left-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} px-4 py-2`}>
-                          <div className="font-medium text-gray-900 text-sm truncate" title={account.fully_qualified_name}>
-                            {account.name}
-                          </div>
-                          {account.fully_qualified_name !== account.name && (
-                            <div className="text-xs text-gray-500 truncate" title={account.fully_qualified_name}>
-                              {account.fully_qualified_name}
-                            </div>
-                          )}
+                      {/* Actuals Row */}
+                      <tr className="bg-gray-50">
+                        <td className="sticky left-0 bg-gray-50 px-4 py-2 text-sm text-gray-600 font-medium" colSpan={2}>
+                          Actuals ({priorYear})
                         </td>
-                        <td className="px-2 py-2 text-center">
-                          <span className={`text-xs px-1.5 py-0.5 rounded ${
-                            account.account_type === 'Cost of Goods Sold'
-                              ? 'bg-orange-100 text-orange-700'
-                              : 'bg-gray-100 text-gray-600'
-                          }`}>
-                            {account.account_type === 'Cost of Goods Sold' ? 'COGS' : 'Exp'}
-                          </span>
+                        {MONTHS.map(month => (
+                          <td key={month} className="px-2 py-2 text-right text-sm text-gray-600 font-mono">
+                            {actuals && actuals[month] > 0 ? formatCurrency(actuals[month]) : '—'}
+                          </td>
+                        ))}
+                        <td className="px-3 py-2 text-right text-sm text-gray-700 font-mono font-medium">
+                          {priorTotal > 0 ? formatCurrency(priorTotal) : '—'}
+                        </td>
+                        <td></td>
+                      </tr>
+
+                      {/* Budget Row */}
+                      <tr className="bg-white">
+                        <td className="sticky left-0 bg-white px-4 py-2 text-sm text-blue-700 font-medium" colSpan={2}>
+                          Budget ({budgetYear})
                         </td>
                         {MONTHS.map(month => {
                           const isEditing = editingCell?.accountId === account.qb_account_id && editingCell?.month === month;
