@@ -1535,6 +1535,58 @@ For more detailed budget setup with prior year actuals comparison, use the Budge
 
 ---
 
+## Cash Flow Forecast Dashboard
+
+The Cash Flow Forecast Dashboard (`/admin/budget/forecast`) provides a forward-looking view of company cash position by combining:
+
+### Data Sources
+
+1. **Projected Income** - Expected payments from deals:
+   - **Invoiced**: Payments from Booked/Executed Payable deals (high confidence)
+   - **Pipeline 50%+**: Payments from Negotiating LOI/At Lease PSA stages (medium confidence)
+   - **UC/Contingent**: Payments from Under Contract/Contingent stage (lower confidence)
+
+2. **Budgeted Expenses** - Monthly expense budgets from `account_budget` table:
+   - **COGS**: Cost of Goods Sold (e.g., subcontractor payments)
+   - **Operating Expenses**: All other budgeted operating costs
+
+### Key Features
+
+1. **Summary Cards**:
+   - Total Projected Income
+   - Total Budgeted Expenses
+   - Net Cash Flow (available for debt payments/distributions)
+   - Heaviest expense months
+   - Lightest expense months
+
+2. **Cash Flow Analysis**:
+   - Surplus Months - Months where income exceeds expenses
+   - Deficit Months - Months where expenses exceed income
+
+3. **Visualizations**:
+   - Monthly Cash Flow chart (Income vs Expenses with Net Cash line)
+   - Cumulative Cash Flow chart (running total through the year)
+   - Budget Expense Analysis (COGS vs Operating by month)
+
+4. **Monthly Breakdown Table**:
+   - Expandable rows showing payment and expense details
+   - Income breakdown by confidence level
+   - Expense breakdown by COGS vs Operating
+   - Net cash and cumulative totals
+
+### Use Cases
+
+- **Profit Distribution Planning**: Identify months with surplus cash available for owner distributions
+- **Debt Payment Scheduling**: Determine capacity for credit card and LOC payments
+- **Cash Reserve Planning**: Anticipate deficit months requiring cash reserves
+- **Budget Optimization**: Identify months with heavy expenses for potential cost shifting
+
+### File Location
+
+`src/pages/CashFlowForecastPage.tsx`
+
+---
+
 ## Future Enhancements
 
 Potential future features:
@@ -1549,6 +1601,7 @@ Potential future features:
 - [x] Monthly Breakdown view - All 12 months as columns - Completed
 - [x] Edit Budget view - Simplified inline budget editor - Completed
 - [x] Monthly budget storage (account_budget table) - Completed
+- [x] Cash Flow Forecast Dashboard - Income vs budgeted expenses - Completed
 - [ ] Cash-basis P&L view - Toggle exists, needs validation
 - [ ] Webhook integration for real-time updates
 - [ ] Automatic sync on client name change in OVIS
