@@ -208,6 +208,23 @@ Deno.serve(async (req) => {
           if (parentName && !parentName.startsWith('Total ')) {
             console.log(`Parent account with children: ${parentName} ($${parentTotalAmount})`)
 
+            // For Taxes & Licenses specifically, dump the full structure to understand it
+            if (parentName.toLowerCase().includes('taxes')) {
+              const childRows = row.Rows?.Row || []
+              console.log(`  DEBUG: Taxes parent has ${childRows.length} child rows:`)
+              childRows.forEach((child, idx) => {
+                if (child.ColData) {
+                  console.log(`    Child ${idx}: ColData = ${JSON.stringify(child.ColData)}`)
+                }
+                if (child.Header) {
+                  console.log(`    Child ${idx}: Header = ${JSON.stringify(child.Header)}`)
+                }
+                if (child.Rows?.Row) {
+                  console.log(`    Child ${idx}: Has ${child.Rows.Row.length} nested rows`)
+                }
+              })
+            }
+
             // Check if there's a child row with the same name as the parent
             // This represents direct transactions to the parent account (not rolled up from children)
             const childRows = row.Rows?.Row || []
