@@ -111,6 +111,8 @@ export default function BudgetDashboardPage() {
   const [items, setItems] = useState<QBItem[]>([]);
   const [expenses, setExpenses] = useState<QBExpense[]>([]);
   const [plSections, setPLSections] = useState<PLSection[]>([]);
+  // Counter to track when plSections is rebuilt (triggers payroll injection)
+  const [plSectionsVersion, setPlSectionsVersion] = useState(0);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [expandedTransactions, setExpandedTransactions] = useState<Set<string>>(new Set());
   const [editingBudget, setEditingBudget] = useState<string | null>(null);
@@ -620,6 +622,8 @@ export default function BudgetDashboardPage() {
     }
 
     setPLSections(sections);
+    // Increment version to trigger payroll injection effect
+    setPlSectionsVersion(v => v + 1);
   };
 
   // Inject payroll expense items into "Taxes and Licenses" category when payroll data changes
@@ -739,7 +743,7 @@ export default function BudgetDashboardPage() {
       newSections[expensesSectionIdx] = expensesSection;
       return newSections;
     });
-  }, [payrollExpenseItems, payrollExpenseTotal]);
+  }, [payrollExpenseItems, payrollExpenseTotal, plSectionsVersion]);
 
   const handleSyncAll = async () => {
     setSyncing(true);

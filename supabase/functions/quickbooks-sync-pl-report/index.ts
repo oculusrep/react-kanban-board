@@ -306,6 +306,12 @@ Deno.serve(async (req) => {
     const totalPayrollCOGS = payrollCOGSItems.reduce((sum, item) => sum + item.amount, 0)
     const totalPayrollExpenses = payrollExpenseItems.reduce((sum, item) => sum + item.amount, 0)
 
+    console.log(`[${accountingMethod} basis] Payroll COGS items: ${payrollCOGSItems.length}, total: $${totalPayrollCOGS}`)
+    console.log(`[${accountingMethod} basis] Payroll Expense items: ${payrollExpenseItems.length}, total: $${totalPayrollExpenses}`)
+    if (payrollExpenseItems.length > 0) {
+      console.log(`[${accountingMethod} basis] Payroll Expense accounts:`, payrollExpenseItems.map(i => `${i.account_name} ($${i.amount})`).join(', '))
+    }
+
     // Log the sync
     await logSync(
       supabaseClient,
