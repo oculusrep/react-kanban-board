@@ -364,11 +364,22 @@ export default function BudgetDashboardPage() {
           byMonth.set(i, []);
         }
         for (const expense of allExpenses) {
-          // Use payment_date for Cash basis bills, otherwise transaction_date
-          const dateStr = accountingBasis === 'Cash' && expense.transaction_type === 'Bill' && expense.payment_date
-            ? expense.payment_date
-            : expense.transaction_date;
-          const month = new Date(dateStr + 'T12:00:00').getMonth();
+          // Cash basis: use payment_date for Bills and Invoices
+          // Also skip unpaid Bills and Invoices on Cash basis (they haven't been realized yet)
+          if (accountingBasis === 'Cash') {
+            const isBillOrInvoice = expense.transaction_type === 'Bill' || expense.transaction_type === 'Invoice';
+            if (isBillOrInvoice) {
+              // On cash basis, only include if paid and use payment_date
+              if (!expense.payment_date) {
+                continue; // Skip unpaid bills/invoices on cash basis
+              }
+              const month = new Date(expense.payment_date + 'T12:00:00').getMonth();
+              byMonth.get(month)?.push(expense);
+              continue;
+            }
+          }
+          // Accrual basis or non-bill/invoice transactions: use transaction_date
+          const month = new Date(expense.transaction_date + 'T12:00:00').getMonth();
           byMonth.get(month)?.push(expense);
         }
         setMonthlyExpenses(byMonth);
