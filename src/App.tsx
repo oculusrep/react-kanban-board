@@ -58,6 +58,7 @@ import FlaggedEmailQueuePage from "./pages/FlaggedEmailQueuePage";
 import HunterDashboardPage from "./pages/HunterDashboardPage";
 import HunterLeadDetailsPage from "./pages/HunterLeadDetailsPage";
 import BudgetDashboardPage from "./pages/BudgetDashboardPage";
+import BudgetSetupPage from "./pages/BudgetSetupPage";
 import PortalUserManagementPage from "./pages/PortalUserManagementPage";
 import PortalEmailSettingsPage from "./pages/PortalEmailSettingsPage";
 import PortalAnalyticsPage from "./pages/admin/PortalAnalyticsPage";
@@ -162,6 +163,7 @@ function App() {
           <Route path="admin/quickbooks" element={<AdminRoute><QuickBooksAdminPage /></AdminRoute>} />
           <Route path="admin/quickbooks/customers" element={<AdminRoute><QuickBooksCustomerMappingPage /></AdminRoute>} />
           <Route path="admin/budget" element={<AdminRoute><BudgetDashboardPage /></AdminRoute>} />
+          <Route path="admin/budget/setup" element={<AdminRoute><BudgetSetupPage /></AdminRoute>} />
           <Route path="admin/portal-users" element={<AdminRoute><PortalUserManagementPage /></AdminRoute>} />
           <Route path="admin/portal-email-settings" element={<AdminRoute><PortalEmailSettingsPage /></AdminRoute>} />
           <Route path="admin/portal-analytics" element={<AdminRoute><PortalAnalyticsPage /></AdminRoute>} />

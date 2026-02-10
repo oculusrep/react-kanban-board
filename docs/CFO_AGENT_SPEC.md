@@ -93,6 +93,47 @@ CREATE INDEX idx_financial_snapshot_date ON financial_snapshot(snapshot_date);
 CREATE INDEX idx_financial_snapshot_period ON financial_snapshot(period_type);
 ```
 
+#### `account_budget` - Monthly Budget Tracking
+Stores monthly budget amounts per QBO account per year. Supports seasonal budgeting for accurate variance analysis.
+
+```sql
+CREATE TABLE account_budget (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  qb_account_id text NOT NULL,
+  year integer NOT NULL,
+
+  -- Monthly budget amounts
+  jan numeric DEFAULT 0,
+  feb numeric DEFAULT 0,
+  mar numeric DEFAULT 0,
+  apr numeric DEFAULT 0,
+  may numeric DEFAULT 0,
+  jun numeric DEFAULT 0,
+  jul numeric DEFAULT 0,
+  aug numeric DEFAULT 0,
+  sep numeric DEFAULT 0,
+  oct numeric DEFAULT 0,
+  nov numeric DEFAULT 0,
+  dec numeric DEFAULT 0,
+
+  notes text,  -- Optional notes about this budget
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  created_by uuid REFERENCES "user"(id),
+
+  UNIQUE(qb_account_id, year)
+);
+
+CREATE INDEX idx_account_budget_year ON account_budget(year);
+CREATE INDEX idx_account_budget_account ON account_budget(qb_account_id);
+```
+
+**Key features:**
+- One row per account per year with 12 month columns
+- Supports seasonal budgets (e.g., Marketing: $2000 in Jan, $500 in Feb)
+- Fill-forward UI pattern: enter value and copy to remaining months
+- Used by CFO Agent for monthly variance analysis and alerts
+
 #### `ai_financial_context` - Business Knowledge Store
 Stores context the CFO Agent needs to understand business patterns.
 
@@ -199,41 +240,52 @@ WHERE p.payment_status NOT IN ('received', 'cancelled')
   AND p.payment_amount > 0;
 ```
 
-#### `budget_vs_actual` - Budget Variance View
+#### `budget_vs_actual_monthly` - Monthly Budget Variance View
+
+Updated view that uses the `account_budget` table for monthly granularity.
 
 ```sql
-CREATE OR REPLACE VIEW budget_vs_actual AS
+CREATE OR REPLACE VIEW budget_vs_actual_monthly AS
 SELECT
   a.id as account_id,
   a.qb_account_id,
   a.name as account_name,
   a.account_type,
   a.fully_qualified_name,
-  a.budget_monthly,
-  a.budget_annual,
-  a.alert_threshold_pct,
+
+  -- Current year budget data (all 12 months)
+  b.year as budget_year,
+  b.jan, b.feb, b.mar, b.apr, b.may, b.jun,
+  b.jul, b.aug, b.sep, b.oct, b.nov, b.dec,
+
+  -- Computed annual total
+  COALESCE(b.jan, 0) + COALESCE(b.feb, 0) + ... + COALESCE(b.dec, 0) as budget_annual,
+
+  -- Current month's budget dynamically selected
+  CASE EXTRACT(MONTH FROM CURRENT_DATE)
+    WHEN 1 THEN COALESCE(b.jan, 0)
+    WHEN 2 THEN COALESCE(b.feb, 0)
+    -- ... etc
+  END as budget_current_month,
+
+  -- Actuals from qb_expense
   COALESCE(e.mtd_actual, 0) as mtd_actual,
   COALESCE(e.ytd_actual, 0) as ytd_actual,
-  CASE
-    WHEN a.budget_monthly > 0 THEN ROUND((COALESCE(e.mtd_actual, 0) / a.budget_monthly) * 100, 1)
-    ELSE 0
-  END as mtd_pct_used,
-  CASE
-    WHEN a.budget_annual > 0 THEN ROUND((COALESCE(e.ytd_actual, 0) / a.budget_annual) * 100, 1)
-    ELSE 0
-  END as ytd_pct_used
+
+  -- MTD percentage used (actual / current month budget)
+  mtd_pct_used
+
 FROM qb_account a
-LEFT JOIN (
-  SELECT
-    account_id,
-    SUM(CASE WHEN DATE_TRUNC('month', transaction_date) = DATE_TRUNC('month', CURRENT_DATE) THEN amount ELSE 0 END) as mtd_actual,
-    SUM(CASE WHEN DATE_TRUNC('year', transaction_date) = DATE_TRUNC('year', CURRENT_DATE) THEN amount ELSE 0 END) as ytd_actual
-  FROM qb_expense
-  WHERE transaction_type IN ('Purchase', 'Bill')
-  GROUP BY account_id
-) e ON a.qb_account_id = e.account_id
+LEFT JOIN account_budget b ON a.qb_account_id = b.qb_account_id
+  AND b.year = EXTRACT(YEAR FROM CURRENT_DATE)
+LEFT JOIN (expense aggregation) e ON ...
 WHERE a.account_type IN ('Expense', 'Other Expense', 'Cost of Goods Sold');
 ```
+
+**Key improvements over original view:**
+- Uses monthly budget values instead of single `budget_monthly`
+- Dynamically selects the correct month's budget for variance calculation
+- Supports seasonal budget patterns for accurate variance analysis
 
 ---
 
@@ -386,9 +438,13 @@ Natural language query interface for the CFO Agent.
    - `qb_account` enhanced with `budget_monthly`, `budget_annual`, `alert_threshold_pct`, `budget_notes`
    - `invoice_aging` view created
    - `budget_vs_actual` view created
-4. 🔲 Verify P&L expense sync and recategorization working correctly
-5. 🔲 Implement recurring expense detection logic
-6. 🔲 Populate budget fields for expense accounts
+4. ✅ `account_budget` table created (February 10, 2026):
+   - Monthly budget storage (12 columns: jan-dec) per account per year
+   - `budget_vs_actual_monthly` view for CFO Agent variance analysis
+   - Budget Setup page for entering/editing monthly budgets
+5. ✅ Verify P&L expense sync and recategorization working correctly
+6. 🔲 Implement recurring expense detection logic
+7. 🔲 Enter 2026 budgets via Budget Setup page
 
 ### Phase 2: AI Infrastructure
 1. ✅ Create ai_financial_context table (done in Phase 1 migration)

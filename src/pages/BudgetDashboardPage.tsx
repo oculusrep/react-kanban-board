@@ -1347,14 +1347,23 @@ export default function BudgetDashboardPage() {
               <p className="mt-1 text-gray-600">{periodLabel}</p>
             </div>
 
-            <button
-              onClick={handleSyncAll}
-              disabled={syncing}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? 'Syncing...' : 'Sync from QuickBooks'}
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => navigate('/admin/budget/setup')}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+              >
+                <Edit2 className="h-4 w-4" />
+                Budget Setup
+              </button>
+              <button
+                onClick={handleSyncAll}
+                disabled={syncing}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+                {syncing ? 'Syncing...' : 'Sync from QuickBooks'}
+              </button>
+            </div>
           </div>
         </div>
 
