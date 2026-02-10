@@ -30,6 +30,25 @@ interface QBAccount {
   last_synced_at: string | null;
 }
 
+interface AccountBudget {
+  qb_account_id: string;
+  year: number;
+  jan: number;
+  feb: number;
+  mar: number;
+  apr: number;
+  may: number;
+  jun: number;
+  jul: number;
+  aug: number;
+  sep: number;
+  oct: number;
+  nov: number;
+  dec: number;
+}
+
+const MONTH_KEYS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] as const;
+
 interface QBExpense {
   id: string;
   qb_transaction_id: string;
@@ -108,6 +127,7 @@ export default function BudgetDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [accounts, setAccounts] = useState<QBAccount[]>([]);
+  const [accountBudgets, setAccountBudgets] = useState<Map<string, AccountBudget>>(new Map());
   const [items, setItems] = useState<QBItem[]>([]);
   const [expenses, setExpenses] = useState<QBExpense[]>([]);
   const [plSections, setPLSections] = useState<PLSection[]>([]);
@@ -181,6 +201,23 @@ export default function BudgetDashboardPage() {
 
       if (accountError) throw accountError;
       setAccounts(accountData || []);
+
+      // Fetch account budgets for the selected year
+      const { data: budgetData, error: budgetError } = await supabase
+        .from('account_budget')
+        .select('*')
+        .eq('year', selectedYear);
+
+      if (budgetError) {
+        console.warn('Could not fetch account budgets:', budgetError.message);
+      }
+
+      // Build a map of qb_account_id -> budget data
+      const budgetMap = new Map<string, AccountBudget>();
+      for (const budget of budgetData || []) {
+        budgetMap.set(budget.qb_account_id, budget);
+      }
+      setAccountBudgets(budgetMap);
 
       // Fetch items (for mapping invoice items to income accounts)
       const { data: itemData, error: itemError } = await supabase
@@ -428,6 +465,22 @@ export default function BudgetDashboardPage() {
       // Check if we're building income accounts (need to normalize Purchase/Bill amounts)
       const isIncomeSection = accountTypes.includes('Income') || accountTypes.includes('Other Income');
 
+      // Helper to get budget for an account from the account_budget table
+      // Returns the appropriate amount based on whether we're viewing a single month or full year
+      const getBudgetForAccount = (qbAccountId: string): number => {
+        const budget = accountBudgets.get(qbAccountId);
+        if (!budget) return 0;
+
+        if (selectedMonth !== null) {
+          // Single month view - return that month's budget
+          const monthKey = MONTH_KEYS[selectedMonth];
+          return budget[monthKey] || 0;
+        } else {
+          // Full year view - return sum of all months
+          return MONTH_KEYS.reduce((sum, key) => sum + (budget[key] || 0), 0);
+        }
+      };
+
       // Helper to calculate amount for transactions with proper sign handling
       // Journal entries need special handling based on posting type (Debit/Credit)
       // Standard accounting rules:
@@ -497,7 +550,7 @@ export default function BudgetDashboardPage() {
               fullPath: currentPath,
               account: hasOwnAccount ? accountAtPath : undefined,
               amount: amount,
-              budgetAmount: hasOwnAccount ? (accountAtPath.budget_amount || 0) : 0,
+              budgetAmount: hasOwnAccount ? getBudgetForAccount(accountAtPath.qb_account_id) : 0,
               transactions: transactions,
               children: [],
               // It's a parent if it has children (not the last segment), even if it also has its own transactions
