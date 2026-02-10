@@ -61,7 +61,12 @@ interface PaymentDetail {
   dealName: string;
   paymentName: string;
   invoiceNumber: string | null;
-  totalAmount: number;
+  // Amounts breakdown
+  paymentAmount: number;      // Gross check amount
+  referralFee: number;        // Referral fee (COGS outflow)
+  brokerSplits: number;       // Broker commissions (COGS outflow)
+  houseNet: number;           // What house keeps = payment - referral - brokers
+  gci: number;                // GCI = payment - referral (for reference)
   estimatedDate: string | null;
   category: 'invoiced' | 'pipeline' | 'ucContingent';
   stageLabel: string;
@@ -114,7 +119,7 @@ export default function CashFlowForecastPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch payments
+      // Fetch payments with deal info including house_percent
       const { data: paymentData, error: paymentError } = await supabase
         .from('payment')
         .select(`
@@ -130,6 +135,7 @@ export default function CashFlowForecastPage() {
             id,
             deal_name,
             stage_id,
+            house_percent,
             stage:stage_id (label)
           )
         `)
@@ -139,6 +145,9 @@ export default function CashFlowForecastPage() {
       if (paymentError) throw paymentError;
 
       // Process payments
+      // GCI = Payment Amount - Referral Fee
+      // AGCI = GCI - House$ (what goes to brokers - from DB trigger)
+      // House$ = GCI - AGCI (what house keeps)
       const processedPayments: PaymentDetail[] = (paymentData || [])
         .filter(p => {
           const deal = p.deal as any;
@@ -157,13 +166,24 @@ export default function CashFlowForecastPage() {
             category = 'ucContingent';
           }
 
+          const paymentAmount = p.payment_amount || 0;
+          const referralFee = p.referral_fee_usd || 0;
+          const gci = paymentAmount - referralFee;
+          const agci = p.agci || 0;  // AGCI = GCI - House$ (calculated by DB trigger)
+          const houseNet = gci - agci;  // House$ = GCI - AGCI
+          const brokerSplits = agci;  // What brokers split = AGCI
+
           return {
             id: p.id,
             dealId: p.deal_id,
             dealName: deal?.deal_name || 'Unknown Deal',
             paymentName: p.payment_name || 'Payment',
             invoiceNumber: p.orep_invoice,
-            totalAmount: (p.payment_amount || 0) - (p.referral_fee_usd || 0),
+            paymentAmount,
+            referralFee,
+            brokerSplits,
+            gci,
+            houseNet,
             estimatedDate: p.payment_date_estimated,
             category,
             stageLabel: (deal?.stage as any)?.label || '',
@@ -255,17 +275,18 @@ export default function CashFlowForecastPage() {
         return date.getFullYear() === selectedYear && date.getMonth() === monthIdx;
       });
 
+      // Use houseNet - what the house actually keeps after broker splits and referral fees
       const invoicedIncome = monthPayments
         .filter(p => p.category === 'invoiced')
-        .reduce((sum, p) => sum + p.totalAmount, 0);
+        .reduce((sum, p) => sum + p.houseNet, 0);
 
       const pipelineIncome = monthPayments
         .filter(p => p.category === 'pipeline')
-        .reduce((sum, p) => sum + p.totalAmount, 0);
+        .reduce((sum, p) => sum + p.houseNet, 0);
 
       const ucContingentIncome = monthPayments
         .filter(p => p.category === 'ucContingent')
-        .reduce((sum, p) => sum + p.totalAmount, 0);
+        .reduce((sum, p) => sum + p.houseNet, 0);
 
       // Total income based on what's included
       let totalIncome = invoicedIncome;
@@ -452,24 +473,24 @@ export default function CashFlowForecastPage() {
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-          {/* Total Income */}
+          {/* House Net Income */}
           <div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
             <div className="flex items-center gap-2 mb-2">
               <ArrowUpRight className="h-5 w-5 text-green-500" />
-              <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Projected Income</p>
+              <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">House Net Income</p>
             </div>
             <p className="text-2xl font-bold text-gray-900">{formatCurrency(summaryTotals.totalIncome)}</p>
-            <p className="text-xs text-gray-500 mt-1">Invoiced: {formatCurrency(summaryTotals.totalInvoiced)}</p>
+            <p className="text-xs text-gray-500 mt-1">After broker splits & referral fees</p>
           </div>
 
-          {/* Total Expenses */}
+          {/* Operating Expenses */}
           <div className="bg-white rounded-lg shadow p-6 border-l-4 border-red-500">
             <div className="flex items-center gap-2 mb-2">
               <ArrowDownRight className="h-5 w-5 text-red-500" />
-              <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Budgeted Expenses</p>
+              <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Operating Expenses</p>
             </div>
             <p className="text-2xl font-bold text-gray-900">{formatCurrency(summaryTotals.totalExpenses)}</p>
-            <p className="text-xs text-gray-500 mt-1">From annual budget</p>
+            <p className="text-xs text-gray-500 mt-1">Budgeted (excl. COGS)</p>
           </div>
 
           {/* Net Cash Flow */}
@@ -719,20 +740,40 @@ export default function CashFlowForecastPage() {
                             <div>
                               <h4 className="text-sm font-semibold text-gray-700 mb-2">Expected Income ({forecast.payments.length} payments)</h4>
                               {forecast.payments.length > 0 ? (
-                                <div className="space-y-1 max-h-48 overflow-y-auto">
+                                <div className="space-y-2 max-h-64 overflow-y-auto">
                                   {forecast.payments.map(p => (
-                                    <div key={p.id} className="flex justify-between text-sm py-1 border-b border-gray-100">
-                                      <div>
-                                        <span className="text-gray-900">{p.dealName}</span>
-                                        <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${
-                                          p.category === 'invoiced' ? 'bg-green-100 text-green-700' :
-                                          p.category === 'pipeline' ? 'bg-blue-100 text-blue-700' :
-                                          'bg-yellow-100 text-yellow-700'
-                                        }`}>
-                                          {p.stageLabel}
-                                        </span>
+                                    <div key={p.id} className="text-sm py-2 border-b border-gray-100">
+                                      <div className="flex justify-between items-start mb-1">
+                                        <div>
+                                          <span className="text-gray-900 font-medium">{p.dealName}</span>
+                                          <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${
+                                            p.category === 'invoiced' ? 'bg-green-100 text-green-700' :
+                                            p.category === 'pipeline' ? 'bg-blue-100 text-blue-700' :
+                                            'bg-yellow-100 text-yellow-700'
+                                          }`}>
+                                            {p.stageLabel}
+                                          </span>
+                                        </div>
+                                        <span className="font-semibold text-green-700">{formatCurrency(p.houseNet)}</span>
                                       </div>
-                                      <span className="font-medium text-gray-900">{formatCurrency(p.totalAmount)}</span>
+                                      <div className="text-xs text-gray-500 pl-2 space-y-0.5">
+                                        <div className="flex justify-between">
+                                          <span>Check Amount:</span>
+                                          <span>{formatCurrency(p.paymentAmount)}</span>
+                                        </div>
+                                        {p.referralFee > 0 && (
+                                          <div className="flex justify-between text-red-500">
+                                            <span>Less Referral Fee:</span>
+                                            <span>-{formatCurrency(p.referralFee)}</span>
+                                          </div>
+                                        )}
+                                        {p.brokerSplits > 0 && (
+                                          <div className="flex justify-between text-red-500">
+                                            <span>Less Broker Splits:</span>
+                                            <span>-{formatCurrency(p.brokerSplits)}</span>
+                                          </div>
+                                        )}
+                                      </div>
                                     </div>
                                   ))}
                                 </div>
@@ -836,10 +877,10 @@ export default function CashFlowForecastPage() {
         {/* Footer Notes */}
         <div className="bg-white rounded-lg shadow px-6 py-3">
           <div className="text-xs text-gray-500 space-y-1">
+            <p><strong>House Net Income:</strong> Check Amount - Referral Fee (COGS) - Broker Splits (COGS) = What the house keeps from each payment</p>
             <p><strong>Income Sources:</strong> Expected payments from deals in Booked/Executed Payable (Invoiced), LOI/PSA (Pipeline 50%+), and Under Contract (UC/Contingent) stages</p>
-            <p><strong>Expense Sources:</strong> Monthly budgeted amounts from the Budget Setup page ({selectedYear})</p>
-            <p><strong>Net Cash Flow:</strong> Total Income - Budgeted Expenses = Available for debt payments, profit distributions, or reinvestment</p>
-            <p><strong>Note:</strong> This forecast uses GCI (Gross Commission Income = Payment - Referral Fee) for income projections</p>
+            <p><strong>Expense Sources:</strong> Monthly budgeted amounts from the Budget Setup page ({selectedYear}) - excludes COGS already deducted from income</p>
+            <p><strong>Net Cash Flow:</strong> House Net Income - Budgeted Operating Expenses = Available for debt payments, profit distributions, or reinvestment</p>
           </div>
         </div>
       </div>

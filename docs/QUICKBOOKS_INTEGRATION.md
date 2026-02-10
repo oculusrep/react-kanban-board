@@ -1541,27 +1541,30 @@ The Cash Flow Forecast Dashboard (`/admin/budget/forecast`) provides a forward-l
 
 ### Data Sources
 
-1. **Projected Income** - Expected payments from deals:
-   - **Invoiced**: Payments from Booked/Executed Payable deals (high confidence)
-   - **Pipeline 50%+**: Payments from Negotiating LOI/At Lease PSA stages (medium confidence)
-   - **UC/Contingent**: Payments from Under Contract/Contingent stage (lower confidence)
+1. **House Net Income** - What the house keeps from each payment:
+   - Calculated as: **Check Amount - Referral Fee - Broker Splits**
+   - Referral fees and broker splits are COGS paid out when check is received
+   - Categorized by deal stage confidence:
+     - **Invoiced**: Payments from Booked/Executed Payable deals (high confidence)
+     - **Pipeline 50%+**: Payments from Negotiating LOI/At Lease PSA stages (medium confidence)
+     - **UC/Contingent**: Payments from Under Contract/Contingent stage (lower confidence)
 
-2. **Budgeted Expenses** - Monthly expense budgets from `account_budget` table:
-   - **COGS**: Cost of Goods Sold (e.g., subcontractor payments)
-   - **Operating Expenses**: All other budgeted operating costs
+2. **Operating Expenses** - Monthly expense budgets from `account_budget` table:
+   - Excludes COGS (already deducted from income as broker/referral payouts)
+   - Covers: rent, payroll, insurance, marketing, software, etc.
 
 ### Key Features
 
 1. **Summary Cards**:
-   - Total Projected Income
-   - Total Budgeted Expenses
+   - House Net Income (after broker splits & referral fees)
+   - Operating Expenses (budgeted, excluding COGS)
    - Net Cash Flow (available for debt payments/distributions)
    - Heaviest expense months
    - Lightest expense months
 
 2. **Cash Flow Analysis**:
-   - Surplus Months - Months where income exceeds expenses
-   - Deficit Months - Months where expenses exceed income
+   - Surplus Months - Months where house income exceeds operating expenses
+   - Deficit Months - Months where operating expenses exceed house income
 
 3. **Visualizations**:
    - Monthly Cash Flow chart (Income vs Expenses with Net Cash line)
@@ -1570,8 +1573,9 @@ The Cash Flow Forecast Dashboard (`/admin/budget/forecast`) provides a forward-l
 
 4. **Monthly Breakdown Table**:
    - Expandable rows showing payment and expense details
+   - Payment breakdown: Check Amount, Less Referral Fee, Less Broker Splits = House Net
    - Income breakdown by confidence level
-   - Expense breakdown by COGS vs Operating
+   - Expense breakdown by category
    - Net cash and cumulative totals
 
 ### Use Cases
