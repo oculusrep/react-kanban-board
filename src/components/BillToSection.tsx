@@ -9,6 +9,7 @@ interface BillToSectionProps {
   clientId?: string;
   commissionSplits: CommissionSplit[];
   brokers: Broker[];
+  onBillToUpdate?: (updates: Record<string, string | null>) => void;
 }
 
 const DEFAULT_BCC_EMAIL = 'mike@oculusrep.com';
@@ -17,7 +18,8 @@ const BillToSection: React.FC<BillToSectionProps> = ({
   dealId,
   clientId,
   commissionSplits,
-  brokers
+  brokers,
+  onBillToUpdate
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -76,6 +78,11 @@ const BillToSection: React.FC<BillToSectionProps> = ({
     // Queue the field for saving
     pendingSaveRef.current[field] = value;
 
+    // Notify parent BEFORE save to set skip flag (prevents realtime refresh)
+    if (onBillToUpdate) {
+      onBillToUpdate({ [field]: value || null });
+    }
+
     // Clear existing timeout
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -118,7 +125,7 @@ const BillToSection: React.FC<BillToSectionProps> = ({
         setSaving(false);
       }
     }, 800);
-  }, [dealId]);
+  }, [dealId, onBillToUpdate]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
