@@ -1422,7 +1422,56 @@ The Budget Dashboard (`/reports/budget`) provides a comprehensive P&L view combi
 - **Expandable Sections**: Drill down into Income, COGS, and Operating Expenses
 - **Budget vs Actual**: Compare OVIS budgets against QBO actuals
 - **Payroll Integration**: Displays payroll costs from QBO P&L Report
-- **Edit Budgets**: Inline editing for budget amounts
+- **Multiple View Modes**: Summary, Monthly Breakdown, and Edit Budget views
+
+### View Modes
+
+The Budget Dashboard supports three view modes, selectable from the period dropdown:
+
+#### 1. Summary View (Default)
+The standard P&L view showing actuals vs budget for a single period (full year or individual month).
+
+- Select "Full Year" or any individual month
+- Shows hierarchical account structure with expandable categories
+- Displays Actual, Budget, and % Used columns
+- Click any category to expand and see individual transactions
+
+#### 2. Monthly Breakdown View
+Shows all 12 months as columns for year-over-year analysis.
+
+- Select "Monthly Breakdown" from the period dropdown
+- Displays actuals for each month with budget amounts in parentheses
+- Calculates Gross Profit, Operating Income, and Net Income per month
+- Year total shown in the final column
+- Budget amounts shown below actuals when set (in smaller text)
+- Over-budget months highlighted in red
+
+#### 3. Edit Budget View
+Simplified budget editor for the selected year without prior year comparison.
+
+- Select "Edit Budget" from the period dropdown
+- Shows only budgetable accounts (Expense, Other Expense, Cost of Goods Sold)
+- Click any cell to edit the budget value
+- Press **Enter** to save, **Escape** to cancel
+- **Fill Forward**: Click the → button to copy a value to all remaining months
+- Section totals update automatically as you edit
+- Year total shown in the final column
+
+### Budget Storage
+
+Budgets are stored in the `account_budget` table with monthly granularity:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid | Primary key |
+| `qb_account_id` | text | QuickBooks account ID |
+| `year` | integer | Budget year |
+| `jan` - `dec` | numeric | Monthly budget amounts |
+| `notes` | text | Optional notes |
+| `created_at` | timestamptz | Creation timestamp |
+| `updated_at` | timestamptz | Last update |
+
+This replaces the older single `budget_amount` column on `qb_account` with full 12-month granularity, supporting seasonal budgeting patterns.
 
 ### P&L Structure
 
@@ -1463,20 +1512,14 @@ NET PROFIT = Gross Profit - Operating Expenses
 | Expenses | Budget categories | P&L Report Expense section |
 | Payroll Taxes | — | P&L Report (payroll under Expenses) |
 
-### Budget Management
+### Budget Setup Page
 
-Budgets are stored in the `budget` table:
+For more detailed budget setup with prior year actuals comparison, use the Budget Setup page (`/admin/budget/setup`):
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | uuid | Primary key |
-| `budget_category_id` | uuid | FK to budget_category |
-| `year` | integer | Budget year |
-| `amount` | numeric | Budgeted amount |
-| `created_at` | timestamptz | Creation timestamp |
-| `updated_at` | timestamptz | Last update |
-
-Budget categories are mapped to P&L sections via the `budget_category` table.
+- Shows prior year actuals alongside budget entry fields
+- Fill-forward button to copy a value to remaining months
+- Grouped by account type (COGS, Expenses, Other Expenses)
+- Access via "Budget Setup" button on the P&L dashboard
 
 ### QBO Sync Flow
 
@@ -1503,6 +1546,9 @@ Potential future features:
 - [x] Expense sync (QuickBooks → OVIS) - Completed
 - [x] P&L Report integration - Completed
 - [x] Budget Dashboard with QBO actuals - Completed
+- [x] Monthly Breakdown view - All 12 months as columns - Completed
+- [x] Edit Budget view - Simplified inline budget editor - Completed
+- [x] Monthly budget storage (account_budget table) - Completed
 - [ ] Cash-basis P&L view - Toggle exists, needs validation
 - [ ] Webhook integration for real-time updates
 - [ ] Automatic sync on client name change in OVIS
