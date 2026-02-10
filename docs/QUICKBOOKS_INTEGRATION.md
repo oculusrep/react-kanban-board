@@ -685,6 +685,78 @@ const customerId = await findOrCreateCustomer(
 
 ---
 
+### Issue: CORS Error / "Response to preflight request doesn't pass access control check" (February 2026)
+
+**Symptoms:**
+- Sending invoice fails with CORS error in browser console
+- Error: `Access to fetch at '...quickbooks-send-invoice' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: It does not have HTTP ok status.`
+- Error: `net::ERR_FAILED`
+- Error: `Failed to fetch`
+
+**Root Cause:**
+The edge function is crashing on import/startup before it can handle the CORS OPTIONS preflight request. Even though the function has proper CORS headers:
+
+```typescript
+if (req.method === 'OPTIONS') {
+  return new Response('ok', { headers: corsHeaders })
+}
+```
+
+...if the function crashes during module loading (e.g., due to a bad import), this code never executes, so the preflight request fails with a non-200 status.
+
+**Common Causes:**
+1. **Importing a function that doesn't exist** in the shared module
+2. **API signature mismatch** - calling functions with old parameters after the shared module was refactored
+3. **Syntax errors** in the edge function code
+
+**Example (February 2026):**
+The `quickbooks-send-invoice` function was importing `updateConnectionLastSync` which no longer existed in `_shared/quickbooks.ts`:
+
+```typescript
+// BROKEN - function doesn't exist in shared module
+import {
+  getQBConnection,
+  refreshTokenIfNeeded,
+  sendInvoice,
+  logSync,
+  updateConnectionLastSync,  // <-- This function was removed!
+} from '../_shared/quickbooks.ts'
+```
+
+The Deno runtime fails to load the module because of the missing export, so the entire edge function crashes before handling any requests.
+
+**Solution:**
+1. Check that all imports actually exist in the shared module
+2. Verify function signatures match the shared module's current API
+3. Replace missing helper functions with direct Supabase client calls
+
+**Fixed Code:**
+```typescript
+import {
+  getQBConnection,
+  refreshTokenIfNeeded,
+  sendInvoice,
+  logSync,
+} from '../_shared/quickbooks.ts'
+
+// Later in the code, instead of:
+// await updateConnectionLastSync(supabaseClient, connection.id)
+
+// Use direct Supabase client call:
+await supabaseClient
+  .from('qb_connection')
+  .update({ last_sync_at: new Date().toISOString() })
+  .eq('id', connection.id)
+```
+
+**Debugging Tips:**
+1. Check Supabase Edge Function logs in the dashboard for import/startup errors
+2. Look for `TypeError: ... is not a function` or `... is not defined` errors
+3. Verify all imported functions exist: `grep "^export.*function" supabase/functions/_shared/quickbooks.ts`
+4. After fixing, redeploy: `npx supabase functions deploy quickbooks-send-invoice --no-verify-jwt`
+
+---
+
 ## Security Considerations
 
 1. **OAuth Tokens:** Stored in database, accessed only via service role key
