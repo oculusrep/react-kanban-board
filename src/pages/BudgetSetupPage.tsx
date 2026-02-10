@@ -445,16 +445,6 @@ export default function BudgetSetupPage() {
           </p>
         </div>
 
-        {/* Debug Info - visible in production */}
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-          <p className="text-sm text-yellow-800 font-mono">
-            <strong>DEBUG:</strong> priorYearActuals has {priorYearActuals.size} entries.
-            Accounts with matching actuals: {accounts.filter(a => priorYearActuals.has(a.qb_account_id)).length} / {accounts.length}.
-            Sample actuals keys: {Array.from(priorYearActuals.keys()).slice(0, 5).join(', ')}.
-            Sample account qb_ids: {accounts.slice(0, 5).map(a => a.qb_account_id).join(', ')}.
-          </p>
-        </div>
-
         {/* Budget Table */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
@@ -565,12 +555,21 @@ export default function BudgetSetupPage() {
                                     value={editValue}
                                     onChange={(e) => setEditValue(e.target.value)}
                                     onKeyDown={handleKeyDown}
-                                    onBlur={confirmEdit}
+                                    onBlur={(e) => {
+                                      // Don't blur if clicking the fill forward button
+                                      if (e.relatedTarget?.closest('button[data-fill-forward]')) return;
+                                      confirmEdit();
+                                    }}
                                     autoFocus
                                     className="w-16 px-1 py-1 text-right text-sm border rounded focus:ring-2 focus:ring-blue-500"
                                   />
                                   <button
-                                    onClick={() => fillForward(account.qb_account_id, month, parseFloat(editValue) || 0)}
+                                    data-fill-forward
+                                    onClick={() => {
+                                      fillForward(account.qb_account_id, month, parseFloat(editValue) || 0);
+                                      setEditingCell(null);
+                                      setEditValue("");
+                                    }}
                                     className="ml-1 p-1 text-gray-400 hover:text-blue-600 rounded"
                                     title="Fill forward to remaining months"
                                   >
