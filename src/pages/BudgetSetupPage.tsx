@@ -455,25 +455,25 @@ export default function BudgetSetupPage() {
             No expense accounts with prior year activity found. Try syncing from QBO.
           </div>
         ) : (
-          <div className="bg-white rounded-lg shadow overflow-x-auto">
+          <div className="bg-white rounded-lg shadow overflow-auto max-h-[calc(100vh-300px)]">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
-                  <th className="sticky left-0 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[250px]">
+                  <th className="sticky left-0 z-20 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[250px]">
                     Account
                   </th>
-                  <th className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
+                  <th className="bg-gray-50 px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
                     Type
                   </th>
                   {MONTH_LABELS.map(month => (
-                    <th key={month} className="px-2 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
+                    <th key={month} className="bg-gray-50 px-2 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
                       {month}
                     </th>
                   ))}
-                  <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                  <th className="bg-gray-50 px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
                     Total
                   </th>
-                  <th className="px-2 py-3 w-10"></th>
+                  <th className="bg-gray-50 px-2 py-3 w-10"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
