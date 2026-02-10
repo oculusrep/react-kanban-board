@@ -449,8 +449,9 @@ export default function BudgetSetupPage() {
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
           <p className="text-sm text-yellow-800 font-mono">
             <strong>DEBUG:</strong> priorYearActuals has {priorYearActuals.size} entries.
-            First 3 keys: {Array.from(priorYearActuals.keys()).slice(0, 3).join(', ') || 'none'}.
-            First 3 account qb_ids: {accounts.slice(0, 3).map(a => a.qb_account_id).join(', ') || 'none'}.
+            Accounts with matching actuals: {accounts.filter(a => priorYearActuals.has(a.qb_account_id)).length} / {accounts.length}.
+            Sample actuals keys: {Array.from(priorYearActuals.keys()).slice(0, 5).join(', ')}.
+            Sample account qb_ids: {accounts.slice(0, 5).map(a => a.qb_account_id).join(', ')}.
           </p>
         </div>
 
