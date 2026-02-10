@@ -1,12 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   getQBConnection,
   refreshTokenIfNeeded,
   sendInvoice,
   logSync,
   updateConnectionLastSync,
-  postgrestQuery,
-  postgrestUpdate
 } from '../_shared/quickbooks.ts'
 
 const corsHeaders = {
@@ -25,8 +24,9 @@ serve(async (req) => {
   }
 
   try {
-    // Verify authorization header is present
+    // Create Supabase client with the user's auth token for RLS
     const authHeader = req.headers.get('Authorization')
+
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: 'Authorization required' }),
@@ -34,12 +34,24 @@ serve(async (req) => {
       )
     }
 
-    // Get environment variables
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
-    const secretKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    // Extract the JWT token
+    const token = authHeader.replace('Bearer ', '')
 
-    if (!supabaseUrl || !secretKey) {
-      throw new Error('Supabase configuration missing')
+    // Use service role client for all database operations
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    )
+
+    // Verify the token by checking if it's a valid JWT and getting user info
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
+
+    if (userError || !user) {
+      console.error('Auth error:', userError)
+      return new Response(
+        JSON.stringify({ error: 'Invalid authorization token', details: userError?.message }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      )
     }
 
     // Get request body
@@ -53,7 +65,7 @@ serve(async (req) => {
     }
 
     // Get the QBO connection
-    let connection = await getQBConnection(supabaseUrl, secretKey)
+    let connection = await getQBConnection(supabaseClient)
 
     if (!connection) {
       return new Response(
@@ -63,24 +75,21 @@ serve(async (req) => {
     }
 
     // Refresh token if needed
-    connection = await refreshTokenIfNeeded(supabaseUrl, secretKey, connection)
+    connection = await refreshTokenIfNeeded(supabaseClient, connection)
 
     // Fetch payment with QB invoice info
-    const payments = await postgrestQuery(
-      supabaseUrl,
-      secretKey,
-      'payment',
-      `select=id,qb_invoice_id,qb_invoice_number,deal_id&id=eq.${paymentId}`
-    )
+    const { data: payment, error: paymentError } = await supabaseClient
+      .from('payment')
+      .select('id, qb_invoice_id, qb_invoice_number, deal_id')
+      .eq('id', paymentId)
+      .single()
 
-    if (!payments || payments.length === 0) {
+    if (paymentError || !payment) {
       return new Response(
         JSON.stringify({ error: 'Payment not found' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
       )
     }
-
-    const payment = payments[0]
 
     // Check if invoice exists in QB
     if (!payment.qb_invoice_id) {
@@ -91,21 +100,18 @@ serve(async (req) => {
     }
 
     // Get the deal to find bill_to_email
-    const deals = await postgrestQuery(
-      supabaseUrl,
-      secretKey,
-      'deal',
-      `select=bill_to_email&id=eq.${payment.deal_id}`
-    )
+    const { data: deal, error: dealError } = await supabaseClient
+      .from('deal')
+      .select('bill_to_email')
+      .eq('id', payment.deal_id)
+      .single()
 
-    if (!deals || deals.length === 0) {
+    if (dealError || !deal) {
       return new Response(
         JSON.stringify({ error: 'Deal not found' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
       )
     }
-
-    const deal = deals[0]
 
     if (!deal.bill_to_email) {
       return new Response(
@@ -119,15 +125,21 @@ serve(async (req) => {
 
     // Update payment to mark invoice as sent and set invoice date
     const today = new Date().toISOString().split('T')[0]
-    await postgrestUpdate(supabaseUrl, secretKey, 'payment', `id=eq.${paymentId}`, {
-      invoice_sent: true,
-      payment_invoice_date: today
-    })
+    const { error: updateError } = await supabaseClient
+      .from('payment')
+      .update({
+        invoice_sent: true,
+        payment_invoice_date: today
+      })
+      .eq('id', paymentId)
+
+    if (updateError) {
+      console.error('Error updating payment after send:', updateError)
+    }
 
     // Log successful send
     await logSync(
-      supabaseUrl,
-      secretKey,
+      supabaseClient,
       'invoice',
       'outbound',
       'success',
@@ -137,7 +149,7 @@ serve(async (req) => {
     )
 
     // Update last_sync_at on connection
-    await updateConnectionLastSync(supabaseUrl, secretKey, connection.id)
+    await updateConnectionLastSync(supabaseClient, connection.id)
 
     return new Response(
       JSON.stringify({
