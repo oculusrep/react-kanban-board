@@ -2000,7 +2000,7 @@ export default function BudgetDashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-5xl mx-auto">
+      <div className={`mx-auto ${viewMode === 'summary' ? 'max-w-5xl' : 'max-w-full px-2'}`}>
         {/* Header */}
         <div className="mb-6">
           <button
