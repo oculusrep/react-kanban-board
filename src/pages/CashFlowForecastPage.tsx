@@ -340,9 +340,9 @@ export default function CashFlowForecastPage() {
     const heaviestMonths = sortedByExpense.slice(0, 3).filter(m => m.budgetedExpenses > 0);
     const lightestMonths = sortedByExpense.slice(-3).filter(m => m.budgetedExpenses > 0).reverse();
 
-    // Find surplus and deficit months
-    const surplusMonths = monthlyForecasts.filter(m => m.netCashFlow > 0).sort((a, b) => b.netCashFlow - a.netCashFlow);
-    const deficitMonths = monthlyForecasts.filter(m => m.netCashFlow < 0).sort((a, b) => a.netCashFlow - b.netCashFlow);
+    // Find surplus and deficit months - sorted chronologically by monthIndex
+    const surplusMonths = monthlyForecasts.filter(m => m.netCashFlow > 0).sort((a, b) => a.monthIndex - b.monthIndex);
+    const deficitMonths = monthlyForecasts.filter(m => m.netCashFlow < 0).sort((a, b) => a.monthIndex - b.monthIndex);
 
     return {
       totalInvoiced,
