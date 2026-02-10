@@ -1585,6 +1585,38 @@ The Cash Flow Forecast Dashboard (`/admin/budget/forecast`) provides a forward-l
 - **Cash Reserve Planning**: Anticipate deficit months requiring cash reserves
 - **Budget Optimization**: Identify months with heavy expenses for potential cost shifting
 
+### Technical Details
+
+**House Net Calculation:**
+```
+GCI = Payment Amount - Referral Fee
+AGCI = GCI - House$ (stored in payment.agci by DB trigger)
+House$ = GCI - AGCI (what house keeps)
+Broker Splits = AGCI (what brokers split)
+```
+
+**Data Flow:**
+1. Payments fetched from `payment` table with `deal.house_percent`
+2. AGCI already calculated by `calculate_payment_agci` trigger
+3. House Net = GCI - AGCI for each payment
+4. Operating expenses from `account_budget` table (excludes COGS)
+
+### Current Status (February 2026)
+
+**Completed:**
+- Dashboard structure with summary cards and charts
+- House Net income calculation (correct formula using AGCI)
+- Monthly breakdown with expandable payment/expense details
+- Surplus/deficit months in chronological order
+- Budget expense analysis by month
+
+**Future Improvements:**
+- [ ] Add actual bank balance input for true cash position
+- [ ] Track credit card and LOC balances
+- [ ] Show recommended debt payment amounts per month
+- [ ] Add rolling 3-month and 6-month forecasts
+- [ ] Integration with CFO Agent for AI-powered recommendations
+
 ### File Location
 
 `src/pages/CashFlowForecastPage.tsx`
