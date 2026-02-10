@@ -175,6 +175,17 @@ export default function BudgetDashboardPage() {
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
 
+  // View mode: 'summary' shows single period, 'monthly' shows all 12 months as columns, 'budget-edit' shows editable budget grid
+  const [viewMode, setViewMode] = useState<'summary' | 'monthly' | 'budget-edit'>('summary');
+
+  // Budget editing state
+  const [budgetEditingCell, setBudgetEditingCell] = useState<{ qbAccountId: string; month: number } | null>(null);
+  const [budgetEditValue, setBudgetEditValue] = useState("");
+  const [savingBudget, setSavingBudget] = useState(false);
+
+  // Monthly breakdown data - expenses grouped by month for the monthly view
+  const [monthlyExpenses, setMonthlyExpenses] = useState<Map<number, QBExpense[]>>(new Map());
+
   // Accounting basis toggle (Accrual = default, matches QBO)
   const [accountingBasis, setAccountingBasis] = useState<'Accrual' | 'Cash'>('Accrual');
 
@@ -185,9 +196,13 @@ export default function BudgetDashboardPage() {
     setPayrollCOGSTotal(0);
     setPayrollExpenseItems([]);
     setPayrollExpenseTotal(0);
+    // Reset monthly expenses when switching modes
+    if (viewMode === 'summary') {
+      setMonthlyExpenses(new Map());
+    }
     fetchData();
     fetchPayrollData();
-  }, [selectedYear, selectedMonth, accountingBasis]);
+  }, [selectedYear, selectedMonth, accountingBasis, viewMode]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -231,17 +246,20 @@ export default function BudgetDashboardPage() {
       setItems(itemData || []);
 
       // Build date filter for expenses
+      // For monthly breakdown mode, always fetch full year
       let startDate: string;
       let endDate: string;
 
-      if (selectedMonth !== null) {
+      if (viewMode === 'monthly' || selectedMonth === null) {
+        // Full year
+        startDate = `${selectedYear}-01-01`;
+        endDate = `${selectedYear + 1}-01-01`;
+      } else {
+        // Single month
         startDate = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
         const nextMonth = selectedMonth === 11 ? 0 : selectedMonth + 1;
         const nextYear = selectedMonth === 11 ? selectedYear + 1 : selectedYear;
         endDate = `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-01`;
-      } else {
-        startDate = `${selectedYear}-01-01`;
-        endDate = `${selectedYear + 1}-01-01`;
       }
 
       // Fetch expenses for the selected period with pagination
@@ -338,6 +356,24 @@ export default function BudgetDashboardPage() {
       }
 
       setExpenses(allExpenses);
+
+      // For monthly breakdown mode, organize expenses by month
+      if (viewMode === 'monthly') {
+        const byMonth = new Map<number, QBExpense[]>();
+        for (let i = 0; i < 12; i++) {
+          byMonth.set(i, []);
+        }
+        for (const expense of allExpenses) {
+          // Use payment_date for Cash basis bills, otherwise transaction_date
+          const dateStr = accountingBasis === 'Cash' && expense.transaction_type === 'Bill' && expense.payment_date
+            ? expense.payment_date
+            : expense.transaction_date;
+          const month = new Date(dateStr + 'T12:00:00').getMonth();
+          byMonth.get(month)?.push(expense);
+        }
+        setMonthlyExpenses(byMonth);
+      }
+
       buildPLStructure(accountData || [], allExpenses, itemData || [], accountingBasis);
     } catch (error: any) {
       console.error('Error fetching budget data:', error);
@@ -921,6 +957,125 @@ export default function BudgetDashboardPage() {
     setEditValue('');
   };
 
+  // Save a monthly budget value to the account_budget table
+  const saveMonthlyBudget = async (qbAccountId: string, month: number, value: number) => {
+    setSavingBudget(true);
+    try {
+      const monthKey = MONTH_KEYS[month];
+      const existingBudget = accountBudgets.get(qbAccountId);
+
+      if (existingBudget) {
+        // Update existing budget row
+        const { error } = await supabase
+          .from('account_budget')
+          .update({ [monthKey]: value, updated_at: new Date().toISOString() })
+          .eq('qb_account_id', qbAccountId)
+          .eq('year', selectedYear);
+
+        if (error) throw error;
+      } else {
+        // Insert new budget row
+        const newBudget: Record<string, any> = {
+          qb_account_id: qbAccountId,
+          year: selectedYear,
+          jan: 0, feb: 0, mar: 0, apr: 0, may: 0, jun: 0,
+          jul: 0, aug: 0, sep: 0, oct: 0, nov: 0, dec: 0,
+          [monthKey]: value
+        };
+
+        const { error } = await supabase
+          .from('account_budget')
+          .insert(newBudget);
+
+        if (error) throw error;
+      }
+
+      // Update local state
+      const updatedBudget = existingBudget
+        ? { ...existingBudget, [monthKey]: value }
+        : {
+            qb_account_id: qbAccountId,
+            year: selectedYear,
+            jan: 0, feb: 0, mar: 0, apr: 0, may: 0, jun: 0,
+            jul: 0, aug: 0, sep: 0, oct: 0, nov: 0, dec: 0,
+            [monthKey]: value
+          } as AccountBudget;
+
+      setAccountBudgets(prev => {
+        const newMap = new Map(prev);
+        newMap.set(qbAccountId, updatedBudget);
+        return newMap;
+      });
+
+      setBudgetEditingCell(null);
+      setBudgetEditValue("");
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message || 'Failed to save budget' });
+    } finally {
+      setSavingBudget(false);
+    }
+  };
+
+  // Fill forward budget value from one month to remaining months
+  const fillBudgetForward = async (qbAccountId: string, fromMonth: number, value: number) => {
+    setSavingBudget(true);
+    try {
+      const existingBudget = accountBudgets.get(qbAccountId);
+      const updates: Record<string, number> = {};
+
+      for (let m = fromMonth; m < 12; m++) {
+        updates[MONTH_KEYS[m]] = value;
+      }
+
+      if (existingBudget) {
+        const { error } = await supabase
+          .from('account_budget')
+          .update({ ...updates, updated_at: new Date().toISOString() })
+          .eq('qb_account_id', qbAccountId)
+          .eq('year', selectedYear);
+
+        if (error) throw error;
+      } else {
+        const newBudget: Record<string, any> = {
+          qb_account_id: qbAccountId,
+          year: selectedYear,
+          jan: 0, feb: 0, mar: 0, apr: 0, may: 0, jun: 0,
+          jul: 0, aug: 0, sep: 0, oct: 0, nov: 0, dec: 0,
+          ...updates
+        };
+
+        const { error } = await supabase
+          .from('account_budget')
+          .insert(newBudget);
+
+        if (error) throw error;
+      }
+
+      // Update local state
+      const baseBudget = existingBudget || {
+        qb_account_id: qbAccountId,
+        year: selectedYear,
+        jan: 0, feb: 0, mar: 0, apr: 0, may: 0, jun: 0,
+        jul: 0, aug: 0, sep: 0, oct: 0, nov: 0, dec: 0
+      };
+      const updatedBudget = { ...baseBudget, ...updates } as AccountBudget;
+
+      setAccountBudgets(prev => {
+        const newMap = new Map(prev);
+        newMap.set(qbAccountId, updatedBudget);
+        return newMap;
+      });
+
+      setBudgetEditingCell(null);
+      setBudgetEditValue("");
+      setMessage({ type: 'success', text: `Budget filled forward from ${MONTH_KEYS[fromMonth].toUpperCase()}` });
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message || 'Failed to fill budget forward' });
+    } finally {
+      setSavingBudget(false);
+    }
+  };
+
   const handleRecategorize = async (expenseId: string, newAccountId: string, newAccountName: string) => {
     setUpdatingExpense(expenseId);
     setMessage(null);
@@ -1330,6 +1485,464 @@ export default function BudgetDashboardPage() {
     );
   };
 
+  // Helper to calculate monthly actuals for an account
+  const getMonthlyActualsForAccount = (qbAccountId: string, month: number): number => {
+    const monthExpenses = monthlyExpenses.get(month) || [];
+    // Build item-to-income-account map
+    const itemToIncomeAccount = new Map<string, string>();
+    for (const item of items) {
+      if (item.income_account_id) {
+        itemToIncomeAccount.set(item.qb_item_id, item.income_account_id);
+      }
+    }
+
+    // Find the account to determine if it's income
+    const account = accounts.find(a => a.qb_account_id === qbAccountId);
+    const isIncomeSection = account?.account_type === 'Income' || account?.account_type === 'Other Income';
+
+    let total = 0;
+    for (const expense of monthExpenses) {
+      let accountId = expense.account_id;
+
+      // For Invoice and SalesReceipt, map item to income account
+      if ((expense.transaction_type === 'Invoice' || expense.transaction_type === 'SalesReceipt')
+          && itemToIncomeAccount.has(accountId)) {
+        accountId = itemToIncomeAccount.get(accountId)!;
+      }
+
+      if (accountId === qbAccountId) {
+        let amount = expense.amount;
+
+        // Handle Journal Entry transactions
+        if (expense.transaction_type.startsWith('JournalEntry-')) {
+          const isDebit = expense.transaction_type === 'JournalEntry-Debit';
+          const isCredit = expense.transaction_type === 'JournalEntry-Credit';
+
+          if (isIncomeSection) {
+            if (isDebit) amount = -amount;
+          } else {
+            if (isCredit) amount = -amount;
+          }
+        }
+        // For income accounts, flip the sign on Purchase/Bill transactions
+        else if (isIncomeSection && (expense.transaction_type === 'Purchase' || expense.transaction_type === 'Bill')) {
+          amount = -amount;
+        }
+        // For income accounts, flip credit/deposit signs
+        else if (isIncomeSection && (expense.transaction_type === 'CreditCardCredit' || expense.transaction_type === 'VendorCredit' || expense.transaction_type === 'Deposit')) {
+          amount = -amount;
+        }
+
+        total += amount;
+      }
+    }
+    return total;
+  };
+
+  // Helper to calculate monthly totals for a section
+  const getSectionMonthlyTotal = (accountTypes: string[], month: number): number => {
+    const sectionAccounts = accounts.filter(a => accountTypes.includes(a.account_type));
+    return sectionAccounts.reduce((sum, acc) => sum + getMonthlyActualsForAccount(acc.qb_account_id, month), 0);
+  };
+
+  // Render monthly breakdown table
+  const renderMonthlyBreakdown = () => {
+    const monthAbbrevs = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    // Helper to render a row for an account
+    const renderAccountRow = (account: QBAccount, indent: number = 0) => {
+      const budget = accountBudgets.get(account.qb_account_id);
+      let yearTotal = 0;
+      let yearBudget = 0;
+
+      const cells = monthAbbrevs.map((_, monthIdx) => {
+        const actual = getMonthlyActualsForAccount(account.qb_account_id, monthIdx);
+        const budgetAmount = budget ? (budget[MONTH_KEYS[monthIdx]] || 0) : 0;
+        yearTotal += actual;
+        yearBudget += budgetAmount;
+
+        return (
+          <td key={monthIdx} className="px-2 py-1 text-right tabular-nums text-xs">
+            <div className={actual > 0 ? 'text-gray-900' : 'text-gray-400'}>
+              {actual > 0 ? formatCurrency(actual).replace('$', '') : '-'}
+            </div>
+            {budgetAmount > 0 && (
+              <div className={`text-[10px] ${actual > budgetAmount ? 'text-red-500' : 'text-gray-400'}`}>
+                ({formatCurrency(budgetAmount).replace('$', '')})
+              </div>
+            )}
+          </td>
+        );
+      });
+
+      return (
+        <tr key={account.qb_account_id} className="hover:bg-gray-50">
+          <td className="px-3 py-1 text-sm whitespace-nowrap" style={{ paddingLeft: `${12 + indent * 16}px` }}>
+            {account.name}
+          </td>
+          {cells}
+          <td className="px-2 py-1 text-right tabular-nums text-xs font-medium border-l border-gray-200">
+            <div>{yearTotal > 0 ? formatCurrency(yearTotal).replace('$', '') : '-'}</div>
+            {yearBudget > 0 && (
+              <div className={`text-[10px] ${yearTotal > yearBudget ? 'text-red-500' : 'text-gray-400'}`}>
+                ({formatCurrency(yearBudget).replace('$', '')})
+              </div>
+            )}
+          </td>
+        </tr>
+      );
+    };
+
+    // Helper to render section total row
+    const renderSectionTotal = (title: string, accountTypes: string[], bgClass: string, textClass: string) => {
+      const yearTotals = monthAbbrevs.map((_, monthIdx) => getSectionMonthlyTotal(accountTypes, monthIdx));
+      const yearTotal = yearTotals.reduce((sum, t) => sum + t, 0);
+
+      return (
+        <tr className={`${bgClass} font-semibold`}>
+          <td className={`px-3 py-2 text-sm ${textClass}`}>{title}</td>
+          {yearTotals.map((total, idx) => (
+            <td key={idx} className={`px-2 py-2 text-right tabular-nums text-xs ${textClass}`}>
+              {total > 0 ? formatCurrency(total).replace('$', '') : '-'}
+            </td>
+          ))}
+          <td className={`px-2 py-2 text-right tabular-nums text-xs font-bold border-l border-gray-200 ${textClass}`}>
+            {formatCurrency(yearTotal).replace('$', '')}
+          </td>
+        </tr>
+      );
+    };
+
+    // Calculate monthly values for key metrics
+    const monthlyIncome = monthAbbrevs.map((_, m) => getSectionMonthlyTotal(['Income'], m));
+    const monthlyCOGS = monthAbbrevs.map((_, m) => getSectionMonthlyTotal(['Cost of Goods Sold'], m));
+    const monthlyExpensesArr = monthAbbrevs.map((_, m) => getSectionMonthlyTotal(['Expense'], m));
+    const monthlyOtherIncome = monthAbbrevs.map((_, m) => getSectionMonthlyTotal(['Other Income'], m));
+    const monthlyOtherExpenses = monthAbbrevs.map((_, m) => getSectionMonthlyTotal(['Other Expense'], m));
+
+    const monthlyGrossProfit = monthAbbrevs.map((_, m) => monthlyIncome[m] - monthlyCOGS[m]);
+    const monthlyOpIncome = monthAbbrevs.map((_, m) => monthlyGrossProfit[m] - monthlyExpensesArr[m]);
+    const monthlyNetIncome = monthAbbrevs.map((_, m) => monthlyOpIncome[m] + monthlyOtherIncome[m] - monthlyOtherExpenses[m]);
+
+    const incomeAccounts = accounts.filter(a => a.account_type === 'Income');
+    const cogsAccounts = accounts.filter(a => a.account_type === 'Cost of Goods Sold');
+    const expenseAccounts = accounts.filter(a => a.account_type === 'Expense');
+    const otherIncomeAccounts = accounts.filter(a => a.account_type === 'Other Income');
+    const otherExpenseAccounts = accounts.filter(a => a.account_type === 'Other Expense');
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead className="sticky top-0 z-10">
+            <tr className="bg-gray-100 border-b border-gray-300">
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider min-w-[200px]">Account</th>
+              {monthAbbrevs.map(m => (
+                <th key={m} className="px-2 py-2 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider w-20">{m}</th>
+              ))}
+              <th className="px-2 py-2 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider w-24 border-l border-gray-300">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* Income Section */}
+            {incomeAccounts.length > 0 && (
+              <>
+                <tr className="bg-green-50">
+                  <td colSpan={14} className="px-3 py-2 font-bold text-green-800 text-sm">Income</td>
+                </tr>
+                {incomeAccounts.map(acc => renderAccountRow(acc))}
+                {renderSectionTotal('Total Income', ['Income'], 'bg-green-100', 'text-green-800')}
+              </>
+            )}
+
+            {/* COGS Section */}
+            {cogsAccounts.length > 0 && (
+              <>
+                <tr className="bg-orange-50">
+                  <td colSpan={14} className="px-3 py-2 font-bold text-orange-800 text-sm">Cost of Goods Sold</td>
+                </tr>
+                {cogsAccounts.map(acc => renderAccountRow(acc))}
+                {renderSectionTotal('Total COGS', ['Cost of Goods Sold'], 'bg-orange-100', 'text-orange-800')}
+              </>
+            )}
+
+            {/* Gross Profit */}
+            <tr className="bg-blue-200 font-bold border-y-2 border-blue-400">
+              <td className="px-3 py-2 text-blue-900 text-sm">Gross Profit</td>
+              {monthlyGrossProfit.map((gp, idx) => (
+                <td key={idx} className={`px-2 py-2 text-right tabular-nums text-xs ${gp >= 0 ? 'text-blue-900' : 'text-red-600'}`}>
+                  {formatCurrency(gp).replace('$', '')}
+                </td>
+              ))}
+              <td className={`px-2 py-2 text-right tabular-nums text-xs border-l border-blue-400 ${grossProfit >= 0 ? 'text-blue-900' : 'text-red-600'}`}>
+                {formatCurrency(monthlyGrossProfit.reduce((s, v) => s + v, 0)).replace('$', '')}
+              </td>
+            </tr>
+
+            {/* Expenses Section */}
+            {expenseAccounts.length > 0 && (
+              <>
+                <tr className="bg-red-50">
+                  <td colSpan={14} className="px-3 py-2 font-bold text-red-800 text-sm">Operating Expenses</td>
+                </tr>
+                {expenseAccounts.map(acc => renderAccountRow(acc))}
+                {renderSectionTotal('Total Expenses', ['Expense'], 'bg-red-100', 'text-red-800')}
+              </>
+            )}
+
+            {/* Operating Income */}
+            <tr className="bg-blue-200 font-bold border-y-2 border-blue-400">
+              <td className="px-3 py-2 text-blue-900 text-sm">Operating Income</td>
+              {monthlyOpIncome.map((oi, idx) => (
+                <td key={idx} className={`px-2 py-2 text-right tabular-nums text-xs ${oi >= 0 ? 'text-blue-900' : 'text-red-600'}`}>
+                  {formatCurrency(oi).replace('$', '')}
+                </td>
+              ))}
+              <td className={`px-2 py-2 text-right tabular-nums text-xs border-l border-blue-400 ${operatingIncome >= 0 ? 'text-blue-900' : 'text-red-600'}`}>
+                {formatCurrency(monthlyOpIncome.reduce((s, v) => s + v, 0)).replace('$', '')}
+              </td>
+            </tr>
+
+            {/* Other Income Section */}
+            {otherIncomeAccounts.length > 0 && (
+              <>
+                <tr className="bg-teal-50">
+                  <td colSpan={14} className="px-3 py-2 font-bold text-teal-800 text-sm">Other Income</td>
+                </tr>
+                {otherIncomeAccounts.map(acc => renderAccountRow(acc))}
+                {renderSectionTotal('Total Other Income', ['Other Income'], 'bg-teal-100', 'text-teal-800')}
+              </>
+            )}
+
+            {/* Other Expenses Section */}
+            {otherExpenseAccounts.length > 0 && (
+              <>
+                <tr className="bg-pink-50">
+                  <td colSpan={14} className="px-3 py-2 font-bold text-pink-800 text-sm">Other Expenses</td>
+                </tr>
+                {otherExpenseAccounts.map(acc => renderAccountRow(acc))}
+                {renderSectionTotal('Total Other Expenses', ['Other Expense'], 'bg-pink-100', 'text-pink-800')}
+              </>
+            )}
+
+            {/* Net Income */}
+            <tr className="bg-gray-800 text-white font-bold">
+              <td className="px-3 py-3 text-base">Net Income</td>
+              {monthlyNetIncome.map((ni, idx) => (
+                <td key={idx} className={`px-2 py-3 text-right tabular-nums text-xs ${ni >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+                  {formatCurrency(ni).replace('$', '')}
+                </td>
+              ))}
+              <td className={`px-2 py-3 text-right tabular-nums text-sm border-l border-gray-600 ${netIncome >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+                {formatCurrency(monthlyNetIncome.reduce((s, v) => s + v, 0)).replace('$', '')}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  // Render budget editing grid - simpler view to edit budget values
+  const renderBudgetEditView = () => {
+    const monthAbbrevs = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    // Get accounts that are budgetable (expenses and COGS)
+    const budgetableAccounts = accounts.filter(a =>
+      ['Expense', 'Other Expense', 'Cost of Goods Sold'].includes(a.account_type)
+    ).sort((a, b) => a.fully_qualified_name.localeCompare(b.fully_qualified_name));
+
+    const renderBudgetRow = (account: QBAccount) => {
+      const budget = accountBudgets.get(account.qb_account_id);
+      let yearTotal = 0;
+
+      const cells = monthAbbrevs.map((_, monthIdx) => {
+        const budgetValue = budget ? (budget[MONTH_KEYS[monthIdx]] || 0) : 0;
+        yearTotal += budgetValue;
+        const isEditing = budgetEditingCell?.qbAccountId === account.qb_account_id && budgetEditingCell?.month === monthIdx;
+
+        return (
+          <td key={monthIdx} className="px-1 py-1 text-center">
+            {isEditing ? (
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  value={budgetEditValue}
+                  onChange={(e) => setBudgetEditValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      saveMonthlyBudget(account.qb_account_id, monthIdx, parseFloat(budgetEditValue) || 0);
+                    } else if (e.key === 'Escape') {
+                      setBudgetEditingCell(null);
+                      setBudgetEditValue("");
+                    }
+                  }}
+                  onBlur={(e) => {
+                    // Don't blur if clicking the fill forward button
+                    if (e.relatedTarget?.closest('button[data-fill-forward]')) return;
+                    saveMonthlyBudget(account.qb_account_id, monthIdx, parseFloat(budgetEditValue) || 0);
+                  }}
+                  className="w-16 px-1 py-0.5 text-right text-xs border border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  autoFocus
+                  disabled={savingBudget}
+                />
+                {monthIdx < 11 && (
+                  <button
+                    data-fill-forward
+                    onClick={() => fillBudgetForward(account.qb_account_id, monthIdx, parseFloat(budgetEditValue) || 0)}
+                    className="p-0.5 text-blue-600 hover:text-blue-800"
+                    title="Fill forward to remaining months"
+                    disabled={savingBudget}
+                  >
+                    <ChevronRight className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  setBudgetEditingCell({ qbAccountId: account.qb_account_id, month: monthIdx });
+                  setBudgetEditValue(budgetValue > 0 ? budgetValue.toString() : "");
+                }}
+                className={`w-full px-1 py-0.5 text-right text-xs rounded hover:bg-blue-50 ${
+                  budgetValue > 0 ? 'text-gray-900' : 'text-gray-300'
+                }`}
+              >
+                {budgetValue > 0 ? formatCurrency(budgetValue).replace('$', '') : '-'}
+              </button>
+            )}
+          </td>
+        );
+      });
+
+      return (
+        <tr key={account.qb_account_id} className="hover:bg-gray-50 border-t border-gray-100">
+          <td className="px-3 py-1.5 text-sm whitespace-nowrap text-gray-900">
+            {account.fully_qualified_name}
+          </td>
+          {cells}
+          <td className="px-2 py-1.5 text-right tabular-nums text-xs font-semibold border-l border-gray-200 text-gray-700">
+            {yearTotal > 0 ? formatCurrency(yearTotal).replace('$', '') : '-'}
+          </td>
+        </tr>
+      );
+    };
+
+    // Group accounts by type
+    const expenseAccounts = budgetableAccounts.filter(a => a.account_type === 'Expense');
+    const cogsAccounts = budgetableAccounts.filter(a => a.account_type === 'Cost of Goods Sold');
+    const otherExpenseAccounts = budgetableAccounts.filter(a => a.account_type === 'Other Expense');
+
+    // Calculate section totals
+    const getSectionBudgetTotal = (accts: QBAccount[], month: number) => {
+      return accts.reduce((sum, acc) => {
+        const budget = accountBudgets.get(acc.qb_account_id);
+        return sum + (budget ? (budget[MONTH_KEYS[month]] || 0) : 0);
+      }, 0);
+    };
+
+    const renderSectionTotalRow = (label: string, accts: QBAccount[], bgClass: string, textClass: string) => {
+      const monthTotals = monthAbbrevs.map((_, m) => getSectionBudgetTotal(accts, m));
+      const yearTotal = monthTotals.reduce((s, v) => s + v, 0);
+
+      return (
+        <tr className={`${bgClass} font-semibold`}>
+          <td className={`px-3 py-2 text-sm ${textClass}`}>{label}</td>
+          {monthTotals.map((total, idx) => (
+            <td key={idx} className={`px-2 py-2 text-right tabular-nums text-xs ${textClass}`}>
+              {total > 0 ? formatCurrency(total).replace('$', '') : '-'}
+            </td>
+          ))}
+          <td className={`px-2 py-2 text-right tabular-nums text-xs font-bold border-l border-gray-200 ${textClass}`}>
+            {yearTotal > 0 ? formatCurrency(yearTotal).replace('$', '') : '-'}
+          </td>
+        </tr>
+      );
+    };
+
+    return (
+      <div className="overflow-x-auto max-h-[calc(100vh-350px)]">
+        <table className="min-w-full text-sm">
+          <thead className="sticky top-0 z-10 bg-gray-100">
+            <tr className="border-b border-gray-300">
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider min-w-[250px]">
+                Account
+              </th>
+              {monthAbbrevs.map(m => (
+                <th key={m} className="px-2 py-2 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider w-20">
+                  {m}
+                </th>
+              ))}
+              <th className="px-2 py-2 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider w-24 border-l border-gray-300">
+                Total
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* COGS Section */}
+            {cogsAccounts.length > 0 && (
+              <>
+                <tr className="bg-orange-50">
+                  <td colSpan={14} className="px-3 py-2 font-bold text-orange-800 text-sm">
+                    Cost of Goods Sold
+                  </td>
+                </tr>
+                {cogsAccounts.map(acc => renderBudgetRow(acc))}
+                {renderSectionTotalRow('Total COGS Budget', cogsAccounts, 'bg-orange-100', 'text-orange-800')}
+              </>
+            )}
+
+            {/* Expenses Section */}
+            {expenseAccounts.length > 0 && (
+              <>
+                <tr className="bg-red-50">
+                  <td colSpan={14} className="px-3 py-2 font-bold text-red-800 text-sm">
+                    Operating Expenses
+                  </td>
+                </tr>
+                {expenseAccounts.map(acc => renderBudgetRow(acc))}
+                {renderSectionTotalRow('Total Expenses Budget', expenseAccounts, 'bg-red-100', 'text-red-800')}
+              </>
+            )}
+
+            {/* Other Expenses Section */}
+            {otherExpenseAccounts.length > 0 && (
+              <>
+                <tr className="bg-pink-50">
+                  <td colSpan={14} className="px-3 py-2 font-bold text-pink-800 text-sm">
+                    Other Expenses
+                  </td>
+                </tr>
+                {otherExpenseAccounts.map(acc => renderBudgetRow(acc))}
+                {renderSectionTotalRow('Total Other Expenses Budget', otherExpenseAccounts, 'bg-pink-100', 'text-pink-800')}
+              </>
+            )}
+
+            {/* Grand Total */}
+            <tr className="bg-gray-800 text-white font-bold">
+              <td className="px-3 py-3 text-base">Total Budget</td>
+              {monthAbbrevs.map((_, monthIdx) => {
+                const total = getSectionBudgetTotal(budgetableAccounts, monthIdx);
+                return (
+                  <td key={monthIdx} className="px-2 py-3 text-right tabular-nums text-xs text-gray-200">
+                    {total > 0 ? formatCurrency(total).replace('$', '') : '-'}
+                  </td>
+                );
+              })}
+              <td className="px-2 py-3 text-right tabular-nums text-sm border-l border-gray-600 text-white">
+                {formatCurrency(
+                  monthAbbrevs.reduce((sum, _, m) => sum + getSectionBudgetTotal(budgetableAccounts, m), 0)
+                ).replace('$', '')}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div className="p-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
+          Click any cell to edit. Press Enter to save, Escape to cancel. Use the → button to fill a value forward to remaining months.
+        </div>
+      </div>
+    );
+  };
+
   // Calculate P&L totals
   const incomeSection = plSections.find(s => s.title === 'Income');
   const cogsSection = plSections.find(s => s.title === 'Cost of Goods Sold');
@@ -1377,9 +1990,13 @@ export default function BudgetDashboardPage() {
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
-  const periodLabel = selectedMonth !== null
-    ? `${months[selectedMonth]} ${selectedYear}`
-    : `Full Year ${selectedYear}`;
+  const periodLabel = viewMode === 'monthly'
+    ? `${selectedYear} Monthly Breakdown`
+    : viewMode === 'budget-edit'
+      ? `${selectedYear} Budget`
+      : selectedMonth !== null
+        ? `${months[selectedMonth]} ${selectedYear}`
+        : `Full Year ${selectedYear}`;
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -1457,11 +2074,24 @@ export default function BudgetDashboardPage() {
                 ))}
               </select>
               <select
-                value={selectedMonth ?? ''}
-                onChange={(e) => setSelectedMonth(e.target.value === '' ? null : parseInt(e.target.value))}
+                value={viewMode === 'monthly' ? 'monthly' : viewMode === 'budget-edit' ? 'budget-edit' : (selectedMonth ?? '')}
+                onChange={(e) => {
+                  if (e.target.value === 'monthly') {
+                    setViewMode('monthly');
+                    setSelectedMonth(null);
+                  } else if (e.target.value === 'budget-edit') {
+                    setViewMode('budget-edit');
+                    setSelectedMonth(null);
+                  } else {
+                    setViewMode('summary');
+                    setSelectedMonth(e.target.value === '' ? null : parseInt(e.target.value));
+                  }
+                }}
                 className="border border-gray-300 rounded-md px-3 py-2"
               >
                 <option value="">Full Year</option>
+                <option value="monthly">Monthly Breakdown</option>
+                <option value="budget-edit">Edit Budget</option>
                 {months.map((month, index) => (
                   <option key={index} value={index}>{month}</option>
                 ))}
@@ -1506,6 +2136,11 @@ export default function BudgetDashboardPage() {
             <p className="text-sm text-gray-500">{periodLabel}</p>
           </div>
 
+          {viewMode === 'monthly' ? (
+            renderMonthlyBreakdown()
+          ) : viewMode === 'budget-edit' ? (
+            renderBudgetEditView()
+          ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full">
               <thead>
@@ -1682,6 +2317,7 @@ export default function BudgetDashboardPage() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
 
         {/* Summary Cards */}
