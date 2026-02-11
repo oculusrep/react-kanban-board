@@ -7,8 +7,7 @@ import GmailRoute from "./components/GmailRoute";
 import PortalRoute from "./components/PortalRoute";
 import CoachNavbar from "./components/CoachNavbar";
 import PortalLayout from "./components/portal/PortalLayout";
-import PortalMapPage from "./pages/portal/PortalMapPage";
-import PortalPipelinePage from "./pages/portal/PortalPipelinePage";
+import PortalContentWrapper from "./pages/portal/PortalContentWrapper";
 import PortalLoginPage from "./pages/portal/PortalLoginPage";
 import PortalInviteAcceptPage from "./pages/portal/PortalInviteAcceptPage";
 import PortalForgotPasswordPage from "./pages/portal/PortalForgotPasswordPage";
@@ -112,10 +111,10 @@ function App() {
         <Route path="/portal/reset-password" element={<PortalResetPasswordPage />} />
 
         {/* Client Portal Routes - protected layout */}
+        {/* Uses PortalContentWrapper to keep both map and pipeline mounted for state persistence */}
         <Route path="/portal" element={<PortalRoute><PortalLayout /></PortalRoute>}>
           <Route index element={<Navigate to="/portal/map" replace />} />
-          <Route path="map" element={<PortalMapPage />} />
-          <Route path="pipeline" element={<PortalPipelinePage />} />
+          <Route path="*" element={<PortalContentWrapper />} />
         </Route>
 
         {/* All other routes are protected */}
