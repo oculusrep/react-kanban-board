@@ -158,6 +158,38 @@ NRN:          ✅ PASS
 BizJournals:  ✅ PASS
 ```
 
+### 5. Franchise Times RSS Feed Fix
+
+**Problem:** Franchise Times was producing 0 signals because the RSS feed URL was returning 404.
+
+**Root Cause:** The old RSS URL `https://www.franchisetimes.com/feed/` no longer exists. The site migrated to a search-based RSS feed.
+
+**Fix:** Updated `article-fetcher.ts` with the correct RSS URL:
+
+```typescript
+export const RSS_FEEDS: Record<string, string> = {
+  qsr: 'https://www.qsrmagazine.com/rss.xml',
+  'franchise-times': 'https://www.franchisetimes.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc',
+};
+```
+
+**Additional Fix:** Deactivated the "Franchise Times Dealmakers" source in the database - it was incorrectly configured as a podcast but is actually an awards/editorial section covered by the main Franchise Times source.
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| `.env` | Wrapped NRN_PASSWORD in quotes |
+| `hunter-agent/src/modules/gatherer/scrapers/nrn-scraper.ts` | New login flow with cookie/popup handling |
+| `hunter-agent/src/modules/gatherer/scrapers/bizjournals-scraper.ts` | Direct sign-in URL |
+| `hunter-agent/src/modules/gatherer/playwright-browser.ts` | Added stealth plugin |
+| `hunter-agent/src/modules/gatherer/rss/article-fetcher.ts` | Fixed Franchise Times RSS URL |
+| `hunter-agent/scripts/test-login.ts` | Updated test script |
+
+## Database Changes
+
+- Deactivated `hunter_source` with slug `ft-dealmakers` (not a podcast, content covered by main source)
+
 ## Key Learnings
 
 1. **`.env` files and special characters**: The `#` character starts a comment in `.env` files. Always quote values containing `#`, `$`, or other special characters.
@@ -167,3 +199,5 @@ BizJournals:  ✅ PASS
 3. **Bot detection**: Modern sites use Cloudflare and similar services. The `playwright-extra` stealth plugin helps bypass these checks by making the browser appear more human-like.
 
 4. **Cookie consent**: GDPR/CCPA compliance means most sites now show cookie banners. Scrapers need to handle these before interacting with other page elements.
+
+5. **RSS feed URLs change**: Websites frequently restructure and RSS feeds move. The Franchise Times migration from `/feed/` to a search-based RSS is common with CMS updates.
