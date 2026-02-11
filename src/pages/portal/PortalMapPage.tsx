@@ -32,7 +32,7 @@ const PORTAL_VISIBLE_STAGES = [
   'Lost / Killed',
   'LOI',
   'At Lease/PSA',
-  'Under Contract/Contingent',
+  'Under Contract / Contingent',
   'Store Opened',
 ];
 

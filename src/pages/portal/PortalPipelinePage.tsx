@@ -54,7 +54,7 @@ interface SubmitStage {
 
 // Stage tab configuration
 const HIDDEN_STAGE_NAMES = ['Use Conflict', 'Not Available', 'Use Declined', 'Lost / Killed'];
-const SIGNED_STAGE_NAMES = ['Under Contract/Contingent', 'Booked', 'Executed Payable'];
+const SIGNED_STAGE_NAMES = ['Under Contract / Contingent', 'Booked', 'Executed Payable'];
 const STAGE_DISPLAY_NAMES: Record<string, string> = {
   'Submitted-Reviewing': 'For Review',
 };
@@ -71,7 +71,7 @@ const VISIBLE_STAGES = [
   'Lost / Killed',
   'LOI',
   'At Lease/PSA',
-  'Under Contract/Contingent',
+  'Under Contract / Contingent',
   'Store Opened'
 ];
 
