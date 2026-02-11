@@ -1,4 +1,4 @@
-// Referral Fee Row with Paid Checkbox
+// Referral Fee Row with Paid Checkbox and QBO Bill Creation
 // src/components/payments/ReferralFeeRow.tsx
 
 import React, { useState, useEffect } from 'react';
@@ -12,6 +12,16 @@ interface ReferralFeeRowProps {
   paidDate: string | null;
   onUpdate: () => void;
   onOptimisticUpdate?: (updates: { referral_fee_paid?: boolean; referral_fee_paid_date?: string | null }) => void;
+}
+
+interface QBReferralResult {
+  success: boolean;
+  message?: string;
+  qbEntityId?: string;
+  qbDocNumber?: string;
+  amount?: number;
+  referralPayee?: string;
+  error?: string;
 }
 
 const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
@@ -51,12 +61,35 @@ const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
 
   const [localPaid, setLocalPaid] = useState(paid);
   const [localPaidDate, setLocalPaidDate] = useState(paidDate);
+  const [isCreatingQBEntry, setIsCreatingQBEntry] = useState(false);
 
   // Sync with props when they change
   useEffect(() => {
     setLocalPaid(paid);
     setLocalPaidDate(paidDate);
   }, [paid, paidDate]);
+
+  // Create QBO Bill for referral fee when marking as paid
+  const createQBReferralEntry = async (paidDate: string): Promise<QBReferralResult> => {
+    try {
+      const { data, error } = await supabase.functions.invoke('quickbooks-create-referral-entry', {
+        body: {
+          paymentId: paymentId,
+          paidDate: paidDate,
+        },
+      });
+
+      if (error) {
+        console.error('QBO referral entry error:', error);
+        return { success: false, error: error.message };
+      }
+
+      return data as QBReferralResult;
+    } catch (err) {
+      console.error('QBO referral entry exception:', err);
+      return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+    }
+  };
 
   const handleTogglePaid = async (isPaid: boolean) => {
     const newDate = isPaid ? getLocalDateString() : null;
@@ -86,6 +119,33 @@ const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
       setLocalPaidDate(paidDate);
       if (onOptimisticUpdate) {
         onOptimisticUpdate({ referral_fee_paid: paid, referral_fee_paid_date: paidDate });
+      }
+      return;
+    }
+
+    // If marking as paid, create QBO Bill for the referral fee
+    if (isPaid && newDate) {
+      setIsCreatingQBEntry(true);
+      const result = await createQBReferralEntry(newDate);
+      setIsCreatingQBEntry(false);
+
+      if (result.success) {
+        console.log(`Created QBO Bill #${result.qbDocNumber} for referral fee to ${result.referralPayee}`);
+      } else if (result.error?.includes('No referral payee')) {
+        // No referral payee set on deal - this is expected for deals without referral fees
+        console.log('No referral payee set on this deal - skipping QBO bill');
+      } else if (result.error?.includes('No QuickBooks commission mapping configured')) {
+        // No mapping configured - warn but don't block
+        console.warn(`No QBO mapping for referral partner: ${result.error}`);
+      } else if (result.error?.includes('QuickBooks is not connected')) {
+        // QBO not connected - silent fail, just log
+        console.log('QuickBooks not connected - skipping referral fee bill');
+      } else if (result.error?.includes('Referral fee amount is 0')) {
+        // No referral fee amount - expected for some deals
+        console.log('Referral fee amount is 0 - skipping QBO bill');
+      } else {
+        // Other error - log but don't block the paid status update
+        console.error('Failed to create QBO referral entry:', result.error);
       }
     }
   };
@@ -134,9 +194,13 @@ const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
             type="checkbox"
             checked={localPaid}
             onChange={(e) => handleTogglePaid(e.target.checked)}
-            className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+            disabled={isCreatingQBEntry}
+            className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded disabled:opacity-50"
           />
-          {localPaid && localPaidDate ? (
+          {isCreatingQBEntry && (
+            <span className="text-xs text-blue-600 animate-pulse">Syncing to QBO...</span>
+          )}
+          {localPaid && localPaidDate && !isCreatingQBEntry ? (
             <input
               type="date"
               value={localPaidDate}
@@ -144,11 +208,11 @@ const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
               className="text-gray-500 text-xs border-0 p-0 focus:ring-0 cursor-pointer hover:text-gray-700"
               style={{ width: '90px' }}
             />
-          ) : (
+          ) : !isCreatingQBEntry ? (
             <span className="text-sm text-gray-500">
               {localPaid ? 'Paid' : 'Mark as Paid'}
             </span>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
