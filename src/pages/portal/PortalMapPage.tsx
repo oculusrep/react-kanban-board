@@ -116,7 +116,7 @@ export default function PortalMapPage() {
     const newVisibility: Record<string, boolean> = { ...layerVisibility };
     displayLayers.forEach(layer => {
       if (newVisibility[layer.id] === undefined) {
-        newVisibility[layer.id] = true; // Default to visible
+        newVisibility[layer.id] = false; // Default to hidden
       }
     });
     setLayerVisibility(newVisibility);
