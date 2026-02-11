@@ -355,6 +355,7 @@ const ContactSidebar: React.FC<ContactSidebarProps> = ({
   const [expandedSidebarModules, setExpandedSidebarModules] = useState({
     notes: false,
     deals: false,
+    properties: false,
     clients: false,
     files: false
   });
@@ -364,6 +365,7 @@ const ContactSidebar: React.FC<ContactSidebarProps> = ({
     setExpandedSidebarModules({
       notes: false,
       deals: false,
+      properties: false,
       clients: false,
       files: false
     });
@@ -611,6 +613,25 @@ const ContactSidebar: React.FC<ContactSidebarProps> = ({
                     key={deal.id}
                     deal={deal}
                     onClick={onDealClick}
+                  />
+                ))}
+              </SidebarModule>
+
+              {/* Properties */}
+              <SidebarModule
+                title="Properties"
+                count={properties.length}
+                isExpanded={expandedSidebarModules.properties}
+                onToggle={() => toggleSidebarModule('properties')}
+                icon="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                isEmpty={properties.length === 0}
+                showAddButton={false}
+              >
+                {properties.map(property => (
+                  <PropertyItem
+                    key={property.id}
+                    property={property}
+                    onClick={onPropertyClick}
                   />
                 ))}
               </SidebarModule>
