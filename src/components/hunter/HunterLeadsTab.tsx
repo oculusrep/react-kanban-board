@@ -51,6 +51,7 @@ export default function HunterLeadsTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [geoFilter, setGeoFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [cardFilter, setCardFilter] = useState<'all' | 'hot' | 'new' | 'converted'>('all');
   const [stats, setStats] = useState({
     total: 0,
     hot: 0,
@@ -98,13 +99,17 @@ export default function HunterLeadsTab() {
       // Load stats
       const { data: statsData } = await supabase
         .from('hunter_lead')
-        .select('signal_strength, status');
+        .select('signal_strength, status, created_at');
 
       if (statsData) {
+        // Calculate "new this week" - leads created in the last 7 days
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+
         setStats({
           total: statsData.length,
           hot: statsData.filter(l => l.signal_strength === 'HOT').length,
-          new: statsData.filter(l => l.status === 'new').length,
+          new: statsData.filter(l => new Date(l.created_at) >= weekAgo).length,
           converted: statsData.filter(l => l.status === 'converted').length
         });
       }
@@ -115,15 +120,40 @@ export default function HunterLeadsTab() {
     }
   }
 
-  const filteredLeads = leads.filter(lead =>
-    lead.concept_name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Calculate "new this week" threshold (7 days ago)
+  const oneWeekAgo = new Date();
+  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+  const filteredLeads = leads.filter(lead => {
+    // Text search filter
+    if (!lead.concept_name.toLowerCase().includes(searchTerm.toLowerCase())) {
+      return false;
+    }
+
+    // Card filter
+    switch (cardFilter) {
+      case 'hot':
+        return lead.signal_strength === 'HOT';
+      case 'new':
+        return new Date(lead.created_at) >= oneWeekAgo;
+      case 'converted':
+        return lead.status === 'converted';
+      case 'all':
+      default:
+        return true;
+    }
+  });
 
   return (
     <div className="space-y-6">
-      {/* Stats Cards */}
+      {/* Stats Cards - Clickable Filters */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <button
+          onClick={() => setCardFilter(cardFilter === 'all' ? 'all' : 'all')}
+          className={`bg-white rounded-lg shadow-sm border-2 p-4 text-left transition-all hover:shadow-md ${
+            cardFilter === 'all' ? 'border-gray-400 ring-2 ring-gray-200' : 'border-gray-200 hover:border-gray-300'
+          }`}
+        >
           <div className="flex items-center gap-3">
             <div className="p-2 bg-gray-100 rounded-lg">
               <BuildingStorefrontIcon className="w-5 h-5 text-gray-600" />
@@ -133,8 +163,13 @@ export default function HunterLeadsTab() {
               <p className="text-sm text-gray-500">Total Leads</p>
             </div>
           </div>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        </button>
+        <button
+          onClick={() => setCardFilter(cardFilter === 'hot' ? 'all' : 'hot')}
+          className={`bg-white rounded-lg shadow-sm border-2 p-4 text-left transition-all hover:shadow-md ${
+            cardFilter === 'hot' ? 'border-red-400 ring-2 ring-red-100' : 'border-gray-200 hover:border-red-300'
+          }`}
+        >
           <div className="flex items-center gap-3">
             <div className="p-2 bg-red-100 rounded-lg">
               <FireIcon className="w-5 h-5 text-red-600" />
@@ -144,8 +179,13 @@ export default function HunterLeadsTab() {
               <p className="text-sm text-gray-500">HOT Leads</p>
             </div>
           </div>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        </button>
+        <button
+          onClick={() => setCardFilter(cardFilter === 'new' ? 'all' : 'new')}
+          className={`bg-white rounded-lg shadow-sm border-2 p-4 text-left transition-all hover:shadow-md ${
+            cardFilter === 'new' ? 'border-green-400 ring-2 ring-green-100' : 'border-gray-200 hover:border-green-300'
+          }`}
+        >
           <div className="flex items-center gap-3">
             <div className="p-2 bg-green-100 rounded-lg">
               <ArrowTrendingUpIcon className="w-5 h-5 text-green-600" />
@@ -155,8 +195,13 @@ export default function HunterLeadsTab() {
               <p className="text-sm text-gray-500">New This Week</p>
             </div>
           </div>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        </button>
+        <button
+          onClick={() => setCardFilter(cardFilter === 'converted' ? 'all' : 'converted')}
+          className={`bg-white rounded-lg shadow-sm border-2 p-4 text-left transition-all hover:shadow-md ${
+            cardFilter === 'converted' ? 'border-emerald-400 ring-2 ring-emerald-100' : 'border-gray-200 hover:border-emerald-300'
+          }`}
+        >
           <div className="flex items-center gap-3">
             <div className="p-2 bg-emerald-100 rounded-lg">
               <BuildingStorefrontIcon className="w-5 h-5 text-emerald-600" />
@@ -166,7 +211,7 @@ export default function HunterLeadsTab() {
               <p className="text-sm text-gray-500">Converted</p>
             </div>
           </div>
-        </div>
+        </button>
       </div>
 
       {/* Filters */}
@@ -184,6 +229,22 @@ export default function HunterLeadsTab() {
               />
             </div>
           </div>
+          {/* Active card filter indicator */}
+          {cardFilter !== 'all' && (
+            <button
+              onClick={() => setCardFilter('all')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${
+                cardFilter === 'hot' ? 'bg-red-100 text-red-700' :
+                cardFilter === 'new' ? 'bg-green-100 text-green-700' :
+                'bg-emerald-100 text-emerald-700'
+              }`}
+            >
+              {cardFilter === 'hot' && 'HOT Leads'}
+              {cardFilter === 'new' && 'New This Week'}
+              {cardFilter === 'converted' && 'Converted'}
+              <span className="text-xs">&times;</span>
+            </button>
+          )}
           <div className="flex gap-3">
             <div className="flex items-center gap-2">
               <FunnelIcon className="w-5 h-5 text-gray-400" />
