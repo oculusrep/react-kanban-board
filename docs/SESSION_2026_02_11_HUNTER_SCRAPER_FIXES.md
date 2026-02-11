@@ -201,3 +201,143 @@ export const RSS_FEEDS: Record<string, string> = {
 4. **Cookie consent**: GDPR/CCPA compliance means most sites now show cookie banners. Scrapers need to handle these before interacting with other page elements.
 
 5. **RSS feed URLs change**: Websites frequently restructure and RSS feeds move. The Franchise Times migration from `/feed/` to a search-based RSS is common with CMS updates.
+
+---
+
+## Part 2: Article Scraping Fixes (Later Same Day)
+
+After fixing login issues, the Gatherer was completing with **0 signals** despite successful logins. Investigation revealed two more issues:
+
+### Problem: Article Selectors Not Matching
+
+Both scrapers were finding 0 articles because:
+
+1. **BizJournals**: The configured `target_paths` (`/news/retail`, `/news/restaurant`) return 404 - these pages don't exist. Articles are only on the homepage.
+
+2. **NRN**: Article link selectors used `/article/` in the URL pattern, but NRN URLs don't contain `/article/` - they use paths like `/fast-casual/article-slug`.
+
+3. **NRN**: Article body selectors (`.article-body`, `.field--name-body`) don't match NRN's actual structure which uses `[class*="body"]`.
+
+4. **Timeout issues**: Using `waitUntil: 'networkidle'` caused 30+ second timeouts due to Cloudflare/ad networks. Cookie consent loops were also causing 30-second delays per selector.
+
+### Fixes Applied
+
+#### BizJournals Scraper (`bizjournals-scraper.ts`)
+
+```typescript
+// Changed waitUntil to avoid Cloudflare timeout
+await this.page!.goto(signInUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+// Use Enter key for submission (button selector wasn't matching)
+await this.page!.keyboard.press('Enter');
+
+// Wait for redirect with explicit URL check
+await this.page!.waitForURL((url) => !url.toString().includes('/login'), { timeout: 15000 });
+
+// Scrape from homepage first (where articles actually are)
+const pagesToScrape = [
+  this.source.base_url, // Homepage has the latest articles
+  ...this.scrapeConfig.target_paths.map((p) => `${this.source.base_url}${p}`),
+];
+
+// Fixed article selector - look for date-based URLs
+const articleLinks = await this.page!.$$eval(
+  'a[href*="/news/"]',
+  (links) =>
+    links.filter((a) => {
+      const href = (a as HTMLAnchorElement).href;
+      const text = a.textContent?.trim() || '';
+      // Only include actual articles (date-based URLs like /news/2026/02/10/slug.html)
+      return href.includes('/202') && href.includes('.html') && text.length > 20;
+    })
+    // ... mapping and deduping
+);
+```
+
+#### NRN Scraper (`nrn-scraper.ts`)
+
+```typescript
+// Changed waitUntil to avoid timeout
+await this.page!.goto(this.source.base_url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+// Reduced cookie consent timeout from 30s to 3s
+try {
+  const cookieBtn = await this.page!.waitForSelector('#onetrust-accept-btn-handler', { timeout: 3000 });
+  if (cookieBtn) {
+    await cookieBtn.click();
+  }
+} catch {
+  // No cookie banner - continue
+}
+
+// Reduced popup timeout to 2s
+try {
+  const closeBtn = await this.page!.waitForSelector('[class*="close"]:visible', { timeout: 2000 });
+  if (closeBtn) await closeBtn.click();
+} catch {
+  // No popup - continue
+}
+
+// Fixed article selector - NRN uses ContentPreview cards, URLs don't have /article/
+const articleLinks = await this.page!.$$eval(
+  '[class*="ContentPreview"] a, [class*="card"] a',
+  (links, baseUrl) =>
+    links.filter((a) => {
+      const href = (a as HTMLAnchorElement).href;
+      const text = a.textContent?.trim() || '';
+      return (
+        href.startsWith(baseUrl) &&
+        text.length > 20 &&
+        !href.includes('/author/') &&
+        !href.includes('/restaurant-segments/') &&
+        href.split('/').filter(Boolean).length >= 4  // Has slug after category
+      );
+    })
+    // ... mapping and deduping
+  , this.source.base_url
+);
+
+// Fixed article body selector - NRN uses [class*="body"]
+const contentSelectors = [
+  '[class*="ArticleBody"]',
+  '[class*="article-body"]',
+  '[class*="body"]',
+  'article p',
+  'main p',
+];
+```
+
+### Results After Fixes
+
+```
+Gatherer complete: 5 sources, 16 signals, 0 errors
+
+DONE: {
+  "sourcesScraped": 5,
+  "signalsCollected": 16,
+  "errors": []
+}
+```
+
+- **BizJournals**: Found 26 article links, scraped 10 articles
+- **NRN**: Found 25 article links, scraped 15 articles
+- **Total signals stored**: 16 (some were duplicates already in DB)
+
+### Files Modified (Part 2)
+
+| File | Change |
+|------|--------|
+| `hunter-agent/src/modules/gatherer/scrapers/bizjournals-scraper.ts` | Fixed `waitUntil`, Enter key submission, homepage scraping, date-based URL selector |
+| `hunter-agent/src/modules/gatherer/scrapers/nrn-scraper.ts` | Fixed `waitUntil`, reduced timeouts, ContentPreview selector, `[class*="body"]` content selector |
+
+### Key Learnings (Part 2)
+
+6. **`networkidle` vs `domcontentloaded`**: Using `waitUntil: 'networkidle'` can cause timeouts on sites with ad networks, analytics, or Cloudflare. Use `domcontentloaded` and add explicit waits where needed.
+
+7. **Scrape from homepage first**: News sites often have broken or missing category pages. The homepage typically has the latest articles and is most reliable.
+
+8. **URL patterns change**: Don't assume article URLs contain `/article/`. Many modern sites use category-based paths like `/fast-casual/article-slug`.
+
+9. **Test selectors in browser DevTools**: Before writing selectors, inspect the actual page structure. NRN uses `ContentPreview` cards, not traditional `article` elements.
+
+10. **Short timeouts for optional elements**: Cookie banners and popups should use 2-3 second timeouts, not 30 seconds. If they're not there, move on quickly.
