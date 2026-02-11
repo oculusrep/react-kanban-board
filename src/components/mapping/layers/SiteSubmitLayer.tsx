@@ -88,7 +88,7 @@ interface SiteSubmitLayerProps {
   verifyingSiteSubmit?: SiteSubmit | null; // Full site submit data for the one being verified
   onLocationVerified?: (siteSubmitId: string, lat: number, lng: number) => void;
   selectedSiteSubmitId?: string | null; // Site submit to highlight (from Pipeline "View on Map")
-  onSelectedSiteSubmitPosition?: (lat: number, lng: number) => void; // Callback with position of selected site submit
+  onSelectedSiteSubmitPosition?: (lat: number, lng: number, siteSubmitId: string) => void; // Callback with position of selected site submit
 }
 
 
@@ -530,7 +530,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
       // Report selected site submit position for map centering (only once per selection)
       if (isSelected && onSelectedSiteSubmitPosition && lastReportedSelectionRef.current !== siteSubmit.id) {
         lastReportedSelectionRef.current = siteSubmit.id;
-        onSelectedSiteSubmitPosition(coords.lat, coords.lng);
+        onSelectedSiteSubmitPosition(coords.lat, coords.lng, siteSubmit.id);
       }
 
       if (!isBeingVerified && !isSelected && loadingConfig.visibleStages && !loadingConfig.visibleStages.has(stageName)) {

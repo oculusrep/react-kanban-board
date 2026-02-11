@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { usePortal } from '../../contexts/PortalContext';
 import { usePortalActivityTracker } from '../../hooks/usePortalActivityTracker';
@@ -73,8 +73,8 @@ export default function PortalMapPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchMarkers, setSearchMarkers] = useState<google.maps.Marker[]>([]);
 
-  // Track if we've already centered on the selected marker from URL
-  const [hasCenteredOnSelected, setHasCenteredOnSelected] = useState(false);
+  // Track which selection we've already centered on (ref to avoid callback recreation)
+  const centeredOnSelectionRef = useRef<string | null>(null);
 
   // Shared map layers for this client (for portal users)
   const { layers: sharedLayers, fetchLayers: fetchClientLayers } = useClientMapLayers(selectedClientId);
@@ -149,7 +149,8 @@ export default function PortalMapPage() {
     if (selectedId && selectedId !== selectedSiteSubmitId) {
       setSelectedSiteSubmitId(selectedId);
       setIsSidebarOpen(true);
-      setHasCenteredOnSelected(false); // Reset centering flag for new selection
+      // Reset centering ref for new selection (so new selection will center)
+      centeredOnSelectionRef.current = null;
     }
   }, [searchParams]);
 
@@ -201,14 +202,20 @@ export default function PortalMapPage() {
   }, [setSearchParams]);
 
   // Handle selected site submit position - center map on it (from "View on Map" in Pipeline)
-  const handleSelectedSiteSubmitPosition = useCallback((lat: number, lng: number) => {
-    if (!mapInstance || hasCenteredOnSelected) return;
+  // Uses ref instead of state to prevent callback recreation and re-centering on tab switch
+  const handleSelectedSiteSubmitPosition = useCallback((lat: number, lng: number, siteSubmitId: string) => {
+    if (!mapInstance) return;
 
-    console.log('🎯 Centering map on selected property:', { lat, lng });
+    // Only center if we haven't already centered on this exact selection
+    if (centeredOnSelectionRef.current === siteSubmitId) {
+      return;
+    }
+
+    console.log('🎯 Centering map on selected property:', { lat, lng, siteSubmitId });
     mapInstance.setCenter({ lat, lng });
     mapInstance.setZoom(15); // Zoom in to show the property clearly
-    setHasCenteredOnSelected(true);
-  }, [mapInstance, hasCenteredOnSelected]);
+    centeredOnSelectionRef.current = siteSubmitId;
+  }, [mapInstance]);
 
   // Handle sidebar close
   const handleCloseSidebar = () => {
