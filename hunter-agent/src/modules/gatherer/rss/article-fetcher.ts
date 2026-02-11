@@ -166,7 +166,7 @@ export class ArticleFetcher {
 // Known RSS feeds for sources
 export const RSS_FEEDS: Record<string, string> = {
   qsr: 'https://www.qsrmagazine.com/rss.xml',
-  'franchise-times': 'https://www.franchisetimes.com/feed/',
+  'franchise-times': 'https://www.franchisetimes.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc',
 };
 
 export default ArticleFetcher;

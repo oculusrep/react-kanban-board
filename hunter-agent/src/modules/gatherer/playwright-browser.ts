@@ -1,5 +1,10 @@
-import { chromium, Browser, BrowserContext } from 'playwright';
+import { chromium } from 'playwright-extra';
+import { Browser, BrowserContext } from 'playwright';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { createLogger } from '../../utils/logger';
+
+// Add stealth plugin to avoid bot detection (Cloudflare, etc.)
+chromium.use(StealthPlugin());
 
 const logger = createLogger('playwright-browser');
 

@@ -30,103 +30,104 @@ export class NRNScraper extends BaseScraper {
     }
 
     try {
-      this.logger.info(`Step 1/8: Navigating to NRN login page: ${this.source.login_url}`);
-      await this.page!.goto(this.source.login_url!, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await this.randomDelay(2000, 4000);
+      // Navigate to homepage instead of the old /user/login URL (which is now 404)
+      this.logger.info(`Step 1/6: Navigating to NRN homepage: ${this.source.base_url}`);
+      await this.page!.goto(this.source.base_url, { waitUntil: 'networkidle', timeout: 30000 });
+      await this.randomDelay(2000, 3000);
 
       this.logger.info(`Step 2/8: Page loaded, current URL: ${this.page!.url()}`);
 
-      // NRN now uses an Iris authentication widget
-      // Click the login button to open the login modal/iframe
-      this.logger.info('Step 3/8: Looking for Iris login button...');
-      const irisLoginBtn = await this.page!.$('button#irisLoginBtn, input#irisLoginBtn');
-
-      if (irisLoginBtn) {
-        this.logger.info('Step 4/8: Clicking Iris login button...');
-        await irisLoginBtn.click();
-        await this.randomDelay(3000, 5000); // Wait for modal/iframe to load
-      } else {
-        this.logger.warn('Iris login button not found, attempting direct form login');
-      }
-
-      // Wait for iframe or modal to appear
-      this.logger.info('Step 5/8: Waiting for login form to appear...');
-      await this.page!.waitForTimeout(3000);
-
-      // Check if there's an iframe (common with authentication widgets)
-      const frames = this.page!.frames();
-      this.logger.info(`Found ${frames.length} frames on page`);
-
-      // Try to find login fields in main page or iframes
-      let loginFrame: any = this.page!;
-      for (const frame of frames) {
-        const hasEmailField = await frame.$('input[type="email"], input[name="email"], input[name="username"]').catch(() => null);
-        if (hasEmailField) {
-          this.logger.info(`Found login form in iframe: ${frame.url()}`);
-          loginFrame = frame;
-          break;
-        }
-      }
-
-      // Fill in the login form
-      this.logger.info('Step 6/8: Filling username/email field...');
-      const emailSelectors = [
-        'input[type="email"]',
-        'input[name="email"]',
-        'input[name="username"]',
-        'input[name="name"]',
-        'input#edit-name'
+      // NRN shows cookie consent banner - accept it first
+      this.logger.info('Step 3/8: Checking for cookie consent...');
+      const cookieSelectors = [
+        'button:has-text("Accept all")',
+        'button:has-text("Accept")',
+        'button:has-text("I Accept")',
+        '#onetrust-accept-btn-handler'
       ];
 
-      let filled = false;
-      for (const selector of emailSelectors) {
+      for (const selector of cookieSelectors) {
         try {
-          await loginFrame.fill(selector, username, { timeout: 3000 });
-          this.logger.info(`  ✓ Filled username: ${selector}`);
-          filled = true;
-          break;
+          const cookieBtn = await this.page!.$(selector);
+          if (cookieBtn && await cookieBtn.isVisible()) {
+            this.logger.info(`  Accepting cookies: ${selector}`);
+            await cookieBtn.click();
+            await this.randomDelay(1000, 1500);
+            break;
+          }
         } catch {
           continue;
         }
       }
 
-      if (!filled) {
-        this.logger.error('Could not find username/email field');
+      // NRN often shows a flash/popup - try to dismiss it
+      this.logger.info('Step 4/8: Checking for interstitial popup...');
+      const dismissSelectors = [
+        'button:has-text("Close")',
+        'button:has-text("×")',
+        '[aria-label="Close"]',
+        '.modal-close',
+        '[class*="close"]'
+      ];
+
+      for (const selector of dismissSelectors) {
+        try {
+          const closeBtn = await this.page!.$(selector);
+          if (closeBtn && await closeBtn.isVisible()) {
+            this.logger.info(`  Dismissing popup: ${selector}`);
+            await closeBtn.click();
+            await this.randomDelay(1000, 1500);
+            break;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      // Click the "Sign in" button in the header to open the login modal
+      this.logger.info('Step 4/7: Looking for Sign in button in header...');
+      // Try button first (NRN uses a button with span inside)
+      let signInElement = await this.page!.$('button:has-text("Sign in")');
+      if (!signInElement) {
+        signInElement = await this.page!.$('text=/Sign in/i');
+      }
+
+      if (!signInElement) {
+        this.logger.error('Could not find Sign in button');
         return false;
       }
 
+      const isVisible = await signInElement.isVisible();
+      if (!isVisible) {
+        this.logger.error('Sign in button found but not visible');
+        return false;
+      }
+
+      this.logger.info('Step 5/7: Clicking Sign in to open login modal...');
+      await signInElement.click();
+      await this.randomDelay(2000, 3000);
+
+      // Wait for login form fields to appear
+      this.logger.info('Step 6/7: Waiting for login form...');
+      try {
+        await this.page!.waitForSelector('input[name="email"], input[type="email"]', { timeout: 10000 });
+      } catch {
+        this.logger.error('Login form did not appear after clicking Sign in');
+        return false;
+      }
+
+      // Fill in email
+      this.logger.info('  Filling email field...');
+      await this.page!.fill('input[name="email"], input[type="email"]', username);
       await this.randomDelay(500, 1000);
 
-      // Fill password
-      this.logger.info('Step 7/8: Filling password field...');
-      const passwordSelectors = [
-        'input[type="password"]',
-        'input[name="password"]',
-        'input[name="pass"]',
-        'input#edit-pass'
-      ];
-
-      filled = false;
-      for (const selector of passwordSelectors) {
-        try {
-          await loginFrame.fill(selector, password, { timeout: 3000 });
-          this.logger.info(`  ✓ Filled password: ${selector}`);
-          filled = true;
-          break;
-        } catch {
-          continue;
-        }
-      }
-
-      if (!filled) {
-        this.logger.error('Could not find password field');
-        return false;
-      }
-
+      // Fill in password
+      this.logger.info('  Filling password field...');
+      await this.page!.fill('input[name="password"], input[type="password"]', password);
       await this.randomDelay(500, 1000);
 
       // Submit the form
-      this.logger.info('Step 8/8: Submitting login form...');
+      this.logger.info('Step 7/7: Submitting login form...');
       const submitSelectors = [
         'button[type="submit"]',
         'input[type="submit"]',
@@ -135,44 +136,50 @@ export class NRNScraper extends BaseScraper {
         'button:has-text("Login")'
       ];
 
+      let submitted = false;
       for (const selector of submitSelectors) {
         try {
-          await loginFrame.click(selector, { timeout: 3000 });
+          await this.page!.click(selector, { timeout: 3000 });
           this.logger.info(`  ✓ Clicked submit: ${selector}`);
+          submitted = true;
           break;
         } catch {
           continue;
         }
       }
 
-      // Wait for navigation/modal to close
-      await this.page!.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
-      await this.randomDelay(3000, 5000);
-
-      // Verify login success - check if we're redirected away from login page
-      const currentUrl = this.page!.url();
-      this.logger.info(`Post-login URL: ${currentUrl}`);
-
-      const isLoggedIn = !currentUrl.includes('/user/login') && !currentUrl.includes('/login');
-
-      if (isLoggedIn) {
-        this.logger.info('NRN login successful - redirected away from login page');
-        return true;
+      if (!submitted) {
+        // Try pressing Enter as fallback
+        await this.page!.keyboard.press('Enter');
+        this.logger.info('  ✓ Pressed Enter to submit');
       }
 
-      // Alternative: Check for logout button or user profile indicator
-      const logoutBtn = await this.page!.$('button#irisLogoutBtn, input#irisLogoutBtn, .user-logout, a[href*="logout"]').catch(() => null);
+      // Wait for login to complete
+      await this.randomDelay(3000, 5000);
+
+      // Verify login success - check for logout button visibility
+      const logoutBtn = await this.page!.$('#irisLogoutBtn');
       if (logoutBtn) {
-        this.logger.info('NRN login successful - logout button found');
+        const logoutVisible = await logoutBtn.isVisible();
+        if (logoutVisible) {
+          this.logger.info('NRN login successful - logout button now visible');
+          return true;
+        }
+      }
+
+      // Alternative: Check if Sign in is still visible (it should be replaced by account info)
+      const signInStillVisible = await this.page!.$('text=/Sign in/i');
+      if (!signInStillVisible || !(await signInStillVisible.isVisible())) {
+        this.logger.info('NRN login successful - Sign in link no longer visible');
         return true;
       }
 
       // Check for error messages
-      const errorMsg = await this.page!.$eval('.messages--error, .error-message, .alert-danger, .error',
+      const errorMsg = await this.page!.$eval('.error, .alert-error, .error-message, [class*="error"]',
         el => el.textContent?.trim() || ''
       ).catch(() => '');
 
-      this.logger.warn(`NRN login failed - still on login page. Error message: "${errorMsg || 'none found'}"`);
+      this.logger.warn(`NRN login may have failed. Error message: "${errorMsg || 'none found'}"`);
       return false;
 
     } catch (error) {

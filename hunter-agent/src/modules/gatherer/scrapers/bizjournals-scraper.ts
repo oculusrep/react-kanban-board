@@ -30,126 +30,49 @@ export class BizJournalsScraper extends BaseScraper {
     }
 
     try {
-      this.logger.info(`Step 1/8: Navigating to BizJournals login page: ${this.source.login_url}`);
-      await this.page!.goto(this.source.login_url!, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await this.randomDelay(2000, 4000);
+      // Use direct sign-in URL which shows both email and password fields
+      // (the base login URL shows a "Create or Sign in" page that requires email validation first)
+      const signInUrl = this.source.login_url!.replace('/login', '/login#/sign-in');
+      this.logger.info(`Step 1/5: Navigating to BizJournals sign-in page: ${signInUrl}`);
+      await this.page!.goto(signInUrl, { waitUntil: 'networkidle', timeout: 30000 });
+      await this.randomDelay(2000, 3000);
 
-      this.logger.info(`Step 2/8: Page loaded, current URL: ${this.page!.url()}`);
+      this.logger.info(`Step 2/5: Page loaded, current URL: ${this.page!.url()}`);
 
-      // BizJournals uses multi-step login: email first, then password field appears
-      // Step 1: Check for email field
-      const emailField = await this.page!.$('input[name="email"], input[type="email"], #email');
-      this.logger.info(`Step 3/8: Email field found: ${!!emailField}`);
-
-      if (!emailField) {
-        const pageContent = await this.page!.content();
-        this.logger.error(`Login form not found. Page title: ${await this.page!.title()}`);
-        this.logger.debug(`Page HTML snippet: ${pageContent.substring(0, 1000)}`);
+      // Wait for both email and password fields
+      this.logger.info('Step 3/5: Waiting for login form...');
+      try {
+        await this.page!.waitForSelector('input[name="email"], input[type="email"]', { timeout: 10000 });
+        await this.page!.waitForSelector('input[name="password"], input[type="password"]', { timeout: 5000 });
+      } catch {
+        this.logger.error('Login form fields not found');
         return false;
       }
 
-      // Fill in email first
-      this.logger.info('Step 4/8: Filling email field...');
-      await this.page!.fill('input[name="email"], input[type="email"], #email', username);
-      await this.randomDelay(500, 1000);
+      // Type email with human-like delays
+      this.logger.info('Step 4/5: Entering credentials...');
+      await this.page!.click('input[name="email"], input[type="email"]');
+      await this.randomDelay(200, 400);
+      await this.page!.type('input[name="email"], input[type="email"]', username, { delay: 75 });
+      await this.randomDelay(500, 800);
 
-      // Click "Next" or "Continue" button (or submit if it's there)
-      this.logger.info('Step 5/8: Looking for Next/Continue button...');
-      const nextButtonSelectors = [
-        'button[type="submit"]',
-        'button:has-text("Next")',
-        'button:has-text("Continue")',
-        'input[type="submit"]',
-        '.login-button'
-      ];
-
-      let clickedNext = false;
-      for (const selector of nextButtonSelectors) {
-        try {
-          const button = await this.page!.$(selector);
-          if (button) {
-            await button.click();
-            this.logger.info(`  ✓ Clicked: ${selector}`);
-            clickedNext = true;
-            break;
-          }
-        } catch {
-          continue;
-        }
-      }
-
-      if (clickedNext) {
-        // Wait for password field to appear
-        this.logger.info('Step 6/8: Waiting for password field to appear...');
-        await this.randomDelay(2000, 4000);
-      }
-
-      // Now check for password field (it may have appeared after clicking Next)
-      this.logger.info('Step 7/8: Looking for password field...');
-      let passwordField = null;
-      const passwordSelectors = [
-        'input[name="password"]',
-        'input[type="password"]',
-        '#password'
-      ];
-
-      for (const selector of passwordSelectors) {
-        passwordField = await this.page!.$(selector);
-        if (passwordField) {
-          this.logger.info(`  ✓ Password field found: ${selector}`);
-          break;
-        }
-      }
-
-      if (!passwordField) {
-        // Try waiting a bit longer and checking again
-        this.logger.info('Password field not immediately visible, waiting...');
-        await this.randomDelay(2000, 3000);
-
-        for (const selector of passwordSelectors) {
-          passwordField = await this.page!.$(selector);
-          if (passwordField) {
-            this.logger.info(`  ✓ Password field appeared: ${selector}`);
-            break;
-          }
-        }
-      }
-
-      if (!passwordField) {
-        this.logger.error('Password field never appeared - multi-step login may have changed');
-        return false;
-      }
-
-      // Fill in password
-      this.logger.info('Step 8/8: Filling password and submitting...');
-      await this.page!.fill('input[name="password"], input[type="password"], #password', password);
-      await this.randomDelay(500, 1000);
+      // Type password
+      await this.page!.click('input[name="password"], input[type="password"]');
+      await this.randomDelay(200, 400);
+      await this.page!.type('input[name="password"], input[type="password"]', password, { delay: 60 });
+      await this.randomDelay(800, 1200);
 
       // Submit the login form
-      const submitSelectors = [
-        'button[type="submit"]',
-        'input[type="submit"]',
-        '.login-button',
-        'button:has-text("Log in")',
-        'button:has-text("Sign in")'
-      ];
-
-      for (const selector of submitSelectors) {
-        try {
-          const button = await this.page!.$(selector);
-          if (button) {
-            await button.click();
-            this.logger.info(`  ✓ Clicked submit: ${selector}`);
-            break;
-          }
-        } catch {
-          continue;
-        }
+      this.logger.info('Step 5/5: Submitting login...');
+      const submitBtn = await this.page!.$('button[type="submit"], button:has-text("Sign In"), button:has-text("Log in")');
+      if (submitBtn) {
+        await submitBtn.click();
+      } else {
+        await this.page!.keyboard.press('Enter');
       }
 
       // Wait for navigation
-      await this.page!.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
-      await this.randomDelay(3000, 5000);
+      await this.randomDelay(4000, 6000);
 
       // Check if login was successful
       const currentUrl = this.page!.url();
@@ -162,11 +85,11 @@ export class BizJournalsScraper extends BaseScraper {
         return true;
       } else {
         // Check for error messages on the page
-        const errorMsg = await this.page!.$eval('.error, .alert-error, .error-message, [class*="error"]',
+        const finalError = await this.page!.$eval('.error, .alert-error, .error-message, [class*="error"]',
           el => el.textContent?.trim() || ''
         ).catch(() => '');
 
-        this.logger.warn(`BizJournals login failed - still on login page. Error message: "${errorMsg || 'none found'}"`);
+        this.logger.warn(`BizJournals login failed - still on login page. Error message: "${finalError || 'none found'}"`);
         return false;
       }
     } catch (error) {
