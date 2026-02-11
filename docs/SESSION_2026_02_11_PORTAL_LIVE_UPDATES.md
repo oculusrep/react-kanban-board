@@ -2,11 +2,12 @@
 
 ## Overview
 
-This session focused on fixing several portal UX issues:
+This session focused on fixing several portal UX issues and adding a Contact sidebar improvement:
 1. Live updates for pipeline table when editing in sidebar
 2. Preventing portal page refresh when switching browser tabs
 3. Stage name mismatch fix for "Under Contract / Contingent"
 4. Default layer visibility change
+5. Properties module in Contact sidebar
 
 ## Features Implemented
 
@@ -196,11 +197,51 @@ Each subscription updates the local `siteSubmits` state when changes occur, prov
 | `src/components/mapping/layers/SiteSubmitLayer.tsx` | Modified | Centering callback with siteSubmitId |
 | `src/pages/portal/PortalContentWrapper.tsx` | New | Keeps Map and Pipeline mounted with CSS display |
 | `src/App.tsx` | Modified | Use PortalContentWrapper for portal routes |
+| `src/components/ContactSidebar.tsx` | Modified | Added Properties module to sidebar |
+
+### 6. Properties Module in Contact Sidebar
+
+Added a Properties module to the Contact sidebar to show all properties linked to the contact.
+
+**Problem:** The Contact sidebar showed Associated Clients, Deals, Files, and Notes, but not Properties - even though contacts can be linked to properties via the `property_contact` table.
+
+**Solution:** Added a new `SidebarModule` for Properties in `ContactSidebar.tsx`:
+
+```typescript
+{/* Properties */}
+<SidebarModule
+  title="Properties"
+  count={properties.length}
+  isExpanded={expandedSidebarModules.properties}
+  onToggle={() => toggleSidebarModule('properties')}
+  icon="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+  isEmpty={properties.length === 0}
+  showAddButton={false}
+>
+  {properties.map(property => (
+    <PropertyItem
+      key={property.id}
+      property={property}
+      onClick={onPropertyClick}
+    />
+  ))}
+</SidebarModule>
+```
+
+**Features:**
+- Shows count badge with number of linked properties
+- Displays each property with name, city/state, and zip code
+- Clickable to navigate to property details page
+- Starts collapsed by default (matching other modules)
+- Uses building icon to match visual style
+
+**File Modified:** `src/components/ContactSidebar.tsx`
 
 ## Commits
 
 1. `4545ca00` - Fix map re-centering issue when switching portal tabs
 2. `5149a3aa` - Add live updates for pipeline table and prevent portal page refresh on tab switch
+3. `3b8ed7b1` - Add Properties module to Contact sidebar
 
 ## Testing Notes
 
@@ -208,3 +249,4 @@ Each subscription updates the local `siteSubmits` state when changes occur, prov
 2. **Tab Switching:** Switch browser tabs, return to portal, verify no loading spinner or page refresh
 3. **Map Persistence:** Open a site submit, toggle layers off, switch to Pipeline tab and back, verify layers stay off and map position is preserved
 4. **Stage Filtering:** Verify "Under Contract / Contingent" sites appear in "Signed" tab
+5. **Contact Properties:** Open a contact with linked properties, verify Properties module appears with correct count and items are clickable
