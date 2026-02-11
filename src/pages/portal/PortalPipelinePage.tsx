@@ -398,6 +398,93 @@ export default function PortalPipelinePage() {
     };
   }, [selectedClientId, accessibleClients, stages]);
 
+  // Real-time subscription for property updates (available_sqft, rent_psf, etc.)
+  useEffect(() => {
+    if (!selectedClientId && accessibleClients.length > 1) return;
+
+    const channel = supabase.channel('portal-property-changes');
+
+    channel
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'property',
+        },
+        (payload) => {
+          // Update local state with the changed property data
+          setSiteSubmits((prev) =>
+            prev.map((ss) => {
+              if (ss.property?.id === payload.new.id) {
+                return {
+                  ...ss,
+                  property: {
+                    ...ss.property,
+                    available_sqft: payload.new.available_sqft,
+                    building_sqft: payload.new.building_sqft,
+                    acres: payload.new.acres,
+                    asking_lease_price: payload.new.asking_lease_price,
+                    asking_purchase_price: payload.new.asking_purchase_price,
+                    rent_psf: payload.new.rent_psf,
+                    nnn_psf: payload.new.nnn_psf,
+                    all_in_rent: payload.new.all_in_rent,
+                  },
+                };
+              }
+              return ss;
+            })
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedClientId, accessibleClients]);
+
+  // Real-time subscription for property_unit updates (sqft, rent, nnn)
+  useEffect(() => {
+    if (!selectedClientId && accessibleClients.length > 1) return;
+
+    const channel = supabase.channel('portal-property-unit-changes');
+
+    channel
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'property_unit',
+        },
+        (payload) => {
+          // Update local state with the changed property unit data
+          setSiteSubmits((prev) =>
+            prev.map((ss) => {
+              if (ss.property_unit?.id === payload.new.id) {
+                return {
+                  ...ss,
+                  property_unit: {
+                    ...ss.property_unit,
+                    sqft: payload.new.sqft,
+                    rent: payload.new.rent,
+                    nnn: payload.new.nnn,
+                  },
+                };
+              }
+              return ss;
+            })
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedClientId, accessibleClients]);
+
   // Handler for optimistic status updates from dropdown
   const handleStatusChange = useCallback((siteSubmitId: string, newStageId: string, newStageName: string) => {
     setSiteSubmits((prev) =>

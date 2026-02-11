@@ -1,6 +1,6 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 interface PortalRouteProps {
@@ -20,15 +20,25 @@ export default function PortalRoute({ children }: PortalRouteProps) {
   const [isPortalUser, setIsPortalUser] = useState<boolean | null>(null);
   const [checkingPortal, setCheckingPortal] = useState(true);
 
+  // Track if we've already checked for this user to prevent re-checking on tab focus
+  const hasCheckedRef = useRef<string | null>(null);
+
   useEffect(() => {
     async function checkPortalAccess() {
       if (!user) {
+        hasCheckedRef.current = null;
         setCheckingPortal(false);
+        return;
+      }
+
+      // If we've already checked for this user, don't recheck
+      if (hasCheckedRef.current === user.id) {
         return;
       }
 
       // Internal users (admin, broker, assistant) always have portal access
       if (userRole && ['admin', 'broker_full', 'broker_limited', 'assistant'].includes(userRole)) {
+        hasCheckedRef.current = user.id;
         setIsPortalUser(true);
         setCheckingPortal(false);
         return;
@@ -53,13 +63,14 @@ export default function PortalRoute({ children }: PortalRouteProps) {
         setIsPortalUser(false);
       }
 
+      hasCheckedRef.current = user.id;
       setCheckingPortal(false);
     }
 
     if (!loading) {
       checkPortalAccess();
     }
-  }, [user, userRole, loading]);
+  }, [user?.id, userRole, loading]);
 
   // Still loading auth
   if (loading || checkingPortal) {

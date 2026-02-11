@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabaseClient';
 
@@ -57,6 +57,10 @@ export function PortalProvider({ children }: PortalProviderProps) {
   const [viewMode, setViewMode] = useState<PortalViewMode>('broker');
 
   const isInternalUser = userRole ? ['admin', 'broker_full', 'broker_limited', 'assistant'].includes(userRole) : false;
+
+  // Track if we've already done the initial fetch for this user
+  // This prevents re-fetching when tab regains focus and auth token refreshes
+  const hasFetchedRef = useRef<string | null>(null);
 
   // Wrapper to persist selection to sessionStorage
   const setSelectedClientId = (clientId: string | null) => {
@@ -158,10 +162,29 @@ export function PortalProvider({ children }: PortalProviderProps) {
     }
   };
 
-  // Initial fetch
+  // Initial fetch - only run once per user session
+  // Using a ref to track if we've already fetched prevents re-fetching when:
+  // - Tab regains focus and auth token refreshes
+  // - userRole updates asynchronously after initial load
   useEffect(() => {
+    // Skip if no user or if we've already fetched for this user
+    if (!user?.id) {
+      // User logged out - reset the ref
+      hasFetchedRef.current = null;
+      setAccessibleClients([]);
+      setLoading(false);
+      return;
+    }
+
+    // If we've already fetched for this user, don't refetch
+    if (hasFetchedRef.current === user.id) {
+      return;
+    }
+
+    // Mark that we're fetching for this user
+    hasFetchedRef.current = user.id;
     refreshClients();
-  }, [user, userRole]);
+  }, [user?.id, userRole]);
 
   const value: PortalContextType = {
     accessibleClients,
