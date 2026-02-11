@@ -60,6 +60,39 @@ const deleteQBCommissionEntry = async (paymentSplitId: string): Promise<QBCommis
   }
 };
 
+interface QBReferralResult {
+  success: boolean;
+  message?: string;
+  qbEntityId?: string;
+  qbDocNumber?: string;
+  amount?: number;
+  referralPayee?: string;
+  error?: string;
+}
+
+// Create QBO Bill for referral fee when marking as paid
+const createQBReferralEntry = async (paymentId: string, paidDate: string): Promise<QBReferralResult> => {
+  try {
+    console.log('🔄 Creating QBO referral entry for payment:', paymentId);
+    const { data, error } = await supabase.functions.invoke('quickbooks-create-referral-entry', {
+      body: {
+        paymentId,
+        paidDate,
+      },
+    });
+
+    if (error) {
+      console.error('QBO referral entry error:', error);
+      return { success: false, error: error.message };
+    }
+
+    return data as QBReferralResult;
+  } catch (err) {
+    console.error('QBO referral entry exception:', err);
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+};
+
 export const usePaymentDisbursement = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,16 +141,19 @@ export const usePaymentDisbursement = () => {
     setError(null);
 
     try {
-      const updateData: { referral_fee_paid: boolean; referral_fee_paid_date?: string | null } = {
-        referral_fee_paid: paid
-      };
+      // Calculate paid date in YYYY-MM-DD format for QBO
+      const paidDate = paid ? (() => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      })() : null;
 
-      // If marking as paid, set referral_fee_paid_date to now; if unchecking, clear the date
-      if (paid) {
-        updateData.referral_fee_paid_date = new Date().toISOString();
-      } else {
-        updateData.referral_fee_paid_date = null;
-      }
+      const updateData: { referral_fee_paid: boolean; referral_fee_paid_date?: string | null } = {
+        referral_fee_paid: paid,
+        referral_fee_paid_date: paidDate
+      };
 
       const { error } = await supabase
         .from('payment')
@@ -125,6 +161,31 @@ export const usePaymentDisbursement = () => {
         .eq('id', paymentId);
 
       if (error) throw error;
+
+      console.log('✅ Referral fee paid status updated in database');
+
+      // If marking as paid, create QBO Bill for the referral fee
+      if (paid && paidDate) {
+        const result = await createQBReferralEntry(paymentId, paidDate);
+        if (result.success) {
+          console.log(`✅ Created QBO Bill #${result.qbDocNumber} for referral fee to ${result.referralPayee}`);
+        } else if (result.error?.includes('No referral payee')) {
+          // No referral payee set on deal - this is expected for deals without referral fees
+          console.log('ℹ️ No referral payee set on this deal - skipping QBO bill');
+        } else if (result.error?.includes('No QuickBooks commission mapping configured')) {
+          // No mapping configured - warn but don't block
+          console.warn(`⚠️ No QBO mapping for referral partner: ${result.error}`);
+        } else if (result.error?.includes('QuickBooks is not connected')) {
+          // QBO not connected - silent fail
+          console.log('ℹ️ QuickBooks not connected - skipping referral fee bill');
+        } else if (result.error?.includes('Referral fee amount is 0')) {
+          // No referral fee amount - expected for some deals
+          console.log('ℹ️ Referral fee amount is 0 - skipping QBO bill');
+        } else {
+          // Other error - log but don't block the paid status update
+          console.error('⚠️ Failed to create QBO referral entry:', result.error);
+        }
+      }
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update referral payment status';
