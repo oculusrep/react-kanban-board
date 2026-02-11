@@ -460,6 +460,10 @@ export default function PortalPipelinePage() {
     if (ss.property_unit?.rent != null && ss.property_unit?.nnn != null) {
       return ss.property_unit.rent + ss.property_unit.nnn;
     }
+    // If property has both rent_psf and nnn_psf, calculate from those
+    if (ss.property?.rent_psf != null && ss.property?.nnn_psf != null) {
+      return ss.property.rent_psf + ss.property.nnn_psf;
+    }
     // Otherwise fall back to property all-in rent
     return ss.property?.all_in_rent ?? null;
   };
