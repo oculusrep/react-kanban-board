@@ -34,8 +34,9 @@ export class BizJournalsScraper extends BaseScraper {
       // (the base login URL shows a "Create or Sign in" page that requires email validation first)
       const signInUrl = this.source.login_url!.replace('/login', '/login#/sign-in');
       this.logger.info(`Step 1/5: Navigating to BizJournals sign-in page: ${signInUrl}`);
-      await this.page!.goto(signInUrl, { waitUntil: 'networkidle', timeout: 30000 });
-      await this.randomDelay(2000, 3000);
+      // Use domcontentloaded instead of networkidle to avoid timeout from Cloudflare
+      await this.page!.goto(signInUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await this.randomDelay(3000, 4000); // Extra time for JS to load
 
       this.logger.info(`Step 2/5: Page loaded, current URL: ${this.page!.url()}`);
 
@@ -62,17 +63,20 @@ export class BizJournalsScraper extends BaseScraper {
       await this.page!.type('input[name="password"], input[type="password"]', password, { delay: 60 });
       await this.randomDelay(800, 1200);
 
-      // Submit the login form
+      // Submit the login form - prefer Enter key as button selector may not match
       this.logger.info('Step 5/5: Submitting login...');
-      const submitBtn = await this.page!.$('button[type="submit"], button:has-text("Sign In"), button:has-text("Log in")');
-      if (submitBtn) {
-        await submitBtn.click();
-      } else {
-        await this.page!.keyboard.press('Enter');
+      await this.page!.keyboard.press('Enter');
+
+      // Wait for navigation away from login page
+      this.logger.info('Waiting for redirect...');
+      try {
+        await this.page!.waitForURL((url) => !url.toString().includes('/login'), { timeout: 15000 });
+        this.logger.info('Redirect detected');
+      } catch {
+        this.logger.warn('No redirect detected after 15 seconds');
       }
 
-      // Wait for navigation
-      await this.randomDelay(4000, 6000);
+      await this.randomDelay(2000, 3000);
 
       // Check if login was successful
       const currentUrl = this.page!.url();
@@ -109,29 +113,42 @@ export class BizJournalsScraper extends BaseScraper {
     const articles: ScrapedArticle[] = [];
     const seenUrls = new Set<string>();
 
-    for (const path of this.scrapeConfig.target_paths) {
+    // BizJournals articles are on the homepage, not in category pages
+    // The target_paths from config might be outdated, so we scrape the homepage
+    const pagesToScrape = [
+      this.source.base_url, // Homepage has the latest articles
+      ...this.scrapeConfig.target_paths.map((p) => `${this.source.base_url}${p}`),
+    ];
+
+    for (const fullUrl of pagesToScrape) {
       try {
-        const fullUrl = `${this.source.base_url}${path}`;
         this.logger.info(`Scraping listing: ${fullUrl}`);
 
         await this.page!.goto(fullUrl, { waitUntil: 'domcontentloaded' });
         await this.randomDelay(2000, 4000);
 
-        // Get all article links - BizJournals specific selectors
+        // BizJournals articles have date-based URLs like /news/2026/02/10/slug.html
         const articleLinks = await this.page!.$$eval(
-          '.item a[href*="/news/"], article a[href*="/news/"], .story a[href*="/news/"]',
+          'a[href*="/news/"]',
           (links) =>
             links
+              .filter((a) => {
+                const href = (a as HTMLAnchorElement).href;
+                const text = a.textContent?.trim() || '';
+                // Only include actual articles (date-based URLs) with meaningful title text
+                return href.includes('/202') && href.includes('.html') && text.length > 20;
+              })
               .map((a) => ({
                 url: (a as HTMLAnchorElement).href,
                 title: a.textContent?.trim() || '',
               }))
-              .filter((l) => l.url && l.title && l.title.length > 10)
+              // Dedupe by URL
+              .filter((l, i, arr) => arr.findIndex((x) => x.url === l.url) === i)
         );
 
-        this.logger.info(`Found ${articleLinks.length} article links on ${path}`);
+        this.logger.info(`Found ${articleLinks.length} article links on ${fullUrl}`);
 
-        // Scrape each article
+        // Scrape each article (limit to 10 per page)
         for (const link of articleLinks.slice(0, 10)) {
           if (seenUrls.has(link.url)) continue;
           seenUrls.add(link.url);
@@ -147,8 +164,13 @@ export class BizJournalsScraper extends BaseScraper {
 
           await this.randomDelay(2000, 4000); // BizJournals may be rate-sensitive
         }
+
+        // If we found articles on homepage, no need to check broken category pages
+        if (fullUrl === this.source.base_url && articleLinks.length > 0) {
+          break;
+        }
       } catch (error) {
-        this.logger.warn(`Failed to scrape path: ${path}`);
+        this.logger.warn(`Failed to scrape: ${fullUrl}`);
       }
     }
 

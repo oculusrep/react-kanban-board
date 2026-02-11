@@ -32,56 +32,39 @@ export class NRNScraper extends BaseScraper {
     try {
       // Navigate to homepage instead of the old /user/login URL (which is now 404)
       this.logger.info(`Step 1/6: Navigating to NRN homepage: ${this.source.base_url}`);
-      await this.page!.goto(this.source.base_url, { waitUntil: 'networkidle', timeout: 30000 });
-      await this.randomDelay(2000, 3000);
+      // Use domcontentloaded instead of networkidle to avoid timeout
+      await this.page!.goto(this.source.base_url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await this.randomDelay(3000, 4000); // Extra time for JS to load
 
       this.logger.info(`Step 2/8: Page loaded, current URL: ${this.page!.url()}`);
 
-      // NRN shows cookie consent banner - accept it first
+      // NRN shows cookie consent banner - accept it first (use short timeout)
       this.logger.info('Step 3/8: Checking for cookie consent...');
-      const cookieSelectors = [
-        'button:has-text("Accept all")',
-        'button:has-text("Accept")',
-        'button:has-text("I Accept")',
-        '#onetrust-accept-btn-handler'
-      ];
-
-      for (const selector of cookieSelectors) {
-        try {
-          const cookieBtn = await this.page!.$(selector);
-          if (cookieBtn && await cookieBtn.isVisible()) {
-            this.logger.info(`  Accepting cookies: ${selector}`);
-            await cookieBtn.click();
-            await this.randomDelay(1000, 1500);
-            break;
-          }
-        } catch {
-          continue;
+      try {
+        // OneTrust cookie banner is most common
+        const cookieBtn = await this.page!.waitForSelector('#onetrust-accept-btn-handler', { timeout: 3000 });
+        if (cookieBtn) {
+          await cookieBtn.click();
+          this.logger.info('  Accepted cookies via OneTrust');
+          await this.randomDelay(500, 1000);
         }
+      } catch {
+        // No cookie banner or already accepted - continue
+        this.logger.debug('  No cookie banner found');
       }
 
-      // NRN often shows a flash/popup - try to dismiss it
+      // NRN often shows a flash/popup - try to dismiss it quickly
       this.logger.info('Step 4/8: Checking for interstitial popup...');
-      const dismissSelectors = [
-        'button:has-text("Close")',
-        'button:has-text("×")',
-        '[aria-label="Close"]',
-        '.modal-close',
-        '[class*="close"]'
-      ];
-
-      for (const selector of dismissSelectors) {
-        try {
-          const closeBtn = await this.page!.$(selector);
-          if (closeBtn && await closeBtn.isVisible()) {
-            this.logger.info(`  Dismissing popup: ${selector}`);
-            await closeBtn.click();
-            await this.randomDelay(1000, 1500);
-            break;
-          }
-        } catch {
-          continue;
+      try {
+        const closeBtn = await this.page!.waitForSelector('[class*="close"]:visible, [aria-label="Close"]:visible', { timeout: 2000 });
+        if (closeBtn) {
+          await closeBtn.click();
+          this.logger.info('  Dismissed popup');
+          await this.randomDelay(500, 1000);
         }
+      } catch {
+        // No popup - continue
+        this.logger.debug('  No popup found');
       }
 
       // Click the "Sign in" button in the header to open the login modal
@@ -199,29 +182,55 @@ export class NRNScraper extends BaseScraper {
     const articles: ScrapedArticle[] = [];
     const seenUrls = new Set<string>();
 
-    for (const path of this.scrapeConfig.target_paths) {
+    // NRN articles are on the homepage and category pages
+    // Articles use ContentPreview cards with URLs like /fast-casual/article-slug
+    const pagesToScrape = [
+      this.source.base_url, // Homepage has the latest articles
+      ...this.scrapeConfig.target_paths.map((p) => `${this.source.base_url}${p}`),
+    ];
+
+    for (const fullUrl of pagesToScrape) {
       try {
-        const fullUrl = `${this.source.base_url}${path}`;
         this.logger.info(`Scraping listing: ${fullUrl}`);
 
         await this.page!.goto(fullUrl, { waitUntil: 'domcontentloaded' });
         await this.randomDelay(2000, 4000);
 
-        // Get all article links
+        // NRN uses ContentPreview cards for articles
+        // Articles have URLs like /fast-casual/article-slug (no /article/ in path)
         const articleLinks = await this.page!.$$eval(
-          'article a[href*="/article/"], .node-article a[href*="/article/"], .views-row a[href*="/article/"]',
-          (links) =>
+          '[class*="ContentPreview"] a, [class*="card"] a',
+          (links, baseUrl) =>
             links
+              .filter((a) => {
+                const href = (a as HTMLAnchorElement).href;
+                const text = a.textContent?.trim() || '';
+                // Only include NRN articles with meaningful titles
+                // Exclude navigation links, author pages, category pages
+                return (
+                  href.startsWith(baseUrl) &&
+                  text.length > 20 &&
+                  !href.includes('/author/') &&
+                  !href.includes('/about') &&
+                  !href.includes('/subscription') &&
+                  !href.includes('/restaurant-segments/') &&
+                  !href.includes('/restaurant-operations/') &&
+                  // Has a slug after the category (e.g., /fast-casual/article-title)
+                  href.split('/').filter(Boolean).length >= 4
+                );
+              })
               .map((a) => ({
                 url: (a as HTMLAnchorElement).href,
                 title: a.textContent?.trim() || '',
               }))
-              .filter((l) => l.url && l.title)
+              // Dedupe by URL
+              .filter((l, i, arr) => arr.findIndex((x) => x.url === l.url) === i),
+          this.source.base_url
         );
 
-        this.logger.info(`Found ${articleLinks.length} article links on ${path}`);
+        this.logger.info(`Found ${articleLinks.length} article links on ${fullUrl}`);
 
-        // Scrape each article (limit to 15 per path to avoid overloading)
+        // Scrape each article (limit to 15 per page to avoid overloading)
         for (const link of articleLinks.slice(0, 15)) {
           if (seenUrls.has(link.url)) continue;
           seenUrls.add(link.url);
@@ -237,8 +246,13 @@ export class NRNScraper extends BaseScraper {
 
           await this.randomDelay(1500, 3000);
         }
+
+        // If we found articles on homepage, we're good
+        if (fullUrl === this.source.base_url && articleLinks.length > 0) {
+          break;
+        }
       } catch (error) {
-        this.logger.warn(`Failed to scrape path: ${path}`);
+        this.logger.warn(`Failed to scrape: ${fullUrl}`);
       }
     }
 
@@ -261,11 +275,32 @@ export class NRNScraper extends BaseScraper {
         return null;
       }
 
-      // Extract article body
-      const content = await this.page!.$eval(
-        '.article-body, .field--name-body, .node__content, article .content',
-        (el) => el.textContent?.trim() || ''
-      ).catch(() => '');
+      // Extract article body - NRN uses [class*="body"] for article content
+      // Try multiple selectors in order of specificity
+      let content = '';
+      const contentSelectors = [
+        '[class*="ArticleBody"]',
+        '[class*="article-body"]',
+        '[class*="body"]',
+        'article p',
+        'main p',
+      ];
+
+      for (const selector of contentSelectors) {
+        try {
+          if (selector.includes(' p')) {
+            // For paragraph selectors, combine all paragraph text
+            content = await this.page!.$$eval(selector, (ps) =>
+              ps.map((p) => p.textContent?.trim()).filter(Boolean).join(' ')
+            );
+          } else {
+            content = await this.page!.$eval(selector, (el) => el.textContent?.trim() || '');
+          }
+          if (content && content.length > 100) break;
+        } catch {
+          continue;
+        }
+      }
 
       if (!content || content.length < 100) {
         this.logger.warn(`No content found for ${url}`);
