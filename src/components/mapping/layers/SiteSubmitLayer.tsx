@@ -115,6 +115,16 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [markerLibraryLoaded, setMarkerLibraryLoaded] = useState(false);
 
+  // Track which selection we've already reported position for (to avoid re-centering on re-render)
+  const lastReportedSelectionRef = useRef<string | null>(null);
+
+  // Reset the reported selection ref when selection is cleared (so new selection will trigger centering)
+  useEffect(() => {
+    if (!selectedSiteSubmitId) {
+      lastReportedSelectionRef.current = null;
+    }
+  }, [selectedSiteSubmitId]);
+
   // Get marker style settings with defaults
   const markerStyle = loadingConfig.markerStyle || {
     shape: 'teardrop' as MarkerShape,
@@ -517,8 +527,9 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
       const isSelected = selectedSiteSubmitId === siteSubmit.id;
       const stageName = siteSubmit.submit_stage?.name || 'Monitor';
 
-      // Report selected site submit position for map centering
-      if (isSelected && onSelectedSiteSubmitPosition) {
+      // Report selected site submit position for map centering (only once per selection)
+      if (isSelected && onSelectedSiteSubmitPosition && lastReportedSelectionRef.current !== siteSubmit.id) {
+        lastReportedSelectionRef.current = siteSubmit.id;
         onSelectedSiteSubmitPosition(coords.lat, coords.lng);
       }
 
