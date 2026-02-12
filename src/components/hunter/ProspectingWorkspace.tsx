@@ -307,6 +307,14 @@ export default function ProspectingWorkspace() {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
+      // Get Prospecting task category ID
+      const { data: prospectingCategory } = await supabase
+        .from('task_category')
+        .select('id')
+        .eq('name', 'Prospecting')
+        .single();
+      const prospectingCategoryId = prospectingCategory?.id;
+
       // Get open status IDs
       const { data: openStatuses } = await supabase
         .from('activity_status')
@@ -314,8 +322,8 @@ export default function ProspectingWorkspace() {
         .eq('is_closed', false);
       const openStatusIds = openStatuses?.map(s => s.id) || [];
 
-      if (openStatusIds.length > 0) {
-        // Fetch follow-ups due today
+      if (openStatusIds.length > 0 && prospectingCategoryId) {
+        // Fetch follow-ups due today with Prospecting category
         const { data: todayTasks } = await supabase
           .from('activity')
           .select(`
@@ -334,12 +342,12 @@ export default function ProspectingWorkspace() {
           .gte('activity_date', todayStart)
           .lte('activity_date', todayEnd)
           .in('status_id', openStatusIds)
-          .eq('is_prospecting', true)
+          .eq('task_category_id', prospectingCategoryId)
           .order('activity_date', { ascending: true });
 
         setFollowUpsDue((todayTasks || []) as FollowUpTask[]);
 
-        // Fetch overdue follow-ups
+        // Fetch overdue follow-ups with Prospecting category
         const { data: overdueTasks } = await supabase
           .from('activity')
           .select(`
@@ -358,7 +366,7 @@ export default function ProspectingWorkspace() {
           .lt('activity_date', todayStart)
           .gte('activity_date', thirtyDaysAgo.toISOString())
           .in('status_id', openStatusIds)
-          .eq('is_prospecting', true)
+          .eq('task_category_id', prospectingCategoryId)
           .order('activity_date', { ascending: false });
 
         setOverdueFollowUps((overdueTasks || []) as FollowUpTask[]);

@@ -115,6 +115,17 @@ const FollowUpModal: React.FC<FollowUpModalProps> = ({
       // Auto-mark as prospecting if targetId is provided
       const shouldMarkProspecting = isProspecting || !!targetId;
 
+      // Get Prospecting task category if this is a prospecting task
+      let prospectingCategoryId = null;
+      if (shouldMarkProspecting) {
+        const { data: prospectingCategory } = await supabase
+          .from('task_category')
+          .select('id')
+          .eq('name', 'Prospecting')
+          .single();
+        prospectingCategoryId = prospectingCategory?.id;
+      }
+
       const taskData: any = {
         subject: followUpSubject || `Follow-up with ${contactName}`,
         activity_type_id: taskType.id,
@@ -122,9 +133,10 @@ const FollowUpModal: React.FC<FollowUpModalProps> = ({
         activity_date: followUpDate.toISOString(),
         contact_id: contactId,
         owner_id: ownerId,
-        // Link to target and mark as prospecting task
+        // Link to target and set task category for prospecting
         target_id: targetId || null,
-        is_prospecting: shouldMarkProspecting
+        is_prospecting: shouldMarkProspecting,
+        task_category_id: prospectingCategoryId
       };
 
       // Add related object if provided
