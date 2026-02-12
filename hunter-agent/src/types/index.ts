@@ -13,6 +13,7 @@ export interface HunterSource {
   login_url: string | null;
   scrape_config: Record<string, unknown> | null;
   is_active: boolean;
+  scrape_locally_only: boolean; // If true, skip on Render (run from local Mac)
   last_scraped_at: string | null;
   last_error: string | null;
   consecutive_failures: number;

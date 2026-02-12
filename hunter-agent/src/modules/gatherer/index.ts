@@ -64,11 +64,12 @@ export class Gatherer {
       (s) => s.source_type === 'website' && !s.requires_auth && RSS_FEEDS[s.slug]
     );
     const authWebsites = sources.filter(
-      (s) => s.source_type === 'website' && s.requires_auth
+      (s) => s.source_type === 'website' && s.requires_auth && !s.scrape_locally_only
     );
     const noRssNoAuthWebsites = sources.filter(
       (s) => s.source_type === 'website' && !s.requires_auth && !RSS_FEEDS[s.slug]
     );
+    const localOnlySources = sources.filter((s) => s.scrape_locally_only);
 
     logger.info(
       `Source breakdown: ${rssOnlySources.length} RSS/podcast, ` +
@@ -76,6 +77,13 @@ export class Gatherer {
       `${authWebsites.length} auth-required, ` +
       `${noRssNoAuthWebsites.length} no-auth without RSS`
     );
+
+    if (localOnlySources.length > 0) {
+      logger.info(
+        `Skipping ${localOnlySources.length} local-only sources (run from Mac): ` +
+        localOnlySources.map(s => s.name).join(', ')
+      );
+    }
 
     // Phase 1: Process RSS-only sources (podcasts) - NO PLAYWRIGHT
     for (const source of rssOnlySources) {
