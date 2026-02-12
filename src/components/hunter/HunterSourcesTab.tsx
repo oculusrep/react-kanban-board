@@ -120,6 +120,10 @@ export default function HunterSourcesTab() {
   }
 
   function getStatusIcon(source: HunterSource) {
+    // Local-only sources show blue computer icon instead of error/success
+    if (source.scrape_locally_only) {
+      return <ComputerDesktopIcon className="w-5 h-5 text-blue-500" />;
+    }
     if (source.consecutive_failures > 0) {
       return <ExclamationCircleIcon className="w-5 h-5 text-red-500" />;
     }
@@ -180,11 +184,13 @@ export default function HunterSourcesTab() {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3">
                   <div className={`p-2 rounded-lg ${
+                    source.scrape_locally_only ? 'bg-blue-100' :
                     source.consecutive_failures > 0 ? 'bg-red-100' :
                     source.last_scraped_at ? 'bg-green-100' :
                     'bg-gray-100'
                   }`}>
                     <NewspaperIcon className={`w-5 h-5 ${
+                      source.scrape_locally_only ? 'text-blue-600' :
                       source.consecutive_failures > 0 ? 'text-red-600' :
                       source.last_scraped_at ? 'text-green-600' :
                       'text-gray-600'
@@ -228,8 +234,8 @@ export default function HunterSourcesTab() {
                 </div>
               </div>
 
-              {/* Error Message */}
-              {source.consecutive_failures > 0 && source.last_error && (
+              {/* Error Message - don't show for local-only sources */}
+              {source.consecutive_failures > 0 && source.last_error && !source.scrape_locally_only && (
                 <div className="mt-3 p-2 bg-red-50 rounded text-sm text-red-700">
                   <span className="font-medium">Error ({source.consecutive_failures} failures):</span>{' '}
                   {source.last_error}
