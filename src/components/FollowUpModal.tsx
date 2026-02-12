@@ -119,7 +119,7 @@ const FollowUpModal: React.FC<FollowUpModalProps> = ({
       let prospectingCategoryId = null;
       if (shouldMarkProspecting) {
         const { data: prospectingCategory } = await supabase
-          .from('task_category')
+          .from('activity_task_type')
           .select('id')
           .eq('name', 'Prospecting')
           .single();
@@ -136,7 +136,7 @@ const FollowUpModal: React.FC<FollowUpModalProps> = ({
         // Link to target and set task category for prospecting
         target_id: targetId || null,
         is_prospecting: shouldMarkProspecting,
-        task_category_id: prospectingCategoryId
+        activity_task_type_id: prospectingCategoryId
       };
 
       // Add related object if provided

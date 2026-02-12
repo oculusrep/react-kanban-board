@@ -307,9 +307,9 @@ export default function ProspectingWorkspace() {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      // Get Prospecting task category ID
+      // Get Prospecting task category ID (uses activity_task_type table)
       const { data: prospectingCategory, error: catError } = await supabase
-        .from('task_category')
+        .from('activity_task_type')
         .select('id')
         .eq('name', 'Prospecting')
         .single();
@@ -345,7 +345,7 @@ export default function ProspectingWorkspace() {
           .gte('activity_date', todayStart)
           .lte('activity_date', todayEnd)
           .in('status_id', openStatusIds)
-          .eq('task_category_id', prospectingCategoryId)
+          .eq('activity_task_type_id', prospectingCategoryId)
           .order('activity_date', { ascending: true });
 
         console.log('📋 Today tasks query result:', todayTasks?.length, tasksError);
@@ -370,7 +370,7 @@ export default function ProspectingWorkspace() {
           .lt('activity_date', todayStart)
           .gte('activity_date', thirtyDaysAgo.toISOString())
           .in('status_id', openStatusIds)
-          .eq('task_category_id', prospectingCategoryId)
+          .eq('activity_task_type_id', prospectingCategoryId)
           .order('activity_date', { ascending: false });
 
         setOverdueFollowUps((overdueTasks || []) as FollowUpTask[]);
