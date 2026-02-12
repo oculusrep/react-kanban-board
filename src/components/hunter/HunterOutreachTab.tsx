@@ -67,7 +67,7 @@ export default function HunterOutreachTab() {
         .from('hunter_outreach_draft')
         .select(`
           *,
-          target:target!hunter_outreach_draft_target_id_fkey(
+          target:target(
             id,
             concept_name,
             signal_strength
@@ -338,8 +338,8 @@ export default function HunterOutreachTab() {
                   </div>
                 )}
                 <div className="flex">
-                  <span className="w-16 text-gray-500">Lead:</span>
-                  <span className="text-gray-900">{selectedDraft.lead?.concept_name}</span>
+                  <span className="w-16 text-gray-500">Target:</span>
+                  <span className="text-gray-900">{selectedDraft.target?.concept_name}</span>
                 </div>
               </div>
 
