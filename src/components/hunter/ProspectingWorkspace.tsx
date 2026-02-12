@@ -408,24 +408,37 @@ export default function ProspectingWorkspace() {
   // Load contact details when task is selected
   const loadContactDetails = async (contactId: string) => {
     console.log('📌 loadContactDetails called for:', contactId);
-    const { data, error } = await supabase
+
+    // Fetch contact without target join to avoid FK ambiguity
+    const { data: contactData, error } = await supabase
       .from('contact')
       .select(`
         id, first_name, last_name, company, email, phone, mobile_phone, title,
-        target_id, linked_in_profile_link, mailing_city, mailing_state,
-        target:target(id, concept_name, signal_strength, industry_segment, website, score_reasoning)
+        target_id, linked_in_profile_link, mailing_city, mailing_state
       `)
       .eq('id', contactId)
       .single();
 
-    console.log('📌 loadContactDetails result:', data, error);
-    if (data) {
-      console.log('📌 Setting selectedContact:', data);
-      setSelectedContact(data as ContactDetails);
-      setContactForm(data);
-    } else {
-      console.log('📌 No data returned, selectedContact will be null');
+    if (error || !contactData) {
+      console.log('📌 Error fetching contact:', error);
+      return;
     }
+
+    // If contact has a target_id, fetch target separately
+    let target = null;
+    if (contactData.target_id) {
+      const { data: targetData } = await supabase
+        .from('target')
+        .select('id, concept_name, signal_strength, industry_segment, website, score_reasoning')
+        .eq('id', contactData.target_id)
+        .single();
+      target = targetData;
+    }
+
+    const fullContact = { ...contactData, target };
+    console.log('📌 Setting selectedContact:', fullContact);
+    setSelectedContact(fullContact as ContactDetails);
+    setContactForm(fullContact);
   };
 
   const handleTaskSelect = (task: FollowUpTask) => {
