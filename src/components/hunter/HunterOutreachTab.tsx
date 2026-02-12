@@ -13,7 +13,7 @@ import {
 
 interface OutreachDraft {
   id: string;
-  lead_id: string;
+  target_id: string;
   outreach_type: 'email' | 'voicemail_script';
   contact_name: string;
   contact_email: string | null;
@@ -23,7 +23,7 @@ interface OutreachDraft {
   status: 'draft' | 'approved' | 'sent' | 'rejected';
   created_at: string;
   sent_at: string | null;
-  lead: {
+  target: {
     id: string;
     concept_name: string;
     signal_strength: string;
@@ -67,7 +67,7 @@ export default function HunterOutreachTab() {
         .from('hunter_outreach_draft')
         .select(`
           *,
-          lead:hunter_lead!hunter_outreach_draft_lead_id_fkey(
+          target:target!hunter_outreach_draft_target_id_fkey(
             id,
             concept_name,
             signal_strength
@@ -273,7 +273,7 @@ export default function HunterOutreachTab() {
                         </span>
                       </div>
                       <h4 className="mt-1 font-medium text-gray-900 truncate">
-                        {draft.lead?.concept_name || 'Unknown Lead'}
+                        {draft.target?.concept_name || 'Unknown Lead'}
                       </h4>
                       <p className="text-sm text-gray-500 truncate">{draft.subject}</p>
                       <p className="text-xs text-gray-400 mt-1">

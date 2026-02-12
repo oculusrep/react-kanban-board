@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   UserGroupIcon,
   NewspaperIcon,
@@ -9,15 +9,18 @@ import {
   ArrowPathIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
-  ClockIcon
+  ClockIcon,
+  CalendarDaysIcon,
+  BuildingOffice2Icon
 } from '@heroicons/react/24/outline';
 import { supabase } from '../lib/supabaseClient';
+import TodaysPlan from '../components/prospecting/TodaysPlan';
 import HunterLeadsTab from '../components/hunter/HunterLeadsTab';
 import HunterSourcesTab from '../components/hunter/HunterSourcesTab';
 import HunterOutreachTab from '../components/hunter/HunterOutreachTab';
 import HunterStatsTab from '../components/hunter/HunterStatsTab';
 
-type TabType = 'leads' | 'sources' | 'outreach' | 'stats';
+type TabType = 'today' | 'targets' | 'sources' | 'outreach' | 'stats';
 
 interface RunStatus {
   id: string;
@@ -34,8 +37,9 @@ interface RunStatus {
 }
 
 export default function HunterDashboardPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialTab = (searchParams.get('tab') as TabType) || 'leads';
+  const initialTab = (searchParams.get('tab') as TabType) || 'today';
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [runStatus, setRunStatus] = useState<RunStatus | null>(null);
   const [isTriggering, setIsTriggering] = useState(false);
@@ -124,22 +128,28 @@ export default function HunterDashboardPage() {
 
   const tabs = [
     {
-      id: 'leads' as TabType,
-      label: 'Leads',
-      icon: UserGroupIcon,
-      description: 'View and manage AI-discovered leads'
+      id: 'today' as TabType,
+      label: "Today's Plan",
+      icon: CalendarDaysIcon,
+      description: 'Daily prospecting workflow'
     },
     {
-      id: 'sources' as TabType,
-      label: 'Sources',
-      icon: NewspaperIcon,
-      description: 'Monitor news scrapers and content sources'
+      id: 'targets' as TabType,
+      label: 'Targets',
+      icon: BuildingOffice2Icon,
+      description: 'View and manage prospecting targets'
     },
     {
       id: 'outreach' as TabType,
       label: 'Outreach',
       icon: EnvelopeIcon,
       description: 'Review and approve outreach drafts'
+    },
+    {
+      id: 'sources' as TabType,
+      label: 'Sources',
+      icon: NewspaperIcon,
+      description: 'Monitor news scrapers and content sources'
     },
     {
       id: 'stats' as TabType,
@@ -259,9 +269,10 @@ export default function HunterDashboardPage() {
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === 'leads' && <HunterLeadsTab />}
-        {activeTab === 'sources' && <HunterSourcesTab />}
+        {activeTab === 'today' && <TodaysPlan />}
+        {activeTab === 'targets' && <HunterLeadsTab />}
         {activeTab === 'outreach' && <HunterOutreachTab />}
+        {activeTab === 'sources' && <HunterSourcesTab />}
         {activeTab === 'stats' && <HunterStatsTab />}
       </div>
     </div>

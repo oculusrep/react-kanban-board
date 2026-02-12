@@ -8,7 +8,8 @@ import {
   ArrowTrendingUpIcon,
   MapPinIcon,
   BuildingStorefrontIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  HandThumbDownIcon
 } from '@heroicons/react/24/outline';
 
 interface HunterLead {
@@ -51,12 +52,13 @@ export default function HunterLeadsTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [geoFilter, setGeoFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [cardFilter, setCardFilter] = useState<'all' | 'hot' | 'new' | 'converted'>('all');
+  const [cardFilter, setCardFilter] = useState<'all' | 'hot' | 'new' | 'converted' | 'dismissed'>('all');
   const [stats, setStats] = useState({
     total: 0,
     hot: 0,
     new: 0,
-    converted: 0
+    converted: 0,
+    dismissed: 0
   });
 
   useEffect(() => {
@@ -67,7 +69,7 @@ export default function HunterLeadsTab() {
     setLoading(true);
     try {
       let query = supabase
-        .from('hunter_lead')
+        .from('target')
         .select(`
           id,
           concept_name,
@@ -98,7 +100,7 @@ export default function HunterLeadsTab() {
 
       // Load stats
       const { data: statsData } = await supabase
-        .from('hunter_lead')
+        .from('target')
         .select('signal_strength, status, created_at');
 
       if (statsData) {
@@ -107,10 +109,11 @@ export default function HunterLeadsTab() {
         weekAgo.setDate(weekAgo.getDate() - 7);
 
         setStats({
-          total: statsData.length,
-          hot: statsData.filter(l => l.signal_strength === 'HOT').length,
-          new: statsData.filter(l => new Date(l.created_at) >= weekAgo).length,
-          converted: statsData.filter(l => l.status === 'converted').length
+          total: statsData.filter(l => l.status !== 'dismissed').length,
+          hot: statsData.filter(l => l.signal_strength === 'HOT' && l.status !== 'dismissed').length,
+          new: statsData.filter(l => new Date(l.created_at) >= weekAgo && l.status !== 'dismissed').length,
+          converted: statsData.filter(l => l.status === 'converted').length,
+          dismissed: statsData.filter(l => l.status === 'dismissed').length
         });
       }
     } catch (error) {
@@ -133,21 +136,24 @@ export default function HunterLeadsTab() {
     // Card filter
     switch (cardFilter) {
       case 'hot':
-        return lead.signal_strength === 'HOT';
+        return lead.signal_strength === 'HOT' && lead.status !== 'dismissed';
       case 'new':
-        return new Date(lead.created_at) >= oneWeekAgo;
+        return new Date(lead.created_at) >= oneWeekAgo && lead.status !== 'dismissed';
       case 'converted':
         return lead.status === 'converted';
+      case 'dismissed':
+        return lead.status === 'dismissed';
       case 'all':
       default:
-        return true;
+        // By default, hide dismissed leads unless explicitly filtering for them
+        return lead.status !== 'dismissed';
     }
   });
 
   return (
     <div className="space-y-6">
       {/* Stats Cards - Clickable Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <button
           onClick={() => setCardFilter(cardFilter === 'all' ? 'all' : 'all')}
           className={`bg-white rounded-lg shadow-sm border-2 p-4 text-left transition-all hover:shadow-md ${
@@ -212,6 +218,22 @@ export default function HunterLeadsTab() {
             </div>
           </div>
         </button>
+        <button
+          onClick={() => setCardFilter(cardFilter === 'dismissed' ? 'all' : 'dismissed')}
+          className={`bg-white rounded-lg shadow-sm border-2 p-4 text-left transition-all hover:shadow-md ${
+            cardFilter === 'dismissed' ? 'border-gray-400 ring-2 ring-gray-200' : 'border-gray-200 hover:border-gray-300'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-gray-100 rounded-lg">
+              <HandThumbDownIcon className="w-5 h-5 text-gray-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-gray-900">{stats.dismissed}</p>
+              <p className="text-sm text-gray-500">Passed</p>
+            </div>
+          </div>
+        </button>
       </div>
 
       {/* Filters */}
@@ -236,12 +258,14 @@ export default function HunterLeadsTab() {
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${
                 cardFilter === 'hot' ? 'bg-red-100 text-red-700' :
                 cardFilter === 'new' ? 'bg-green-100 text-green-700' :
-                'bg-emerald-100 text-emerald-700'
+                cardFilter === 'converted' ? 'bg-emerald-100 text-emerald-700' :
+                'bg-gray-100 text-gray-700'
               }`}
             >
               {cardFilter === 'hot' && 'HOT Leads'}
               {cardFilter === 'new' && 'New This Week'}
               {cardFilter === 'converted' && 'Converted'}
+              {cardFilter === 'dismissed' && 'Passed Targets'}
               <span className="text-xs">&times;</span>
             </button>
           )}
@@ -269,9 +293,13 @@ export default function HunterLeadsTab() {
               <option value="new">New</option>
               <option value="enriching">Enriching</option>
               <option value="ready">Ready</option>
+              <option value="researching">Researching</option>
+              <option value="active">Active</option>
+              <option value="engaged">Engaged</option>
               <option value="contacted">Contacted</option>
               <option value="converted">Converted</option>
-              <option value="rejected">Rejected</option>
+              <option value="dismissed">Passed</option>
+              <option value="nurture">Nurture</option>
             </select>
           </div>
         </div>

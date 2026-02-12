@@ -18,6 +18,10 @@ interface FollowUpModalProps {
   // Optional: link to a related object (deal, property, etc.)
   relatedObjectId?: string;
   relatedObjectType?: string;
+  // Optional: link to a Hunter target for prospecting
+  targetId?: string;
+  // Optional: mark as prospecting task (auto-set when targetId is provided)
+  isProspecting?: boolean;
 }
 
 const FollowUpModal: React.FC<FollowUpModalProps> = ({
@@ -28,7 +32,9 @@ const FollowUpModal: React.FC<FollowUpModalProps> = ({
   contactName,
   contactCompany,
   relatedObjectId,
-  relatedObjectType
+  relatedObjectType,
+  targetId,
+  isProspecting
 }) => {
   const { user } = useAuth();
   const [isCreatingFollowUp, setIsCreatingFollowUp] = useState(false);
@@ -106,13 +112,19 @@ const FollowUpModal: React.FC<FollowUpModalProps> = ({
       }
 
       // Create the follow-up task
+      // Auto-mark as prospecting if targetId is provided
+      const shouldMarkProspecting = isProspecting || !!targetId;
+
       const taskData: any = {
         subject: followUpSubject || `Follow-up with ${contactName}`,
         activity_type_id: taskType.id,
         status_id: openStatus.id,
         activity_date: followUpDate.toISOString(),
         contact_id: contactId,
-        owner_id: ownerId
+        owner_id: ownerId,
+        // Link to target and mark as prospecting task
+        target_id: targetId || null,
+        is_prospecting: shouldMarkProspecting
       };
 
       // Add related object if provided

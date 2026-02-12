@@ -50,9 +50,9 @@ export default function HunterStatsTab() {
         .from('hunter_signal')
         .select('id, source_id, created_at, source:hunter_source!source_id(name)');
 
-      // Load leads
+      // Load targets
       const { data: leads } = await supabase
-        .from('hunter_lead')
+        .from('target')
         .select('id, signal_strength, status, created_at');
 
       // Load outreach

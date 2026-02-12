@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProspectingMetrics } from '../../hooks/useProspectingMetrics';
 import LogCallModal from '../LogCallModal';
 import FollowUpModal from '../FollowUpModal';
 import AddTargetModal from './AddTargetModal';
@@ -14,7 +15,13 @@ import {
   CheckCircleIcon,
   ArrowPathIcon,
   XMarkIcon,
-  CheckIcon
+  CheckIcon,
+  FireIcon,
+  SparklesIcon,
+  ChevronRightIcon,
+  EnvelopeIcon,
+  ChatBubbleLeftIcon,
+  UserGroupIcon
 } from '@heroicons/react/24/outline';
 import {
   ProspectingTargetView,
@@ -35,14 +42,35 @@ interface FollowUpDue {
   } | null;
 }
 
+interface NewHunterLead {
+  id: string;
+  concept_name: string;
+  industry_segment: string | null;
+  signal_strength: 'HOT' | 'WARM+' | 'WARM' | 'COOL';
+  score_reasoning: string | null;
+  target_geography: string[] | null;
+  first_seen_at: string;
+  source: string;
+}
+
+const SIGNAL_COLORS = {
+  'HOT': 'bg-red-100 text-red-800 border-red-200',
+  'WARM+': 'bg-orange-100 text-orange-800 border-orange-200',
+  'WARM': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  'COOL': 'bg-blue-100 text-blue-800 border-blue-200'
+};
+
 export default function TodaysPlan() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { data: metricsData, loadDashboardData: loadMetrics } = useProspectingMetrics();
   const [loading, setLoading] = useState(true);
   const [followUpsDue, setFollowUpsDue] = useState<FollowUpDue[]>([]);
   const [overdueFollowUps, setOverdueFollowUps] = useState<FollowUpDue[]>([]);
   const [readyTargets, setReadyTargets] = useState<ProspectingTargetView[]>([]);
-  const [todayStats, setTodayStats] = useState({ calls: 0, meetings: 0 });
+  const [newHunterLeads, setNewHunterLeads] = useState<NewHunterLead[]>([]);
+  const [todayStats, setTodayStats] = useState({ calls: 0, meetings: 0, newLeads: 0 });
+  const metrics = metricsData.metrics;
 
   // Modal states
   const [isLogCallModalOpen, setIsLogCallModalOpen] = useState(false);
@@ -52,6 +80,7 @@ export default function TodaysPlan() {
 
   useEffect(() => {
     fetchTodaysData();
+    loadMetrics();
   }, []);
 
   const fetchTodaysData = async () => {
@@ -61,7 +90,12 @@ export default function TodaysPlan() {
       const todayStart = `${today}T00:00:00`;
       const todayEnd = `${today}T23:59:59`;
 
-      // Fetch follow-ups due today
+      // Calculate 30 days ago for overdue limit
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const thirtyDaysAgoStr = thirtyDaysAgo.toISOString();
+
+      // Fetch follow-ups due today (prospecting tasks only)
       const { data: todayFollowUps, error: todayError } = await supabase
         .from('activity')
         .select(`
@@ -74,6 +108,7 @@ export default function TodaysPlan() {
         .gte('activity_date', todayStart)
         .lte('activity_date', todayEnd)
         .eq('activity_status.is_closed', false)
+        .eq('is_prospecting', true)
         .not('contact_id', 'is', null)
         .order('activity_date', { ascending: true });
 
@@ -90,6 +125,7 @@ export default function TodaysPlan() {
       const openStatusIds = openStatuses?.map(s => s.id) || [];
 
       if (openStatusIds.length > 0) {
+        // Fetch overdue prospecting follow-ups (last 30 days only)
         const { data: overdue, error: overdueError } = await supabase
           .from('activity')
           .select(`
@@ -100,9 +136,11 @@ export default function TodaysPlan() {
             contact!fk_activity_contact_id(id, first_name, last_name, company)
           `)
           .lt('activity_date', todayStart)
+          .gte('activity_date', thirtyDaysAgoStr)
           .in('status_id', openStatusIds)
+          .eq('is_prospecting', true)
           .not('contact_id', 'is', null)
-          .order('activity_date', { ascending: true });
+          .order('activity_date', { ascending: false });
 
         if (!overdueError && overdue) {
           setOverdueFollowUps(overdue as FollowUpDue[]);
@@ -111,7 +149,20 @@ export default function TodaysPlan() {
         setOverdueFollowUps([]);
       }
 
-      // Fetch ready-to-call targets
+      // Fetch new Hunter leads (targets with status 'new')
+      const { data: hunterLeads, error: hunterError } = await supabase
+        .from('target')
+        .select('id, concept_name, industry_segment, signal_strength, score_reasoning, target_geography, first_seen_at, source')
+        .eq('status', 'new')
+        .order('signal_strength', { ascending: true }) // HOT first
+        .order('first_seen_at', { ascending: false })
+        .limit(15);
+
+      if (!hunterError && hunterLeads) {
+        setNewHunterLeads(hunterLeads as NewHunterLead[]);
+      }
+
+      // Fetch ready-to-call targets (from prospecting_target view if it exists)
       const { data: targets, error: targetsError } = await supabase
         .from('v_prospecting_target')
         .select('*')
@@ -134,7 +185,8 @@ export default function TodaysPlan() {
       if (!statsError && todayActivities) {
         setTodayStats({
           calls: todayActivities.filter(a => a.is_prospecting_call || a.completed_call || a.meeting_held).length,
-          meetings: todayActivities.filter(a => a.meeting_held).length
+          meetings: todayActivities.filter(a => a.meeting_held).length,
+          newLeads: hunterLeads?.length || 0
         });
       }
     } catch (err) {
@@ -259,14 +311,14 @@ export default function TodaysPlan() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900">Today's Progress</h2>
           <button
-            onClick={fetchTodaysData}
+            onClick={() => { fetchTodaysData(); loadMetrics(); }}
             className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
             title="Refresh"
           >
             <ArrowPathIcon className="w-5 h-5" />
           </button>
         </div>
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-5 gap-4">
           <div className="text-center p-4 bg-blue-50 rounded-lg">
             <p className="text-3xl font-bold text-blue-600">{followUpsDue.length}</p>
             <p className="text-sm text-gray-600">Follow-ups Due</p>
@@ -275,6 +327,10 @@ export default function TodaysPlan() {
             <p className="text-3xl font-bold text-red-600">{overdueFollowUps.length}</p>
             <p className="text-sm text-gray-600">Overdue</p>
           </div>
+          <div className="text-center p-4 bg-orange-50 rounded-lg">
+            <p className="text-3xl font-bold text-orange-600">{newHunterLeads.length}</p>
+            <p className="text-sm text-gray-600">New Leads</p>
+          </div>
           <div className="text-center p-4 bg-green-50 rounded-lg">
             <p className="text-3xl font-bold text-green-600">{todayStats.calls}</p>
             <p className="text-sm text-gray-600">Calls Made</p>
@@ -282,6 +338,64 @@ export default function TodaysPlan() {
           <div className="text-center p-4 bg-purple-50 rounded-lg">
             <p className="text-3xl font-bold text-purple-600">{todayStats.meetings}</p>
             <p className="text-sm text-gray-600">Meetings</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Outreach This Week */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Outreach This Week</h2>
+        <div className="grid grid-cols-7 gap-3">
+          <div className="text-center p-3 bg-blue-50 rounded-lg">
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <EnvelopeIcon className="w-4 h-4 text-blue-600" />
+            </div>
+            <p className="text-xl font-bold text-blue-600">{metrics?.emails_sent || 0}</p>
+            <p className="text-xs text-gray-500">Emails</p>
+          </div>
+          <div className="text-center p-3 bg-indigo-50 rounded-lg">
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <svg className="w-4 h-4 text-indigo-600" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+              </svg>
+            </div>
+            <p className="text-xl font-bold text-indigo-600">{metrics?.linkedin_messages || 0}</p>
+            <p className="text-xs text-gray-500">LinkedIn</p>
+          </div>
+          <div className="text-center p-3 bg-green-50 rounded-lg">
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <ChatBubbleLeftIcon className="w-4 h-4 text-green-600" />
+            </div>
+            <p className="text-xl font-bold text-green-600">{metrics?.sms_sent || 0}</p>
+            <p className="text-xs text-gray-500">SMS</p>
+          </div>
+          <div className="text-center p-3 bg-yellow-50 rounded-lg">
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <PhoneIcon className="w-4 h-4 text-yellow-600" />
+            </div>
+            <p className="text-xl font-bold text-yellow-600">{metrics?.voicemails_left || 0}</p>
+            <p className="text-xs text-gray-500">Voicemails</p>
+          </div>
+          <div className="text-center p-3 bg-emerald-50 rounded-lg">
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <PhoneIcon className="w-4 h-4 text-emerald-600" />
+            </div>
+            <p className="text-xl font-bold text-emerald-600">{metrics?.calls_completed || 0}</p>
+            <p className="text-xs text-gray-500">Calls</p>
+          </div>
+          <div className="text-center p-3 bg-purple-50 rounded-lg">
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <UserGroupIcon className="w-4 h-4 text-purple-600" />
+            </div>
+            <p className="text-xl font-bold text-purple-600">{metrics?.meetings_held || 0}</p>
+            <p className="text-xs text-gray-500">Meetings</p>
+          </div>
+          <div className="text-center p-3 bg-gray-100 rounded-lg">
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <FireIcon className="w-4 h-4 text-gray-700" />
+            </div>
+            <p className="text-xl font-bold text-gray-700">{metrics?.total_touches || 0}</p>
+            <p className="text-xs text-gray-500">Total</p>
           </div>
         </div>
       </div>
@@ -439,22 +553,69 @@ export default function TodaysPlan() {
         </div>
       </div>
 
-      {/* Ready to Call Targets */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <MagnifyingGlassIcon className="w-5 h-5 text-green-600" />
-            Ready to Call ({readyTargets.length})
-          </h3>
-          <p className="text-sm text-gray-500 mt-1">Researched targets ready for first contact</p>
+      {/* New Hunter Leads - AI-discovered targets */}
+      {newHunterLeads.length > 0 && (
+        <div className="bg-white rounded-lg shadow">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <SparklesIcon className="w-5 h-5 text-orange-600" />
+              New Leads from Hunter ({newHunterLeads.length})
+            </h3>
+            <p className="text-sm text-gray-500 mt-1">AI-discovered targets awaiting review</p>
+          </div>
+          <div className="divide-y divide-gray-100 max-h-96 overflow-y-auto">
+            {newHunterLeads.map((lead) => (
+              <div
+                key={lead.id}
+                onClick={() => navigate(`/hunter/lead/${lead.id}`)}
+                className="p-4 hover:bg-gray-50 cursor-pointer"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-gray-900">{lead.concept_name}</span>
+                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${SIGNAL_COLORS[lead.signal_strength]}`}>
+                        {lead.signal_strength}
+                      </span>
+                      {lead.industry_segment && (
+                        <span className="text-xs text-purple-600">{lead.industry_segment}</span>
+                      )}
+                    </div>
+                    {lead.score_reasoning && (
+                      <p className="text-sm text-gray-500 truncate mt-1">{lead.score_reasoning}</p>
+                    )}
+                    <div className="flex items-center gap-2 mt-1">
+                      {lead.target_geography && lead.target_geography.length > 0 && (
+                        <span className="text-xs text-gray-400">
+                          {lead.target_geography.slice(0, 2).join(', ')}
+                          {lead.target_geography.length > 2 && ` +${lead.target_geography.length - 2}`}
+                        </span>
+                      )}
+                      <span className="text-xs text-gray-400">
+                        Discovered {new Date(lead.first_seen_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronRightIcon className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="divide-y divide-gray-100">
-          {readyTargets.length === 0 ? (
-            <div className="p-6 text-center text-gray-500">
-              <p>No targets ready to call. Add targets and have them researched!</p>
-            </div>
-          ) : (
-            readyTargets.map((target) => (
+      )}
+
+      {/* Ready to Call Targets */}
+      {readyTargets.length > 0 && (
+        <div className="bg-white rounded-lg shadow">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <PhoneIcon className="w-5 h-5 text-green-600" />
+              Ready to Call ({readyTargets.length})
+            </h3>
+            <p className="text-sm text-gray-500 mt-1">Researched targets ready for first contact</p>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {readyTargets.map((target) => (
               <div key={target.id} className="p-4 hover:bg-gray-50">
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0">
@@ -486,10 +647,10 @@ export default function TodaysPlan() {
                   </div>
                 </div>
               </div>
-            ))
-          )}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Log Call Modal */}
       <LogCallModal
@@ -510,7 +671,7 @@ export default function TodaysPlan() {
         } : undefined}
       />
 
-      {/* Follow-up Modal */}
+      {/* Follow-up Modal - auto-mark as prospecting since we're in the prospecting module */}
       <FollowUpModal
         isOpen={isFollowUpModalOpen}
         onClose={() => {
@@ -525,6 +686,7 @@ export default function TodaysPlan() {
         contactId={selectedContact?.id || ''}
         contactName={selectedContact?.name || ''}
         contactCompany={selectedContact?.company || undefined}
+        isProspecting={true}
       />
 
       {/* Add Target Modal */}

@@ -455,3 +455,202 @@ export interface DropboxFile {
   shared_link: string | null;
   icon?: string; // Optional: for file type icons
 }
+
+// ============================================================================
+// Prospecting System Types
+// ============================================================================
+
+// Hunter Lead Status (extended for prospecting funnel)
+export const HUNTER_LEAD_STATUSES = [
+  // Original statuses
+  'new',
+  'enriching',
+  'ready',
+  'outreach_drafted',
+  'contacted',
+  'converted',
+  'dismissed',
+  'watching',
+  // New prospecting funnel statuses
+  'researching',
+  'active',
+  'engaged',
+  'meeting_scheduled',
+  // Terminal statuses
+  'already_represented',
+  'not_interested',
+  'dead',
+  'nurture'
+] as const;
+
+export type HunterLeadStatus = typeof HUNTER_LEAD_STATUSES[number];
+
+// Activity types for outreach tracking
+export const PROSPECTING_ACTIVITY_TYPES = [
+  'email',      // Email sent
+  'linkedin',   // LinkedIn message sent
+  'sms',        // SMS text message sent
+  'voicemail',  // Left voicemail
+  'call',       // Call completed (reached them)
+  'meeting'     // Meeting held
+] as const;
+
+export type ProspectingActivityType = typeof PROSPECTING_ACTIVITY_TYPES[number];
+
+// Prospecting Activity
+export interface ProspectingActivity {
+  id: string;
+  target_id: string | null;
+  contact_id: string | null;
+  activity_type: ProspectingActivityType;
+  notes: string | null;
+  email_subject: string | null;
+  created_at: string;
+  created_by: string;
+}
+
+// Prospecting Note
+export interface ProspectingNote {
+  id: string;
+  target_id: string | null;
+  contact_id: string | null;
+  content: string;
+  created_at: string;
+  created_by: string;
+}
+
+// Time Entry for prospecting tracking
+export interface ProspectingTimeEntry {
+  id: string;
+  entry_date: string;
+  minutes: number;
+  notes: string | null;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Vacation Day (for streak protection)
+export interface ProspectingVacationDay {
+  id: string;
+  vacation_date: string;
+  reason: string | null;
+  user_id: string;
+  created_at: string;
+}
+
+// User-specific prospecting settings
+export interface ProspectingSettings {
+  id: string;
+  user_id: string;
+  daily_time_goal_minutes: number;
+  stale_lead_days: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// Email template categories
+export const EMAIL_TEMPLATE_CATEGORIES = [
+  'cold_outreach',
+  'follow_up',
+  'voicemail_follow_up',
+  're_engagement',
+  'meeting_request',
+  'custom'
+] as const;
+
+export type EmailTemplateCategory = typeof EMAIL_TEMPLATE_CATEGORIES[number];
+
+// Email Template
+export interface EmailTemplate {
+  id: string;
+  name: string;
+  subject: string;
+  body: string;
+  category: EmailTemplateCategory | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+}
+
+// Hunter Lead (extended with last_contacted_at)
+export interface HunterLead {
+  id: string;
+  concept_name: string;
+  normalized_name: string;
+  website: string | null;
+  industry_segment: string | null;
+  signal_strength: 'HOT' | 'WARM+' | 'WARM' | 'COOL';
+  score_reasoning: string | null;
+  target_geography: string[] | null;
+  geo_relevance: 'primary' | 'secondary' | 'national' | 'other' | null;
+  key_person_name: string | null;
+  key_person_title: string | null;
+  status: HunterLeadStatus;
+  existing_contact_id: string | null;
+  existing_client_id: string | null;
+  news_only: boolean;
+  first_seen_at: string;
+  last_signal_at: string;
+  last_contacted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Prospecting Metrics (from v_prospecting_weekly_metrics view)
+export interface ProspectingWeeklyMetrics {
+  week_start: string;
+  week_end: string;
+  emails_sent: number;
+  linkedin_messages: number;
+  sms_sent: number;
+  voicemails_left: number;
+  calls_completed: number;
+  meetings_held: number;
+  total_touches: number;
+  time_minutes: number;
+  funnel_new: number;
+  funnel_researching: number;
+  funnel_active: number;
+  funnel_engaged: number;
+  funnel_meeting_scheduled: number;
+  funnel_converted: number;
+  funnel_nurture: number;
+}
+
+// Stale Lead (from v_prospecting_stale_leads view)
+export interface StaleLead extends HunterLead {
+  effective_last_contact: string;
+  days_since_contact: number;
+}
+
+// Activity type display info for UI
+export const ACTIVITY_TYPE_INFO: Record<ProspectingActivityType, { label: string; icon: string; color: string }> = {
+  email: { label: 'Email Sent', icon: 'EnvelopeIcon', color: 'blue' },
+  linkedin: { label: 'LinkedIn Message', icon: 'BriefcaseIcon', color: 'indigo' },
+  sms: { label: 'SMS Text', icon: 'ChatBubbleLeftIcon', color: 'green' },
+  voicemail: { label: 'Voicemail Left', icon: 'PhoneIcon', color: 'yellow' },
+  call: { label: 'Call Complete', icon: 'PhoneArrowUpRightIcon', color: 'emerald' },
+  meeting: { label: 'Meeting Held', icon: 'UserGroupIcon', color: 'purple' }
+};
+
+// Lead status display info for UI
+export const LEAD_STATUS_INFO: Record<HunterLeadStatus, { label: string; color: string; terminal: boolean }> = {
+  new: { label: 'New', color: 'gray', terminal: false },
+  enriching: { label: 'Enriching', color: 'blue', terminal: false },
+  ready: { label: 'Ready', color: 'cyan', terminal: false },
+  outreach_drafted: { label: 'Outreach Drafted', color: 'yellow', terminal: false },
+  contacted: { label: 'Contacted', color: 'orange', terminal: false },
+  converted: { label: 'Converted', color: 'emerald', terminal: true },
+  dismissed: { label: 'Dismissed', color: 'gray', terminal: true },
+  watching: { label: 'Watching', color: 'purple', terminal: false },
+  researching: { label: 'Researching', color: 'blue', terminal: false },
+  active: { label: 'Active', color: 'orange', terminal: false },
+  engaged: { label: 'Engaged', color: 'green', terminal: false },
+  meeting_scheduled: { label: 'Meeting Scheduled', color: 'purple', terminal: false },
+  already_represented: { label: 'Already Represented', color: 'gray', terminal: true },
+  not_interested: { label: 'Not Interested', color: 'red', terminal: true },
+  dead: { label: 'Dead', color: 'gray', terminal: true },
+  nurture: { label: 'Nurture', color: 'cyan', terminal: false }
+};

@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
+import ActivityLogButtons from '../components/hunter/ActivityLogButtons';
+import LeadNotesPanel from '../components/hunter/LeadNotesPanel';
+import LeadActivityTimeline from '../components/hunter/LeadActivityTimeline';
+import TargetContactsPanel from '../components/hunter/TargetContactsPanel';
+import DismissTargetModal from '../components/hunter/DismissTargetModal';
 import {
   ArrowLeftIcon,
   BuildingStorefrontIcon,
@@ -26,7 +31,7 @@ interface HunterLead {
   website: string | null;
   industry_segment: string | null;
   signal_strength: 'HOT' | 'WARM+' | 'WARM' | 'COOL';
-  status: 'new' | 'enriching' | 'ready' | 'outreach_drafted' | 'contacted' | 'converted' | 'dismissed' | 'watching';
+  status: 'new' | 'enriching' | 'ready' | 'outreach_drafted' | 'contacted' | 'converted' | 'dismissed' | 'watching' | 'researching' | 'active' | 'engaged' | 'meeting_scheduled' | 'already_represented' | 'not_interested' | 'dead' | 'nurture';
   score_reasoning: string | null;
   target_geography: string[] | null;
   geo_relevance: string | null;
@@ -34,6 +39,7 @@ interface HunterLead {
   key_person_title: string | null;
   first_seen_at: string;
   last_signal_at: string;
+  last_contacted_at: string | null;
   created_at: string;
   updated_at: string;
   outreach_drafts: {
@@ -70,12 +76,23 @@ const GEO_BADGE_COLORS = {
 };
 
 const STATUS_OPTIONS = [
+  // Original statuses
   { value: 'new', label: 'New', color: 'bg-green-100 text-green-800' },
   { value: 'enriching', label: 'Enriching', color: 'bg-blue-100 text-blue-800' },
   { value: 'ready', label: 'Ready', color: 'bg-purple-100 text-purple-800' },
   { value: 'outreach_drafted', label: 'Outreach Drafted', color: 'bg-yellow-100 text-yellow-800' },
   { value: 'contacted', label: 'Contacted', color: 'bg-indigo-100 text-indigo-800' },
+  // New prospecting funnel stages
+  { value: 'researching', label: 'Researching', color: 'bg-sky-100 text-sky-800' },
+  { value: 'active', label: 'Active', color: 'bg-orange-100 text-orange-800' },
+  { value: 'engaged', label: 'Engaged', color: 'bg-amber-100 text-amber-800' },
+  { value: 'meeting_scheduled', label: 'Meeting Scheduled', color: 'bg-lime-100 text-lime-800' },
+  // Terminal states
   { value: 'converted', label: 'Converted', color: 'bg-emerald-100 text-emerald-800' },
+  { value: 'already_represented', label: 'Already Represented', color: 'bg-slate-100 text-slate-800' },
+  { value: 'not_interested', label: 'Not Interested', color: 'bg-rose-100 text-rose-800' },
+  { value: 'dead', label: 'Dead', color: 'bg-red-100 text-red-800' },
+  { value: 'nurture', label: 'Nurture', color: 'bg-violet-100 text-violet-800' },
   { value: 'dismissed', label: 'Dismissed', color: 'bg-gray-100 text-gray-800' },
   { value: 'watching', label: 'Watching', color: 'bg-cyan-100 text-cyan-800' }
 ];
@@ -89,10 +106,12 @@ export default function HunterLeadDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [converting, setConverting] = useState(false);
   const [showConvertModal, setShowConvertModal] = useState(false);
+  const [showDismissModal, setShowDismissModal] = useState(false);
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
   const [feedbackNote, setFeedbackNote] = useState('');
   const [newSignalStrength, setNewSignalStrength] = useState<string>('');
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [prefillKeyContact, setPrefillKeyContact] = useState(false);
 
   useEffect(() => {
     if (leadId) {
@@ -105,7 +124,7 @@ export default function HunterLeadDetailsPage() {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from('hunter_lead')
+        .from('target')
         .select(`
           *,
           outreach_drafts:hunter_outreach_draft(
@@ -131,7 +150,7 @@ export default function HunterLeadDetailsPage() {
   async function loadSignals(id: string) {
     try {
       const { data, error } = await supabase
-        .from('hunter_lead_signal')
+        .from('target_signal')
         .select(`
           id,
           extracted_summary,
@@ -147,7 +166,7 @@ export default function HunterLeadDetailsPage() {
             source:hunter_source(name)
           )
         `)
-        .eq('lead_id', id)
+        .eq('target_id', id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -161,7 +180,7 @@ export default function HunterLeadDetailsPage() {
     if (!lead) return;
     try {
       const { error } = await supabase
-        .from('hunter_lead')
+        .from('target')
         .update({
           status: newStatus,
           updated_at: new Date().toISOString()
@@ -184,7 +203,7 @@ export default function HunterLeadDetailsPage() {
       const { error: feedbackError } = await supabase
         .from('hunter_feedback')
         .insert({
-          lead_id: lead.id,
+          target_id: lead.id,
           feedback_type: 'score_override',
           original_value: lead.signal_strength,
           corrected_value: newSignalStrength || null,
@@ -195,10 +214,10 @@ export default function HunterLeadDetailsPage() {
 
       if (feedbackError) throw feedbackError;
 
-      // If signal strength was changed, update the lead
+      // If signal strength was changed, update the target
       if (newSignalStrength && newSignalStrength !== lead.signal_strength) {
         const { error: updateError } = await supabase
-          .from('hunter_lead')
+          .from('target')
           .update({
             signal_strength: newSignalStrength,
             updated_at: new Date().toISOString()
@@ -235,7 +254,7 @@ export default function HunterLeadDetailsPage() {
       const firstName = nameParts[0] || '';
       const lastName = nameParts.slice(1).join(' ') || lead.concept_name;
 
-      // Create contact with Hunter source type and link to lead
+      // Create contact with Hunter source type and link to target
       const { data: newContact, error: contactError } = await supabase
         .from('contact')
         .insert({
@@ -245,7 +264,7 @@ export default function HunterLeadDetailsPage() {
           company: lead.concept_name,
           website: lead.website || null,
           source_type: 'Hunter',
-          hunter_lead_id: lead.id,
+          target_id: lead.id,
           contact_tags: `Hunter Lead, ${lead.signal_strength}`,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -255,9 +274,9 @@ export default function HunterLeadDetailsPage() {
 
       if (contactError) throw contactError;
 
-      // Update lead status to converted
+      // Update target status to converted
       await supabase
-        .from('hunter_lead')
+        .from('target')
         .update({
           status: 'converted',
           updated_at: new Date().toISOString()
@@ -331,6 +350,15 @@ export default function HunterLeadDetailsPage() {
                   </option>
                 ))}
               </select>
+              {lead.status !== 'converted' && lead.status !== 'dismissed' && (
+                <button
+                  onClick={() => setShowDismissModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <HandThumbDownIcon className="w-5 h-5" />
+                  Pass
+                </button>
+              )}
               {lead.status !== 'converted' && lead.key_person_name && (
                 <button
                   onClick={() => setShowConvertModal(true)}
@@ -535,13 +563,47 @@ export default function HunterLeadDetailsPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
+            {/* Quick Activity Logging */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <h2 className="text-sm font-semibold text-gray-900 mb-3">Log Activity</h2>
+              <ActivityLogButtons leadId={lead.id} onActivityLogged={() => loadLead(leadId!)} />
+            </div>
+
+            {/* Contacts Panel */}
+            <TargetContactsPanel
+              targetId={lead.id}
+              companyName={lead.concept_name}
+              prefillContact={prefillKeyContact && lead.key_person_name ? {
+                firstName: lead.key_person_name.split(' ')[0] || '',
+                lastName: lead.key_person_name.split(' ').slice(1).join(' ') || '',
+                title: lead.key_person_title || ''
+              } : undefined}
+              autoShowAddForm={prefillKeyContact}
+              onContactAdded={() => {
+                setPrefillKeyContact(false);
+                loadLead(leadId!);
+              }}
+            />
+
+            {/* Notes Panel */}
+            <LeadNotesPanel leadId={lead.id} />
+
+            {/* Activity Timeline */}
+            <LeadActivityTimeline leadId={lead.id} maxItems={5} />
+
             {/* Key Person Info */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Key Contact</h2>
               {lead.key_person_name ? (
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
-                    <UserPlusIcon className="w-5 h-5 text-gray-400" />
+                    <button
+                      onClick={() => setPrefillKeyContact(true)}
+                      className="p-1.5 hover:bg-orange-50 rounded-lg transition-colors group"
+                      title="Add as contact"
+                    >
+                      <UserPlusIcon className="w-5 h-5 text-gray-400 group-hover:text-orange-600" />
+                    </button>
                     <div>
                       <p className="font-medium text-gray-900">{lead.key_person_name}</p>
                       {lead.key_person_title && (
@@ -549,6 +611,9 @@ export default function HunterLeadDetailsPage() {
                       )}
                     </div>
                   </div>
+                  <p className="text-xs text-gray-400">
+                    Click the icon to add this person as a contact
+                  </p>
                 </div>
               ) : (
                 <p className="text-gray-500">No contact information available yet</p>
@@ -644,6 +709,18 @@ export default function HunterLeadDetailsPage() {
           </div>
         </div>
       )}
+
+      {/* Dismiss Target Modal */}
+      <DismissTargetModal
+        isOpen={showDismissModal}
+        onClose={() => setShowDismissModal(false)}
+        targetId={lead.id}
+        targetName={lead.concept_name}
+        onDismissed={() => {
+          loadLead(leadId!);
+          setShowDismissModal(false);
+        }}
+      />
     </div>
   );
 }

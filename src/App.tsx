@@ -56,6 +56,7 @@ import EmailClassificationReviewPage from "./pages/EmailClassificationReviewPage
 import FlaggedEmailQueuePage from "./pages/FlaggedEmailQueuePage";
 import HunterDashboardPage from "./pages/HunterDashboardPage";
 import HunterLeadDetailsPage from "./pages/HunterLeadDetailsPage";
+import HunterProspectingPage from "./pages/HunterProspectingPage";
 import BudgetDashboardPage from "./pages/BudgetDashboardPage";
 import BudgetSetupPage from "./pages/BudgetSetupPage";
 import CashFlowForecastPage from "./pages/CashFlowForecastPage";
@@ -157,7 +158,7 @@ function App() {
           <Route path="reports/arty-draw" element={<CoachRoute><ArtyDrawReportPage /></CoachRoute>} />
           <Route path="reports/mike-is-owed" element={<CoachRoute><MikeIsOwedReportPage /></CoachRoute>} />
           <Route path="reports/unpaid-referral-fees" element={<CoachRoute><UnpaidReferralFeesReportPage /></CoachRoute>} />
-          <Route path="prospecting" element={<AdminRoute><ProspectingDashboardPage /></AdminRoute>} />
+          <Route path="prospecting" element={<Navigate to="/hunter" replace />} />
           <Route path="kpi-dashboard" element={<CoachRoute><KPIDashboardPage /></CoachRoute>} />
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
           <Route path="admin/quickbooks" element={<AdminRoute><QuickBooksAdminPage /></AdminRoute>} />
@@ -176,6 +177,7 @@ function App() {
           <Route path="contacts/suggested" element={<SuggestedContactsPage />} />
           <Route path="hunter" element={<AdminRoute><HunterDashboardPage /></AdminRoute>} />
           <Route path="hunter/lead/:leadId" element={<AdminRoute><HunterLeadDetailsPage /></AdminRoute>} />
+          <Route path="hunter/prospecting" element={<Navigate to="/hunter" replace />} />
           <Route path="typography-test" element={<TypographyTestPage />} />
         </Route>
       </Routes>

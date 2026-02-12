@@ -144,6 +144,8 @@ A comprehensive prospecting tracking system for OVIS that enables:
 - [ ] Auto-populate email, phone, LinkedIn from ZoomInfo
 - [ ] Enrich button on lead detail page
 
+**See [ZoomInfo Integration Guide](#zoominfo-integration-guide) below for detailed implementation requirements.**
+
 #### Gmail Integration
 - [ ] Full Gmail API OAuth setup
 - [ ] Send email from OVIS
@@ -616,8 +618,213 @@ For Phase 2 Gmail integration:
 
 ---
 
+## ZoomInfo Integration Guide
+
+### Overview
+
+ZoomInfo provides contact enrichment data including:
+- **Email addresses** (work email, verified)
+- **Phone numbers** (direct dial, mobile, company)
+- **LinkedIn profile URL**
+- **Job title verification**
+- **Company information** (revenue, employee count, industry)
+
+### Prerequisites
+
+Before implementing ZoomInfo integration, you need:
+
+1. **ZoomInfo Enterprise Account** with API access
+   - Contact ZoomInfo sales for API pricing
+   - API access is typically an add-on to enterprise subscriptions
+   - Request: Person Search API + Person Enrich API
+
+2. **API Credentials**
+   - Client ID
+   - Private Key (for JWT authentication)
+   - These will be stored in Supabase secrets
+
+### Implementation Steps
+
+#### Step 1: Store API Credentials in Supabase
+
+```sql
+-- Store in Supabase Vault (run in SQL editor)
+SELECT vault.create_secret('zoominfo_client_id', 'your-client-id-here');
+SELECT vault.create_secret('zoominfo_private_key', 'your-private-key-here');
+```
+
+#### Step 2: Create Edge Function
+
+Create `supabase/functions/enrich-contact/index.ts`:
+
+```typescript
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const ZOOMINFO_API_BASE = 'https://api.zoominfo.com'
+
+serve(async (req) => {
+  try {
+    const { firstName, lastName, companyName, targetId, contactId } = await req.json()
+
+    // 1. Get ZoomInfo credentials from vault
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    )
+
+    const { data: secrets } = await supabase.rpc('get_secrets', {
+      secret_names: ['zoominfo_client_id', 'zoominfo_private_key']
+    })
+
+    // 2. Authenticate with ZoomInfo (JWT)
+    const token = await getZoomInfoToken(secrets.client_id, secrets.private_key)
+
+    // 3. Search for person
+    const searchResponse = await fetch(`${ZOOMINFO_API_BASE}/search/person`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        firstName,
+        lastName,
+        companyName,
+        outputFields: ['id', 'email', 'phone', 'mobilePhone', 'linkedinUrl', 'jobTitle']
+      })
+    })
+
+    const searchData = await searchResponse.json()
+
+    if (!searchData.data?.length) {
+      return new Response(JSON.stringify({ success: false, message: 'No matches found' }), {
+        status: 404
+      })
+    }
+
+    const person = searchData.data[0]
+
+    // 4. Update contact record with enriched data
+    if (contactId) {
+      await supabase.from('contact').update({
+        email: person.email,
+        phone: person.phone,
+        mobile_phone: person.mobilePhone,
+        linkedin: person.linkedinUrl,
+        title: person.jobTitle,
+        enriched_at: new Date().toISOString(),
+        enrichment_source: 'zoominfo'
+      }).eq('id', contactId)
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        email: person.email,
+        phone: person.phone,
+        mobilePhone: person.mobilePhone,
+        linkedin: person.linkedinUrl,
+        jobTitle: person.jobTitle
+      }
+    }))
+
+  } catch (error) {
+    return new Response(JSON.stringify({ success: false, error: error.message }), {
+      status: 500
+    })
+  }
+})
+
+async function getZoomInfoToken(clientId: string, privateKey: string): Promise<string> {
+  // ZoomInfo uses JWT authentication
+  // Generate JWT with client_id as issuer, sign with private key
+  // Token is valid for 1 hour
+  // Implementation depends on ZoomInfo's specific auth requirements
+  // See: https://api-docs.zoominfo.com/#authentication
+}
+```
+
+#### Step 3: Add Database Columns
+
+```sql
+-- Add enrichment tracking to contact table
+ALTER TABLE contact ADD COLUMN IF NOT EXISTS linkedin TEXT;
+ALTER TABLE contact ADD COLUMN IF NOT EXISTS enriched_at TIMESTAMPTZ;
+ALTER TABLE contact ADD COLUMN IF NOT EXISTS enrichment_source TEXT;
+
+-- Create enrichment log for tracking API usage
+CREATE TABLE IF NOT EXISTS enrichment_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contact_id UUID REFERENCES contact(id),
+  target_id UUID REFERENCES target(id),
+  provider TEXT NOT NULL DEFAULT 'zoominfo',
+  status TEXT NOT NULL, -- 'success', 'not_found', 'error'
+  request_data JSONB,
+  response_data JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  created_by UUID REFERENCES auth.users(id)
+);
+```
+
+#### Step 4: Add UI Components
+
+1. **Enrich Button on Contact Add Form** (`TargetContactsPanel.tsx`)
+   - Shows when first_name + last_name are filled
+   - Calls edge function with name + company
+   - Auto-fills email, phone, LinkedIn fields
+
+2. **Enrich Button on Contact Detail Page**
+   - For existing contacts without email/phone
+   - Shows enrichment status and last enriched date
+
+3. **Bulk Enrich Option**
+   - On target detail page
+   - Enriches all contacts linked to target
+
+### API Usage & Costs
+
+ZoomInfo API pricing is typically:
+- Per-lookup pricing (varies by plan)
+- Monthly credit allocation
+- Track usage in `enrichment_log` table
+
+### Alternative Providers
+
+If ZoomInfo is not available, consider:
+
+| Provider | Strengths | API Docs |
+|----------|-----------|----------|
+| **Apollo.io** | Good for B2B, includes email verification | api.apollo.io |
+| **Clearbit** | Company data, real-time enrichment | clearbit.com/docs |
+| **Hunter.io** | Email finding, verification | hunter.io/api |
+| **Lusha** | Direct dials, mobile numbers | lusha.com/api |
+| **RocketReach** | LinkedIn lookups | rocketreach.co/api |
+
+### Testing
+
+1. Create a test contact with known name/company
+2. Call enrichment function
+3. Verify fields are populated
+4. Check enrichment_log for tracking
+
+### Activation Checklist
+
+When ready to activate ZoomInfo:
+
+- [ ] Obtain ZoomInfo API credentials (Client ID + Private Key)
+- [ ] Run database migration for enrichment columns
+- [ ] Deploy `enrich-contact` edge function
+- [ ] Store credentials in Supabase Vault
+- [ ] Add "Enrich" button to TargetContactsPanel
+- [ ] Test with sample contact
+- [ ] Monitor API usage in enrichment_log
+
+---
+
 ## Revision History
 
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0 | 2026-02-12 | Initial specification |
+| 1.1 | 2026-02-12 | Added ZoomInfo Integration Guide |
