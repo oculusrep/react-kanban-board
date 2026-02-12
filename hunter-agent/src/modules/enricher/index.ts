@@ -47,13 +47,13 @@ export class Enricher {
 
       logger.info(`Found ${leads.length} leads to enrich`);
 
-      // Initialize browser for ICSC (create fresh instance)
-      this.browserManager = new BrowserManager();
-      await this.browserManager.initialize();
-      const context = await this.browserManager.getContext('icsc');
-
-      // Create ICSC scraper
-      this.icscScraper = new ICSCScraper(context);
+      // ICSC enrichment disabled - site is blocking datacenter IPs
+      // TODO: Re-enable when we have a working proxy or alternative solution
+      // this.browserManager = new BrowserManager();
+      // await this.browserManager.initialize();
+      // const context = await this.browserManager.getContext('icsc');
+      // this.icscScraper = new ICSCScraper(context);
+      logger.info('ICSC enrichment disabled - using article extraction only');
 
       // Enrich each lead
       for (const lead of leads) {

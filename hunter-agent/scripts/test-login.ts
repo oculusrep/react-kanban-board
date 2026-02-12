@@ -366,14 +366,16 @@ async function testBizJournalsLogin() {
 // Run tests
 async function main() {
   console.log('Hunter Agent - Login Diagnostic Tool\n');
-  console.log('This script will test login for NRN only\n');
+  console.log('This script will test login for NRN and BizJournals\n');
 
   const nrnSuccess = await testNRNLogin();
+  const bizSuccess = await testBizJournalsLogin();
 
   console.log('\n========================================');
   console.log('Test Results Summary');
   console.log('========================================\n');
   console.log(`NRN:          ${nrnSuccess ? '✅ PASS' : '❌ FAIL'}`);
+  console.log(`BizJournals:  ${bizSuccess ? '✅ PASS' : '❌ FAIL'}`);
   console.log('\nScreenshots saved in hunter-agent/ directory');
 }
 

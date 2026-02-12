@@ -100,15 +100,15 @@ export function validateConfig(): void {
 // Log which source credentials are configured (for debugging)
 export function logSourceCredentialsStatus(): void {
   const sources = [
-    { name: 'NRN', hasUser: !!config.sources.nrn.username, hasPass: !!config.sources.nrn.password },
-    { name: 'QSR', hasUser: !!config.sources.qsr.username, hasPass: !!config.sources.qsr.password },
-    { name: 'BizJournals', hasUser: !!config.sources.bizjournals.username, hasPass: !!config.sources.bizjournals.password },
-    { name: 'ICSC', hasUser: !!config.sources.icsc.username, hasPass: !!config.sources.icsc.password },
+    { name: 'NRN', hasUser: !!config.sources.nrn.username, hasPass: !!config.sources.nrn.password, passLen: config.sources.nrn.password.length },
+    { name: 'QSR', hasUser: !!config.sources.qsr.username, hasPass: !!config.sources.qsr.password, passLen: config.sources.qsr.password.length },
+    { name: 'BizJournals', hasUser: !!config.sources.bizjournals.username, hasPass: !!config.sources.bizjournals.password, passLen: config.sources.bizjournals.password.length },
+    { name: 'ICSC', hasUser: !!config.sources.icsc.username, hasPass: !!config.sources.icsc.password, passLen: config.sources.icsc.password.length },
   ];
 
   console.log('[Config] Source credentials status:');
-  sources.forEach(({ name, hasUser, hasPass }) => {
-    const status = hasUser && hasPass ? '✓ Configured' : hasUser ? '✗ Missing password' : hasPass ? '✗ Missing username' : '✗ Not configured';
+  sources.forEach(({ name, hasUser, hasPass, passLen }) => {
+    const status = hasUser && hasPass ? `✓ Configured (pass: ${passLen} chars)` : hasUser ? '✗ Missing password' : hasPass ? '✗ Missing username' : '✗ Not configured';
     console.log(`  - ${name}: ${status}`);
   });
 }
