@@ -545,7 +545,7 @@ export default function ProspectingWorkspace() {
         .select(`
           id, first_name, last_name, company, email, phone, mobile_phone, title,
           target_id, linkedin_url, address_city, address_state,
-          target:target(id, concept_name, signal_strength, industry_segment, website, score_reasoning)
+          target:target!contact_target_id_fkey(id, concept_name, signal_strength, industry_segment, website, score_reasoning)
         `)
         .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,company.ilike.%${query}%,email.ilike.%${query}%`)
         .limit(10);
