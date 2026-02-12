@@ -283,6 +283,13 @@ export default function ProspectingWorkspace() {
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [showComposeModal, setShowComposeModal] = useState(false);
 
+  // New follow-up scheduling
+  const [showNewFollowUpModal, setShowNewFollowUpModal] = useState(false);
+  const [contactSearch, setContactSearch] = useState('');
+  const [contactSearchResults, setContactSearchResults] = useState<ContactDetails[]>([]);
+  const [searchingContacts, setSearchingContacts] = useState(false);
+  const [selectedNewContact, setSelectedNewContact] = useState<ContactDetails | null>(null);
+
   // Stats
   const [stats, setStats] = useState({
     dueToday: 0,
@@ -523,6 +530,43 @@ export default function ProspectingWorkspace() {
     return Math.ceil((today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
   };
 
+  // Search contacts for new follow-up
+  const searchContacts = async (query: string) => {
+    if (query.length < 2) {
+      setContactSearchResults([]);
+      return;
+    }
+
+    setSearchingContacts(true);
+    try {
+      const { data } = await supabase
+        .from('contact')
+        .select(`
+          id, first_name, last_name, company, email, phone, mobile_phone, title,
+          target_id, linkedin_url, address_city, address_state,
+          target:target(id, concept_name, signal_strength, industry_segment, website, score_reasoning)
+        `)
+        .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,company.ilike.%${query}%,email.ilike.%${query}%`)
+        .limit(10);
+
+      setContactSearchResults((data || []) as ContactDetails[]);
+    } catch (err) {
+      console.error('Error searching contacts:', err);
+    } finally {
+      setSearchingContacts(false);
+    }
+  };
+
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (contactSearch) {
+        searchContacts(contactSearch);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [contactSearch]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-12">
@@ -536,7 +580,7 @@ export default function ProspectingWorkspace() {
       {/* Left side: Task lists */}
       <div className="flex-1 space-y-6 overflow-y-auto">
         {/* Stats Row */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-5 gap-4">
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 text-center">
             <p className="text-3xl font-bold text-blue-600">{followUpsDue.length}</p>
             <p className="text-sm text-gray-500">Due Today</p>
@@ -549,6 +593,13 @@ export default function ProspectingWorkspace() {
             <p className="text-3xl font-bold text-orange-600">{newHunterLeads.length}</p>
             <p className="text-sm text-gray-500">New Leads</p>
           </div>
+          <button
+            onClick={() => setShowNewFollowUpModal(true)}
+            className="bg-orange-600 rounded-lg shadow-sm border border-orange-600 p-4 text-center hover:bg-orange-700 transition-colors text-white"
+          >
+            <CalendarDaysIcon className="w-8 h-8 mx-auto" />
+            <p className="text-sm mt-1">New Follow-up</p>
+          </button>
           <button
             onClick={fetchData}
             className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 text-center hover:bg-gray-50 transition-colors"
@@ -1013,6 +1064,114 @@ export default function ProspectingWorkspace() {
           }}
           contact={selectedContact}
           userEmail={user.email}
+        />
+      )}
+
+      {/* New Follow-up Modal - Contact Search */}
+      {showNewFollowUpModal && (
+        <>
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-[70]" onClick={() => {
+            setShowNewFollowUpModal(false);
+            setSelectedNewContact(null);
+            setContactSearch('');
+            setContactSearchResults([]);
+          }} />
+          <div className="fixed inset-0 flex items-center justify-center z-[70] p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[80vh] flex flex-col">
+              <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-gray-900">Schedule Prospecting Follow-up</h3>
+                  <p className="text-sm text-gray-500">Search for a contact to schedule a follow-up</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowNewFollowUpModal(false);
+                    setSelectedNewContact(null);
+                    setContactSearch('');
+                    setContactSearchResults([]);
+                  }}
+                  className="p-1 hover:bg-gray-100 rounded"
+                >
+                  <XMarkIcon className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              <div className="p-4">
+                <input
+                  type="text"
+                  value={contactSearch}
+                  onChange={(e) => setContactSearch(e.target.value)}
+                  placeholder="Search by name, company, or email..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex-1 overflow-y-auto border-t border-gray-100">
+                {searchingContacts ? (
+                  <div className="p-4 text-center text-gray-500">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-600 mx-auto"></div>
+                  </div>
+                ) : contactSearchResults.length > 0 ? (
+                  <div className="divide-y divide-gray-100">
+                    {contactSearchResults.map((contact) => (
+                      <button
+                        key={contact.id}
+                        onClick={() => {
+                          setSelectedNewContact(contact);
+                          setShowNewFollowUpModal(false);
+                          setContactSearch('');
+                          setContactSearchResults([]);
+                        }}
+                        className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-gray-900">
+                              {contact.first_name} {contact.last_name}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                              {contact.company || contact.email || 'No company'}
+                            </p>
+                          </div>
+                          {contact.target && (
+                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${SIGNAL_COLORS[contact.target.signal_strength]}`}>
+                              {contact.target.signal_strength}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : contactSearch.length >= 2 ? (
+                  <div className="p-4 text-center text-gray-500">
+                    No contacts found
+                  </div>
+                ) : (
+                  <div className="p-4 text-center text-gray-500">
+                    Type at least 2 characters to search
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Follow-up modal for new contact */}
+      {selectedNewContact && (
+        <FollowUpModal
+          isOpen={!!selectedNewContact}
+          onClose={() => setSelectedNewContact(null)}
+          onFollowUpCreated={() => {
+            setSelectedNewContact(null);
+            fetchData();
+          }}
+          contactId={selectedNewContact.id}
+          contactName={`${selectedNewContact.first_name || ''} ${selectedNewContact.last_name || ''}`.trim()}
+          contactCompany={selectedNewContact.company || undefined}
+          targetId={selectedNewContact.target_id || undefined}
+          isProspecting={true}
         />
       )}
     </div>
