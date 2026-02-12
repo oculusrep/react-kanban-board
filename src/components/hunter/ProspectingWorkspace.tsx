@@ -235,9 +235,9 @@ interface ContactDetails {
   mobile_phone: string | null;
   title: string | null;
   target_id: string | null;
-  linkedin_url: string | null;
-  address_city: string | null;
-  address_state: string | null;
+  linked_in_profile_link: string | null;
+  mailing_city: string | null;
+  mailing_state: string | null;
   target?: {
     id: string;
     concept_name: string;
@@ -399,7 +399,7 @@ export default function ProspectingWorkspace() {
       .from('contact')
       .select(`
         id, first_name, last_name, company, email, phone, mobile_phone, title,
-        target_id, linkedin_url, address_city, address_state,
+        target_id, linked_in_profile_link, mailing_city, mailing_state,
         target:target(id, concept_name, signal_strength, industry_segment, website, score_reasoning)
       `)
       .eq('id', contactId)
@@ -435,7 +435,7 @@ export default function ProspectingWorkspace() {
           phone: contactForm.phone,
           mobile_phone: contactForm.mobile_phone,
           title: contactForm.title,
-          linkedin_url: contactForm.linkedin_url,
+          linked_in_profile_link: contactForm.linked_in_profile_link,
           updated_at: new Date().toISOString()
         })
         .eq('id', selectedContact.id);
@@ -545,7 +545,7 @@ export default function ProspectingWorkspace() {
         .from('contact')
         .select(`
           id, first_name, last_name, company, email, phone, mobile_phone, title,
-          target_id, linkedin_url, address_city, address_state
+          target_id, linked_in_profile_link, mailing_city, mailing_state
         `)
         .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,company.ilike.%${query}%,email.ilike.%${query}%`)
         .limit(10);
@@ -862,8 +862,8 @@ export default function ProspectingWorkspace() {
                   <input
                     type="url"
                     placeholder="LinkedIn URL"
-                    value={contactForm.linkedin_url || ''}
-                    onChange={(e) => setContactForm({ ...contactForm, linkedin_url: e.target.value })}
+                    value={contactForm.linked_in_profile_link || ''}
+                    onChange={(e) => setContactForm({ ...contactForm, linked_in_profile_link: e.target.value })}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
                   />
                   <div className="flex gap-2 pt-2">
@@ -910,9 +910,9 @@ export default function ProspectingWorkspace() {
                       <span className="text-gray-700">{selectedContact.mobile_phone} (mobile)</span>
                     </a>
                   )}
-                  {selectedContact.linkedin_url && (
+                  {selectedContact.linked_in_profile_link && (
                     <a
-                      href={selectedContact.linkedin_url}
+                      href={selectedContact.linked_in_profile_link}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 text-sm"
@@ -923,11 +923,11 @@ export default function ProspectingWorkspace() {
                       <span className="text-blue-600">LinkedIn Profile</span>
                     </a>
                   )}
-                  {(selectedContact.address_city || selectedContact.address_state) && (
+                  {(selectedContact.mailing_city || selectedContact.mailing_state) && (
                     <div className="flex items-center gap-3 p-2 text-sm">
                       <MapPinIcon className="w-5 h-5 text-gray-400" />
                       <span className="text-gray-700">
-                        {[selectedContact.address_city, selectedContact.address_state].filter(Boolean).join(', ')}
+                        {[selectedContact.mailing_city, selectedContact.mailing_state].filter(Boolean).join(', ')}
                       </span>
                     </div>
                   )}
@@ -969,9 +969,9 @@ export default function ProspectingWorkspace() {
                       Send Email
                     </button>
                   )}
-                  {selectedContact.linkedin_url && (
+                  {selectedContact.linked_in_profile_link && (
                     <button
-                      onClick={() => window.open(selectedContact.linkedin_url!, '_blank')}
+                      onClick={() => window.open(selectedContact.linked_in_profile_link!, '_blank')}
                       className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                     >
                       <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
