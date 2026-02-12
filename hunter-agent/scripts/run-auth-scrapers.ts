@@ -110,16 +110,41 @@ async function scrapeNRN(): Promise<ScrapedSignal[]> {
     await page.click('button[type="submit"]');
     await page.waitForTimeout(3000);
 
-    console.log('  [3/5] Navigating to emerging chains...');
-    await page.goto('https://www.nrn.com/emerging-chains', { waitUntil: 'domcontentloaded' });
+    console.log('  [3/5] Navigating to M&A and growth news...');
+    // NRN restructured their site - emerging-chains no longer exists
+    // Use finance/M&A and fast-casual sections instead
+    await page.goto('https://www.nrn.com/restaurant-finance/mergers-acquisitions', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
     console.log('  [4/5] Collecting articles...');
-    const articles = await page.$$eval('article a[href*="/emerging"]', (links) => {
-      return links.slice(0, 10).map(a => ({
-        url: (a as HTMLAnchorElement).href,
-        title: a.textContent?.trim() || ''
-      }));
+    // Get articles from M&A section - look for links to actual articles (not category pages)
+    const articles = await page.evaluate(() => {
+      const seen = new Set<string>();
+      return Array.from(document.querySelectorAll('a'))
+        .filter(a => {
+          const href = a.href;
+          // Match article URLs (have multiple path segments after domain)
+          const isArticle = href.includes('nrn.com/') &&
+            href.split('/').length > 4 &&
+            !href.includes('/author/') &&
+            !href.includes('/restaurant-segments/') &&
+            !href.includes('/restaurant-finance/mergers') &&
+            !href.includes('/restaurant-operations/') &&
+            !href.includes('/about-us') &&
+            !href.includes('/subscribe') &&
+            !href.includes('/media');
+          const hasTitle = a.textContent && a.textContent.trim().length > 15;
+          if (isArticle && hasTitle && !seen.has(href)) {
+            seen.add(href);
+            return true;
+          }
+          return false;
+        })
+        .slice(0, 10)
+        .map(a => ({
+          url: a.href,
+          title: a.textContent?.trim() || ''
+        }));
     });
 
     console.log(`  Found ${articles.length} articles`);
@@ -197,10 +222,12 @@ async function scrapeBizJournals(): Promise<ScrapedSignal[]> {
     await page.waitForTimeout(2000);
 
     console.log('  [2/5] Logging in...');
-    await page.waitForSelector('input[type="email"]', { timeout: 10000 });
-    await page.fill('input[type="email"]', username);
-    await page.fill('input[type="password"]', password);
-    await page.click('button[type="submit"]');
+    // BizJournals uses input#email (type=text) not type=email
+    await page.waitForSelector('input#email', { timeout: 10000 });
+    await page.fill('input#email', username);
+    await page.fill('input#password', password);
+    // The Sign In button is type="button" with text "Sign In"
+    await page.click('button:has-text("Sign In")');
     await page.waitForTimeout(3000);
 
     const currentUrl = page.url();
@@ -238,9 +265,15 @@ async function scrapeBizJournals(): Promise<ScrapedSignal[]> {
         await page.goto(article.url, { waitUntil: 'domcontentloaded' });
         await page.waitForTimeout(1500);
 
-        const content = await page.$eval('article, .article-content, .story-content',
-          el => el.textContent?.trim() || ''
-        ).catch(() => '');
+        // Try multiple selectors for BizJournals content
+        let content = '';
+        const selectors = ['article', '.article-content', '.story-content', '.content__body', '[data-component="ArticleBody"]', 'main'];
+        for (const sel of selectors) {
+          try {
+            content = await page.$eval(sel, el => el.textContent?.trim() || '');
+            if (content.length > 100) break;
+          } catch { /* try next */ }
+        }
 
         if (content.length > 100) {
           signals.push({
@@ -253,6 +286,8 @@ async function scrapeBizJournals(): Promise<ScrapedSignal[]> {
             content_hash: generateHash(content)
           });
           console.log(`    ✓ ${article.title.substring(0, 50)}...`);
+        } else {
+          console.log(`    ⚠ Content too short for: ${article.title.substring(0, 40)}...`);
         }
       } catch (err) {
         console.log(`    ✗ Failed: ${article.title.substring(0, 30)}...`);
