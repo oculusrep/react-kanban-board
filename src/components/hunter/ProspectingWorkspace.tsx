@@ -424,11 +424,20 @@ export default function ProspectingWorkspace() {
   };
 
   const handleTaskSelect = (task: FollowUpTask) => {
+    console.log('📌 Task selected:', task.id, task.subject);
+    console.log('📌 Task contact_id:', task.contact_id);
+    console.log('📌 Task contact:', task.contact);
     setSelectedTask(task);
     setEditingContact(false);
     if (task.contact_id) {
+      console.log('📌 Loading contact details for:', task.contact_id);
       loadContactDetails(task.contact_id);
+    } else if (task.contact?.id) {
+      // Fallback: use nested contact.id if contact_id is null
+      console.log('📌 Using nested contact.id:', task.contact.id);
+      loadContactDetails(task.contact.id);
     } else {
+      console.log('📌 No contact_id found on task');
       setSelectedContact(null);
     }
   };
