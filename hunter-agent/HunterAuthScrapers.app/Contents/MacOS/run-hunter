@@ -1,0 +1,26 @@
+#!/bin/bash
+# Hunter Auth Scrapers - URL Scheme Handler
+# This script is called when ovis-hunter:// URLs are opened
+
+# Get the directory containing this script
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Navigate up to the hunter-agent directory
+HUNTER_DIR="$(cd "$SCRIPT_DIR/../../../" && pwd)"
+
+# Log file for debugging
+LOG_FILE="$HUNTER_DIR/auth-scraper-runs.log"
+
+echo "============================================" >> "$LOG_FILE"
+echo "Hunter Auth Scrapers started at $(date)" >> "$LOG_FILE"
+echo "Hunter directory: $HUNTER_DIR" >> "$LOG_FILE"
+
+# Open Terminal to show progress
+osascript -e "
+tell application \"Terminal\"
+    activate
+    set newTab to do script \"cd '$HUNTER_DIR' && echo '╔════════════════════════════════════════════════════════╗' && echo '║  Running Hunter Auth Scrapers from OVIS                ║' && echo '╚════════════════════════════════════════════════════════╝' && echo '' && npx ts-node --transpile-only scripts/run-auth-scrapers.ts && echo '' && echo 'Press any key to close...' && read -n 1\"
+end tell
+"
+
+echo "Terminal launched at $(date)" >> "$LOG_FILE"

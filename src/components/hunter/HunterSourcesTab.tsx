@@ -5,7 +5,8 @@ import {
   CheckCircleIcon,
   ExclamationCircleIcon,
   ClockIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  ComputerDesktopIcon
 } from '@heroicons/react/24/outline';
 
 interface HunterSource {
@@ -16,6 +17,7 @@ interface HunterSource {
   base_url: string;
   is_active: boolean;
   requires_auth: boolean;
+  scrape_locally_only: boolean;
   last_scraped_at: string | null;
   last_error: string | null;
   consecutive_failures: number;
@@ -36,6 +38,19 @@ export default function HunterSourcesTab() {
   const [sources, setSources] = useState<HunterSource[]>([]);
   const [stats, setStats] = useState<Record<string, SourceStats>>({});
   const [loading, setLoading] = useState(true);
+  const [authScraperStatus, setAuthScraperStatus] = useState<'idle' | 'launching' | 'running'>('idle');
+
+  // Check if there are any local-only sources that need the auth scraper button
+  const localOnlySources = sources.filter(s => s.scrape_locally_only && s.is_active);
+  const hasLocalOnlySources = localOnlySources.length > 0;
+
+  function launchAuthScrapers() {
+    setAuthScraperStatus('launching');
+    // Open the custom URL scheme that triggers the Mac app
+    window.location.href = 'ovis-hunter://run';
+    // Reset status after a delay (user can see Terminal window)
+    setTimeout(() => setAuthScraperStatus('idle'), 3000);
+  }
 
   useEffect(() => {
     loadSources();
@@ -130,13 +145,26 @@ export default function HunterSourcesTab() {
           <h2 className="text-lg font-semibold text-gray-900">News Sources</h2>
           <p className="text-sm text-gray-500">Monitor and manage Hunter's content sources</p>
         </div>
-        <button
-          onClick={loadSources}
-          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-        >
-          <ArrowPathIcon className="w-4 h-4" />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {hasLocalOnlySources && (
+            <button
+              onClick={launchAuthScrapers}
+              disabled={authScraperStatus !== 'idle'}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-orange-600 border border-orange-600 rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={`Run scrapers for: ${localOnlySources.map(s => s.name).join(', ')}`}
+            >
+              <ComputerDesktopIcon className="w-4 h-4" />
+              {authScraperStatus === 'launching' ? 'Launching...' : 'Run Auth Scrapers'}
+            </button>
+          )}
+          <button
+            onClick={loadSources}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
+            <ArrowPathIcon className="w-4 h-4" />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Sources Grid */}
@@ -209,9 +237,17 @@ export default function HunterSourcesTab() {
               )}
 
               {/* Auth Badge */}
-              {source.requires_auth && (
+              {source.requires_auth && !source.scrape_locally_only && (
                 <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-sm text-amber-800">
                   <span className="font-medium">Requires Login</span> — Ensure credentials are configured in environment variables
+                </div>
+              )}
+
+              {/* Local-Only Badge */}
+              {source.scrape_locally_only && (
+                <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+                  <ComputerDesktopIcon className="w-4 h-4 inline mr-1" />
+                  <span className="font-medium">Local Mac Only</span> — Click "Run Auth Scrapers" button to fetch
                 </div>
               )}
             </div>
