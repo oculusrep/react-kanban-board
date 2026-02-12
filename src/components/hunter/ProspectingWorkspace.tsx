@@ -531,7 +531,8 @@ export default function ProspectingWorkspace() {
   };
 
   // Search contacts for new follow-up
-  const searchContacts = async (query: string) => {
+  const searchContacts = useCallback(async (query: string) => {
+    console.log('🔍 searchContacts called with:', query);
     if (query.length < 2) {
       setContactSearchResults([]);
       return;
@@ -539,7 +540,7 @@ export default function ProspectingWorkspace() {
 
     setSearchingContacts(true);
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('contact')
         .select(`
           id, first_name, last_name, company, email, phone, mobile_phone, title,
@@ -549,23 +550,25 @@ export default function ProspectingWorkspace() {
         .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,company.ilike.%${query}%,email.ilike.%${query}%`)
         .limit(10);
 
+      console.log('🔍 Contact search results:', data?.length, error);
       setContactSearchResults((data || []) as ContactDetails[]);
     } catch (err) {
       console.error('Error searching contacts:', err);
     } finally {
       setSearchingContacts(false);
     }
-  };
+  }, []);
 
   // Debounced search
   useEffect(() => {
+    console.log('🔍 contactSearch changed:', contactSearch);
     const timer = setTimeout(() => {
       if (contactSearch) {
         searchContacts(contactSearch);
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [contactSearch]);
+  }, [contactSearch, searchContacts]);
 
   if (loading) {
     return (
