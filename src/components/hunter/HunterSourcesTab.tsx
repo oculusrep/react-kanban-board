@@ -6,7 +6,8 @@ import {
   ExclamationCircleIcon,
   ClockIcon,
   ArrowPathIcon,
-  ComputerDesktopIcon
+  ComputerDesktopIcon,
+  CloudIcon
 } from '@heroicons/react/24/outline';
 
 interface HunterSource {
@@ -34,15 +35,117 @@ const SOURCE_TYPE_LABELS: Record<string, string> = {
   rss: 'RSS Feed'
 };
 
+interface SourceCardProps {
+  source: HunterSource;
+  stats: SourceStats | undefined;
+  onToggle: (id: string, isActive: boolean) => void;
+  formatTimeAgo: (dateStr: string | null) => string;
+  getStatusIcon: (source: HunterSource) => React.ReactNode;
+}
+
+function SourceCard({ source, stats, onToggle, formatTimeAgo, getStatusIcon }: SourceCardProps) {
+  return (
+    <div
+      className={`bg-white rounded-lg shadow-sm border ${
+        source.is_active ? 'border-gray-200' : 'border-gray-100 opacity-60'
+      } overflow-hidden`}
+    >
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className={`p-2 rounded-lg ${
+              source.scrape_locally_only ? 'bg-blue-100' :
+              source.consecutive_failures > 0 ? 'bg-red-100' :
+              source.last_scraped_at ? 'bg-green-100' :
+              'bg-gray-100'
+            }`}>
+              <NewspaperIcon className={`w-5 h-5 ${
+                source.scrape_locally_only ? 'text-blue-600' :
+                source.consecutive_failures > 0 ? 'text-red-600' :
+                source.last_scraped_at ? 'text-green-600' :
+                'text-gray-600'
+              }`} />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">{source.name}</h3>
+              <p className="text-sm text-gray-500">{SOURCE_TYPE_LABELS[source.source_type] || source.source_type}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {getStatusIcon(source)}
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={source.is_active}
+                onChange={() => onToggle(source.id, source.is_active)}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-600"></div>
+            </label>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <p className="text-gray-500">Total Signals</p>
+            <p className="font-semibold text-gray-900">{stats?.total_signals || 0}</p>
+          </div>
+          <div>
+            <p className="text-gray-500">This Week</p>
+            <p className="font-semibold text-gray-900">{stats?.signals_this_week || 0}</p>
+          </div>
+        </div>
+
+        {/* Timing Info */}
+        <div className="mt-4 flex items-center justify-between text-sm">
+          <div className="text-gray-500">
+            Last run: <span className="font-medium text-gray-700">{formatTimeAgo(source.last_scraped_at)}</span>
+          </div>
+        </div>
+
+        {/* Error Message - don't show for local-only sources */}
+        {source.consecutive_failures > 0 && source.last_error && !source.scrape_locally_only && (
+          <div className="mt-3 p-2 bg-red-50 rounded text-sm text-red-700">
+            <span className="font-medium">Error ({source.consecutive_failures} failures):</span>{' '}
+            {source.last_error}
+          </div>
+        )}
+
+        {/* Auth Badge - only for automated sources that need auth */}
+        {source.requires_auth && !source.scrape_locally_only && (
+          <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-sm text-amber-800">
+            <span className="font-medium">Requires Login</span> — Credentials in environment variables
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 flex justify-end gap-2">
+        <a
+          href={source.base_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm text-gray-600 hover:text-gray-900"
+        >
+          View Source
+        </a>
+      </div>
+    </div>
+  );
+}
+
 export default function HunterSourcesTab() {
   const [sources, setSources] = useState<HunterSource[]>([]);
   const [stats, setStats] = useState<Record<string, SourceStats>>({});
   const [loading, setLoading] = useState(true);
   const [authScraperStatus, setAuthScraperStatus] = useState<'idle' | 'launching' | 'running'>('idle');
 
-  // Check if there are any local-only sources that need the auth scraper button
-  const localOnlySources = sources.filter(s => s.scrape_locally_only && s.is_active);
-  const hasLocalOnlySources = localOnlySources.length > 0;
+  // Separate sources into automated (cloud) and manual (local) groups
+  const automatedSources = sources.filter(s => !s.scrape_locally_only);
+  const manualSources = sources.filter(s => s.scrape_locally_only);
+  const activeManualSources = manualSources.filter(s => s.is_active);
+  const hasManualSources = activeManualSources.length > 0;
 
   function launchAuthScrapers() {
     setAuthScraperStatus('launching');
@@ -149,129 +252,73 @@ export default function HunterSourcesTab() {
           <h2 className="text-lg font-semibold text-gray-900">News Sources</h2>
           <p className="text-sm text-gray-500">Monitor and manage Hunter's content sources</p>
         </div>
-        <div className="flex items-center gap-2">
-          {hasLocalOnlySources && (
-            <button
-              onClick={launchAuthScrapers}
-              disabled={authScraperStatus !== 'idle'}
-              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-orange-600 border border-orange-600 rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              title={`Run scrapers for: ${localOnlySources.map(s => s.name).join(', ')}`}
-            >
-              <ComputerDesktopIcon className="w-4 h-4" />
-              {authScraperStatus === 'launching' ? 'Launching...' : 'Run Auth Scrapers'}
-            </button>
-          )}
-          <button
-            onClick={loadSources}
-            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
-            <ArrowPathIcon className="w-4 h-4" />
-            Refresh
-          </button>
-        </div>
+        <button
+          onClick={loadSources}
+          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+        >
+          <ArrowPathIcon className="w-4 h-4" />
+          Refresh
+        </button>
       </div>
 
-      {/* Sources Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {sources.map((source) => (
-          <div
-            key={source.id}
-            className={`bg-white rounded-lg shadow-sm border ${
-              source.is_active ? 'border-gray-200' : 'border-gray-100 opacity-60'
-            } overflow-hidden`}
-          >
-            <div className="p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3">
-                  <div className={`p-2 rounded-lg ${
-                    source.scrape_locally_only ? 'bg-blue-100' :
-                    source.consecutive_failures > 0 ? 'bg-red-100' :
-                    source.last_scraped_at ? 'bg-green-100' :
-                    'bg-gray-100'
-                  }`}>
-                    <NewspaperIcon className={`w-5 h-5 ${
-                      source.scrape_locally_only ? 'text-blue-600' :
-                      source.consecutive_failures > 0 ? 'text-red-600' :
-                      source.last_scraped_at ? 'text-green-600' :
-                      'text-gray-600'
-                    }`} />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900">{source.name}</h3>
-                    <p className="text-sm text-gray-500">{SOURCE_TYPE_LABELS[source.source_type] || source.source_type}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {getStatusIcon(source)}
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={source.is_active}
-                      onChange={() => toggleSource(source.id, source.is_active)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-600"></div>
-                  </label>
-                </div>
-              </div>
-
-              {/* Stats */}
-              <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-gray-500">Total Signals</p>
-                  <p className="font-semibold text-gray-900">{stats[source.id]?.total_signals || 0}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">This Week</p>
-                  <p className="font-semibold text-gray-900">{stats[source.id]?.signals_this_week || 0}</p>
-                </div>
-              </div>
-
-              {/* Timing Info */}
-              <div className="mt-4 flex items-center justify-between text-sm">
-                <div className="text-gray-500">
-                  Last run: <span className="font-medium text-gray-700">{formatTimeAgo(source.last_scraped_at)}</span>
-                </div>
-              </div>
-
-              {/* Error Message - don't show for local-only sources */}
-              {source.consecutive_failures > 0 && source.last_error && !source.scrape_locally_only && (
-                <div className="mt-3 p-2 bg-red-50 rounded text-sm text-red-700">
-                  <span className="font-medium">Error ({source.consecutive_failures} failures):</span>{' '}
-                  {source.last_error}
-                </div>
-              )}
-
-              {/* Auth Badge */}
-              {source.requires_auth && !source.scrape_locally_only && (
-                <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-sm text-amber-800">
-                  <span className="font-medium">Requires Login</span> — Ensure credentials are configured in environment variables
-                </div>
-              )}
-
-              {/* Local-Only Badge */}
-              {source.scrape_locally_only && (
-                <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
-                  <ComputerDesktopIcon className="w-4 h-4 inline mr-1" />
-                  <span className="font-medium">Local Mac Only</span> — Click "Run Auth Scrapers" button to fetch
-                </div>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 flex justify-end gap-2">
-              <a
-                href={source.base_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-gray-600 hover:text-gray-900"
-              >
-                View Source
-              </a>
-            </div>
+      {/* Automated Sources Section */}
+      {automatedSources.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <CloudIcon className="w-5 h-5 text-green-600" />
+            <h3 className="text-md font-semibold text-gray-900">Automated (Cloud)</h3>
+            <span className="text-sm text-gray-500">— Runs automatically on schedule</span>
           </div>
-        ))}
-      </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {automatedSources.map((source) => (
+              <SourceCard
+                key={source.id}
+                source={source}
+                stats={stats[source.id]}
+                onToggle={toggleSource}
+                formatTimeAgo={formatTimeAgo}
+                getStatusIcon={getStatusIcon}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Manual Sources Section */}
+      {manualSources.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ComputerDesktopIcon className="w-5 h-5 text-blue-600" />
+              <h3 className="text-md font-semibold text-gray-900">Manual (Local Mac)</h3>
+              <span className="text-sm text-gray-500">— Requires login, run from your Mac</span>
+            </div>
+            {hasManualSources && (
+              <button
+                onClick={launchAuthScrapers}
+                disabled={authScraperStatus !== 'idle'}
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title={`Run scrapers for: ${activeManualSources.map(s => s.name).join(', ')}`}
+              >
+                <ComputerDesktopIcon className="w-4 h-4" />
+                {authScraperStatus === 'launching' ? 'Launching...' : 'Run Now'}
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {manualSources.map((source) => (
+              <SourceCard
+                key={source.id}
+                source={source}
+                stats={stats[source.id]}
+                onToggle={toggleSource}
+                formatTimeAgo={formatTimeAgo}
+                getStatusIcon={getStatusIcon}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {sources.length === 0 && (
         <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
