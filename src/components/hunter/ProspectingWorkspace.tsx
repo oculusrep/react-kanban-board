@@ -540,15 +540,37 @@ export default function ProspectingWorkspace() {
 
     setSearchingContacts(true);
     try {
-      const { data, error } = await supabase
+      // First get contacts without target join to avoid FK ambiguity
+      const { data: contacts, error } = await supabase
         .from('contact')
         .select(`
           id, first_name, last_name, company, email, phone, mobile_phone, title,
-          target_id, linkedin_url, address_city, address_state,
-          target:target!contact_target_id_fkey(id, concept_name, signal_strength, industry_segment, website, score_reasoning)
+          target_id, linkedin_url, address_city, address_state
         `)
         .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,company.ilike.%${query}%,email.ilike.%${query}%`)
         .limit(10);
+
+      // If we have contacts with target_ids, fetch target details separately
+      const targetIds = contacts?.filter(c => c.target_id).map(c => c.target_id) || [];
+      let targets: Record<string, any> = {};
+
+      if (targetIds.length > 0) {
+        const { data: targetData } = await supabase
+          .from('target')
+          .select('id, concept_name, signal_strength, industry_segment, website, score_reasoning')
+          .in('id', targetIds);
+
+        targets = (targetData || []).reduce((acc, t) => {
+          acc[t.id] = t;
+          return acc;
+        }, {} as Record<string, any>);
+      }
+
+      // Merge contacts with their targets
+      const data = contacts?.map(c => ({
+        ...c,
+        target: c.target_id ? targets[c.target_id] || null : null
+      }));
 
       console.log('🔍 Contact search results:', data?.length, error);
       setContactSearchResults((data || []) as ContactDetails[]);
