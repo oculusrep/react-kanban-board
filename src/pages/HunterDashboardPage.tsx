@@ -14,7 +14,7 @@ import {
   BuildingOffice2Icon
 } from '@heroicons/react/24/outline';
 import { supabase } from '../lib/supabaseClient';
-import TodaysPlan from '../components/prospecting/TodaysPlan';
+import ProspectingWorkspace from '../components/hunter/ProspectingWorkspace';
 import HunterLeadsTab from '../components/hunter/HunterLeadsTab';
 import HunterSourcesTab from '../components/hunter/HunterSourcesTab';
 import HunterOutreachTab from '../components/hunter/HunterOutreachTab';
@@ -269,7 +269,7 @@ export default function HunterDashboardPage() {
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === 'today' && <TodaysPlan />}
+        {activeTab === 'today' && <ProspectingWorkspace />}
         {activeTab === 'targets' && <HunterLeadsTab />}
         {activeTab === 'outreach' && <HunterOutreachTab />}
         {activeTab === 'sources' && <HunterSourcesTab />}
