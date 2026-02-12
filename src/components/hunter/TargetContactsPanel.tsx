@@ -125,7 +125,7 @@ export default function TargetContactsPanel({ targetId, companyName, onContactAd
           phone: newContact.phone.trim() || null,
           company: companyName,
           target_id: targetId,
-          source_type: 'Hunter',
+          source_type: 'Lead',
           is_primary_contact: contacts.length === 0, // First contact is primary
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
