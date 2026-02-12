@@ -407,7 +407,8 @@ export default function ProspectingWorkspace() {
 
   // Load contact details when task is selected
   const loadContactDetails = async (contactId: string) => {
-    const { data } = await supabase
+    console.log('📌 loadContactDetails called for:', contactId);
+    const { data, error } = await supabase
       .from('contact')
       .select(`
         id, first_name, last_name, company, email, phone, mobile_phone, title,
@@ -417,9 +418,13 @@ export default function ProspectingWorkspace() {
       .eq('id', contactId)
       .single();
 
+    console.log('📌 loadContactDetails result:', data, error);
     if (data) {
+      console.log('📌 Setting selectedContact:', data);
       setSelectedContact(data as ContactDetails);
       setContactForm(data);
+    } else {
+      console.log('📌 No data returned, selectedContact will be null');
     }
   };
 
