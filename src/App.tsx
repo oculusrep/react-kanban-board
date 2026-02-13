@@ -57,6 +57,7 @@ import FlaggedEmailQueuePage from "./pages/FlaggedEmailQueuePage";
 import HunterDashboardPage from "./pages/HunterDashboardPage";
 import HunterLeadDetailsPage from "./pages/HunterLeadDetailsPage";
 import HunterProspectingPage from "./pages/HunterProspectingPage";
+import HunterSettingsPage from "./pages/HunterSettingsPage";
 import BudgetDashboardPage from "./pages/BudgetDashboardPage";
 import BudgetSetupPage from "./pages/BudgetSetupPage";
 import CashFlowForecastPage from "./pages/CashFlowForecastPage";
@@ -177,6 +178,7 @@ function App() {
           <Route path="contacts/suggested" element={<SuggestedContactsPage />} />
           <Route path="hunter" element={<AdminRoute><HunterDashboardPage /></AdminRoute>} />
           <Route path="hunter/lead/:leadId" element={<AdminRoute><HunterLeadDetailsPage /></AdminRoute>} />
+          <Route path="hunter/settings" element={<AdminRoute><HunterSettingsPage /></AdminRoute>} />
           <Route path="hunter/prospecting" element={<Navigate to="/hunter" replace />} />
           <Route path="typography-test" element={<TypographyTestPage />} />
         </Route>

@@ -2,8 +2,8 @@
 // Shows follow-ups due with contact details panel for quick action
 // src/components/hunter/ProspectingWorkspace.tsx
 
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
 import FollowUpModal from '../FollowUpModal';
@@ -28,8 +28,16 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   DocumentTextIcon,
-  CalendarIcon
+  CalendarIcon,
+  Cog6ToothIcon,
+  PaperClipIcon
 } from '@heroicons/react/24/outline';
+
+// Lazy load ReactQuill for email compose
+const ReactQuill = lazy(() => import('react-quill').then(module => {
+  import('react-quill/dist/quill.snow.css');
+  return module;
+}));
 
 // ============================================================================
 // Types
@@ -108,7 +116,22 @@ interface EmailTemplate {
   name: string;
   subject: string;
   body: string;
-  category: string;
+  category: string | null;
+  is_shared: boolean;
+}
+
+interface EmailSignature {
+  id: string;
+  user_id: string;
+  name: string;
+  signature_html: string;
+  is_default: boolean;
+}
+
+interface EmailAttachment {
+  filename: string;
+  content: string; // Base64 encoded
+  content_type: string;
 }
 
 // Activity type definitions
@@ -200,6 +223,9 @@ export default function ProspectingWorkspace() {
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailSignature, setEmailSignature] = useState<EmailSignature | null>(null);
+  const [emailAttachments, setEmailAttachments] = useState<EmailAttachment[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Follow-up modal
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
@@ -294,20 +320,44 @@ export default function ProspectingWorkspace() {
 
       setNewHunterLeads((newLeads || []) as NewHunterLead[]);
 
-      // Fetch email templates
-      const { data: templates } = await supabase
-        .from('email_template')
-        .select('id, name, subject, body, category')
-        .eq('is_active', true)
-        .order('name');
+      // Get current user ID for templates and signature
+      let userId: string | null = null;
+      if (user?.email) {
+        const { data: userData } = await supabase
+          .from('user')
+          .select('id')
+          .eq('email', user.email)
+          .single();
+        userId = userData?.id || null;
+        setCurrentUserId(userId);
+      }
 
-      setEmailTemplates((templates || []) as EmailTemplate[]);
+      if (userId) {
+        // Fetch email templates (own + shared)
+        const { data: templates } = await supabase
+          .from('email_template')
+          .select('id, name, subject, body, category, is_shared')
+          .or(`created_by.eq.${userId},is_shared.eq.true`)
+          .order('name');
+
+        setEmailTemplates((templates || []) as EmailTemplate[]);
+
+        // Fetch default signature
+        const { data: signature } = await supabase
+          .from('user_email_signature')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('is_default', true)
+          .single();
+
+        setEmailSignature(signature || null);
+      }
     } catch (err) {
       console.error('Error fetching prospecting data:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.email]);
 
   useEffect(() => {
     fetchData();
@@ -524,9 +574,11 @@ export default function ProspectingWorkspace() {
       let subject = template.subject;
       let body = template.body;
 
+      const fullName = `${selectedContact.first_name || ''} ${selectedContact.last_name || ''}`.trim();
       const vars: Record<string, string> = {
         '{{first_name}}': selectedContact.first_name || '',
         '{{last_name}}': selectedContact.last_name || '',
+        '{{full_name}}': fullName || '',
         '{{company}}': selectedContact.company || '',
         '{{title}}': selectedContact.title || '',
       };
@@ -536,10 +588,85 @@ export default function ProspectingWorkspace() {
         body = body.replace(new RegExp(key, 'g'), value);
       });
 
+      // Append signature if available
+      if (emailSignature?.signature_html) {
+        body = body + '<br><br>' + emailSignature.signature_html;
+      }
+
       setEmailSubject(subject);
       setEmailBody(body);
     }
   };
+
+  // File attachment handling
+  const handleFileAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const maxSize = 40 * 1024 * 1024; // 40MB limit
+    const newAttachments: EmailAttachment[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.size > maxSize) {
+        alert(`File ${file.name} is too large. Maximum size is 40MB.`);
+        continue;
+      }
+
+      try {
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result === 'string') {
+              resolve(reader.result.split(',')[1]);
+            } else {
+              reject(new Error('Failed to read file'));
+            }
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        newAttachments.push({
+          filename: file.name,
+          content: base64,
+          content_type: file.type || 'application/octet-stream',
+        });
+      } catch (error) {
+        console.error(`Error reading file ${file.name}:`, error);
+      }
+    }
+
+    setEmailAttachments([...emailAttachments, ...newAttachments]);
+    e.target.value = '';
+  };
+
+  const removeAttachment = (index: number) => {
+    setEmailAttachments(emailAttachments.filter((_, i) => i !== index));
+  };
+
+  // Quill modules for email compose
+  const quillModules = useMemo(() => ({
+    toolbar: [
+      [{ 'header': [1, 2, 3, false] }],
+      [{ 'font': [] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ 'color': [] }, { 'background': [] }],
+      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+      [{ 'align': [] }],
+      ['link', 'image'],
+      ['clean']
+    ],
+  }), []);
+
+  const quillFormats = [
+    'header', 'font',
+    'bold', 'italic', 'underline', 'strike',
+    'color', 'background',
+    'list', 'bullet',
+    'align',
+    'link', 'image'
+  ];
 
   const sendEmail = async () => {
     if (!selectedContact?.email || !user?.email) return;
@@ -564,15 +691,16 @@ export default function ProspectingWorkspace() {
 
       if (outreachError) throw outreachError;
 
-      // Send via Gmail
+      // Send via Gmail (attachments currently not supported by edge function)
       const response = await supabase.functions.invoke('hunter-send-outreach', {
         body: {
           outreach_id: outreach.id,
           user_email: user.email,
           to: [selectedContact.email],
           subject: emailSubject,
-          body_html: emailBody.replace(/\n/g, '<br>'),
-          body_text: emailBody
+          body_html: emailBody, // Already HTML from ReactQuill
+          body_text: emailBody.replace(/<[^>]*>/g, ''), // Strip HTML tags for plain text
+          attachments: emailAttachments.length > 0 ? emailAttachments : undefined
         }
       });
 
@@ -585,6 +713,7 @@ export default function ProspectingWorkspace() {
       setEmailSubject('');
       setEmailBody('');
       setSelectedTemplate('');
+      setEmailAttachments([]);
     } catch (err) {
       console.error('Error sending email:', err);
       alert(`Failed to send email: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -1293,7 +1422,13 @@ export default function ProspectingWorkspace() {
                         setShowEmailCompose(!showEmailCompose);
                         if (!showEmailCompose && selectedContact) {
                           setEmailSubject(`Following up - ${selectedContact.company || `${selectedContact.first_name} ${selectedContact.last_name}`}`);
-                          setEmailBody(`Hi ${selectedContact.first_name || 'there'},\n\n\n\nBest regards`);
+                          // Initialize with greeting and signature
+                          let initialBody = `<p>Hi ${selectedContact.first_name || 'there'},</p><p><br></p><p><br></p><p>Best regards</p>`;
+                          if (emailSignature?.signature_html) {
+                            initialBody += '<br>' + emailSignature.signature_html;
+                          }
+                          setEmailBody(initialBody);
+                          setEmailAttachments([]);
                         }
                       }}
                       className="w-full px-4 py-2 flex items-center justify-between text-sm font-medium text-gray-700 hover:bg-gray-50"
@@ -1311,19 +1446,30 @@ export default function ProspectingWorkspace() {
 
                     {showEmailCompose && (
                       <div className="p-4 border-t border-gray-100 bg-gray-50 space-y-3">
-                        {/* Template selector */}
-                        {emailTemplates.length > 0 && (
+                        {/* Template selector + Settings link */}
+                        <div className="flex gap-2">
                           <select
                             value={selectedTemplate}
                             onChange={(e) => handleTemplateSelect(e.target.value)}
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                            className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg"
                           >
                             <option value="">Select a template...</option>
                             {emailTemplates.map((t) => (
-                              <option key={t.id} value={t.id}>{t.name}</option>
+                              <option key={t.id} value={t.id}>
+                                {t.name}{t.category ? ` (${t.category})` : ''}
+                              </option>
                             ))}
                           </select>
-                        )}
+                          <Link
+                            to="/hunter/settings"
+                            className="px-3 py-2 text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-100"
+                            title="Email Settings"
+                          >
+                            <Cog6ToothIcon className="w-5 h-5" />
+                          </Link>
+                        </div>
+
+                        {/* Subject */}
                         <input
                           type="text"
                           value={emailSubject}
@@ -1331,37 +1477,90 @@ export default function ProspectingWorkspace() {
                           placeholder="Subject"
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
                         />
-                        <textarea
-                          value={emailBody}
-                          onChange={(e) => setEmailBody(e.target.value)}
-                          placeholder="Email body..."
-                          rows={6}
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg resize-none font-mono"
-                        />
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => setShowEmailCompose(false)}
-                            className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={sendEmail}
-                            disabled={sendingEmail || !emailSubject.trim() || !emailBody.trim() || !selectedContact?.email}
-                            className="flex items-center gap-2 px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                          >
-                            {sendingEmail ? (
-                              <>
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                                Sending...
-                              </>
-                            ) : (
-                              <>
-                                <PaperAirplaneIcon className="w-4 h-4" />
-                                Send via Gmail
-                              </>
+
+                        {/* Rich Text Editor */}
+                        <div className="border border-gray-300 rounded-lg overflow-hidden bg-white">
+                          <Suspense fallback={<div className="h-48 flex items-center justify-center text-gray-400">Loading editor...</div>}>
+                            <ReactQuill
+                              theme="snow"
+                              value={emailBody}
+                              onChange={setEmailBody}
+                              modules={quillModules}
+                              formats={quillFormats}
+                              style={{ height: '200px' }}
+                            />
+                          </Suspense>
+                        </div>
+
+                        {/* Attachments */}
+                        <div className="flex items-center gap-2 pt-2">
+                          <label className="cursor-pointer px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100 flex items-center gap-1">
+                            <input
+                              type="file"
+                              multiple
+                              onChange={handleFileAttachment}
+                              className="sr-only"
+                            />
+                            <PaperClipIcon className="w-4 h-4" />
+                            Attach
+                          </label>
+                          {emailAttachments.length > 0 && (
+                            <div className="flex flex-wrap gap-1 flex-1">
+                              {emailAttachments.map((att, idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs"
+                                >
+                                  {att.filename}
+                                  <button
+                                    onClick={() => removeAttachment(idx)}
+                                    className="text-gray-400 hover:text-red-500"
+                                  >
+                                    <XMarkIcon className="w-3 h-3" />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Send buttons */}
+                        <div className="flex justify-between items-center pt-2">
+                          <div className="text-xs text-gray-400">
+                            {!emailSignature && (
+                              <Link to="/hunter/settings" className="text-blue-600 hover:underline">
+                                Add email signature
+                              </Link>
                             )}
-                          </button>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                setShowEmailCompose(false);
+                                setEmailAttachments([]);
+                              }}
+                              className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={sendEmail}
+                              disabled={sendingEmail || !emailSubject.trim() || !emailBody.trim() || !selectedContact?.email}
+                              className="flex items-center gap-2 px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                            >
+                              {sendingEmail ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                                  Sending...
+                                </>
+                              ) : (
+                                <>
+                                  <PaperAirplaneIcon className="w-4 h-4" />
+                                  Send via Gmail
+                                </>
+                              )}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     )}
