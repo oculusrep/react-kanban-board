@@ -79,6 +79,10 @@ export default function BudgetSetupPage() {
   const [budgetYear, setBudgetYear] = useState(currentYear);
   const priorYear = budgetYear - 1;
 
+  // Show all accounts toggle (not just those with prior year activity)
+  const [showAllAccounts, setShowAllAccounts] = useState(false);
+  const [allExpenseAccounts, setAllExpenseAccounts] = useState<QBAccount[]>([]);
+
   useEffect(() => {
     document.title = "Budget Setup | OVIS Admin";
     fetchData();
@@ -125,7 +129,10 @@ export default function BudgetSetupPage() {
         actuals[monthKey] += expense.amount;
       }
 
-      // Filter accounts to only those with prior year activity
+      // Store all expense accounts
+      setAllExpenseAccounts(expenseAccounts || []);
+
+      // Filter accounts to only those with prior year activity (default view)
       const accountsWithActivity = (expenseAccounts || []).filter(
         acc => actualsByAccount.has(acc.qb_account_id)
       );
@@ -316,6 +323,9 @@ export default function BudgetSetupPage() {
     }).format(amount);
   };
 
+  // Get displayed accounts based on toggle
+  const displayedAccounts = showAllAccounts ? allExpenseAccounts : accounts;
+
   // Calculate totals for an account
   const getAccountTotal = (budget: AccountBudget): number => {
     return MONTHS.reduce((sum, month) => sum + (budget[month] || 0), 0);
@@ -405,6 +415,17 @@ export default function BudgetSetupPage() {
               </select>
             </div>
 
+            {/* Show All Accounts Toggle */}
+            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showAllAccounts}
+                onChange={(e) => setShowAllAccounts(e.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              Show all accounts
+            </label>
+
             {/* Sync Button */}
             <button
               onClick={syncExpenses}
@@ -450,9 +471,11 @@ export default function BudgetSetupPage() {
           <div className="flex items-center justify-center py-12">
             <RefreshCw className="h-8 w-8 animate-spin text-gray-400" />
           </div>
-        ) : accounts.length === 0 ? (
+        ) : displayedAccounts.length === 0 ? (
           <div className="text-center py-12 text-gray-500">
-            No expense accounts with prior year activity found. Try syncing from QBO.
+            {showAllAccounts
+              ? 'No expense accounts found. Try syncing from QBO.'
+              : 'No expense accounts with prior year activity found. Enable "Show all accounts" to see new accounts, or try syncing from QBO.'}
           </div>
         ) : (
           <div className="bg-white rounded-lg shadow overflow-auto max-h-[calc(100vh-300px)]">
@@ -477,7 +500,7 @@ export default function BudgetSetupPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {accounts.map((account) => {
+                {displayedAccounts.map((account) => {
                   const budget = getBudget(account.qb_account_id);
                   const actuals = priorYearActuals.get(account.qb_account_id);
                   const budgetTotal = getAccountTotal(budget);
