@@ -20,7 +20,7 @@ const corsHeaders = {
 };
 
 const ZOOMINFO_AUTH_URL = 'https://api.zoominfo.com/authenticate';
-const ZOOMINFO_API_URL = 'https://api.zoominfo.com/search/person';
+const ZOOMINFO_API_URL = 'https://api.zoominfo.com/search/contact';
 
 // Cache for ZoomInfo access token (valid for ~60 min)
 let cachedAccessToken: string | null = null;
