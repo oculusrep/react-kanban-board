@@ -134,6 +134,23 @@ interface EmailAttachment {
   content_type: string;
 }
 
+// ZoomInfo enrichment match from API
+interface ZoomInfoMatch {
+  zoominfo_person_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  mobile_phone: string | null;
+  title: string | null;
+  company: string | null;
+  linkedin_url: string | null;
+  zoominfo_profile_url: string;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+}
+
 // Activity type definitions
 const OUTREACH_TYPES = ['email', 'linkedin', 'sms', 'voicemail'] as const;
 const CONNECTION_TYPES = ['call', 'meeting'] as const;
@@ -245,6 +262,15 @@ export default function ProspectingWorkspace() {
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [editingDateTaskId, setEditingDateTaskId] = useState<string | null>(null);
   const [bulkNewDate, setBulkNewDate] = useState('');
+
+  // ZoomInfo enrichment
+  const [showZoomInfoModal, setShowZoomInfoModal] = useState(false);
+  const [zoomInfoLoading, setZoomInfoLoading] = useState(false);
+  const [zoomInfoMatches, setZoomInfoMatches] = useState<ZoomInfoMatch[]>([]);
+  const [selectedZoomInfoMatch, setSelectedZoomInfoMatch] = useState<ZoomInfoMatch | null>(null);
+  const [zoomInfoError, setZoomInfoError] = useState<string | null>(null);
+  const [applyingZoomInfo, setApplyingZoomInfo] = useState(false);
+  const [zoomInfoFieldSelections, setZoomInfoFieldSelections] = useState<Record<string, boolean>>({});
 
   // ============================================================================
   // Data Fetching
@@ -929,6 +955,157 @@ export default function ProspectingWorkspace() {
     }
   };
 
+  // ZoomInfo enrichment - search for contact matches
+  const searchZoomInfo = async () => {
+    if (!selectedContact) return;
+
+    setZoomInfoLoading(true);
+    setZoomInfoError(null);
+    setZoomInfoMatches([]);
+    setSelectedZoomInfoMatch(null);
+    setShowZoomInfoModal(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('hunter-zoominfo-enrich', {
+        body: {
+          contact_id: selectedContact.id,
+          first_name: selectedContact.first_name,
+          last_name: selectedContact.last_name,
+          email: selectedContact.email,
+          company: selectedContact.company,
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to search ZoomInfo');
+      }
+
+      if (!data.success) {
+        throw new Error(data.error || 'ZoomInfo search failed');
+      }
+
+      setZoomInfoMatches(data.matches || []);
+
+      // Auto-select first match if only one
+      if (data.matches?.length === 1) {
+        selectZoomInfoMatch(data.matches[0]);
+      }
+    } catch (err) {
+      console.error('ZoomInfo search error:', err);
+      setZoomInfoError(err instanceof Error ? err.message : 'Failed to search ZoomInfo');
+    } finally {
+      setZoomInfoLoading(false);
+    }
+  };
+
+  // Select a ZoomInfo match and calculate which fields to fill
+  const selectZoomInfoMatch = (match: ZoomInfoMatch) => {
+    setSelectedZoomInfoMatch(match);
+
+    // Determine which fields should be selected by default
+    // Fill empty fields, or offer to update with different values
+    const selections: Record<string, boolean> = {};
+
+    // Only select fields that are empty in current contact OR have different value
+    if (!selectedContact?.email && match.email) {
+      selections.email = true;
+    } else if (selectedContact?.email && match.email && selectedContact.email !== match.email) {
+      selections.email = false; // Different value - don't auto-select
+    }
+
+    if (!selectedContact?.phone && match.phone) {
+      selections.phone = true;
+    } else if (selectedContact?.phone && match.phone && selectedContact.phone !== match.phone) {
+      selections.phone = false;
+    }
+
+    if (!selectedContact?.mobile_phone && match.mobile_phone) {
+      selections.mobile_phone = true;
+    } else if (selectedContact?.mobile_phone && match.mobile_phone && selectedContact.mobile_phone !== match.mobile_phone) {
+      selections.mobile_phone = false;
+    }
+
+    if (!selectedContact?.title && match.title) {
+      selections.title = true;
+    } else if (selectedContact?.title && match.title && selectedContact.title !== match.title) {
+      selections.title = false;
+    }
+
+    if (!selectedContact?.linked_in_profile_link && match.linkedin_url) {
+      selections.linkedin_url = true;
+    } else if (selectedContact?.linked_in_profile_link && match.linkedin_url && selectedContact.linked_in_profile_link !== match.linkedin_url) {
+      selections.linkedin_url = false;
+    }
+
+    // Always track zoominfo profile URL
+    selections.zoominfo_profile_url = true;
+
+    setZoomInfoFieldSelections(selections);
+  };
+
+  // Apply selected ZoomInfo data to contact
+  const applyZoomInfoData = async () => {
+    if (!selectedContact || !selectedZoomInfoMatch) return;
+
+    setApplyingZoomInfo(true);
+    try {
+      const updateData: Record<string, unknown> = {
+        zoominfo_person_id: selectedZoomInfoMatch.zoominfo_person_id,
+        zoominfo_profile_url: selectedZoomInfoMatch.zoominfo_profile_url,
+        zoominfo_last_enriched_at: new Date().toISOString(),
+        zoominfo_data: selectedZoomInfoMatch, // Store full response
+      };
+
+      // Add selected fields
+      if (zoomInfoFieldSelections.email && selectedZoomInfoMatch.email) {
+        updateData.email = selectedZoomInfoMatch.email;
+      }
+      if (zoomInfoFieldSelections.phone && selectedZoomInfoMatch.phone) {
+        updateData.phone = selectedZoomInfoMatch.phone;
+      }
+      if (zoomInfoFieldSelections.mobile_phone && selectedZoomInfoMatch.mobile_phone) {
+        updateData.mobile_phone = selectedZoomInfoMatch.mobile_phone;
+      }
+      if (zoomInfoFieldSelections.title && selectedZoomInfoMatch.title) {
+        updateData.title = selectedZoomInfoMatch.title;
+      }
+      if (zoomInfoFieldSelections.linkedin_url && selectedZoomInfoMatch.linkedin_url) {
+        updateData.linked_in_profile_link = selectedZoomInfoMatch.linkedin_url;
+      }
+
+      const { error } = await supabase
+        .from('contact')
+        .update(updateData)
+        .eq('id', selectedContact.id);
+
+      if (error) throw error;
+
+      // Refresh contact data
+      const { data: updatedContact } = await supabase
+        .from('contact')
+        .select(`
+          id, first_name, last_name, company, email, phone, mobile_phone, title,
+          target_id, linked_in_profile_link, mailing_city, mailing_state,
+          target:target(id, concept_name, signal_strength, industry_segment, website, score_reasoning)
+        `)
+        .eq('id', selectedContact.id)
+        .single();
+
+      if (updatedContact) {
+        setSelectedContact(updatedContact as ContactDetails);
+      }
+
+      setShowZoomInfoModal(false);
+      setSelectedZoomInfoMatch(null);
+      setZoomInfoMatches([]);
+    } catch (err) {
+      console.error('Failed to apply ZoomInfo data:', err);
+      setZoomInfoError(err instanceof Error ? err.message : 'Failed to update contact');
+    } finally {
+      setApplyingZoomInfo(false);
+    }
+  };
+
   // Search contacts for new follow-up
   const searchContacts = useCallback(async (query: string) => {
     if (query.length < 2) {
@@ -1508,6 +1685,17 @@ export default function ProspectingWorkspace() {
                       </a>
                     )}
                   </div>
+
+                  {/* ZoomInfo Enrich Button */}
+                  <button
+                    onClick={searchZoomInfo}
+                    disabled={zoomInfoLoading}
+                    className="mt-3 flex items-center gap-2 text-sm text-purple-600 hover:text-purple-800 hover:bg-purple-50 px-2 py-1 rounded transition-colors"
+                    title="Search ZoomInfo for additional contact data"
+                  >
+                    <SparklesIcon className="w-4 h-4" />
+                    {zoomInfoLoading ? 'Searching ZoomInfo...' : 'Enrich with ZoomInfo'}
+                  </button>
                 </>
               )}
             </div>
@@ -2086,6 +2274,297 @@ export default function ProspectingWorkspace() {
           targetId={selectedNewContact.target_id || undefined}
           isProspecting={true}
         />
+      )}
+
+      {/* ZoomInfo Enrichment Modal */}
+      {showZoomInfoModal && selectedContact && (
+        <>
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-[70]"
+            onClick={() => {
+              setShowZoomInfoModal(false);
+              setZoomInfoMatches([]);
+              setSelectedZoomInfoMatch(null);
+              setZoomInfoError(null);
+            }}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-[70] p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden">
+              {/* Modal Header */}
+              <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-indigo-50 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <SparklesIcon className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">ZoomInfo Enrichment</h3>
+                    <p className="text-sm text-gray-500">
+                      {selectedContact.first_name} {selectedContact.last_name}
+                      {selectedContact.company ? ` at ${selectedContact.company}` : ''}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowZoomInfoModal(false);
+                    setZoomInfoMatches([]);
+                    setSelectedZoomInfoMatch(null);
+                    setZoomInfoError(null);
+                  }}
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                >
+                  <XMarkIcon className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="flex-1 overflow-y-auto">
+                {zoomInfoLoading ? (
+                  <div className="p-12 text-center">
+                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Searching ZoomInfo...</p>
+                    <p className="text-sm text-gray-400 mt-1">This may take a few seconds</p>
+                  </div>
+                ) : zoomInfoError ? (
+                  <div className="p-8 text-center">
+                    <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <XMarkIcon className="w-6 h-6 text-red-600" />
+                    </div>
+                    <p className="text-gray-900 font-medium">Search Failed</p>
+                    <p className="text-sm text-red-600 mt-2">{zoomInfoError}</p>
+                    <button
+                      onClick={searchZoomInfo}
+                      className="mt-4 px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                    >
+                      Try Again
+                    </button>
+                  </div>
+                ) : zoomInfoMatches.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <SparklesIcon className="w-6 h-6 text-gray-400" />
+                    </div>
+                    <p className="text-gray-900 font-medium">No Matches Found</p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      ZoomInfo did not find any profiles matching this contact
+                    </p>
+                  </div>
+                ) : !selectedZoomInfoMatch ? (
+                  /* Match Selection View */
+                  <div className="p-4">
+                    <p className="text-sm text-gray-600 mb-4">
+                      Found {zoomInfoMatches.length} potential match{zoomInfoMatches.length !== 1 ? 'es' : ''}. Select the correct profile:
+                    </p>
+                    <div className="space-y-3">
+                      {zoomInfoMatches.map((match, idx) => (
+                        <button
+                          key={match.zoominfo_person_id}
+                          onClick={() => selectZoomInfoMatch(match)}
+                          className="w-full text-left p-4 border border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 transition-colors"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="font-medium text-gray-900">
+                                {match.first_name} {match.last_name}
+                              </p>
+                              <p className="text-sm text-gray-600">
+                                {match.title}{match.title && match.company ? ' at ' : ''}{match.company}
+                              </p>
+                              {match.email && (
+                                <p className="text-sm text-gray-500 mt-1">{match.email}</p>
+                              )}
+                              {(match.city || match.state) && (
+                                <p className="text-xs text-gray-400 mt-1">
+                                  {[match.city, match.state, match.country].filter(Boolean).join(', ')}
+                                </p>
+                              )}
+                            </div>
+                            <span className="text-xs text-gray-400">#{idx + 1}</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  /* Field Selection View */
+                  <div className="p-4">
+                    <div className="mb-4 p-3 bg-purple-50 border border-purple-100 rounded-lg">
+                      <p className="text-sm font-medium text-purple-900">
+                        Selected: {selectedZoomInfoMatch.first_name} {selectedZoomInfoMatch.last_name}
+                        {selectedZoomInfoMatch.company ? ` at ${selectedZoomInfoMatch.company}` : ''}
+                      </p>
+                      <button
+                        onClick={() => setSelectedZoomInfoMatch(null)}
+                        className="text-sm text-purple-600 hover:text-purple-800 underline mt-1"
+                      >
+                        Choose different match
+                      </button>
+                    </div>
+
+                    <p className="text-sm text-gray-600 mb-4">
+                      Select which fields to update on your contact:
+                    </p>
+
+                    <div className="space-y-3">
+                      {/* Email */}
+                      {selectedZoomInfoMatch.email && (
+                        <label className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={zoomInfoFieldSelections.email || false}
+                            onChange={(e) => setZoomInfoFieldSelections(prev => ({ ...prev, email: e.target.checked }))}
+                            className="mt-1 h-4 w-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
+                          />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-gray-900">Email</p>
+                            <p className="text-sm text-green-600">{selectedZoomInfoMatch.email}</p>
+                            {selectedContact?.email && selectedContact.email !== selectedZoomInfoMatch.email && (
+                              <p className="text-xs text-gray-400 mt-1">Current: {selectedContact.email}</p>
+                            )}
+                          </div>
+                        </label>
+                      )}
+
+                      {/* Phone */}
+                      {selectedZoomInfoMatch.phone && (
+                        <label className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={zoomInfoFieldSelections.phone || false}
+                            onChange={(e) => setZoomInfoFieldSelections(prev => ({ ...prev, phone: e.target.checked }))}
+                            className="mt-1 h-4 w-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
+                          />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-gray-900">Phone</p>
+                            <p className="text-sm text-green-600">{selectedZoomInfoMatch.phone}</p>
+                            {selectedContact?.phone && selectedContact.phone !== selectedZoomInfoMatch.phone && (
+                              <p className="text-xs text-gray-400 mt-1">Current: {selectedContact.phone}</p>
+                            )}
+                          </div>
+                        </label>
+                      )}
+
+                      {/* Mobile Phone */}
+                      {selectedZoomInfoMatch.mobile_phone && (
+                        <label className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={zoomInfoFieldSelections.mobile_phone || false}
+                            onChange={(e) => setZoomInfoFieldSelections(prev => ({ ...prev, mobile_phone: e.target.checked }))}
+                            className="mt-1 h-4 w-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
+                          />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-gray-900">Mobile Phone</p>
+                            <p className="text-sm text-green-600">{selectedZoomInfoMatch.mobile_phone}</p>
+                            {selectedContact?.mobile_phone && selectedContact.mobile_phone !== selectedZoomInfoMatch.mobile_phone && (
+                              <p className="text-xs text-gray-400 mt-1">Current: {selectedContact.mobile_phone}</p>
+                            )}
+                          </div>
+                        </label>
+                      )}
+
+                      {/* Title */}
+                      {selectedZoomInfoMatch.title && (
+                        <label className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={zoomInfoFieldSelections.title || false}
+                            onChange={(e) => setZoomInfoFieldSelections(prev => ({ ...prev, title: e.target.checked }))}
+                            className="mt-1 h-4 w-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
+                          />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-gray-900">Title</p>
+                            <p className="text-sm text-green-600">{selectedZoomInfoMatch.title}</p>
+                            {selectedContact?.title && selectedContact.title !== selectedZoomInfoMatch.title && (
+                              <p className="text-xs text-gray-400 mt-1">Current: {selectedContact.title}</p>
+                            )}
+                          </div>
+                        </label>
+                      )}
+
+                      {/* LinkedIn */}
+                      {selectedZoomInfoMatch.linkedin_url && (
+                        <label className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={zoomInfoFieldSelections.linkedin_url || false}
+                            onChange={(e) => setZoomInfoFieldSelections(prev => ({ ...prev, linkedin_url: e.target.checked }))}
+                            className="mt-1 h-4 w-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
+                          />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-gray-900">LinkedIn Profile</p>
+                            <a
+                              href={selectedZoomInfoMatch.linkedin_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-blue-600 hover:underline truncate block"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {selectedZoomInfoMatch.linkedin_url}
+                            </a>
+                            {selectedContact?.linked_in_profile_link && selectedContact.linked_in_profile_link !== selectedZoomInfoMatch.linkedin_url && (
+                              <p className="text-xs text-gray-400 mt-1 truncate">Current: {selectedContact.linked_in_profile_link}</p>
+                            )}
+                          </div>
+                        </label>
+                      )}
+
+                      {/* ZoomInfo Profile URL - Always included */}
+                      <div className="flex items-start gap-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                        <CheckIcon className="w-5 h-5 text-purple-600 mt-0.5" />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">ZoomInfo Profile Link</p>
+                          <a
+                            href={selectedZoomInfoMatch.zoominfo_profile_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-purple-600 hover:underline"
+                          >
+                            View in ZoomInfo
+                          </a>
+                          <p className="text-xs text-gray-500 mt-1">Always saved for future reference</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              {selectedZoomInfoMatch && (
+                <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex items-center justify-end gap-3">
+                  <button
+                    onClick={() => {
+                      setShowZoomInfoModal(false);
+                      setZoomInfoMatches([]);
+                      setSelectedZoomInfoMatch(null);
+                    }}
+                    className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={applyZoomInfoData}
+                    disabled={applyingZoomInfo}
+                    className="flex items-center gap-2 px-6 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                  >
+                    {applyingZoomInfo ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                        Applying...
+                      </>
+                    ) : (
+                      <>
+                        <CheckIcon className="w-4 h-4" />
+                        Apply Selected Fields
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
