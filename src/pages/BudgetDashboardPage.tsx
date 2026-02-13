@@ -2037,11 +2037,18 @@ export default function BudgetDashboardPage() {
                 Cash Flow Forecast
               </button>
               <button
+                onClick={() => navigate('/admin/budget/manage')}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+              >
+                <Edit2 className="h-4 w-4" />
+                Manage Budget
+              </button>
+              <button
                 onClick={() => navigate('/admin/budget/setup')}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
               >
                 <Edit2 className="h-4 w-4" />
-                Budget Setup
+                Initial Setup
               </button>
               <button
                 onClick={handleSyncAll}

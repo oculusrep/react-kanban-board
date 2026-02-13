@@ -60,6 +60,7 @@ import HunterProspectingPage from "./pages/HunterProspectingPage";
 import HunterSettingsPage from "./pages/HunterSettingsPage";
 import BudgetDashboardPage from "./pages/BudgetDashboardPage";
 import BudgetSetupPage from "./pages/BudgetSetupPage";
+import BudgetManagePage from "./pages/BudgetManagePage";
 import CashFlowForecastPage from "./pages/CashFlowForecastPage";
 import PortalUserManagementPage from "./pages/PortalUserManagementPage";
 import PortalEmailSettingsPage from "./pages/PortalEmailSettingsPage";
@@ -166,6 +167,7 @@ function App() {
           <Route path="admin/quickbooks/customers" element={<AdminRoute><QuickBooksCustomerMappingPage /></AdminRoute>} />
           <Route path="admin/budget" element={<AdminRoute><BudgetDashboardPage /></AdminRoute>} />
           <Route path="admin/budget/setup" element={<AdminRoute><BudgetSetupPage /></AdminRoute>} />
+          <Route path="admin/budget/manage" element={<AdminRoute><BudgetManagePage /></AdminRoute>} />
           <Route path="admin/budget/forecast" element={<AdminRoute><CashFlowForecastPage /></AdminRoute>} />
           <Route path="admin/portal-users" element={<AdminRoute><PortalUserManagementPage /></AdminRoute>} />
           <Route path="admin/portal-email-settings" element={<AdminRoute><PortalEmailSettingsPage /></AdminRoute>} />
