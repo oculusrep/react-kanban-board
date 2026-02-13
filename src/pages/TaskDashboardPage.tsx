@@ -1175,6 +1175,10 @@ const TaskDashboardPage: React.FC = () => {
   const handleTaskUpdate = async () => {
     await loadTasks();
     await loadCardCounts();
+    // Refresh search results if we're in search mode
+    if (searchPerformed && filters.searchTerm.trim()) {
+      await searchAllTasks(filters.searchTerm);
+    }
     setSelectedTask(null);
   };
 
