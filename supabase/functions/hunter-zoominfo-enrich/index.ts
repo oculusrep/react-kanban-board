@@ -204,18 +204,18 @@ serve(async (req) => {
       rpp: 5, // Return top 5 matches
     };
 
-    // Add search criteria
+    // Add search criteria (single values, not arrays)
     if (request.first_name) {
-      searchParams.firstName = [request.first_name];
+      searchParams.firstName = request.first_name;
     }
     if (request.last_name) {
-      searchParams.lastName = [request.last_name];
+      searchParams.lastName = request.last_name;
     }
     if (request.email) {
-      searchParams.emailAddress = [request.email];
+      searchParams.emailAddress = request.email;
     }
     if (request.company) {
-      searchParams.companyName = [request.company];
+      searchParams.companyName = request.company;
     }
 
     console.log(`[ZoomInfo Enrich] Searching for contact ${request.contact_id}:`, {
