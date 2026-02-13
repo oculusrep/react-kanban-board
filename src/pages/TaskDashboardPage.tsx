@@ -199,8 +199,9 @@ const TaskDashboardPage: React.FC = () => {
         .in('status_id', openStatusIds);
 
       // Exclude Prospecting tasks - they have their own Hunter dashboard
+      // Use .or() to include tasks with NULL category OR non-Prospecting category
       if (prospectingTaskTypeId) {
-        query = query.neq('activity_task_type_id', prospectingTaskTypeId);
+        query = query.or(`activity_task_type_id.is.null,activity_task_type_id.neq.${prospectingTaskTypeId}`);
       }
 
       // Apply owner filter
@@ -368,8 +369,9 @@ const TaskDashboardPage: React.FC = () => {
         }
 
         // Exclude Prospecting tasks - they have their own Hunter dashboard
+        // Use .or() to include tasks with NULL category OR non-Prospecting category
         if (prospectingTaskTypeId) {
-          query = query.neq('activity_task_type_id', prospectingTaskTypeId);
+          query = query.or(`activity_task_type_id.is.null,activity_task_type_id.neq.${prospectingTaskTypeId}`);
         }
 
         // Apply filter based on active card
@@ -566,8 +568,9 @@ const TaskDashboardPage: React.FC = () => {
         }
 
         // Exclude Prospecting tasks - they have their own Hunter dashboard
+        // Use .or() to include tasks with NULL category OR non-Prospecting category
         if (prospectingTaskTypeId) {
-          query = query.neq('activity_task_type_id', prospectingTaskTypeId);
+          query = query.or(`activity_task_type_id.is.null,activity_task_type_id.neq.${prospectingTaskTypeId}`);
         }
 
         // For completed/closed tasks, ONLY include tasks with completed_at date
