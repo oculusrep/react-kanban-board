@@ -2,11 +2,12 @@
 // Shows follow-ups due with contact details panel for quick action
 // src/components/hunter/ProspectingWorkspace.tsx
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
 import { prepareInsert } from '../../lib/supabaseHelpers';
+import { useProspectingNotes } from '../../hooks/useProspectingNotes';
 import FollowUpModal from '../FollowUpModal';
 import {
   PhoneIcon,
@@ -25,7 +26,9 @@ import {
   BuildingOffice2Icon,
   GlobeAltIcon,
   MapPinIcon,
-  PaperAirplaneIcon
+  PaperAirplaneIcon,
+  ArrowUturnLeftIcon,
+  ChatBubbleBottomCenterTextIcon
 } from '@heroicons/react/24/outline';
 
 // Compose Email Modal for direct Gmail sending
@@ -283,6 +286,15 @@ export default function ProspectingWorkspace() {
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [showComposeModal, setShowComposeModal] = useState(false);
 
+  // Recent activities for undo feature
+  const [recentActivities, setRecentActivities] = useState<{id: string, type: string, created_at: string}[]>([]);
+
+  // Notes panel
+  const { notes, loadNotes, addNote, deleteNote } = useProspectingNotes();
+  const [newNoteText, setNewNoteText] = useState('');
+  const [addingNote, setAddingNote] = useState(false);
+  const notesContainerRef = useRef<HTMLDivElement>(null);
+
   // New follow-up scheduling
   const [showNewFollowUpModal, setShowNewFollowUpModal] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
@@ -314,7 +326,6 @@ export default function ProspectingWorkspace() {
         .eq('name', 'Prospecting')
         .single();
       const prospectingCategoryId = prospectingCategory?.id;
-      console.log('📋 Prospecting category:', prospectingCategoryId, catError);
 
       // Get open status IDs
       const { data: openStatuses } = await supabase
@@ -322,8 +333,6 @@ export default function ProspectingWorkspace() {
         .select('id')
         .eq('is_closed', false);
       const openStatusIds = openStatuses?.map(s => s.id) || [];
-      console.log('📋 Open status IDs:', openStatusIds);
-      console.log('📋 Date range:', todayStart, 'to', todayEnd);
 
       if (openStatusIds.length > 0 && prospectingCategoryId) {
         // Fetch follow-ups due today with Prospecting category
@@ -348,7 +357,6 @@ export default function ProspectingWorkspace() {
           .eq('activity_task_type_id', prospectingCategoryId)
           .order('activity_date', { ascending: true });
 
-        console.log('📋 Today tasks query result:', todayTasks?.length, tasksError);
         setFollowUpsDue((todayTasks || []) as FollowUpTask[]);
 
         // Fetch overdue follow-ups with Prospecting category
@@ -407,8 +415,6 @@ export default function ProspectingWorkspace() {
 
   // Load contact details when task is selected
   const loadContactDetails = async (contactId: string) => {
-    console.log('📌 loadContactDetails called for:', contactId);
-
     // Fetch contact without target join to avoid FK ambiguity
     const { data: contactData, error } = await supabase
       .from('contact')
@@ -419,10 +425,7 @@ export default function ProspectingWorkspace() {
       .eq('id', contactId)
       .single();
 
-    if (error || !contactData) {
-      console.log('📌 Error fetching contact:', error);
-      return;
-    }
+    if (error || !contactData) return;
 
     // If contact has a target_id, fetch target separately
     let target = null;
@@ -436,29 +439,30 @@ export default function ProspectingWorkspace() {
     }
 
     const fullContact = { ...contactData, target };
-    console.log('📌 Setting selectedContact:', fullContact);
     setSelectedContact(fullContact as ContactDetails);
     setContactForm(fullContact);
   };
 
   const handleTaskSelect = (task: FollowUpTask) => {
-    console.log('📌 Task selected:', task.id, task.subject);
-    console.log('📌 Task contact_id:', task.contact_id);
-    console.log('📌 Task contact:', task.contact);
     setSelectedTask(task);
     setEditingContact(false);
+    // Clear recent activities when switching contacts
+    setRecentActivities([]);
     if (task.contact_id) {
-      console.log('📌 Loading contact details for:', task.contact_id);
       loadContactDetails(task.contact_id);
     } else if (task.contact?.id) {
-      // Fallback: use nested contact.id if contact_id is null
-      console.log('📌 Using nested contact.id:', task.contact.id);
       loadContactDetails(task.contact.id);
     } else {
-      console.log('📌 No contact_id found on task');
       setSelectedContact(null);
     }
   };
+
+  // Load notes when contact changes
+  useEffect(() => {
+    if (selectedContact) {
+      loadNotes(undefined, selectedContact.id);
+    }
+  }, [selectedContact?.id, loadNotes]);
 
   const saveContactChanges = async () => {
     if (!selectedContact) return;
@@ -494,17 +498,27 @@ export default function ProspectingWorkspace() {
 
     setLoggingActivity(activityType);
     try {
-      // Log to prospecting_activity table
-      const { error } = await supabase
+      // Log to prospecting_activity table and capture the returned ID
+      const { data: activityData, error } = await supabase
         .from('prospecting_activity')
         .insert({
           contact_id: selectedContact.id,
           target_id: selectedContact.target_id,
           activity_type: activityType,
           created_by: user.id
-        });
+        })
+        .select('id, created_at')
+        .single();
 
       if (error) throw error;
+
+      // Track in recent activities for undo feature
+      if (activityData) {
+        setRecentActivities(prev => [
+          { id: activityData.id, type: activityType, created_at: activityData.created_at },
+          ...prev.slice(0, 4) // Keep last 5 activities
+        ]);
+      }
 
       // Also update last_contacted_at on target if linked
       if (selectedContact.target_id) {
@@ -521,6 +535,23 @@ export default function ProspectingWorkspace() {
       alert('Failed to log activity');
     } finally {
       setLoggingActivity(null);
+    }
+  };
+
+  // Undo a recently logged activity
+  const undoActivity = async (activityId: string) => {
+    try {
+      const { error } = await supabase
+        .from('prospecting_activity')
+        .delete()
+        .eq('id', activityId);
+
+      if (error) throw error;
+
+      setRecentActivities(prev => prev.filter(a => a.id !== activityId));
+    } catch (err) {
+      console.error('Error undoing activity:', err);
+      alert('Failed to undo activity');
     }
   };
 
@@ -571,7 +602,6 @@ export default function ProspectingWorkspace() {
 
   // Search contacts for new follow-up
   const searchContacts = useCallback(async (query: string) => {
-    console.log('🔍 searchContacts called with:', query);
     if (query.length < 2) {
       setContactSearchResults([]);
       return;
@@ -611,7 +641,6 @@ export default function ProspectingWorkspace() {
         target: c.target_id ? targets[c.target_id] || null : null
       }));
 
-      console.log('🔍 Contact search results:', data?.length, error);
       setContactSearchResults((data || []) as ContactDetails[]);
     } catch (err) {
       console.error('Error searching contacts:', err);
@@ -622,7 +651,6 @@ export default function ProspectingWorkspace() {
 
   // Debounced search
   useEffect(() => {
-    console.log('🔍 contactSearch changed:', contactSearch);
     const timer = setTimeout(() => {
       if (contactSearch) {
         searchContacts(contactSearch);
@@ -1075,6 +1103,30 @@ export default function ProspectingWorkspace() {
                   </button>
                 </div>
 
+                {/* Recent Activities with Undo */}
+                {recentActivities.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-xs font-medium text-gray-500 uppercase mb-2">Recent (Undo)</p>
+                    <div className="space-y-1">
+                      {recentActivities.map((activity) => (
+                        <div
+                          key={activity.id}
+                          className="flex items-center justify-between px-2 py-1.5 bg-white rounded border border-gray-200 text-sm"
+                        >
+                          <span className="text-gray-700 capitalize">{activity.type}</span>
+                          <button
+                            onClick={() => undoActivity(activity.id)}
+                            className="flex items-center gap-1 px-2 py-0.5 text-xs text-gray-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                          >
+                            <ArrowUturnLeftIcon className="w-3 h-3" />
+                            Undo
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Complete Task Button */}
                 {selectedTask && (
                   <button
@@ -1085,6 +1137,98 @@ export default function ProspectingWorkspace() {
                     Complete Task
                   </button>
                 )}
+              </div>
+            )}
+
+            {/* Notes Panel */}
+            {!editingContact && (
+              <div className="border-t border-gray-200">
+                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                  <div className="flex items-center gap-2">
+                    <ChatBubbleBottomCenterTextIcon className="w-4 h-4 text-gray-500" />
+                    <p className="text-xs font-medium text-gray-500 uppercase">Notes</p>
+                  </div>
+                </div>
+
+                {/* Notes List */}
+                <div
+                  ref={notesContainerRef}
+                  className="max-h-48 overflow-y-auto"
+                >
+                  {notes.length === 0 ? (
+                    <p className="p-3 text-sm text-gray-400 text-center">No notes yet</p>
+                  ) : (
+                    <div className="divide-y divide-gray-100">
+                      {notes.map((note) => (
+                        <div key={note.id} className="p-3 hover:bg-gray-50 group">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap break-words flex-1">
+                              {note.content}
+                            </p>
+                            <button
+                              onClick={() => deleteNote(note.id)}
+                              className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity"
+                              title="Delete note"
+                            >
+                              <XMarkIcon className="w-3 h-3" />
+                            </button>
+                          </div>
+                          <p className="mt-1 text-xs text-gray-400">
+                            {new Date(note.created_at).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit'
+                            })}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Add Note Input */}
+                <div className="p-3 border-t border-gray-200 bg-gray-50">
+                  <div className="flex items-end gap-2">
+                    <textarea
+                      value={newNoteText}
+                      onChange={(e) => setNewNoteText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                          e.preventDefault();
+                          if (newNoteText.trim() && !addingNote) {
+                            setAddingNote(true);
+                            addNote(newNoteText, { contactId: selectedContact?.id }).then(() => {
+                              setNewNoteText('');
+                              setAddingNote(false);
+                            });
+                          }
+                        }
+                      }}
+                      placeholder="Add note... (Cmd+Enter)"
+                      rows={2}
+                      className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 resize-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    />
+                    <button
+                      onClick={async () => {
+                        if (newNoteText.trim() && !addingNote) {
+                          setAddingNote(true);
+                          await addNote(newNoteText, { contactId: selectedContact?.id });
+                          setNewNoteText('');
+                          setAddingNote(false);
+                        }
+                      }}
+                      disabled={!newNoteText.trim() || addingNote}
+                      className="p-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {addingNote ? (
+                        <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                      ) : (
+                        <PaperAirplaneIcon className="w-5 h-5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </>
