@@ -259,8 +259,13 @@ serve(async (req) => {
         );
       }
 
+      // Return detailed error for debugging
       return new Response(
-        JSON.stringify({ error: `ZoomInfo API error: ${zoomInfoResponse.status}` }),
+        JSON.stringify({
+          error: `ZoomInfo API error: ${zoomInfoResponse.status}`,
+          details: errorText,
+          searchParams: searchParams,
+        }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
