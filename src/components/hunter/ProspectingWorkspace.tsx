@@ -28,7 +28,8 @@ import {
   PaperClipIcon,
   GlobeAltIcon,
   ClipboardDocumentListIcon,
-  PlusCircleIcon
+  PlusCircleIcon,
+  ClipboardIcon
 } from '@heroicons/react/24/outline';
 
 // Lazy load ReactQuill for email compose
@@ -212,6 +213,7 @@ export default function ProspectingWorkspace() {
   const [activityNote, setActivityNote] = useState('');
   const [showActivityNoteInput, setShowActivityNoteInput] = useState<ActivityType | null>(null);
   const [recentlyLogged, setRecentlyLogged] = useState<{ type: ActivityType; timestamp: number } | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   // New note input
   const [newNoteText, setNewNoteText] = useState('');
@@ -364,22 +366,32 @@ export default function ProspectingWorkspace() {
   }, [fetchData]);
 
   // Load unified activity feed when contact changes
-  const loadActivityFeed = useCallback(async (contactId: string) => {
+  const loadActivityFeed = useCallback(async (contactId: string, targetId?: string | null) => {
     setLoadingFeed(true);
     try {
-      // Fetch activities
-      const { data: activities } = await supabase
+      // Build query filter to include activities on contact OR their linked target
+      let activitiesQuery = supabase
         .from('prospecting_activity')
-        .select('id, activity_type, notes, email_subject, created_at, created_by')
-        .eq('contact_id', contactId)
-        .order('created_at', { ascending: false });
+        .select('id, activity_type, notes, email_subject, created_at, created_by');
+
+      let notesQuery = supabase
+        .from('prospecting_note')
+        .select('id, content, created_at, created_by');
+
+      // If there's a target_id, get activities for both contact AND target
+      if (targetId) {
+        activitiesQuery = activitiesQuery.or(`contact_id.eq.${contactId},target_id.eq.${targetId}`);
+        notesQuery = notesQuery.or(`contact_id.eq.${contactId},target_id.eq.${targetId}`);
+      } else {
+        activitiesQuery = activitiesQuery.eq('contact_id', contactId);
+        notesQuery = notesQuery.eq('contact_id', contactId);
+      }
+
+      // Fetch activities
+      const { data: activities } = await activitiesQuery.order('created_at', { ascending: false });
 
       // Fetch notes
-      const { data: notes } = await supabase
-        .from('prospecting_note')
-        .select('id, content, created_at, created_by')
-        .eq('contact_id', contactId)
-        .order('created_at', { ascending: false });
+      const { data: notes } = await notesQuery.order('created_at', { ascending: false });
 
       // Combine and sort chronologically
       const feedItems: ActivityFeedItem[] = [
@@ -434,7 +446,7 @@ export default function ProspectingWorkspace() {
     const fullContact = { ...contactData, target };
     setSelectedContact(fullContact as ContactDetails);
     setContactForm(fullContact);
-    loadActivityFeed(contactId);
+    loadActivityFeed(contactId, contactData.target_id);
   };
 
   const handleTaskSelect = (task: FollowUpTask) => {
@@ -902,6 +914,17 @@ export default function ProspectingWorkspace() {
       return date.toLocaleDateString('en-US', { weekday: 'short' });
     } else {
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+  };
+
+  // Copy to clipboard helper
+  const copyToClipboard = async (value: string, fieldName: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedField(fieldName);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
     }
   };
 
@@ -1397,22 +1420,61 @@ export default function ProspectingWorkspace() {
                   {/* Contact Info Grid */}
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     {selectedContact.email && (
-                      <a href={`mailto:${selectedContact.email}`} className="flex items-center gap-2 text-gray-600 hover:text-blue-600 truncate">
-                        <EnvelopeIcon className="w-4 h-4 flex-shrink-0" />
-                        <span className="truncate">{selectedContact.email}</span>
-                      </a>
+                      <div className="flex items-center gap-2 text-gray-600 group/item">
+                        <a href={`mailto:${selectedContact.email}`} className="flex items-center gap-2 hover:text-blue-600 truncate flex-1 min-w-0">
+                          <EnvelopeIcon className="w-4 h-4 flex-shrink-0" />
+                          <span className="truncate">{selectedContact.email}</span>
+                        </a>
+                        <button
+                          onClick={() => copyToClipboard(selectedContact.email!, 'email')}
+                          className="p-1 text-gray-400 hover:text-gray-600 opacity-0 group-hover/item:opacity-100 transition-opacity flex-shrink-0"
+                          title="Copy email"
+                        >
+                          {copiedField === 'email' ? (
+                            <CheckIcon className="w-3.5 h-3.5 text-green-500" />
+                          ) : (
+                            <ClipboardIcon className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
                     )}
                     {selectedContact.phone && (
-                      <a href={`tel:${selectedContact.phone}`} className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
-                        <PhoneIcon className="w-4 h-4 flex-shrink-0" />
-                        {selectedContact.phone}
-                      </a>
+                      <div className="flex items-center gap-2 text-gray-600 group/item">
+                        <a href={`tel:${selectedContact.phone}`} className="flex items-center gap-2 hover:text-gray-900 flex-1 min-w-0">
+                          <PhoneIcon className="w-4 h-4 flex-shrink-0" />
+                          {selectedContact.phone}
+                        </a>
+                        <button
+                          onClick={() => copyToClipboard(selectedContact.phone!, 'phone')}
+                          className="p-1 text-gray-400 hover:text-gray-600 opacity-0 group-hover/item:opacity-100 transition-opacity flex-shrink-0"
+                          title="Copy phone"
+                        >
+                          {copiedField === 'phone' ? (
+                            <CheckIcon className="w-3.5 h-3.5 text-green-500" />
+                          ) : (
+                            <ClipboardIcon className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
                     )}
                     {selectedContact.mobile_phone && (
-                      <a href={`tel:${selectedContact.mobile_phone}`} className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
-                        <PhoneIcon className="w-4 h-4 flex-shrink-0" />
-                        {selectedContact.mobile_phone} (M)
-                      </a>
+                      <div className="flex items-center gap-2 text-gray-600 group/item">
+                        <a href={`tel:${selectedContact.mobile_phone}`} className="flex items-center gap-2 hover:text-gray-900 flex-1 min-w-0">
+                          <PhoneIcon className="w-4 h-4 flex-shrink-0" />
+                          {selectedContact.mobile_phone} (M)
+                        </a>
+                        <button
+                          onClick={() => copyToClipboard(selectedContact.mobile_phone!, 'mobile')}
+                          className="p-1 text-gray-400 hover:text-gray-600 opacity-0 group-hover/item:opacity-100 transition-opacity flex-shrink-0"
+                          title="Copy mobile"
+                        >
+                          {copiedField === 'mobile' ? (
+                            <CheckIcon className="w-3.5 h-3.5 text-green-500" />
+                          ) : (
+                            <ClipboardIcon className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
                     )}
                     {(selectedContact.mailing_city || selectedContact.mailing_state) && (
                       <div className="flex items-center gap-2 text-gray-600">
