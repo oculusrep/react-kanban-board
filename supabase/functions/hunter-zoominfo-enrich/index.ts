@@ -5,6 +5,7 @@
  * Returns potential matches for user review before applying changes.
  *
  * Required Supabase Secrets:
+ * - ZOOMINFO_USERNAME: Your ZoomInfo account username/email
  * - ZOOMINFO_CLIENT_ID: Your ZoomInfo client ID
  * - ZOOMINFO_PRIVATE_KEY: Your ZoomInfo private key (PEM format)
  */
@@ -50,8 +51,9 @@ function normalizePemKey(pem: string): string {
 
 /**
  * Get ZoomInfo access token using PKI authentication
+ * Based on ZoomInfo's official Python client implementation
  */
-async function getZoomInfoAccessToken(clientId: string, privateKeyPem: string): Promise<string> {
+async function getZoomInfoAccessToken(username: string, clientId: string, privateKeyPem: string): Promise<string> {
   // Return cached token if still valid (with 5 min buffer)
   if (cachedAccessToken && Date.now() < tokenExpiresAt - 300000) {
     return cachedAccessToken;
@@ -66,13 +68,16 @@ async function getZoomInfoAccessToken(clientId: string, privateKeyPem: string): 
     // Import the private key using jose
     const privateKey = await jose.importPKCS8(normalizedPem, 'RS256');
 
-    // Create JWT
+    // Create JWT with ZoomInfo-specific claims
+    // Based on ZoomInfo's official Python client: https://github.com/Zoominfo/api-auth-python-client
     const now = Math.floor(Date.now() / 1000);
     const jwt = await new jose.SignJWT({
-      aud: 'https://api.zoominfo.com',
+      aud: 'enterprise_api',
+      client_id: clientId,
+      username: username,
     })
       .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
-      .setIssuer(clientId)
+      .setIssuer('api-client@zoominfo.com')
       .setIssuedAt(now)
       .setExpirationTime(now + 300)
       .sign(privateKey);
@@ -80,15 +85,13 @@ async function getZoomInfoAccessToken(clientId: string, privateKeyPem: string): 
     console.log('[ZoomInfo] JWT created, exchanging for access token');
 
     // Exchange JWT for access token using PKI authentication
-    // ZoomInfo PKI auth sends credentials in headers, not body
+    // ZoomInfo expects the JWT in Authorization header as Bearer token
     const authResponse = await fetch(ZOOMINFO_AUTH_URL, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-network-client-id': clientId,
-        'x-network-client-secret': jwt,
+        'Authorization': `Bearer ${jwt}`,
+        'Accept': 'application/json',
       },
-      body: JSON.stringify({}),
     });
 
     if (!authResponse.ok) {
@@ -150,18 +153,19 @@ serve(async (req) => {
   }
 
   try {
+    const username = Deno.env.get('ZOOMINFO_USERNAME');
     const clientId = Deno.env.get('ZOOMINFO_CLIENT_ID');
     const privateKey = Deno.env.get('ZOOMINFO_PRIVATE_KEY');
 
-    if (!clientId || !privateKey) {
+    if (!username || !clientId || !privateKey) {
       return new Response(
-        JSON.stringify({ error: 'ZoomInfo credentials not configured. Need ZOOMINFO_CLIENT_ID and ZOOMINFO_PRIVATE_KEY.' }),
+        JSON.stringify({ error: 'ZoomInfo credentials not configured. Need ZOOMINFO_USERNAME, ZOOMINFO_CLIENT_ID and ZOOMINFO_PRIVATE_KEY.' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     // Get access token via PKI auth
-    const accessToken = await getZoomInfoAccessToken(clientId, privateKey);
+    const accessToken = await getZoomInfoAccessToken(username, clientId, privateKey);
 
     const request = await req.json() as EnrichRequest;
 
