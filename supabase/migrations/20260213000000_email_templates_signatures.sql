@@ -2,20 +2,41 @@
 -- Migration: 20260213000000_email_templates_signatures.sql
 
 -- ============================================================================
--- Email Templates Table
+-- Email Templates Table (add missing columns if table exists)
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS email_template (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  subject TEXT NOT NULL,
-  body TEXT NOT NULL, -- HTML content
-  category TEXT, -- e.g., 'Cold Outreach', 'Follow-up', 'Meeting Request'
-  created_by UUID REFERENCES "user"(id) ON DELETE SET NULL,
-  is_shared BOOLEAN DEFAULT false, -- If true, visible to all users
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
+-- Add is_shared column if it doesn't exist
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'email_template' AND column_name = 'is_shared'
+  ) THEN
+    ALTER TABLE email_template ADD COLUMN is_shared BOOLEAN DEFAULT false;
+  END IF;
+END $$;
+
+-- Add created_by column if it doesn't exist
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'email_template' AND column_name = 'created_by'
+  ) THEN
+    ALTER TABLE email_template ADD COLUMN created_by UUID REFERENCES "user"(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+-- Add updated_at column if it doesn't exist
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'email_template' AND column_name = 'updated_at'
+  ) THEN
+    ALTER TABLE email_template ADD COLUMN updated_at TIMESTAMPTZ DEFAULT now();
+  END IF;
+END $$;
 
 -- Index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_email_template_created_by ON email_template(created_by);
@@ -47,6 +68,12 @@ CREATE INDEX IF NOT EXISTS idx_user_email_signature_is_default ON user_email_sig
 
 ALTER TABLE email_template ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_email_signature ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies first to allow re-running
+DROP POLICY IF EXISTS "Users can view own and shared templates" ON email_template;
+DROP POLICY IF EXISTS "Users can create templates" ON email_template;
+DROP POLICY IF EXISTS "Users can update own templates" ON email_template;
+DROP POLICY IF EXISTS "Users can delete own templates" ON email_template;
 
 -- Email Template Policies
 -- Users can view their own templates and shared templates
@@ -91,6 +118,12 @@ CREATE POLICY "Users can delete own templates"
     )
   );
 
+-- Drop existing signature policies first
+DROP POLICY IF EXISTS "Users can view own signatures" ON user_email_signature;
+DROP POLICY IF EXISTS "Users can create signatures" ON user_email_signature;
+DROP POLICY IF EXISTS "Users can update own signatures" ON user_email_signature;
+DROP POLICY IF EXISTS "Users can delete own signatures" ON user_email_signature;
+
 -- User Email Signature Policies
 -- Users can only see their own signatures
 CREATE POLICY "Users can view own signatures"
@@ -124,11 +157,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Drop and recreate triggers to allow re-running
+DROP TRIGGER IF EXISTS email_template_updated_at ON email_template;
 CREATE TRIGGER email_template_updated_at
   BEFORE UPDATE ON email_template
   FOR EACH ROW
   EXECUTE FUNCTION update_email_template_updated_at();
 
+DROP TRIGGER IF EXISTS user_email_signature_updated_at ON user_email_signature;
 CREATE TRIGGER user_email_signature_updated_at
   BEFORE UPDATE ON user_email_signature
   FOR EACH ROW

@@ -1448,22 +1448,31 @@ export default function ProspectingWorkspace() {
                       <div className="p-4 border-t border-gray-100 bg-gray-50 space-y-3">
                         {/* Template selector + Settings link */}
                         <div className="flex gap-2">
-                          <select
-                            value={selectedTemplate}
-                            onChange={(e) => handleTemplateSelect(e.target.value)}
-                            className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg"
-                          >
-                            <option value="">Select a template...</option>
-                            {emailTemplates.map((t) => (
-                              <option key={t.id} value={t.id}>
-                                {t.name}{t.category ? ` (${t.category})` : ''}
-                              </option>
-                            ))}
-                          </select>
+                          {emailTemplates.length > 0 ? (
+                            <select
+                              value={selectedTemplate}
+                              onChange={(e) => handleTemplateSelect(e.target.value)}
+                              className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                            >
+                              <option value="">Select a template...</option>
+                              {emailTemplates.map((t) => (
+                                <option key={t.id} value={t.id}>
+                                  {t.name}{t.category ? ` (${t.category})` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <Link
+                              to="/hunter/settings"
+                              className="flex-1 px-3 py-2 text-sm text-gray-500 border border-gray-300 border-dashed rounded-lg hover:bg-gray-50 text-center"
+                            >
+                              + Create email templates
+                            </Link>
+                          )}
                           <Link
                             to="/hunter/settings"
                             className="px-3 py-2 text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-100"
-                            title="Email Settings"
+                            title="Manage templates & signature"
                           >
                             <Cog6ToothIcon className="w-5 h-5" />
                           </Link>
