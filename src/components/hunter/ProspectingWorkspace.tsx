@@ -1,8 +1,8 @@
 // Prospecting Workspace - Full prospecting command center
-// Shows follow-ups due with contact details panel for quick action
+// Shows follow-ups due with contact slide-out drawer for quick action
 // src/components/hunter/ProspectingWorkspace.tsx
 
-import { useEffect, useState, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
+import { useEffect, useState, useCallback, useMemo, lazy, Suspense } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
@@ -12,25 +12,23 @@ import {
   EnvelopeIcon,
   ChatBubbleLeftIcon,
   CalendarDaysIcon,
-  ExclamationTriangleIcon,
   CheckCircleIcon,
   CheckIcon,
   XMarkIcon,
   ArrowPathIcon,
   UserGroupIcon,
   PencilIcon,
-  ChevronRightIcon,
   SparklesIcon,
   BuildingOffice2Icon,
   MapPinIcon,
   PaperAirplaneIcon,
-  ArrowUturnLeftIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   DocumentTextIcon,
   CalendarIcon,
   Cog6ToothIcon,
-  PaperClipIcon
+  PaperClipIcon,
+  GlobeAltIcon
 } from '@heroicons/react/24/outline';
 
 // Lazy load ReactQuill for email compose
@@ -197,7 +195,8 @@ export default function ProspectingWorkspace() {
   const [overdueFollowUps, setOverdueFollowUps] = useState<FollowUpTask[]>([]);
   const [newHunterLeads, setNewHunterLeads] = useState<NewHunterLead[]>([]);
 
-  // Selected task and contact panel
+  // Drawer state
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<FollowUpTask | null>(null);
   const [selectedContact, setSelectedContact] = useState<ContactDetails | null>(null);
   const [editingContact, setEditingContact] = useState(false);
@@ -216,8 +215,8 @@ export default function ProspectingWorkspace() {
   const [newNoteText, setNewNoteText] = useState('');
   const [addingNote, setAddingNote] = useState(false);
 
-  // Email compose
-  const [showEmailCompose, setShowEmailCompose] = useState(false);
+  // Email compose modal
+  const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [emailSubject, setEmailSubject] = useState('');
@@ -240,7 +239,6 @@ export default function ProspectingWorkspace() {
   // Multi-select and date change
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [editingDateTaskId, setEditingDateTaskId] = useState<string | null>(null);
-  const [showBulkDatePicker, setShowBulkDatePicker] = useState(false);
   const [bulkNewDate, setBulkNewDate] = useState('');
 
   // ============================================================================
@@ -440,8 +438,8 @@ export default function ProspectingWorkspace() {
   const handleTaskSelect = (task: FollowUpTask) => {
     setSelectedTask(task);
     setEditingContact(false);
-    setShowEmailCompose(false);
     setShowActivityNoteInput(null);
+    setDrawerOpen(true);
     if (task.contact_id) {
       loadContactDetails(task.contact_id);
     } else if (task.contact?.id) {
@@ -450,6 +448,15 @@ export default function ProspectingWorkspace() {
       setSelectedContact(null);
       setActivityFeed([]);
     }
+  };
+
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    setTimeout(() => {
+      setSelectedTask(null);
+      setSelectedContact(null);
+      setActivityFeed([]);
+    }, 300); // Wait for animation
   };
 
   // ============================================================================
@@ -565,6 +572,19 @@ export default function ProspectingWorkspace() {
   // ============================================================================
   // Email Sending
   // ============================================================================
+
+  const openEmailModal = () => {
+    if (!selectedContact) return;
+    setEmailSubject(`Following up - ${selectedContact.company || `${selectedContact.first_name} ${selectedContact.last_name}`}`);
+    let initialBody = `<p>Hi ${selectedContact.first_name || 'there'},</p><p><br></p><p><br></p><p>Best regards</p>`;
+    if (emailSignature?.signature_html) {
+      initialBody += '<br>' + emailSignature.signature_html;
+    }
+    setEmailBody(initialBody);
+    setEmailAttachments([]);
+    setSelectedTemplate('');
+    setShowEmailModal(true);
+  };
 
   const handleTemplateSelect = (templateId: string) => {
     setSelectedTemplate(templateId);
@@ -691,15 +711,15 @@ export default function ProspectingWorkspace() {
 
       if (outreachError) throw outreachError;
 
-      // Send via Gmail (attachments currently not supported by edge function)
+      // Send via Gmail
       const response = await supabase.functions.invoke('hunter-send-outreach', {
         body: {
           outreach_id: outreach.id,
           user_email: user.email,
           to: [selectedContact.email],
           subject: emailSubject,
-          body_html: emailBody, // Already HTML from ReactQuill
-          body_text: emailBody.replace(/<[^>]*>/g, ''), // Strip HTML tags for plain text
+          body_html: emailBody,
+          body_text: emailBody.replace(/<[^>]*>/g, ''),
           attachments: emailAttachments.length > 0 ? emailAttachments : undefined
         }
       });
@@ -709,7 +729,7 @@ export default function ProspectingWorkspace() {
       // Log as email activity
       await logActivity('email', `Sent: "${emailSubject}"`);
 
-      setShowEmailCompose(false);
+      setShowEmailModal(false);
       setEmailSubject('');
       setEmailBody('');
       setSelectedTemplate('');
@@ -746,9 +766,7 @@ export default function ProspectingWorkspace() {
 
         fetchData();
         if (selectedTask?.id === taskId) {
-          setSelectedTask(null);
-          setSelectedContact(null);
-          setActivityFeed([]);
+          closeDrawer();
         }
       }
     } catch (err) {
@@ -784,7 +802,6 @@ export default function ProspectingWorkspace() {
         .in('id', Array.from(selectedTaskIds));
 
       setSelectedTaskIds(new Set());
-      setShowBulkDatePicker(false);
       setBulkNewDate('');
       fetchData();
     } catch (err) {
@@ -951,110 +968,182 @@ export default function ProspectingWorkspace() {
   }
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-220px)]">
-      {/* Left side: Task lists - narrower */}
-      <div className="w-[360px] flex-shrink-0 space-y-4 overflow-y-auto">
-        {/* Stats Row - more compact */}
-        <div className="grid grid-cols-3 gap-2">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 text-center">
-            <p className="text-xl font-bold text-blue-600">{followUpsDue.length}</p>
-            <p className="text-xs text-gray-500">Today</p>
+    <div className="h-[calc(100vh-220px)] relative">
+      {/* Main Content Area - Full Width */}
+      <div className="h-full">
+        {/* Stats Row */}
+        <div className="grid grid-cols-4 gap-4 mb-4">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <p className="text-3xl font-bold text-blue-600">{followUpsDue.length}</p>
+            <p className="text-sm text-gray-500">Due Today</p>
           </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 text-center">
-            <p className="text-xl font-bold text-red-600">{overdueFollowUps.length}</p>
-            <p className="text-xs text-gray-500">Overdue</p>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <p className="text-3xl font-bold text-red-600">{overdueFollowUps.length}</p>
+            <p className="text-sm text-gray-500">Overdue</p>
           </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 text-center">
-            <p className="text-xl font-bold text-orange-600">{newHunterLeads.length}</p>
-            <p className="text-xs text-gray-500">Leads</p>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <p className="text-3xl font-bold text-green-600">{overdueFollowUps.length + followUpsDue.length}</p>
+            <p className="text-sm text-gray-500">Total Tasks</p>
+          </div>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <p className="text-3xl font-bold text-orange-600">{newHunterLeads.length}</p>
+            <p className="text-sm text-gray-500">New Leads</p>
           </div>
         </div>
 
         {/* Action buttons row */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 mb-4">
           <button
             onClick={() => setShowNewFollowUpModal(true)}
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-sm"
+            className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
           >
-            <CalendarDaysIcon className="w-4 h-4" />
+            <CalendarDaysIcon className="w-5 h-5" />
             New Follow-up
           </button>
           <button
             onClick={fetchData}
-            className="px-3 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
+            className="px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-2"
           >
-            <ArrowPathIcon className="w-4 h-4 text-gray-500" />
+            <ArrowPathIcon className="w-5 h-5 text-gray-500" />
+            Refresh
           </button>
         </div>
 
-        {/* Combined Task List - Due Today + Overdue */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 flex flex-col min-h-0">
-          <div className="px-3 py-2 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-            <h3 className="font-medium text-gray-900 text-sm flex items-center gap-2">
-              <CalendarDaysIcon className="w-4 h-4 text-orange-600" />
-              Follow-ups ({overdueFollowUps.length + followUpsDue.length})
-            </h3>
-            {(overdueFollowUps.length + followUpsDue.length) > 0 && (
-              <button
-                onClick={() => {
-                  const allTasks = [...overdueFollowUps, ...followUpsDue];
-                  toggleSelectAll(allTasks, !allTasks.every(t => selectedTaskIds.has(t.id)));
-                }}
-                className="text-xs text-orange-600 hover:text-orange-800"
-              >
-                {[...overdueFollowUps, ...followUpsDue].every(t => selectedTaskIds.has(t.id)) ? 'Deselect All' : 'Select All'}
-              </button>
-            )}
-          </div>
-
-          {/* Bulk date change bar - shows when tasks selected */}
-          {selectedTaskIds.size > 0 && (
-            <div className="px-3 py-2 bg-orange-50 border-b border-orange-200 flex items-center gap-2">
-              <span className="text-sm text-orange-800 font-medium">{selectedTaskIds.size} selected</span>
-              <div className="flex-1" />
-              <input
-                type="date"
-                value={bulkNewDate}
-                onChange={(e) => setBulkNewDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-                className="text-sm border border-orange-300 rounded px-2 py-1"
-              />
-              <button
-                onClick={bulkUpdateDates}
-                disabled={!bulkNewDate}
-                className="text-sm px-3 py-1 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50"
-              >
-                Move to Date
-              </button>
-              <button
-                onClick={() => setSelectedTaskIds(new Set())}
-                className="text-sm text-gray-500 hover:text-gray-700"
-              >
-                Cancel
-              </button>
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-3 gap-4 h-[calc(100%-140px)]">
+          {/* Task List Column */}
+          <div className="col-span-2 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <CalendarDaysIcon className="w-5 h-5 text-orange-600" />
+                Follow-ups ({overdueFollowUps.length + followUpsDue.length})
+              </h3>
+              {(overdueFollowUps.length + followUpsDue.length) > 0 && (
+                <button
+                  onClick={() => {
+                    const allTasks = [...overdueFollowUps, ...followUpsDue];
+                    toggleSelectAll(allTasks, !allTasks.every(t => selectedTaskIds.has(t.id)));
+                  }}
+                  className="text-sm text-orange-600 hover:text-orange-800"
+                >
+                  {[...overdueFollowUps, ...followUpsDue].every(t => selectedTaskIds.has(t.id)) ? 'Deselect All' : 'Select All'}
+                </button>
+              )}
             </div>
-          )}
 
-          <div className="divide-y divide-gray-100 flex-1 overflow-y-auto">
-            {(overdueFollowUps.length + followUpsDue.length) === 0 ? (
-              <div className="p-4 text-center text-gray-500 text-sm">
-                <CheckCircleIcon className="w-8 h-8 mx-auto text-green-400 mb-1" />
-                <p>All caught up!</p>
+            {/* Bulk date change bar */}
+            {selectedTaskIds.size > 0 && (
+              <div className="px-4 py-2 bg-orange-50 border-b border-orange-200 flex items-center gap-3">
+                <span className="text-sm text-orange-800 font-medium">{selectedTaskIds.size} selected</span>
+                <div className="flex-1" />
+                <input
+                  type="date"
+                  value={bulkNewDate}
+                  onChange={(e) => setBulkNewDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="text-sm border border-orange-300 rounded px-2 py-1"
+                />
+                <button
+                  onClick={bulkUpdateDates}
+                  disabled={!bulkNewDate}
+                  className="text-sm px-3 py-1 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50"
+                >
+                  Move to Date
+                </button>
+                <button
+                  onClick={() => setSelectedTaskIds(new Set())}
+                  className="text-sm text-gray-500 hover:text-gray-700"
+                >
+                  Cancel
+                </button>
               </div>
-            ) : (
-              <>
-                {/* Overdue tasks first - sorted oldest first */}
-                {overdueFollowUps.map((task) => {
-                  const daysOver = getDaysOverdue(task.activity_date);
-                  return (
+            )}
+
+            <div className="flex-1 overflow-y-auto">
+              {(overdueFollowUps.length + followUpsDue.length) === 0 ? (
+                <div className="p-8 text-center text-gray-500">
+                  <CheckCircleIcon className="w-12 h-12 mx-auto text-green-400 mb-2" />
+                  <p className="text-lg font-medium">All caught up!</p>
+                  <p className="text-sm mt-1">No follow-ups due</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {/* Overdue tasks */}
+                  {overdueFollowUps.map((task) => {
+                    const daysOver = getDaysOverdue(task.activity_date);
+                    return (
+                      <div
+                        key={task.id}
+                        onClick={() => handleTaskSelect(task)}
+                        className={`px-4 py-3 cursor-pointer transition-colors group ${
+                          selectedTask?.id === task.id ? 'bg-orange-50 border-l-4 border-orange-500' : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedTaskIds.has(task.id)}
+                            onChange={(e) => toggleTaskSelection(task.id, e as unknown as React.MouseEvent)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 text-orange-600 rounded border-gray-300 focus:ring-orange-500"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium text-gray-900 truncate">
+                                {getContactName(task.contact)}
+                              </p>
+                              <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-medium">
+                                {daysOver}d overdue
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-500 truncate">
+                              {task.contact?.company || task.target?.concept_name}
+                            </p>
+                          </div>
+                          {editingDateTaskId === task.id ? (
+                            <input
+                              type="date"
+                              defaultValue={task.activity_date.split('T')[0]}
+                              onChange={(e) => updateTaskDate(task.id, e.target.value)}
+                              onBlur={() => setEditingDateTaskId(null)}
+                              onClick={(e) => e.stopPropagation()}
+                              autoFocus
+                              className="text-sm border border-gray-300 rounded px-2 py-1"
+                            />
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingDateTaskId(task.id);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-gray-600 transition-opacity"
+                              title="Change date"
+                            >
+                              <CalendarIcon className="w-5 h-5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Today divider */}
+                  {overdueFollowUps.length > 0 && followUpsDue.length > 0 && (
+                    <div className="px-4 py-2 bg-blue-50 text-sm font-medium text-blue-700 border-y border-blue-100">
+                      Due Today
+                    </div>
+                  )}
+
+                  {/* Due today tasks */}
+                  {followUpsDue.map((task) => (
                     <div
                       key={task.id}
                       onClick={() => handleTaskSelect(task)}
-                      className={`px-3 py-2 cursor-pointer transition-colors group ${
-                        selectedTask?.id === task.id ? 'bg-orange-50 border-l-2 border-orange-500' : 'hover:bg-gray-50'
+                      className={`px-4 py-3 cursor-pointer transition-colors group ${
+                        selectedTask?.id === task.id ? 'bg-orange-50 border-l-4 border-orange-500' : 'hover:bg-gray-50'
                       }`}
                     >
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-3">
                         <input
                           type="checkbox"
                           checked={selectedTaskIds.has(task.id)}
@@ -1063,16 +1152,11 @@ export default function ProspectingWorkspace() {
                           className="w-4 h-4 text-orange-600 rounded border-gray-300 focus:ring-orange-500"
                         />
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium text-gray-900 text-sm truncate flex-1">
-                              {getContactName(task.contact)}
-                            </p>
-                            <span className="text-xs px-1.5 py-0.5 bg-red-100 text-red-700 rounded font-medium">
-                              {daysOver}d overdue
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-500 truncate">
-                            {task.contact?.company || task.target?.concept_name}
+                          <p className="font-medium text-gray-900 truncate">
+                            {getContactName(task.contact)}
+                          </p>
+                          <p className="text-sm text-gray-500 truncate">
+                            {task.contact?.company || task.target?.concept_name || 'No company'}
                           </p>
                         </div>
                         {editingDateTaskId === task.id ? (
@@ -1083,7 +1167,7 @@ export default function ProspectingWorkspace() {
                             onBlur={() => setEditingDateTaskId(null)}
                             onClick={(e) => e.stopPropagation()}
                             autoFocus
-                            className="text-xs border border-gray-300 rounded px-1 py-0.5"
+                            className="text-sm border border-gray-300 rounded px-2 py-1"
                           />
                         ) : (
                           <button
@@ -1091,151 +1175,88 @@ export default function ProspectingWorkspace() {
                               e.stopPropagation();
                               setEditingDateTaskId(task.id);
                             }}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-600 transition-opacity"
+                            className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-gray-600 transition-opacity"
                             title="Change date"
                           >
-                            <CalendarIcon className="w-4 h-4" />
+                            <CalendarIcon className="w-5 h-5" />
                           </button>
                         )}
                       </div>
                     </div>
-                  );
-                })}
-
-                {/* Today divider */}
-                {overdueFollowUps.length > 0 && followUpsDue.length > 0 && (
-                  <div className="px-3 py-1.5 bg-blue-50 text-xs font-medium text-blue-700 border-y border-blue-100">
-                    Due Today
-                  </div>
-                )}
-
-                {/* Due today tasks */}
-                {followUpsDue.map((task) => (
-                  <div
-                    key={task.id}
-                    onClick={() => handleTaskSelect(task)}
-                    className={`px-3 py-2 cursor-pointer transition-colors group ${
-                      selectedTask?.id === task.id ? 'bg-orange-50 border-l-2 border-orange-500' : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedTaskIds.has(task.id)}
-                        onChange={(e) => toggleTaskSelection(task.id, e as unknown as React.MouseEvent)}
-                        onClick={(e) => e.stopPropagation()}
-                        className="w-4 h-4 text-orange-600 rounded border-gray-300 focus:ring-orange-500"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-900 text-sm truncate">
-                          {getContactName(task.contact)}
-                        </p>
-                        <p className="text-xs text-gray-500 truncate">
-                          {task.contact?.company || task.target?.concept_name || 'No company'}
-                        </p>
-                      </div>
-                      {editingDateTaskId === task.id ? (
-                        <input
-                          type="date"
-                          defaultValue={task.activity_date.split('T')[0]}
-                          onChange={(e) => updateTaskDate(task.id, e.target.value)}
-                          onBlur={() => setEditingDateTaskId(null)}
-                          onClick={(e) => e.stopPropagation()}
-                          autoFocus
-                          className="text-xs border border-gray-300 rounded px-1 py-0.5"
-                        />
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingDateTaskId(task.id);
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-600 transition-opacity"
-                          title="Change date"
-                        >
-                          <CalendarIcon className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* New Leads - collapsible, at bottom */}
-        {newHunterLeads.length > 0 && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-shrink-0">
-            <div className="px-3 py-2 border-b border-gray-200 bg-orange-50">
-              <h3 className="font-medium text-gray-900 text-sm flex items-center gap-2">
-                <SparklesIcon className="w-4 h-4 text-orange-600" />
+          {/* New Leads Column */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-200 bg-orange-50">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <SparklesIcon className="w-5 h-5 text-orange-600" />
                 New Leads ({newHunterLeads.length})
               </h3>
             </div>
-            <div className="divide-y divide-gray-100 max-h-[120px] overflow-y-auto">
-              {newHunterLeads.map((lead) => (
-                <div
-                  key={lead.id}
-                  onClick={() => navigate(`/hunter/lead/${lead.id}`)}
-                  className="px-3 py-1.5 hover:bg-gray-50 cursor-pointer"
-                >
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium text-gray-900 text-sm truncate flex-1">{lead.concept_name}</p>
-                    <span className={`px-1.5 py-0.5 text-xs font-medium rounded border ${SIGNAL_COLORS[lead.signal_strength]}`}>
-                      {lead.signal_strength}
-                    </span>
-                  </div>
+            <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
+              {newHunterLeads.length === 0 ? (
+                <div className="p-6 text-center text-gray-500">
+                  <SparklesIcon className="w-10 h-10 mx-auto text-gray-300 mb-2" />
+                  <p className="text-sm">No new leads</p>
                 </div>
-              ))}
+              ) : (
+                newHunterLeads.map((lead) => (
+                  <div
+                    key={lead.id}
+                    onClick={() => navigate(`/hunter/lead/${lead.id}`)}
+                    className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-gray-900 truncate">{lead.concept_name}</p>
+                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${SIGNAL_COLORS[lead.signal_strength]}`}>
+                        {lead.signal_strength}
+                      </span>
+                    </div>
+                    {lead.industry_segment && (
+                      <p className="text-sm text-gray-500 truncate mt-1">{lead.industry_segment}</p>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Right side: Contact panel - wider */}
-      <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col">
+      {/* Slide-out Drawer Backdrop */}
+      {drawerOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-25 z-40 transition-opacity"
+          onClick={closeDrawer}
+        />
+      )}
+
+      {/* Slide-out Contact Drawer */}
+      <div
+        className={`fixed top-0 right-0 h-full w-[480px] bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${
+          drawerOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
         {selectedContact ? (
-          <>
-            {/* Contact Header */}
-            <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-xl font-semibold text-gray-900">
-                      {selectedContact.first_name} {selectedContact.last_name}
-                    </h2>
-                    {selectedContact.target && (
-                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${SIGNAL_COLORS[selectedContact.target.signal_strength]}`}>
-                        {selectedContact.target.signal_strength}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 mt-1 text-sm text-gray-600">
-                    {selectedContact.title && <span>{selectedContact.title}</span>}
-                    {selectedContact.title && selectedContact.company && <span>•</span>}
-                    {selectedContact.company && <span className="font-medium">{selectedContact.company}</span>}
-                  </div>
-                  {/* Quick contact info */}
-                  <div className="flex items-center gap-4 mt-2 text-sm">
-                    {selectedContact.email && (
-                      <a href={`mailto:${selectedContact.email}`} className="text-blue-600 hover:underline flex items-center gap-1">
-                        <EnvelopeIcon className="w-3 h-3" />
-                        {selectedContact.email}
-                      </a>
-                    )}
-                    {selectedContact.phone && (
-                      <a href={`tel:${selectedContact.phone}`} className="text-gray-600 hover:text-gray-900 flex items-center gap-1">
-                        <PhoneIcon className="w-3 h-3" />
-                        {selectedContact.phone}
-                      </a>
-                    )}
-                  </div>
-                </div>
+          <div className="h-full flex flex-col">
+            {/* Drawer Header - Contact Card */}
+            <div className="p-5 border-b border-gray-200 bg-gradient-to-br from-gray-50 to-white">
+              <div className="flex items-start justify-between mb-4">
+                <button
+                  onClick={closeDrawer}
+                  className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+                >
+                  <XMarkIcon className="w-5 h-5" />
+                </button>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setEditingContact(!editingContact)}
                     className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                    title="Edit contact"
                   >
                     <PencilIcon className="w-4 h-4" />
                   </button>
@@ -1245,100 +1266,31 @@ export default function ProspectingWorkspace() {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                      title="View LinkedIn"
                     >
                       <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
                       </svg>
                     </a>
                   )}
+                  {selectedContact.target?.website && (
+                    <a
+                      href={selectedContact.target.website.startsWith('http') ? selectedContact.target.website : `https://${selectedContact.target.website}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg"
+                      title="Visit website"
+                    >
+                      <GlobeAltIcon className="w-4 h-4" />
+                    </a>
+                  )}
                 </div>
               </div>
 
-              {/* Activity Buttons - Compact pills */}
-              {!editingContact && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {/* Outreach buttons - blue tones */}
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-gray-500 mr-1">Outreach:</span>
-                    {OUTREACH_TYPES.map((type) => (
-                      <button
-                        key={type}
-                        onClick={() => handleActivityClick(type)}
-                        disabled={!!loggingActivity}
-                        className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors ${
-                          showActivityNoteInput === type
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200'
-                        } disabled:opacity-50`}
-                      >
-                        <ActivityIcon type={type} className="w-3 h-3" />
-                        {ACTIVITY_CONFIG[type].label}
-                      </button>
-                    ))}
-                  </div>
-                  {/* Connection buttons - green tones */}
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-gray-500 mr-1">Connect:</span>
-                    {CONNECTION_TYPES.map((type) => (
-                      <button
-                        key={type}
-                        onClick={() => handleActivityClick(type)}
-                        disabled={!!loggingActivity}
-                        className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors ${
-                          showActivityNoteInput === type
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
-                        } disabled:opacity-50`}
-                      >
-                        <ActivityIcon type={type} className="w-3 h-3" />
-                        {ACTIVITY_CONFIG[type].label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Activity note input - shows when button is clicked */}
-              {showActivityNoteInput && (
-                <div className="mt-3 flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={activityNote}
-                    onChange={(e) => setActivityNote(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        logActivity(showActivityNoteInput, activityNote);
-                      } else if (e.key === 'Escape') {
-                        setShowActivityNoteInput(null);
-                      }
-                    }}
-                    placeholder={`Add note for ${ACTIVITY_CONFIG[showActivityNoteInput].label}... (Enter to log, Esc to cancel)`}
-                    className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                    autoFocus
-                  />
-                  <button
-                    onClick={() => logActivity(showActivityNoteInput, activityNote)}
-                    disabled={!!loggingActivity}
-                    className="px-3 py-1.5 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
-                  >
-                    {loggingActivity ? 'Logging...' : 'Log'}
-                  </button>
-                  <button
-                    onClick={() => setShowActivityNoteInput(null)}
-                    className="p-1.5 text-gray-400 hover:text-gray-600"
-                  >
-                    <XMarkIcon className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Main content area */}
-            <div className="flex-1 overflow-hidden flex flex-col">
               {editingContact ? (
                 /* Edit Form */
-                <div className="p-4 space-y-3 overflow-y-auto">
-                  <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
                     <input
                       type="text"
                       placeholder="First name"
@@ -1375,7 +1327,7 @@ export default function ProspectingWorkspace() {
                     onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
                   />
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2">
                     <input
                       type="tel"
                       placeholder="Phone"
@@ -1414,284 +1366,404 @@ export default function ProspectingWorkspace() {
                   </div>
                 </div>
               ) : (
+                /* Contact Display */
                 <>
-                  {/* Email Compose Section - Expandable */}
-                  <div className="border-b border-gray-200">
-                    <button
-                      onClick={() => {
-                        setShowEmailCompose(!showEmailCompose);
-                        if (!showEmailCompose && selectedContact) {
-                          setEmailSubject(`Following up - ${selectedContact.company || `${selectedContact.first_name} ${selectedContact.last_name}`}`);
-                          // Initialize with greeting and signature
-                          let initialBody = `<p>Hi ${selectedContact.first_name || 'there'},</p><p><br></p><p><br></p><p>Best regards</p>`;
-                          if (emailSignature?.signature_html) {
-                            initialBody += '<br>' + emailSignature.signature_html;
-                          }
-                          setEmailBody(initialBody);
-                          setEmailAttachments([]);
-                        }
-                      }}
-                      className="w-full px-4 py-2 flex items-center justify-between text-sm font-medium text-gray-700 hover:bg-gray-50"
-                    >
-                      <div className="flex items-center gap-2">
-                        <PaperAirplaneIcon className="w-4 h-4 text-blue-600" />
-                        Compose Email
-                      </div>
-                      {showEmailCompose ? (
-                        <ChevronUpIcon className="w-4 h-4" />
-                      ) : (
-                        <ChevronDownIcon className="w-4 h-4" />
-                      )}
-                    </button>
-
-                    {showEmailCompose && (
-                      <div className="p-4 border-t border-gray-100 bg-gray-50 space-y-3">
-                        {/* Template selector + Settings link */}
-                        <div className="flex gap-2">
-                          {emailTemplates.length > 0 ? (
-                            <select
-                              value={selectedTemplate}
-                              onChange={(e) => handleTemplateSelect(e.target.value)}
-                              className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg"
-                            >
-                              <option value="">Select a template...</option>
-                              {emailTemplates.map((t) => (
-                                <option key={t.id} value={t.id}>
-                                  {t.name}{t.category ? ` (${t.category})` : ''}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <Link
-                              to="/hunter/settings"
-                              className="flex-1 px-3 py-2 text-sm text-gray-500 border border-gray-300 border-dashed rounded-lg hover:bg-gray-50 text-center"
-                            >
-                              + Create email templates
-                            </Link>
-                          )}
-                          <Link
-                            to="/hunter/settings"
-                            className="px-3 py-2 text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-100"
-                            title="Manage templates & signature"
-                          >
-                            <Cog6ToothIcon className="w-5 h-5" />
-                          </Link>
-                        </div>
-
-                        {/* Subject */}
-                        <input
-                          type="text"
-                          value={emailSubject}
-                          onChange={(e) => setEmailSubject(e.target.value)}
-                          placeholder="Subject"
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
-                        />
-
-                        {/* Rich Text Editor */}
-                        <div className="border border-gray-300 rounded-lg overflow-hidden bg-white">
-                          <Suspense fallback={<div className="h-48 flex items-center justify-center text-gray-400">Loading editor...</div>}>
-                            <ReactQuill
-                              theme="snow"
-                              value={emailBody}
-                              onChange={setEmailBody}
-                              modules={quillModules}
-                              formats={quillFormats}
-                              style={{ height: '200px' }}
-                            />
-                          </Suspense>
-                        </div>
-
-                        {/* Attachments */}
-                        <div className="flex items-center gap-2 pt-2">
-                          <label className="cursor-pointer px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100 flex items-center gap-1">
-                            <input
-                              type="file"
-                              multiple
-                              onChange={handleFileAttachment}
-                              className="sr-only"
-                            />
-                            <PaperClipIcon className="w-4 h-4" />
-                            Attach
-                          </label>
-                          {emailAttachments.length > 0 && (
-                            <div className="flex flex-wrap gap-1 flex-1">
-                              {emailAttachments.map((att, idx) => (
-                                <span
-                                  key={idx}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs"
-                                >
-                                  {att.filename}
-                                  <button
-                                    onClick={() => removeAttachment(idx)}
-                                    className="text-gray-400 hover:text-red-500"
-                                  >
-                                    <XMarkIcon className="w-3 h-3" />
-                                  </button>
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Send buttons */}
-                        <div className="flex justify-between items-center pt-2">
-                          <div className="text-xs text-gray-400">
-                            {!emailSignature && (
-                              <Link to="/hunter/settings" className="text-blue-600 hover:underline">
-                                Add email signature
-                              </Link>
-                            )}
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => {
-                                setShowEmailCompose(false);
-                                setEmailAttachments([]);
-                              }}
-                              className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={sendEmail}
-                              disabled={sendingEmail || !emailSubject.trim() || !emailBody.trim() || !selectedContact?.email}
-                              className="flex items-center gap-2 px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                            >
-                              {sendingEmail ? (
-                                <>
-                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                                  Sending...
-                                </>
-                              ) : (
-                                <>
-                                  <PaperAirplaneIcon className="w-4 h-4" />
-                                  Send via Gmail
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white text-xl font-semibold">
+                      {(selectedContact.first_name?.[0] || '?').toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h2 className="text-xl font-bold text-gray-900 truncate">
+                        {selectedContact.first_name} {selectedContact.last_name}
+                      </h2>
+                      <p className="text-sm text-gray-600 truncate">
+                        {selectedContact.title}{selectedContact.title && selectedContact.company ? ' at ' : ''}{selectedContact.company}
+                      </p>
+                    </div>
+                    {selectedContact.target && (
+                      <span className={`px-2 py-1 text-xs font-bold rounded-full border ${SIGNAL_COLORS[selectedContact.target.signal_strength]}`}>
+                        {selectedContact.target.signal_strength}
+                      </span>
                     )}
                   </div>
 
-                  {/* Unified Activity Feed */}
-                  <div className="flex-1 overflow-y-auto">
-                    <div className="p-3 border-b border-gray-100 bg-gray-50 sticky top-0">
-                      <p className="text-xs font-medium text-gray-500 uppercase">Activity & Notes</p>
-                    </div>
-
-                    {loadingFeed ? (
-                      <div className="p-4 text-center">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-600 mx-auto"></div>
-                      </div>
-                    ) : activityFeed.length === 0 ? (
-                      <div className="p-6 text-center text-gray-400">
-                        <DocumentTextIcon className="w-10 h-10 mx-auto mb-2" />
-                        <p className="text-sm">No activity yet</p>
-                        <p className="text-xs mt-1">Log an activity or add a note to get started</p>
-                      </div>
-                    ) : (
-                      <div className="divide-y divide-gray-100">
-                        {activityFeed.map((item) => (
-                          <div key={item.id} className="p-3 hover:bg-gray-50 group">
-                            <div className="flex items-start gap-3">
-                              <div className={`p-1.5 rounded-full ${
-                                item.type === 'note' ? 'bg-gray-100 text-gray-600' :
-                                OUTREACH_TYPES.includes(item.type as OutreachType) ? 'bg-blue-100 text-blue-600' :
-                                'bg-emerald-100 text-emerald-600'
-                              }`}>
-                                <ActivityIcon type={item.type} className="w-4 h-4" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center justify-between">
-                                  <span className={`text-xs font-medium ${
-                                    item.type === 'note' ? 'text-gray-500' :
-                                    OUTREACH_TYPES.includes(item.type as OutreachType) ? 'text-blue-600' :
-                                    'text-emerald-600'
-                                  }`}>
-                                    {item.type === 'note' ? 'Note' : ACTIVITY_CONFIG[item.type as ActivityType]?.label || item.type}
-                                  </span>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
-                                    <button
-                                      onClick={() => deleteActivityItem(item)}
-                                      className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500"
-                                    >
-                                      <XMarkIcon className="w-3 h-3" />
-                                    </button>
-                                  </div>
-                                </div>
-                                {item.email_subject && (
-                                  <p className="text-sm text-gray-700 font-medium mt-0.5">{item.email_subject}</p>
-                                )}
-                                {item.content && (
-                                  <p className="text-sm text-gray-700 whitespace-pre-wrap mt-0.5">{item.content}</p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
+                  {/* Contact Info Grid */}
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {selectedContact.email && (
+                      <a href={`mailto:${selectedContact.email}`} className="flex items-center gap-2 text-gray-600 hover:text-blue-600 truncate">
+                        <EnvelopeIcon className="w-4 h-4 flex-shrink-0" />
+                        <span className="truncate">{selectedContact.email}</span>
+                      </a>
+                    )}
+                    {selectedContact.phone && (
+                      <a href={`tel:${selectedContact.phone}`} className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                        <PhoneIcon className="w-4 h-4 flex-shrink-0" />
+                        {selectedContact.phone}
+                      </a>
+                    )}
+                    {selectedContact.mobile_phone && (
+                      <a href={`tel:${selectedContact.mobile_phone}`} className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                        <PhoneIcon className="w-4 h-4 flex-shrink-0" />
+                        {selectedContact.mobile_phone} (M)
+                      </a>
+                    )}
+                    {(selectedContact.mailing_city || selectedContact.mailing_state) && (
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <MapPinIcon className="w-4 h-4 flex-shrink-0" />
+                        {[selectedContact.mailing_city, selectedContact.mailing_state].filter(Boolean).join(', ')}
                       </div>
                     )}
                   </div>
-
-                  {/* Add Note Input - always visible at bottom */}
-                  <div className="p-3 border-t border-gray-200 bg-gray-50">
-                    <div className="flex items-end gap-2">
-                      <textarea
-                        value={newNoteText}
-                        onChange={(e) => setNewNoteText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                            e.preventDefault();
-                            addNote();
-                          }
-                        }}
-                        placeholder="Add a note... (Cmd+Enter to save)"
-                        rows={2}
-                        className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 resize-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                      />
-                      <button
-                        onClick={addNote}
-                        disabled={!newNoteText.trim() || addingNote}
-                        className="p-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50"
-                      >
-                        {addingNote ? (
-                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <PaperAirplaneIcon className="w-5 h-5" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Complete Task Button */}
-                  {selectedTask && (
-                    <div className="p-3 border-t border-gray-200">
-                      <button
-                        onClick={() => completeTask(selectedTask.id)}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                      >
-                        <CheckIcon className="w-5 h-5" />
-                        Complete Task
-                      </button>
-                    </div>
-                  )}
                 </>
               )}
             </div>
-          </>
+
+            {!editingContact && (
+              <>
+                {/* Quick Actions */}
+                <div className="p-4 border-b border-gray-200 bg-gray-50">
+                  <div className="flex flex-wrap gap-2">
+                    {/* Email Button - Primary Action */}
+                    <button
+                      onClick={openEmailModal}
+                      disabled={!selectedContact.email}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <EnvelopeIcon className="w-4 h-4" />
+                      Email
+                    </button>
+
+                    {/* Log Activity Buttons */}
+                    {OUTREACH_TYPES.filter(t => t !== 'email').map((type) => (
+                      <button
+                        key={type}
+                        onClick={() => handleActivityClick(type)}
+                        disabled={!!loggingActivity}
+                        className={`flex items-center gap-1 px-3 py-2 text-sm rounded-lg transition-colors ${
+                          showActivityNoteInput === type
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                        } disabled:opacity-50`}
+                      >
+                        <ActivityIcon type={type} className="w-4 h-4" />
+                        {ACTIVITY_CONFIG[type].label}
+                      </button>
+                    ))}
+                    {CONNECTION_TYPES.map((type) => (
+                      <button
+                        key={type}
+                        onClick={() => handleActivityClick(type)}
+                        disabled={!!loggingActivity}
+                        className={`flex items-center gap-1 px-3 py-2 text-sm rounded-lg transition-colors ${
+                          showActivityNoteInput === type
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                        } disabled:opacity-50`}
+                      >
+                        <ActivityIcon type={type} className="w-4 h-4" />
+                        {ACTIVITY_CONFIG[type].label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Activity note input */}
+                  {showActivityNoteInput && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={activityNote}
+                        onChange={(e) => setActivityNote(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            logActivity(showActivityNoteInput, activityNote);
+                          } else if (e.key === 'Escape') {
+                            setShowActivityNoteInput(null);
+                          }
+                        }}
+                        placeholder={`Add note for ${ACTIVITY_CONFIG[showActivityNoteInput].label}... (Enter to log)`}
+                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => logActivity(showActivityNoteInput, activityNote)}
+                        disabled={!!loggingActivity}
+                        className="px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                      >
+                        {loggingActivity ? 'Logging...' : 'Log'}
+                      </button>
+                      <button
+                        onClick={() => setShowActivityNoteInput(null)}
+                        className="p-2 text-gray-400 hover:text-gray-600"
+                      >
+                        <XMarkIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Activity Timeline */}
+                <div className="flex-1 overflow-y-auto">
+                  <div className="p-3 border-b border-gray-100 bg-gray-50 sticky top-0 z-10">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Activity Timeline</p>
+                  </div>
+
+                  {loadingFeed ? (
+                    <div className="p-8 text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto"></div>
+                    </div>
+                  ) : activityFeed.length === 0 ? (
+                    <div className="p-8 text-center text-gray-400">
+                      <DocumentTextIcon className="w-12 h-12 mx-auto mb-2" />
+                      <p className="font-medium">No activity yet</p>
+                      <p className="text-sm mt-1">Log an activity or add a note</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-100">
+                      {activityFeed.map((item) => (
+                        <div key={item.id} className="p-4 hover:bg-gray-50 group">
+                          <div className="flex items-start gap-3">
+                            <div className={`p-2 rounded-full ${
+                              item.type === 'note' ? 'bg-gray-100 text-gray-600' :
+                              OUTREACH_TYPES.includes(item.type as OutreachType) ? 'bg-blue-100 text-blue-600' :
+                              'bg-emerald-100 text-emerald-600'
+                            }`}>
+                              <ActivityIcon type={item.type} className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between">
+                                <span className={`text-sm font-medium ${
+                                  item.type === 'note' ? 'text-gray-700' :
+                                  OUTREACH_TYPES.includes(item.type as OutreachType) ? 'text-blue-700' :
+                                  'text-emerald-700'
+                                }`}>
+                                  {item.type === 'note' ? 'Note' : ACTIVITY_CONFIG[item.type as ActivityType]?.label || item.type}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
+                                  <button
+                                    onClick={() => deleteActivityItem(item)}
+                                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity"
+                                  >
+                                    <XMarkIcon className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                              {item.email_subject && (
+                                <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject}</p>
+                              )}
+                              {item.content && (
+                                <p className="text-sm text-gray-600 whitespace-pre-wrap mt-1">{item.content}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Add Note Input */}
+                <div className="p-4 border-t border-gray-200 bg-white">
+                  <div className="flex items-end gap-2">
+                    <textarea
+                      value={newNoteText}
+                      onChange={(e) => setNewNoteText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                          e.preventDefault();
+                          addNote();
+                        }
+                      }}
+                      placeholder="Add a note... (Cmd+Enter to save)"
+                      rows={2}
+                      className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 resize-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    />
+                    <button
+                      onClick={addNote}
+                      disabled={!newNoteText.trim() || addingNote}
+                      className="p-2.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                    >
+                      {addingNote ? (
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <PaperAirplaneIcon className="w-5 h-5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Complete Task Button */}
+                {selectedTask && (
+                  <div className="p-4 border-t border-gray-200 bg-gray-50">
+                    <button
+                      onClick={() => completeTask(selectedTask.id)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+                    >
+                      <CheckIcon className="w-5 h-5" />
+                      Complete Task
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-gray-500">
+          <div className="h-full flex flex-col items-center justify-center p-8 text-gray-500">
             <BuildingOffice2Icon className="w-16 h-16 text-gray-300 mb-4" />
-            <p className="text-lg font-medium text-gray-700">Select a follow-up</p>
-            <p className="text-sm text-center mt-2">
-              Click on a task from the left to view contact details and log activities
-            </p>
+            <p className="text-lg font-medium text-gray-700">No contact selected</p>
           </div>
         )}
       </div>
+
+      {/* Email Compose Modal */}
+      {showEmailModal && selectedContact && (
+        <>
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-[60]" onClick={() => setShowEmailModal(false)} />
+          <div className="fixed inset-4 md:inset-x-20 md:inset-y-8 bg-white rounded-xl shadow-2xl z-[60] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Compose Email</h3>
+                <p className="text-sm text-gray-500">
+                  To: {selectedContact.first_name} {selectedContact.last_name} &lt;{selectedContact.email}&gt;
+                </p>
+              </div>
+              <button
+                onClick={() => setShowEmailModal(false)}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {/* Template selector + Settings link */}
+              <div className="flex gap-2">
+                {emailTemplates.length > 0 ? (
+                  <select
+                    value={selectedTemplate}
+                    onChange={(e) => handleTemplateSelect(e.target.value)}
+                    className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                  >
+                    <option value="">Select a template...</option>
+                    {emailTemplates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}{t.category ? ` (${t.category})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Link
+                    to="/hunter/settings"
+                    className="flex-1 px-3 py-2 text-sm text-gray-500 border border-gray-300 border-dashed rounded-lg hover:bg-gray-50 text-center"
+                  >
+                    + Create email templates
+                  </Link>
+                )}
+                <Link
+                  to="/hunter/settings"
+                  className="px-3 py-2 text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-100"
+                  title="Manage templates & signature"
+                >
+                  <Cog6ToothIcon className="w-5 h-5" />
+                </Link>
+              </div>
+
+              {/* Subject */}
+              <input
+                type="text"
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+                placeholder="Subject"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-base"
+              />
+
+              {/* Rich Text Editor */}
+              <div className="border border-gray-300 rounded-lg overflow-hidden bg-white" style={{ minHeight: '300px' }}>
+                <Suspense fallback={<div className="h-72 flex items-center justify-center text-gray-400">Loading editor...</div>}>
+                  <ReactQuill
+                    theme="snow"
+                    value={emailBody}
+                    onChange={setEmailBody}
+                    modules={quillModules}
+                    formats={quillFormats}
+                    style={{ height: '250px' }}
+                  />
+                </Suspense>
+              </div>
+
+              {/* Attachments */}
+              <div className="flex items-center gap-2">
+                <label className="cursor-pointer px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100 flex items-center gap-2">
+                  <input
+                    type="file"
+                    multiple
+                    onChange={handleFileAttachment}
+                    className="sr-only"
+                  />
+                  <PaperClipIcon className="w-4 h-4" />
+                  Attach Files
+                </label>
+                {emailAttachments.length > 0 && (
+                  <div className="flex flex-wrap gap-2 flex-1">
+                    {emailAttachments.map((att, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-600 rounded text-sm"
+                      >
+                        {att.filename}
+                        <button
+                          onClick={() => removeAttachment(idx)}
+                          className="text-gray-400 hover:text-red-500"
+                        >
+                          <XMarkIcon className="w-4 h-4" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
+              <div className="text-sm text-gray-500">
+                {!emailSignature && (
+                  <Link to="/hunter/settings" className="text-blue-600 hover:underline">
+                    Add email signature
+                  </Link>
+                )}
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowEmailModal(false)}
+                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={sendEmail}
+                  disabled={sendingEmail || !emailSubject.trim() || !emailBody.replace(/<[^>]*>/g, '').trim() || !selectedContact?.email}
+                  className="flex items-center gap-2 px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {sendingEmail ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <PaperAirplaneIcon className="w-4 h-4" />
+                      Send via Gmail
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Follow-up Modal */}
       {selectedContact && (
