@@ -4,18 +4,102 @@
  * Searches ZoomInfo Person Search API to enrich contact data.
  * Returns potential matches for user review before applying changes.
  *
- * Required Supabase Secret: ZOOMINFO_API_KEY
+ * Required Supabase Secrets:
+ * - ZOOMINFO_CLIENT_ID: Your ZoomInfo client ID
+ * - ZOOMINFO_PRIVATE_KEY: Your ZoomInfo private key (PEM format)
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
+import { create, getNumericDate } from 'https://deno.land/x/djwt@v3.0.1/mod.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const ZOOMINFO_AUTH_URL = 'https://api.zoominfo.com/authenticate';
 const ZOOMINFO_API_URL = 'https://api.zoominfo.com/search/person';
+
+// Cache for ZoomInfo access token (valid for ~60 min)
+let cachedAccessToken: string | null = null;
+let tokenExpiresAt: number = 0;
+
+/**
+ * Get ZoomInfo access token using PKI authentication
+ */
+async function getZoomInfoAccessToken(clientId: string, privateKeyPem: string): Promise<string> {
+  // Return cached token if still valid (with 5 min buffer)
+  if (cachedAccessToken && Date.now() < tokenExpiresAt - 300000) {
+    return cachedAccessToken;
+  }
+
+  console.log('[ZoomInfo] Generating new access token via PKI auth');
+
+  // Import the private key
+  const privateKey = await crypto.subtle.importKey(
+    'pkcs8',
+    pemToArrayBuffer(privateKeyPem),
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  // Create JWT payload
+  const now = Math.floor(Date.now() / 1000);
+  const jwt = await create(
+    { alg: 'RS256', typ: 'JWT' },
+    {
+      aud: 'https://api.zoominfo.com',
+      iss: clientId,
+      iat: now,
+      exp: now + 300, // 5 minutes
+    },
+    privateKey
+  );
+
+  // Exchange JWT for access token
+  const authResponse = await fetch(ZOOMINFO_AUTH_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ client_id: clientId, id_token: jwt }),
+  });
+
+  if (!authResponse.ok) {
+    const errorText = await authResponse.text();
+    console.error('[ZoomInfo] Auth failed:', authResponse.status, errorText);
+    throw new Error(`ZoomInfo authentication failed: ${authResponse.status}`);
+  }
+
+  const authData = await authResponse.json();
+  cachedAccessToken = authData.jwt;
+  // Token is valid for 60 minutes, but we'll refresh at 55 min
+  tokenExpiresAt = Date.now() + 55 * 60 * 1000;
+
+  console.log('[ZoomInfo] Successfully obtained access token');
+  return cachedAccessToken!;
+}
+
+/**
+ * Convert PEM string to ArrayBuffer for crypto.subtle
+ */
+function pemToArrayBuffer(pem: string): ArrayBuffer {
+  // Remove PEM headers and whitespace
+  const base64 = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/, '')
+    .replace(/-----END PRIVATE KEY-----/, '')
+    .replace(/\s/g, '');
+
+  // Decode base64
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
 
 interface EnrichRequest {
   contact_id: string;
@@ -57,13 +141,18 @@ serve(async (req) => {
   }
 
   try {
-    const apiKey = Deno.env.get('ZOOMINFO_API_KEY');
-    if (!apiKey) {
+    const clientId = Deno.env.get('ZOOMINFO_CLIENT_ID');
+    const privateKey = Deno.env.get('ZOOMINFO_PRIVATE_KEY');
+
+    if (!clientId || !privateKey) {
       return new Response(
-        JSON.stringify({ error: 'ZoomInfo API key not configured' }),
+        JSON.stringify({ error: 'ZoomInfo credentials not configured. Need ZOOMINFO_CLIENT_ID and ZOOMINFO_PRIVATE_KEY.' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Get access token via PKI auth
+    const accessToken = await getZoomInfoAccessToken(clientId, privateKey);
 
     const request = await req.json() as EnrichRequest;
 
@@ -127,7 +216,7 @@ serve(async (req) => {
     const zoomInfoResponse = await fetch(ZOOMINFO_API_URL, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(searchParams),
