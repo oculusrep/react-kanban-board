@@ -183,12 +183,25 @@ const TaskDashboardPage: React.FC = () => {
         ?.filter(s => s.name?.toLowerCase() !== 'deferred')
         .map(s => s.id) || [];
 
+      // Get Prospecting task type ID to exclude from main task list
+      const { data: prospectingTaskType } = await supabase
+        .from('activity_task_type')
+        .select('id')
+        .eq('name', 'Prospecting')
+        .single();
+      const prospectingTaskTypeId = prospectingTaskType?.id;
+
       // Build base query
       let query = supabase
         .from('activity')
         .select('id, activity_date, status_id', { count: 'exact', head: false })
         .eq('activity_type_id', taskTypeData.id)
         .in('status_id', openStatusIds);
+
+      // Exclude Prospecting tasks - they have their own Hunter dashboard
+      if (prospectingTaskTypeId) {
+        query = query.neq('activity_task_type_id', prospectingTaskTypeId);
+      }
 
       // Apply owner filter
       if (filters.assignedTo === 'me' && currentUserId) {
@@ -298,6 +311,14 @@ const TaskDashboardPage: React.FC = () => {
 
       console.log(`Open status IDs (excluding Deferred):`, openStatusIds);
 
+      // Get Prospecting task type ID to exclude from main task list
+      const { data: prospectingTaskType } = await supabase
+        .from('activity_task_type')
+        .select('id')
+        .eq('name', 'Prospecting')
+        .single();
+      const prospectingTaskTypeId = prospectingTaskType?.id;
+
       // Build query based on card filter
       const PAGE_SIZE = 1000;
       const MAX_TASKS = 10000;
@@ -344,6 +365,11 @@ const TaskDashboardPage: React.FC = () => {
           query = query.not('owner_id', 'is', null);
         } else if (filters.assignedTo !== 'me') {
           query = query.eq('owner_id', filters.assignedTo);
+        }
+
+        // Exclude Prospecting tasks - they have their own Hunter dashboard
+        if (prospectingTaskTypeId) {
+          query = query.neq('activity_task_type_id', prospectingTaskTypeId);
         }
 
         // Apply filter based on active card
@@ -450,6 +476,14 @@ const TaskDashboardPage: React.FC = () => {
         currentUserId = currentUser?.id || null;
       }
 
+      // Get Prospecting task type ID to exclude from main task list
+      const { data: prospectingTaskType } = await supabase
+        .from('activity_task_type')
+        .select('id')
+        .eq('name', 'Prospecting')
+        .single();
+      const prospectingTaskTypeId = prospectingTaskType?.id;
+
       // Get status IDs once before the loop
       let statusIds: string[] | null = null;
       let isClosedStatusFilter = false;
@@ -529,6 +563,11 @@ const TaskDashboardPage: React.FC = () => {
         // Apply status filter using pre-fetched status IDs
         if (statusIds && statusIds.length > 0) {
           query = query.in('status_id', statusIds);
+        }
+
+        // Exclude Prospecting tasks - they have their own Hunter dashboard
+        if (prospectingTaskTypeId) {
+          query = query.neq('activity_task_type_id', prospectingTaskTypeId);
         }
 
         // For completed/closed tasks, ONLY include tasks with completed_at date
