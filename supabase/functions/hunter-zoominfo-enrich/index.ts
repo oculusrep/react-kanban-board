@@ -79,13 +79,16 @@ async function getZoomInfoAccessToken(clientId: string, privateKeyPem: string): 
 
     console.log('[ZoomInfo] JWT created, exchanging for access token');
 
-    // Exchange JWT for access token
+    // Exchange JWT for access token using PKI authentication
+    // ZoomInfo PKI auth sends credentials in headers, not body
     const authResponse = await fetch(ZOOMINFO_AUTH_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-network-client-id': clientId,
+        'x-network-client-secret': jwt,
       },
-      body: JSON.stringify({ client_id: clientId, id_token: jwt }),
+      body: JSON.stringify({}),
     });
 
     if (!authResponse.ok) {
