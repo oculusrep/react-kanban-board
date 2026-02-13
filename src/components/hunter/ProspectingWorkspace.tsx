@@ -1,5 +1,5 @@
 // Prospecting Workspace - Full prospecting command center
-// Shows follow-ups due with contact slide-out drawer for quick action
+// Shows call list with contact slide-out drawer for quick action
 // src/components/hunter/ProspectingWorkspace.tsx
 
 import { useEffect, useState, useCallback, useMemo, lazy, Suspense } from 'react';
@@ -22,13 +22,13 @@ import {
   BuildingOffice2Icon,
   MapPinIcon,
   PaperAirplaneIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
   DocumentTextIcon,
   CalendarIcon,
   Cog6ToothIcon,
   PaperClipIcon,
-  GlobeAltIcon
+  GlobeAltIcon,
+  ClipboardDocumentListIcon,
+  PlusCircleIcon
 } from '@heroicons/react/24/outline';
 
 // Lazy load ReactQuill for email compose
@@ -197,6 +197,7 @@ export default function ProspectingWorkspace() {
 
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<'activity' | 'emails'>('activity');
   const [selectedTask, setSelectedTask] = useState<FollowUpTask | null>(null);
   const [selectedContact, setSelectedContact] = useState<ContactDetails | null>(null);
   const [editingContact, setEditingContact] = useState(false);
@@ -210,6 +211,7 @@ export default function ProspectingWorkspace() {
   const [loggingActivity, setLoggingActivity] = useState<ActivityType | null>(null);
   const [activityNote, setActivityNote] = useState('');
   const [showActivityNoteInput, setShowActivityNoteInput] = useState<ActivityType | null>(null);
+  const [recentlyLogged, setRecentlyLogged] = useState<{ type: ActivityType; timestamp: number } | null>(null);
 
   // New note input
   const [newNoteText, setNewNoteText] = useState('');
@@ -499,6 +501,10 @@ export default function ProspectingWorkspace() {
           .update({ last_contacted_at: new Date().toISOString() })
           .eq('id', selectedContact.target_id);
       }
+
+      // Show success feedback
+      setRecentlyLogged({ type: activityType, timestamp: Date.now() });
+      setTimeout(() => setRecentlyLogged(null), 3000);
 
       setActivityNote('');
       setShowActivityNoteInput(null);
@@ -970,9 +976,9 @@ export default function ProspectingWorkspace() {
   return (
     <div className="h-[calc(100vh-220px)] relative">
       {/* Main Content Area - Full Width */}
-      <div className="h-full">
+      <div className="h-full flex flex-col">
         {/* Stats Row */}
-        <div className="grid grid-cols-4 gap-4 mb-4">
+        <div className="grid grid-cols-4 gap-4 mb-4 flex-shrink-0">
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
             <p className="text-3xl font-bold text-blue-600">{followUpsDue.length}</p>
             <p className="text-sm text-gray-500">Due Today</p>
@@ -992,13 +998,13 @@ export default function ProspectingWorkspace() {
         </div>
 
         {/* Action buttons row */}
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-4 flex-shrink-0">
           <button
             onClick={() => setShowNewFollowUpModal(true)}
             className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
           >
-            <CalendarDaysIcon className="w-5 h-5" />
-            New Follow-up
+            <PlusCircleIcon className="w-5 h-5" />
+            Schedule Task
           </button>
           <button
             onClick={fetchData}
@@ -1009,14 +1015,14 @@ export default function ProspectingWorkspace() {
           </button>
         </div>
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-3 gap-4 h-[calc(100%-140px)]">
-          {/* Task List Column */}
-          <div className="col-span-2 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+        {/* Main Content - Two Column Layout */}
+        <div className="flex gap-4 flex-1 min-h-0">
+          {/* Call List Column */}
+          <div className="flex-[2] bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col min-h-0">
+            <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between flex-shrink-0">
               <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                <CalendarDaysIcon className="w-5 h-5 text-orange-600" />
-                Follow-ups ({overdueFollowUps.length + followUpsDue.length})
+                <ClipboardDocumentListIcon className="w-5 h-5 text-orange-600" />
+                Call List ({overdueFollowUps.length + followUpsDue.length})
               </h3>
               {(overdueFollowUps.length + followUpsDue.length) > 0 && (
                 <button
@@ -1033,7 +1039,7 @@ export default function ProspectingWorkspace() {
 
             {/* Bulk date change bar */}
             {selectedTaskIds.size > 0 && (
-              <div className="px-4 py-2 bg-orange-50 border-b border-orange-200 flex items-center gap-3">
+              <div className="px-4 py-2 bg-orange-50 border-b border-orange-200 flex items-center gap-3 flex-shrink-0">
                 <span className="text-sm text-orange-800 font-medium">{selectedTaskIds.size} selected</span>
                 <div className="flex-1" />
                 <input
@@ -1059,12 +1065,13 @@ export default function ProspectingWorkspace() {
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto">
+            {/* Task list - scrollable */}
+            <div className="flex-1 overflow-y-auto min-h-0">
               {(overdueFollowUps.length + followUpsDue.length) === 0 ? (
                 <div className="p-8 text-center text-gray-500">
                   <CheckCircleIcon className="w-12 h-12 mx-auto text-green-400 mb-2" />
                   <p className="text-lg font-medium">All caught up!</p>
-                  <p className="text-sm mt-1">No follow-ups due</p>
+                  <p className="text-sm mt-1">No tasks due</p>
                 </div>
               ) : (
                 <div className="divide-y divide-gray-100">
@@ -1190,14 +1197,14 @@ export default function ProspectingWorkspace() {
           </div>
 
           {/* New Leads Column */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-200 bg-orange-50">
+          <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col min-h-0">
+            <div className="px-4 py-3 border-b border-gray-200 bg-orange-50 flex-shrink-0">
               <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                 <SparklesIcon className="w-5 h-5 text-orange-600" />
                 New Leads ({newHunterLeads.length})
               </h3>
             </div>
-            <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
+            <div className="flex-1 overflow-y-auto divide-y divide-gray-100 min-h-0">
               {newHunterLeads.length === 0 ? (
                 <div className="p-6 text-center text-gray-500">
                   <SparklesIcon className="w-10 h-10 mx-auto text-gray-300 mb-2" />
@@ -1235,9 +1242,9 @@ export default function ProspectingWorkspace() {
         />
       )}
 
-      {/* Slide-out Contact Drawer */}
+      {/* Slide-out Contact Drawer - 600px wide */}
       <div
-        className={`fixed top-0 right-0 h-full w-[480px] bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 right-0 h-full w-[600px] bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${
           drawerOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
@@ -1422,174 +1429,282 @@ export default function ProspectingWorkspace() {
               <>
                 {/* Quick Actions */}
                 <div className="p-4 border-b border-gray-200 bg-gray-50">
-                  <div className="flex flex-wrap gap-2">
-                    {/* Email Button - Primary Action */}
+                  {/* Success feedback toast */}
+                  {recentlyLogged && (
+                    <div className="mb-3 px-3 py-2 bg-green-100 border border-green-300 text-green-800 rounded-lg text-sm flex items-center gap-2 animate-pulse">
+                      <CheckCircleIcon className="w-4 h-4" />
+                      {ACTIVITY_CONFIG[recentlyLogged.type].label} logged successfully
+                    </div>
+                  )}
+
+                  {/* Send Email - Primary action with call to action */}
+                  <div className="mb-4">
                     <button
                       onClick={openEmailModal}
                       disabled={!selectedContact.email}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                     >
-                      <EnvelopeIcon className="w-4 h-4" />
-                      Email
+                      <EnvelopeIcon className="w-5 h-5" />
+                      Compose & Send Email
                     </button>
+                    {!selectedContact.email && (
+                      <p className="text-xs text-gray-500 mt-1 text-center">No email address on file</p>
+                    )}
+                  </div>
 
-                    {/* Log Activity Buttons */}
-                    {OUTREACH_TYPES.filter(t => t !== 'email').map((type) => (
-                      <button
-                        key={type}
-                        onClick={() => handleActivityClick(type)}
-                        disabled={!!loggingActivity}
-                        className={`flex items-center gap-1 px-3 py-2 text-sm rounded-lg transition-colors ${
-                          showActivityNoteInput === type
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                        } disabled:opacity-50`}
-                      >
-                        <ActivityIcon type={type} className="w-4 h-4" />
-                        {ACTIVITY_CONFIG[type].label}
-                      </button>
-                    ))}
-                    {CONNECTION_TYPES.map((type) => (
-                      <button
-                        key={type}
-                        onClick={() => handleActivityClick(type)}
-                        disabled={!!loggingActivity}
-                        className={`flex items-center gap-1 px-3 py-2 text-sm rounded-lg transition-colors ${
-                          showActivityNoteInput === type
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                        } disabled:opacity-50`}
-                      >
-                        <ActivityIcon type={type} className="w-4 h-4" />
-                        {ACTIVITY_CONFIG[type].label}
-                      </button>
-                    ))}
+                  {/* Log Activity Section - clearly labeled */}
+                  <div className="border-t border-gray-200 pt-3">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      Quick Log Activity
+                    </p>
+                    <div className="grid grid-cols-5 gap-2">
+                      {/* Outreach activities */}
+                      {OUTREACH_TYPES.filter(t => t !== 'email').map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => handleActivityClick(type)}
+                          disabled={!!loggingActivity}
+                          title={`Log ${ACTIVITY_CONFIG[type].label}`}
+                          className={`flex flex-col items-center gap-1 p-2 text-xs rounded-lg transition-all ${
+                            showActivityNoteInput === type
+                              ? 'bg-blue-600 text-white ring-2 ring-blue-300'
+                              : 'bg-white text-gray-600 border border-gray-200 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700'
+                          } disabled:opacity-50`}
+                        >
+                          <ActivityIcon type={type} className="w-5 h-5" />
+                          <span className="font-medium">{ACTIVITY_CONFIG[type].label}</span>
+                        </button>
+                      ))}
+                      {/* Connection activities */}
+                      {CONNECTION_TYPES.map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => handleActivityClick(type)}
+                          disabled={!!loggingActivity}
+                          title={`Log ${ACTIVITY_CONFIG[type].label}`}
+                          className={`flex flex-col items-center gap-1 p-2 text-xs rounded-lg transition-all ${
+                            showActivityNoteInput === type
+                              ? 'bg-emerald-600 text-white ring-2 ring-emerald-300'
+                              : 'bg-white text-gray-600 border border-gray-200 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700'
+                          } disabled:opacity-50`}
+                        >
+                          <ActivityIcon type={type} className="w-5 h-5" />
+                          <span className="font-medium">{ACTIVITY_CONFIG[type].label}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2 text-center">
+                      Click to log activity to timeline
+                    </p>
                   </div>
 
                   {/* Activity note input */}
                   {showActivityNoteInput && (
-                    <div className="mt-3 flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={activityNote}
-                        onChange={(e) => setActivityNote(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            logActivity(showActivityNoteInput, activityNote);
-                          } else if (e.key === 'Escape') {
-                            setShowActivityNoteInput(null);
-                          }
-                        }}
-                        placeholder={`Add note for ${ACTIVITY_CONFIG[showActivityNoteInput].label}... (Enter to log)`}
-                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => logActivity(showActivityNoteInput, activityNote)}
-                        disabled={!!loggingActivity}
-                        className="px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
-                      >
-                        {loggingActivity ? 'Logging...' : 'Log'}
-                      </button>
-                      <button
-                        onClick={() => setShowActivityNoteInput(null)}
-                        className="p-2 text-gray-400 hover:text-gray-600"
-                      >
-                        <XMarkIcon className="w-4 h-4" />
-                      </button>
+                    <div className="mt-3 p-3 bg-white border border-gray-300 rounded-lg shadow-sm">
+                      <p className="text-sm font-medium text-gray-700 mb-2">
+                        Logging {ACTIVITY_CONFIG[showActivityNoteInput].label}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={activityNote}
+                          onChange={(e) => setActivityNote(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              logActivity(showActivityNoteInput, activityNote);
+                            } else if (e.key === 'Escape') {
+                              setShowActivityNoteInput(null);
+                            }
+                          }}
+                          placeholder="Add optional note... (Enter to log)"
+                          className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => logActivity(showActivityNoteInput, activityNote)}
+                          disabled={!!loggingActivity}
+                          className="px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 font-medium"
+                        >
+                          {loggingActivity ? 'Logging...' : 'Log'}
+                        </button>
+                        <button
+                          onClick={() => setShowActivityNoteInput(null)}
+                          className="p-2 text-gray-400 hover:text-gray-600"
+                        >
+                          <XMarkIcon className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
 
-                {/* Activity Timeline */}
-                <div className="flex-1 overflow-y-auto">
-                  <div className="p-3 border-b border-gray-100 bg-gray-50 sticky top-0 z-10">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Activity Timeline</p>
-                  </div>
+                {/* Drawer Tabs */}
+                <div className="flex border-b border-gray-200 bg-white sticky top-0 z-10">
+                  <button
+                    onClick={() => setDrawerTab('activity')}
+                    className={`flex-1 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                      drawerTab === 'activity'
+                        ? 'border-orange-500 text-orange-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Activity Timeline
+                  </button>
+                  <button
+                    onClick={() => setDrawerTab('emails')}
+                    className={`flex-1 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                      drawerTab === 'emails'
+                        ? 'border-orange-500 text-orange-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Email History
+                  </button>
+                </div>
 
-                  {loadingFeed ? (
-                    <div className="p-8 text-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto"></div>
-                    </div>
-                  ) : activityFeed.length === 0 ? (
-                    <div className="p-8 text-center text-gray-400">
-                      <DocumentTextIcon className="w-12 h-12 mx-auto mb-2" />
-                      <p className="font-medium">No activity yet</p>
-                      <p className="text-sm mt-1">Log an activity or add a note</p>
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-gray-100">
-                      {activityFeed.map((item) => (
-                        <div key={item.id} className="p-4 hover:bg-gray-50 group">
-                          <div className="flex items-start gap-3">
-                            <div className={`p-2 rounded-full ${
-                              item.type === 'note' ? 'bg-gray-100 text-gray-600' :
-                              OUTREACH_TYPES.includes(item.type as OutreachType) ? 'bg-blue-100 text-blue-600' :
-                              'bg-emerald-100 text-emerald-600'
-                            }`}>
-                              <ActivityIcon type={item.type} className="w-4 h-4" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between">
-                                <span className={`text-sm font-medium ${
-                                  item.type === 'note' ? 'text-gray-700' :
-                                  OUTREACH_TYPES.includes(item.type as OutreachType) ? 'text-blue-700' :
-                                  'text-emerald-700'
-                                }`}>
-                                  {item.type === 'note' ? 'Note' : ACTIVITY_CONFIG[item.type as ActivityType]?.label || item.type}
-                                </span>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
-                                  <button
-                                    onClick={() => deleteActivityItem(item)}
-                                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity"
-                                  >
-                                    <XMarkIcon className="w-4 h-4" />
-                                  </button>
+                {/* Tab Content */}
+                <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
+                  {drawerTab === 'activity' ? (
+                    /* Activity Timeline Tab */
+                    <>
+                      <div className="flex-1 overflow-y-auto">
+                        {loadingFeed ? (
+                          <div className="p-8 text-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto"></div>
+                          </div>
+                        ) : activityFeed.length === 0 ? (
+                          <div className="p-8 text-center text-gray-400">
+                            <DocumentTextIcon className="w-12 h-12 mx-auto mb-2" />
+                            <p className="font-medium">No activity yet</p>
+                            <p className="text-sm mt-1">Log an activity or add a note</p>
+                          </div>
+                        ) : (
+                          <div className="divide-y divide-gray-100">
+                            {activityFeed.map((item) => (
+                              <div key={item.id} className="p-4 hover:bg-gray-50 group">
+                                <div className="flex items-start gap-3">
+                                  <div className={`p-2 rounded-full ${
+                                    item.type === 'note' ? 'bg-gray-100 text-gray-600' :
+                                    OUTREACH_TYPES.includes(item.type as OutreachType) ? 'bg-blue-100 text-blue-600' :
+                                    'bg-emerald-100 text-emerald-600'
+                                  }`}>
+                                    <ActivityIcon type={item.type} className="w-4 h-4" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between">
+                                      <span className={`text-sm font-medium ${
+                                        item.type === 'note' ? 'text-gray-700' :
+                                        OUTREACH_TYPES.includes(item.type as OutreachType) ? 'text-blue-700' :
+                                        'text-emerald-700'
+                                      }`}>
+                                        {item.type === 'note' ? 'Note' : ACTIVITY_CONFIG[item.type as ActivityType]?.label || item.type}
+                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
+                                        <button
+                                          onClick={() => deleteActivityItem(item)}
+                                          className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity"
+                                        >
+                                          <XMarkIcon className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                    {item.email_subject && (
+                                      <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject}</p>
+                                    )}
+                                    {item.content && (
+                                      <p className="text-sm text-gray-600 whitespace-pre-wrap mt-1">{item.content}</p>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                              {item.email_subject && (
-                                <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject}</p>
-                              )}
-                              {item.content && (
-                                <p className="text-sm text-gray-600 whitespace-pre-wrap mt-1">{item.content}</p>
-                              )}
-                            </div>
+                            ))}
                           </div>
+                        )}
+                      </div>
+
+                      {/* Add Note Input */}
+                      <div className="p-4 border-t border-gray-200 bg-white flex-shrink-0">
+                        <div className="flex items-end gap-2">
+                          <textarea
+                            value={newNoteText}
+                            onChange={(e) => setNewNoteText(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                                e.preventDefault();
+                                addNote();
+                              }
+                            }}
+                            placeholder="Add a note... (Cmd+Enter to save)"
+                            rows={2}
+                            className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 resize-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                          />
+                          <button
+                            onClick={addNote}
+                            disabled={!newNoteText.trim() || addingNote}
+                            className="p-2.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                          >
+                            {addingNote ? (
+                              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <PaperAirplaneIcon className="w-5 h-5" />
+                            )}
+                          </button>
                         </div>
-                      ))}
+                      </div>
+                    </>
+                  ) : (
+                    /* Email History Tab */
+                    <div className="flex-1 overflow-y-auto">
+                      {loadingFeed ? (
+                        <div className="p-8 text-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto"></div>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Filter to only show email activities */}
+                          {activityFeed.filter(item => item.type === 'email').length === 0 ? (
+                            <div className="p-8 text-center text-gray-400">
+                              <EnvelopeIcon className="w-12 h-12 mx-auto mb-2" />
+                              <p className="font-medium">No emails sent yet</p>
+                              <p className="text-sm mt-1">Sent emails will appear here</p>
+                            </div>
+                          ) : (
+                            <div className="divide-y divide-gray-100">
+                              {activityFeed
+                                .filter(item => item.type === 'email')
+                                .map((item) => (
+                                  <div key={item.id} className="p-4 hover:bg-gray-50 group">
+                                    <div className="flex items-start gap-3">
+                                      <div className="p-2 rounded-full bg-blue-100 text-blue-600">
+                                        <EnvelopeIcon className="w-4 h-4" />
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-sm font-medium text-blue-700">
+                                            Email Sent
+                                          </span>
+                                          <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
+                                        </div>
+                                        {item.email_subject && (
+                                          <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject}</p>
+                                        )}
+                                        {item.content && (
+                                          <p className="text-sm text-gray-600 whitespace-pre-wrap mt-1">{item.content}</p>
+                                        )}
+                                        <p className="text-xs text-gray-400 mt-2">
+                                          Email thread viewing coming soon
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   )}
-                </div>
-
-                {/* Add Note Input */}
-                <div className="p-4 border-t border-gray-200 bg-white">
-                  <div className="flex items-end gap-2">
-                    <textarea
-                      value={newNoteText}
-                      onChange={(e) => setNewNoteText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                          e.preventDefault();
-                          addNote();
-                        }
-                      }}
-                      placeholder="Add a note... (Cmd+Enter to save)"
-                      rows={2}
-                      className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 resize-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                    />
-                    <button
-                      onClick={addNote}
-                      disabled={!newNoteText.trim() || addingNote}
-                      className="p-2.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50"
-                    >
-                      {addingNote ? (
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <PaperAirplaneIcon className="w-5 h-5" />
-                      )}
-                    </button>
-                  </div>
                 </div>
 
                 {/* Complete Task Button */}
