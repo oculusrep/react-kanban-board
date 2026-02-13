@@ -1104,6 +1104,43 @@ const TaskDashboardPage: React.FC = () => {
     }
   };
 
+  // Update task category inline
+  const handleCategoryUpdate = async (taskId: string, newCategoryId: string | null) => {
+    try {
+      // Optimistically update the local state
+      setTasks(prevTasks => prevTasks.map(task => {
+        if (task.id === taskId) {
+          const newCategory = newCategoryId
+            ? taskTypes.find(t => t.id === newCategoryId)
+            : null;
+          return { ...task, activity_task_type_id: newCategoryId, activity_task_type: newCategory || null };
+        }
+        return task;
+      }));
+
+      // Update in database
+      const { error } = await supabase
+        .from('activity')
+        .update({
+          activity_task_type_id: newCategoryId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', taskId);
+
+      if (error) {
+        console.error('Error updating category:', error);
+        showToast('Error updating category', 'error');
+        // Revert on error
+        await loadTasks(activeCard);
+      } else {
+        showToast('Category updated', 'success');
+      }
+    } catch (err) {
+      console.error('Error updating category:', err);
+      showToast('Error updating category', 'error');
+    }
+  };
+
   // Show toast notification
   const [toastMessage, setToastMessage] = useState<string>('');
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
@@ -1820,13 +1857,23 @@ const TaskDashboardPage: React.FC = () => {
                             {task.activity_status?.name || 'Unknown'}
                           </span>
                         </td>
-                        <td
-                          className="px-3 py-2 whitespace-nowrap cursor-pointer"
-                          onClick={() => setSelectedTask(task)}
-                        >
-                          <div className="text-xs text-gray-500">
-                            {task.activity_task_type?.name || '-'}
-                          </div>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <select
+                            value={task.activity_task_type_id || ''}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleCategoryUpdate(task.id, e.target.value || null);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-xs border-0 bg-transparent text-gray-700 cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                          >
+                            <option value="">No category</option>
+                            {taskTypes.map(type => (
+                              <option key={type.id} value={type.id}>
+                                {type.name}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">
                           {relatedObject && (
