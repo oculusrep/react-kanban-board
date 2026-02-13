@@ -11,7 +11,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
-import { create, getNumericDate } from 'https://deno.land/x/djwt@v3.0.1/mod.ts';
+import * as jose from 'https://deno.land/x/jose@v5.2.0/index.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -36,69 +36,49 @@ async function getZoomInfoAccessToken(clientId: string, privateKeyPem: string): 
 
   console.log('[ZoomInfo] Generating new access token via PKI auth');
 
-  // Import the private key
-  const privateKey = await crypto.subtle.importKey(
-    'pkcs8',
-    pemToArrayBuffer(privateKeyPem),
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
+  try {
+    // Import the private key using jose
+    const privateKey = await jose.importPKCS8(privateKeyPem, 'RS256');
 
-  // Create JWT payload
-  const now = Math.floor(Date.now() / 1000);
-  const jwt = await create(
-    { alg: 'RS256', typ: 'JWT' },
-    {
+    // Create JWT
+    const now = Math.floor(Date.now() / 1000);
+    const jwt = await new jose.SignJWT({
       aud: 'https://api.zoominfo.com',
-      iss: clientId,
-      iat: now,
-      exp: now + 300, // 5 minutes
-    },
-    privateKey
-  );
+    })
+      .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+      .setIssuer(clientId)
+      .setIssuedAt(now)
+      .setExpirationTime(now + 300)
+      .sign(privateKey);
 
-  // Exchange JWT for access token
-  const authResponse = await fetch(ZOOMINFO_AUTH_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ client_id: clientId, id_token: jwt }),
-  });
+    console.log('[ZoomInfo] JWT created, exchanging for access token');
 
-  if (!authResponse.ok) {
-    const errorText = await authResponse.text();
-    console.error('[ZoomInfo] Auth failed:', authResponse.status, errorText);
-    throw new Error(`ZoomInfo authentication failed: ${authResponse.status}`);
+    // Exchange JWT for access token
+    const authResponse = await fetch(ZOOMINFO_AUTH_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ client_id: clientId, id_token: jwt }),
+    });
+
+    if (!authResponse.ok) {
+      const errorText = await authResponse.text();
+      console.error('[ZoomInfo] Auth failed:', authResponse.status, errorText);
+      throw new Error(`ZoomInfo authentication failed: ${authResponse.status} - ${errorText}`);
+    }
+
+    const authData = await authResponse.json();
+    cachedAccessToken = authData.jwt;
+    // Token is valid for 60 minutes, but we'll refresh at 55 min
+    tokenExpiresAt = Date.now() + 55 * 60 * 1000;
+
+    console.log('[ZoomInfo] Successfully obtained access token');
+    return cachedAccessToken!;
+  } catch (err) {
+    console.error('[ZoomInfo] PKI auth error:', err);
+    throw err;
   }
-
-  const authData = await authResponse.json();
-  cachedAccessToken = authData.jwt;
-  // Token is valid for 60 minutes, but we'll refresh at 55 min
-  tokenExpiresAt = Date.now() + 55 * 60 * 1000;
-
-  console.log('[ZoomInfo] Successfully obtained access token');
-  return cachedAccessToken!;
-}
-
-/**
- * Convert PEM string to ArrayBuffer for crypto.subtle
- */
-function pemToArrayBuffer(pem: string): ArrayBuffer {
-  // Remove PEM headers and whitespace
-  const base64 = pem
-    .replace(/-----BEGIN PRIVATE KEY-----/, '')
-    .replace(/-----END PRIVATE KEY-----/, '')
-    .replace(/\s/g, '');
-
-  // Decode base64
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes.buffer;
 }
 
 interface EnrichRequest {
