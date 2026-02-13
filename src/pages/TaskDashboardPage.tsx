@@ -83,6 +83,11 @@ const TaskDashboardPage: React.FC = () => {
     searchTerm: ''
   });
 
+  // Search results state - separate from regular tasks when searching
+  const [searchResults, setSearchResults] = useState<ActivityWithRelations[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchPerformed, setSearchPerformed] = useState(false);
+
   // Load initial data
   useEffect(() => {
     loadData();
@@ -675,6 +680,140 @@ const TaskDashboardPage: React.FC = () => {
     }
   };
 
+  // Search ALL tasks (open + completed) when searching
+  const searchAllTasks = async (searchTerm: string) => {
+    if (!searchTerm.trim()) {
+      setSearchResults([]);
+      setSearchPerformed(false);
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchPerformed(true);
+
+    try {
+      // First, get the "Task" activity type ID
+      const { data: taskTypeData, error: typeError } = await supabase
+        .from('activity_type')
+        .select('id, name')
+        .eq('name', 'Task')
+        .single();
+
+      if (typeError || !taskTypeData) {
+        console.error('Error finding Task activity type:', typeError);
+        setIsSearching(false);
+        return;
+      }
+
+      // Get current user ID if filtering by "me"
+      let currentUserId: string | null = null;
+      if (filters.assignedTo === 'me' && user?.email) {
+        const currentUser = users.find(u => u.email?.toLowerCase() === user.email?.toLowerCase());
+        currentUserId = currentUser?.id || null;
+      }
+
+      // Get Prospecting task type ID to exclude from main task list
+      const { data: prospectingTaskType } = await supabase
+        .from('activity_task_type')
+        .select('id')
+        .eq('name', 'Prospecting')
+        .single();
+      const prospectingTaskTypeId = prospectingTaskType?.id;
+
+      const searchLower = searchTerm.toLowerCase();
+
+      // Build query for ALL tasks (no status filter)
+      let query = supabase
+        .from('activity')
+        .select(`
+          *,
+          activity_status!activity_status_id_fkey (*),
+          activity_type!activity_activity_type_id_fkey (*),
+          activity_priority!activity_activity_priority_id_fkey (*),
+          activity_task_type!activity_activity_task_type_id_fkey (*),
+          owner:user!activity_owner_id_fkey (*),
+          contact!activity_contact_id_fkey (*),
+          deal!activity_deal_id_fkey (id, deal_name),
+          client!activity_client_id_fkey (id, client_name),
+          property!activity_property_id_fkey (id, property_name),
+          site_submit!activity_site_submit_id_fkey (id, site_submit_name)
+        `)
+        .eq('activity_type_id', taskTypeData.id)
+        .order('activity_date', { ascending: false, nullsFirst: false })
+        .limit(500);
+
+      // Apply owner filter
+      if (filters.assignedTo === 'me' && currentUserId) {
+        query = query.eq('owner_id', currentUserId);
+      } else if (filters.assignedTo === 'unassigned') {
+        query = query.is('owner_id', null);
+      } else if (filters.assignedTo === 'all') {
+        query = query.not('owner_id', 'is', null);
+      } else if (filters.assignedTo !== 'me') {
+        query = query.eq('owner_id', filters.assignedTo);
+      }
+
+      // Exclude Prospecting tasks
+      if (prospectingTaskTypeId) {
+        query = query.or(`activity_task_type_id.is.null,activity_task_type_id.neq.${prospectingTaskTypeId}`);
+      }
+
+      const { data: allTasks, error } = await query;
+
+      if (error) {
+        console.error('Error searching tasks:', error);
+        setIsSearching(false);
+        return;
+      }
+
+      // Filter results client-side by search term (across all fields including related-to)
+      const filteredResults = (allTasks || []).filter(task => {
+        // Search in subject and description
+        if (task.subject?.toLowerCase().includes(searchLower)) return true;
+        if (task.description?.toLowerCase().includes(searchLower)) return true;
+
+        // Search in owner name
+        if (task.owner?.first_name?.toLowerCase().includes(searchLower)) return true;
+        if (task.owner?.last_name?.toLowerCase().includes(searchLower)) return true;
+        const ownerFullName = `${task.owner?.first_name || ''} ${task.owner?.last_name || ''}`.toLowerCase();
+        if (ownerFullName.includes(searchLower)) return true;
+
+        // Search in related-to fields (deal, contact, client, property, site_submit)
+        if ((task.deal as any)?.deal_name?.toLowerCase().includes(searchLower)) return true;
+        if (task.contact?.first_name?.toLowerCase().includes(searchLower)) return true;
+        if (task.contact?.last_name?.toLowerCase().includes(searchLower)) return true;
+        const contactFullName = `${task.contact?.first_name || ''} ${task.contact?.last_name || ''}`.toLowerCase();
+        if (contactFullName.includes(searchLower)) return true;
+        if ((task.client as any)?.client_name?.toLowerCase().includes(searchLower)) return true;
+        if ((task.property as any)?.property_name?.toLowerCase().includes(searchLower)) return true;
+        if ((task.site_submit as any)?.site_submit_name?.toLowerCase().includes(searchLower)) return true;
+
+        return false;
+      });
+
+      console.log(`🔍 Search found ${filteredResults.length} results for "${searchTerm}"`);
+      setSearchResults(filteredResults as ActivityWithRelations[]);
+    } catch (error) {
+      console.error('Error searching tasks:', error);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Debounced search effect
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (filters.searchTerm.trim()) {
+        searchAllTasks(filters.searchTerm);
+      } else {
+        setSearchResults([]);
+        setSearchPerformed(false);
+      }
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [filters.searchTerm, filters.assignedTo]);
+
   // Calculate task statistics
   const taskStats = useMemo((): TaskStats => {
     const now = new Date();
@@ -728,6 +867,51 @@ const TaskDashboardPage: React.FC = () => {
 
   // Filter and sort tasks
   const filteredTasks = useMemo(() => {
+    // When searching, use search results instead of regular tasks
+    // Search results already include both open and completed tasks
+    if (searchPerformed && filters.searchTerm.trim()) {
+      let filtered = [...searchResults];
+
+      // Only apply sorting to search results (no additional filtering needed)
+      filtered.sort((a, b) => {
+        let comparison = 0;
+
+        switch (sortBy) {
+          case 'due_date':
+            const dateA = a.activity_date ? new Date(a.activity_date).getTime() : Infinity;
+            const dateB = b.activity_date ? new Date(b.activity_date).getTime() : Infinity;
+            comparison = dateA - dateB;
+            break;
+          case 'completed_at':
+            const completedA = a.completed_at ? new Date(a.completed_at).getTime() : Infinity;
+            const completedB = b.completed_at ? new Date(b.completed_at).getTime() : Infinity;
+            comparison = completedA - completedB;
+            break;
+          case 'priority':
+            const priorityA = a.activity_priority?.sort_order ?? 999;
+            const priorityB = b.activity_priority?.sort_order ?? 999;
+            comparison = priorityA - priorityB;
+            break;
+          case 'status':
+            const statusA = a.activity_status?.name || '';
+            const statusB = b.activity_status?.name || '';
+            comparison = statusA.localeCompare(statusB);
+            break;
+          case 'subject':
+            const subjectA = a.subject || '';
+            const subjectB = b.subject || '';
+            comparison = subjectA.localeCompare(subjectB);
+            break;
+          default:
+            comparison = 0;
+        }
+
+        return sortOrder === 'asc' ? comparison : -comparison;
+      });
+
+      return filtered;
+    }
+
     let filtered = [...tasks];
 
     // Status filter
@@ -803,15 +987,32 @@ const TaskDashboardPage: React.FC = () => {
       });
     }
 
-    // Search filter
+    // Search filter - search subject, description, owner, and related-to fields
     if (filters.searchTerm) {
       const searchLower = filters.searchTerm.toLowerCase();
-      filtered = filtered.filter(task =>
-        task.subject?.toLowerCase().includes(searchLower) ||
-        task.description?.toLowerCase().includes(searchLower) ||
-        task.owner?.first_name?.toLowerCase().includes(searchLower) ||
-        task.owner?.last_name?.toLowerCase().includes(searchLower)
-      );
+      filtered = filtered.filter(task => {
+        // Search in subject and description
+        if (task.subject?.toLowerCase().includes(searchLower)) return true;
+        if (task.description?.toLowerCase().includes(searchLower)) return true;
+
+        // Search in owner name
+        if (task.owner?.first_name?.toLowerCase().includes(searchLower)) return true;
+        if (task.owner?.last_name?.toLowerCase().includes(searchLower)) return true;
+        const ownerFullName = `${task.owner?.first_name || ''} ${task.owner?.last_name || ''}`.toLowerCase();
+        if (ownerFullName.includes(searchLower)) return true;
+
+        // Search in related-to fields (deal, contact, client, property, site_submit)
+        if ((task.deal as any)?.deal_name?.toLowerCase().includes(searchLower)) return true;
+        if (task.contact?.first_name?.toLowerCase().includes(searchLower)) return true;
+        if (task.contact?.last_name?.toLowerCase().includes(searchLower)) return true;
+        const contactFullName = `${task.contact?.first_name || ''} ${task.contact?.last_name || ''}`.toLowerCase();
+        if (contactFullName.includes(searchLower)) return true;
+        if ((task.client as any)?.client_name?.toLowerCase().includes(searchLower)) return true;
+        if ((task.property as any)?.property_name?.toLowerCase().includes(searchLower)) return true;
+        if ((task.site_submit as any)?.site_submit_name?.toLowerCase().includes(searchLower)) return true;
+
+        return false;
+      });
     }
 
     // Sort tasks
@@ -879,7 +1080,7 @@ const TaskDashboardPage: React.FC = () => {
     });
 
     return filtered;
-  }, [tasks, filters, sortBy, sortOrder, users, user]);
+  }, [tasks, filters, sortBy, sortOrder, users, user, searchResults, searchPerformed]);
 
   // Paginate tasks
   const paginatedTasks = useMemo(() => {
@@ -897,11 +1098,18 @@ const TaskDashboardPage: React.FC = () => {
   }, [filters, activeCard]);
 
   // Check if we're viewing completed tasks (for showing Completed Date instead of Due Date)
+  // When searching, we show mixed results so isCompletedView is false
   const isCompletedView = useMemo(() => {
+    if (searchPerformed && filters.searchTerm.trim()) {
+      return false; // Mixed results when searching
+    }
     return filters.status === 'completed' ||
       (filters.status !== 'all' && filters.status !== 'open' &&
        statuses.find(s => s.id === filters.status)?.is_closed);
-  }, [filters.status, statuses]);
+  }, [filters.status, statuses, searchPerformed, filters.searchTerm]);
+
+  // Check if we're in search mode (showing mixed open/completed results)
+  const isSearchMode = searchPerformed && filters.searchTerm.trim();
 
   // Get related object info
   const getRelatedObjectInfo = (task: ActivityWithRelations): { name: string; url: string } | null => {
@@ -1180,16 +1388,22 @@ const TaskDashboardPage: React.FC = () => {
             <div className="flex-1 max-w-2xl">
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
+                  {isSearching ? (
+                    <div className="h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  )}
                 </div>
                 <input
                   type="text"
                   value={filters.searchTerm}
                   onChange={(e) => setFilters({ ...filters, searchTerm: e.target.value })}
-                  placeholder="Search tasks by subject, description, or related object..."
-                  className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  placeholder="Search all tasks (open & completed) by name, description, or related object..."
+                  className={`block w-full pl-10 pr-3 py-2.5 border rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
+                    searchPerformed && filters.searchTerm ? 'border-blue-400 ring-1 ring-blue-200' : 'border-gray-300'
+                  }`}
                 />
                 {filters.searchTerm && (
                   <button
@@ -1202,6 +1416,12 @@ const TaskDashboardPage: React.FC = () => {
                   </button>
                 )}
               </div>
+              {/* Search results indicator */}
+              {searchPerformed && filters.searchTerm && (
+                <div className="mt-1 text-xs text-blue-600">
+                  Searching all tasks (open & completed) - {filteredTasks.length} result{filteredTasks.length !== 1 ? 's' : ''} found
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">
@@ -1596,6 +1816,27 @@ const TaskDashboardPage: React.FC = () => {
                         )}
                       </div>
                     </th>
+                    {/* Show Status column when searching (mixed results) */}
+                    {isSearchMode && (
+                      <th
+                        className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                        onClick={() => {
+                          if (sortBy === 'status') {
+                            setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setSortBy('status');
+                            setSortOrder('asc');
+                          }
+                        }}
+                      >
+                        <div className="flex items-center gap-1">
+                          Status
+                          {sortBy === 'status' && (
+                            <span>{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                          )}
+                        </div>
+                      </th>
+                    )}
                     {/* Show Completed Date for completed tasks, Due Date for others */}
                     {isCompletedView ? (
                       <th
@@ -1717,7 +1958,7 @@ const TaskDashboardPage: React.FC = () => {
                               onClick={(e) => e.stopPropagation()}
                               className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer"
                             />
-                            {!task.activity_status?.is_closed && (
+                            {!task.activity_status?.is_closed ? (
                               <button
                                 onClick={async (e) => {
                                   e.stopPropagation();
@@ -1744,6 +1985,10 @@ const TaskDashboardPage: React.FC = () => {
                                     } else {
                                       await loadTasks(activeCard);
                                       await loadCardCounts();
+                                      // Refresh search results if searching
+                                      if (isSearchMode) {
+                                        searchAllTasks(filters.searchTerm);
+                                      }
                                     }
                                   } catch (err) {
                                     console.error('Error completing task:', err);
@@ -1754,6 +1999,51 @@ const TaskDashboardPage: React.FC = () => {
                               >
                                 <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                              </button>
+                            ) : isSearchMode && (
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  // Find the default open status (e.g., "Not Started" or "Open")
+                                  const openStatus = statuses.find(s =>
+                                    !s.is_closed && (s.name?.toLowerCase() === 'not started' || s.name?.toLowerCase() === 'open')
+                                  ) || statuses.find(s => !s.is_closed);
+
+                                  if (!openStatus) {
+                                    alert('Could not find an open status');
+                                    return;
+                                  }
+
+                                  try {
+                                    const { error } = await supabase
+                                      .from('activity')
+                                      .update({
+                                        status_id: openStatus.id,
+                                        completed_at: null,
+                                        updated_at: new Date().toISOString()
+                                      })
+                                      .eq('id', task.id);
+
+                                    if (error) {
+                                      console.error('Error reopening task:', error);
+                                      showToast('Error reopening task', 'error');
+                                    } else {
+                                      showToast('Task reopened', 'success');
+                                      await loadCardCounts();
+                                      // Refresh search results
+                                      searchAllTasks(filters.searchTerm);
+                                    }
+                                  } catch (err) {
+                                    console.error('Error reopening task:', err);
+                                    showToast('Error reopening task', 'error');
+                                  }
+                                }}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-orange-100 rounded"
+                                title="Reopen task"
+                              >
+                                <svg className="w-4 h-4 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                                 </svg>
                               </button>
                             )}
@@ -1778,6 +2068,23 @@ const TaskDashboardPage: React.FC = () => {
                             {task.owner ? `${task.owner.first_name} ${task.owner.last_name}` : 'Unassigned'}
                           </div>
                         </td>
+                        {/* Status column when searching */}
+                        {isSearchMode && (
+                          <td
+                            className="px-3 py-2 whitespace-nowrap cursor-pointer"
+                            onClick={() => setSelectedTask(task)}
+                          >
+                            {task.activity_status?.is_closed ? (
+                              <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">
+                                Completed
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-700">
+                                {task.activity_status?.name || 'Open'}
+                              </span>
+                            )}
+                          </td>
+                        )}
                         <td
                           className="px-3 py-2 whitespace-nowrap"
                           onClick={(e) => {
