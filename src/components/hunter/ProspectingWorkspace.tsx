@@ -29,7 +29,8 @@ import {
   GlobeAltIcon,
   ClipboardDocumentListIcon,
   PlusCircleIcon,
-  ClipboardIcon
+  ClipboardIcon,
+  ArrowTopRightOnSquareIcon
 } from '@heroicons/react/24/outline';
 
 // Lazy load ReactQuill for email compose
@@ -1403,9 +1404,20 @@ export default function ProspectingWorkspace() {
                       {(selectedContact.first_name?.[0] || '?').toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h2 className="text-xl font-bold text-gray-900 truncate">
-                        {selectedContact.first_name} {selectedContact.last_name}
-                      </h2>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-xl font-bold text-gray-900 truncate">
+                          {selectedContact.first_name} {selectedContact.last_name}
+                        </h2>
+                        <a
+                          href={`/contact/${selectedContact.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1 text-gray-400 hover:text-orange-600"
+                          title="Open full contact profile"
+                        >
+                          <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+                        </a>
+                      </div>
                       <p className="text-sm text-gray-600 truncate">
                         {selectedContact.title}{selectedContact.title && selectedContact.company ? ' at ' : ''}{selectedContact.company}
                       </p>
