@@ -291,10 +291,13 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('[ZoomInfo Enrich] Error:', error);
+    // Return detailed error for debugging
     return new Response(
       JSON.stringify({
         success: false,
         error: error.message || 'Internal server error',
+        errorType: error.name || 'Unknown',
+        errorStack: error.stack?.substring(0, 500) || 'No stack trace',
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
