@@ -186,20 +186,15 @@ serve(async (req) => {
     }
 
     // Build ZoomInfo search query
+    // Note: Only request fields your ZoomInfo account has access to
+    // Disallowed fields will cause 400 error
     const searchParams: Record<string, unknown> = {
       outputFields: [
         'id',
         'firstName',
         'lastName',
-        'email',
-        'phone',
-        'mobilePhone',
         'jobTitle',
         'companyName',
-        'linkedinUrl',
-        'city',
-        'state',
-        'country',
       ],
       rpp: 5, // Return top 5 matches
     };
