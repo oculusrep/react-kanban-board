@@ -26,6 +26,29 @@ let cachedAccessToken: string | null = null;
 let tokenExpiresAt: number = 0;
 
 /**
+ * Normalize PEM key - Supabase secrets may strip newlines
+ */
+function normalizePemKey(pem: string): string {
+  // If it already has proper newlines, return as-is
+  if (pem.includes('\n')) {
+    return pem;
+  }
+
+  // Extract the base64 content between headers
+  const match = pem.match(/-----BEGIN PRIVATE KEY-----(.*?)-----END PRIVATE KEY-----/);
+  if (!match) {
+    throw new Error('Invalid PEM format - missing headers');
+  }
+
+  const base64Content = match[1].replace(/\s/g, '');
+
+  // Split into 64-character lines (PEM standard)
+  const lines = base64Content.match(/.{1,64}/g) || [];
+
+  return `-----BEGIN PRIVATE KEY-----\n${lines.join('\n')}\n-----END PRIVATE KEY-----`;
+}
+
+/**
  * Get ZoomInfo access token using PKI authentication
  */
 async function getZoomInfoAccessToken(clientId: string, privateKeyPem: string): Promise<string> {
@@ -37,8 +60,11 @@ async function getZoomInfoAccessToken(clientId: string, privateKeyPem: string): 
   console.log('[ZoomInfo] Generating new access token via PKI auth');
 
   try {
+    // Normalize the PEM key (restore newlines if stripped)
+    const normalizedPem = normalizePemKey(privateKeyPem);
+
     // Import the private key using jose
-    const privateKey = await jose.importPKCS8(privateKeyPem, 'RS256');
+    const privateKey = await jose.importPKCS8(normalizedPem, 'RS256');
 
     // Create JWT
     const now = Math.floor(Date.now() / 1000);
