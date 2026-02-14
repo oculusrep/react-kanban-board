@@ -467,6 +467,7 @@ Natural language query interface for the CFO Agent.
    - `get_invoice_aging` - AR aging summary
    - `get_cash_flow_projection` - Income minus expenses with running balance
    - `generate_chart` - Create chart specifications for frontend
+   - `get_mike_personal_forecast` - Reality Check report with commission + house profit
 8. ✅ Route registered at `/admin/cfo` (admin access only)
 9. ✅ Menu integration with permission control (`can_access_cfo_dashboard`)
 10. ✅ Edge function deployed (`supabase functions deploy cfo-query`)
@@ -520,7 +521,7 @@ Natural language query interface for the CFO Agent.
 
 ## Resume Point
 
-**Current State**: CFO Agent core implementation complete (February 14, 2026). Chat interface is live and functional.
+**Current State**: CFO Agent with Reality Check report complete (February 14, 2026). Chat interface and personal cash flow forecast are live.
 
 **Completed**:
 1. ✅ Schema migration applied
@@ -529,6 +530,18 @@ Natural language query interface for the CFO Agent.
 4. ✅ Dynamic chart rendering (bar, line, area, composed, stacked)
 5. ✅ Menu integration with role-based permissions
 6. ✅ Edge function deployed
+7. ✅ Reality Check report - Mike's personal cash flow forecast
+   - Commission (W2 wages) with payroll tax withholding
+   - House profit (owner's draw)
+   - Tax rates calibrated from actual pay stubs (blended average)
+   - Quick action button on CFO Dashboard header
+
+**Reality Check Tax Configuration** (calibrated from actual payroll Feb 2026):
+- Federal withholding: 15.46% (blended from 12.48% and 17.14%)
+- GA State withholding: 4.22% (blended from 3.85% and 4.43%)
+- Social Security: 6.2% (up to $184,500 wage base)
+- Medicare: 1.45% (+ 0.9% additional over $200k)
+- Total effective rate: ~27%
 
 **Next Steps**:
 1. 🔲 Test the CFO Agent with various financial queries

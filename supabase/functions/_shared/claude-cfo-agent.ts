@@ -17,6 +17,7 @@ import {
   getFinancialContext,
   saveFinancialContext,
   deleteFinancialContext,
+  getMikePersonalForecast,
 } from './cfo-tools.ts';
 
 // ============================================================================
@@ -97,12 +98,27 @@ CHART GUIDELINES:
 - Always use appropriate colors: green for income/positive, red for expenses/negative, purple/blue for balance
 - Format currency values appropriately
 
+REALITY CHECK REPORT (Mike's Personal Cash Flow):
+When asked for "reality check", "when am I getting paid", or personal cash flow:
+1. Use get_mike_personal_forecast to get Mike's commission + house profit forecast
+2. Present BOTH a markdown table AND a stacked bar chart
+3. Table columns: Month | Gross Commission | Taxes | Net Commission | House Profit | Total to Mike | 401k Room
+4. Chart: Stacked bar with Net Commission (green) + House Profit (purple), line for cumulative total
+5. Include a brief summary explaining when the biggest payouts are expected
+
+Tax Notes for Reality Check:
+- Commission = W2 wages with payroll withholding (Federal 15.46%, GA State 4.22%, SS 6.2%, Medicare 1.45%)
+- Total effective tax rate on commissions: ~27%
+- House Profit = Owner's draw (no withholding, but remember it's taxed at filing)
+- 401k room shows how much can still be contributed this year ($23,500 limit for 2026)
+
 EXAMPLE QUERIES YOU CAN ANSWER:
 - "What will the balance of the house account be by month for the next 6 months?"
 - "How are we tracking against budget this month?"
 - "Which invoices are overdue and what's the collection risk?"
 - "Show me expense trends over the past quarter"
 - "What's our projected cash flow for Q2?"
+- "Reality check" or "When am I getting paid?"
 - "Remember that Q4 is our busiest quarter"
 - "That's wrong - the house split is 30%, not 25%"
 
@@ -257,6 +273,56 @@ async function executeTool(
         message: result.deleted_count > 0
           ? `Deleted ${result.deleted_count} context note(s).`
           : 'No matching context notes found to delete.',
+      };
+    }
+
+    case 'get_mike_personal_forecast': {
+      const forecasts = await getMikePersonalForecast(
+        supabase,
+        toolInput.year as number,
+        toolInput.months_to_project as number | undefined
+      );
+
+      // Calculate totals for the period
+      const totals = forecasts.reduce(
+        (acc, f) => ({
+          grossCommission: acc.grossCommission + f.grossCommission,
+          houseProfit: acc.houseProfit + f.houseProfit,
+          totalGross: acc.totalGross + f.totalGross,
+          federalTax: acc.federalTax + f.federalTax,
+          stateTax: acc.stateTax + f.stateTax,
+          socialSecurity: acc.socialSecurity + f.socialSecurity,
+          medicare: acc.medicare + f.medicare,
+          totalTaxes: acc.totalTaxes + f.totalTaxes,
+          totalToMike: acc.totalToMike + f.totalToMike,
+        }),
+        {
+          grossCommission: 0,
+          houseProfit: 0,
+          totalGross: 0,
+          federalTax: 0,
+          stateTax: 0,
+          socialSecurity: 0,
+          medicare: 0,
+          totalTaxes: 0,
+          totalToMike: 0,
+        }
+      );
+
+      return {
+        monthly_forecasts: forecasts,
+        period_totals: totals,
+        tax_rates_used: {
+          federal: 'Progressive brackets (MFJ 2026)',
+          state: 'Georgia flat 5.39%',
+          social_security: '6.2% up to $184,500',
+          medicare: '1.45% + 0.9% over $200k',
+        },
+        notes: [
+          'Commission is treated as W2 wages with full payroll tax withholding',
+          'House profit is owner\'s draw (no withholding, taxed at filing)',
+          '401k room shows remaining contribution capacity for the year',
+        ],
       };
     }
 

@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, TrendingUp, DollarSign, BarChart3, RefreshCw, Lightbulb } from 'lucide-react';
+import { ArrowLeft, TrendingUp, DollarSign, BarChart3, RefreshCw, Lightbulb, Zap } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import CFOChatPanel from '../components/cfo/CFOChatPanel';
@@ -148,6 +148,15 @@ export default function CFODashboardPage() {
             </div>
 
             <div className="flex items-center gap-3">
+              <button
+                onClick={() => handleSendMessage('Reality check')}
+                disabled={isLoading}
+                className="text-sm text-green-600 hover:text-green-700 flex items-center gap-1 px-3 py-1.5 bg-green-50 hover:bg-green-100 rounded-md transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Get Mike's personal cash flow forecast"
+              >
+                <Zap className="h-4 w-4" />
+                Reality Check
+              </button>
               <button
                 onClick={() => setShowContextPanel(true)}
                 className="text-sm text-amber-600 hover:text-amber-700 flex items-center gap-1 px-2 py-1 hover:bg-amber-50 rounded transition-colors"

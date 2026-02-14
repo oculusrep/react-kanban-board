@@ -100,6 +100,60 @@ export interface CashFlowProjection {
   };
 }
 
+export interface MikePersonalForecast {
+  month: string;
+  monthIndex: number;
+  // Gross amounts
+  grossCommission: number;
+  houseProfit: number;
+  totalGross: number;
+  // Tax withholdings (from commission only - W2 wages)
+  federalTax: number;
+  stateTax: number;
+  socialSecurity: number;
+  medicare: number;
+  totalTaxes: number;
+  // Net amounts
+  netCommission: number;
+  // Combined take-home
+  totalToMike: number;
+  // YTD tracking
+  ytdGrossWages: number;
+  ytdSocialSecurityPaid: number;
+  // 401k opportunity
+  available401kRoom: number;
+}
+
+// Mike Minihan's broker ID
+const MIKE_BROKER_ID = '38d4b67c-841d-4590-a909-523d3a4c6e4b';
+
+// 2026 Tax Constants
+// Blended average from actual pay stubs (02/10/2026 and 02/12/2026)
+// Check 1: $7,730.45 gross → Federal 12.48%, GA 3.85%
+// Check 2: $13,680.00 gross → Federal 17.14%, GA 4.43%
+// Combined: $21,410.45 gross → Federal 15.46%, GA 4.22%
+const TAX_CONFIG_2026 = {
+  // Social Security
+  socialSecurityRate: 0.062,
+  socialSecurityWageBase: 184500,
+
+  // Medicare
+  medicareRate: 0.0145,
+  additionalMedicareRate: 0.009,
+  additionalMedicareThreshold: 200000,
+
+  // Georgia State Tax - blended effective rate from actual payroll
+  // ($903.60 withheld on $21,410.45 = 4.22%)
+  georgiaEffectiveWithholdingRate: 0.0422,
+
+  // Federal Tax - blended effective rate from actual payroll
+  // ($3,309.24 withheld on $21,410.45 = 15.46%)
+  federalEffectiveWithholdingRate: 0.1546,
+
+  // 401k
+  max401k: 23500, // 2026 limit
+};
+
 // Stage IDs for deal classification (from CashFlowForecastPage)
 const STAGE_IDS = {
   negotiatingLOI: '89b7ce02-d325-434a-8340-fab04fa57b8c',
@@ -524,6 +578,217 @@ export async function getCashFlowProjection(
 }
 
 // ============================================================================
+// TOOL: GET MIKE PERSONAL FORECAST (Reality Check)
+// ============================================================================
+
+/**
+ * Calculate federal income tax withholding.
+ * Uses effective rate calibrated from actual payroll (12.48%).
+ */
+function calculateFederalWithholding(monthlyGrossWages: number): number {
+  const federalTax = monthlyGrossWages * TAX_CONFIG_2026.federalEffectiveWithholdingRate;
+  return Math.round(federalTax * 100) / 100;
+}
+
+/**
+ * Calculate Georgia state tax withholding.
+ * Uses effective rate calibrated from actual payroll (3.85%).
+ */
+function calculateGeorgiaWithholding(monthlyGrossWages: number): number {
+  const stateTax = monthlyGrossWages * TAX_CONFIG_2026.georgiaEffectiveWithholdingRate;
+  return Math.round(stateTax * 100) / 100;
+}
+
+/**
+ * Calculate Social Security withholding with wage base tracking.
+ */
+function calculateSocialSecurity(
+  monthlyGrossWages: number,
+  ytdSocialSecurityWages: number
+): number {
+  const wageBase = TAX_CONFIG_2026.socialSecurityWageBase;
+
+  // Check if we've already hit the cap
+  if (ytdSocialSecurityWages >= wageBase) {
+    return 0;
+  }
+
+  // Calculate how much of this month's wages are subject to SS
+  const remainingWageBase = wageBase - ytdSocialSecurityWages;
+  const taxableWages = Math.min(monthlyGrossWages, remainingWageBase);
+
+  const ssTax = taxableWages * TAX_CONFIG_2026.socialSecurityRate;
+  return Math.round(ssTax * 100) / 100;
+}
+
+/**
+ * Calculate Medicare withholding including additional Medicare tax.
+ */
+function calculateMedicare(
+  monthlyGrossWages: number,
+  ytdGrossWages: number
+): number {
+  const threshold = TAX_CONFIG_2026.additionalMedicareThreshold;
+
+  // Base Medicare
+  let medicareTax = monthlyGrossWages * TAX_CONFIG_2026.medicareRate;
+
+  // Additional Medicare on wages over $200k
+  if (ytdGrossWages + monthlyGrossWages > threshold) {
+    const wagesOverThreshold = Math.max(0,
+      Math.min(monthlyGrossWages, ytdGrossWages + monthlyGrossWages - threshold)
+    );
+    medicareTax += wagesOverThreshold * TAX_CONFIG_2026.additionalMedicareRate;
+  }
+
+  return Math.round(medicareTax * 100) / 100;
+}
+
+/**
+ * Get Mike Minihan's personal forecast: commission + house profit.
+ * This is the "Reality Check" report.
+ */
+export async function getMikePersonalForecast(
+  supabase: SupabaseClient,
+  year: number,
+  monthsToProject?: number
+): Promise<MikePersonalForecast[]> {
+  const currentMonth = new Date().getMonth();
+
+  // Get Mike's broker splits from payment_split table
+  const { data: paymentSplits, error: splitError } = await supabase
+    .from('payment_split')
+    .select(`
+      id,
+      payment_id,
+      broker_id,
+      split_broker_total,
+      payment:payment_id (
+        id,
+        payment_amount,
+        payment_date_estimated,
+        payment_received,
+        deal_id,
+        deal:deal_id (
+          id,
+          deal_name,
+          stage_id
+        )
+      )
+    `)
+    .eq('broker_id', MIKE_BROKER_ID);
+
+  if (splitError) throw new Error(`Failed to fetch payment splits: ${splitError.message}`);
+
+  // Get house net income (for house profit calculation)
+  const { monthlyForecasts: houseForecasts } = await getPaymentsForecast(
+    supabase,
+    year,
+    false, // Don't include pipeline for conservative estimate
+    false  // Don't include contingent
+  );
+
+  // Get budgeted expenses for house profit calculation
+  const budgets = await getBudgetData(supabase, year, ['Expense', 'Other Expense']);
+
+  // Calculate monthly operating expenses (excluding COGS)
+  const monthlyExpenses: number[] = Array(12).fill(0);
+  for (const budget of budgets) {
+    for (let monthIdx = 0; monthIdx < 12; monthIdx++) {
+      const monthKey = MONTH_KEYS[monthIdx];
+      monthlyExpenses[monthIdx] += budget[monthKey] || 0;
+    }
+  }
+
+  // Aggregate Mike's commissions by month
+  const mikeCommissionsByMonth: number[] = Array(12).fill(0);
+
+  for (const split of paymentSplits || []) {
+    const payment = split.payment as Record<string, unknown>;
+    if (!payment) continue;
+
+    const deal = payment.deal as Record<string, unknown>;
+    if (!deal) continue;
+
+    // Skip lost deals
+    if (deal.stage_id === STAGE_IDS.lost) continue;
+
+    // Skip already received payments for future forecast
+    if (payment.payment_received === true) continue;
+
+    const estimatedDate = payment.payment_date_estimated as string;
+    if (!estimatedDate) continue;
+
+    const date = new Date(estimatedDate);
+    if (date.getFullYear() !== year) continue;
+
+    const monthIdx = date.getMonth();
+    mikeCommissionsByMonth[monthIdx] += (split.split_broker_total as number) || 0;
+  }
+
+  // Build the forecast with tax calculations
+  const forecasts: MikePersonalForecast[] = [];
+  let ytdGrossWages = 0;
+  let ytdSocialSecurityPaid = 0;
+  let ytd401kContributed = 0; // Would need to track actual contributions
+
+  const numMonths = monthsToProject || 12;
+  const startMonth = monthsToProject ? currentMonth : 0;
+
+  for (let i = 0; i < numMonths && startMonth + i < 12; i++) {
+    const monthIdx = startMonth + i;
+
+    const grossCommission = Math.round(mikeCommissionsByMonth[monthIdx] * 100) / 100;
+
+    // House profit = House Net Income - Operating Expenses
+    const houseNetIncome = houseForecasts[monthIdx]?.total || 0;
+    const houseOperatingExpenses = monthlyExpenses[monthIdx];
+    const houseProfit = Math.max(0, Math.round((houseNetIncome - houseOperatingExpenses) * 100) / 100);
+
+    const totalGross = grossCommission + houseProfit;
+
+    // Calculate taxes (only on W2 commission wages)
+    const federalTax = calculateFederalWithholding(grossCommission);
+    const stateTax = calculateGeorgiaWithholding(grossCommission);
+    const socialSecurity = calculateSocialSecurity(grossCommission, ytdGrossWages);
+    const medicare = calculateMedicare(grossCommission, ytdGrossWages);
+
+    const totalTaxes = federalTax + stateTax + socialSecurity + medicare;
+    const netCommission = grossCommission - totalTaxes;
+
+    // Total to Mike = Net Commission + House Profit (house profit is owner's draw, no withholding)
+    const totalToMike = netCommission + houseProfit;
+
+    // Update YTD trackers
+    ytdGrossWages += grossCommission;
+    ytdSocialSecurityPaid += socialSecurity;
+
+    // 401k room remaining
+    const available401kRoom = Math.max(0, TAX_CONFIG_2026.max401k - ytd401kContributed);
+
+    forecasts.push({
+      month: MONTH_NAMES[monthIdx],
+      monthIndex: monthIdx,
+      grossCommission,
+      houseProfit,
+      totalGross,
+      federalTax,
+      stateTax,
+      socialSecurity,
+      medicare,
+      totalTaxes,
+      netCommission,
+      totalToMike,
+      ytdGrossWages,
+      ytdSocialSecurityPaid,
+      available401kRoom,
+    });
+  }
+
+  return forecasts;
+}
+
+// ============================================================================
 // CONTEXT TYPES
 // ============================================================================
 
@@ -830,6 +1095,25 @@ export const CFO_TOOL_DEFINITIONS = [
           description: 'Alternative: search for context notes containing this text and delete them',
         },
       },
+    },
+  },
+  {
+    name: 'get_mike_personal_forecast',
+    description:
+      'Get Mike Minihan\'s personal cash flow forecast - the "Reality Check" report. Shows commission (W2 wages) with payroll tax withholdings, plus house profit (owner\'s draw). Use this when asked about "reality check", "when am I getting paid", "Mike\'s income", or personal cash flow. Returns monthly breakdown with gross commission, taxes withheld (federal, GA state, SS, Medicare), net commission, house profit, and total take-home.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        year: {
+          type: 'number' as const,
+          description: 'Year for forecast (e.g., 2026)',
+        },
+        months_to_project: {
+          type: 'number' as const,
+          description: 'Number of months from current month. If not specified, returns full year.',
+        },
+      },
+      required: ['year'],
     },
   },
 ];
