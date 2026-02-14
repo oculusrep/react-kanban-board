@@ -12,7 +12,8 @@ import {
   LayoutGrid,
   LayoutList,
   ChevronRight,
-  ChevronDown
+  ChevronDown,
+  EyeOff as EyeOffIcon
 } from "lucide-react";
 
 interface QBAccount {
@@ -409,6 +410,30 @@ export default function BudgetManagePage() {
     return { value, percent, isOver: actual > budget };
   };
 
+  // Deactivate account (hide from budget)
+  const deactivateAccount = async (account: QBAccount) => {
+    const confirmed = window.confirm(
+      `Hide "${account.name}" from the budget?\n\nThis marks the account as inactive in your local database. It won't affect QuickBooks.`
+    );
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('qb_account')
+        .update({ active: false })
+        .eq('id', account.id);
+
+      if (error) throw error;
+
+      // Remove from local state
+      setAccounts(prev => prev.filter(a => a.id !== account.id));
+      setMessage({ type: 'success', text: `"${account.name}" hidden from budget` });
+    } catch (error: any) {
+      console.error('Error deactivating account:', error);
+      setMessage({ type: 'error', text: error.message || 'Failed to hide account' });
+    }
+  };
+
   // Cell editing
   const startEdit = (accountId: string, field: string, currentValue: number) => {
     setEditingCell({ accountId, field });
@@ -655,9 +680,9 @@ export default function BudgetManagePage() {
                         return (
                           <tr
                             key={node.fullPath}
-                            className={`${isParent ? 'bg-gray-50 font-medium' : 'hover:bg-gray-50'}`}
+                            className={`group ${isParent ? 'bg-gray-50 font-medium' : 'hover:bg-gray-50'}`}
                           >
-                            <td className={`sticky left-0 px-4 py-2 ${isParent ? 'bg-gray-50' : 'bg-white'}`}>
+                            <td className={`sticky left-0 px-4 py-2 ${isParent ? 'bg-gray-50' : 'bg-white group-hover:bg-gray-50'}`}>
                               <div
                                 className="flex items-center gap-1"
                                 style={{ paddingLeft: `${(node.depth + 1) * 20}px` }}
@@ -676,9 +701,18 @@ export default function BudgetManagePage() {
                                 ) : (
                                   <span className="w-5" />
                                 )}
-                                <span className={`text-sm ${isParent ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                                <span className={`text-sm flex-1 ${isParent ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
                                   {node.name}
                                 </span>
+                                {isLeaf && (
+                                  <button
+                                    onClick={() => deactivateAccount(node.account!)}
+                                    className="p-1 text-gray-300 hover:text-gray-500 hover:bg-gray-100 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                    title="Hide from budget"
+                                  >
+                                    <EyeOffIcon className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
                               </div>
                             </td>
                             <td className={`px-4 py-2 text-right ${isParent ? 'bg-gray-50' : ''}`}>
@@ -844,9 +878,9 @@ export default function BudgetManagePage() {
                         return (
                           <tr
                             key={node.fullPath}
-                            className={`${isParent ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
+                            className={`group ${isParent ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
                           >
-                            <td className={`sticky left-0 px-4 py-2 ${isParent ? 'bg-gray-50' : 'bg-white'}`}>
+                            <td className={`sticky left-0 px-4 py-2 ${isParent ? 'bg-gray-50' : 'bg-white group-hover:bg-gray-50'}`}>
                               <div
                                 className="flex items-center gap-1"
                                 style={{ paddingLeft: `${(node.depth + 1) * 16}px` }}
@@ -865,9 +899,18 @@ export default function BudgetManagePage() {
                                 ) : (
                                   <span className="w-5" />
                                 )}
-                                <span className={`text-xs truncate ${isParent ? 'font-semibold text-gray-900' : 'text-gray-700'}`} title={node.fullPath}>
+                                <span className={`text-xs truncate flex-1 ${isParent ? 'font-semibold text-gray-900' : 'text-gray-700'}`} title={node.fullPath}>
                                   {node.name}
                                 </span>
+                                {isLeaf && (
+                                  <button
+                                    onClick={() => deactivateAccount(node.account!)}
+                                    className="p-0.5 text-gray-300 hover:text-gray-500 hover:bg-gray-100 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                    title="Hide from budget"
+                                  >
+                                    <EyeOffIcon className="h-3 w-3" />
+                                  </button>
+                                )}
                               </div>
                             </td>
                             {MONTHS.map((month) => {
