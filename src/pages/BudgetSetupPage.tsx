@@ -307,6 +307,11 @@ export default function BudgetSetupPage() {
 
   const displayedAccounts = showAllAccounts ? allExpenseAccounts : accounts;
 
+  // Get nesting depth from fully_qualified_name (count colons)
+  const getAccountDepth = (account: QBAccount): number => {
+    return (account.fully_qualified_name.match(/:/g) || []).length;
+  };
+
   const getAccountTotal = (budget: AccountBudget): number => {
     return MONTHS.reduce((sum, month) => sum + (budget[month] || 0), 0);
   };
@@ -475,28 +480,24 @@ export default function BudgetSetupPage() {
                   const actuals = priorYearActuals.get(account.qb_account_id);
                   const budgetTotal = getAccountTotal(budget);
                   const priorTotal = getPriorYearTotal(account.qb_account_id);
+                  const depth = getAccountDepth(account);
 
                   return (
                     <Fragment key={account.qb_account_id}>
                       {/* Account Header Row */}
                       <tr className="bg-blue-50 border-t-2 border-blue-200">
                         <td className="sticky left-0 bg-blue-50 px-4 py-2" colSpan={2}>
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2" style={{ paddingLeft: `${depth * 20}px` }}>
                             <div className="font-semibold text-gray-900 text-sm truncate" title={account.fully_qualified_name}>
                               {account.name}
                             </div>
-                            <span className={`text-xs px-1.5 py-0.5 rounded ${
+                            <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${
                               account.account_type === 'Cost of Goods Sold'
                                 ? 'bg-orange-100 text-orange-700'
                                 : 'bg-gray-100 text-gray-600'
                             }`}>
                               {account.account_type === 'Cost of Goods Sold' ? 'COGS' : 'Exp'}
                             </span>
-                            {account.fully_qualified_name !== account.name && (
-                              <span className="text-xs text-gray-500 truncate" title={account.fully_qualified_name}>
-                                ({account.fully_qualified_name})
-                              </span>
-                            )}
                           </div>
                         </td>
                         {MONTHS.map(month => (
@@ -517,7 +518,9 @@ export default function BudgetSetupPage() {
                       {/* Actuals Row */}
                       <tr className="bg-gray-50">
                         <td className="sticky left-0 bg-gray-50 px-4 py-2 text-sm text-gray-600 font-medium" colSpan={2}>
-                          Actuals ({priorYear})
+                          <div style={{ paddingLeft: `${depth * 20}px` }}>
+                            Actuals ({priorYear})
+                          </div>
                         </td>
                         {MONTHS.map(month => (
                           <td key={month} className="px-2 py-2 text-right text-sm text-gray-600 font-mono">
@@ -533,7 +536,9 @@ export default function BudgetSetupPage() {
                       {/* Budget Row */}
                       <tr className="bg-white">
                         <td className="sticky left-0 bg-white px-4 py-2 text-sm text-blue-700 font-medium" colSpan={2}>
-                          Budget ({budgetYear})
+                          <div style={{ paddingLeft: `${depth * 20}px` }}>
+                            Budget ({budgetYear})
+                          </div>
                         </td>
                         {MONTHS.map(month => {
                           const isEditing = editingCell?.accountId === account.qb_account_id && editingCell?.month === month;
