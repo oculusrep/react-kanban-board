@@ -102,6 +102,7 @@ export interface RolePermissions {
   can_access_quickbooks?: boolean;
   can_access_budget_pl?: boolean;
   can_access_cfo_dashboard?: boolean;
+  can_access_finance_hub?: boolean;
 }
 
 export interface PermissionDefinition {
@@ -586,6 +587,13 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     key: 'can_access_cfo_dashboard',
     label: 'Access CFO Dashboard',
     description: 'Access the AI-powered CFO Dashboard for financial analysis',
+    category: 'system_admin',
+    defaultValue: false,
+  },
+  {
+    key: 'can_access_finance_hub',
+    label: 'Access Finance Hub',
+    description: 'Access the Finance Hub with all financial tools, CFO Agent, Bookkeeper, and reports',
     category: 'system_admin',
     defaultValue: false,
   },

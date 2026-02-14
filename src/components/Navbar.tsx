@@ -566,48 +566,15 @@ export default function Navbar() {
                       🎯 Hunter AI
                     </button>
                   )}
-                  {(userRole === 'admin' || hasPermission('can_access_quickbooks')) && (
+                  {(userRole === 'admin' || hasPermission('can_access_finance_hub')) && (
                     <button
                       onClick={() => {
-                        navigate('/admin/quickbooks');
+                        navigate('/admin/finance');
                         setIsReportsMenuOpen(false);
                       }}
                       className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
                     >
-                      📗 QuickBooks
-                    </button>
-                  )}
-                  {(userRole === 'admin' || hasPermission('can_access_budget_pl')) && (
-                    <button
-                      onClick={() => {
-                        navigate('/admin/budget');
-                        setIsReportsMenuOpen(false);
-                      }}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
-                    >
-                      💰 Budget & P&L
-                    </button>
-                  )}
-                  {(userRole === 'admin' || hasPermission('can_access_cfo_dashboard')) && (
-                    <button
-                      onClick={() => {
-                        navigate('/admin/cfo');
-                        setIsReportsMenuOpen(false);
-                      }}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
-                    >
-                      📊 CFO Dashboard
-                    </button>
-                  )}
-                  {userRole === 'admin' && (
-                    <button
-                      onClick={() => {
-                        navigate('/admin/bookkeeper');
-                        setIsReportsMenuOpen(false);
-                      }}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
-                    >
-                      📒 Bookkeeper
+                      💵 Finance
                     </button>
                   )}
                   {(userRole === 'admin' || hasPermission('can_access_gmail_integration')) && (
@@ -1191,48 +1158,15 @@ export default function Navbar() {
                     🎯 Hunter AI
                   </button>
                 )}
-                {(userRole === 'admin' || hasPermission('can_access_quickbooks')) && (
+                {(userRole === 'admin' || hasPermission('can_access_finance_hub')) && (
                   <button
                     onClick={() => {
-                      navigate('/admin/quickbooks');
+                      navigate('/admin/finance');
                       setIsMobileMenuOpen(false);
                     }}
                     className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                   >
-                    📗 QuickBooks
-                  </button>
-                )}
-                {(userRole === 'admin' || hasPermission('can_access_budget_pl')) && (
-                  <button
-                    onClick={() => {
-                      navigate('/admin/budget');
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
-                  >
-                    💰 Budget & P&L
-                  </button>
-                )}
-                {(userRole === 'admin' || hasPermission('can_access_cfo_dashboard')) && (
-                  <button
-                    onClick={() => {
-                      navigate('/admin/cfo');
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
-                  >
-                    📊 CFO Dashboard
-                  </button>
-                )}
-                {userRole === 'admin' && (
-                  <button
-                    onClick={() => {
-                      navigate('/admin/bookkeeper');
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
-                  >
-                    📒 Bookkeeper
+                    💵 Finance
                   </button>
                 )}
                 {(userRole === 'admin' || hasPermission('can_access_gmail_integration')) && (
