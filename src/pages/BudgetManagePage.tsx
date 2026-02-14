@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
@@ -10,7 +10,9 @@ import {
   Eye,
   EyeOff,
   LayoutGrid,
-  LayoutList
+  LayoutList,
+  ChevronRight,
+  ChevronDown
 } from "lucide-react";
 
 interface QBAccount {
@@ -58,8 +60,31 @@ interface MonthlyActual {
   dec: number;
 }
 
+// Hierarchical node for account tree
+interface AccountNode {
+  name: string;
+  fullPath: string;
+  account?: QBAccount; // Only leaf nodes have the actual account
+  children: AccountNode[];
+  depth: number;
+}
+
+// P&L Section definition
+interface PLSection {
+  title: string;
+  accountTypes: string[];
+  accounts: AccountNode[];
+}
+
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] as const;
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// P&L section definitions (order matters)
+const SECTION_DEFINITIONS = [
+  { title: 'Cost of Goods Sold', accountTypes: ['Cost of Goods Sold'] },
+  { title: 'Operating Expenses', accountTypes: ['Expense'] },
+  { title: 'Other Expenses', accountTypes: ['Other Expense'] },
+];
 
 type ViewMode = 'annual' | 'monthly';
 
@@ -81,6 +106,9 @@ export default function BudgetManagePage() {
   const [viewMode, setViewMode] = useState<ViewMode>('monthly');
   const [showActuals, setShowActuals] = useState(true);
   const [showAllAccounts, setShowAllAccounts] = useState(false);
+
+  // Collapsed sections
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
   // Editing state
   const [editingCell, setEditingCell] = useState<{ accountId: string; field: string } | null>(null);
@@ -170,6 +198,93 @@ export default function BudgetManagePage() {
     fetchData();
   }, [showAllAccounts]);
 
+  // Build hierarchical tree from accounts, grouped by section (account_type)
+  const buildHierarchy = (sectionAccounts: QBAccount[]): AccountNode[] => {
+    const roots: AccountNode[] = [];
+    const nodeMap = new Map<string, AccountNode>();
+
+    // Sort accounts by fully_qualified_name to ensure parents come before children
+    const sortedAccounts = [...sectionAccounts].sort((a, b) =>
+      a.fully_qualified_name.localeCompare(b.fully_qualified_name)
+    );
+
+    for (const account of sortedAccounts) {
+      const parts = account.fully_qualified_name.split(':');
+      let currentPath = '';
+
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        const parentPath = currentPath;
+        currentPath = currentPath ? `${currentPath}:${part}` : part;
+        const depth = i;
+
+        if (!nodeMap.has(currentPath)) {
+          const isLeaf = i === parts.length - 1;
+          const node: AccountNode = {
+            name: part,
+            fullPath: currentPath,
+            account: isLeaf ? account : undefined,
+            children: [],
+            depth
+          };
+          nodeMap.set(currentPath, node);
+
+          if (parentPath && nodeMap.has(parentPath)) {
+            nodeMap.get(parentPath)!.children.push(node);
+          } else if (depth === 0) {
+            roots.push(node);
+          }
+        } else if (i === parts.length - 1) {
+          // This is the leaf node for this account
+          nodeMap.get(currentPath)!.account = account;
+        }
+      }
+    }
+
+    return roots;
+  };
+
+  // Build sections with hierarchical accounts
+  const sections = useMemo((): PLSection[] => {
+    return SECTION_DEFINITIONS.map(def => {
+      const sectionAccounts = accounts.filter(a => def.accountTypes.includes(a.account_type));
+      return {
+        title: def.title,
+        accountTypes: def.accountTypes,
+        accounts: buildHierarchy(sectionAccounts)
+      };
+    }).filter(section => section.accounts.length > 0); // Only show sections with accounts
+  }, [accounts]);
+
+  // Flatten a single section's tree for rendering, respecting collapsed state
+  const flattenSection = (sectionRoots: AccountNode[]): { node: AccountNode; isParent: boolean }[] => {
+    const result: { node: AccountNode; isParent: boolean }[] = [];
+
+    const traverse = (nodes: AccountNode[]) => {
+      for (const node of nodes) {
+        const isParent = node.children.length > 0;
+        result.push({ node, isParent });
+
+        if (isParent && !collapsedSections.has(node.fullPath)) {
+          traverse(node.children);
+        }
+      }
+    };
+
+    traverse(sectionRoots);
+    return result;
+  };
+
+  const toggleSection = (path: string) => {
+    const newCollapsed = new Set(collapsedSections);
+    if (newCollapsed.has(path)) {
+      newCollapsed.delete(path);
+    } else {
+      newCollapsed.add(path);
+    }
+    setCollapsedSections(newCollapsed);
+  };
+
   const getBudget = (accountId: string): AccountBudget => {
     if (budgets.has(accountId)) {
       return budgets.get(accountId)!;
@@ -199,6 +314,40 @@ export default function BudgetManagePage() {
     newBudgets.set(accountId, budget);
     setBudgets(newBudgets);
     setHasChanges(true);
+  };
+
+  // Calculate totals for a parent node (sum of all children)
+  const getNodeBudgetTotal = (node: AccountNode): number => {
+    if (node.account) {
+      const budget = getBudget(node.account.qb_account_id);
+      return MONTHS.reduce((sum, month) => sum + (budget[month] || 0), 0);
+    }
+    return node.children.reduce((sum, child) => sum + getNodeBudgetTotal(child), 0);
+  };
+
+  const getNodeActualTotal = (node: AccountNode): number => {
+    if (node.account) {
+      const actual = actuals.get(node.account.qb_account_id);
+      if (!actual) return 0;
+      return MONTHS.reduce((sum, month) => sum + (actual[month] || 0), 0);
+    }
+    return node.children.reduce((sum, child) => sum + getNodeActualTotal(child), 0);
+  };
+
+  const getNodeMonthBudget = (node: AccountNode, month: typeof MONTHS[number]): number => {
+    if (node.account) {
+      const budget = getBudget(node.account.qb_account_id);
+      return budget[month] || 0;
+    }
+    return node.children.reduce((sum, child) => sum + getNodeMonthBudget(child, month), 0);
+  };
+
+  const getNodeMonthActual = (node: AccountNode, month: typeof MONTHS[number]): number => {
+    if (node.account) {
+      const actual = actuals.get(node.account.qb_account_id);
+      return actual?.[month] || 0;
+    }
+    return node.children.reduce((sum, child) => sum + getNodeMonthActual(child, month), 0);
   };
 
   const saveAllBudgets = async () => {
@@ -252,16 +401,6 @@ export default function BudgetManagePage() {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(amount);
-  };
-
-  const getBudgetTotal = (budget: AccountBudget): number => {
-    return MONTHS.reduce((sum, month) => sum + (budget[month] || 0), 0);
-  };
-
-  const getActualTotal = (accountId: string): number => {
-    const actual = actuals.get(accountId);
-    if (!actual) return 0;
-    return MONTHS.reduce((sum, month) => sum + (actual[month] || 0), 0);
   };
 
   const getVariance = (budget: number, actual: number): { value: number; percent: number; isOver: boolean } => {
@@ -432,7 +571,7 @@ export default function BudgetManagePage() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
-                  <th className="sticky left-0 z-20 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[300px]">
+                  <th className="sticky left-0 z-20 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[350px]">
                     Account
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
@@ -454,62 +593,145 @@ export default function BudgetManagePage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {accounts.map((account) => {
-                  const budget = getBudget(account.qb_account_id);
-                  const budgetTotal = getBudgetTotal(budget);
-                  const actualTotal = getActualTotal(account.qb_account_id);
-                  const variance = getVariance(budgetTotal, actualTotal);
+                {sections.map((section) => {
+                  const flattenedNodes = flattenSection(section.accounts);
+                  // Calculate section totals
+                  const sectionBudgetTotal = section.accounts.reduce((sum, node) => sum + getNodeBudgetTotal(node), 0);
+                  const sectionActualTotal = section.accounts.reduce((sum, node) => sum + getNodeActualTotal(node), 0);
+                  const sectionVariance = getVariance(sectionBudgetTotal, sectionActualTotal);
+                  const isSectionCollapsed = collapsedSections.has(`section:${section.title}`);
 
                   return (
-                    <tr key={account.qb_account_id} className="hover:bg-gray-50">
-                      <td className="sticky left-0 bg-white px-4 py-3">
-                        <div className="font-medium text-gray-900 text-sm" title={account.fully_qualified_name}>
-                          {account.name}
-                        </div>
-                        <div className="text-xs text-gray-500">{account.account_type}</div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {editingCell?.accountId === account.qb_account_id && editingCell?.field === 'annual' ? (
-                          <input
-                            type="number"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            onBlur={confirmEdit}
-                            autoFocus
-                            className="w-24 px-2 py-1 text-right border rounded text-sm"
-                          />
-                        ) : (
+                    <Fragment key={section.title}>
+                      {/* Section Header Row */}
+                      <tr className="bg-blue-50 border-t-2 border-blue-200">
+                        <td className="sticky left-0 bg-blue-50 px-4 py-3">
                           <button
-                            onClick={() => startEdit(account.qb_account_id, 'annual', budgetTotal)}
-                            className="text-sm font-medium text-gray-900 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded"
+                            onClick={() => toggleSection(`section:${section.title}`)}
+                            className="flex items-center gap-2 text-blue-900 font-bold text-sm"
                           >
-                            {formatCurrency(budgetTotal)}
+                            {isSectionCollapsed ? (
+                              <ChevronRight className="h-5 w-5" />
+                            ) : (
+                              <ChevronDown className="h-5 w-5" />
+                            )}
+                            {section.title}
                           </button>
-                        )}
-                      </td>
-                      {showActuals && (
-                        <>
-                          <td className="px-4 py-3 text-right text-sm text-gray-600">
-                            {formatCurrency(actualTotal)}
-                          </td>
-                          <td className={`px-4 py-3 text-right text-sm font-medium ${
-                            variance.isOver ? 'text-red-600' : 'text-green-600'
-                          }`}>
-                            {variance.isOver ? '-' : '+'}{formatCurrency(Math.abs(variance.value))}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <div className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                              variance.percent > 100 ? 'bg-red-100 text-red-700' :
-                              variance.percent > 80 ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-green-100 text-green-700'
+                        </td>
+                        <td className="bg-blue-50 px-4 py-3 text-right font-bold text-sm text-blue-900">
+                          {formatCurrency(sectionBudgetTotal)}
+                        </td>
+                        {showActuals && (
+                          <>
+                            <td className="bg-blue-50 px-4 py-3 text-right font-bold text-sm text-blue-800">
+                              {formatCurrency(sectionActualTotal)}
+                            </td>
+                            <td className={`bg-blue-50 px-4 py-3 text-right font-bold text-sm ${
+                              sectionVariance.isOver ? 'text-red-600' : 'text-green-600'
                             }`}>
-                              {variance.percent.toFixed(0)}%
-                            </div>
-                          </td>
-                        </>
-                      )}
-                    </tr>
+                              {sectionVariance.isOver ? '-' : '+'}{formatCurrency(Math.abs(sectionVariance.value))}
+                            </td>
+                            <td className="bg-blue-50 px-4 py-3 text-right">
+                              <div className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold ${
+                                sectionVariance.percent > 100 ? 'bg-red-100 text-red-700' :
+                                sectionVariance.percent > 80 ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-green-100 text-green-700'
+                              }`}>
+                                {sectionVariance.percent.toFixed(0)}%
+                              </div>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+
+                      {/* Section Content (if not collapsed) */}
+                      {!isSectionCollapsed && flattenedNodes.map(({ node, isParent }) => {
+                        const budgetTotal = getNodeBudgetTotal(node);
+                        const actualTotal = getNodeActualTotal(node);
+                        const variance = getVariance(budgetTotal, actualTotal);
+                        const isNodeCollapsed = collapsedSections.has(node.fullPath);
+                        const isLeaf = !!node.account;
+
+                        return (
+                          <tr
+                            key={node.fullPath}
+                            className={`${isParent ? 'bg-gray-50 font-medium' : 'hover:bg-gray-50'}`}
+                          >
+                            <td className={`sticky left-0 px-4 py-2 ${isParent ? 'bg-gray-50' : 'bg-white'}`}>
+                              <div
+                                className="flex items-center gap-1"
+                                style={{ paddingLeft: `${(node.depth + 1) * 20}px` }}
+                              >
+                                {isParent ? (
+                                  <button
+                                    onClick={() => toggleSection(node.fullPath)}
+                                    className="p-0.5 hover:bg-gray-200 rounded"
+                                  >
+                                    {isNodeCollapsed ? (
+                                      <ChevronRight className="h-4 w-4 text-gray-500" />
+                                    ) : (
+                                      <ChevronDown className="h-4 w-4 text-gray-500" />
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span className="w-5" />
+                                )}
+                                <span className={`text-sm ${isParent ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                                  {node.name}
+                                </span>
+                              </div>
+                            </td>
+                            <td className={`px-4 py-2 text-right ${isParent ? 'bg-gray-50' : ''}`}>
+                              {isLeaf ? (
+                                editingCell?.accountId === node.account!.qb_account_id && editingCell?.field === 'annual' ? (
+                                  <input
+                                    type="number"
+                                    value={editValue}
+                                    onChange={(e) => setEditValue(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                    onBlur={confirmEdit}
+                                    autoFocus
+                                    className="w-24 px-2 py-1 text-right border rounded text-sm"
+                                  />
+                                ) : (
+                                  <button
+                                    onClick={() => startEdit(node.account!.qb_account_id, 'annual', budgetTotal)}
+                                    className="text-sm text-gray-900 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded"
+                                  >
+                                    {formatCurrency(budgetTotal)}
+                                  </button>
+                                )
+                              ) : (
+                                <span className="text-sm font-semibold text-gray-900">
+                                  {formatCurrency(budgetTotal)}
+                                </span>
+                              )}
+                            </td>
+                            {showActuals && (
+                              <>
+                                <td className={`px-4 py-2 text-right text-sm ${isParent ? 'bg-gray-50 font-semibold' : ''} text-gray-600`}>
+                                  {formatCurrency(actualTotal)}
+                                </td>
+                                <td className={`px-4 py-2 text-right text-sm font-medium ${isParent ? 'bg-gray-50' : ''} ${
+                                  variance.isOver ? 'text-red-600' : 'text-green-600'
+                                }`}>
+                                  {variance.isOver ? '-' : '+'}{formatCurrency(Math.abs(variance.value))}
+                                </td>
+                                <td className={`px-4 py-2 text-right ${isParent ? 'bg-gray-50' : ''}`}>
+                                  <div className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
+                                    variance.percent > 100 ? 'bg-red-100 text-red-700' :
+                                    variance.percent > 80 ? 'bg-yellow-100 text-yellow-700' :
+                                    'bg-green-100 text-green-700'
+                                  }`}>
+                                    {variance.percent.toFixed(0)}%
+                                  </div>
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -521,10 +743,10 @@ export default function BudgetManagePage() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
-                  <th className="sticky left-0 z-20 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[200px]">
+                  <th className="sticky left-0 z-20 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[250px]">
                     Account
                   </th>
-                  {MONTH_LABELS.map((month, idx) => (
+                  {MONTH_LABELS.map((month) => (
                     <th key={month} colSpan={showActuals ? 2 : 1} className="bg-gray-50 px-1 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                       {month}
                     </th>
@@ -537,14 +759,14 @@ export default function BudgetManagePage() {
                   <tr className="bg-gray-100">
                     <th className="sticky left-0 z-20 bg-gray-100 px-4 py-1"></th>
                     {MONTH_LABELS.map((month) => (
-                      <>
-                        <th key={`${month}-b`} className="bg-gray-100 px-1 py-1 text-center text-[10px] font-medium text-blue-600">
+                      <Fragment key={month}>
+                        <th className="bg-gray-100 px-1 py-1 text-center text-[10px] font-medium text-blue-600">
                           Bud
                         </th>
-                        <th key={`${month}-a`} className="bg-gray-100 px-1 py-1 text-center text-[10px] font-medium text-gray-500">
+                        <th className="bg-gray-100 px-1 py-1 text-center text-[10px] font-medium text-gray-500">
                           Act
                         </th>
-                      </>
+                      </Fragment>
                     ))}
                     <th className="bg-gray-100 px-1 py-1 text-center text-[10px] font-medium text-blue-600">Bud</th>
                     <th className="bg-gray-100 px-1 py-1 text-center text-[10px] font-medium text-gray-500">Act</th>
@@ -552,70 +774,162 @@ export default function BudgetManagePage() {
                 )}
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {accounts.map((account) => {
-                  const budget = getBudget(account.qb_account_id);
-                  const actual = actuals.get(account.qb_account_id);
-                  const budgetTotal = getBudgetTotal(budget);
-                  const actualTotal = getActualTotal(account.qb_account_id);
+                {sections.map((section) => {
+                  const flattenedNodes = flattenSection(section.accounts);
+                  // Calculate section totals
+                  const sectionBudgetTotal = section.accounts.reduce((sum, node) => sum + getNodeBudgetTotal(node), 0);
+                  const sectionActualTotal = section.accounts.reduce((sum, node) => sum + getNodeActualTotal(node), 0);
+                  const isSectionCollapsed = collapsedSections.has(`section:${section.title}`);
+
+                  // Calculate section monthly totals
+                  const getSectionMonthBudget = (month: typeof MONTHS[number]) =>
+                    section.accounts.reduce((sum, node) => sum + getNodeMonthBudget(node, month), 0);
+                  const getSectionMonthActual = (month: typeof MONTHS[number]) =>
+                    section.accounts.reduce((sum, node) => sum + getNodeMonthActual(node, month), 0);
 
                   return (
-                    <tr key={account.qb_account_id} className="hover:bg-gray-50">
-                      <td className="sticky left-0 bg-white px-4 py-2">
-                        <div className="font-medium text-gray-900 text-xs truncate" title={account.fully_qualified_name}>
-                          {account.name}
-                        </div>
-                      </td>
-                      {MONTHS.map((month) => {
-                        const budgetValue = budget[month] || 0;
-                        const actualValue = actual?.[month] || 0;
-                        const isEditing = editingCell?.accountId === account.qb_account_id && editingCell?.field === month;
+                    <Fragment key={section.title}>
+                      {/* Section Header Row */}
+                      <tr className="bg-blue-50 border-t-2 border-blue-200">
+                        <td className="sticky left-0 bg-blue-50 px-4 py-2">
+                          <button
+                            onClick={() => toggleSection(`section:${section.title}`)}
+                            className="flex items-center gap-2 text-blue-900 font-bold text-xs"
+                          >
+                            {isSectionCollapsed ? (
+                              <ChevronRight className="h-4 w-4" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4" />
+                            )}
+                            {section.title}
+                          </button>
+                        </td>
+                        {MONTHS.map((month) => {
+                          const monthBudget = getSectionMonthBudget(month);
+                          const monthActual = getSectionMonthActual(month);
+                          return (
+                            <Fragment key={month}>
+                              <td className="bg-blue-50 px-1 py-2 text-right text-xs font-bold text-blue-900">
+                                {monthBudget > 0 ? formatCurrency(monthBudget) : '-'}
+                              </td>
+                              {showActuals && (
+                                <td className={`bg-blue-50 px-1 py-2 text-right text-xs font-bold ${
+                                  monthActual > monthBudget && monthBudget > 0 ? 'text-red-600' : 'text-blue-800'
+                                }`}>
+                                  {monthActual > 0 ? formatCurrency(monthActual) : '-'}
+                                </td>
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                        <td className="bg-blue-50 px-2 py-2 text-right text-xs font-bold text-blue-900">
+                          {formatCurrency(sectionBudgetTotal)}
+                        </td>
+                        {showActuals && (
+                          <td className={`bg-blue-50 px-2 py-2 text-right text-xs font-bold ${
+                            sectionActualTotal > sectionBudgetTotal && sectionBudgetTotal > 0 ? 'text-red-600' : 'text-blue-800'
+                          }`}>
+                            {formatCurrency(sectionActualTotal)}
+                          </td>
+                        )}
+                      </tr>
+
+                      {/* Section Content (if not collapsed) */}
+                      {!isSectionCollapsed && flattenedNodes.map(({ node, isParent }) => {
+                        const budgetTotal = getNodeBudgetTotal(node);
+                        const actualTotal = getNodeActualTotal(node);
+                        const isNodeCollapsed = collapsedSections.has(node.fullPath);
+                        const isLeaf = !!node.account;
 
                         return (
-                          <>
-                            <td key={`${month}-budget`} className="px-1 py-2 text-right">
-                              {isEditing ? (
-                                <input
-                                  type="number"
-                                  value={editValue}
-                                  onChange={(e) => setEditValue(e.target.value)}
-                                  onKeyDown={handleKeyDown}
-                                  onBlur={confirmEdit}
-                                  autoFocus
-                                  className="w-16 px-1 py-0.5 text-right border rounded text-xs"
-                                />
-                              ) : (
-                                <button
-                                  onClick={() => startEdit(account.qb_account_id, month, budgetValue)}
-                                  className={`text-xs px-1 py-0.5 rounded hover:bg-blue-50 ${
-                                    budgetValue > 0 ? 'text-gray-900' : 'text-gray-300'
-                                  }`}
-                                >
-                                  {budgetValue > 0 ? formatCurrency(budgetValue) : '-'}
-                                </button>
-                              )}
+                          <tr
+                            key={node.fullPath}
+                            className={`${isParent ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
+                          >
+                            <td className={`sticky left-0 px-4 py-2 ${isParent ? 'bg-gray-50' : 'bg-white'}`}>
+                              <div
+                                className="flex items-center gap-1"
+                                style={{ paddingLeft: `${(node.depth + 1) * 16}px` }}
+                              >
+                                {isParent ? (
+                                  <button
+                                    onClick={() => toggleSection(node.fullPath)}
+                                    className="p-0.5 hover:bg-gray-200 rounded"
+                                  >
+                                    {isNodeCollapsed ? (
+                                      <ChevronRight className="h-4 w-4 text-gray-500" />
+                                    ) : (
+                                      <ChevronDown className="h-4 w-4 text-gray-500" />
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span className="w-5" />
+                                )}
+                                <span className={`text-xs truncate ${isParent ? 'font-semibold text-gray-900' : 'text-gray-700'}`} title={node.fullPath}>
+                                  {node.name}
+                                </span>
+                              </div>
+                            </td>
+                            {MONTHS.map((month) => {
+                              const monthBudget = getNodeMonthBudget(node, month);
+                              const monthActual = getNodeMonthActual(node, month);
+                              const isEditing = isLeaf && editingCell?.accountId === node.account!.qb_account_id && editingCell?.field === month;
+
+                              return (
+                                <Fragment key={month}>
+                                  <td className={`px-1 py-2 text-right ${isParent ? 'bg-gray-50' : ''}`}>
+                                    {isLeaf ? (
+                                      isEditing ? (
+                                        <input
+                                          type="number"
+                                          value={editValue}
+                                          onChange={(e) => setEditValue(e.target.value)}
+                                          onKeyDown={handleKeyDown}
+                                          onBlur={confirmEdit}
+                                          autoFocus
+                                          className="w-14 px-1 py-0.5 text-right border rounded text-xs"
+                                        />
+                                      ) : (
+                                        <button
+                                          onClick={() => startEdit(node.account!.qb_account_id, month, monthBudget)}
+                                          className={`text-xs px-1 py-0.5 rounded hover:bg-blue-50 ${
+                                            monthBudget > 0 ? 'text-gray-900' : 'text-gray-300'
+                                          }`}
+                                        >
+                                          {monthBudget > 0 ? formatCurrency(monthBudget) : '-'}
+                                        </button>
+                                      )
+                                    ) : (
+                                      <span className={`text-xs font-semibold ${monthBudget > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
+                                        {monthBudget > 0 ? formatCurrency(monthBudget) : '-'}
+                                      </span>
+                                    )}
+                                  </td>
+                                  {showActuals && (
+                                    <td className={`px-1 py-2 text-right text-xs ${isParent ? 'bg-gray-50 font-semibold' : ''} ${
+                                      monthActual > monthBudget && monthBudget > 0 ? 'text-red-600' : 'text-gray-500'
+                                    }`}>
+                                      {monthActual > 0 ? formatCurrency(monthActual) : '-'}
+                                    </td>
+                                  )}
+                                </Fragment>
+                              );
+                            })}
+                            {/* Totals */}
+                            <td className={`px-2 py-2 text-right text-xs font-semibold ${isParent ? 'bg-gray-50' : 'bg-gray-50'} text-gray-900`}>
+                              {formatCurrency(budgetTotal)}
                             </td>
                             {showActuals && (
-                              <td key={`${month}-actual`} className={`px-1 py-2 text-right text-xs ${
-                                actualValue > budgetValue && budgetValue > 0 ? 'text-red-600 font-medium' : 'text-gray-500'
+                              <td className={`px-2 py-2 text-right text-xs font-semibold bg-gray-50 ${
+                                actualTotal > budgetTotal && budgetTotal > 0 ? 'text-red-600' : 'text-gray-600'
                               }`}>
-                                {actualValue > 0 ? formatCurrency(actualValue) : '-'}
+                                {formatCurrency(actualTotal)}
                               </td>
                             )}
-                          </>
+                          </tr>
                         );
                       })}
-                      {/* Totals */}
-                      <td className="px-2 py-2 text-right text-xs font-semibold text-gray-900 bg-gray-50">
-                        {formatCurrency(budgetTotal)}
-                      </td>
-                      {showActuals && (
-                        <td className={`px-2 py-2 text-right text-xs font-semibold bg-gray-50 ${
-                          actualTotal > budgetTotal && budgetTotal > 0 ? 'text-red-600' : 'text-gray-600'
-                        }`}>
-                          {formatCurrency(actualTotal)}
-                        </td>
-                      )}
-                    </tr>
+                    </Fragment>
                   );
                 })}
               </tbody>
