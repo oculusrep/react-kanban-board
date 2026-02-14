@@ -94,7 +94,8 @@ async function withRetry<T>(
   fn: () => Promise<T>,
   options: RetryOptions = {}
 ): Promise<T> {
-  const { maxRetries = 3, baseDelayMs = 2000, maxDelayMs = 30000 } = options;
+  // Longer delays to handle per-minute rate limits (10k tokens/min on Sonnet 4)
+  const { maxRetries = 4, baseDelayMs = 15000, maxDelayMs = 90000 } = options;
 
   let lastError: Error | undefined;
 
@@ -109,15 +110,20 @@ async function withRetry<T>(
       const isRateLimitError =
         errorMessage.includes('429') ||
         errorMessage.includes('rate_limit') ||
-        errorMessage.includes('rate limit');
+        errorMessage.includes('rate limit') ||
+        errorMessage.includes('would exceed');
 
       if (!isRateLimitError || attempt === maxRetries) {
         throw error;
       }
 
+      // For "would exceed" errors, wait longer (full minute reset)
+      const isPreemptiveLimit = errorMessage.includes('would exceed');
+      const baseForAttempt = isPreemptiveLimit ? 60000 : baseDelayMs;
+
       // Calculate delay with exponential backoff + jitter
-      const exponentialDelay = baseDelayMs * Math.pow(2, attempt);
-      const jitter = Math.random() * 1000;
+      const exponentialDelay = baseForAttempt * Math.pow(1.5, attempt);
+      const jitter = Math.random() * 5000;
       const delay = Math.min(exponentialDelay + jitter, maxDelayMs);
 
       console.log(`[CFO Agent] Rate limited, waiting ${Math.round(delay)}ms before retry ${attempt + 1}/${maxRetries}`);
