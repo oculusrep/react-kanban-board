@@ -533,9 +533,11 @@ async function withRetry<T>(
 5. Non-rate-limit errors are thrown immediately
 
 **Rate Limit Context:**
-- Anthropic free tier: 10,000 input tokens per minute
+- Sonnet 4 has very strict rate limits (10k tokens/min) - too low for tool-heavy agent
+- Solution: Use `claude-3-5-haiku-20241022` which has much higher rate limits
+- Haiku is optimized for tool use and has faster response times
 - CFO Agent base overhead: ~5,000-6,000 tokens (system prompt + tool definitions)
-- Remaining capacity: ~4,000-5,000 tokens for conversation
+- Haiku handles this easily with room for conversation history
 
 ---
 

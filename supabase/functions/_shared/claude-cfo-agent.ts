@@ -483,7 +483,7 @@ export async function runCFOAgent(
 
     const response = await withRetry(
       () => client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-3-5-haiku-20241022',
         max_tokens: 4096,
         system: systemPrompt,
         tools: CFO_TOOL_DEFINITIONS as Anthropic.Tool[],
