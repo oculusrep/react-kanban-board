@@ -820,6 +820,63 @@ export default function BudgetManagePage() {
               </tbody>
             </table>
           </div>
+
+          {/* Annual View Summary Cards */}
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+            {(() => {
+              const grandBudgetTotal = sections.reduce((sum, section) =>
+                sum + section.accounts.reduce((sSum, node) => sSum + getNodeBudgetTotal(node), 0), 0);
+              const grandActualTotal = sections.reduce((sum, section) =>
+                sum + section.accounts.reduce((sSum, node) => sSum + getNodeActualTotal(node), 0), 0);
+              const variance = grandBudgetTotal - grandActualTotal;
+              const percentUsed = grandBudgetTotal > 0 ? (grandActualTotal / grandBudgetTotal) * 100 : 0;
+
+              return (
+                <>
+                  <div className="bg-white rounded-lg shadow p-4">
+                    <div className="text-sm text-gray-500 mb-1">Annual Budget</div>
+                    <div className="text-2xl font-bold text-gray-900">{formatCurrency(grandBudgetTotal)}</div>
+                  </div>
+                  {showActuals ? (
+                    <>
+                      <div className="bg-white rounded-lg shadow p-4">
+                        <div className="text-sm text-gray-500 mb-1">YTD Actual</div>
+                        <div className="text-2xl font-bold text-gray-900">{formatCurrency(grandActualTotal)}</div>
+                      </div>
+                      <div className={`rounded-lg shadow p-4 ${variance >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+                        <div className="text-sm text-gray-500 mb-1">Variance</div>
+                        <div className={`text-2xl font-bold ${variance >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                          {variance >= 0 ? '+' : ''}{formatCurrency(variance)}
+                        </div>
+                        <div className={`text-sm ${percentUsed > 100 ? 'text-red-600' : percentUsed > 80 ? 'text-yellow-600' : 'text-green-600'}`}>
+                          {percentUsed.toFixed(1)}% of budget used
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-lg shadow p-4">
+                        <div className="text-sm text-gray-500 mb-1">Accounts</div>
+                        <div className="text-2xl font-bold text-gray-900">{accounts.length}</div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="bg-white rounded-lg shadow p-4">
+                        <div className="text-sm text-gray-500 mb-1">Accounts</div>
+                        <div className="text-2xl font-bold text-gray-900">{accounts.length}</div>
+                      </div>
+                      <div className="bg-white rounded-lg shadow p-4">
+                        <div className="text-sm text-gray-500 mb-1">Monthly Avg</div>
+                        <div className="text-2xl font-bold text-gray-900">{formatCurrency(grandBudgetTotal / 12)}</div>
+                      </div>
+                      <div className="bg-white rounded-lg shadow p-4">
+                        <div className="text-sm text-gray-500 mb-1">Sections</div>
+                        <div className="text-2xl font-bold text-gray-900">{sections.length}</div>
+                      </div>
+                    </>
+                  )}
+                </>
+              );
+            })()}
+          </div>
         ) : (
           // Monthly View
           <>
@@ -1078,56 +1135,73 @@ export default function BudgetManagePage() {
             </table>
           </div>
 
-          {/* Summary Cards */}
-          {showActuals && (
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
-              {(() => {
-                const grandBudgetTotal = sections.reduce((sum, section) =>
-                  sum + section.accounts.reduce((sSum, node) => sSum + getNodeBudgetTotal(node), 0), 0);
-                const grandActualTotal = sections.reduce((sum, section) =>
-                  sum + section.accounts.reduce((sSum, node) => sSum + getNodeActualTotal(node), 0), 0);
-                const variance = grandBudgetTotal - grandActualTotal;
-                const percentUsed = grandBudgetTotal > 0 ? (grandActualTotal / grandBudgetTotal) * 100 : 0;
+          {/* Summary Cards - Always show budget total, show actuals only when toggled */}
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+            {(() => {
+              const grandBudgetTotal = sections.reduce((sum, section) =>
+                sum + section.accounts.reduce((sSum, node) => sSum + getNodeBudgetTotal(node), 0), 0);
+              const grandActualTotal = sections.reduce((sum, section) =>
+                sum + section.accounts.reduce((sSum, node) => sSum + getNodeActualTotal(node), 0), 0);
+              const variance = grandBudgetTotal - grandActualTotal;
+              const percentUsed = grandBudgetTotal > 0 ? (grandActualTotal / grandBudgetTotal) * 100 : 0;
 
-                // Calculate current month data
-                const currentMonth = new Date().getMonth();
-                const currentMonthKey = MONTHS[currentMonth];
-                const currentMonthBudget = sections.reduce((sum, section) =>
-                  sum + section.accounts.reduce((sSum, node) => sSum + getNodeMonthBudget(node, currentMonthKey), 0), 0);
-                const currentMonthActual = sections.reduce((sum, section) =>
-                  sum + section.accounts.reduce((sSum, node) => sSum + getNodeMonthActual(node, currentMonthKey), 0), 0);
+              // Calculate current month data
+              const currentMonth = new Date().getMonth();
+              const currentMonthKey = MONTHS[currentMonth];
+              const currentMonthBudget = sections.reduce((sum, section) =>
+                sum + section.accounts.reduce((sSum, node) => sSum + getNodeMonthBudget(node, currentMonthKey), 0), 0);
+              const currentMonthActual = sections.reduce((sum, section) =>
+                sum + section.accounts.reduce((sSum, node) => sSum + getNodeMonthActual(node, currentMonthKey), 0), 0);
 
-                return (
-                  <>
-                    <div className="bg-white rounded-lg shadow p-4">
-                      <div className="text-sm text-gray-500 mb-1">Annual Budget</div>
-                      <div className="text-2xl font-bold text-gray-900">{formatCurrency(grandBudgetTotal)}</div>
-                    </div>
-                    <div className="bg-white rounded-lg shadow p-4">
-                      <div className="text-sm text-gray-500 mb-1">YTD Actual</div>
-                      <div className="text-2xl font-bold text-gray-900">{formatCurrency(grandActualTotal)}</div>
-                    </div>
-                    <div className={`rounded-lg shadow p-4 ${variance >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-                      <div className="text-sm text-gray-500 mb-1">Variance</div>
-                      <div className={`text-2xl font-bold ${variance >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                        {variance >= 0 ? '+' : ''}{formatCurrency(variance)}
+              return (
+                <>
+                  <div className="bg-white rounded-lg shadow p-4">
+                    <div className="text-sm text-gray-500 mb-1">Annual Budget</div>
+                    <div className="text-2xl font-bold text-gray-900">{formatCurrency(grandBudgetTotal)}</div>
+                  </div>
+                  {showActuals ? (
+                    <>
+                      <div className="bg-white rounded-lg shadow p-4">
+                        <div className="text-sm text-gray-500 mb-1">YTD Actual</div>
+                        <div className="text-2xl font-bold text-gray-900">{formatCurrency(grandActualTotal)}</div>
                       </div>
-                      <div className={`text-sm ${percentUsed > 100 ? 'text-red-600' : percentUsed > 80 ? 'text-yellow-600' : 'text-green-600'}`}>
-                        {percentUsed.toFixed(1)}% of budget used
+                      <div className={`rounded-lg shadow p-4 ${variance >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+                        <div className="text-sm text-gray-500 mb-1">Variance</div>
+                        <div className={`text-2xl font-bold ${variance >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                          {variance >= 0 ? '+' : ''}{formatCurrency(variance)}
+                        </div>
+                        <div className={`text-sm ${percentUsed > 100 ? 'text-red-600' : percentUsed > 80 ? 'text-yellow-600' : 'text-green-600'}`}>
+                          {percentUsed.toFixed(1)}% of budget used
+                        </div>
                       </div>
-                    </div>
-                    <div className="bg-white rounded-lg shadow p-4">
-                      <div className="text-sm text-gray-500 mb-1">{MONTH_LABELS[currentMonth]} Spend</div>
-                      <div className="text-2xl font-bold text-gray-900">{formatCurrency(currentMonthActual)}</div>
-                      <div className="text-sm text-gray-500">
-                        of {formatCurrency(currentMonthBudget)} budgeted
+                      <div className="bg-white rounded-lg shadow p-4">
+                        <div className="text-sm text-gray-500 mb-1">{MONTH_LABELS[currentMonth]} Spend</div>
+                        <div className="text-2xl font-bold text-gray-900">{formatCurrency(currentMonthActual)}</div>
+                        <div className="text-sm text-gray-500">
+                          of {formatCurrency(currentMonthBudget)} budgeted
+                        </div>
                       </div>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-          )}
+                    </>
+                  ) : (
+                    <>
+                      <div className="bg-white rounded-lg shadow p-4">
+                        <div className="text-sm text-gray-500 mb-1">Accounts</div>
+                        <div className="text-2xl font-bold text-gray-900">{accounts.length}</div>
+                      </div>
+                      <div className="bg-white rounded-lg shadow p-4">
+                        <div className="text-sm text-gray-500 mb-1">{MONTH_LABELS[currentMonth]} Budget</div>
+                        <div className="text-2xl font-bold text-gray-900">{formatCurrency(currentMonthBudget)}</div>
+                      </div>
+                      <div className="bg-white rounded-lg shadow p-4">
+                        <div className="text-sm text-gray-500 mb-1">Monthly Avg</div>
+                        <div className="text-2xl font-bold text-gray-900">{formatCurrency(grandBudgetTotal / 12)}</div>
+                      </div>
+                    </>
+                  )}
+                </>
+              );
+            })()}
+          </div>
           </>
         )}
       </div>
