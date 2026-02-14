@@ -101,6 +101,7 @@ export interface RolePermissions {
   can_access_hunter_ai?: boolean;
   can_access_quickbooks?: boolean;
   can_access_budget_pl?: boolean;
+  can_access_cfo_dashboard?: boolean;
 }
 
 export interface PermissionDefinition {
@@ -578,6 +579,13 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     key: 'can_access_budget_pl',
     label: 'Access Budget & P&L',
     description: 'Access budget and profit & loss reports',
+    category: 'system_admin',
+    defaultValue: false,
+  },
+  {
+    key: 'can_access_cfo_dashboard',
+    label: 'Access CFO Dashboard',
+    description: 'Access the AI-powered CFO Dashboard for financial analysis',
     category: 'system_admin',
     defaultValue: false,
   },

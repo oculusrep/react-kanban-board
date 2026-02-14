@@ -1,8 +1,8 @@
 # CFO Agent Specification
 
-## Status: Planning Phase
+## Status: Phase 3 - CFO Agent Core Implementation
 **Created:** January 9, 2026
-**Last Updated:** January 9, 2026
+**Last Updated:** February 14, 2026
 
 ---
 
@@ -453,12 +453,27 @@ Natural language query interface for the CFO Agent.
 4. 🔲 Build anomaly detection during expense sync
 5. 🔲 Create daily snapshot cron job
 
-### Phase 3: CFO Agent Core
-1. 🔲 Claude API integration
-2. 🔲 Natural language query interface
-3. 🔲 Budget monitoring alerts
-4. 🔲 AR aging alerts
-5. 🔲 Monthly report generation
+### Phase 3: CFO Agent Core (Completed February 14, 2026)
+1. ✅ Claude API integration (`supabase/functions/_shared/claude-cfo-agent.ts`)
+2. ✅ Natural language query interface (`supabase/functions/cfo-query/index.ts`)
+3. ✅ CFO Dashboard with chat UI (`src/pages/CFODashboardPage.tsx`)
+4. ✅ Chat panel with markdown rendering (`src/components/cfo/CFOChatPanel.tsx`)
+5. ✅ Dynamic chart generation (`src/components/cfo/CFOChartRenderer.tsx`)
+6. ✅ TypeScript interfaces (`src/types/cfo.ts`)
+7. ✅ Financial data tools for Claude (`supabase/functions/_shared/cfo-tools.ts`):
+   - `get_payments_forecast` - Revenue by month with house net calculation
+   - `get_budget_data` - Monthly budgets by account
+   - `get_expenses_by_period` - Actual expenses from QBO
+   - `get_invoice_aging` - AR aging summary
+   - `get_cash_flow_projection` - Income minus expenses with running balance
+   - `generate_chart` - Create chart specifications for frontend
+8. ✅ Route registered at `/admin/cfo` (admin access only)
+9. ✅ Menu integration with permission control (`can_access_cfo_dashboard`)
+10. ✅ Edge function deployed (`supabase functions deploy cfo-query`)
+11. ✅ Anthropic API key configured in Supabase secrets
+12. 🔲 Budget monitoring alerts
+13. 🔲 AR aging alerts
+14. 🔲 Monthly report generation
 
 ### Phase 4: Advanced Features
 1. 🔲 Cash flow projections
@@ -505,14 +520,22 @@ Natural language query interface for the CFO Agent.
 
 ## Resume Point
 
-**Current State**: Schema migration complete (January 9, 2026). Ready for P&L verification and troubleshooting.
+**Current State**: CFO Agent core implementation complete (February 14, 2026). Chat interface is live and functional.
+
+**Completed**:
+1. ✅ Schema migration applied
+2. ✅ CFO Dashboard with AI chat interface
+3. ✅ Claude API integration with financial tools
+4. ✅ Dynamic chart rendering (bar, line, area, composed, stacked)
+5. ✅ Menu integration with role-based permissions
+6. ✅ Edge function deployed
 
 **Next Steps**:
-1. ✅ Schema migration applied
+1. 🔲 Test the CFO Agent with various financial queries
 2. 🔲 Verify P&L expense sync from QBO is working correctly
-3. 🔲 Test expense recategorization sync back to QBO (OVIS as source of truth)
-4. 🔲 Review and recategorize all 2025 expenses
-5. 🔲 Set up budgets by account
+3. 🔲 Enter 2026 budgets via Budget Setup page
+4. 🔲 Implement budget monitoring alerts
+5. 🔲 Implement AR aging alerts
 6. 🔲 Build financial snapshot infrastructure
 
-**Immediate Priority**: Troubleshoot P&L/expense sync issues before proceeding with budgeting
+**Immediate Priority**: Test CFO Agent queries and verify financial data accuracy

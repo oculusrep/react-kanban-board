@@ -588,6 +588,17 @@ export default function Navbar() {
                       💰 Budget & P&L
                     </button>
                   )}
+                  {(userRole === 'admin' || hasPermission('can_access_cfo_dashboard')) && (
+                    <button
+                      onClick={() => {
+                        navigate('/admin/cfo');
+                        setIsReportsMenuOpen(false);
+                      }}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+                    >
+                      📊 CFO Dashboard
+                    </button>
+                  )}
                   {(userRole === 'admin' || hasPermission('can_access_gmail_integration')) && (
                     <button
                       onClick={() => {
@@ -1189,6 +1200,17 @@ export default function Navbar() {
                     className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
                   >
                     💰 Budget & P&L
+                  </button>
+                )}
+                {(userRole === 'admin' || hasPermission('can_access_cfo_dashboard')) && (
+                  <button
+                    onClick={() => {
+                      navigate('/admin/cfo');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2 rounded hover:bg-blue-50 text-gray-700"
+                  >
+                    📊 CFO Dashboard
                   </button>
                 )}
                 {(userRole === 'admin' || hasPermission('can_access_gmail_integration')) && (
