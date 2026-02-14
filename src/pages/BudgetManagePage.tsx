@@ -13,7 +13,9 @@ import {
   LayoutList,
   ChevronRight,
   ChevronDown,
-  EyeOff as EyeOffIcon
+  EyeOff as EyeOffIcon,
+  ChevronsUpDown,
+  ChevronsDownUp
 } from "lucide-react";
 
 interface QBAccount {
@@ -284,6 +286,48 @@ export default function BudgetManagePage() {
       newCollapsed.add(path);
     }
     setCollapsedSections(newCollapsed);
+  };
+
+  // Get all collapsible paths (sections + parent nodes)
+  const getAllCollapsiblePaths = (): string[] => {
+    const paths: string[] = [];
+
+    // Add section headers
+    sections.forEach(section => {
+      paths.push(`section:${section.title}`);
+    });
+
+    // Add parent nodes (nodes with children)
+    const addParentPaths = (nodes: AccountNode[]) => {
+      for (const node of nodes) {
+        if (node.children.length > 0) {
+          paths.push(node.fullPath);
+          addParentPaths(node.children);
+        }
+      }
+    };
+
+    sections.forEach(section => {
+      addParentPaths(section.accounts);
+    });
+
+    return paths;
+  };
+
+  const isAllCollapsed = useMemo(() => {
+    const allPaths = getAllCollapsiblePaths();
+    if (allPaths.length === 0) return false;
+    return allPaths.every(path => collapsedSections.has(path));
+  }, [sections, collapsedSections]);
+
+  const toggleCollapseAll = () => {
+    if (isAllCollapsed) {
+      // Expand all
+      setCollapsedSections(new Set());
+    } else {
+      // Collapse all
+      setCollapsedSections(new Set(getAllCollapsiblePaths()));
+    }
   };
 
   const getBudget = (accountId: string): AccountBudget => {
@@ -560,6 +604,16 @@ export default function BudgetManagePage() {
               All accounts
             </label>
 
+            {/* Collapse/Expand All */}
+            <button
+              onClick={toggleCollapseAll}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-gray-100 text-gray-600 hover:bg-gray-200"
+              title={isAllCollapsed ? 'Expand all sections' : 'Collapse all sections'}
+            >
+              {isAllCollapsed ? <ChevronsDownUp className="h-4 w-4" /> : <ChevronsUpDown className="h-4 w-4" />}
+              {isAllCollapsed ? 'Expand' : 'Collapse'}
+            </button>
+
             {/* Save Button */}
             <button
               onClick={saveAllBudgets}
@@ -794,16 +848,16 @@ export default function BudgetManagePage() {
                     <th className="sticky left-0 z-20 bg-gray-100 px-4 py-1"></th>
                     {MONTH_LABELS.map((month) => (
                       <Fragment key={month}>
-                        <th className="bg-gray-100 px-1 py-1 text-center text-[10px] font-medium text-blue-600">
+                        <th className="bg-blue-100 px-1 py-1 text-center text-[10px] font-medium text-blue-700">
                           Bud
                         </th>
-                        <th className="bg-gray-100 px-1 py-1 text-center text-[10px] font-medium text-gray-500">
+                        <th className="bg-emerald-50 px-1 py-1 text-center text-[10px] font-medium text-emerald-600">
                           Act
                         </th>
                       </Fragment>
                     ))}
-                    <th className="bg-gray-100 px-1 py-1 text-center text-[10px] font-medium text-blue-600">Bud</th>
-                    <th className="bg-gray-100 px-1 py-1 text-center text-[10px] font-medium text-gray-500">Act</th>
+                    <th className="bg-blue-100 px-1 py-1 text-center text-[10px] font-medium text-blue-700">Bud</th>
+                    <th className="bg-emerald-50 px-1 py-1 text-center text-[10px] font-medium text-emerald-600">Act</th>
                   </tr>
                 )}
               </thead>
@@ -843,12 +897,12 @@ export default function BudgetManagePage() {
                           const monthActual = getSectionMonthActual(month);
                           return (
                             <Fragment key={month}>
-                              <td className="bg-blue-50 px-1 py-2 text-right text-xs font-bold text-blue-900">
+                              <td className="bg-blue-200/70 px-1 py-2 text-right text-xs font-bold text-blue-900">
                                 {monthBudget > 0 ? formatCurrency(monthBudget) : '-'}
                               </td>
                               {showActuals && (
-                                <td className={`bg-blue-50 px-1 py-2 text-right text-xs font-bold ${
-                                  monthActual > monthBudget && monthBudget > 0 ? 'text-red-600' : 'text-blue-800'
+                                <td className={`bg-emerald-100/70 px-1 py-2 text-right text-xs font-bold ${
+                                  monthActual > monthBudget && monthBudget > 0 ? 'text-red-600' : 'text-emerald-800'
                                 }`}>
                                   {monthActual > 0 ? formatCurrency(monthActual) : '-'}
                                 </td>
@@ -856,12 +910,12 @@ export default function BudgetManagePage() {
                             </Fragment>
                           );
                         })}
-                        <td className="bg-blue-50 px-2 py-2 text-right text-xs font-bold text-blue-900">
+                        <td className="bg-blue-200/70 px-2 py-2 text-right text-xs font-bold text-blue-900">
                           {formatCurrency(sectionBudgetTotal)}
                         </td>
                         {showActuals && (
-                          <td className={`bg-blue-50 px-2 py-2 text-right text-xs font-bold ${
-                            sectionActualTotal > sectionBudgetTotal && sectionBudgetTotal > 0 ? 'text-red-600' : 'text-blue-800'
+                          <td className={`bg-emerald-100/70 px-2 py-2 text-right text-xs font-bold ${
+                            sectionActualTotal > sectionBudgetTotal && sectionBudgetTotal > 0 ? 'text-red-600' : 'text-emerald-800'
                           }`}>
                             {formatCurrency(sectionActualTotal)}
                           </td>
@@ -920,7 +974,7 @@ export default function BudgetManagePage() {
 
                               return (
                                 <Fragment key={month}>
-                                  <td className={`px-1 py-2 text-right ${isParent ? 'bg-gray-50' : ''}`}>
+                                  <td className={`px-1 py-2 text-right ${isParent ? 'bg-blue-100/50' : 'bg-blue-50/50'}`}>
                                     {isLeaf ? (
                                       isEditing ? (
                                         <input
@@ -930,12 +984,12 @@ export default function BudgetManagePage() {
                                           onKeyDown={handleKeyDown}
                                           onBlur={confirmEdit}
                                           autoFocus
-                                          className="w-14 px-1 py-0.5 text-right border rounded text-xs"
+                                          className="w-14 px-1 py-0.5 text-right border rounded text-xs bg-white"
                                         />
                                       ) : (
                                         <button
                                           onClick={() => startEdit(node.account!.qb_account_id, month, monthBudget)}
-                                          className={`text-xs px-1 py-0.5 rounded hover:bg-blue-50 ${
+                                          className={`text-xs px-1 py-0.5 rounded hover:bg-blue-100 ${
                                             monthBudget > 0 ? 'text-gray-900' : 'text-gray-300'
                                           }`}
                                         >
@@ -949,7 +1003,7 @@ export default function BudgetManagePage() {
                                     )}
                                   </td>
                                   {showActuals && (
-                                    <td className={`px-1 py-2 text-right text-xs ${isParent ? 'bg-gray-50 font-semibold' : ''} ${
+                                    <td className={`px-1 py-2 text-right text-xs ${isParent ? 'bg-emerald-100/50 font-semibold' : 'bg-emerald-50/30'} ${
                                       monthActual > monthBudget && monthBudget > 0 ? 'text-red-600' : 'text-gray-500'
                                     }`}>
                                       {monthActual > 0 ? formatCurrency(monthActual) : '-'}
@@ -959,11 +1013,11 @@ export default function BudgetManagePage() {
                               );
                             })}
                             {/* Totals */}
-                            <td className={`px-2 py-2 text-right text-xs font-semibold ${isParent ? 'bg-gray-50' : 'bg-gray-50'} text-gray-900`}>
+                            <td className={`px-2 py-2 text-right text-xs font-semibold ${isParent ? 'bg-blue-100/50' : 'bg-blue-50/50'} text-gray-900`}>
                               {formatCurrency(budgetTotal)}
                             </td>
                             {showActuals && (
-                              <td className={`px-2 py-2 text-right text-xs font-semibold bg-gray-50 ${
+                              <td className={`px-2 py-2 text-right text-xs font-semibold ${isParent ? 'bg-emerald-100/50' : 'bg-emerald-50/30'} ${
                                 actualTotal > budgetTotal && budgetTotal > 0 ? 'text-red-600' : 'text-gray-600'
                               }`}>
                                 {formatCurrency(actualTotal)}
