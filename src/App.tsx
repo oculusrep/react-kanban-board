@@ -63,6 +63,7 @@ import BudgetSetupPage from "./pages/BudgetSetupPage";
 import BudgetManagePage from "./pages/BudgetManagePage";
 import CashFlowForecastPage from "./pages/CashFlowForecastPage";
 import CFODashboardPage from "./pages/CFODashboardPage";
+import BookkeeperPage from "./pages/BookkeeperPage";
 import PortalUserManagementPage from "./pages/PortalUserManagementPage";
 import PortalEmailSettingsPage from "./pages/PortalEmailSettingsPage";
 import PortalAnalyticsPage from "./pages/admin/PortalAnalyticsPage";
@@ -171,6 +172,7 @@ function App() {
           <Route path="admin/budget/manage" element={<AdminRoute><BudgetManagePage /></AdminRoute>} />
           <Route path="admin/budget/forecast" element={<AdminRoute><CashFlowForecastPage /></AdminRoute>} />
           <Route path="admin/cfo" element={<AdminRoute><CFODashboardPage /></AdminRoute>} />
+          <Route path="admin/bookkeeper" element={<AdminRoute><BookkeeperPage /></AdminRoute>} />
           <Route path="admin/portal-users" element={<AdminRoute><PortalUserManagementPage /></AdminRoute>} />
           <Route path="admin/portal-email-settings" element={<AdminRoute><PortalEmailSettingsPage /></AdminRoute>} />
           <Route path="admin/portal-analytics" element={<AdminRoute><PortalAnalyticsPage /></AdminRoute>} />

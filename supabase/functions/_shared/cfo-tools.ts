@@ -1175,242 +1175,150 @@ export async function deleteFinancialContext(
 export const CFO_TOOL_DEFINITIONS = [
   {
     name: 'get_payments_forecast',
-    description:
-      'Get expected payments by month with income categories (invoiced, pipeline, contingent). Returns house net income after broker splits and referral fees. Use this to understand expected revenue.',
+    description: 'Get expected revenue by month (house net after splits/referrals). Returns invoiced, pipeline, contingent.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        year: { type: 'number' as const, description: 'Year to forecast (e.g., 2026)' },
-        include_pipeline: {
-          type: 'boolean' as const,
-          description: 'Include pipeline deals (negotiating LOI, at lease/PSA). Default false.',
-        },
-        include_contingent: {
-          type: 'boolean' as const,
-          description: 'Include under contract/contingent deals. Default false.',
-        },
+        year: { type: 'number' as const },
+        include_pipeline: { type: 'boolean' as const },
+        include_contingent: { type: 'boolean' as const },
       },
       required: ['year'],
     },
   },
   {
     name: 'get_budget_data',
-    description:
-      'Get budgeted expenses by account for a specific year. Returns monthly budget amounts for each account.',
+    description: 'Get monthly budgeted expenses by account.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        year: { type: 'number' as const, description: 'Budget year (e.g., 2026)' },
-        account_types: {
-          type: 'array' as const,
-          items: { type: 'string' as const },
-          description:
-            'Filter by account types: "Expense", "Other Expense", "Cost of Goods Sold". If not specified, returns all.',
-        },
+        year: { type: 'number' as const },
+        account_types: { type: 'array' as const, items: { type: 'string' as const } },
       },
       required: ['year'],
     },
   },
   {
     name: 'get_expenses_by_period',
-    description:
-      'Get actual expenses from QuickBooks for a date range, grouped by account. Use this to compare actual vs budget.',
+    description: 'Get actual QBO expenses for date range, by account.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        start_date: { type: 'string' as const, description: 'Start date in ISO format YYYY-MM-DD' },
-        end_date: { type: 'string' as const, description: 'End date in ISO format YYYY-MM-DD' },
-        account_type: {
-          type: 'string' as const,
-          description: 'Optional filter by account type (e.g., "Expense")',
-        },
+        start_date: { type: 'string' as const },
+        end_date: { type: 'string' as const },
+        account_type: { type: 'string' as const },
       },
       required: ['start_date', 'end_date'],
     },
   },
   {
     name: 'get_invoice_aging',
-    description:
-      'Get accounts receivable aging summary. Shows overdue invoices by aging bucket (current, 1-30, 31-60, 61-90, 90+ days).',
+    description: 'Get AR aging summary by bucket (current, 1-30, 31-60, 61-90, 90+ days).',
     input_schema: {
       type: 'object' as const,
       properties: {
-        include_details: {
-          type: 'boolean' as const,
-          description: 'Include individual invoice details. Default false.',
-        },
+        include_details: { type: 'boolean' as const },
       },
     },
   },
   {
     name: 'get_cash_flow_projection',
-    description:
-      'Calculate projected cash flow: income minus expenses by month. Returns running balance. This is the key tool for "what will the balance be" type questions.',
+    description: 'Calculate income minus expenses by month with running balance.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        year: { type: 'number' as const, description: 'Year for projection (e.g., 2026)' },
-        starting_balance: {
-          type: 'number' as const,
-          description: 'Starting cash balance. Default 0.',
-        },
-        include_pipeline: {
-          type: 'boolean' as const,
-          description: 'Include pipeline deal revenue. Default false.',
-        },
-        include_contingent: {
-          type: 'boolean' as const,
-          description: 'Include contingent deal revenue. Default false.',
-        },
-        months_to_project: {
-          type: 'number' as const,
-          description: 'Number of months to project from current month. If not specified, returns full year.',
-        },
+        year: { type: 'number' as const },
+        starting_balance: { type: 'number' as const },
+        include_pipeline: { type: 'boolean' as const },
+        include_contingent: { type: 'boolean' as const },
+        months_to_project: { type: 'number' as const },
       },
       required: ['year'],
     },
   },
   {
     name: 'generate_chart',
-    description:
-      'Generate a chart specification for the frontend to render. Use this after gathering data to visualize results.',
+    description: 'Generate chart spec for frontend (bar/line/area/composed/stacked_bar).',
     input_schema: {
       type: 'object' as const,
       properties: {
-        chart_type: {
-          type: 'string' as const,
-          enum: ['bar', 'line', 'area', 'composed', 'stacked_bar'],
-          description: 'Type of chart to generate',
-        },
-        title: { type: 'string' as const, description: 'Chart title' },
-        data: {
-          type: 'array' as const,
-          items: { type: 'object' as const },
-          description: 'Array of data points with named properties',
-        },
-        x_axis: { type: 'string' as const, description: 'Property name for X axis' },
+        chart_type: { type: 'string' as const, enum: ['bar', 'line', 'area', 'composed', 'stacked_bar'] },
+        title: { type: 'string' as const },
+        data: { type: 'array' as const, items: { type: 'object' as const } },
+        x_axis: { type: 'string' as const },
         series: {
           type: 'array' as const,
           items: {
             type: 'object' as const,
             properties: {
-              dataKey: { type: 'string' as const, description: 'Data property to plot' },
-              name: { type: 'string' as const, description: 'Display name for legend' },
-              color: { type: 'string' as const, description: 'Hex color (e.g., "#22c55e")' },
-              type: {
-                type: 'string' as const,
-                enum: ['bar', 'line', 'area'],
-                description: 'Series type (for composed charts)',
-              },
+              dataKey: { type: 'string' as const },
+              name: { type: 'string' as const },
+              color: { type: 'string' as const },
+              type: { type: 'string' as const, enum: ['bar', 'line', 'area'] },
             },
             required: ['dataKey', 'name', 'color'],
           },
-          description: 'Data series to plot',
         },
-        y_axis_format: {
-          type: 'string' as const,
-          enum: ['currency', 'number', 'percent'],
-          description: 'Format for Y axis values',
-        },
+        y_axis_format: { type: 'string' as const, enum: ['currency', 'number', 'percent'] },
       },
       required: ['chart_type', 'title', 'data', 'x_axis', 'series', 'y_axis_format'],
     },
   },
   {
     name: 'get_financial_context',
-    description:
-      'Retrieve saved context notes that contain business knowledge, corrections, and rules. Always call this at the start of a conversation to get relevant context.',
+    description: 'Get saved business context/corrections.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        context_type: {
-          type: 'string' as const,
-          enum: ['business_rule', 'correction', 'seasonal_pattern', 'client_note', 'vendor_note', 'budget_note'],
-          description: 'Optional filter by context type. If not specified, returns all context.',
-        },
+        context_type: { type: 'string' as const, enum: ['business_rule', 'correction', 'seasonal_pattern', 'client_note', 'vendor_note', 'budget_note'] },
       },
     },
   },
   {
     name: 'save_financial_context',
-    description:
-      'Save a new context note for the CFO agent to remember. Use this when the user tells you to remember something or when you learn a correction.',
+    description: 'Save context note when user says "remember".',
     input_schema: {
       type: 'object' as const,
       properties: {
-        context_type: {
-          type: 'string' as const,
-          enum: ['business_rule', 'correction', 'seasonal_pattern', 'client_note', 'vendor_note', 'budget_note'],
-          description: 'Type of context being saved',
-        },
-        context_text: {
-          type: 'string' as const,
-          description: 'The context note to save (natural language)',
-        },
-        entity_type: {
-          type: 'string' as const,
-          description: 'Optional entity type this context relates to (e.g., "client", "account", "vendor")',
-        },
-        entity_id: {
-          type: 'string' as const,
-          description: 'Optional entity ID this context relates to',
-        },
+        context_type: { type: 'string' as const, enum: ['business_rule', 'correction', 'seasonal_pattern', 'client_note', 'vendor_note', 'budget_note'] },
+        context_text: { type: 'string' as const },
+        entity_type: { type: 'string' as const },
+        entity_id: { type: 'string' as const },
       },
       required: ['context_type', 'context_text'],
     },
   },
   {
     name: 'delete_financial_context',
-    description:
-      'Delete a saved context note. Use this when the user asks you to forget something.',
+    description: 'Delete context when user says "forget".',
     input_schema: {
       type: 'object' as const,
       properties: {
-        context_id: {
-          type: 'string' as const,
-          description: 'The ID of the context note to delete',
-        },
-        search_text: {
-          type: 'string' as const,
-          description: 'Alternative: search for context notes containing this text and delete them',
-        },
+        context_id: { type: 'string' as const },
+        search_text: { type: 'string' as const },
       },
     },
   },
   {
     name: 'get_mike_personal_forecast',
-    description:
-      'Get Mike Minihan\'s personal cash flow forecast - the "Reality Check" report. Shows commission (W2 wages) with payroll tax withholdings, plus house profit (owner\'s draw). Use this when asked about "reality check", "when am I getting paid", "Mike\'s income", or personal cash flow. Returns monthly breakdown with gross commission, taxes withheld (federal, GA state, SS, Medicare), net commission, house profit, and total take-home.',
+    description: 'Reality Check: Mike\'s commission (W2 with taxes) + house profit forecast.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        year: {
-          type: 'number' as const,
-          description: 'Year for forecast (e.g., 2026)',
-        },
-        months_to_project: {
-          type: 'number' as const,
-          description: 'Number of months from current month. If not specified, returns full year.',
-        },
+        year: { type: 'number' as const },
+        months_to_project: { type: 'number' as const },
       },
       required: ['year'],
     },
   },
   {
     name: 'get_deal_pipeline',
-    description:
-      'Get deal pipeline data with payment and split information. Shows all active deals with their stages, payments, and broker splits. Identifies issues like deals missing payments or payment dates. Use this when asked about deal status, pipeline health, missing payments, or deal data quality. Supports filtering by stage name (e.g., "Negotiating LOI", "Booked", "At Lease").',
+    description: 'Get deals with payments/splits. Identifies missing data. Filter by stage_filter.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        stage_filter: {
-          type: 'string' as const,
-          description: 'Filter by stage name (partial match, case-insensitive). Examples: "Negotiating LOI", "Booked", "At Lease", "Executed"',
-        },
-        include_closed_paid: {
-          type: 'boolean' as const,
-          description: 'Include closed/paid deals in results. Default false (excludes closed/paid and lost deals).',
-        },
+        stage_filter: { type: 'string' as const },
+        include_closed_paid: { type: 'boolean' as const },
       },
     },
   },
