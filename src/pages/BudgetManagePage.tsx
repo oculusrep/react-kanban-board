@@ -641,6 +641,7 @@ export default function BudgetManagePage() {
           </div>
         ) : viewMode === 'annual' ? (
           // Annual View
+          <>
           <div className="bg-white rounded-lg shadow overflow-auto max-h-[calc(100vh-250px)]">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50 sticky top-0 z-10">
@@ -878,6 +879,7 @@ export default function BudgetManagePage() {
               );
             })()}
           </div>
+          </>
         ) : (
           // Monthly View
           <>
