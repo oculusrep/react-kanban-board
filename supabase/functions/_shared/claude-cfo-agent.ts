@@ -18,6 +18,7 @@ import {
   saveFinancialContext,
   deleteFinancialContext,
   getMikePersonalForecast,
+  getDealPipeline,
 } from './cfo-tools.ts';
 
 // ============================================================================
@@ -61,6 +62,7 @@ AVAILABLE DATA SOURCES:
 - Budgets: Monthly budget amounts by expense account
 - Expenses: Actual expenses synced from QuickBooks
 - Invoice Aging: Accounts receivable status
+- Deal Pipeline: Full deal data with stages, payments, and broker splits
 - Saved Context: Business rules, corrections, and notes you've been asked to remember
 
 HOUSE NET INCOME CALCULATION (Critical - this is what the company actually keeps):
@@ -112,6 +114,17 @@ Tax Notes for Reality Check:
 - House Profit = Owner's draw (no withholding, but remember it's taxed at filing)
 - 401k room shows how much can still be contributed this year ($23,500 limit for 2026)
 
+DEAL PIPELINE DATA QUALITY:
+When asked about deal data quality, missing payments, or pipeline health:
+1. Use get_deal_pipeline to get deals with their payments and splits
+2. The tool automatically identifies issues like:
+   - Deals with no payments created
+   - Deals with fewer payments than expected (number_of_payments field)
+   - Payments missing estimated dates
+3. Filter by stage using stage_filter (e.g., "Negotiating LOI", "Booked", "At Lease")
+4. Report counts and list specific deals with issues
+5. Include deal name, client, stage, and what's missing
+
 EXAMPLE QUERIES YOU CAN ANSWER:
 - "What will the balance of the house account be by month for the next 6 months?"
 - "How are we tracking against budget this month?"
@@ -119,6 +132,9 @@ EXAMPLE QUERIES YOU CAN ANSWER:
 - "Show me expense trends over the past quarter"
 - "What's our projected cash flow for Q2?"
 - "Reality check" or "When am I getting paid?"
+- "How many Negotiating LOI deals are missing payments?"
+- "Show me all deals missing payment dates"
+- "What's the pipeline health check?"
 - "Remember that Q4 is our busiest quarter"
 - "That's wrong - the house split is 30%, not 25%"
 
@@ -323,6 +339,20 @@ async function executeTool(
           'House profit is owner\'s draw (no withholding, taxed at filing)',
           '401k room shows remaining contribution capacity for the year',
         ],
+      };
+    }
+
+    case 'get_deal_pipeline': {
+      const result = await getDealPipeline(
+        supabase,
+        toolInput.stage_filter as string | undefined,
+        (toolInput.include_closed_paid as boolean) || false
+      );
+
+      return {
+        deals: result.deals,
+        summary: result.summary,
+        stage_filter_applied: toolInput.stage_filter || 'none (all active stages)',
       };
     }
 

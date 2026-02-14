@@ -789,6 +789,261 @@ export async function getMikePersonalForecast(
 }
 
 // ============================================================================
+// TOOL: GET DEAL PIPELINE (Deal Data Visibility)
+// ============================================================================
+
+export interface DealPipelineItem {
+  deal_id: string;
+  deal_name: string;
+  stage_label: string;
+  stage_id: string;
+  deal_value: number | null;
+  fee: number | null;
+  house_percent: number | null;
+  house_usd: number | null;
+  number_of_payments: number | null;
+  client_name: string | null;
+  booked_date: string | null;
+  closed_date: string | null;
+  payments: Array<{
+    payment_id: string;
+    payment_name: string | null;
+    payment_amount: number | null;
+    payment_date_estimated: string | null;
+    payment_received: boolean;
+    payment_received_date: string | null;
+    invoice_sent: boolean;
+    orep_invoice: string | null;
+    splits: Array<{
+      broker_name: string;
+      broker_total: number | null;
+      paid: boolean;
+    }>;
+  }>;
+  issues: string[];
+}
+
+export interface DealPipelineResult {
+  deals: DealPipelineItem[];
+  summary: {
+    total_deals: number;
+    by_stage: Record<string, number>;
+    deals_missing_payments: number;
+    deals_missing_payment_dates: number;
+    total_pipeline_value: number;
+  };
+}
+
+/**
+ * Get deal pipeline data with payment and split information.
+ * Identifies deals missing payments or payment dates.
+ */
+export async function getDealPipeline(
+  supabase: SupabaseClient,
+  stageFilter?: string,
+  includeClosedPaid?: boolean
+): Promise<DealPipelineResult> {
+  // Get all stages for labeling
+  const { data: stages, error: stageError } = await supabase
+    .from('deal_stage')
+    .select('id, label');
+
+  if (stageError) throw new Error(`Failed to fetch stages: ${stageError.message}`);
+
+  const stageMap = new Map<string, string>();
+  for (const s of stages || []) {
+    stageMap.set(s.id, s.label);
+  }
+
+  // Build deal query
+  let dealQuery = supabase
+    .from('deal')
+    .select(`
+      id,
+      deal_name,
+      stage_id,
+      deal_value,
+      fee,
+      house_percent,
+      house_usd,
+      number_of_payments,
+      booked_date,
+      closed_date,
+      client:client_id (
+        id,
+        client_name
+      )
+    `)
+    .is('deleted_at', null);
+
+  // Filter by stage if specified
+  if (stageFilter) {
+    // Find stage ID by label (case-insensitive partial match)
+    const matchingStageId = Array.from(stageMap.entries())
+      .find(([_, label]) => label.toLowerCase().includes(stageFilter.toLowerCase()))?.[0];
+
+    if (matchingStageId) {
+      dealQuery = dealQuery.eq('stage_id', matchingStageId);
+    }
+  }
+
+  // Exclude closed/paid and lost unless specifically requested
+  if (!includeClosedPaid) {
+    dealQuery = dealQuery
+      .not('stage_id', 'eq', STAGE_IDS.closedPaid)
+      .not('stage_id', 'eq', STAGE_IDS.lost);
+  }
+
+  const { data: deals, error: dealError } = await dealQuery;
+  if (dealError) throw new Error(`Failed to fetch deals: ${dealError.message}`);
+
+  // Get all payments for these deals
+  const dealIds = (deals || []).map(d => d.id);
+
+  const { data: payments, error: paymentError } = await supabase
+    .from('payment')
+    .select(`
+      id,
+      deal_id,
+      payment_name,
+      payment_amount,
+      payment_date_estimated,
+      payment_received,
+      payment_received_date,
+      invoice_sent,
+      orep_invoice
+    `)
+    .in('deal_id', dealIds)
+    .is('deleted_at', null);
+
+  if (paymentError) throw new Error(`Failed to fetch payments: ${paymentError.message}`);
+
+  // Get payment splits
+  const paymentIds = (payments || []).map(p => p.id);
+
+  const { data: splits, error: splitError } = await supabase
+    .from('payment_split')
+    .select(`
+      id,
+      payment_id,
+      split_broker_total,
+      paid,
+      broker:broker_id (
+        id,
+        name
+      )
+    `)
+    .in('payment_id', paymentIds);
+
+  if (splitError) throw new Error(`Failed to fetch splits: ${splitError.message}`);
+
+  // Group payments by deal
+  const paymentsByDeal = new Map<string, typeof payments>();
+  for (const p of payments || []) {
+    const existing = paymentsByDeal.get(p.deal_id) || [];
+    existing.push(p);
+    paymentsByDeal.set(p.deal_id, existing);
+  }
+
+  // Group splits by payment
+  const splitsByPayment = new Map<string, typeof splits>();
+  for (const s of splits || []) {
+    const existing = splitsByPayment.get(s.payment_id) || [];
+    existing.push(s);
+    splitsByPayment.set(s.payment_id, existing);
+  }
+
+  // Build result with issues detection
+  const result: DealPipelineItem[] = [];
+  let dealsMissingPayments = 0;
+  let dealsMissingPaymentDates = 0;
+  const byStage: Record<string, number> = {};
+  let totalPipelineValue = 0;
+
+  for (const deal of deals || []) {
+    const stageLabel = stageMap.get(deal.stage_id) || 'Unknown';
+    byStage[stageLabel] = (byStage[stageLabel] || 0) + 1;
+
+    const dealPayments = paymentsByDeal.get(deal.id) || [];
+    const issues: string[] = [];
+
+    // Check for missing payments
+    const expectedPayments = deal.number_of_payments || 1;
+    if (dealPayments.length === 0) {
+      issues.push('No payments created');
+      dealsMissingPayments++;
+    } else if (dealPayments.length < expectedPayments) {
+      issues.push(`Only ${dealPayments.length} of ${expectedPayments} payments created`);
+    }
+
+    // Check for missing payment dates
+    let hasMissingDates = false;
+    for (const p of dealPayments) {
+      if (!p.payment_date_estimated && !p.payment_received) {
+        hasMissingDates = true;
+        issues.push(`Payment "${p.payment_name || 'unnamed'}" missing estimated date`);
+      }
+    }
+    if (hasMissingDates) {
+      dealsMissingPaymentDates++;
+    }
+
+    // Calculate pipeline value
+    if (deal.fee) {
+      totalPipelineValue += deal.fee;
+    }
+
+    // Build payment details with splits
+    const paymentDetails = dealPayments.map(p => {
+      const paymentSplits = splitsByPayment.get(p.id) || [];
+      return {
+        payment_id: p.id,
+        payment_name: p.payment_name,
+        payment_amount: p.payment_amount,
+        payment_date_estimated: p.payment_date_estimated,
+        payment_received: p.payment_received || false,
+        payment_received_date: p.payment_received_date,
+        invoice_sent: p.invoice_sent || false,
+        orep_invoice: p.orep_invoice,
+        splits: paymentSplits.map(s => ({
+          broker_name: (s.broker as { name: string })?.name || 'Unknown',
+          broker_total: s.split_broker_total,
+          paid: s.paid || false,
+        })),
+      };
+    });
+
+    result.push({
+      deal_id: deal.id,
+      deal_name: deal.deal_name || 'Unnamed Deal',
+      stage_label: stageLabel,
+      stage_id: deal.stage_id,
+      deal_value: deal.deal_value,
+      fee: deal.fee,
+      house_percent: deal.house_percent,
+      house_usd: deal.house_usd,
+      number_of_payments: deal.number_of_payments,
+      client_name: (deal.client as { client_name: string })?.client_name || null,
+      booked_date: deal.booked_date,
+      closed_date: deal.closed_date,
+      payments: paymentDetails,
+      issues,
+    });
+  }
+
+  return {
+    deals: result,
+    summary: {
+      total_deals: result.length,
+      by_stage: byStage,
+      deals_missing_payments: dealsMissingPayments,
+      deals_missing_payment_dates: dealsMissingPaymentDates,
+      total_pipeline_value: totalPipelineValue,
+    },
+  };
+}
+
+// ============================================================================
 // CONTEXT TYPES
 // ============================================================================
 
@@ -1114,6 +1369,24 @@ export const CFO_TOOL_DEFINITIONS = [
         },
       },
       required: ['year'],
+    },
+  },
+  {
+    name: 'get_deal_pipeline',
+    description:
+      'Get deal pipeline data with payment and split information. Shows all active deals with their stages, payments, and broker splits. Identifies issues like deals missing payments or payment dates. Use this when asked about deal status, pipeline health, missing payments, or deal data quality. Supports filtering by stage name (e.g., "Negotiating LOI", "Booked", "At Lease").',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        stage_filter: {
+          type: 'string' as const,
+          description: 'Filter by stage name (partial match, case-insensitive). Examples: "Negotiating LOI", "Booked", "At Lease", "Executed"',
+        },
+        include_closed_paid: {
+          type: 'boolean' as const,
+          description: 'Include closed/paid deals in results. Default false (excludes closed/paid and lost deals).',
+        },
+      },
     },
   },
 ];
