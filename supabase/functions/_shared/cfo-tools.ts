@@ -873,8 +873,7 @@ export async function getDealPipeline(
         id,
         client_name
       )
-    `)
-    .is('deleted_at', null);
+    `);
 
   // Filter by stage if specified
   if (stageFilter) {
@@ -900,46 +899,72 @@ export async function getDealPipeline(
   // Get all payments for these deals
   const dealIds = (deals || []).map(d => d.id);
 
-  const { data: payments, error: paymentError } = await supabase
-    .from('payment')
-    .select(`
-      id,
-      deal_id,
-      payment_name,
-      payment_amount,
-      payment_date_estimated,
-      payment_received,
-      payment_received_date,
-      invoice_sent,
-      orep_invoice
-    `)
-    .in('deal_id', dealIds)
-    .is('deleted_at', null);
+  // Handle empty dealIds array - Supabase .in() fails with empty array
+  let payments: Array<{
+    id: string;
+    deal_id: string;
+    payment_name: string | null;
+    payment_amount: number | null;
+    payment_date_estimated: string | null;
+    payment_received: boolean | null;
+    payment_received_date: string | null;
+    invoice_sent: boolean | null;
+    orep_invoice: string | null;
+  }> = [];
 
-  if (paymentError) throw new Error(`Failed to fetch payments: ${paymentError.message}`);
+  if (dealIds.length > 0) {
+    const { data: paymentData, error: paymentError } = await supabase
+      .from('payment')
+      .select(`
+        id,
+        deal_id,
+        payment_name,
+        payment_amount,
+        payment_date_estimated,
+        payment_received,
+        payment_received_date,
+        invoice_sent,
+        orep_invoice
+      `)
+      .in('deal_id', dealIds);
+
+    if (paymentError) throw new Error(`Failed to fetch payments: ${paymentError.message}`);
+    payments = (paymentData || []) as typeof payments;
+  }
 
   // Get payment splits
-  const paymentIds = (payments || []).map(p => p.id);
+  const paymentIds = payments.map(p => p.id);
 
-  const { data: splits, error: splitError } = await supabase
-    .from('payment_split')
-    .select(`
-      id,
-      payment_id,
-      split_broker_total,
-      paid,
-      broker:broker_id (
+  let splits: Array<{
+    id: string;
+    payment_id: string;
+    split_broker_total: number | null;
+    paid: boolean | null;
+    broker: { id: string; name: string } | null;
+  }> = [];
+
+  if (paymentIds.length > 0) {
+    const { data: splitData, error: splitError } = await supabase
+      .from('payment_split')
+      .select(`
         id,
-        name
-      )
-    `)
-    .in('payment_id', paymentIds);
+        payment_id,
+        split_broker_total,
+        paid,
+        broker:broker_id (
+          id,
+          name
+        )
+      `)
+      .in('payment_id', paymentIds);
 
-  if (splitError) throw new Error(`Failed to fetch splits: ${splitError.message}`);
+    if (splitError) throw new Error(`Failed to fetch splits: ${splitError.message}`);
+    splits = (splitData || []) as typeof splits;
+  }
 
   // Group payments by deal
   const paymentsByDeal = new Map<string, typeof payments>();
-  for (const p of payments || []) {
+  for (const p of payments) {
     const existing = paymentsByDeal.get(p.deal_id) || [];
     existing.push(p);
     paymentsByDeal.set(p.deal_id, existing);
@@ -947,7 +972,7 @@ export async function getDealPipeline(
 
   // Group splits by payment
   const splitsByPayment = new Map<string, typeof splits>();
-  for (const s of splits || []) {
+  for (const s of splits) {
     const existing = splitsByPayment.get(s.payment_id) || [];
     existing.push(s);
     splitsByPayment.set(s.payment_id, existing);

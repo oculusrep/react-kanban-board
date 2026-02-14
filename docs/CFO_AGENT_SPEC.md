@@ -468,6 +468,7 @@ Natural language query interface for the CFO Agent.
    - `get_cash_flow_projection` - Income minus expenses with running balance
    - `generate_chart` - Create chart specifications for frontend
    - `get_mike_personal_forecast` - Reality Check report with commission + house profit
+   - `get_deal_pipeline` - Deal data with payments, splits, and data quality issues
 8. ✅ Route registered at `/admin/cfo` (admin access only)
 9. ✅ Menu integration with permission control (`can_access_cfo_dashboard`)
 10. ✅ Edge function deployed (`supabase functions deploy cfo-query`)
