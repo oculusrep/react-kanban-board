@@ -504,6 +504,75 @@ Natural language query interface for the CFO Agent.
 
 ---
 
+## Rate Limit Handling
+
+The CFO Agent includes automatic retry logic for Anthropic API rate limits (429 errors).
+
+### Implementation
+
+Located in `supabase/functions/_shared/claude-cfo-agent.ts`:
+
+```typescript
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: RetryOptions = {}
+): Promise<T>
+```
+
+**Configuration:**
+- `maxRetries`: 3 attempts (default)
+- `baseDelayMs`: 2000ms initial delay
+- `maxDelayMs`: 30000ms maximum delay
+- Uses exponential backoff with jitter
+
+**Behavior:**
+1. On 429 error, waits with exponential backoff (2s → 4s → 8s)
+2. Adds random jitter (0-1000ms) to prevent thundering herd
+3. Caps delay at 30 seconds
+4. After 3 retries, returns error to user
+5. Non-rate-limit errors are thrown immediately
+
+**Rate Limit Context:**
+- Anthropic free tier: 10,000 input tokens per minute
+- CFO Agent base overhead: ~5,000-6,000 tokens (system prompt + tool definitions)
+- Remaining capacity: ~4,000-5,000 tokens for conversation
+
+---
+
+## Strategic CFO Persona
+
+The CFO Agent is designed to act as a strategic financial advisor, not just a data retrieval tool.
+
+### Mindset
+- **Skeptical of projections** - Distinguishes invoiced vs pipeline revenue
+- **Cash-focused** - When will money actually hit the bank?
+- **Risk-aware** - Proactively identifies issues before asked
+- **Action-oriented** - Suggests actions, not just reports data
+- **Disciplined** - Flags budget overruns and variances
+
+### Proactive Behaviors
+When answering ANY financial question, the agent also looks for:
+1. Cash flow risks (months where expenses exceed income)
+2. AR concerns (invoices over 30 days)
+3. Budget variances (accounts over 30% variance)
+4. Data quality issues (missing payment dates, splits)
+5. Pipeline uncertainty (applies realistic haircuts: 50% pipeline, 25% contingent)
+
+### Automatic Flags
+The agent always flags:
+- Any month with projected negative cash flow
+- Any invoice over 45 days old
+- Any budget account over 30% variance
+- Any invoiced deal without a payment date
+- Any month where expenses exceed 80% of projected income
+
+### Deal Category Weighting
+- **Invoiced** (Booked, Executed/Payable, Closed/Paid): 100% likely
+- **Pipeline** (Negotiating LOI, At Lease/PSA): 50% haircut
+- **Contingent** (Under Contract/Contingent): 75% haircut (only 25% likely)
+
+---
+
 ## Dependencies
 
 - **Claude API**: Anthropic API access for LLM capabilities
@@ -522,7 +591,7 @@ Natural language query interface for the CFO Agent.
 
 ## Resume Point
 
-**Current State**: CFO Agent with Reality Check report complete (February 14, 2026). Chat interface and personal cash flow forecast are live.
+**Current State**: CFO Agent with Reality Check report and strategic persona complete (February 14, 2026). Chat interface, personal cash flow forecast, and rate limit handling are live.
 
 **Completed**:
 1. ✅ Schema migration applied
@@ -536,6 +605,14 @@ Natural language query interface for the CFO Agent.
    - House profit (owner's draw)
    - Tax rates calibrated from actual pay stubs (blended average)
    - Quick action button on CFO Dashboard header
+8. ✅ Strategic CFO persona - Agent acts as strategic advisor, not data retrieval
+   - Proactive risk identification
+   - Automatic flags for concerning items
+   - Deal category weighting (invoiced/pipeline/contingent)
+9. ✅ Rate limit handling - Automatic retry with exponential backoff
+   - 3 retries with 2s base delay
+   - Jitter to prevent thundering herd
+   - 30s max delay cap
 
 **Reality Check Tax Configuration** (calibrated from actual payroll Feb 2026):
 - Federal withholding: 15.46% (blended from 12.48% and 17.14%)
