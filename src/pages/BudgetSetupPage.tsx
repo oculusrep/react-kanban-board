@@ -604,7 +604,8 @@ export default function BudgetSetupPage() {
           <div className="mt-6 bg-white rounded-lg shadow p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Budget Summary</h3>
             {(() => {
-              const totalBudget = displayedAccounts.reduce((sum, acc) => sum + getAccountTotal(getBudget(acc.qb_account_id)), 0);
+              // Total all budgets in the database for this year (not just displayed accounts)
+              const totalBudget = Array.from(budgets.values()).reduce((sum, b) => sum + getAccountTotal(b), 0);
               const totalPrior = displayedAccounts.reduce((sum, acc) => sum + getPriorYearTotal(acc.qb_account_id), 0);
               const variance = totalBudget - totalPrior;
 

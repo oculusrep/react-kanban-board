@@ -824,8 +824,9 @@ export default function BudgetManagePage() {
           {/* Annual View Summary Cards */}
           <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
             {(() => {
-              const grandBudgetTotal = sections.reduce((sum, section) =>
-                sum + section.accounts.reduce((sSum, node) => sSum + getNodeBudgetTotal(node), 0), 0);
+              // Total all budgets in the database for this year (consistent with Budget Setup)
+              const grandBudgetTotal = Array.from(budgets.values()).reduce((sum, b) =>
+                MONTHS.reduce((mSum, month) => mSum + (b[month] || 0), 0) + sum, 0);
               const grandActualTotal = sections.reduce((sum, section) =>
                 sum + section.accounts.reduce((sSum, node) => sSum + getNodeActualTotal(node), 0), 0);
               const variance = grandBudgetTotal - grandActualTotal;
@@ -1138,18 +1139,18 @@ export default function BudgetManagePage() {
           {/* Summary Cards - Always show budget total, show actuals only when toggled */}
           <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
             {(() => {
-              const grandBudgetTotal = sections.reduce((sum, section) =>
-                sum + section.accounts.reduce((sSum, node) => sSum + getNodeBudgetTotal(node), 0), 0);
+              // Total all budgets in the database for this year (consistent with Budget Setup)
+              const grandBudgetTotal = Array.from(budgets.values()).reduce((sum, b) =>
+                MONTHS.reduce((mSum, month) => mSum + (b[month] || 0), 0) + sum, 0);
               const grandActualTotal = sections.reduce((sum, section) =>
                 sum + section.accounts.reduce((sSum, node) => sSum + getNodeActualTotal(node), 0), 0);
               const variance = grandBudgetTotal - grandActualTotal;
               const percentUsed = grandBudgetTotal > 0 ? (grandActualTotal / grandBudgetTotal) * 100 : 0;
 
-              // Calculate current month data
+              // Calculate current month data from all budgets
               const currentMonth = new Date().getMonth();
               const currentMonthKey = MONTHS[currentMonth];
-              const currentMonthBudget = sections.reduce((sum, section) =>
-                sum + section.accounts.reduce((sSum, node) => sSum + getNodeMonthBudget(node, currentMonthKey), 0), 0);
+              const currentMonthBudget = Array.from(budgets.values()).reduce((sum, b) => sum + (b[currentMonthKey] || 0), 0);
               const currentMonthActual = sections.reduce((sum, section) =>
                 sum + section.accounts.reduce((sSum, node) => sSum + getNodeMonthActual(node, currentMonthKey), 0), 0);
 
