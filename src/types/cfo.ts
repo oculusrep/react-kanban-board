@@ -37,6 +37,7 @@ export interface CFOMessage {
   role: 'user' | 'assistant';
   content: string;
   chart_spec?: ChartSpecification;
+  interactive_deal_report?: InteractiveDealReportData;
   timestamp: Date;
 }
 
@@ -60,6 +61,7 @@ export interface CFOQueryResponse {
   success: boolean;
   answer: string;
   chart_spec?: ChartSpecification;
+  interactive_deal_report?: InteractiveDealReportData;
   supporting_data?: Record<string, unknown>;
   query_id: string;
   error?: string;
@@ -163,4 +165,37 @@ export interface CashFlowProjection {
     operating: number;
     cogs: number;
   };
+}
+
+// ============================================================================
+// INTERACTIVE DEAL REPORT TYPES
+// ============================================================================
+
+export interface InteractiveDealPayment {
+  payment_id: string;
+  payment_name: string | null;
+  payment_amount: number | null;
+  payment_date_estimated: string | null;
+  editable: boolean;
+}
+
+export interface InteractiveDealItem {
+  deal_id: string;
+  deal_name: string;
+  stage_label: string;
+  house_net: number;
+  client_name: string | null;
+  payments: InteractiveDealPayment[];
+  issues: string[];
+}
+
+export interface InteractiveDealReportData {
+  deals: InteractiveDealItem[];
+  summary: {
+    total_deals: number;
+    total_payments_missing_dates: number;
+    total_house_net_at_risk: number;
+  };
+  filter_applied: string;
+  sort_by: string;
 }

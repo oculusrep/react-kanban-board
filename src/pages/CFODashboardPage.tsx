@@ -13,7 +13,8 @@ import { supabase } from '../lib/supabaseClient';
 import CFOChatPanel from '../components/cfo/CFOChatPanel';
 import CFOChartRenderer from '../components/cfo/CFOChartRenderer';
 import CFOContextPanel from '../components/cfo/CFOContextPanel';
-import type { CFOMessage, ChartSpecification, CFOQueryResponse } from '../types/cfo';
+import InteractiveDealReport from '../components/cfo/InteractiveDealReport';
+import type { CFOMessage, ChartSpecification, CFOQueryResponse, InteractiveDealReportData } from '../types/cfo';
 
 export default function CFODashboardPage() {
   const navigate = useNavigate();
@@ -22,6 +23,7 @@ export default function CFODashboardPage() {
   const [messages, setMessages] = useState<CFOMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeChart, setActiveChart] = useState<ChartSpecification | null>(null);
+  const [activeDealReport, setActiveDealReport] = useState<InteractiveDealReportData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showContextPanel, setShowContextPanel] = useState(false);
 
@@ -88,6 +90,7 @@ export default function CFODashboardPage() {
         role: 'assistant',
         content: data.answer,
         chart_spec: data.chart_spec,
+        interactive_deal_report: data.interactive_deal_report,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, assistantMessage]);
@@ -95,6 +98,11 @@ export default function CFODashboardPage() {
       // If there's a chart, show it
       if (data.chart_spec) {
         setActiveChart(data.chart_spec);
+      }
+
+      // If there's an interactive deal report, show it
+      if (data.interactive_deal_report) {
+        setActiveDealReport(data.interactive_deal_report);
       }
     } catch (err) {
       console.error('CFO Query error:', err);
@@ -122,6 +130,7 @@ export default function CFODashboardPage() {
   const handleClearChat = () => {
     setMessages([]);
     setActiveChart(null);
+    setActiveDealReport(null);
     setError(null);
   };
 
@@ -194,7 +203,31 @@ export default function CFODashboardPage() {
 
           {/* Chart/Report Panel - Right */}
           <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-            {activeChart ? (
+            {activeDealReport ? (
+              <div className="h-full overflow-y-auto">
+                <InteractiveDealReport
+                  deals={activeDealReport.deals}
+                  summary={activeDealReport.summary}
+                  onDateUpdated={(paymentId, newDate) => {
+                    // Update the local state to reflect the change
+                    setActiveDealReport((prev) => {
+                      if (!prev) return prev;
+                      return {
+                        ...prev,
+                        deals: prev.deals.map((deal) => ({
+                          ...deal,
+                          payments: deal.payments.map((p) =>
+                            p.payment_id === paymentId
+                              ? { ...p, payment_date_estimated: newDate }
+                              : p
+                          ),
+                        })),
+                      };
+                    });
+                  }}
+                />
+              </div>
+            ) : activeChart ? (
               <div className="h-full p-6">
                 <CFOChartRenderer spec={activeChart} />
               </div>

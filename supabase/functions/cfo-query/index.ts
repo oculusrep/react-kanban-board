@@ -129,6 +129,7 @@ serve(async (req) => {
         success: true,
         answer: result.answer,
         chart_spec: result.chart_spec,
+        interactive_deal_report: result.interactive_deal_report,
         query_id: queryRecord?.id || null,
         tools_used: result.tool_calls_made,
       }),
