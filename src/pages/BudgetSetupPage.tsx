@@ -66,7 +66,7 @@ const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'S
 interface AccountNode {
   name: string;
   fullPath: string;
-  account?: QBAccount; // Only leaf nodes have the actual account
+  account?: QBAccount;
   children: AccountNode[];
   depth: number;
 }
@@ -78,7 +78,7 @@ interface PLSection {
   accounts: AccountNode[];
 }
 
-// P&L section definitions (order matters)
+// P&L section definitions
 const SECTION_DEFINITIONS = [
   { title: 'Cost of Goods Sold', accountTypes: ['Cost of Goods Sold'] },
   { title: 'Operating Expenses', accountTypes: ['Expense'] },
@@ -105,7 +105,7 @@ export default function BudgetSetupPage() {
   const [budgetYear, setBudgetYear] = useState(currentYear);
   const priorYear = budgetYear - 1;
 
-  // Show all accounts toggle (not just those with prior year activity)
+  // Show all accounts toggle
   const [showAllAccounts, setShowAllAccounts] = useState(false);
   const [allExpenseAccounts, setAllExpenseAccounts] = useState<QBAccount[]>([]);
 
@@ -120,7 +120,6 @@ export default function BudgetSetupPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch expense accounts that had activity in the prior year
       const { data: expenseAccounts, error: accountsError } = await supabase
         .from('qb_account')
         .select('*')
@@ -130,7 +129,6 @@ export default function BudgetSetupPage() {
 
       if (accountsError) throw accountsError;
 
-      // Fetch prior year actuals grouped by month
       const { data: expenses, error: expensesError } = await supabase
         .from('qb_expense')
         .select('account_id, transaction_date, amount')
@@ -140,10 +138,9 @@ export default function BudgetSetupPage() {
 
       if (expensesError) throw expensesError;
 
-      // Aggregate expenses by account and month
       const actualsByAccount = new Map<string, MonthlyActual>();
       for (const expense of expenses || []) {
-        const month = new Date(expense.transaction_date).getMonth(); // 0-11
+        const month = new Date(expense.transaction_date).getMonth();
         const monthKey = MONTHS[month];
 
         if (!actualsByAccount.has(expense.account_id)) {
@@ -158,15 +155,8 @@ export default function BudgetSetupPage() {
         actuals[monthKey] += expense.amount;
       }
 
-      // Store all expense accounts
       setAllExpenseAccounts(expenseAccounts || []);
 
-      // Filter accounts to only those with prior year activity (default view)
-      const accountsWithActivity = (expenseAccounts || []).filter(
-        acc => actualsByAccount.has(acc.qb_account_id)
-      );
-
-      // Fetch existing budgets for the selected year
       const { data: existingBudgets, error: budgetsError } = await supabase
         .from('account_budget')
         .select('*')
@@ -174,11 +164,15 @@ export default function BudgetSetupPage() {
 
       if (budgetsError) throw budgetsError;
 
-      // Convert to map
       const budgetMap = new Map<string, AccountBudget>();
       for (const budget of existingBudgets || []) {
         budgetMap.set(budget.qb_account_id, budget);
       }
+
+      // Filter accounts to those with prior year activity OR existing budget
+      const accountsWithActivity = (expenseAccounts || []).filter(
+        acc => actualsByAccount.has(acc.qb_account_id) || budgetMap.has(acc.qb_account_id)
+      );
 
       setAccounts(accountsWithActivity);
       setPriorYearActuals(actualsByAccount);
@@ -192,7 +186,6 @@ export default function BudgetSetupPage() {
     }
   };
 
-  // Get or create budget for an account
   const getBudget = (accountId: string): AccountBudget => {
     if (budgets.has(accountId)) {
       return budgets.get(accountId)!;
@@ -205,7 +198,6 @@ export default function BudgetSetupPage() {
     };
   };
 
-  // Update a single month's budget
   const updateBudget = (accountId: string, month: typeof MONTHS[number], value: number) => {
     const newBudgets = new Map(budgets);
     const budget = getBudget(accountId);
@@ -215,7 +207,6 @@ export default function BudgetSetupPage() {
     setHasChanges(true);
   };
 
-  // Fill forward: copy value to all subsequent months
   const fillForward = (accountId: string, startMonth: typeof MONTHS[number], value: number) => {
     const startIndex = MONTHS.indexOf(startMonth);
     const newBudgets = new Map(budgets);
@@ -230,16 +221,10 @@ export default function BudgetSetupPage() {
     setHasChanges(true);
   };
 
-  // Copy prior year actuals as budget
   const copyFromPriorYear = (accountId: string) => {
-    console.log('copyFromPriorYear called with:', accountId);
-    console.log('priorYearActuals keys:', Array.from(priorYearActuals.keys()));
-
     const actuals = priorYearActuals.get(accountId);
-    console.log('Found actuals:', actuals);
 
     if (!actuals) {
-      console.log('No actuals found for account:', accountId);
       setMessage({ type: 'error', text: `No prior year actuals found for this account` });
       return;
     }
@@ -257,13 +242,11 @@ export default function BudgetSetupPage() {
     setMessage({ type: 'success', text: `Copied ${priorYear} actuals to ${budgetYear} budget` });
   };
 
-  // Save all budgets
   const saveAllBudgets = async () => {
     setSaving(true);
     setMessage(null);
 
     try {
-      // Prepare all budgets for upsert
       const budgetsToSave = Array.from(budgets.values()).map(budget => ({
         qb_account_id: budget.qb_account_id,
         year: budgetYear,
@@ -304,7 +287,6 @@ export default function BudgetSetupPage() {
     }
   };
 
-  // Sync expenses from QBO
   const syncExpenses = async () => {
     setSyncing(true);
     setMessage(null);
@@ -342,7 +324,6 @@ export default function BudgetSetupPage() {
     }
   };
 
-  // Format currency
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -352,7 +333,6 @@ export default function BudgetSetupPage() {
     }).format(amount);
   };
 
-  // Get displayed accounts based on toggle
   const displayedAccounts = showAllAccounts ? allExpenseAccounts : accounts;
 
   // Build hierarchical tree from accounts
@@ -411,23 +391,51 @@ export default function BudgetSetupPage() {
     }).filter(section => section.accounts.length > 0);
   }, [displayedAccounts]);
 
-  // Flatten section tree for rendering
-  const flattenSection = (sectionRoots: AccountNode[]): { node: AccountNode; isParent: boolean }[] => {
-    const result: { node: AccountNode; isParent: boolean }[] = [];
+  // Flatten section tree for rendering - returns only leaf accounts
+  const flattenSection = (sectionRoots: AccountNode[]): { account: QBAccount; depth: number; parentPath: string }[] => {
+    const result: { account: QBAccount; depth: number; parentPath: string }[] = [];
+
+    const traverse = (nodes: AccountNode[], parentCollapsed: boolean) => {
+      for (const node of nodes) {
+        const isParent = node.children.length > 0;
+        const isCollapsed = collapsedSections.has(node.fullPath);
+
+        if (node.account && !parentCollapsed) {
+          // This is a leaf node with an account
+          result.push({
+            account: node.account,
+            depth: node.depth,
+            parentPath: node.fullPath.split(':').slice(0, -1).join(':')
+          });
+        }
+
+        if (isParent && !parentCollapsed) {
+          traverse(node.children, isCollapsed);
+        }
+      }
+    };
+
+    traverse(sectionRoots, false);
+    return result;
+  };
+
+  // Get parent nodes for rendering collapse controls
+  const getParentNodes = (sectionRoots: AccountNode[]): AccountNode[] => {
+    const parents: AccountNode[] = [];
 
     const traverse = (nodes: AccountNode[]) => {
       for (const node of nodes) {
-        const isParent = node.children.length > 0;
-        result.push({ node, isParent });
-
-        if (isParent && !collapsedSections.has(node.fullPath)) {
-          traverse(node.children);
+        if (node.children.length > 0) {
+          parents.push(node);
+          if (!collapsedSections.has(node.fullPath)) {
+            traverse(node.children);
+          }
         }
       }
     };
 
     traverse(sectionRoots);
-    return result;
+    return parents;
   };
 
   const toggleSection = (path: string) => {
@@ -440,7 +448,7 @@ export default function BudgetSetupPage() {
     setCollapsedSections(newCollapsed);
   };
 
-  // Get all collapsible parent paths (NOT section headers)
+  // Get all collapsible parent paths
   const getAllParentPaths = (): string[] => {
     const paths: string[] = [];
 
@@ -474,39 +482,7 @@ export default function BudgetSetupPage() {
     }
   };
 
-  // Calculate totals for a node (including children)
-  const getNodeBudgetTotal = (node: AccountNode): number => {
-    if (node.account) {
-      const budget = getBudget(node.account.qb_account_id);
-      return MONTHS.reduce((sum, month) => sum + (budget[month] || 0), 0);
-    }
-    return node.children.reduce((sum, child) => sum + getNodeBudgetTotal(child), 0);
-  };
-
-  const getNodePriorTotal = (node: AccountNode): number => {
-    if (node.account) {
-      return getPriorYearTotal(node.account.qb_account_id);
-    }
-    return node.children.reduce((sum, child) => sum + getNodePriorTotal(child), 0);
-  };
-
-  const getNodeMonthBudget = (node: AccountNode, month: typeof MONTHS[number]): number => {
-    if (node.account) {
-      const budget = getBudget(node.account.qb_account_id);
-      return budget[month] || 0;
-    }
-    return node.children.reduce((sum, child) => sum + getNodeMonthBudget(child, month), 0);
-  };
-
-  const getNodeMonthActual = (node: AccountNode, month: typeof MONTHS[number]): number => {
-    if (node.account) {
-      const actuals = priorYearActuals.get(node.account.qb_account_id);
-      return actuals?.[month] || 0;
-    }
-    return node.children.reduce((sum, child) => sum + getNodeMonthActual(child, month), 0);
-  };
-
-  // Calculate totals for an account
+  // Calculate totals
   const getAccountTotal = (budget: AccountBudget): number => {
     return MONTHS.reduce((sum, month) => sum + (budget[month] || 0), 0);
   };
@@ -517,7 +493,37 @@ export default function BudgetSetupPage() {
     return MONTHS.reduce((sum, month) => sum + (actuals[month] || 0), 0);
   };
 
-  // Handle cell edit
+  // Calculate section totals
+  const getSectionTotals = (sectionAccounts: AccountNode[]) => {
+    let budgetTotal = 0;
+    let priorTotal = 0;
+    const monthlyBudget: Record<string, number> = {};
+    const monthlyPrior: Record<string, number> = {};
+
+    MONTHS.forEach(m => {
+      monthlyBudget[m] = 0;
+      monthlyPrior[m] = 0;
+    });
+
+    const sumNode = (node: AccountNode) => {
+      if (node.account) {
+        const budget = getBudget(node.account.qb_account_id);
+        const actuals = priorYearActuals.get(node.account.qb_account_id);
+        budgetTotal += getAccountTotal(budget);
+        priorTotal += getPriorYearTotal(node.account.qb_account_id);
+        MONTHS.forEach(m => {
+          monthlyBudget[m] += budget[m] || 0;
+          monthlyPrior[m] += actuals?.[m] || 0;
+        });
+      }
+      node.children.forEach(sumNode);
+    };
+
+    sectionAccounts.forEach(sumNode);
+
+    return { budgetTotal, priorTotal, monthlyBudget, monthlyPrior };
+  };
+
   const startEdit = (accountId: string, month: typeof MONTHS[number]) => {
     const budget = getBudget(accountId);
     setEditingCell({ accountId, month });
@@ -537,7 +543,6 @@ export default function BudgetSetupPage() {
     setEditValue("");
   };
 
-  // Handle keyboard events for cell editing
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       confirmEdit();
@@ -546,7 +551,6 @@ export default function BudgetSetupPage() {
     } else if (e.key === 'Tab' && editingCell) {
       e.preventDefault();
       confirmEdit();
-      // Move to next month
       const currentIndex = MONTHS.indexOf(editingCell.month);
       if (currentIndex < MONTHS.length - 1) {
         startEdit(editingCell.accountId, MONTHS[currentIndex + 1]);
@@ -581,7 +585,6 @@ export default function BudgetSetupPage() {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Year Selector */}
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-gray-500" />
               <select
@@ -595,7 +598,6 @@ export default function BudgetSetupPage() {
               </select>
             </div>
 
-            {/* Show All Accounts Toggle */}
             <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
               <input
                 type="checkbox"
@@ -606,7 +608,6 @@ export default function BudgetSetupPage() {
               Show all accounts
             </label>
 
-            {/* Collapse/Expand All */}
             <button
               onClick={toggleCollapseAll}
               className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-gray-100 text-gray-600 hover:bg-gray-200"
@@ -616,7 +617,6 @@ export default function BudgetSetupPage() {
               {isAllCollapsed ? 'Expand' : 'Collapse'}
             </button>
 
-            {/* Sync Button */}
             <button
               onClick={syncExpenses}
               disabled={syncing}
@@ -626,7 +626,6 @@ export default function BudgetSetupPage() {
               {syncing ? 'Syncing...' : 'Sync QBO'}
             </button>
 
-            {/* Save Button */}
             <button
               onClick={saveAllBudgets}
               disabled={saving || !hasChanges}
@@ -638,7 +637,6 @@ export default function BudgetSetupPage() {
           </div>
         </div>
 
-        {/* Message */}
         {message && (
           <div className={`mb-4 p-4 rounded-lg ${
             message.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
@@ -647,7 +645,6 @@ export default function BudgetSetupPage() {
           </div>
         )}
 
-        {/* Instructions */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
           <p className="text-sm text-blue-800">
             <strong>How to use:</strong> Click any budget cell to edit. Press <kbd className="px-1 bg-blue-100 rounded">Tab</kbd> to move to the next month.
@@ -656,7 +653,6 @@ export default function BudgetSetupPage() {
           </p>
         </div>
 
-        {/* Budget Table */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <RefreshCw className="h-8 w-8 animate-spin text-gray-400" />
@@ -675,53 +671,32 @@ export default function BudgetSetupPage() {
                   <th className="sticky left-0 z-20 bg-gray-50 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[300px]">
                     Account
                   </th>
-                  {MONTH_LABELS.map((month, idx) => (
-                    <th key={month} colSpan={2} className="bg-gray-50 px-1 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="bg-gray-50 px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
+                    Type
+                  </th>
+                  {MONTH_LABELS.map(month => (
+                    <th key={month} className="bg-gray-50 px-2 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
                       {month}
                     </th>
                   ))}
-                  <th colSpan={2} className="bg-gray-50 px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                  <th className="bg-gray-50 px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
                     Total
                   </th>
                   <th className="bg-gray-50 px-2 py-3 w-10"></th>
                 </tr>
-                <tr className="bg-gray-100">
-                  <th className="sticky left-0 z-20 bg-gray-100 px-4 py-1"></th>
-                  {MONTH_LABELS.map((month) => (
-                    <Fragment key={month}>
-                      <th className="bg-emerald-50 px-1 py-1 text-center text-[10px] font-medium text-emerald-600">
-                        {priorYear}
-                      </th>
-                      <th className="bg-blue-100 px-1 py-1 text-center text-[10px] font-medium text-blue-700">
-                        {budgetYear}
-                      </th>
-                    </Fragment>
-                  ))}
-                  <th className="bg-emerald-50 px-1 py-1 text-center text-[10px] font-medium text-emerald-600">{priorYear}</th>
-                  <th className="bg-blue-100 px-1 py-1 text-center text-[10px] font-medium text-blue-700">{budgetYear}</th>
-                  <th className="bg-gray-100"></th>
-                </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {sections.map((section) => {
-                  const flattenedNodes = flattenSection(section.accounts);
                   const isSectionCollapsed = collapsedSections.has(`section:${section.title}`);
-
-                  // Calculate section totals
-                  const sectionBudgetTotal = section.accounts.reduce((sum, node) => sum + getNodeBudgetTotal(node), 0);
-                  const sectionPriorTotal = section.accounts.reduce((sum, node) => sum + getNodePriorTotal(node), 0);
-
-                  // Calculate section monthly totals
-                  const getSectionMonthBudget = (month: typeof MONTHS[number]) =>
-                    section.accounts.reduce((sum, node) => sum + getNodeMonthBudget(node, month), 0);
-                  const getSectionMonthActual = (month: typeof MONTHS[number]) =>
-                    section.accounts.reduce((sum, node) => sum + getNodeMonthActual(node, month), 0);
+                  const sectionTotals = getSectionTotals(section.accounts);
+                  const parentNodes = getParentNodes(section.accounts);
+                  const leafAccounts = flattenSection(section.accounts);
 
                   return (
                     <Fragment key={section.title}>
-                      {/* Section Header Row */}
-                      <tr className="bg-blue-50 border-t-2 border-blue-200">
-                        <td className="sticky left-0 bg-blue-50 px-4 py-2">
+                      {/* Section Header */}
+                      <tr className="bg-blue-100 border-t-2 border-blue-300">
+                        <td className="sticky left-0 bg-blue-100 px-4 py-3" colSpan={2}>
                           <button
                             onClick={() => toggleSection(`section:${section.title}`)}
                             className="flex items-center gap-2 text-blue-900 font-bold text-sm"
@@ -734,146 +709,166 @@ export default function BudgetSetupPage() {
                             {section.title}
                           </button>
                         </td>
-                        {MONTHS.map((month) => {
-                          const monthActual = getSectionMonthActual(month);
-                          const monthBudget = getSectionMonthBudget(month);
-                          return (
-                            <Fragment key={month}>
-                              <td className="bg-emerald-100/70 px-1 py-2 text-right text-xs font-bold text-emerald-800">
-                                {monthActual > 0 ? formatCurrency(monthActual) : '-'}
-                              </td>
-                              <td className="bg-blue-200/70 px-1 py-2 text-right text-xs font-bold text-blue-900">
-                                {monthBudget > 0 ? formatCurrency(monthBudget) : '-'}
-                              </td>
-                            </Fragment>
-                          );
-                        })}
-                        <td className="bg-emerald-100/70 px-2 py-2 text-right text-xs font-bold text-emerald-800">
-                          {formatCurrency(sectionPriorTotal)}
+                        {MONTHS.map(month => (
+                          <td key={month} className="bg-blue-100 px-2 py-3 text-right text-xs font-bold text-blue-900">
+                            {sectionTotals.monthlyBudget[month] > 0 ? formatCurrency(sectionTotals.monthlyBudget[month]) : '-'}
+                          </td>
+                        ))}
+                        <td className="bg-blue-100 px-3 py-3 text-right text-sm font-bold text-blue-900">
+                          {formatCurrency(sectionTotals.budgetTotal)}
                         </td>
-                        <td className="bg-blue-200/70 px-2 py-2 text-right text-xs font-bold text-blue-900">
-                          {formatCurrency(sectionBudgetTotal)}
-                        </td>
-                        <td className="bg-blue-50"></td>
+                        <td className="bg-blue-100"></td>
                       </tr>
 
-                      {/* Section Content (if not collapsed) */}
-                      {!isSectionCollapsed && flattenedNodes.map(({ node, isParent }) => {
-                        const budgetTotal = getNodeBudgetTotal(node);
-                        const priorTotal = getNodePriorTotal(node);
-                        const isNodeCollapsed = collapsedSections.has(node.fullPath);
-                        const isLeaf = !!node.account;
-
-                        return (
-                          <tr
-                            key={node.fullPath}
-                            className={`group ${isParent ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
-                          >
-                            <td className={`sticky left-0 px-4 py-2 ${isParent ? 'bg-gray-50' : 'bg-white group-hover:bg-gray-50'}`}>
-                              <div
-                                className="flex items-center gap-1"
-                                style={{ paddingLeft: `${(node.depth + 1) * 16}px` }}
-                              >
-                                {isParent ? (
-                                  <button
-                                    onClick={() => toggleSection(node.fullPath)}
-                                    className="p-0.5 hover:bg-gray-200 rounded"
-                                  >
-                                    {isNodeCollapsed ? (
-                                      <ChevronRight className="h-4 w-4 text-gray-500" />
-                                    ) : (
-                                      <ChevronDown className="h-4 w-4 text-gray-500" />
-                                    )}
-                                  </button>
-                                ) : (
-                                  <span className="w-5" />
-                                )}
-                                <span className={`text-xs truncate ${isParent ? 'font-semibold text-gray-900' : 'text-gray-700'}`} title={node.fullPath}>
-                                  {node.name}
-                                </span>
-                              </div>
-                            </td>
-                            {MONTHS.map((month) => {
-                              const monthActual = getNodeMonthActual(node, month);
-                              const monthBudget = getNodeMonthBudget(node, month);
-                              const isEditing = isLeaf && editingCell?.accountId === node.account!.qb_account_id && editingCell?.month === month;
-
-                              return (
-                                <Fragment key={month}>
-                                  {/* Prior Year Actual */}
-                                  <td className={`px-1 py-2 text-right text-xs ${isParent ? 'bg-emerald-100/50 font-semibold' : 'bg-emerald-50/30'} text-gray-600`}>
-                                    {monthActual > 0 ? formatCurrency(monthActual) : '-'}
-                                  </td>
-                                  {/* Budget */}
-                                  <td className={`px-1 py-2 text-right ${isParent ? 'bg-blue-100/50' : 'bg-blue-50/50'}`}>
-                                    {isLeaf ? (
-                                      isEditing ? (
-                                        <div className="flex items-center justify-end">
-                                          <input
-                                            type="number"
-                                            value={editValue}
-                                            onChange={(e) => setEditValue(e.target.value)}
-                                            onKeyDown={handleKeyDown}
-                                            onBlur={(e) => {
-                                              if (e.relatedTarget?.closest('button[data-fill-forward]')) return;
-                                              confirmEdit();
-                                            }}
-                                            autoFocus
-                                            className="w-14 px-1 py-0.5 text-right text-xs border rounded bg-white"
-                                          />
-                                          <button
-                                            data-fill-forward
-                                            onClick={() => {
-                                              fillForward(node.account!.qb_account_id, month, parseFloat(editValue) || 0);
-                                              setEditingCell(null);
-                                              setEditValue("");
-                                            }}
-                                            className="ml-0.5 p-0.5 text-gray-400 hover:text-blue-600 rounded"
-                                            title="Fill forward"
-                                          >
-                                            <ArrowRightCircle className="h-3 w-3" />
-                                          </button>
-                                        </div>
+                      {/* Section Content */}
+                      {!isSectionCollapsed && (
+                        <>
+                          {/* Parent category rows (collapsible headers) */}
+                          {parentNodes.map((parent) => {
+                            const isParentCollapsed = collapsedSections.has(parent.fullPath);
+                            return (
+                              <tr key={`parent-${parent.fullPath}`} className="bg-gray-100">
+                                <td className="sticky left-0 bg-gray-100 px-4 py-2" colSpan={2}>
+                                  <div style={{ paddingLeft: `${parent.depth * 16}px` }}>
+                                    <button
+                                      onClick={() => toggleSection(parent.fullPath)}
+                                      className="flex items-center gap-1 text-gray-700 font-medium text-sm hover:text-gray-900"
+                                    >
+                                      {isParentCollapsed ? (
+                                        <ChevronRight className="h-4 w-4" />
                                       ) : (
-                                        <button
-                                          onClick={() => startEdit(node.account!.qb_account_id, month)}
-                                          className={`text-xs px-1 py-0.5 rounded hover:bg-blue-100 ${
-                                            monthBudget > 0 ? 'text-gray-900' : 'text-gray-300'
-                                          }`}
-                                        >
-                                          {monthBudget > 0 ? formatCurrency(monthBudget) : '-'}
-                                        </button>
-                                      )
-                                    ) : (
-                                      <span className={`text-xs font-semibold ${monthBudget > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
-                                        {monthBudget > 0 ? formatCurrency(monthBudget) : '-'}
-                                      </span>
-                                    )}
+                                        <ChevronDown className="h-4 w-4" />
+                                      )}
+                                      {parent.name}
+                                    </button>
+                                  </div>
+                                </td>
+                                {MONTHS.map(month => (
+                                  <td key={month} className="bg-gray-100"></td>
+                                ))}
+                                <td className="bg-gray-100"></td>
+                                <td className="bg-gray-100"></td>
+                              </tr>
+                            );
+                          })}
+
+                          {/* Leaf account rows (two rows per account: actuals + budget) */}
+                          {leafAccounts.map(({ account, depth }) => {
+                            const budget = getBudget(account.qb_account_id);
+                            const actuals = priorYearActuals.get(account.qb_account_id);
+                            const budgetTotal = getAccountTotal(budget);
+                            const priorTotal = getPriorYearTotal(account.qb_account_id);
+
+                            return (
+                              <Fragment key={account.qb_account_id}>
+                                {/* Account Header */}
+                                <tr className="bg-blue-50 border-t border-blue-200">
+                                  <td className="sticky left-0 bg-blue-50 px-4 py-2" colSpan={2}>
+                                    <div className="flex items-center gap-2" style={{ paddingLeft: `${depth * 16}px` }}>
+                                      <span className="font-semibold text-gray-900 text-sm">{account.name}</span>
+                                      {account.fully_qualified_name !== account.name && (
+                                        <span className="text-xs text-gray-500 truncate" title={account.fully_qualified_name}>
+                                          ({account.fully_qualified_name})
+                                        </span>
+                                      )}
+                                    </div>
                                   </td>
-                                </Fragment>
-                              );
-                            })}
-                            {/* Totals */}
-                            <td className={`px-2 py-2 text-right text-xs font-semibold ${isParent ? 'bg-emerald-100/50' : 'bg-emerald-50/30'} text-gray-700`}>
-                              {priorTotal > 0 ? formatCurrency(priorTotal) : '-'}
-                            </td>
-                            <td className={`px-2 py-2 text-right text-xs font-semibold ${isParent ? 'bg-blue-100/50' : 'bg-blue-50/50'} text-gray-900`}>
-                              {budgetTotal > 0 ? formatCurrency(budgetTotal) : '-'}
-                            </td>
-                            <td className={isParent ? 'bg-gray-50' : ''}>
-                              {isLeaf && (
-                                <button
-                                  onClick={() => copyFromPriorYear(node.account!.qb_account_id)}
-                                  className="p-1 text-gray-300 hover:text-blue-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                                  title={`Copy ${priorYear} actuals as ${budgetYear} budget`}
-                                >
-                                  <ArrowRightCircle className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                                  {MONTHS.map(month => (
+                                    <td key={month} className="bg-blue-50"></td>
+                                  ))}
+                                  <td className="bg-blue-50"></td>
+                                  <td className="bg-blue-50 px-2 py-2">
+                                    <button
+                                      onClick={() => copyFromPriorYear(account.qb_account_id)}
+                                      className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                                      title={`Copy ${priorYear} actuals as ${budgetYear} budget`}
+                                    >
+                                      <ChevronRight className="h-4 w-4" />
+                                    </button>
+                                  </td>
+                                </tr>
+
+                                {/* Actuals Row */}
+                                <tr className="bg-gray-50">
+                                  <td className="sticky left-0 bg-gray-50 px-4 py-2 text-sm text-gray-600 font-medium" colSpan={2}>
+                                    <div style={{ paddingLeft: `${depth * 16}px` }}>
+                                      Actuals ({priorYear})
+                                    </div>
+                                  </td>
+                                  {MONTHS.map(month => (
+                                    <td key={month} className="px-2 py-2 text-right text-sm text-gray-600 font-mono">
+                                      {actuals && actuals[month] > 0 ? formatCurrency(actuals[month]) : '—'}
+                                    </td>
+                                  ))}
+                                  <td className="px-3 py-2 text-right text-sm text-gray-700 font-mono font-medium">
+                                    {priorTotal > 0 ? formatCurrency(priorTotal) : '—'}
+                                  </td>
+                                  <td></td>
+                                </tr>
+
+                                {/* Budget Row */}
+                                <tr className="bg-white">
+                                  <td className="sticky left-0 bg-white px-4 py-2 text-sm text-blue-700 font-medium" colSpan={2}>
+                                    <div style={{ paddingLeft: `${depth * 16}px` }}>
+                                      Budget ({budgetYear})
+                                    </div>
+                                  </td>
+                                  {MONTHS.map(month => {
+                                    const isEditing = editingCell?.accountId === account.qb_account_id && editingCell?.month === month;
+                                    const value = budget[month];
+
+                                    return (
+                                      <td key={month} className="px-1 py-1">
+                                        {isEditing ? (
+                                          <div className="flex items-center">
+                                            <input
+                                              type="number"
+                                              value={editValue}
+                                              onChange={(e) => setEditValue(e.target.value)}
+                                              onKeyDown={handleKeyDown}
+                                              onBlur={(e) => {
+                                                if (e.relatedTarget?.closest('button[data-fill-forward]')) return;
+                                                confirmEdit();
+                                              }}
+                                              autoFocus
+                                              className="w-16 px-1 py-1 text-right text-sm border rounded focus:ring-2 focus:ring-blue-500"
+                                            />
+                                            <button
+                                              data-fill-forward
+                                              onClick={() => {
+                                                fillForward(account.qb_account_id, month, parseFloat(editValue) || 0);
+                                                setEditingCell(null);
+                                                setEditValue("");
+                                              }}
+                                              className="ml-1 p-1 text-gray-400 hover:text-blue-600 rounded"
+                                              title="Fill forward to remaining months"
+                                            >
+                                              <ArrowRightCircle className="h-3 w-3" />
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <button
+                                            onClick={() => startEdit(account.qb_account_id, month)}
+                                            className={`w-full px-2 py-1 text-right text-sm font-mono rounded hover:bg-blue-50 ${
+                                              value > 0 ? 'text-gray-900' : 'text-gray-400'
+                                            }`}
+                                          >
+                                            {value > 0 ? formatCurrency(value) : '—'}
+                                          </button>
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+                                  <td className="px-3 py-2 text-right text-sm font-mono font-semibold text-gray-900">
+                                    {budgetTotal > 0 ? formatCurrency(budgetTotal) : '—'}
+                                  </td>
+                                  <td></td>
+                                </tr>
+                              </Fragment>
+                            );
+                          })}
+                        </>
+                      )}
                     </Fragment>
                   );
                 })}
@@ -887,10 +882,9 @@ export default function BudgetSetupPage() {
           <div className="mt-6 bg-white rounded-lg shadow p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Budget Summary</h3>
             {(() => {
-              const totalBudget = sections.reduce((sum, section) =>
-                sum + section.accounts.reduce((sSum, node) => sSum + getNodeBudgetTotal(node), 0), 0);
-              const totalPrior = sections.reduce((sum, section) =>
-                sum + section.accounts.reduce((sSum, node) => sSum + getNodePriorTotal(node), 0), 0);
+              // Calculate totals from sections (same method as BudgetManagePage)
+              const totalBudget = sections.reduce((sum, section) => sum + getSectionTotals(section.accounts).budgetTotal, 0);
+              const totalPrior = sections.reduce((sum, section) => sum + getSectionTotals(section.accounts).priorTotal, 0);
               const variance = totalBudget - totalPrior;
 
               return (
