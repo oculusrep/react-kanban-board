@@ -534,10 +534,17 @@ async function withRetry<T>(
 
 **Rate Limit Context:**
 - Sonnet 4 has very strict rate limits (10k tokens/min) - too low for tool-heavy agent
-- Solution: Use `claude-3-5-haiku-20241022` which has much higher rate limits
-- Haiku is optimized for tool use and has faster response times
+- Solution: Use `claude-3-5-sonnet-latest` which has higher rate limits than Sonnet 4
 - CFO Agent base overhead: ~5,000-6,000 tokens (system prompt + tool definitions)
-- Haiku handles this easily with room for conversation history
+
+**Temporarily Disabled Tools (February 2026):**
+The following tools are commented out in `cfo-tools.ts` to reduce token count:
+- `generate_interactive_deal_report` - Interactive deal report with editable payment dates
+- `update_deal_payment_date` - Update single payment date
+- `bulk_update_payment_dates` - Bulk update multiple payment dates
+
+These tools can be re-enabled once rate limit issues are resolved or when upgrading to a higher API tier.
+The tool implementations remain in the codebase and the frontend InteractiveDealReport component is ready.
 
 ---
 

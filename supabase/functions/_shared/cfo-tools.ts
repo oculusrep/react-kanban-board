@@ -1552,58 +1552,60 @@ export const CFO_TOOL_DEFINITIONS = [
       },
     },
   },
-  {
-    name: 'generate_interactive_deal_report',
-    description: 'Generate report with editable payment dates. Filter by: missing_payment_dates, no_payments_created, all_payment_issues, specific_stage.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        filter_type: {
-          type: 'string' as const,
-          enum: ['missing_payment_dates', 'no_payments_created', 'all_payment_issues', 'specific_stage'],
-        },
-        stage_filter: { type: 'string' as const },
-        sort_by: {
-          type: 'string' as const,
-          enum: ['house_net_desc', 'deal_name', 'stage', 'payment_amount'],
-        },
-      },
-      required: ['filter_type'],
-    },
-  },
-  {
-    name: 'update_deal_payment_date',
-    description: 'Update payment date for a deal. Date format: YYYY-MM-DD.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        deal_id: { type: 'string' as const },
-        payment_id: { type: 'string' as const },
-        new_payment_date: { type: 'string' as const },
-      },
-      required: ['deal_id', 'payment_id', 'new_payment_date'],
-    },
-  },
-  {
-    name: 'bulk_update_payment_dates',
-    description: 'Update multiple payment dates at once.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        updates: {
-          type: 'array' as const,
-          items: {
-            type: 'object' as const,
-            properties: {
-              deal_id: { type: 'string' as const },
-              payment_id: { type: 'string' as const },
-              new_payment_date: { type: 'string' as const },
-            },
-            required: ['deal_id', 'payment_id', 'new_payment_date'],
-          },
-        },
-      },
-      required: ['updates'],
-    },
-  },
+  // COMMENTED OUT: Interactive deal report tools temporarily disabled to reduce token count
+  // These tools can be re-enabled once rate limit issues are resolved
+  // {
+  //   name: 'generate_interactive_deal_report',
+  //   description: 'Generate report with editable payment dates. Filter by: missing_payment_dates, no_payments_created, all_payment_issues, specific_stage.',
+  //   input_schema: {
+  //     type: 'object' as const,
+  //     properties: {
+  //       filter_type: {
+  //         type: 'string' as const,
+  //         enum: ['missing_payment_dates', 'no_payments_created', 'all_payment_issues', 'specific_stage'],
+  //       },
+  //       stage_filter: { type: 'string' as const },
+  //       sort_by: {
+  //         type: 'string' as const,
+  //         enum: ['house_net_desc', 'deal_name', 'stage', 'payment_amount'],
+  //       },
+  //     },
+  //     required: ['filter_type'],
+  //   },
+  // },
+  // {
+  //   name: 'update_deal_payment_date',
+  //   description: 'Update payment date for a deal. Date format: YYYY-MM-DD.',
+  //   input_schema: {
+  //     type: 'object' as const,
+  //     properties: {
+  //       deal_id: { type: 'string' as const },
+  //       payment_id: { type: 'string' as const },
+  //       new_payment_date: { type: 'string' as const },
+  //     },
+  //     required: ['deal_id', 'payment_id', 'new_payment_date'],
+  //   },
+  // },
+  // {
+  //   name: 'bulk_update_payment_dates',
+  //   description: 'Update multiple payment dates at once.',
+  //   input_schema: {
+  //     type: 'object' as const,
+  //     properties: {
+  //       updates: {
+  //         type: 'array' as const,
+  //         items: {
+  //           type: 'object' as const,
+  //           properties: {
+  //             deal_id: { type: 'string' as const },
+  //             payment_id: { type: 'string' as const },
+  //             new_payment_date: { type: 'string' as const },
+  //           },
+  //           required: ['deal_id', 'payment_id', 'new_payment_date'],
+  //         },
+  //       },
+  //     },
+  //     required: ['updates'],
+  //   },
+  // },
 ];
