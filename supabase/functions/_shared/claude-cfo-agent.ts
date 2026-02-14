@@ -14,6 +14,9 @@ import {
   getExpensesByPeriod,
   getInvoiceAging,
   getCashFlowProjection,
+  getFinancialContext,
+  saveFinancialContext,
+  deleteFinancialContext,
 } from './cfo-tools.ts';
 
 // ============================================================================
@@ -49,13 +52,15 @@ interface CFOAgentResult {
 // SYSTEM PROMPT
 // ============================================================================
 
-const SYSTEM_PROMPT = `You are the CFO Agent for OVIS, a commercial real estate brokerage. You have access to financial data tools to analyze the company's finances.
+function buildSystemPrompt(savedContext: string): string {
+  const basePrompt = `You are the CFO Agent for OVIS, a commercial real estate brokerage. You have access to financial data tools to analyze the company's finances.
 
 AVAILABLE DATA SOURCES:
 - Payments: Expected revenue from deals (with payment_date_estimated)
 - Budgets: Monthly budget amounts by expense account
 - Expenses: Actual expenses synced from QuickBooks
 - Invoice Aging: Accounts receivable status
+- Saved Context: Business rules, corrections, and notes you've been asked to remember
 
 HOUSE NET INCOME CALCULATION (Critical - this is what the company actually keeps):
 - Payment Amount = Check from client (gross amount)
@@ -78,6 +83,12 @@ WHEN ANSWERING:
 4. Provide clear, actionable insights with specific numbers
 5. Explain your methodology so the user understands how you arrived at the answer
 
+CONTEXT MANAGEMENT:
+- When the user asks you to "remember" something, use the save_financial_context tool
+- When the user corrects you, acknowledge the correction and save it using save_financial_context with context_type "correction"
+- When the user asks you to "forget" something, use the delete_financial_context tool
+- Always refer to saved context when it's relevant to the question
+
 CHART GUIDELINES:
 - Use bar charts for comparing categories (e.g., budget by account)
 - Use line charts for trends over time (e.g., monthly balance)
@@ -92,8 +103,17 @@ EXAMPLE QUERIES YOU CAN ANSWER:
 - "Which invoices are overdue and what's the collection risk?"
 - "Show me expense trends over the past quarter"
 - "What's our projected cash flow for Q2?"
+- "Remember that Q4 is our busiest quarter"
+- "That's wrong - the house split is 30%, not 25%"
 
 Today's date is ${new Date().toISOString().split('T')[0]}.`;
+
+  if (savedContext) {
+    return basePrompt + `\n\nSAVED CONTEXT (Business rules, corrections, and notes you've been asked to remember):\n${savedContext}`;
+  }
+
+  return basePrompt;
+}
 
 // ============================================================================
 // TOOL EXECUTION
@@ -191,6 +211,55 @@ async function executeTool(
       };
     }
 
+    case 'get_financial_context': {
+      const context = await getFinancialContext(
+        supabase,
+        toolInput.context_type as string | undefined
+      );
+      return {
+        context_notes: context.map((c) => ({
+          id: c.id,
+          type: c.context_type,
+          text: c.context_text,
+          entity_type: c.entity_type,
+          entity_id: c.entity_id,
+          created_at: c.created_at,
+        })),
+        count: context.length,
+      };
+    }
+
+    case 'save_financial_context': {
+      const result = await saveFinancialContext(
+        supabase,
+        toolInput.context_type as string,
+        toolInput.context_text as string,
+        toolInput.entity_type as string | undefined,
+        toolInput.entity_id as string | undefined,
+        toolInput.metadata as Record<string, unknown> | undefined
+      );
+      return {
+        success: true,
+        id: result.id,
+        message: 'Context saved successfully. I will remember this.',
+      };
+    }
+
+    case 'delete_financial_context': {
+      const result = await deleteFinancialContext(
+        supabase,
+        toolInput.context_id as string | undefined,
+        toolInput.search_text as string | undefined
+      );
+      return {
+        success: true,
+        deleted_count: result.deleted_count,
+        message: result.deleted_count > 0
+          ? `Deleted ${result.deleted_count} context note(s).`
+          : 'No matching context notes found to delete.',
+      };
+    }
+
     default:
       throw new Error(`Unknown tool: ${toolName}`);
   }
@@ -211,6 +280,22 @@ export async function runCFOAgent(
   }
 
   const client = new Anthropic({ apiKey: anthropicKey });
+
+  // Fetch saved context to include in system prompt
+  let savedContextText = '';
+  try {
+    const savedContext = await getFinancialContext(supabase);
+    if (savedContext.length > 0) {
+      savedContextText = savedContext
+        .map((c) => `- [${c.context_type}] ${c.context_text}`)
+        .join('\n');
+      console.log(`[CFO Agent] Loaded ${savedContext.length} context notes`);
+    }
+  } catch (err) {
+    console.warn('[CFO Agent] Failed to load saved context:', err);
+  }
+
+  const systemPrompt = buildSystemPrompt(savedContextText);
 
   // Build messages from conversation history
   const messages: Anthropic.MessageParam[] = conversationHistory.map((msg) => ({
@@ -235,7 +320,7 @@ export async function runCFOAgent(
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       tools: CFO_TOOL_DEFINITIONS as Anthropic.Tool[],
       messages,
     });

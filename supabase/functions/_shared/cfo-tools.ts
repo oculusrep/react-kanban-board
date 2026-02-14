@@ -524,6 +524,106 @@ export async function getCashFlowProjection(
 }
 
 // ============================================================================
+// CONTEXT TYPES
+// ============================================================================
+
+export interface FinancialContext {
+  id: string;
+  context_type: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  context_text: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+// ============================================================================
+// TOOL: GET FINANCIAL CONTEXT
+// ============================================================================
+
+/**
+ * Retrieve saved context notes for the CFO agent.
+ */
+export async function getFinancialContext(
+  supabase: SupabaseClient,
+  contextType?: string
+): Promise<FinancialContext[]> {
+  let query = supabase
+    .from('ai_financial_context')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (contextType) {
+    query = query.eq('context_type', contextType);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to fetch context: ${error.message}`);
+
+  return (data || []) as FinancialContext[];
+}
+
+// ============================================================================
+// TOOL: SAVE FINANCIAL CONTEXT
+// ============================================================================
+
+/**
+ * Save a new context note for the CFO agent to remember.
+ */
+export async function saveFinancialContext(
+  supabase: SupabaseClient,
+  contextType: string,
+  contextText: string,
+  entityType?: string,
+  entityId?: string,
+  metadata?: Record<string, unknown>
+): Promise<{ id: string; success: boolean }> {
+  const { data, error } = await supabase
+    .from('ai_financial_context')
+    .insert({
+      context_type: contextType,
+      context_text: contextText,
+      entity_type: entityType || null,
+      entity_id: entityId || null,
+      metadata: metadata || {},
+    })
+    .select('id')
+    .single();
+
+  if (error) throw new Error(`Failed to save context: ${error.message}`);
+
+  return { id: data.id, success: true };
+}
+
+// ============================================================================
+// TOOL: DELETE FINANCIAL CONTEXT
+// ============================================================================
+
+/**
+ * Delete a context note by ID or by matching text.
+ */
+export async function deleteFinancialContext(
+  supabase: SupabaseClient,
+  contextId?: string,
+  searchText?: string
+): Promise<{ deleted_count: number; success: boolean }> {
+  let query = supabase.from('ai_financial_context').delete();
+
+  if (contextId) {
+    query = query.eq('id', contextId);
+  } else if (searchText) {
+    query = query.ilike('context_text', `%${searchText}%`);
+  } else {
+    throw new Error('Either contextId or searchText must be provided');
+  }
+
+  const { data, error } = await query.select('id');
+  if (error) throw new Error(`Failed to delete context: ${error.message}`);
+
+  return { deleted_count: data?.length || 0, success: true };
+}
+
+// ============================================================================
 // TOOL DEFINITIONS FOR CLAUDE
 // ============================================================================
 
@@ -669,6 +769,67 @@ export const CFO_TOOL_DEFINITIONS = [
         },
       },
       required: ['chart_type', 'title', 'data', 'x_axis', 'series', 'y_axis_format'],
+    },
+  },
+  {
+    name: 'get_financial_context',
+    description:
+      'Retrieve saved context notes that contain business knowledge, corrections, and rules. Always call this at the start of a conversation to get relevant context.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        context_type: {
+          type: 'string' as const,
+          enum: ['business_rule', 'correction', 'seasonal_pattern', 'client_note', 'vendor_note', 'budget_note'],
+          description: 'Optional filter by context type. If not specified, returns all context.',
+        },
+      },
+    },
+  },
+  {
+    name: 'save_financial_context',
+    description:
+      'Save a new context note for the CFO agent to remember. Use this when the user tells you to remember something or when you learn a correction.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        context_type: {
+          type: 'string' as const,
+          enum: ['business_rule', 'correction', 'seasonal_pattern', 'client_note', 'vendor_note', 'budget_note'],
+          description: 'Type of context being saved',
+        },
+        context_text: {
+          type: 'string' as const,
+          description: 'The context note to save (natural language)',
+        },
+        entity_type: {
+          type: 'string' as const,
+          description: 'Optional entity type this context relates to (e.g., "client", "account", "vendor")',
+        },
+        entity_id: {
+          type: 'string' as const,
+          description: 'Optional entity ID this context relates to',
+        },
+      },
+      required: ['context_type', 'context_text'],
+    },
+  },
+  {
+    name: 'delete_financial_context',
+    description:
+      'Delete a saved context note. Use this when the user asks you to forget something.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        context_id: {
+          type: 'string' as const,
+          description: 'The ID of the context note to delete',
+        },
+        search_text: {
+          type: 'string' as const,
+          description: 'Alternative: search for context notes containing this text and delete them',
+        },
+      },
     },
   },
 ];

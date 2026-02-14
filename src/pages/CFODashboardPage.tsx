@@ -7,11 +7,12 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, TrendingUp, DollarSign, BarChart3, RefreshCw } from 'lucide-react';
+import { ArrowLeft, TrendingUp, DollarSign, BarChart3, RefreshCw, Lightbulb } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import CFOChatPanel from '../components/cfo/CFOChatPanel';
 import CFOChartRenderer from '../components/cfo/CFOChartRenderer';
+import CFOContextPanel from '../components/cfo/CFOContextPanel';
 import type { CFOMessage, ChartSpecification, CFOQueryResponse } from '../types/cfo';
 
 export default function CFODashboardPage() {
@@ -22,6 +23,7 @@ export default function CFODashboardPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeChart, setActiveChart] = useState<ChartSpecification | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showContextPanel, setShowContextPanel] = useState(false);
 
   useEffect(() => {
     document.title = 'CFO Dashboard | OVIS Admin';
@@ -146,6 +148,14 @@ export default function CFODashboardPage() {
             </div>
 
             <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowContextPanel(true)}
+                className="text-sm text-amber-600 hover:text-amber-700 flex items-center gap-1 px-2 py-1 hover:bg-amber-50 rounded transition-colors"
+                title="View saved context notes"
+              >
+                <Lightbulb className="h-4 w-4" />
+                Context Notes
+              </button>
               {messages.length > 0 && (
                 <button
                   onClick={handleClearChat}
@@ -217,6 +227,12 @@ export default function CFODashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Context Panel */}
+      <CFOContextPanel
+        isOpen={showContextPanel}
+        onClose={() => setShowContextPanel(false)}
+      />
     </div>
   );
 }

@@ -3,11 +3,12 @@
  *
  * Chat interface for conversing with the CFO Agent.
  * Displays message history with markdown rendering and handles user input.
+ * Includes action buttons for remembering and correcting information.
  */
 
 import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Send, Bot, User, BarChart3 } from 'lucide-react';
+import { Send, Bot, User, BarChart3, Lightbulb, PenLine, Copy, Check } from 'lucide-react';
 import type { CFOMessage } from '../../types/cfo';
 
 interface CFOChatPanelProps {
@@ -24,6 +25,11 @@ export default function CFOChatPanel({
   onChartClick,
 }: CFOChatPanelProps) {
   const [input, setInput] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showRememberModal, setShowRememberModal] = useState<string | null>(null);
+  const [showCorrectModal, setShowCorrectModal] = useState<string | null>(null);
+  const [rememberNote, setRememberNote] = useState('');
+  const [correctionNote, setCorrectionNote] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -44,6 +50,30 @@ export default function CFOChatPanel({
 
     setInput('');
     await onSendMessage(trimmedInput);
+  };
+
+  const handleCopy = async (content: string, id: string) => {
+    await navigator.clipboard.writeText(content);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleRemember = async (messageId: string) => {
+    if (!rememberNote.trim()) return;
+
+    // Send the remember command to the agent
+    await onSendMessage(`Remember this: ${rememberNote}`);
+    setShowRememberModal(null);
+    setRememberNote('');
+  };
+
+  const handleCorrect = async (messageId: string) => {
+    if (!correctionNote.trim()) return;
+
+    // Send the correction to the agent
+    await onSendMessage(`That's incorrect. The correct information is: ${correctionNote}`);
+    setShowCorrectModal(null);
+    setCorrectionNote('');
   };
 
   const suggestedQuestions = [
@@ -152,6 +182,111 @@ export default function CFOChatPanel({
                           <BarChart3 className="h-4 w-4" />
                           View Chart: {msg.chart_spec.title}
                         </button>
+                      )}
+
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-1 pt-2 border-t border-gray-200">
+                        <button
+                          onClick={() => {
+                            setShowRememberModal(msg.id);
+                            setRememberNote('');
+                          }}
+                          disabled={isLoading}
+                          className="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded transition-colors disabled:opacity-50"
+                          title="Save a note for the agent to remember"
+                        >
+                          <Lightbulb className="h-3.5 w-3.5" />
+                          Remember
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowCorrectModal(msg.id);
+                            setCorrectionNote('');
+                          }}
+                          disabled={isLoading}
+                          className="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors disabled:opacity-50"
+                          title="Correct something in this response"
+                        >
+                          <PenLine className="h-3.5 w-3.5" />
+                          Correct
+                        </button>
+                        <button
+                          onClick={() => handleCopy(msg.content, msg.id)}
+                          className="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
+                          title="Copy response"
+                        >
+                          {copiedId === msg.id ? (
+                            <>
+                              <Check className="h-3.5 w-3.5 text-green-500" />
+                              <span className="text-green-500">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-3.5 w-3.5" />
+                              Copy
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Remember Modal */}
+                      {showRememberModal === msg.id && (
+                        <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                          <p className="text-xs text-amber-700 mb-2">What should I remember?</p>
+                          <textarea
+                            value={rememberNote}
+                            onChange={(e) => setRememberNote(e.target.value)}
+                            placeholder="e.g., Q4 is our busiest quarter for lease deals"
+                            className="w-full text-sm border border-amber-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-amber-500 focus:border-amber-500 outline-none"
+                            rows={2}
+                            autoFocus
+                          />
+                          <div className="flex justify-end gap-2 mt-2">
+                            <button
+                              onClick={() => setShowRememberModal(null)}
+                              className="px-2 py-1 text-xs text-gray-600 hover:text-gray-800"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => handleRemember(msg.id)}
+                              disabled={!rememberNote.trim() || isLoading}
+                              className="px-3 py-1 text-xs bg-amber-500 text-white rounded hover:bg-amber-600 disabled:opacity-50"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Correct Modal */}
+                      {showCorrectModal === msg.id && (
+                        <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <p className="text-xs text-blue-700 mb-2">What's the correct information?</p>
+                          <textarea
+                            value={correctionNote}
+                            onChange={(e) => setCorrectionNote(e.target.value)}
+                            placeholder="e.g., The house split is 30%, not 25%"
+                            className="w-full text-sm border border-blue-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                            rows={2}
+                            autoFocus
+                          />
+                          <div className="flex justify-end gap-2 mt-2">
+                            <button
+                              onClick={() => setShowCorrectModal(null)}
+                              className="px-2 py-1 text-xs text-gray-600 hover:text-gray-800"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => handleCorrect(msg.id)}
+                              disabled={!correctionNote.trim() || isLoading}
+                              className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+                            >
+                              Submit Correction
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   ) : (
