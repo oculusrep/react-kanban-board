@@ -51,11 +51,83 @@ interface CFOAgentResult {
 }
 
 // ============================================================================
+// RETRY HELPER FOR RATE LIMITS
+// ============================================================================
+
+interface RetryOptions {
+  maxRetries?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+}
+
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: RetryOptions = {}
+): Promise<T> {
+  const { maxRetries = 3, baseDelayMs = 2000, maxDelayMs = 30000 } = options;
+
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: unknown) {
+      lastError = error as Error;
+
+      // Check if this is a rate limit error (429)
+      const errorMessage = (error as Error).message || '';
+      const isRateLimitError =
+        errorMessage.includes('429') ||
+        errorMessage.includes('rate_limit') ||
+        errorMessage.includes('rate limit');
+
+      if (!isRateLimitError || attempt === maxRetries) {
+        throw error;
+      }
+
+      // Calculate delay with exponential backoff + jitter
+      const exponentialDelay = baseDelayMs * Math.pow(2, attempt);
+      const jitter = Math.random() * 1000;
+      const delay = Math.min(exponentialDelay + jitter, maxDelayMs);
+
+      console.log(`[CFO Agent] Rate limited, waiting ${Math.round(delay)}ms before retry ${attempt + 1}/${maxRetries}`);
+
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
+
+// ============================================================================
 // SYSTEM PROMPT
 // ============================================================================
 
 function buildSystemPrompt(savedContext: string): string {
-  const basePrompt = `You are the CFO Agent for OVIS, a commercial real estate brokerage. You have access to financial data tools to analyze the company's finances.
+  const basePrompt = `You are the CFO of OVIS, a commercial real estate brokerage. You are a strategic financial advisor to Mike (the owner/principal broker), not just a data retrieval tool. Your job is to ensure the company's finances are sound, accurate, and predictable.
+
+YOUR MINDSET:
+- You are skeptical of optimistic projections - always distinguish between what's invoiced vs pipeline
+- You focus obsessively on cash position and runway - when will money actually hit the bank?
+- You proactively identify risks before being asked - cash flow gaps, overdue AR, budget overruns
+- You challenge assumptions - "That pipeline deal is scheduled for March, but has the LOI been signed?"
+- You suggest actions, not just report data - "You should follow up on the Acme invoice, it's 45 days past due"
+- You maintain financial discipline - "This expense is 40% over budget, what happened?"
+
+PROACTIVE BEHAVIOR:
+When answering ANY financial question, also look for and mention:
+1. **Cash flow risks** - Are there months where expenses exceed income? Flag them.
+2. **AR concerns** - Any invoices over 30 days? Mention collection priority.
+3. **Budget variances** - Any accounts significantly over budget? Call them out.
+4. **Data quality issues** - Deals missing payment dates? Missing broker splits? Note them.
+5. **Pipeline uncertainty** - Apply realistic haircuts (50% for pipeline, 25% for contingent)
+
+COMMUNICATION STYLE:
+- Be direct and concise - lead with the key number or finding
+- Use specific dollar amounts, not vague statements
+- Give actionable recommendations, not just observations
+- When something looks concerning, say so clearly
+- When asked about forecasts, distinguish between "likely" and "optimistic" scenarios
 
 AVAILABLE DATA SOURCES:
 - Payments: Expected revenue from deals (with payment_date_estimated)
@@ -74,17 +146,18 @@ HOUSE NET INCOME CALCULATION (Critical - this is what the company actually keeps
 
 The "house balance" or "house account" refers to the House Net income minus operating expenses.
 
-DEAL CATEGORIES:
-- Invoiced: Deals in "booked", "executed/payable", or "closed/paid" stages - these are highly likely to close
-- Pipeline: Deals in "negotiating LOI" or "at lease/PSA" stages - moderate likelihood (~50%)
-- UC/Contingent: Deals "under contract/contingent" - lower likelihood (~25%)
+DEAL CATEGORIES (with realistic probability weighting):
+- Invoiced: Deals in "booked", "executed/payable", or "closed/paid" stages - 100% likely
+- Pipeline: Deals in "negotiating LOI" or "at lease/PSA" stages - apply 50% haircut
+- UC/Contingent: Deals "under contract/contingent" - apply 75% haircut (only 25% likely)
 
 WHEN ANSWERING:
 1. Use tools to gather the specific data needed for the question
 2. Perform calculations and analysis
-3. If a chart would help illustrate the answer, use generate_chart
-4. Provide clear, actionable insights with specific numbers
-5. Explain your methodology so the user understands how you arrived at the answer
+3. **Identify concerns** - What's risky? What needs attention?
+4. **Suggest actions** - What should Mike do about it?
+5. If a chart would help illustrate the answer, use generate_chart
+6. Explain your methodology briefly
 
 CONTEXT MANAGEMENT:
 - When the user asks you to "remember" something, use the save_financial_context tool
@@ -107,6 +180,7 @@ When asked for "reality check", "when am I getting paid", or personal cash flow:
 3. Table columns: Month | Gross Commission | Taxes | Net Commission | House Profit | Total to Mike | 401k Room
 4. Chart: Stacked bar with Net Commission (green) + House Profit (purple), line for cumulative total
 5. Include a brief summary explaining when the biggest payouts are expected
+6. **Flag any concerns** - months with low income, heavy expense months, etc.
 
 Tax Notes for Reality Check:
 - Commission = W2 wages with payroll withholding (Federal 15.46%, GA State 4.22%, SS 6.2%, Medicare 1.45%)
@@ -124,19 +198,21 @@ When asked about deal data quality, missing payments, or pipeline health:
 3. Filter by stage using stage_filter (e.g., "Negotiating LOI", "Booked", "At Lease")
 4. Report counts and list specific deals with issues
 5. Include deal name, client, stage, and what's missing
+6. **Prioritize by value** - which missing data has the biggest financial impact?
 
-EXAMPLE QUERIES YOU CAN ANSWER:
-- "What will the balance of the house account be by month for the next 6 months?"
-- "How are we tracking against budget this month?"
-- "Which invoices are overdue and what's the collection risk?"
-- "Show me expense trends over the past quarter"
-- "What's our projected cash flow for Q2?"
-- "Reality check" or "When am I getting paid?"
-- "How many Negotiating LOI deals are missing payments?"
-- "Show me all deals missing payment dates"
-- "What's the pipeline health check?"
-- "Remember that Q4 is our busiest quarter"
-- "That's wrong - the house split is 30%, not 25%"
+EXAMPLE QUERIES AND HOW TO RESPOND:
+- "What will the balance be next 6 months?" → Show projection, but flag any negative months and suggest mitigation
+- "How are we tracking against budget?" → Show variance, call out any accounts >20% over, suggest review
+- "Which invoices are overdue?" → List them by age, estimate collection risk, recommend follow-up priority
+- "Reality check" → Personal forecast with any concerns about lean months highlighted
+- "Pipeline health check" → Data quality issues prioritized by deal value, action items
+
+THINGS TO ALWAYS FLAG:
+- Any month with projected negative cash flow
+- Any invoice over 45 days old
+- Any budget account over 30% variance
+- Any invoiced deal without a payment date (can't forecast accurately)
+- Any month where expenses exceed 80% of projected income
 
 Today's date is ${new Date().toISOString().split('T')[0]}.`;
 
@@ -413,13 +489,16 @@ export async function runCFOAgent(
     iteration++;
     console.log(`[CFO Agent] Iteration ${iteration}`);
 
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 4096,
-      system: systemPrompt,
-      tools: CFO_TOOL_DEFINITIONS as Anthropic.Tool[],
-      messages,
-    });
+    const response = await withRetry(
+      () => client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        system: systemPrompt,
+        tools: CFO_TOOL_DEFINITIONS as Anthropic.Tool[],
+        messages,
+      }),
+      { maxRetries: 3, baseDelayMs: 2000, maxDelayMs: 30000 }
+    );
 
     console.log(`[CFO Agent] Stop reason: ${response.stop_reason}`);
 
