@@ -46,15 +46,19 @@ serve(async (req) => {
       );
     }
 
-    // Create Supabase client with user's auth
+    // Create Supabase client with service role key
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
     });
 
-    // Verify user is authenticated and has admin role
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Verify user is authenticated
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
@@ -62,14 +66,14 @@ serve(async (req) => {
       );
     }
 
-    // Check user role (admin only)
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('role')
-      .eq('id', user.id)
+    // Check user role (admin only) - uses user table with ovis_role column
+    const { data: userData, error: roleError } = await supabase
+      .from('user')
+      .select('ovis_role')
+      .eq('auth_user_id', user.id)
       .single();
 
-    if (profileError || userProfile?.role !== 'admin') {
+    if (roleError || userData?.ovis_role !== 'admin') {
       return new Response(
         JSON.stringify({ error: 'Access denied. Admin role required.' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -88,14 +92,10 @@ serve(async (req) => {
 
     console.log(`[CFO Query] Processing: "${request.query.substring(0, 100)}..."`);
 
-    // Create service role client for data access (bypasses RLS)
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const serviceSupabase = createClient(supabaseUrl, serviceRoleKey);
-
-    // Run the CFO Agent
+    // Run the CFO Agent (using the service role client we already have)
     const startTime = Date.now();
     const result = await runCFOAgent(
-      serviceSupabase,
+      supabase,
       request.query,
       request.conversation_history || []
     );
@@ -104,7 +104,7 @@ serve(async (req) => {
     console.log(`[CFO Query] Completed in ${duration}ms, tools used: ${result.tool_calls_made.join(', ')}`);
 
     // Store query in audit trail
-    const { data: queryRecord, error: insertError } = await serviceSupabase
+    const { data: queryRecord, error: insertError } = await supabase
       .from('ai_financial_queries')
       .insert({
         query_text: request.query,
