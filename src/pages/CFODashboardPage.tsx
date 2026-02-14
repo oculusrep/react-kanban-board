@@ -136,10 +136,10 @@ export default function CFODashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
+      {/* Header - Compact */}
       <div className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+        <div className="px-4">
+          <div className="flex items-center justify-between h-12">
             <div className="flex items-center gap-4">
               <button
                 onClick={() => navigate('/admin/budget')}
@@ -188,9 +188,9 @@ export default function CFODashboardPage() {
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-140px)]">
+      {/* Main Content - Full width layout */}
+      <div className="px-4 py-3">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[calc(100vh-88px)]">
           {/* Chat Panel - Left */}
           <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
             <CFOChatPanel
@@ -228,7 +228,7 @@ export default function CFODashboardPage() {
                 />
               </div>
             ) : activeChart ? (
-              <div className="h-full p-6">
+              <div className="h-full p-4">
                 <CFOChartRenderer spec={activeChart} />
               </div>
             ) : (
