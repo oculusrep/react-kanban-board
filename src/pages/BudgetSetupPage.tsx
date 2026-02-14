@@ -883,46 +883,45 @@ export default function BudgetSetupPage() {
         )}
 
         {/* Summary */}
-        {!loading && accounts.length > 0 && (
+        {!loading && displayedAccounts.length > 0 && (
           <div className="mt-6 bg-white rounded-lg shadow p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Budget Summary</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <div className="text-sm text-gray-500">Total {budgetYear} Budget</div>
-                <div className="text-2xl font-bold text-gray-900">
-                  {formatCurrency(
-                    Array.from(budgets.values()).reduce((sum, b) => sum + getAccountTotal(b), 0)
-                  )}
+            {(() => {
+              const totalBudget = sections.reduce((sum, section) =>
+                sum + section.accounts.reduce((sSum, node) => sSum + getNodeBudgetTotal(node), 0), 0);
+              const totalPrior = sections.reduce((sum, section) =>
+                sum + section.accounts.reduce((sSum, node) => sSum + getNodePriorTotal(node), 0), 0);
+              const variance = totalBudget - totalPrior;
+
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <div className="text-sm text-gray-500">Total {budgetYear} Budget</div>
+                    <div className="text-2xl font-bold text-gray-900">
+                      {formatCurrency(totalBudget)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-500">Total {priorYear} Actuals</div>
+                    <div className="text-2xl font-bold text-gray-600">
+                      {formatCurrency(totalPrior)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-500">Accounts with Budgets</div>
+                    <div className="text-2xl font-bold text-gray-900">
+                      {budgets.size} / {displayedAccounts.length}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-500">Variance</div>
+                    <div className={`text-2xl font-bold ${variance > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      {variance > 0 ? '+' : ''}{formatCurrency(variance)}
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-500">Total {priorYear} Actuals</div>
-                <div className="text-2xl font-bold text-gray-600">
-                  {formatCurrency(
-                    accounts.reduce((sum, acc) => sum + getPriorYearTotal(acc.qb_account_id), 0)
-                  )}
-                </div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-500">Accounts with Budgets</div>
-                <div className="text-2xl font-bold text-gray-900">
-                  {budgets.size} / {accounts.length}
-                </div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-500">Variance</div>
-                <div className={`text-2xl font-bold ${
-                  Array.from(budgets.values()).reduce((sum, b) => sum + getAccountTotal(b), 0) >
-                  accounts.reduce((sum, acc) => sum + getPriorYearTotal(acc.qb_account_id), 0)
-                    ? 'text-red-600' : 'text-green-600'
-                }`}>
-                  {formatCurrency(
-                    Array.from(budgets.values()).reduce((sum, b) => sum + getAccountTotal(b), 0) -
-                    accounts.reduce((sum, acc) => sum + getPriorYearTotal(acc.qb_account_id), 0)
-                  )}
-                </div>
-              </div>
-            </div>
+              );
+            })()}
           </div>
         )}
       </div>
