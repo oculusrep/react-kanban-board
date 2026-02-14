@@ -288,16 +288,11 @@ export default function BudgetManagePage() {
     setCollapsedSections(newCollapsed);
   };
 
-  // Get all collapsible paths (sections + parent nodes)
-  const getAllCollapsiblePaths = (): string[] => {
+  // Get all collapsible parent account paths (NOT section headers)
+  const getAllParentPaths = (): string[] => {
     const paths: string[] = [];
 
-    // Add section headers
-    sections.forEach(section => {
-      paths.push(`section:${section.title}`);
-    });
-
-    // Add parent nodes (nodes with children)
+    // Only add parent nodes (nodes with children), NOT section headers
     const addParentPaths = (nodes: AccountNode[]) => {
       for (const node of nodes) {
         if (node.children.length > 0) {
@@ -315,18 +310,18 @@ export default function BudgetManagePage() {
   };
 
   const isAllCollapsed = useMemo(() => {
-    const allPaths = getAllCollapsiblePaths();
+    const allPaths = getAllParentPaths();
     if (allPaths.length === 0) return false;
     return allPaths.every(path => collapsedSections.has(path));
   }, [sections, collapsedSections]);
 
   const toggleCollapseAll = () => {
     if (isAllCollapsed) {
-      // Expand all
+      // Expand all - clear collapsed sections
       setCollapsedSections(new Set());
     } else {
-      // Collapse all
-      setCollapsedSections(new Set(getAllCollapsiblePaths()));
+      // Collapse all parent accounts (keep sections expanded)
+      setCollapsedSections(new Set(getAllParentPaths()));
     }
   };
 
@@ -827,6 +822,7 @@ export default function BudgetManagePage() {
           </div>
         ) : (
           // Monthly View
+          <>
           <div className="bg-white rounded-lg shadow overflow-auto max-h-[calc(100vh-250px)]">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50 sticky top-0 z-10">
@@ -1030,8 +1026,109 @@ export default function BudgetManagePage() {
                   );
                 })}
               </tbody>
+              {/* Grand Totals Footer */}
+              <tfoot className="bg-gray-800 text-white sticky bottom-0">
+                <tr>
+                  <td className="sticky left-0 bg-gray-800 px-4 py-3 text-sm font-bold">
+                    Grand Total
+                  </td>
+                  {MONTHS.map((month) => {
+                    const monthBudgetTotal = sections.reduce((sum, section) =>
+                      sum + section.accounts.reduce((sSum, node) => sSum + getNodeMonthBudget(node, month), 0), 0);
+                    const monthActualTotal = sections.reduce((sum, section) =>
+                      sum + section.accounts.reduce((sSum, node) => sSum + getNodeMonthActual(node, month), 0), 0);
+                    return (
+                      <Fragment key={month}>
+                        <td className="bg-gray-800 px-1 py-3 text-right text-xs font-bold">
+                          {formatCurrency(monthBudgetTotal)}
+                        </td>
+                        {showActuals && (
+                          <td className={`bg-gray-800 px-1 py-3 text-right text-xs font-bold ${
+                            monthActualTotal > monthBudgetTotal ? 'text-red-400' : 'text-emerald-400'
+                          }`}>
+                            {formatCurrency(monthActualTotal)}
+                          </td>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                  {/* Annual Totals */}
+                  {(() => {
+                    const grandBudgetTotal = sections.reduce((sum, section) =>
+                      sum + section.accounts.reduce((sSum, node) => sSum + getNodeBudgetTotal(node), 0), 0);
+                    const grandActualTotal = sections.reduce((sum, section) =>
+                      sum + section.accounts.reduce((sSum, node) => sSum + getNodeActualTotal(node), 0), 0);
+                    return (
+                      <>
+                        <td className="bg-gray-800 px-2 py-3 text-right text-sm font-bold">
+                          {formatCurrency(grandBudgetTotal)}
+                        </td>
+                        {showActuals && (
+                          <td className={`bg-gray-800 px-2 py-3 text-right text-sm font-bold ${
+                            grandActualTotal > grandBudgetTotal ? 'text-red-400' : 'text-emerald-400'
+                          }`}>
+                            {formatCurrency(grandActualTotal)}
+                          </td>
+                        )}
+                      </>
+                    );
+                  })()}
+                </tr>
+              </tfoot>
             </table>
           </div>
+
+          {/* Summary Cards */}
+          {showActuals && (
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+              {(() => {
+                const grandBudgetTotal = sections.reduce((sum, section) =>
+                  sum + section.accounts.reduce((sSum, node) => sSum + getNodeBudgetTotal(node), 0), 0);
+                const grandActualTotal = sections.reduce((sum, section) =>
+                  sum + section.accounts.reduce((sSum, node) => sSum + getNodeActualTotal(node), 0), 0);
+                const variance = grandBudgetTotal - grandActualTotal;
+                const percentUsed = grandBudgetTotal > 0 ? (grandActualTotal / grandBudgetTotal) * 100 : 0;
+
+                // Calculate current month data
+                const currentMonth = new Date().getMonth();
+                const currentMonthKey = MONTHS[currentMonth];
+                const currentMonthBudget = sections.reduce((sum, section) =>
+                  sum + section.accounts.reduce((sSum, node) => sSum + getNodeMonthBudget(node, currentMonthKey), 0), 0);
+                const currentMonthActual = sections.reduce((sum, section) =>
+                  sum + section.accounts.reduce((sSum, node) => sSum + getNodeMonthActual(node, currentMonthKey), 0), 0);
+
+                return (
+                  <>
+                    <div className="bg-white rounded-lg shadow p-4">
+                      <div className="text-sm text-gray-500 mb-1">Annual Budget</div>
+                      <div className="text-2xl font-bold text-gray-900">{formatCurrency(grandBudgetTotal)}</div>
+                    </div>
+                    <div className="bg-white rounded-lg shadow p-4">
+                      <div className="text-sm text-gray-500 mb-1">YTD Actual</div>
+                      <div className="text-2xl font-bold text-gray-900">{formatCurrency(grandActualTotal)}</div>
+                    </div>
+                    <div className={`rounded-lg shadow p-4 ${variance >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+                      <div className="text-sm text-gray-500 mb-1">Variance</div>
+                      <div className={`text-2xl font-bold ${variance >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                        {variance >= 0 ? '+' : ''}{formatCurrency(variance)}
+                      </div>
+                      <div className={`text-sm ${percentUsed > 100 ? 'text-red-600' : percentUsed > 80 ? 'text-yellow-600' : 'text-green-600'}`}>
+                        {percentUsed.toFixed(1)}% of budget used
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg shadow p-4">
+                      <div className="text-sm text-gray-500 mb-1">{MONTH_LABELS[currentMonth]} Spend</div>
+                      <div className="text-2xl font-bold text-gray-900">{formatCurrency(currentMonthActual)}</div>
+                      <div className="text-sm text-gray-500">
+                        of {formatCurrency(currentMonthBudget)} budgeted
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
+          </>
         )}
       </div>
     </div>
