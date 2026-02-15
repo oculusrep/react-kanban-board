@@ -164,7 +164,7 @@ const PaymentDashboardPage: React.FC = () => {
     try {
       setLoading(true);
 
-      // Fetch payments with related data
+      // Fetch payments with related data (only active payments)
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('payment')
         .select(`
@@ -197,6 +197,7 @@ const PaymentDashboardPage: React.FC = () => {
             )
           )
         `)
+        .eq('is_active', true)
         .order('payment_received_date', { ascending: false, nullsFirst: false })
         .order('payment_date_estimated', { ascending: false, nullsFirst: false });
 
