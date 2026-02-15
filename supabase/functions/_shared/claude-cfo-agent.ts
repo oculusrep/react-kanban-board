@@ -13,6 +13,7 @@ import {
   getBudgetData,
   getExpensesByPeriod,
   getInvoiceAging,
+  getARAgingReport,
   getCashFlowProjection,
   getFinancialContext,
   saveFinancialContext,
@@ -152,11 +153,13 @@ HOUSE NET CALCULATION:
 Payment → minus Referral Fee → GCI → minus Broker Splits (AGCI) → House Net
 "House balance" = House Net minus operating expenses
 
-TOOLS: Use get_payments_forecast, get_budget_data, get_expenses_by_period, get_invoice_aging, get_cash_flow_projection, get_deal_pipeline. Generate charts when helpful.
+TOOLS: Use get_payments_forecast, get_budget_data, get_expenses_by_period, get_cash_flow_projection, get_deal_pipeline. Generate charts when helpful.
 
 CONTEXT: Use save_financial_context when asked to "remember", delete_financial_context when asked to "forget".
 
-REALITY CHECK: When asked for "reality check" or personal income forecast, use get_reality_check_report. This returns pre-formatted markdown and chart - display them directly without modification. Mention any flags from the report.
+REPORT TOOLS (use these for standard reports - they return pre-formatted output):
+- get_reality_check_report: Personal income forecast (commission + house profit). Display markdown directly, mention flags.
+- get_ar_aging_report: Accounts receivable aging with action items. Display markdown directly, highlight flags and actions.
 
 Today: ${new Date().toISOString().split('T')[0]}.`;
 
@@ -232,6 +235,20 @@ async function executeTool(
         (toolInput.include_details as boolean) || false
       );
       return aging;
+    }
+
+    case 'get_ar_aging_report': {
+      const report = await getARAgingReport(supabase);
+
+      // Return pre-formatted report - agent just displays it
+      return {
+        markdown_report: report.markdown_report,
+        chart_spec: report.chart_spec,
+        summary: report.summary,
+        flags: report.flags,
+        action_items: report.action_items,
+        instructions: 'Display the markdown_report directly. Use the chart_spec for visualization. Highlight flags and action items to the user.',
+      };
     }
 
     case 'get_cash_flow_projection': {
@@ -553,6 +570,14 @@ export async function runCFOAgent(
 
             // If this is a reality check report, capture the chart spec
             if (toolUse.name === 'get_reality_check_report') {
+              const reportResult = result as { chart_spec: ChartSpecification };
+              if (reportResult.chart_spec) {
+                chartSpec = reportResult.chart_spec;
+              }
+            }
+
+            // If this is an AR aging report, capture the chart spec
+            if (toolUse.name === 'get_ar_aging_report') {
               const reportResult = result as { chart_spec: ChartSpecification };
               if (reportResult.chart_spec) {
                 chartSpec = reportResult.chart_spec;

@@ -492,6 +492,185 @@ export async function getInvoiceAging(
 }
 
 // ============================================================================
+// TOOL: GET AR AGING REPORT (Pre-formatted)
+// ============================================================================
+
+export interface ARAgingReport {
+  markdown_report: string;
+  chart_spec: {
+    chart_type: 'bar';
+    title: string;
+    data: Array<Record<string, unknown>>;
+    x_axis: string;
+    series: Array<{
+      dataKey: string;
+      name: string;
+      color: string;
+    }>;
+    y_axis_format: 'currency';
+  };
+  summary: {
+    total_receivables: number;
+    total_overdue: number;
+    overdue_percent: number;
+    critical_amount: number;
+    critical_percent: number;
+  };
+  flags: string[];
+  action_items: Array<{
+    priority: 'high' | 'medium' | 'low';
+    action: string;
+    amount: number;
+  }>;
+}
+
+/**
+ * Get pre-formatted AR Aging report.
+ * Returns markdown summary, chart spec, flags, and action items.
+ */
+export async function getARAgingReport(
+  supabase: SupabaseClient
+): Promise<ARAgingReport> {
+  // Get the raw aging data with details
+  const aging = await getInvoiceAging(supabase, true);
+
+  // Format currency helper
+  const fmt = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+  // Calculate metrics
+  const totalOverdue = aging.overdue_1_30 + aging.overdue_31_60 + aging.overdue_61_90 + aging.overdue_90_plus;
+  const criticalAmount = aging.overdue_61_90 + aging.overdue_90_plus; // >45 days
+  const overduePercent = aging.total_receivables > 0 ? (totalOverdue / aging.total_receivables) * 100 : 0;
+  const criticalPercent = aging.total_receivables > 0 ? (criticalAmount / aging.total_receivables) * 100 : 0;
+
+  // Build aging table
+  const agingRows = [
+    { bucket: 'Current', amount: aging.current },
+    { bucket: '1-30 Days', amount: aging.overdue_1_30 },
+    { bucket: '31-60 Days', amount: aging.overdue_31_60 },
+    { bucket: '61-90 Days', amount: aging.overdue_61_90 },
+    { bucket: '90+ Days', amount: aging.overdue_90_plus },
+  ];
+
+  // Build detail table for overdue invoices
+  const overdueInvoices = (aging.invoices || [])
+    .filter(inv => inv.days_overdue > 0)
+    .sort((a, b) => b.days_overdue - a.days_overdue)
+    .slice(0, 10); // Top 10 by days overdue
+
+  let invoiceDetails = '';
+  if (overdueInvoices.length > 0) {
+    invoiceDetails = `
+
+#### Overdue Invoices (Top 10 by Age)
+
+| Invoice | Client | Deal | Amount | Days Overdue |
+|---------|--------|------|--------|--------------|
+${overdueInvoices.map(inv =>
+  `| ${inv.invoice_number || 'N/A'} | ${inv.client_name || 'Unknown'} | ${inv.deal_name || 'Unknown'} | ${fmt(inv.amount)} | ${inv.days_overdue} |`
+).join('\n')}`;
+  }
+
+  const markdown_report = `### Accounts Receivable Aging Report
+
+**Total Receivables: ${fmt(aging.total_receivables)}**
+
+| Aging Bucket | Amount | % of Total |
+|--------------|--------|------------|
+${agingRows.map(row => {
+  const pct = aging.total_receivables > 0 ? ((row.amount / aging.total_receivables) * 100).toFixed(1) : '0.0';
+  return `| ${row.bucket} | ${fmt(row.amount)} | ${pct}% |`;
+}).join('\n')}
+
+**Summary:**
+- Total Overdue: ${fmt(totalOverdue)} (${overduePercent.toFixed(1)}% of AR)
+- Critical (>45 days): ${fmt(criticalAmount)} (${criticalPercent.toFixed(1)}% of AR)${invoiceDetails}`;
+
+  // Build chart data
+  const chartData = agingRows.map(row => ({
+    bucket: row.bucket,
+    amount: row.amount,
+  }));
+
+  const chart_spec = {
+    chart_type: 'bar' as const,
+    title: 'AR Aging by Bucket',
+    data: chartData,
+    x_axis: 'bucket',
+    series: [
+      { dataKey: 'amount', name: 'Amount', color: '#3b82f6' },
+    ],
+    y_axis_format: 'currency' as const,
+  };
+
+  // Generate flags
+  const flags: string[] = [];
+
+  if (criticalAmount > 0) {
+    flags.push(`🚨 ${fmt(criticalAmount)} is critically overdue (>45 days)`);
+  }
+
+  if (overduePercent > 30) {
+    flags.push(`⚠️ ${overduePercent.toFixed(0)}% of AR is overdue - collection issues`);
+  }
+
+  if (aging.overdue_90_plus > 0) {
+    flags.push(`❌ ${fmt(aging.overdue_90_plus)} is 90+ days overdue - may need write-off review`);
+  }
+
+  if (totalOverdue === 0 && aging.total_receivables > 0) {
+    flags.push(`✅ All receivables are current`);
+  }
+
+  // Generate action items
+  const action_items: ARAgingReport['action_items'] = [];
+
+  // High priority: >90 days
+  if (aging.overdue_90_plus > 0) {
+    const oldest = overdueInvoices.find(inv => inv.days_overdue >= 90);
+    action_items.push({
+      priority: 'high',
+      action: oldest
+        ? `Contact ${oldest.client_name || 'client'} about ${oldest.invoice_number || 'invoice'} (${oldest.days_overdue} days overdue)`
+        : 'Review 90+ day invoices for collection or write-off',
+      amount: aging.overdue_90_plus,
+    });
+  }
+
+  // Medium priority: 61-90 days
+  if (aging.overdue_61_90 > 0) {
+    action_items.push({
+      priority: 'medium',
+      action: 'Send follow-up notices for 61-90 day invoices',
+      amount: aging.overdue_61_90,
+    });
+  }
+
+  // Low priority: 31-60 days
+  if (aging.overdue_31_60 > 0) {
+    action_items.push({
+      priority: 'low',
+      action: 'Review 31-60 day invoices for payment status',
+      amount: aging.overdue_31_60,
+    });
+  }
+
+  return {
+    markdown_report,
+    chart_spec,
+    summary: {
+      total_receivables: aging.total_receivables,
+      total_overdue: totalOverdue,
+      overdue_percent: overduePercent,
+      critical_amount: criticalAmount,
+      critical_percent: criticalPercent,
+    },
+    flags,
+    action_items,
+  };
+}
+
+// ============================================================================
 // TOOL: GET CASH FLOW PROJECTION
 // ============================================================================
 
@@ -1583,6 +1762,14 @@ export const CFO_TOOL_DEFINITIONS = [
       properties: {
         include_details: { type: 'boolean' as const },
       },
+    },
+  },
+  {
+    name: 'get_ar_aging_report',
+    description: 'Pre-formatted AR Aging report with markdown, chart, flags, and action items. Use this for AR aging questions.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
     },
   },
   {
