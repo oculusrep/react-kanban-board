@@ -23,10 +23,6 @@ import {
   getMikePersonalForecast,
   getRealityCheckReport,
   getDealPipeline,
-  generateInteractiveDealReport,
-  updateDealPaymentDate,
-  bulkUpdatePaymentDates,
-  PaymentDateUpdate,
 } from './cfo-tools.ts';
 
 // ============================================================================
@@ -52,35 +48,9 @@ interface ConversationMessage {
   content: string;
 }
 
-interface InteractiveDealReportData {
-  deals: Array<{
-    deal_id: string;
-    deal_name: string;
-    stage_label: string;
-    house_net: number;
-    client_name: string | null;
-    payments: Array<{
-      payment_id: string;
-      payment_name: string | null;
-      payment_amount: number | null;
-      payment_date_estimated: string | null;
-      editable: boolean;
-    }>;
-    issues: string[];
-  }>;
-  summary: {
-    total_deals: number;
-    total_payments_missing_dates: number;
-    total_house_net_at_risk: number;
-  };
-  filter_applied: string;
-  sort_by: string;
-}
-
 interface CFOAgentResult {
   answer: string;
   chart_spec?: ChartSpecification;
-  interactive_deal_report?: InteractiveDealReportData;
   tool_calls_made: string[];
 }
 
@@ -450,54 +420,6 @@ async function executeTool(
       };
     }
 
-    case 'generate_interactive_deal_report': {
-      const result = await generateInteractiveDealReport(
-        supabase,
-        toolInput.filter_type as 'missing_payment_dates' | 'no_payments_created' | 'all_payment_issues' | 'specific_stage',
-        toolInput.stage_filter as string | undefined,
-        (toolInput.sort_by as 'house_net_desc' | 'deal_name' | 'stage' | 'payment_amount') || 'house_net_desc'
-      );
-
-      return {
-        deals: result.deals,
-        summary: result.summary,
-        filter_applied: toolInput.filter_type,
-        sort_by: toolInput.sort_by || 'house_net_desc',
-        note: 'Payments with editable: true can have their dates updated using update_deal_payment_date.',
-      };
-    }
-
-    case 'update_deal_payment_date': {
-      const result = await updateDealPaymentDate(
-        supabase,
-        toolInput.deal_id as string,
-        toolInput.payment_id as string,
-        toolInput.new_payment_date as string
-      );
-
-      return {
-        success: result.success,
-        message: `Updated payment date for "${result.deal_name}" to ${result.new_date}`,
-        payment_id: result.payment_id,
-        new_date: result.new_date,
-      };
-    }
-
-    case 'bulk_update_payment_dates': {
-      const updates = toolInput.updates as PaymentDateUpdate[];
-      const result = await bulkUpdatePaymentDates(supabase, updates);
-
-      return {
-        success: result.success,
-        total_updates: result.total_updates,
-        successful_updates: result.successful_updates,
-        failed_updates: result.failed_updates,
-        message: result.success
-          ? `Successfully updated ${result.successful_updates} payment date(s).`
-          : `Updated ${result.successful_updates} of ${result.total_updates} payment dates. ${result.failed_updates.length} failed.`,
-      };
-    }
-
     default:
       throw new Error(`Unknown tool: ${toolName}`);
   }
@@ -546,7 +468,6 @@ export async function runCFOAgent(
 
   const toolCallsMade: string[] = [];
   let chartSpec: ChartSpecification | undefined;
-  let interactiveDealReport: InteractiveDealReportData | undefined;
 
   // Agent loop - continue until we get a final text response
   let maxIterations = 10;
@@ -578,7 +499,6 @@ export async function runCFOAgent(
       return {
         answer,
         chart_spec: chartSpec,
-        interactive_deal_report: interactiveDealReport,
         tool_calls_made: toolCallsMade,
       };
     }
@@ -640,11 +560,6 @@ export async function runCFOAgent(
               }
             }
 
-            // If this is an interactive deal report, capture it
-            if (toolUse.name === 'generate_interactive_deal_report') {
-              interactiveDealReport = result as InteractiveDealReportData;
-            }
-
             toolResults.push({
               type: 'tool_result',
               tool_use_id: toolUse.id,
@@ -672,7 +587,6 @@ export async function runCFOAgent(
   return {
     answer: 'I was unable to complete the analysis within the allowed iterations. Please try a simpler question.',
     chart_spec: chartSpec,
-    interactive_deal_report: interactiveDealReport,
     tool_calls_made: toolCallsMade,
   };
 }
