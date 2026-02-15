@@ -18,6 +18,7 @@ import {
   saveFinancialContext,
   deleteFinancialContext,
   getMikePersonalForecast,
+  getRealityCheckReport,
   getDealPipeline,
   generateInteractiveDealReport,
   updateDealPaymentDate,
@@ -151,11 +152,11 @@ HOUSE NET CALCULATION:
 Payment → minus Referral Fee → GCI → minus Broker Splits (AGCI) → House Net
 "House balance" = House Net minus operating expenses
 
-TOOLS: Use get_payments_forecast, get_budget_data, get_expenses_by_period, get_invoice_aging, get_cash_flow_projection, get_deal_pipeline, get_mike_personal_forecast. Generate charts when helpful.
+TOOLS: Use get_payments_forecast, get_budget_data, get_expenses_by_period, get_invoice_aging, get_cash_flow_projection, get_deal_pipeline. Generate charts when helpful.
 
 CONTEXT: Use save_financial_context when asked to "remember", delete_financial_context when asked to "forget".
 
-REALITY CHECK: When asked, use get_mike_personal_forecast. Show table (Month|Gross Commission|Taxes|Net|House Profit|Total|401k Room) and stacked bar chart. Tax rates: Federal 15.46%, GA 4.22%, SS 6.2%, Medicare 1.45% (~27% total on W2 wages).
+REALITY CHECK: When asked for "reality check" or personal income forecast, use get_reality_check_report. This returns pre-formatted markdown and chart - display them directly without modification. Mention any flags from the report.
 
 Today: ${new Date().toISOString().split('T')[0]}.`;
 
@@ -361,6 +362,23 @@ async function executeTool(
       };
     }
 
+    case 'get_reality_check_report': {
+      const report = await getRealityCheckReport(
+        supabase,
+        toolInput.year as number,
+        toolInput.months_to_project as number | undefined
+      );
+
+      // Return pre-formatted report - agent just displays it
+      return {
+        markdown_report: report.markdown_table,
+        chart_spec: report.chart_spec,
+        summary: report.summary,
+        flags: report.flags,
+        instructions: 'Display the markdown_report directly. Use the chart_spec for visualization. Mention any flags to the user.',
+      };
+    }
+
     case 'get_deal_pipeline': {
       const result = await getDealPipeline(
         supabase,
@@ -531,6 +549,14 @@ export async function runCFOAgent(
             // If this is a chart generation, capture the spec
             if (toolUse.name === 'generate_chart') {
               chartSpec = result as ChartSpecification;
+            }
+
+            // If this is a reality check report, capture the chart spec
+            if (toolUse.name === 'get_reality_check_report') {
+              const reportResult = result as { chart_spec: ChartSpecification };
+              if (reportResult.chart_spec) {
+                chartSpec = reportResult.chart_spec;
+              }
             }
 
             // If this is an interactive deal report, capture it

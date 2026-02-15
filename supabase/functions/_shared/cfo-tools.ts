@@ -789,6 +789,140 @@ export async function getMikePersonalForecast(
 }
 
 // ============================================================================
+// TOOL: GET REALITY CHECK REPORT (Pre-formatted)
+// ============================================================================
+
+export interface RealityCheckReport {
+  markdown_table: string;
+  chart_spec: {
+    chart_type: 'stacked_bar';
+    title: string;
+    data: Array<Record<string, unknown>>;
+    x_axis: string;
+    series: Array<{
+      dataKey: string;
+      name: string;
+      color: string;
+    }>;
+    y_axis_format: 'currency';
+  };
+  summary: {
+    total_gross_commission: number;
+    total_taxes: number;
+    total_net_commission: number;
+    total_house_profit: number;
+    total_to_mike: number;
+    remaining_401k_room: number;
+    effective_tax_rate: number;
+  };
+  flags: string[];
+}
+
+/**
+ * Get pre-formatted Reality Check report.
+ * Returns markdown table, chart spec, and summary - ready for display.
+ */
+export async function getRealityCheckReport(
+  supabase: SupabaseClient,
+  year: number,
+  monthsToProject?: number
+): Promise<RealityCheckReport> {
+  // Get the raw forecast data
+  const forecasts = await getMikePersonalForecast(supabase, year, monthsToProject);
+
+  // Format currency helper
+  const fmt = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+  // Build markdown table
+  const tableRows = forecasts.map(f =>
+    `| ${f.month} | ${fmt(f.grossCommission)} | ${fmt(f.totalTaxes)} | ${fmt(f.netCommission)} | ${fmt(f.houseProfit)} | ${fmt(f.totalToMike)} | ${fmt(f.available401kRoom)} |`
+  );
+
+  // Calculate totals
+  const totals = forecasts.reduce((acc, f) => ({
+    grossCommission: acc.grossCommission + f.grossCommission,
+    totalTaxes: acc.totalTaxes + f.totalTaxes,
+    netCommission: acc.netCommission + f.netCommission,
+    houseProfit: acc.houseProfit + f.houseProfit,
+    totalToMike: acc.totalToMike + f.totalToMike,
+  }), { grossCommission: 0, totalTaxes: 0, netCommission: 0, houseProfit: 0, totalToMike: 0 });
+
+  const lastForecast = forecasts[forecasts.length - 1];
+  const effectiveTaxRate = totals.grossCommission > 0
+    ? (totals.totalTaxes / totals.grossCommission) * 100
+    : 0;
+
+  const markdown_table = `### Reality Check - ${year} Personal Cash Flow Forecast
+
+| Month | Gross Commission | Taxes | Net Commission | House Profit | Total to Mike | 401k Room |
+|-------|------------------|-------|----------------|--------------|---------------|-----------|
+${tableRows.join('\n')}
+| **TOTAL** | **${fmt(totals.grossCommission)}** | **${fmt(totals.totalTaxes)}** | **${fmt(totals.netCommission)}** | **${fmt(totals.houseProfit)}** | **${fmt(totals.totalToMike)}** | - |
+
+*Effective tax rate on W2 wages: ${effectiveTaxRate.toFixed(1)}%*
+*House profit is owner's draw (no withholding, taxed at filing)*`;
+
+  // Build chart data
+  const chartData = forecasts.map(f => ({
+    month: f.month,
+    netCommission: f.netCommission,
+    houseProfit: f.houseProfit,
+  }));
+
+  const chart_spec = {
+    chart_type: 'stacked_bar' as const,
+    title: `${year} Personal Income Forecast`,
+    data: chartData,
+    x_axis: 'month',
+    series: [
+      { dataKey: 'netCommission', name: 'Net Commission (after tax)', color: '#3b82f6' },
+      { dataKey: 'houseProfit', name: 'House Profit', color: '#10b981' },
+    ],
+    y_axis_format: 'currency' as const,
+  };
+
+  // Generate flags
+  const flags: string[] = [];
+
+  // Check for low income months
+  const lowIncomeMonths = forecasts.filter(f => f.totalToMike < 5000);
+  if (lowIncomeMonths.length > 0) {
+    flags.push(`⚠️ ${lowIncomeMonths.length} month(s) with <$5k total income: ${lowIncomeMonths.map(f => f.month).join(', ')}`);
+  }
+
+  // Check for negative house profit months
+  const negativeHouseProfitMonths = forecasts.filter(f => f.houseProfit === 0);
+  if (negativeHouseProfitMonths.length > 0) {
+    flags.push(`⚠️ ${negativeHouseProfitMonths.length} month(s) where expenses exceed house income`);
+  }
+
+  // 401k opportunity
+  if (lastForecast && lastForecast.available401kRoom > 0) {
+    flags.push(`💰 ${fmt(lastForecast.available401kRoom)} of 401k contribution room remaining`);
+  }
+
+  // SS wage base tracking
+  if (lastForecast && lastForecast.ytdGrossWages >= TAX_CONFIG_2026.socialSecurityWageBase) {
+    flags.push(`✅ Social Security wage base reached - no more SS tax for the year`);
+  }
+
+  return {
+    markdown_table,
+    chart_spec,
+    summary: {
+      total_gross_commission: totals.grossCommission,
+      total_taxes: totals.totalTaxes,
+      total_net_commission: totals.netCommission,
+      total_house_profit: totals.houseProfit,
+      total_to_mike: totals.totalToMike,
+      remaining_401k_room: lastForecast?.available401kRoom || TAX_CONFIG_2026.max401k,
+      effective_tax_rate: effectiveTaxRate,
+    },
+    flags,
+  };
+}
+
+// ============================================================================
 // TOOL: GET DEAL PIPELINE (Deal Data Visibility)
 // ============================================================================
 
@@ -1530,8 +1664,8 @@ export const CFO_TOOL_DEFINITIONS = [
     },
   },
   {
-    name: 'get_mike_personal_forecast',
-    description: 'Reality Check: Mike\'s commission (W2 with taxes) + house profit forecast.',
+    name: 'get_reality_check_report',
+    description: 'Reality Check: Pre-formatted report of Mike\'s personal cash flow (commission + house profit). Returns markdown table, chart spec, summary, and flags. Use this instead of get_mike_personal_forecast.',
     input_schema: {
       type: 'object' as const,
       properties: {
