@@ -13,6 +13,11 @@ interface PaymentDashboardTableProps {
   payments: PaymentDashboardRow[];
   loading: boolean;
   onPaymentUpdate: () => void;
+  // Selection props for bulk actions
+  showSelection?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (paymentId: string) => void;
+  onSelectAll?: () => void;
 }
 
 type SortField = 'deal_name' | 'payment_date_estimated' | 'payment_received' | 'disbursement' | 'orep_invoice';
@@ -22,6 +27,10 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
   payments,
   loading,
   onPaymentUpdate,
+  showSelection = false,
+  selectedIds = new Set(),
+  onToggleSelect,
+  onSelectAll,
 }) => {
   const navigate = useNavigate();
   const [localPayments, setLocalPayments] = useState<PaymentDashboardRow[]>(payments);
@@ -486,6 +495,18 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
+              {/* Checkbox column for selection */}
+              {showSelection && (
+                <th className="w-10 px-2 py-2">
+                  <input
+                    type="checkbox"
+                    checked={localPayments.length > 0 && selectedIds.size === localPayments.length}
+                    onChange={onSelectAll}
+                    className="h-4 w-4 text-amber-600 focus:ring-amber-500 border-gray-300 rounded cursor-pointer"
+                    title="Select all"
+                  />
+                </th>
+              )}
               <th className="w-8 px-2 py-2"></th>
               <th
                 className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
@@ -553,7 +574,18 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
               return (
                 <React.Fragment key={payment.payment_id}>
                   {/* Main Payment Row */}
-                  <tr className="hover:bg-gray-50 cursor-pointer">
+                  <tr className={`hover:bg-gray-50 cursor-pointer ${selectedIds.has(payment.payment_id) ? 'bg-amber-50' : ''}`}>
+                    {/* Checkbox cell for selection */}
+                    {showSelection && (
+                      <td className="px-2 py-3" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(payment.payment_id)}
+                          onChange={() => onToggleSelect?.(payment.payment_id)}
+                          className="h-4 w-4 text-amber-600 focus:ring-amber-500 border-gray-300 rounded cursor-pointer"
+                        />
+                      </td>
+                    )}
                     <td className="px-2 py-3">
                       <button
                         onClick={() => toggleRow(payment.payment_id)}
@@ -763,7 +795,7 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                   {/* Expanded Details */}
                   {isExpanded && (
                     <tr>
-                      <td colSpan={10} className="px-0 py-0 bg-gray-50">
+                      <td colSpan={showSelection ? 12 : 11} className="px-0 py-0 bg-gray-50">
                         <div className="px-12 py-4">
                           {/* Payment Check Processing Section */}
                           <PaymentCheckProcessing

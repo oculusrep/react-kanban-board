@@ -31,6 +31,10 @@ const PaymentDashboardPage: React.FC = () => {
   const [showToolsMenu, setShowToolsMenu] = useState(false);
   const toolsMenuRef = useRef<HTMLDivElement>(null);
 
+  // Bulk selection state for data quality actions
+  const [selectedPaymentIds, setSelectedPaymentIds] = useState<Set<string>>(new Set());
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
+
   // Get initial dataQuality filter from URL if present
   const urlDataQuality = searchParams.get('dataQuality') as PaymentDashboardFilters['dataQuality'] | null;
   const initialDataQuality = urlDataQuality && ['all', 'missing_dates', 'overdue', 'no_payments'].includes(urlDataQuality)
@@ -494,6 +498,103 @@ const PaymentDashboardPage: React.FC = () => {
     fetchPaymentData();
   };
 
+  // Clear selection when filter changes
+  useEffect(() => {
+    setSelectedPaymentIds(new Set());
+  }, [filters.dataQuality]);
+
+  // Toggle selection for a single payment
+  const handleToggleSelect = (paymentId: string) => {
+    setSelectedPaymentIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(paymentId)) {
+        newSet.delete(paymentId);
+      } else {
+        newSet.add(paymentId);
+      }
+      return newSet;
+    });
+  };
+
+  // Select/deselect all visible payments
+  const handleSelectAll = () => {
+    if (selectedPaymentIds.size === filteredPayments.length) {
+      setSelectedPaymentIds(new Set());
+    } else {
+      setSelectedPaymentIds(new Set(filteredPayments.map(p => p.payment_id)));
+    }
+  };
+
+  // Mark selected payments as historical (set dates from deal close/created date)
+  const handleMarkAsHistorical = async () => {
+    if (selectedPaymentIds.size === 0) return;
+
+    const confirmed = window.confirm(
+      `Mark ${selectedPaymentIds.size} payment(s) as historical?\n\n` +
+      `This will set each payment's estimated and received dates to the deal's closed date (or created date if no closed date), ` +
+      `and mark them as received.`
+    );
+
+    if (!confirmed) return;
+
+    setBulkActionLoading(true);
+
+    try {
+      // Get the deal IDs for selected payments
+      const selectedPayments = filteredPayments.filter(p => selectedPaymentIds.has(p.payment_id));
+      const dealIds = [...new Set(selectedPayments.map(p => p.deal_id))];
+
+      // Fetch deal close dates
+      const { data: deals, error: dealsError } = await supabase
+        .from('deal')
+        .select('id, closed_date, created_at')
+        .in('id', dealIds);
+
+      if (dealsError) throw dealsError;
+
+      // Create a map of deal_id to historical date
+      const dealDateMap = new Map<string, string>();
+      deals?.forEach(deal => {
+        // Use closed_date if available, otherwise use created_at date
+        const historicalDate = deal.closed_date ||
+          (deal.created_at ? deal.created_at.split('T')[0] : new Date().toISOString().split('T')[0]);
+        dealDateMap.set(deal.id, historicalDate);
+      });
+
+      // Update each selected payment
+      const updatePromises = selectedPayments.map(payment => {
+        const historicalDate = dealDateMap.get(payment.deal_id) || new Date().toISOString().split('T')[0];
+        return supabase
+          .from('payment')
+          .update({
+            payment_date_estimated: historicalDate,
+            payment_received_date: historicalDate,
+            payment_received: true,
+          })
+          .eq('id', payment.payment_id);
+      });
+
+      const results = await Promise.all(updatePromises);
+
+      // Check for errors
+      const errors = results.filter(r => r.error);
+      if (errors.length > 0) {
+        console.error('Some updates failed:', errors);
+        alert(`${errors.length} of ${selectedPayments.length} updates failed. Check console for details.`);
+      }
+
+      // Clear selection and refresh
+      setSelectedPaymentIds(new Set());
+      fetchPaymentData();
+
+    } catch (error) {
+      console.error('Error marking payments as historical:', error);
+      alert('Failed to mark payments as historical. Check console for details.');
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -654,7 +755,7 @@ const PaymentDashboardPage: React.FC = () => {
                 />
               ) : (
                 <>
-                  {/* Record Count */}
+                  {/* Record Count and Bulk Actions */}
                   <div className="mb-4 flex items-center justify-between">
                     <div className="text-sm text-gray-600">
                       <span className="font-medium text-gray-900">{filteredPayments.length}</span>
@@ -673,6 +774,43 @@ const PaymentDashboardPage: React.FC = () => {
                         </span>
                       )}
                     </div>
+
+                    {/* Bulk Actions - only show for missing_dates filter */}
+                    {filters.dataQuality === 'missing_dates' && (
+                      <div className="flex items-center gap-3">
+                        {selectedPaymentIds.size > 0 && (
+                          <span className="text-sm text-gray-600">
+                            {selectedPaymentIds.size} selected
+                          </span>
+                        )}
+                        <button
+                          onClick={handleMarkAsHistorical}
+                          disabled={selectedPaymentIds.size === 0 || bulkActionLoading}
+                          className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                            selectedPaymentIds.size > 0
+                              ? 'bg-amber-600 text-white hover:bg-amber-700'
+                              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          {bulkActionLoading ? (
+                            <>
+                              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              Processing...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              Mark as Historical
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Payment Table */}
@@ -680,6 +818,10 @@ const PaymentDashboardPage: React.FC = () => {
                     payments={filteredPayments}
                     loading={loading}
                     onPaymentUpdate={handlePaymentUpdate}
+                    showSelection={filters.dataQuality === 'missing_dates'}
+                    selectedIds={selectedPaymentIds}
+                    onToggleSelect={handleToggleSelect}
+                    onSelectAll={handleSelectAll}
                   />
                 </>
               )}
