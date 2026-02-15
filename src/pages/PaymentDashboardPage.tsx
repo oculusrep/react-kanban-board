@@ -466,6 +466,8 @@ const PaymentDashboardPage: React.FC = () => {
 
     // Data quality filter (only applies to payment list, not deals without payments)
     if (filters.dataQuality === 'missing_dates') {
+      // Show payments missing estimated date (regardless of received status)
+      // This helps clean up historical data where dates were never entered
       filtered = filtered.filter(p => !p.payment_date_estimated);
     } else if (filters.dataQuality === 'overdue') {
       const today = new Date().toISOString().split('T')[0];
