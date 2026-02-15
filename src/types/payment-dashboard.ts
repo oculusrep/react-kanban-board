@@ -75,6 +75,17 @@ export interface PaymentDashboardFilters {
   };
   dealStages: string[];
   dealId: string | null;
+  dataQuality: 'all' | 'missing_dates' | 'overdue' | 'no_payments';
+}
+
+// Deals without payments - for data quality view
+export interface DealWithoutPayments {
+  deal_id: string;
+  deal_name: string;
+  deal_stage: string | null;
+  number_of_payments: number;
+  total_fee: number | null;
+  created_at: string;
 }
 
 export interface PaymentSummaryStats {

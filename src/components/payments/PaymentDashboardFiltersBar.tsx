@@ -201,6 +201,7 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
       dateRange: { start: null, end: null },
       dealStages: [],
       dealId: null,
+      dataQuality: 'all',
     });
   };
 
@@ -211,7 +212,8 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
     filters.dateRange.start ||
     filters.dateRange.end ||
     filters.dealStages.length > 0 ||
-    filters.dealId;
+    filters.dealId ||
+    filters.dataQuality !== 'all';
 
   const paymentStatusOptions: DropdownOption[] = [
     { value: 'all', label: 'All Payments' },
@@ -226,9 +228,16 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
     { value: 'partial', label: 'Partially Paid' },
   ];
 
+  const dataQualityOptions: DropdownOption[] = [
+    { value: 'all', label: 'All Data' },
+    { value: 'missing_dates', label: '⚠️ Missing Est. Dates' },
+    { value: 'overdue', label: '🔴 Overdue (Past Due)' },
+    { value: 'no_payments', label: '❌ Deals: No Payments' },
+  ];
+
   return (
     <div className="bg-white shadow rounded-lg p-4 mb-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {/* Search */}
         <div className="xl:col-span-2">
           <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -265,6 +274,14 @@ const PaymentDashboardFiltersBar: React.FC<PaymentDashboardFiltersBarProps> = ({
           selectedValues={filters.dealStages}
           options={dealStages}
           onChange={(values) => onFilterChange({ dealStages: values })}
+        />
+
+        {/* Data Quality Filter */}
+        <CustomDropdown
+          label="Data Quality"
+          value={filters.dataQuality}
+          options={dataQualityOptions}
+          onChange={(value) => onFilterChange({ dataQuality: value as any })}
         />
       </div>
 

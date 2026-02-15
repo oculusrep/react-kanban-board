@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { Bars3Icon } from '@heroicons/react/24/outline';
 import {
   PaymentDashboardRow,
   PaymentDashboardFilters,
-  PaymentSummaryStats
+  PaymentSummaryStats,
+  DealWithoutPayments
 } from '../types/payment-dashboard';
 import PaymentDashboardTable from '../components/payments/PaymentDashboardTable';
 import PaymentDashboardFiltersBar from '../components/payments/PaymentDashboardFiltersBar';
+import DealsWithoutPaymentsTable from '../components/payments/DealsWithoutPaymentsTable';
 import PaymentSummaryCards from '../components/payments/PaymentSummaryCards';
 import ComparisonReportTab from '../components/payments/ComparisonReportTab';
 import PaymentDiscrepancyReport from '../components/payments/PaymentDiscrepancyReport';
@@ -19,6 +22,7 @@ import DisbursementReportTab from '../components/payments/DisbursementReportTab'
 type TabType = 'dashboard' | 'comparison' | 'discrepancies' | 'validation' | 'deal-reconciliation' | 'payment-reconciliation' | 'disbursements';
 
 const PaymentDashboardPage: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [payments, setPayments] = useState<PaymentDashboardRow[]>([]);
   const [filteredPayments, setFilteredPayments] = useState<PaymentDashboardRow[]>([]);
@@ -27,18 +31,29 @@ const PaymentDashboardPage: React.FC = () => {
   const [showToolsMenu, setShowToolsMenu] = useState(false);
   const toolsMenuRef = useRef<HTMLDivElement>(null);
 
+  // Get initial dataQuality filter from URL if present
+  const urlDataQuality = searchParams.get('dataQuality') as PaymentDashboardFilters['dataQuality'] | null;
+  const initialDataQuality = urlDataQuality && ['all', 'missing_dates', 'overdue', 'no_payments'].includes(urlDataQuality)
+    ? urlDataQuality
+    : 'all';
+
   const [filters, setFilters] = useState<PaymentDashboardFilters>({
     searchQuery: '',
-    paymentStatus: 'pending',
+    paymentStatus: initialDataQuality === 'all' ? 'pending' : 'all', // Show all payment statuses when filtering by data quality
     payoutStatus: 'all',
     dateRange: { start: null, end: null },
-    dealStages: ['Booked', 'Executed Payable', 'Closed Paid'],
+    dealStages: initialDataQuality === 'all' ? ['Booked', 'Executed Payable', 'Closed Paid'] : [], // Show all stages when filtering by data quality
     dealId: null,
+    dataQuality: initialDataQuality,
   });
+
+  // Deals without payments (for data quality filter)
+  const [dealsWithoutPayments, setDealsWithoutPayments] = useState<DealWithoutPayments[]>([]);
 
   // Fetch all payment data
   useEffect(() => {
     fetchPaymentData();
+    fetchDealsWithoutPayments();
   }, []);
 
   // Set up real-time subscriptions for automatic updates
@@ -313,6 +328,64 @@ const PaymentDashboardPage: React.FC = () => {
     setStats(stats);
   };
 
+  const fetchDealsWithoutPayments = async () => {
+    try {
+      // Fetch deals that have number_of_payments > 0 but no actual payment records
+      // Using stages that should have payments
+      const activeStages = ['Booked', 'Executed Payable', 'Closed Paid'];
+
+      // Get stage IDs for active stages
+      const { data: stagesData } = await supabase
+        .from('deal_stage')
+        .select('id, label')
+        .in('label', activeStages);
+
+      const stageIds = stagesData?.map(s => s.id) || [];
+      const stageMap = new Map(stagesData?.map(s => [s.id, s.label]) || []);
+
+      // Get all deals in these stages with number_of_payments > 0
+      const { data: dealsData, error: dealsError } = await supabase
+        .from('deal')
+        .select(`
+          id,
+          deal_name,
+          stage_id,
+          number_of_payments,
+          total_fee,
+          created_at
+        `)
+        .in('stage_id', stageIds)
+        .gt('number_of_payments', 0);
+
+      if (dealsError) throw dealsError;
+
+      // Get all deal IDs that have at least one payment
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from('payment')
+        .select('deal_id');
+
+      if (paymentsError) throw paymentsError;
+
+      const dealsWithPayments = new Set(paymentsData?.map(p => p.deal_id) || []);
+
+      // Filter to deals that have NO payments
+      const dealsWithout = (dealsData || [])
+        .filter(deal => !dealsWithPayments.has(deal.id))
+        .map(deal => ({
+          deal_id: deal.id,
+          deal_name: deal.deal_name || 'Unknown Deal',
+          deal_stage: stageMap.get(deal.stage_id) || null,
+          number_of_payments: deal.number_of_payments || 0,
+          total_fee: deal.total_fee,
+          created_at: deal.created_at,
+        }));
+
+      setDealsWithoutPayments(dealsWithout);
+    } catch (error) {
+      console.error('Error fetching deals without payments:', error);
+    }
+  };
+
   const applyFilters = () => {
     let filtered = [...payments];
 
@@ -386,11 +459,34 @@ const PaymentDashboardPage: React.FC = () => {
       filtered = filtered.filter(p => p.deal_id === filters.dealId);
     }
 
+    // Data quality filter (only applies to payment list, not deals without payments)
+    if (filters.dataQuality === 'missing_dates') {
+      filtered = filtered.filter(p => !p.payment_date_estimated);
+    } else if (filters.dataQuality === 'overdue') {
+      const today = new Date().toISOString().split('T')[0];
+      filtered = filtered.filter(p =>
+        p.payment_date_estimated &&
+        p.payment_date_estimated < today &&
+        !p.payment_received
+      );
+    }
+    // 'no_payments' filter shows a different view entirely, handled in render
+
     setFilteredPayments(filtered);
   };
 
   const handleFilterChange = (newFilters: Partial<PaymentDashboardFilters>) => {
     setFilters(prev => ({ ...prev, ...newFilters }));
+
+    // Update URL when dataQuality changes
+    if (newFilters.dataQuality !== undefined) {
+      if (newFilters.dataQuality === 'all') {
+        searchParams.delete('dataQuality');
+      } else {
+        searchParams.set('dataQuality', newFilters.dataQuality);
+      }
+      setSearchParams(searchParams, { replace: true });
+    }
   };
 
   const handlePaymentUpdate = () => {
@@ -539,8 +635,10 @@ const PaymentDashboardPage: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {activeTab === 'dashboard' ? (
             <>
-              {/* Summary Stats */}
-              {stats && <PaymentSummaryCards stats={stats} />}
+              {/* Summary Stats - hide when viewing deals without payments */}
+              {stats && filters.dataQuality !== 'no_payments' && (
+                <PaymentSummaryCards stats={stats} />
+              )}
 
               {/* Filters */}
               <PaymentDashboardFiltersBar
@@ -548,23 +646,43 @@ const PaymentDashboardPage: React.FC = () => {
                 onFilterChange={handleFilterChange}
               />
 
-              {/* Record Count */}
-              <div className="mb-4 flex items-center justify-between">
-                <div className="text-sm text-gray-600">
-                  <span className="font-medium text-gray-900">{filteredPayments.length}</span>
-                  {filteredPayments.length === 1 ? ' payment' : ' payments'} found
-                  {filteredPayments.length !== payments.length && (
-                    <span className="text-gray-500"> (filtered from {payments.length} total)</span>
-                  )}
-                </div>
-              </div>
+              {/* Show different content based on data quality filter */}
+              {filters.dataQuality === 'no_payments' ? (
+                <DealsWithoutPaymentsTable
+                  deals={dealsWithoutPayments}
+                  loading={loading}
+                />
+              ) : (
+                <>
+                  {/* Record Count */}
+                  <div className="mb-4 flex items-center justify-between">
+                    <div className="text-sm text-gray-600">
+                      <span className="font-medium text-gray-900">{filteredPayments.length}</span>
+                      {filteredPayments.length === 1 ? ' payment' : ' payments'} found
+                      {filteredPayments.length !== payments.length && (
+                        <span className="text-gray-500"> (filtered from {payments.length} total)</span>
+                      )}
+                      {filters.dataQuality === 'missing_dates' && (
+                        <span className="ml-2 text-amber-600 font-medium">
+                          (showing payments missing estimated dates)
+                        </span>
+                      )}
+                      {filters.dataQuality === 'overdue' && (
+                        <span className="ml-2 text-red-600 font-medium">
+                          (showing overdue payments)
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
-              {/* Payment Table */}
-              <PaymentDashboardTable
-                payments={filteredPayments}
-                loading={loading}
-                onPaymentUpdate={handlePaymentUpdate}
-              />
+                  {/* Payment Table */}
+                  <PaymentDashboardTable
+                    payments={filteredPayments}
+                    loading={loading}
+                    onPaymentUpdate={handlePaymentUpdate}
+                  />
+                </>
+              )}
             </>
           ) : activeTab === 'comparison' ? (
             <ComparisonReportTab />

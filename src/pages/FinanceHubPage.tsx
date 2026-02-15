@@ -95,6 +95,36 @@ export default function FinanceHubPage() {
     },
   ];
 
+  const dataQualityTools: FinanceToolCard[] = [
+    {
+      title: 'Missing Est. Dates',
+      description: 'Payments without estimated dates that need to be filled in for cash flow forecasting.',
+      icon: <Receipt className="h-8 w-8" />,
+      path: '/payments?dataQuality=missing_dates',
+      color: 'text-amber-600',
+      bgColor: 'bg-amber-50',
+      borderColor: 'border-amber-200',
+    },
+    {
+      title: 'Overdue Payments',
+      description: 'Payments past their estimated date that have not been received yet.',
+      icon: <CreditCard className="h-8 w-8" />,
+      path: '/payments?dataQuality=overdue',
+      color: 'text-red-600',
+      bgColor: 'bg-red-50',
+      borderColor: 'border-red-200',
+    },
+    {
+      title: 'Deals: No Payments',
+      description: 'Active deals that should have payment records but none have been created.',
+      icon: <Wallet className="h-8 w-8" />,
+      path: '/payments?dataQuality=no_payments',
+      color: 'text-rose-600',
+      bgColor: 'bg-rose-50',
+      borderColor: 'border-rose-200',
+    },
+  ];
+
   const reports: FinanceToolCard[] = [
     {
       title: 'Arty Draw Report',
@@ -178,6 +208,17 @@ export default function FinanceHubPage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {financeTools.map(renderToolCard)}
+          </div>
+        </div>
+
+        {/* Data Quality Section */}
+        <div className="mb-10">
+          <div className="flex items-center gap-2 mb-4">
+            <Receipt className="h-5 w-5 text-gray-400" />
+            <h2 className="text-lg font-semibold text-gray-900">Data Quality</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {dataQualityTools.map(renderToolCard)}
           </div>
         </div>
 
