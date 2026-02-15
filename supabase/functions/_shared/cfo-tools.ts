@@ -869,6 +869,183 @@ ${tableRows.join('\n')}
 }
 
 // ============================================================================
+// TOOL: GET MONTHLY EXECUTIVE SUMMARY (Combined Report)
+// ============================================================================
+
+export interface MonthlyExecutiveSummary {
+  markdown_report: string;
+  charts: Array<{
+    chart_type: string;
+    title: string;
+    data: Array<Record<string, unknown>>;
+    x_axis: string;
+    series: Array<{ dataKey: string; name: string; color: string }>;
+    y_axis_format: string;
+  }>;
+  key_metrics: {
+    expected_income: number;
+    expected_expenses: number;
+    projected_net: number;
+    ar_total: number;
+    ar_overdue: number;
+    budget_variance_percent: number;
+    personal_take_home: number;
+  };
+  all_flags: string[];
+  priority_actions: string[];
+}
+
+/**
+ * Get comprehensive monthly executive summary combining all key reports.
+ * One tool call to get the full picture.
+ */
+export async function getMonthlyExecutiveSummary(
+  supabase: SupabaseClient,
+  year?: number,
+  month?: number
+): Promise<MonthlyExecutiveSummary> {
+  const now = new Date();
+  const targetYear = year || now.getFullYear();
+  const targetMonth = month !== undefined ? month : now.getMonth();
+  const monthName = MONTH_NAMES[targetMonth];
+
+  // Format currency helper
+  const fmt = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+  // Gather all data in parallel
+  const [
+    cashFlowProjections,
+    arAging,
+    budgetVariance,
+    realityCheck,
+  ] = await Promise.all([
+    getCashFlowProjection(supabase, targetYear, 0, true, false, 12),
+    getInvoiceAging(supabase, false),
+    getBudgetVarianceReport(supabase, targetYear, targetMonth),
+    getRealityCheckReport(supabase, targetYear),
+  ]);
+
+  // Get current month data
+  const currentMonthCF = cashFlowProjections.find(p => p.monthIndex === targetMonth);
+  const currentMonthIncome = currentMonthCF?.income || 0;
+  const currentMonthExpenses = currentMonthCF?.expenses || 0;
+  const currentMonthNet = currentMonthCF?.net || 0;
+
+  // Get personal take-home for current month
+  const currentMonthPersonal = realityCheck.summary.total_to_mike / (realityCheck.chart_spec.data.length || 1);
+
+  // Calculate AR metrics
+  const arOverdue = arAging.overdue_1_30 + arAging.overdue_31_60 + arAging.overdue_61_90 + arAging.overdue_90_plus;
+
+  // Collect all flags
+  const allFlags: string[] = [];
+
+  // Cash flow flags
+  if (currentMonthNet < 0) {
+    allFlags.push(`🚨 Negative cash flow projected for ${monthName}: ${fmt(currentMonthNet)}`);
+  }
+
+  // AR flags
+  const arCritical = arAging.overdue_61_90 + arAging.overdue_90_plus;
+  if (arCritical > 0) {
+    allFlags.push(`🚨 ${fmt(arCritical)} in AR is critically overdue (>45 days)`);
+  }
+
+  // Budget variance flags
+  allFlags.push(...budgetVariance.flags);
+
+  // Reality check flags (filtered for current relevance)
+  const lowIncomeMonths = realityCheck.flags.filter(f => f.includes('month(s) with'));
+  allFlags.push(...lowIncomeMonths);
+
+  // Priority actions
+  const priorityActions: string[] = [];
+
+  if (arCritical > 0) {
+    priorityActions.push(`Follow up on ${fmt(arCritical)} in critically overdue invoices`);
+  }
+
+  if (budgetVariance.over_budget_items.length > 0) {
+    const topOverBudget = budgetVariance.over_budget_items[0];
+    priorityActions.push(`Review ${topOverBudget.account} - ${fmt(topOverBudget.variance)} over budget`);
+  }
+
+  if (currentMonthNet < 0) {
+    priorityActions.push(`Address projected ${fmt(Math.abs(currentMonthNet))} shortfall for ${monthName}`);
+  }
+
+  // Build the markdown report
+  const markdown_report = `## Monthly Executive Summary - ${monthName} ${targetYear}
+
+### Cash Position
+| Metric | Amount |
+|--------|--------|
+| Expected Income | ${fmt(currentMonthIncome)} |
+| Expected Expenses | ${fmt(currentMonthExpenses)} |
+| **Projected Net** | **${fmt(currentMonthNet)}** |
+
+### Accounts Receivable
+| Bucket | Amount |
+|--------|--------|
+| Current | ${fmt(arAging.current)} |
+| Overdue | ${fmt(arOverdue)} |
+| **Total AR** | **${fmt(arAging.total_receivables)}** |
+
+### Budget Status
+- Budget: ${fmt(budgetVariance.summary.total_budget)}
+- Actual: ${fmt(budgetVariance.summary.total_actual)}
+- Variance: ${fmt(budgetVariance.summary.total_variance)} (${budgetVariance.summary.variance_percent.toFixed(1)}%)
+
+### Personal Income (YTD Projection)
+- Total to Mike (projected): ${fmt(realityCheck.summary.total_to_mike)}
+- Effective tax rate: ${realityCheck.summary.effective_tax_rate.toFixed(1)}%
+- 401k room remaining: ${fmt(realityCheck.summary.remaining_401k_room)}
+
+---
+
+### ⚠️ Flags & Alerts
+${allFlags.length > 0 ? allFlags.map(f => `- ${f}`).join('\n') : '- No critical flags'}
+
+### 📋 Priority Actions
+${priorityActions.length > 0 ? priorityActions.map((a, i) => `${i + 1}. ${a}`).join('\n') : '- No immediate actions required'}`;
+
+  // Build cash flow chart for the year
+  const cashFlowChart = {
+    chart_type: 'composed',
+    title: `${targetYear} Cash Flow Projection`,
+    data: cashFlowProjections.map(p => ({
+      month: p.month,
+      income: p.income,
+      expenses: p.expenses,
+      net: p.net,
+    })),
+    x_axis: 'month',
+    series: [
+      { dataKey: 'income', name: 'Income', color: '#10b981' },
+      { dataKey: 'expenses', name: 'Expenses', color: '#ef4444' },
+      { dataKey: 'net', name: 'Net', color: '#3b82f6' },
+    ],
+    y_axis_format: 'currency',
+  };
+
+  return {
+    markdown_report,
+    charts: [cashFlowChart],
+    key_metrics: {
+      expected_income: currentMonthIncome,
+      expected_expenses: currentMonthExpenses,
+      projected_net: currentMonthNet,
+      ar_total: arAging.total_receivables,
+      ar_overdue: arOverdue,
+      budget_variance_percent: budgetVariance.summary.variance_percent,
+      personal_take_home: currentMonthPersonal,
+    },
+    all_flags: allFlags,
+    priority_actions: priorityActions,
+  };
+}
+
+// ============================================================================
 // TOOL: GET CASH FLOW PROJECTION
 // ============================================================================
 
@@ -1978,6 +2155,17 @@ export const CFO_TOOL_DEFINITIONS = [
       properties: {
         year: { type: 'number' as const, description: 'Year for budget comparison (defaults to current year)' },
         month: { type: 'number' as const, description: 'Month (0-11, 0=Jan). Defaults to current month.' },
+      },
+    },
+  },
+  {
+    name: 'get_monthly_executive_summary',
+    description: 'Comprehensive monthly summary combining cash flow, AR aging, budget variance, and personal income. One call for the full financial picture.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        year: { type: 'number' as const, description: 'Year (defaults to current)' },
+        month: { type: 'number' as const, description: 'Month (0-11). Defaults to current month.' },
       },
     },
   },

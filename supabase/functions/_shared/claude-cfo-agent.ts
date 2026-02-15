@@ -15,6 +15,7 @@ import {
   getInvoiceAging,
   getARAgingReport,
   getBudgetVarianceReport,
+  getMonthlyExecutiveSummary,
   getCashFlowProjection,
   getFinancialContext,
   saveFinancialContext,
@@ -162,6 +163,7 @@ REPORT TOOLS (use these for standard reports - they return pre-formatted output)
 - get_reality_check_report: Personal income forecast (commission + house profit). Display markdown directly, mention flags.
 - get_ar_aging_report: Accounts receivable aging with action items. Display markdown directly, highlight flags and actions.
 - get_budget_variance_report: Budget vs actual expenses. Display markdown directly, highlight over-budget items.
+- get_monthly_executive_summary: Complete monthly snapshot (cash flow, AR, budget, personal income, all flags). Use for "give me a summary" or "how are we doing" questions.
 
 Today: ${new Date().toISOString().split('T')[0]}.`;
 
@@ -268,6 +270,24 @@ async function executeTool(
         flags: report.flags,
         over_budget_items: report.over_budget_items,
         instructions: 'Display the markdown_report directly. Use the chart_spec for visualization. Highlight flags and over-budget items.',
+      };
+    }
+
+    case 'get_monthly_executive_summary': {
+      const summary = await getMonthlyExecutiveSummary(
+        supabase,
+        toolInput.year as number | undefined,
+        toolInput.month as number | undefined
+      );
+
+      // Return comprehensive summary
+      return {
+        markdown_report: summary.markdown_report,
+        charts: summary.charts,
+        key_metrics: summary.key_metrics,
+        all_flags: summary.all_flags,
+        priority_actions: summary.priority_actions,
+        instructions: 'Display the markdown_report directly. Use the first chart for visualization. All flags and priority actions are already in the report.',
       };
     }
 
@@ -609,6 +629,14 @@ export async function runCFOAgent(
               const reportResult = result as { chart_spec: ChartSpecification };
               if (reportResult.chart_spec) {
                 chartSpec = reportResult.chart_spec;
+              }
+            }
+
+            // If this is a monthly executive summary, capture the first chart
+            if (toolUse.name === 'get_monthly_executive_summary') {
+              const reportResult = result as { charts: ChartSpecification[] };
+              if (reportResult.charts && reportResult.charts.length > 0) {
+                chartSpec = reportResult.charts[0];
               }
             }
 
