@@ -190,7 +190,7 @@ export default function CFODashboardPage() {
 
       {/* Main Content - Full width layout */}
       <div className="px-4 py-3">
-        <div className="grid grid-cols-1 lg:grid-cols-[30%_1fr] gap-4 h-[calc(100vh-100px)]">
+        <div className="grid grid-cols-1 lg:grid-cols-[30%_1fr] gap-4 h-[calc(100vh-140px)]">
           {/* Chat Panel - Left (narrower) */}
           <div className="bg-white rounded-lg shadow-sm border overflow-hidden flex flex-col">
             <CFOChatPanel
