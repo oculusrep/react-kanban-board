@@ -534,8 +534,8 @@ const PaymentDashboardPage: React.FC = () => {
 
     const confirmed = window.confirm(
       `Mark ${selectedPaymentIds.size} payment(s) as historical?\n\n` +
-      `This will set each payment's estimated and received dates to the deal's closed date (or created date if no closed date), ` +
-      `and mark them as received.`
+      `For already-received payments: copies the received date to the estimated date.\n` +
+      `For unreceived payments: sets both dates to the deal's closed date and marks as received.`
     );
 
     if (!confirmed) return;
@@ -566,6 +566,17 @@ const PaymentDashboardPage: React.FC = () => {
 
       // Update each selected payment
       const updatePromises = selectedPayments.map(payment => {
+        // If payment is already received, just copy the received date to estimated date
+        if (payment.payment_received && payment.payment_received_date) {
+          return supabase
+            .from('payment')
+            .update({
+              payment_date_estimated: payment.payment_received_date,
+            })
+            .eq('id', payment.payment_id);
+        }
+
+        // Otherwise, use the deal's closed date (or created date) for both dates
         const historicalDate = dealDateMap.get(payment.deal_id) || new Date().toISOString().split('T')[0];
         return supabase
           .from('payment')
