@@ -671,6 +671,204 @@ ${agingRows.map(row => {
 }
 
 // ============================================================================
+// TOOL: GET BUDGET VARIANCE REPORT (Pre-formatted)
+// ============================================================================
+
+export interface BudgetVarianceReport {
+  markdown_report: string;
+  chart_spec: {
+    chart_type: 'bar';
+    title: string;
+    data: Array<Record<string, unknown>>;
+    x_axis: string;
+    series: Array<{
+      dataKey: string;
+      name: string;
+      color: string;
+    }>;
+    y_axis_format: 'currency';
+  };
+  summary: {
+    total_budget: number;
+    total_actual: number;
+    total_variance: number;
+    variance_percent: number;
+    accounts_over_budget: number;
+    accounts_under_budget: number;
+  };
+  flags: string[];
+  over_budget_items: Array<{
+    account: string;
+    budget: number;
+    actual: number;
+    variance: number;
+    variance_percent: number;
+  }>;
+}
+
+/**
+ * Get pre-formatted Budget vs Actual variance report for current month.
+ * Compares budgeted expenses to actual QBO expenses.
+ */
+export async function getBudgetVarianceReport(
+  supabase: SupabaseClient,
+  year?: number,
+  month?: number
+): Promise<BudgetVarianceReport> {
+  const now = new Date();
+  const targetYear = year || now.getFullYear();
+  const targetMonth = month !== undefined ? month : now.getMonth(); // 0-indexed
+
+  // Calculate date range for the month
+  const startDate = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-01`;
+  const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+  const endDate = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${lastDay}`;
+
+  // Get budget data for the year
+  const budgets = await getBudgetData(supabase, targetYear, ['Expense', 'Other Expense']);
+
+  // Get actual expenses for the month
+  const actualExpenses = await getExpensesByPeriod(supabase, startDate, endDate);
+
+  // Format currency helper
+  const fmt = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+  // Build variance data by account
+  const monthKey = MONTH_KEYS[targetMonth];
+  const varianceData: Array<{
+    account: string;
+    accountId: string;
+    budget: number;
+    actual: number;
+    variance: number;
+    variancePercent: number;
+  }> = [];
+
+  // Create map of actual expenses by account ID
+  const actualByAccount = new Map<string, number>();
+  for (const exp of actualExpenses) {
+    actualByAccount.set(exp.account_id, exp.total);
+  }
+
+  // Calculate variance for each budgeted account
+  for (const budget of budgets) {
+    const budgetAmount = budget[monthKey] || 0;
+    if (budgetAmount === 0) continue; // Skip accounts with no budget for this month
+
+    const actualAmount = actualByAccount.get(budget.qb_account_id) || 0;
+    const variance = actualAmount - budgetAmount;
+    const variancePercent = budgetAmount > 0 ? (variance / budgetAmount) * 100 : 0;
+
+    varianceData.push({
+      account: budget.account_name,
+      accountId: budget.qb_account_id,
+      budget: budgetAmount,
+      actual: actualAmount,
+      variance,
+      variancePercent,
+    });
+  }
+
+  // Sort by variance (most over budget first)
+  varianceData.sort((a, b) => b.variance - a.variance);
+
+  // Calculate totals
+  const totalBudget = varianceData.reduce((sum, v) => sum + v.budget, 0);
+  const totalActual = varianceData.reduce((sum, v) => sum + v.actual, 0);
+  const totalVariance = totalActual - totalBudget;
+  const totalVariancePercent = totalBudget > 0 ? (totalVariance / totalBudget) * 100 : 0;
+
+  const overBudgetAccounts = varianceData.filter(v => v.variance > 0);
+  const underBudgetAccounts = varianceData.filter(v => v.variance < 0);
+
+  // Build markdown table
+  const tableRows = varianceData.map(v => {
+    const status = v.variance > 0 ? '🔴' : v.variance < 0 ? '🟢' : '⚪';
+    return `| ${status} ${v.account} | ${fmt(v.budget)} | ${fmt(v.actual)} | ${fmt(v.variance)} | ${v.variancePercent.toFixed(1)}% |`;
+  });
+
+  const monthName = MONTH_NAMES[targetMonth];
+
+  const markdown_report = `### Budget vs Actual - ${monthName} ${targetYear}
+
+| Account | Budget | Actual | Variance | % |
+|---------|--------|--------|----------|---|
+${tableRows.join('\n')}
+| **TOTAL** | **${fmt(totalBudget)}** | **${fmt(totalActual)}** | **${fmt(totalVariance)}** | **${totalVariancePercent.toFixed(1)}%** |
+
+**Summary:**
+- ${overBudgetAccounts.length} account(s) over budget
+- ${underBudgetAccounts.length} account(s) under budget
+- Net variance: ${fmt(totalVariance)} (${totalVariancePercent > 0 ? '+' : ''}${totalVariancePercent.toFixed(1)}%)`;
+
+  // Build chart data (top 10 by absolute variance)
+  const chartData = varianceData
+    .sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance))
+    .slice(0, 10)
+    .map(v => ({
+      account: v.account.length > 20 ? v.account.substring(0, 17) + '...' : v.account,
+      budget: v.budget,
+      actual: v.actual,
+    }));
+
+  const chart_spec = {
+    chart_type: 'bar' as const,
+    title: `Budget vs Actual - ${monthName} ${targetYear}`,
+    data: chartData,
+    x_axis: 'account',
+    series: [
+      { dataKey: 'budget', name: 'Budget', color: '#94a3b8' },
+      { dataKey: 'actual', name: 'Actual', color: '#3b82f6' },
+    ],
+    y_axis_format: 'currency' as const,
+  };
+
+  // Generate flags
+  const flags: string[] = [];
+
+  // Overall variance flag
+  if (totalVariancePercent > 30) {
+    flags.push(`🚨 Total spending ${totalVariancePercent.toFixed(0)}% over budget - significant overspend`);
+  } else if (totalVariancePercent > 10) {
+    flags.push(`⚠️ Total spending ${totalVariancePercent.toFixed(0)}% over budget`);
+  } else if (totalVariancePercent < -20) {
+    flags.push(`✅ Total spending ${Math.abs(totalVariancePercent).toFixed(0)}% under budget`);
+  }
+
+  // Individual account flags (>30% variance)
+  const significantOverspend = overBudgetAccounts.filter(v => v.variancePercent > 30);
+  if (significantOverspend.length > 0) {
+    flags.push(`⚠️ ${significantOverspend.length} account(s) >30% over budget: ${significantOverspend.map(v => v.account).join(', ')}`);
+  }
+
+  // Build over budget items list
+  const over_budget_items = overBudgetAccounts
+    .filter(v => v.variance > 0)
+    .map(v => ({
+      account: v.account,
+      budget: v.budget,
+      actual: v.actual,
+      variance: v.variance,
+      variance_percent: v.variancePercent,
+    }));
+
+  return {
+    markdown_report,
+    chart_spec,
+    summary: {
+      total_budget: totalBudget,
+      total_actual: totalActual,
+      total_variance: totalVariance,
+      variance_percent: totalVariancePercent,
+      accounts_over_budget: overBudgetAccounts.length,
+      accounts_under_budget: underBudgetAccounts.length,
+    },
+    flags,
+    over_budget_items,
+  };
+}
+
+// ============================================================================
 // TOOL: GET CASH FLOW PROJECTION
 // ============================================================================
 
@@ -1770,6 +1968,17 @@ export const CFO_TOOL_DEFINITIONS = [
     input_schema: {
       type: 'object' as const,
       properties: {},
+    },
+  },
+  {
+    name: 'get_budget_variance_report',
+    description: 'Pre-formatted Budget vs Actual variance report. Shows over/under budget by account with flags. Defaults to current month.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        year: { type: 'number' as const, description: 'Year for budget comparison (defaults to current year)' },
+        month: { type: 'number' as const, description: 'Month (0-11, 0=Jan). Defaults to current month.' },
+      },
     },
   },
   {

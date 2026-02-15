@@ -14,6 +14,7 @@ import {
   getExpensesByPeriod,
   getInvoiceAging,
   getARAgingReport,
+  getBudgetVarianceReport,
   getCashFlowProjection,
   getFinancialContext,
   saveFinancialContext,
@@ -160,6 +161,7 @@ CONTEXT: Use save_financial_context when asked to "remember", delete_financial_c
 REPORT TOOLS (use these for standard reports - they return pre-formatted output):
 - get_reality_check_report: Personal income forecast (commission + house profit). Display markdown directly, mention flags.
 - get_ar_aging_report: Accounts receivable aging with action items. Display markdown directly, highlight flags and actions.
+- get_budget_variance_report: Budget vs actual expenses. Display markdown directly, highlight over-budget items.
 
 Today: ${new Date().toISOString().split('T')[0]}.`;
 
@@ -248,6 +250,24 @@ async function executeTool(
         flags: report.flags,
         action_items: report.action_items,
         instructions: 'Display the markdown_report directly. Use the chart_spec for visualization. Highlight flags and action items to the user.',
+      };
+    }
+
+    case 'get_budget_variance_report': {
+      const report = await getBudgetVarianceReport(
+        supabase,
+        toolInput.year as number | undefined,
+        toolInput.month as number | undefined
+      );
+
+      // Return pre-formatted report
+      return {
+        markdown_report: report.markdown_report,
+        chart_spec: report.chart_spec,
+        summary: report.summary,
+        flags: report.flags,
+        over_budget_items: report.over_budget_items,
+        instructions: 'Display the markdown_report directly. Use the chart_spec for visualization. Highlight flags and over-budget items.',
       };
     }
 
@@ -578,6 +598,14 @@ export async function runCFOAgent(
 
             // If this is an AR aging report, capture the chart spec
             if (toolUse.name === 'get_ar_aging_report') {
+              const reportResult = result as { chart_spec: ChartSpecification };
+              if (reportResult.chart_spec) {
+                chartSpec = reportResult.chart_spec;
+              }
+            }
+
+            // If this is a budget variance report, capture the chart spec
+            if (toolUse.name === 'get_budget_variance_report') {
               const reportResult = result as { chart_spec: ChartSpecification };
               if (reportResult.chart_spec) {
                 chartSpec = reportResult.chart_spec;
