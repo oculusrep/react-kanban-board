@@ -327,7 +327,7 @@ export default function CFOChatPanel({
       </div>
 
       {/* Input area */}
-      <div className="border-t bg-white p-4">
+      <div className="border-t bg-white p-4 flex-shrink-0">
         <form onSubmit={handleSubmit} className="flex gap-2">
           <input
             ref={inputRef}
