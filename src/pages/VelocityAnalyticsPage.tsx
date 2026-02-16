@@ -3,10 +3,9 @@ import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { usePermissions } from '../hooks/usePermissions';
 
-interface User {
+interface DealTeam {
   id: string;
-  first_name: string | null;
-  last_name: string | null;
+  label: string;
 }
 
 interface DealVelocityRecord {
@@ -15,8 +14,8 @@ interface DealVelocityRecord {
   stage_label: string;
   days: number;
   client_name: string | null;
-  broker_name: string | null;
-  broker_id: string | null;
+  team_name: string | null;
+  team_id: string | null;
   client_id: string | null;
 }
 
@@ -29,9 +28,9 @@ interface StageVelocity {
   deals: DealVelocityRecord[];
 }
 
-interface BrokerVelocity {
-  broker_name: string;
-  broker_id: string;
+interface TeamVelocity {
+  team_name: string;
+  team_id: string;
   stages: StageVelocity[];
   overall_avg_days: number;
   deal_count: number;
@@ -45,7 +44,7 @@ interface ClientVelocity {
   deal_count: number;
 }
 
-type ViewMode = 'broker' | 'client' | 'overall';
+type ViewMode = 'team' | 'client' | 'overall';
 
 export default function VelocityAnalyticsPage() {
   const navigate = useNavigate();
@@ -55,14 +54,14 @@ export default function VelocityAnalyticsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('overall');
 
   const [overallVelocity, setOverallVelocity] = useState<StageVelocity[]>([]);
-  const [brokerVelocity, setBrokerVelocity] = useState<BrokerVelocity[]>([]);
+  const [teamVelocity, setTeamVelocity] = useState<TeamVelocity[]>([]);
   const [clientVelocity, setClientVelocity] = useState<ClientVelocity[]>([]);
 
-  // Track expanded rows: "overall:Prospect", "broker:abc123:Negotiating LOI", etc.
+  // Track expanded rows: "overall:Prospect", "team:abc123:Negotiating LOI", etc.
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
-  // Users list for broker assignment dropdown
-  const [users, setUsers] = useState<User[]>([]);
+  // Deal teams for dropdown
+  const [dealTeams, setDealTeams] = useState<DealTeam[]>([]);
 
   // Dynamically loaded stages from the database
   const [velocityStages, setVelocityStages] = useState<string[]>([]);
@@ -165,9 +164,9 @@ export default function VelocityAnalyticsPage() {
 
       console.log('📊 Processed records with duration:', processedHistory.length);
 
-      // Fetch deal names - batch to avoid URL too long error
+      // Fetch deal names and deal_team_id - batch to avoid URL too long error
       const dealIds = [...new Set(processedHistory.map(h => h.deal_id))];
-      const dealMap = new Map<string, string>();
+      const dealMap = new Map<string, { deal_name: string; deal_team_id: string | null }>();
 
       // Batch in chunks of 50 to avoid URL length limits
       const BATCH_SIZE = 50;
@@ -175,25 +174,25 @@ export default function VelocityAnalyticsPage() {
         const batch = dealIds.slice(i, i + BATCH_SIZE);
         const { data: dealsData } = await supabase
           .from('deal')
-          .select('id, deal_name')
+          .select('id, deal_name, deal_team_id')
           .in('id', batch);
-        dealsData?.forEach(d => dealMap.set(d.id, d.deal_name || 'Untitled Deal'));
+        dealsData?.forEach(d => dealMap.set(d.id, {
+          deal_name: d.deal_name || 'Untitled Deal',
+          deal_team_id: d.deal_team_id
+        }));
       }
 
-      // Fetch brokers (users)
-      const { data: usersData } = await supabase
-        .from('user')
-        .select('id, first_name, last_name')
-        .order('first_name');
+      // Fetch deal teams
+      const { data: teamsData } = await supabase
+        .from('deal_team')
+        .select('id, label')
+        .order('label');
 
-      const userMap = new Map<string, string>();
-      usersData?.forEach(u => {
-        const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || 'Unknown';
-        userMap.set(u.id, name);
-      });
+      const teamMap = new Map<string, string>();
+      teamsData?.forEach(t => teamMap.set(t.id, t.label));
 
-      // Store users for broker assignment dropdown
-      setUsers(usersData || []);
+      // Store deal teams for dropdown
+      setDealTeams(teamsData || []);
 
       // Fetch clients
       const { data: clientsData } = await supabase
@@ -210,16 +209,20 @@ export default function VelocityAnalyticsPage() {
           const stageLabel = (record.deal_stage as any)?.label;
           return stageLabel && activeStages.includes(stageLabel);
         })
-        .map(record => ({
-          deal_id: record.deal_id,
-          deal_name: dealMap.get(record.deal_id) || 'Unknown Deal',
-          stage_label: (record.deal_stage as any)?.label,
-          days: Math.round(record.duration_seconds / 86400 * 10) / 10,
-          client_name: record.client_id ? clientMap.get(record.client_id) || null : null,
-          broker_name: record.deal_owner_id ? userMap.get(record.deal_owner_id) || null : null,
-          broker_id: record.deal_owner_id,
-          client_id: record.client_id,
-        }));
+        .map(record => {
+          const dealInfo = dealMap.get(record.deal_id);
+          const teamId = dealInfo?.deal_team_id || null;
+          return {
+            deal_id: record.deal_id,
+            deal_name: dealInfo?.deal_name || 'Unknown Deal',
+            stage_label: (record.deal_stage as any)?.label,
+            days: Math.round(record.duration_seconds / 86400 * 10) / 10,
+            client_name: record.client_id ? clientMap.get(record.client_id) || null : null,
+            team_name: teamId ? teamMap.get(teamId) || null : null,
+            team_id: teamId,
+            client_id: record.client_id,
+          };
+        });
 
       console.log('📊 Final deal records for velocity:', allDealRecords.length);
 
@@ -251,22 +254,22 @@ export default function VelocityAnalyticsPage() {
 
       setOverallVelocity(overallData);
 
-      // Process broker velocity with deals
-      const brokerDealsMap = new Map<string, Map<string, DealVelocityRecord[]>>();
+      // Process deal team velocity with deals
+      const teamDealsMap = new Map<string, Map<string, DealVelocityRecord[]>>();
       allDealRecords.forEach(record => {
-        if (!record.broker_id) return;
-        if (!brokerDealsMap.has(record.broker_id)) {
-          brokerDealsMap.set(record.broker_id, new Map());
+        if (!record.team_id) return;
+        if (!teamDealsMap.has(record.team_id)) {
+          teamDealsMap.set(record.team_id, new Map());
         }
-        const brokerStages = brokerDealsMap.get(record.broker_id)!;
-        if (!brokerStages.has(record.stage_label)) {
-          brokerStages.set(record.stage_label, []);
+        const teamStages = teamDealsMap.get(record.team_id)!;
+        if (!teamStages.has(record.stage_label)) {
+          teamStages.set(record.stage_label, []);
         }
-        brokerStages.get(record.stage_label)!.push(record);
+        teamStages.get(record.stage_label)!.push(record);
       });
 
-      const brokerData: BrokerVelocity[] = Array.from(brokerDealsMap.entries())
-        .map(([brokerId, stages]) => {
+      const teamData: TeamVelocity[] = Array.from(teamDealsMap.entries())
+        .map(([teamId, stages]) => {
           const stageData: StageVelocity[] = activeStages
             .filter(stage => stages.has(stage))
             .map(stage => {
@@ -288,17 +291,17 @@ export default function VelocityAnalyticsPage() {
           const totalDays = allDeals.reduce((sum, d) => sum + d.days, 0);
 
           return {
-            broker_name: userMap.get(brokerId) || 'Unknown Broker',
-            broker_id: brokerId,
+            team_name: teamMap.get(teamId) || 'Unknown Team',
+            team_id: teamId,
             stages: stageData,
             overall_avg_days: allDeals.length > 0 ? Math.round(totalDays / allDeals.length * 10) / 10 : 0,
             deal_count: allDeals.length
           };
         })
-        .filter(b => b.deal_count > 0)
+        .filter(t => t.deal_count > 0)
         .sort((a, b) => b.deal_count - a.deal_count);
 
-      setBrokerVelocity(brokerData);
+      setTeamVelocity(teamData);
 
       // Process client velocity with deals
       const clientDealsMap = new Map<string, Map<string, DealVelocityRecord[]>>();
@@ -375,11 +378,11 @@ export default function VelocityAnalyticsPage() {
     );
   }
 
-  const handleBrokerChange = async (dealId: string, newOwnerId: string) => {
+  const handleTeamChange = async (dealId: string, newTeamId: string) => {
     try {
       const { error } = await supabase
         .from('deal')
-        .update({ owner_id: newOwnerId })
+        .update({ deal_team_id: newTeamId || null })
         .eq('id', dealId);
 
       if (error) throw error;
@@ -387,8 +390,8 @@ export default function VelocityAnalyticsPage() {
       // Reload data to reflect the change
       loadVelocityData();
     } catch (err) {
-      console.error('Error updating broker:', err);
-      alert('Failed to update broker');
+      console.error('Error updating deal team:', err);
+      alert('Failed to update deal team');
     }
   };
 
@@ -420,14 +423,14 @@ export default function VelocityAnalyticsPage() {
     return 'bg-red-100 text-red-800';
   };
 
-  const renderDealsTable = (deals: DealVelocityRecord[], showBroker: boolean = true, showClient: boolean = true) => (
+  const renderDealsTable = (deals: DealVelocityRecord[], showTeam: boolean = true, showClient: boolean = true) => (
     <div className="bg-gray-50 px-6 py-4">
       <table className="min-w-full">
         <thead>
           <tr className="text-xs text-gray-500 uppercase">
             <th className="text-left py-2 px-2">Deal</th>
             {showClient && <th className="text-left py-2 px-2">Client</th>}
-            {showBroker && <th className="text-left py-2 px-2">Broker</th>}
+            {showTeam && <th className="text-left py-2 px-2">Deal Team</th>}
             <th className="text-right py-2 px-2">Days in Stage</th>
           </tr>
         </thead>
@@ -447,17 +450,17 @@ export default function VelocityAnalyticsPage() {
                   {deal.client_name || '—'}
                 </td>
               )}
-              {showBroker && (
+              {showTeam && (
                 <td className="py-2 px-2">
                   <select
-                    value={deal.broker_id || ''}
-                    onChange={(e) => handleBrokerChange(deal.deal_id, e.target.value)}
+                    value={deal.team_id || ''}
+                    onChange={(e) => handleTeamChange(deal.deal_id, e.target.value)}
                     className="text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 py-1 px-2"
                   >
                     <option value="">— Unassigned —</option>
-                    {users.map(user => (
-                      <option key={user.id} value={user.id}>
-                        {[user.first_name, user.last_name].filter(Boolean).join(' ') || 'Unknown'}
+                    {dealTeams.map(team => (
+                      <option key={team.id} value={team.id}>
+                        {team.label}
                       </option>
                     ))}
                   </select>
@@ -532,14 +535,14 @@ export default function VelocityAnalyticsPage() {
                 Overall
               </button>
               <button
-                onClick={() => setViewMode('broker')}
+                onClick={() => setViewMode('team')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  viewMode === 'broker'
+                  viewMode === 'team'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                By Broker
+                By Deal Team
               </button>
               <button
                 onClick={() => setViewMode('client')}
@@ -640,16 +643,16 @@ export default function VelocityAnalyticsPage() {
           </div>
         )}
 
-        {/* Broker View */}
-        {viewMode === 'broker' && (
+        {/* Deal Team View */}
+        {viewMode === 'team' && (
           <div className="space-y-6">
-            {brokerVelocity.map((broker) => (
-              <div key={broker.broker_id} className="bg-white rounded-lg shadow overflow-hidden">
+            {teamVelocity.map((team) => (
+              <div key={team.team_id} className="bg-white rounded-lg shadow overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
                   <div>
-                    <h2 className="text-lg font-semibold text-gray-900">{broker.broker_name}</h2>
+                    <h2 className="text-lg font-semibold text-gray-900">{team.team_name}</h2>
                     <p className="text-sm text-gray-500">
-                      {broker.deal_count} stage transitions | Avg: {formatDays(broker.overall_avg_days)}
+                      {team.deal_count} stage transitions | Avg: {formatDays(team.overall_avg_days)}
                     </p>
                   </div>
                 </div>
@@ -675,8 +678,8 @@ export default function VelocityAnalyticsPage() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {broker.stages.map((stage) => {
-                      const rowKey = `broker:${broker.broker_id}:${stage.stage_label}`;
+                    {team.stages.map((stage) => {
+                      const rowKey = `team:${team.team_id}:${stage.stage_label}`;
                       const isExpanded = expandedRows.has(rowKey);
                       return (
                         <>
@@ -726,9 +729,9 @@ export default function VelocityAnalyticsPage() {
                 </table>
               </div>
             ))}
-            {brokerVelocity.length === 0 && (
+            {teamVelocity.length === 0 && (
               <div className="bg-white rounded-lg shadow px-6 py-8 text-center text-gray-500">
-                No broker velocity data available.
+                No deal team velocity data available.
               </div>
             )}
           </div>
