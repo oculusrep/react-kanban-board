@@ -64,8 +64,15 @@ export default function VelocityAnalyticsPage() {
   // Users list for broker assignment dropdown
   const [users, setUsers] = useState<User[]>([]);
 
-  // Stages we care about for velocity (excluding Lost and Closed Paid which are terminal)
-  const velocityStages = ['Prospect', 'Negotiating LOI', 'At Lease / PSA', 'Booked/Under Contract'];
+  // Stages we care about for velocity (active pipeline stages)
+  const velocityStages = [
+    'Prospect',
+    'Negotiating LOI',
+    'At Lease / PSA',
+    'Under Contract / Contingent',
+    'Booked',
+    'Executed Payable'
+  ];
 
   useEffect(() => {
     document.title = "Deal Velocity Analytics | OVIS";
@@ -384,7 +391,9 @@ export default function VelocityAnalyticsPage() {
       'Prospect': { good: 30, warning: 60 },
       'Negotiating LOI': { good: 30, warning: 60 },
       'At Lease / PSA': { good: 45, warning: 90 },
-      'Booked/Under Contract': { good: 30, warning: 60 }
+      'Under Contract / Contingent': { good: 30, warning: 60 },
+      'Booked': { good: 30, warning: 60 },
+      'Executed Payable': { good: 30, warning: 60 }
     };
 
     const threshold = thresholds[stage] || { good: 30, warning: 60 };
