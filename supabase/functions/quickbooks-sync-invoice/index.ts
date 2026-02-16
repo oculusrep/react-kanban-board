@@ -351,20 +351,14 @@ serve(async (req) => {
         updatePayload.BillEmail = { Address: deal.bill_to_email }
       }
 
-      // Add CC email (QBO only supports one CC email, use the first one if multiple)
+      // Add CC emails (QBO accepts comma-separated emails)
       if (deal.bill_to_cc_emails) {
-        const ccEmail = deal.bill_to_cc_emails.split(',')[0]?.trim()
-        if (ccEmail) {
-          updatePayload.BillEmailCc = { Address: ccEmail }
-        }
+        updatePayload.BillEmailCc = { Address: deal.bill_to_cc_emails.trim() }
       }
 
-      // Add BCC email (QBO only supports one BCC email, use the first one if multiple)
+      // Add BCC emails (QBO accepts comma-separated emails)
       if (deal.bill_to_bcc_emails) {
-        const bccEmail = deal.bill_to_bcc_emails.split(',')[0]?.trim()
-        if (bccEmail) {
-          updatePayload.BillEmailBcc = { Address: bccEmail }
-        }
+        updatePayload.BillEmailBcc = { Address: deal.bill_to_bcc_emails.trim() }
       }
 
       // Add memo with deal/property info
