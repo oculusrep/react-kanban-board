@@ -80,7 +80,15 @@ export default function VelocityAnalyticsPage() {
       setLoading(true);
       setError(null);
 
-      // Fetch all stage history with related data
+      // First, check total records in the table for debugging
+      const { count: totalCount } = await supabase
+        .from('deal_stage_history')
+        .select('*', { count: 'exact', head: true });
+
+      console.log('📊 Total deal_stage_history records:', totalCount);
+
+      // Fetch all stage history - include records without duration_seconds
+      // We'll calculate duration for active stages on the client side
       const { data: historyData, error: historyError } = await supabase
         .from('deal_stage_history')
         .select(`
@@ -88,17 +96,47 @@ export default function VelocityAnalyticsPage() {
           deal_id,
           to_stage_id,
           duration_seconds,
+          entered_at,
+          exited_at,
           deal_owner_id,
           client_id,
           deal_stage!deal_stage_history_to_stage_id_fkey(label)
-        `)
-        .not('duration_seconds', 'is', null)
-        .gt('duration_seconds', 0);
+        `);
+
+      console.log('📊 Raw history data count:', historyData?.length || 0);
+      console.log('📊 History error:', historyError);
+
+      // Log sample of data to see what we have
+      if (historyData && historyData.length > 0) {
+        console.log('📊 Sample records:', historyData.slice(0, 3));
+        const withDuration = historyData.filter(r => r.duration_seconds && r.duration_seconds > 0);
+        console.log('📊 Records with duration_seconds > 0:', withDuration.length);
+      }
 
       if (historyError) throw historyError;
 
+      // Calculate duration for active stages (where exited_at is null)
+      // and use duration_seconds for completed stages
+      const now = new Date();
+      const processedHistory = (historyData || []).map(record => {
+        let effectiveDuration = record.duration_seconds;
+
+        // If no duration_seconds but has entered_at and no exited_at, it's an active stage
+        if (!effectiveDuration && record.entered_at && !record.exited_at) {
+          const enteredAt = new Date(record.entered_at);
+          effectiveDuration = Math.floor((now.getTime() - enteredAt.getTime()) / 1000);
+        }
+
+        return {
+          ...record,
+          duration_seconds: effectiveDuration
+        };
+      }).filter(record => record.duration_seconds && record.duration_seconds > 0);
+
+      console.log('📊 Processed records with duration:', processedHistory.length);
+
       // Fetch deal names
-      const dealIds = [...new Set(historyData?.map(h => h.deal_id) || [])];
+      const dealIds = [...new Set(processedHistory.map(h => h.deal_id))];
       const { data: dealsData } = await supabase
         .from('deal')
         .select('id, deal_name')
@@ -127,7 +165,7 @@ export default function VelocityAnalyticsPage() {
       clientsData?.forEach(c => clientMap.set(c.id, c.client_name || 'Unknown'));
 
       // Build full deal records with all info
-      const allDealRecords: DealVelocityRecord[] = (historyData || [])
+      const allDealRecords: DealVelocityRecord[] = processedHistory
         .filter(record => {
           const stageLabel = (record.deal_stage as any)?.label;
           return stageLabel && velocityStages.includes(stageLabel);
@@ -142,6 +180,8 @@ export default function VelocityAnalyticsPage() {
           broker_id: record.deal_owner_id,
           client_id: record.client_id,
         }));
+
+      console.log('📊 Final deal records for velocity:', allDealRecords.length);
 
       // Process overall velocity with deals
       const stageDealsMap = new Map<string, DealVelocityRecord[]>();
