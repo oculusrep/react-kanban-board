@@ -204,10 +204,11 @@ export default function VelocityAnalyticsPage() {
       clientsData?.forEach(c => clientMap.set(c.id, c.client_name || 'Unknown'));
 
       // Build full deal records with all info
+      // Note: Use activeStages (local variable) not velocityStages (state) since state hasn't updated yet
       const allDealRecords: DealVelocityRecord[] = processedHistory
         .filter(record => {
           const stageLabel = (record.deal_stage as any)?.label;
-          return stageLabel && velocityStages.includes(stageLabel);
+          return stageLabel && activeStages.includes(stageLabel);
         })
         .map(record => ({
           deal_id: record.deal_id,
@@ -231,7 +232,7 @@ export default function VelocityAnalyticsPage() {
         stageDealsMap.get(record.stage_label)!.push(record);
       });
 
-      const overallData: StageVelocity[] = velocityStages
+      const overallData: StageVelocity[] = activeStages
         .filter(stage => stageDealsMap.has(stage))
         .map(stage => {
           const deals = stageDealsMap.get(stage)!;
@@ -266,7 +267,7 @@ export default function VelocityAnalyticsPage() {
 
       const brokerData: BrokerVelocity[] = Array.from(brokerDealsMap.entries())
         .map(([brokerId, stages]) => {
-          const stageData: StageVelocity[] = velocityStages
+          const stageData: StageVelocity[] = activeStages
             .filter(stage => stages.has(stage))
             .map(stage => {
               const deals = stages.get(stage)!;
@@ -315,7 +316,7 @@ export default function VelocityAnalyticsPage() {
 
       const clientData: ClientVelocity[] = Array.from(clientDealsMap.entries())
         .map(([clientId, stages]) => {
-          const stageData: StageVelocity[] = velocityStages
+          const stageData: StageVelocity[] = activeStages
             .filter(stage => stages.has(stage))
             .map(stage => {
               const deals = stages.get(stage)!;
