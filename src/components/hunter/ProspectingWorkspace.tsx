@@ -104,11 +104,16 @@ interface NewHunterLead {
 // Unified activity feed item (combines notes and logged activities)
 interface ActivityFeedItem {
   id: string;
-  type: 'note' | 'email' | 'linkedin' | 'sms' | 'voicemail' | 'call' | 'meeting';
+  type: 'note' | 'email' | 'linkedin' | 'sms' | 'voicemail' | 'call' | 'meeting' | 'task';
   content: string | null; // Note content or activity notes
   email_subject?: string | null;
   created_at: string;
   created_by?: string;
+  // For activities from the main activity table
+  source?: 'prospecting' | 'contact_activity';
+  subject?: string | null;
+  activity_type_name?: string | null;
+  completed_at?: string | null;
 }
 
 interface EmailTemplate {
@@ -154,9 +159,11 @@ interface ZoomInfoMatch {
 // Activity type definitions
 const OUTREACH_TYPES = ['email', 'linkedin', 'sms', 'voicemail'] as const;
 const CONNECTION_TYPES = ['call', 'meeting'] as const;
+const OTHER_ACTIVITY_TYPES = ['task'] as const;
 type OutreachType = typeof OUTREACH_TYPES[number];
 type ConnectionType = typeof CONNECTION_TYPES[number];
-type ActivityType = OutreachType | ConnectionType;
+type OtherActivityType = typeof OTHER_ACTIVITY_TYPES[number];
+type ActivityType = OutreachType | ConnectionType | OtherActivityType;
 
 const ACTIVITY_CONFIG: Record<ActivityType, { label: string; icon: string; color: string }> = {
   email: { label: 'Email', icon: 'envelope', color: 'blue' },
@@ -165,6 +172,7 @@ const ACTIVITY_CONFIG: Record<ActivityType, { label: string; icon: string; color
   voicemail: { label: 'VM', icon: 'phone', color: 'yellow' },
   call: { label: 'Call', icon: 'phone-solid', color: 'emerald' },
   meeting: { label: 'Meeting', icon: 'users', color: 'purple' },
+  task: { label: 'Task', icon: 'clipboard', color: 'slate' },
 };
 
 const SIGNAL_COLORS: Record<string, string> = {
@@ -195,6 +203,8 @@ function ActivityIcon({ type, className = "w-4 h-4" }: { type: string; className
       return <PhoneIcon className={className} />;
     case 'meeting':
       return <UserGroupIcon className={className} />;
+    case 'task':
+      return <ClipboardDocumentListIcon className={className} />;
     case 'note':
       return <DocumentTextIcon className={className} />;
     default:
@@ -414,29 +424,83 @@ export default function ProspectingWorkspace() {
         notesQuery = notesQuery.eq('contact_id', contactId);
       }
 
-      // Fetch activities
+      // Fetch prospecting activities
       const { data: activities } = await activitiesQuery.order('created_at', { ascending: false });
 
       // Fetch notes
       const { data: notes } = await notesQuery.order('created_at', { ascending: false });
 
+      // Fetch contact activities from the main activity table (logged calls, tasks, etc.)
+      const { data: contactActivities } = await supabase
+        .from('activity')
+        .select(`
+          id,
+          subject,
+          description,
+          created_at,
+          completed_at,
+          completed_call,
+          call_duration_seconds,
+          activity_type:activity_type_id (
+            name
+          )
+        `)
+        .eq('contact_id', contactId)
+        .order('created_at', { ascending: false });
+
       // Combine and sort chronologically
       const feedItems: ActivityFeedItem[] = [
+        // Prospecting activities
         ...(activities || []).map(a => ({
           id: a.id,
           type: a.activity_type as ActivityFeedItem['type'],
           content: a.notes,
           email_subject: a.email_subject,
           created_at: a.created_at,
-          created_by: a.created_by
+          created_by: a.created_by,
+          source: 'prospecting' as const
         })),
+        // Notes
         ...(notes || []).map(n => ({
           id: n.id,
           type: 'note' as const,
           content: n.content,
           created_at: n.created_at,
-          created_by: n.created_by
-        }))
+          created_by: n.created_by,
+          source: 'prospecting' as const
+        })),
+        // Contact activities (logged calls, tasks, etc.)
+        ...(contactActivities || []).map(a => {
+          // Map activity type name to our feed item types
+          const activityTypeName = (a.activity_type as { name: string } | null)?.name?.toLowerCase() || '';
+          let type: ActivityFeedItem['type'] = 'task';
+          if (activityTypeName === 'call' || a.completed_call) {
+            type = 'call';
+          } else if (activityTypeName === 'email') {
+            type = 'email';
+          } else if (activityTypeName === 'meeting') {
+            type = 'meeting';
+          }
+
+          // Build content string
+          let content = a.description || '';
+          if (a.call_duration_seconds) {
+            const mins = Math.floor(a.call_duration_seconds / 60);
+            const secs = a.call_duration_seconds % 60;
+            content = content ? `${content} (${mins}:${secs.toString().padStart(2, '0')})` : `Duration: ${mins}:${secs.toString().padStart(2, '0')}`;
+          }
+
+          return {
+            id: a.id,
+            type,
+            content: content || null,
+            subject: a.subject,
+            created_at: a.created_at,
+            completed_at: a.completed_at,
+            source: 'contact_activity' as const,
+            activity_type_name: (a.activity_type as { name: string } | null)?.name || null
+          };
+        })
       ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
       setActivityFeed(feedItems);
@@ -604,6 +668,10 @@ export default function ProspectingWorkspace() {
   };
 
   const deleteActivityItem = async (item: ActivityFeedItem) => {
+    // Don't allow deleting contact activities - they should be managed from the contact page
+    if (item.source === 'contact_activity') {
+      return;
+    }
     try {
       const table = item.type === 'note' ? 'prospecting_note' : 'prospecting_activity';
       const { error } = await supabase.from(table).delete().eq('id', item.id);
@@ -1860,6 +1928,7 @@ export default function ProspectingWorkspace() {
                                 <div className="flex items-start gap-3">
                                   <div className={`p-2 rounded-full ${
                                     item.type === 'note' ? 'bg-gray-100 text-gray-600' :
+                                    item.type === 'task' ? 'bg-slate-100 text-slate-600' :
                                     OUTREACH_TYPES.includes(item.type as OutreachType) ? 'bg-blue-100 text-blue-600' :
                                     'bg-emerald-100 text-emerald-600'
                                   }`}>
@@ -1869,26 +1938,36 @@ export default function ProspectingWorkspace() {
                                     <div className="flex items-center justify-between">
                                       <span className={`text-sm font-medium ${
                                         item.type === 'note' ? 'text-gray-700' :
+                                        item.type === 'task' ? 'text-slate-700' :
                                         OUTREACH_TYPES.includes(item.type as OutreachType) ? 'text-blue-700' :
                                         'text-emerald-700'
                                       }`}>
-                                        {item.type === 'note' ? 'Note' : ACTIVITY_CONFIG[item.type as ActivityType]?.label || item.type}
+                                        {item.type === 'note' ? 'Note' :
+                                         item.source === 'contact_activity' && item.activity_type_name ? item.activity_type_name :
+                                         ACTIVITY_CONFIG[item.type as ActivityType]?.label || item.type}
                                       </span>
                                       <div className="flex items-center gap-2">
                                         <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
-                                        <button
-                                          onClick={() => deleteActivityItem(item)}
-                                          className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity"
-                                        >
-                                          <XMarkIcon className="w-4 h-4" />
-                                        </button>
+                                        {item.source !== 'contact_activity' && (
+                                          <button
+                                            onClick={() => deleteActivityItem(item)}
+                                            className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity"
+                                          >
+                                            <XMarkIcon className="w-4 h-4" />
+                                          </button>
+                                        )}
                                       </div>
                                     </div>
-                                    {item.email_subject && (
-                                      <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject}</p>
+                                    {(item.email_subject || item.subject) && (
+                                      <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject || item.subject}</p>
                                     )}
                                     {item.content && (
                                       <p className="text-sm text-gray-600 whitespace-pre-wrap mt-1">{item.content}</p>
+                                    )}
+                                    {item.source === 'contact_activity' && (
+                                      <span className="inline-flex items-center mt-1 text-xs text-gray-400">
+                                        from contact record
+                                      </span>
                                     )}
                                   </div>
                                 </div>
