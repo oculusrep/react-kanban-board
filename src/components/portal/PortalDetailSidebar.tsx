@@ -106,7 +106,8 @@ export default function PortalDetailSidebar({
     'LOI',
     'At Lease/PSA',
     'Under Contract/Contingent',
-    'Store Opened'
+    'Store Opened',
+    'Unassigned Territory'
   ];
 
   // Fetch stages for the dropdown

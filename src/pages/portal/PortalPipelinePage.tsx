@@ -72,7 +72,8 @@ const VISIBLE_STAGES = [
   'LOI',
   'At Lease/PSA',
   'Under Contract / Contingent',
-  'Store Opened'
+  'Store Opened',
+  'Unassigned Territory'
 ];
 
 /**

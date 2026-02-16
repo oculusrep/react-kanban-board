@@ -34,6 +34,7 @@ const PORTAL_VISIBLE_STAGES = [
   'At Lease/PSA',
   'Under Contract / Contingent',
   'Store Opened',
+  'Unassigned Territory',
 ];
 
 /**
