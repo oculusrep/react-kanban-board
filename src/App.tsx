@@ -132,7 +132,7 @@ function App() {
           {/* All routes below are blocked for coach users */}
           <Route path="master-pipeline" element={<CoachRoute><KanbanBoard /></CoachRoute>} />
           <Route path="tasks" element={<CoachRoute><TaskDashboardPage /></CoachRoute>} />
-          <Route path="payments" element={<AdminRoute><PaymentDashboardPage /></AdminRoute>} />
+          <Route path="payments" element={<CoachRoute><PaymentDashboardPage /></CoachRoute>} />
           <Route path="deal/new" element={<CoachRoute><DealDetailsPage /></CoachRoute>} />
           <Route path="deal/:dealId" element={<CoachRoute><DealDetailsPage /></CoachRoute>} />
           <Route path="assignment/new" element={<CoachRoute><AssignmentDetailsPage /></CoachRoute>} />

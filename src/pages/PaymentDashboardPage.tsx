@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { Bars3Icon } from '@heroicons/react/24/outline';
 import {
@@ -18,10 +18,13 @@ import SplitValidationTab from '../components/payments/SplitValidationTab';
 import ReconciliationReport from '../components/payments/ReconciliationReport';
 import PaymentReconciliationReport from '../components/payments/PaymentReconciliationReport';
 import DisbursementReportTab from '../components/payments/DisbursementReportTab';
+import { usePermissions } from '../hooks/usePermissions';
 
 type TabType = 'dashboard' | 'comparison' | 'discrepancies' | 'validation' | 'deal-reconciliation' | 'payment-reconciliation' | 'disbursements';
 
 const PaymentDashboardPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { hasPermission, loading: permissionsLoading } = usePermissions();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [payments, setPayments] = useState<PaymentDashboardRow[]>([]);
@@ -608,6 +611,24 @@ const PaymentDashboardPage: React.FC = () => {
       setBulkActionLoading(false);
     }
   };
+
+  // Check permission - allow access if user has either permission
+  if (!permissionsLoading && !hasPermission('can_access_payments_dashboard') && !hasPermission('can_manage_payments')) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-8">
+        <div className="max-w-4xl mx-auto text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Access Denied</h1>
+          <p className="text-gray-600 mb-4">You don't have permission to view the Payment Dashboard.</p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Go Home
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
