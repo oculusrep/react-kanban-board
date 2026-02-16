@@ -278,7 +278,7 @@ export default function VelocityAnalyticsPage() {
   };
 
   // Check permission
-  if (!permissionsLoading && !hasPermission('can_view_goal_dashboard')) {
+  if (!permissionsLoading && !hasPermission('can_view_velocity_analytics')) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
         <div className="max-w-4xl mx-auto text-center">

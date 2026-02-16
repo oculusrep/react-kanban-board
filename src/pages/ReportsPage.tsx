@@ -136,7 +136,7 @@ export default function ReportsPage() {
       description: "Analyze how long deals spend in each pipeline stage by broker and client",
       route: "/reports/velocity-analytics",
       icon: "⏱️",
-      permission: "can_view_goal_dashboard"
+      permission: "can_view_velocity_analytics"
     }
   ];
 
