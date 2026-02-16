@@ -7,7 +7,7 @@ import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../../components/mappi
 import SiteSubmitLegend from '../../components/mapping/SiteSubmitLegend';
 import AddressSearchBox from '../../components/mapping/AddressSearchBox';
 import PortalDetailSidebar from '../../components/portal/PortalDetailSidebar';
-import { LayerManagerProvider } from '../../components/mapping/layers/LayerManager';
+import { LayerManagerProvider, useLayerManager } from '../../components/mapping/layers/LayerManager';
 import { STAGE_CATEGORIES } from '../../components/mapping/SiteSubmitPin';
 import { geocodingService } from '../../services/geocodingService';
 import CustomLayerLayer from '../../components/mapping/layers/CustomLayerLayer';
@@ -48,9 +48,21 @@ const PORTAL_VISIBLE_STAGES = [
  * - Portal detail sidebar
  */
 export default function PortalMapPage() {
+  return (
+    <LayerManagerProvider>
+      <PortalMapContent />
+    </LayerManagerProvider>
+  );
+}
+
+/**
+ * Inner content component that uses LayerManager context
+ */
+function PortalMapContent() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { selectedClientId, accessibleClients, isInternalUser, viewMode } = usePortal();
   const { trackEvent } = usePortalActivityTracker();
+  const { refreshLayer } = useLayerManager();
 
   // Show broker features only when internal user AND in broker view mode
   const showBrokerFeatures = isInternalUser && viewMode === 'broker';
@@ -451,9 +463,14 @@ export default function PortalMapPage() {
     return filtered;
   }, []);
 
+  // Handle status change from sidebar - refresh the map layer
+  const handleStatusChange = useCallback((_siteSubmitId: string, _newStageId: string, _newStageName: string) => {
+    // Refresh the site submits layer to update pin positions/colors
+    refreshLayer('site_submits');
+  }, [refreshLayer]);
+
   return (
-    <LayerManagerProvider>
-      <div className="h-[calc(100vh-64px)] relative">
+    <div className="h-[calc(100vh-64px)] relative">
         {/* Map Container */}
         <GoogleMapContainer
           height="100%"
@@ -849,6 +866,7 @@ export default function PortalMapPage() {
           siteSubmitId={selectedSiteSubmitId}
           isOpen={isSidebarOpen}
           onClose={handleCloseSidebar}
+          onStatusChange={handleStatusChange}
         />
 
         {/* Save Shape Modal - After quick draw (brokers only) */}
@@ -922,6 +940,5 @@ export default function PortalMapPage() {
           />
         )}
       </div>
-    </LayerManagerProvider>
   );
 }
