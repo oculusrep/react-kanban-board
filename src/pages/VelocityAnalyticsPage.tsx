@@ -64,15 +64,8 @@ export default function VelocityAnalyticsPage() {
   // Users list for broker assignment dropdown
   const [users, setUsers] = useState<User[]>([]);
 
-  // Stages we care about for velocity (active pipeline stages)
-  const velocityStages = [
-    'Prospect',
-    'Negotiating LOI',
-    'At Lease / PSA',
-    'Under Contract / Contingent',
-    'Booked',
-    'Executed Payable'
-  ];
+  // Dynamically loaded stages from the database
+  const [velocityStages, setVelocityStages] = useState<string[]>([]);
 
   useEffect(() => {
     document.title = "Deal Velocity Analytics | OVIS";
@@ -95,6 +88,25 @@ export default function VelocityAnalyticsPage() {
     try {
       setLoading(true);
       setError(null);
+
+      // Fetch active stages from the database (excluding Lost and Closed Paid for velocity tracking)
+      const { data: stageData, error: stageError } = await supabase
+        .from('deal_stage')
+        .select('id, label, sort_order')
+        .eq('active', true)
+        .order('sort_order', { ascending: true });
+
+      if (stageError) throw stageError;
+
+      // Filter to only include pipeline stages we want to track velocity for
+      // Exclude: Lost (not a normal pipeline progression), Closed Paid (end state)
+      const excludedStages = ['Lost', 'Closed Paid'];
+      const activeStages = (stageData || [])
+        .filter(s => !excludedStages.includes(s.label))
+        .map(s => s.label);
+
+      console.log('📊 Active velocity stages from DB:', activeStages);
+      setVelocityStages(activeStages);
 
       // First, check total records in the table for debugging
       const { count: totalCount } = await supabase
@@ -387,15 +399,19 @@ export default function VelocityAnalyticsPage() {
 
   const getVelocityColor = (days: number, stage: string): string => {
     // Different thresholds for different stages
+    // Stages with longer expected durations get higher thresholds
     const thresholds: Record<string, { good: number; warning: number }> = {
       'Prospect': { good: 30, warning: 60 },
       'Negotiating LOI': { good: 30, warning: 60 },
       'At Lease / PSA': { good: 45, warning: 90 },
+      'At Lease/PSA': { good: 45, warning: 90 }, // Handle both formats
       'Under Contract / Contingent': { good: 30, warning: 60 },
       'Booked': { good: 30, warning: 60 },
-      'Executed Payable': { good: 30, warning: 60 }
+      'Executed Payable': { good: 30, warning: 60 },
+      'Closed': { good: 30, warning: 60 },
     };
 
+    // Default thresholds for any stage not explicitly listed
     const threshold = thresholds[stage] || { good: 30, warning: 60 };
 
     if (days <= threshold.good) return 'bg-green-100 text-green-800';
