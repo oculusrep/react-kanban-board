@@ -3,6 +3,12 @@ import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { usePermissions } from '../hooks/usePermissions';
 
+interface User {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+}
+
 interface DealVelocityRecord {
   deal_id: string;
   deal_name: string;
@@ -54,6 +60,9 @@ export default function VelocityAnalyticsPage() {
 
   // Track expanded rows: "overall:Prospect", "broker:abc123:Negotiating LOI", etc.
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  // Users list for broker assignment dropdown
+  const [users, setUsers] = useState<User[]>([]);
 
   // Stages we care about for velocity (excluding Lost and Closed Paid which are terminal)
   const velocityStages = ['Prospect', 'Negotiating LOI', 'At Lease / PSA', 'Booked/Under Contract'];
@@ -137,26 +146,35 @@ export default function VelocityAnalyticsPage() {
 
       console.log('📊 Processed records with duration:', processedHistory.length);
 
-      // Fetch deal names
+      // Fetch deal names - batch to avoid URL too long error
       const dealIds = [...new Set(processedHistory.map(h => h.deal_id))];
-      const { data: dealsData } = await supabase
-        .from('deal')
-        .select('id, deal_name')
-        .in('id', dealIds);
-
       const dealMap = new Map<string, string>();
-      dealsData?.forEach(d => dealMap.set(d.id, d.deal_name || 'Untitled Deal'));
+
+      // Batch in chunks of 50 to avoid URL length limits
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < dealIds.length; i += BATCH_SIZE) {
+        const batch = dealIds.slice(i, i + BATCH_SIZE);
+        const { data: dealsData } = await supabase
+          .from('deal')
+          .select('id, deal_name')
+          .in('id', batch);
+        dealsData?.forEach(d => dealMap.set(d.id, d.deal_name || 'Untitled Deal'));
+      }
 
       // Fetch brokers (users)
       const { data: usersData } = await supabase
         .from('user')
-        .select('id, first_name, last_name');
+        .select('id, first_name, last_name')
+        .order('first_name');
 
       const userMap = new Map<string, string>();
       usersData?.forEach(u => {
         const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || 'Unknown';
         userMap.set(u.id, name);
       });
+
+      // Store users for broker assignment dropdown
+      setUsers(usersData || []);
 
       // Fetch clients
       const { data: clientsData } = await supabase
@@ -337,6 +355,23 @@ export default function VelocityAnalyticsPage() {
     );
   }
 
+  const handleBrokerChange = async (dealId: string, newOwnerId: string) => {
+    try {
+      const { error } = await supabase
+        .from('deal')
+        .update({ owner_id: newOwnerId })
+        .eq('id', dealId);
+
+      if (error) throw error;
+
+      // Reload data to reflect the change
+      loadVelocityData();
+    } catch (err) {
+      console.error('Error updating broker:', err);
+      alert('Failed to update broker');
+    }
+  };
+
   const formatDays = (days: number): string => {
     if (days < 1) return '< 1 day';
     if (days === 1) return '1 day';
@@ -387,8 +422,19 @@ export default function VelocityAnalyticsPage() {
                 </td>
               )}
               {showBroker && (
-                <td className="py-2 px-2 text-gray-600">
-                  {deal.broker_name || '—'}
+                <td className="py-2 px-2">
+                  <select
+                    value={deal.broker_id || ''}
+                    onChange={(e) => handleBrokerChange(deal.deal_id, e.target.value)}
+                    className="text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 py-1 px-2"
+                  >
+                    <option value="">— Unassigned —</option>
+                    {users.map(user => (
+                      <option key={user.id} value={user.id}>
+                        {[user.first_name, user.last_name].filter(Boolean).join(' ') || 'Unknown'}
+                      </option>
+                    ))}
+                  </select>
                 </td>
               )}
               <td className="py-2 px-2 text-right">
