@@ -89,6 +89,7 @@ export default function VelocityAnalyticsPage() {
 
       // Fetch all stage history - include records without duration_seconds
       // We'll calculate duration for active stages on the client side
+      // Note: The table uses changed_at/corrected_date, not entered_at/exited_at
       const { data: historyData, error: historyError } = await supabase
         .from('deal_stage_history')
         .select(`
@@ -96,8 +97,8 @@ export default function VelocityAnalyticsPage() {
           deal_id,
           to_stage_id,
           duration_seconds,
-          entered_at,
-          exited_at,
+          changed_at,
+          corrected_date,
           deal_owner_id,
           client_id,
           deal_stage!deal_stage_history_to_stage_id_fkey(label)
@@ -115,15 +116,16 @@ export default function VelocityAnalyticsPage() {
 
       if (historyError) throw historyError;
 
-      // Calculate duration for active stages (where exited_at is null)
-      // and use duration_seconds for completed stages
+      // Calculate duration for active stages (where duration_seconds is null)
+      // Active stages have a corrected_date/changed_at but no duration yet
       const now = new Date();
       const processedHistory = (historyData || []).map(record => {
         let effectiveDuration = record.duration_seconds;
 
-        // If no duration_seconds but has entered_at and no exited_at, it's an active stage
-        if (!effectiveDuration && record.entered_at && !record.exited_at) {
-          const enteredAt = new Date(record.entered_at);
+        // If no duration_seconds, calculate from corrected_date (or changed_at) to now
+        // This means the deal is still in this stage
+        if (!effectiveDuration) {
+          const enteredAt = new Date(record.corrected_date || record.changed_at);
           effectiveDuration = Math.floor((now.getTime() - enteredAt.getTime()) / 1000);
         }
 
