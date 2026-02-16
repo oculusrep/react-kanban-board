@@ -109,11 +109,14 @@ export default function VelocityAnalyticsPage() {
 
       // Fetch brokers (users)
       const { data: usersData } = await supabase
-        .from('profiles')
-        .select('id, full_name');
+        .from('user')
+        .select('id, first_name, last_name');
 
       const userMap = new Map<string, string>();
-      usersData?.forEach(u => userMap.set(u.id, u.full_name || 'Unknown'));
+      usersData?.forEach(u => {
+        const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || 'Unknown';
+        userMap.set(u.id, name);
+      });
 
       // Fetch clients
       const { data: clientsData } = await supabase
