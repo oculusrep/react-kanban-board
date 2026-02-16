@@ -60,7 +60,7 @@ export default function PortalMapPage() {
  */
 function PortalMapContent() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { selectedClientId, accessibleClients, isInternalUser, viewMode } = usePortal();
+  const { selectedClientId, accessibleClients, isInternalUser, viewMode, triggerSiteSubmitRefresh } = usePortal();
   const { trackEvent } = usePortalActivityTracker();
   const { refreshLayer } = useLayerManager();
 
@@ -463,11 +463,13 @@ function PortalMapContent() {
     return filtered;
   }, []);
 
-  // Handle status change from sidebar - refresh the map layer
+  // Handle status change from sidebar - refresh the map layer and trigger portal-wide refresh
   const handleStatusChange = useCallback((_siteSubmitId: string, _newStageId: string, _newStageName: string) => {
     // Refresh the site submits layer to update pin positions/colors
     refreshLayer('site_submits');
-  }, [refreshLayer]);
+    // Trigger refresh for other portal pages (e.g., pipeline) when navigating
+    triggerSiteSubmitRefresh();
+  }, [refreshLayer, triggerSiteSubmitRefresh]);
 
   return (
     <div className="h-[calc(100vh-64px)] relative">

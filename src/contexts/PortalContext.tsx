@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabaseClient';
 
@@ -31,6 +31,10 @@ interface PortalContextType {
 
   // Refresh function
   refreshClients: () => Promise<void>;
+
+  // Site submit refresh trigger - increment to force refetch across portal pages
+  siteSubmitRefreshTrigger: number;
+  triggerSiteSubmitRefresh: () => void;
 }
 
 const PortalContext = createContext<PortalContextType | undefined>(undefined);
@@ -55,8 +59,14 @@ export function PortalProvider({ children }: PortalProviderProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<PortalViewMode>('broker');
+  const [siteSubmitRefreshTrigger, setSiteSubmitRefreshTrigger] = useState(0);
 
   const isInternalUser = userRole ? ['admin', 'broker_full', 'broker_limited', 'assistant'].includes(userRole) : false;
+
+  // Trigger to force site submit data refresh across portal pages
+  const triggerSiteSubmitRefresh = useCallback(() => {
+    setSiteSubmitRefreshTrigger(prev => prev + 1);
+  }, []);
 
   // Track if we've already done the initial fetch for this user
   // This prevents re-fetching when tab regains focus and auth token refreshes
@@ -198,6 +208,8 @@ export function PortalProvider({ children }: PortalProviderProps) {
     loading,
     error,
     refreshClients,
+    siteSubmitRefreshTrigger,
+    triggerSiteSubmitRefresh,
   };
 
   return (

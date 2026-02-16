@@ -80,7 +80,7 @@ const VISIBLE_STAGES = [
  * PortalPipelinePage - Pipeline table view for the client portal
  */
 export default function PortalPipelinePage() {
-  const { selectedClient, selectedClientId, accessibleClients, isInternalUser, viewMode } = usePortal();
+  const { selectedClient, selectedClientId, accessibleClients, isInternalUser, viewMode, siteSubmitRefreshTrigger } = usePortal();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   usePortalActivityTracker(); // Auto-tracks page views
@@ -301,7 +301,7 @@ export default function PortalPipelinePage() {
     }
 
     fetchSiteSubmits();
-  }, [selectedClientId, accessibleClients]);
+  }, [selectedClientId, accessibleClients, siteSubmitRefreshTrigger]);
 
   // Fetch viewed site submits for read/unread tracking
   useEffect(() => {
