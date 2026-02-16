@@ -137,6 +137,14 @@ export default function ReportsPage() {
       route: "/reports/velocity-analytics",
       icon: "⏱️",
       permission: "can_view_velocity_analytics"
+    },
+    {
+      id: "historical-velocity",
+      name: "Historical Velocity",
+      description: "Average time closed deals spent in each stage, broken down by year",
+      route: "/reports/historical-velocity",
+      icon: "📅",
+      permission: "can_view_velocity_analytics"
     }
   ];
 

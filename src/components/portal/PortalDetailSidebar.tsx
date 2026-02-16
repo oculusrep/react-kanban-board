@@ -60,6 +60,7 @@ interface PortalDetailSidebarProps {
   siteSubmitId: string | null;
   isOpen: boolean;
   onClose: () => void;
+  onStatusChange?: (siteSubmitId: string, newStageId: string, newStageName: string) => void;
 }
 
 /**
@@ -75,6 +76,7 @@ export default function PortalDetailSidebar({
   siteSubmitId,
   isOpen,
   onClose,
+  onStatusChange,
 }: PortalDetailSidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -335,6 +337,10 @@ export default function PortalDetailSidebar({
                     submit_stage_id: newStageId,
                     submit_stage: { id: newStageId, name: newStageName },
                   });
+                  // Notify parent to update pipeline view
+                  if (onStatusChange) {
+                    onStatusChange(siteSubmit.id, newStageId, newStageName);
+                  }
                 }}
               />
             ) : (

@@ -883,6 +883,7 @@ export default function PortalPipelinePage() {
         siteSubmitId={selectedSiteSubmitId}
         isOpen={sidebarOpen}
         onClose={handleCloseSidebar}
+        onStatusChange={handleStatusChange}
       />
     </div>
   );
