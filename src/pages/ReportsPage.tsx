@@ -129,6 +129,14 @@ export default function ReportsPage() {
       route: "/reports/unpaid-referral-fees",
       icon: "🤝",
       permission: "can_view_unpaid_referral_fees_report"
+    },
+    {
+      id: "velocity-analytics",
+      name: "Deal Velocity Analytics",
+      description: "Analyze how long deals spend in each pipeline stage by broker and client",
+      route: "/reports/velocity-analytics",
+      icon: "⏱️",
+      permission: "can_view_goal_dashboard"
     }
   ];
 

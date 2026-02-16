@@ -90,6 +90,13 @@ export interface DealCard {
   property_name?: string | null;
   // AI synopsis alert level for Kanban indicators
   synopsis_alert_level?: 'green' | 'yellow' | 'red' | null;
+  // Kanban-specific fields
+  fee?: number | null;
+  stage_id?: string | null;
+  kanban_position?: number | null;
+  closed_date?: string | null;
+  created_at?: string | null;
+  last_stage_change_at?: string | null;
 }
 
 export interface Client {

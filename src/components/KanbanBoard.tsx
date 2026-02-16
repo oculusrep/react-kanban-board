@@ -38,6 +38,18 @@ export default function KanbanBoard() {
   const [showBookedDateModal, setShowBookedDateModal] = useState(false);
   const [currentBookedDate, setCurrentBookedDate] = useState<string | null>(null);
 
+  // Helper function to calculate days in current stage
+  const getDaysInStage = (lastStageChangeAt: string | null | undefined): number => {
+    if (!lastStageChangeAt) return 0;
+    const changeDate = new Date(lastStageChangeAt);
+    const now = new Date();
+    const diffTime = now.getTime() - changeDate.getTime();
+    return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  // Stages where >30 days is considered stale
+  const staleStages = ['Negotiating LOI', 'At Lease / PSA'];
+
   useEffect(() => {
     setLocalCards(cards);
   }, [cards]);
@@ -603,6 +615,26 @@ export default function KanbanBoard() {
                               <div className="text-gray-800">
                                 {formatCurrency(card.deal_value)}
                               </div>
+                              {/* Days in Stage Badge */}
+                              {(() => {
+                                const daysInStage = getDaysInStage(card.last_stage_change_at);
+                                const isStale = daysInStage > 30 && staleStages.includes(column.label);
+                                if (daysInStage > 0) {
+                                  return (
+                                    <div
+                                      className={`mt-1 text-xs px-2 py-0.5 rounded-full inline-block ${
+                                        isStale
+                                          ? 'bg-red-100 text-red-700 font-medium'
+                                          : 'bg-gray-100 text-gray-500'
+                                      }`}
+                                      title={`${daysInStage} days in ${column.label}`}
+                                    >
+                                      {daysInStage}d in stage
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })()}
                             </div>
                           )}
                         </Draggable>
