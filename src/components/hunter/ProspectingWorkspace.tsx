@@ -376,7 +376,7 @@ export default function ProspectingWorkspace() {
 
       setNewHunterLeads((newLeads || []) as NewHunterLead[]);
 
-      // Fetch contacts with prospecting activity logged today (excluding hidden activities)
+      // Fetch contacts with prospecting activity logged today
       const { data: recentlyContactedData } = await supabase
         .from('prospecting_activity')
         .select(`
@@ -390,19 +390,22 @@ export default function ProspectingWorkspace() {
         `)
         .gte('created_at', todayStart)
         .lte('created_at', todayEnd)
-        .or('hidden_from_timeline.is.null,hidden_from_timeline.eq.false')
         .order('created_at', { ascending: false });
 
-      // Deduplicate contacts and calculate stats
+      // Deduplicate contacts and calculate stats (excluding hidden activities from counts)
       const contactMap = new Map<string, ContactDetails>();
       let emailCount = 0;
       let callCount = 0;
       interface ActivityItem {
         contact_id: string;
         activity_type?: string;
+        hidden_from_timeline?: boolean;
         contact: ContactDetails | null;
       }
       (recentlyContactedData || []).forEach((item: ActivityItem) => {
+        // Skip hidden activities for scorecard counts
+        if (item.hidden_from_timeline === true) return;
+
         if (item.contact && !contactMap.has(item.contact_id)) {
           contactMap.set(item.contact_id, item.contact as ContactDetails);
         }
