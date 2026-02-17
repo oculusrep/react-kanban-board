@@ -399,7 +399,8 @@ export default function ProspectingWorkspace() {
         .order('created_at', { ascending: false })
         .limit(500);
 
-      // Query 2: activity table with is_prospecting=true
+      // Query 2: activity table with is_prospecting=true OR is_prospecting_call=true
+      // Note: is_prospecting is the general flag, is_prospecting_call is set by LogCallModal
       const { data: mainActivityData } = await supabase
         .from('activity')
         .select(`
@@ -409,7 +410,7 @@ export default function ProspectingWorkspace() {
           completed_call,
           meeting_held
         `)
-        .eq('is_prospecting', true)
+        .or('is_prospecting.eq.true,is_prospecting_call.eq.true')
         .gte('created_at', todayStart)
         .order('created_at', { ascending: false })
         .limit(500);
