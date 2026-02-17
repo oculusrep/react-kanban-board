@@ -1592,22 +1592,29 @@ export default function ProspectingWorkspace() {
         {/* Stats Row - Tasks and Leads */}
         <div className="flex gap-4 mb-4 flex-shrink-0">
           {/* Task Stats */}
-          <div className="flex gap-4">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 min-w-[100px]">
-              <p className="text-3xl font-bold text-blue-600">{followUpsDue.length}</p>
-              <p className="text-sm text-gray-500">Due Today</p>
+          {/* Task Queue Stats */}
+          <div className="bg-gradient-to-br from-gray-50 to-white rounded-xl shadow-sm border-2 border-gray-200 p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <ClipboardDocumentListIcon className="w-4 h-4 text-gray-500" />
+              <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Task Queue</h3>
             </div>
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 min-w-[100px]">
-              <p className="text-3xl font-bold text-red-600">{overdueFollowUps.length}</p>
-              <p className="text-sm text-gray-500">Overdue</p>
-            </div>
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 min-w-[100px]">
-              <p className="text-3xl font-bold text-purple-600">{overdueFollowUps.length + followUpsDue.length}</p>
-              <p className="text-sm text-gray-500">Total Tasks</p>
-            </div>
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 min-w-[100px]">
-              <p className="text-3xl font-bold text-orange-600">{newHunterLeads.length}</p>
-              <p className="text-sm text-gray-500">New Leads</p>
+            <div className="grid grid-cols-4 gap-2">
+              <div className="bg-white rounded-lg shadow-sm border border-blue-200 p-3 text-center">
+                <p className="text-2xl font-bold text-blue-600">{followUpsDue.length}</p>
+                <p className="text-xs text-gray-500">Due Today</p>
+              </div>
+              <div className="bg-white rounded-lg shadow-sm border border-red-200 p-3 text-center">
+                <p className="text-2xl font-bold text-red-600">{overdueFollowUps.length}</p>
+                <p className="text-xs text-gray-500">Overdue</p>
+              </div>
+              <div className="bg-white rounded-lg shadow-sm border border-purple-200 p-3 text-center">
+                <p className="text-2xl font-bold text-purple-600">{overdueFollowUps.length + followUpsDue.length}</p>
+                <p className="text-xs text-gray-500">Total</p>
+              </div>
+              <div className="bg-white rounded-lg shadow-sm border border-orange-200 p-3 text-center">
+                <p className="text-2xl font-bold text-orange-600">{newHunterLeads.length}</p>
+                <p className="text-xs text-gray-500">New Leads</p>
+              </div>
             </div>
           </div>
 
