@@ -379,8 +379,9 @@ export default function ProspectingWorkspace() {
 
       // Fetch contacts with prospecting activity logged today
       // Note: hidden_from_timeline column may not exist yet - don't select it to avoid query failure
-      // Use .and() with combined filter to avoid duplicate query params (PostgREST rejects duplicate column names)
-      const { data: recentlyContactedData, error: recentlyContactedError } = await supabase
+      // PostgREST doesn't support multiple filters on the same column, so fetch recent activities
+      // and filter in JS to avoid 400 error
+      const { data: recentActivityData, error: recentlyContactedError } = await supabase
         .from('prospecting_activity')
         .select(`
           contact_id,
@@ -391,15 +392,22 @@ export default function ProspectingWorkspace() {
           )
         `)
         .gte('created_at', todayStart)
-        .lt('created_at', new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0).toISOString())
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(500);
+
+      // Filter to only include activities from today (in local timezone)
+      const todayEndTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0).getTime();
+      const recentlyContactedData = (recentActivityData || []).filter(item => {
+        const itemTime = new Date(item.created_at).getTime();
+        return itemTime < todayEndTime;
+      });
 
       console.log('📊 Scorecard Debug:', {
         todayStart,
-        todayEnd,
-        recentlyContactedData,
-        recentlyContactedError,
-        count: recentlyContactedData?.length || 0
+        todayEndTime: new Date(todayEndTime).toISOString(),
+        rawCount: recentActivityData?.length || 0,
+        filteredCount: recentlyContactedData?.length || 0,
+        recentlyContactedError
       });
 
       // Deduplicate contacts and calculate stats
