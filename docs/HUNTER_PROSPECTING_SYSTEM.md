@@ -43,7 +43,10 @@ News Sources → Hunter Agent → Signals → Targets → Contacts → Deals
 
 > **Note:** The Hunter scorecard aggregates activities from BOTH tables:
 > - `prospecting_activity` - Activities logged via Hunter workspace
-> - `activity` where `is_prospecting=true` - Activities logged via Contact page with prospecting flag
+> - `activity` table entries matching ANY of these criteria:
+>   - `is_prospecting=true` - General prospecting flag
+>   - `is_prospecting_call=true` - Prospecting call flag (set by LogCallModal)
+>   - `completed_call=true` - Any completed call (ensures call connects appear regardless of prospecting flags)
 
 ---
 
@@ -350,6 +353,14 @@ Settings stored in `prospecting_settings` table:
 - Ensure activities are being logged with correct types
 - Check the view definition matches your activity type IDs
 
+**Call connects not appearing in Hunter scorecard**
+- The scorecard queries both `prospecting_activity` and `activity` tables
+- For activities in the `activity` table, at least one of these must be true:
+  - `is_prospecting = true`
+  - `is_prospecting_call = true`
+  - `completed_call = true`
+- Call type mapping: `completed_call=true` → Call Connect, `completed_call=false` → Voicemail
+
 ---
 
 ## Related Documentation
@@ -363,7 +374,8 @@ Settings stored in `prospecting_settings` table:
 
 | Date | Changes |
 |------|---------|
-| 2026-02-17 | Hunter scorecard now counts activities from both `prospecting_activity` AND `activity` tables (with `is_prospecting=true`) |
+| 2026-02-17 | Fixed scorecard to include calls with `completed_call=true` regardless of prospecting flags |
+| 2026-02-17 | Hunter scorecard now counts activities from both `prospecting_activity` AND `activity` tables |
 | 2026-02-17 | ProspectingWorkspace Email History tab: click-to-expand emails with subject/date in collapsed view |
 | 2026-02-17 | ProspectingWorkspace Activity tab: hide email body, show subject only |
 | 2026-02-17 | Expanded scorecard to 6 activity types (Email, LinkedIn, SMS, Voicemail, Call, Meeting) |

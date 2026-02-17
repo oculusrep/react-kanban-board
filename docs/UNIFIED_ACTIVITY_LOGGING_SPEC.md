@@ -125,7 +125,7 @@ WHERE a.is_prospecting = true
 After migration, revert ProspectingWorkspace scorecard to single-table query:
 
 ```typescript
-// Before (current - dual table)
+// Current implementation (dual table with expanded filters)
 const { data: prospectingData } = await supabase
   .from('prospecting_activity')
   .select('...');
@@ -133,9 +133,13 @@ const { data: prospectingData } = await supabase
 const { data: activityData } = await supabase
   .from('activity')
   .select('...')
-  .eq('is_prospecting', true);
+  .or('is_prospecting.eq.true,is_prospecting_call.eq.true,completed_call.eq.true');
 
-// After (unified)
+// Activity type mapping for calls:
+// - completed_call=true → 'call' (Call Connect)
+// - completed_call=false → 'voicemail' (Left message, didn't connect)
+
+// After unified (future)
 const { data } = await supabase
   .from('prospecting_activity')
   .select('contact_id, activity_type, created_at, hidden_from_timeline')
