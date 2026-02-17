@@ -116,6 +116,9 @@ export default function ContactDetailDrawer({
   // Clipboard state
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
+  // Expanded email state (for Email History tab)
+  const [expandedEmailIds, setExpandedEmailIds] = useState<Set<string>>(new Set());
+
   // Use the timeline hook
   const {
     items: timelineItems,
@@ -679,11 +682,9 @@ export default function ContactDetailDrawer({
                                   {(item.email_subject || item.subject) && (
                                     <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject || item.subject}</p>
                                   )}
-                                  {item.content && (
+                                  {/* For non-email items, show content. For emails, don't show body in activity tab */}
+                                  {item.content && !['email', 'email_sent', 'email_received'].includes(item.type) && (
                                     <p className="text-sm text-gray-600 whitespace-pre-wrap mt-1">{item.content}</p>
-                                  )}
-                                  {item.email_body_preview && !item.content && (
-                                    <p className="text-sm text-gray-600 mt-1 line-clamp-2">{item.email_body_preview}</p>
                                   )}
                                   {item.source === 'activity' && (
                                     <span className="inline-flex items-center mt-1 text-xs text-gray-400">
@@ -754,40 +755,65 @@ export default function ContactDetailDrawer({
                           <div className="divide-y divide-gray-100">
                             {timelineItems
                               .filter(item => ['email', 'email_sent', 'email_received'].includes(item.type))
-                              .map((item) => (
-                                <div key={item.id} className="p-4 hover:bg-gray-50">
-                                  <div className="flex items-start gap-3">
-                                    <div className={`p-2 rounded-full ${
-                                      item.type === 'email_received' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'
-                                    }`}>
-                                      <EnvelopeIcon className="w-4 h-4" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center justify-between">
-                                        <span className={`text-sm font-medium ${
-                                          item.type === 'email_received' ? 'text-green-700' : 'text-blue-700'
-                                        }`}>
-                                          {item.type === 'email_received' ? 'Email Received' : 'Email Sent'}
-                                        </span>
-                                        <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
+                              .map((item) => {
+                                const isExpanded = expandedEmailIds.has(item.id);
+                                const hasBody = item.email_body_preview || item.content;
+                                return (
+                                  <div
+                                    key={item.id}
+                                    className={`p-4 hover:bg-gray-50 ${hasBody ? 'cursor-pointer' : ''}`}
+                                    onClick={() => {
+                                      if (hasBody) {
+                                        setExpandedEmailIds(prev => {
+                                          const next = new Set(prev);
+                                          if (next.has(item.id)) {
+                                            next.delete(item.id);
+                                          } else {
+                                            next.add(item.id);
+                                          }
+                                          return next;
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    <div className="flex items-start gap-3">
+                                      <div className={`p-2 rounded-full ${
+                                        item.type === 'email_received' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'
+                                      }`}>
+                                        <EnvelopeIcon className="w-4 h-4" />
                                       </div>
-                                      {item.email_subject && (
-                                        <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject}</p>
-                                      )}
-                                      {(item.email_body_preview || item.content) && (
-                                        <p className="text-sm text-gray-600 mt-1 line-clamp-3">
-                                          {item.email_body_preview || item.content}
-                                        </p>
-                                      )}
-                                      {item.sender_email && item.type === 'email_received' && (
-                                        <p className="text-xs text-gray-400 mt-1">
-                                          From: {item.sender_name || item.sender_email}
-                                        </p>
-                                      )}
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between">
+                                          <span className={`text-sm font-medium ${
+                                            item.type === 'email_received' ? 'text-green-700' : 'text-blue-700'
+                                          }`}>
+                                            {item.type === 'email_received' ? 'Email Received' : 'Email Sent'}
+                                          </span>
+                                          <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
+                                        </div>
+                                        {item.email_subject && (
+                                          <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject}</p>
+                                        )}
+                                        {item.sender_email && item.type === 'email_received' && (
+                                          <p className="text-xs text-gray-400 mt-1">
+                                            From: {item.sender_name || item.sender_email}
+                                          </p>
+                                        )}
+                                        {/* Expandable email body */}
+                                        {isExpanded && hasBody && (
+                                          <div
+                                            className="text-sm text-gray-600 mt-3 pt-3 border-t border-gray-100 whitespace-pre-wrap"
+                                            dangerouslySetInnerHTML={{ __html: item.content || item.email_body_preview || '' }}
+                                          />
+                                        )}
+                                        {!isExpanded && hasBody && (
+                                          <p className="text-xs text-gray-400 mt-2">Click to expand</p>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                           </div>
                         )}
                       </>
