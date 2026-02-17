@@ -387,10 +387,29 @@ export default function ProspectingWorkspace() {
 
       setNewHunterLeads((newLeads || []) as NewHunterLead[]);
 
-      // Fetch prospecting activities logged today (simple query without joins to avoid 400 errors)
+      // Fetch prospecting activities logged today from BOTH tables:
+      // 1. prospecting_activity table (Hunter activities)
+      // 2. activity table where is_prospecting=true (Contact page activities)
+
+      // Query 1: prospecting_activity table
       const { data: rawActivityData } = await supabase
         .from('prospecting_activity')
         .select('contact_id, activity_type, created_at, hidden_from_timeline')
+        .gte('created_at', todayStart)
+        .order('created_at', { ascending: false })
+        .limit(500);
+
+      // Query 2: activity table with is_prospecting=true
+      const { data: mainActivityData } = await supabase
+        .from('activity')
+        .select(`
+          contact_id,
+          created_at,
+          activity_type:activity_type_id (name),
+          completed_call,
+          meeting_held
+        `)
+        .eq('is_prospecting', true)
         .gte('created_at', todayStart)
         .order('created_at', { ascending: false })
         .limit(500);
@@ -404,8 +423,54 @@ export default function ProspectingWorkspace() {
         return isToday && isVisible;
       });
 
+      // Map main activity table records to prospecting format
+      // Mapping rules:
+      // - Call type + completed_call=true → 'call' (connected)
+      // - Call type + completed_call=false → 'voicemail' (left message, didn't reach)
+      // - Email → 'email'
+      // - Meeting or meeting_held=true → 'meeting'
+      // - LinkedIn → 'linkedin'
+      // - SMS → 'sms'
+      // - Voicemail → 'voicemail'
+      const mainActivitiesToday = (mainActivityData || []).filter(item => {
+        const itemDate = new Date(item.created_at);
+        return itemDate <= todayEndDate;
+      }).map(item => {
+        const actTypeName = ((item.activity_type as { name?: string })?.name || '').toLowerCase();
+        let activity_type = 'task';
+
+        if (actTypeName === 'call' || actTypeName.includes('call')) {
+          // Call type: completed_call determines if they connected or left voicemail
+          activity_type = item.completed_call ? 'call' : 'voicemail';
+        } else if (actTypeName === 'email') {
+          activity_type = 'email';
+        } else if (actTypeName === 'meeting' || item.meeting_held) {
+          activity_type = 'meeting';
+        } else if (actTypeName === 'linkedin') {
+          activity_type = 'linkedin';
+        } else if (actTypeName === 'sms' || actTypeName.includes('text')) {
+          activity_type = 'sms';
+        } else if (actTypeName === 'voicemail') {
+          activity_type = 'voicemail';
+        }
+
+        return {
+          contact_id: item.contact_id,
+          activity_type,
+          created_at: item.created_at,
+          hidden_from_timeline: false,
+          source: 'activity' as const
+        };
+      });
+
+      // Combine activities from both tables
+      const allTodayActivities = [
+        ...todayActivities.map(a => ({ ...a, source: 'prospecting_activity' as const })),
+        ...mainActivitiesToday
+      ];
+
       // Get unique contact IDs and fetch contact details separately
-      const contactIds = [...new Set(todayActivities.map(a => a.contact_id).filter(Boolean))] as string[];
+      const contactIds = [...new Set(allTodayActivities.map(a => a.contact_id).filter(Boolean))] as string[];
       let contactsById: Record<string, ContactDetails> = {};
 
       if (contactIds.length > 0) {
@@ -430,12 +495,12 @@ export default function ProspectingWorkspace() {
         meetings: 0,
       };
 
-      todayActivities.forEach((item) => {
+      allTodayActivities.forEach((item) => {
         const contact = item.contact_id ? contactsById[item.contact_id] : null;
         if (contact && !contactMap.has(item.contact_id)) {
           contactMap.set(item.contact_id, contact);
         }
-        // Count each activity type
+        // Count each activity type (skip 'task' type from activity table)
         switch (item.activity_type) {
           case 'email':
             activityCounts.emails++;

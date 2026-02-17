@@ -38,7 +38,12 @@ News Sources → Hunter Agent → Signals → Targets → Contacts → Deals
 | `hunter_outreach_draft` | AI-generated email/voicemail drafts |
 | `hunter_feedback` | User feedback to improve AI scoring |
 | `contact` | People at target companies (with `target_id` link) |
-| `activity` | Prospecting activities (with `is_prospecting` flag) |
+| `prospecting_activity` | Hunter-logged activities (email, linkedin, sms, voicemail, call, meeting) |
+| `activity` | CRM activities (with `is_prospecting` flag for prospecting tasks) |
+
+> **Note:** The Hunter scorecard aggregates activities from BOTH tables:
+> - `prospecting_activity` - Activities logged via Hunter workspace
+> - `activity` where `is_prospecting=true` - Activities logged via Contact page with prospecting flag
 
 ---
 
@@ -358,6 +363,7 @@ Settings stored in `prospecting_settings` table:
 
 | Date | Changes |
 |------|---------|
+| 2026-02-17 | Hunter scorecard now counts activities from both `prospecting_activity` AND `activity` tables (with `is_prospecting=true`) |
 | 2026-02-17 | ProspectingWorkspace Email History tab: click-to-expand emails with subject/date in collapsed view |
 | 2026-02-17 | ProspectingWorkspace Activity tab: hide email body, show subject only |
 | 2026-02-17 | Expanded scorecard to 6 activity types (Email, LinkedIn, SMS, Voicemail, Call, Meeting) |
