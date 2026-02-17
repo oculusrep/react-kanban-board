@@ -1,7 +1,7 @@
 # Hunter AI Prospecting System
 
-**Last Updated:** 2026-02-12
-**Status:** Phase 1 Complete, Phase 2 Planned
+**Last Updated:** 2026-02-17
+**Status:** Phase 1 Complete, Phase 2 In Progress
 
 ---
 
@@ -74,6 +74,21 @@ Comprehensive view of a single target with:
 
 ### Features Implemented
 
+#### ProspectingWorkspace (`/hunter`)
+The main prospecting interface with:
+
+- **Daily Scorecard** - Real-time activity tracking with 6 individual cards:
+  - Emails Sent (blue)
+  - LinkedIn (indigo)
+  - SMS (purple)
+  - Voicemail (orange)
+  - Call Connect (emerald)
+  - Meeting Held (teal)
+- **Task List** - Follow-ups due today and overdue
+- **New Leads** - Recently discovered targets
+- **Find Contact** - Search across all contacts
+- **Contact Detail Drawer** - Slide-out panel with unified timeline
+
 #### Today's Plan Dashboard
 - **Today's Progress stats** - Follow-ups due, overdue count, new leads, calls made, meetings
 - **Outreach This Week** - Metrics for emails, LinkedIn, SMS, voicemails, calls, meetings, total touches
@@ -140,6 +155,7 @@ src/
 │   └── HunterLeadDetailsPage.tsx    # Target detail page
 ├── components/
 │   ├── hunter/
+│   │   ├── ProspectingWorkspace.tsx # Main prospecting command center
 │   │   ├── HunterLeadsTab.tsx       # Targets list with filters
 │   │   ├── HunterOutreachTab.tsx    # Outreach draft queue
 │   │   ├── HunterSourcesTab.tsx     # News sources management
@@ -151,15 +167,22 @@ src/
 │   │   ├── DismissTargetModal.tsx   # Dismiss with reason
 │   │   ├── ProspectingDashboard.tsx # Legacy dashboard (reference)
 │   │   └── TimeEntryModal.tsx       # Time tracking
+│   ├── contact/
+│   │   └── ContactDetailDrawer/     # Reusable contact drawer
+│   │       ├── ContactDetailDrawer.tsx  # Main container
+│   │       ├── types.ts             # Component props/types
+│   │       └── index.ts             # Re-exports
 │   └── prospecting/
 │       ├── TodaysPlan.tsx           # Today's Plan tab
 │       └── AddTargetModal.tsx       # Manual target creation
 ├── hooks/
+│   ├── useContactTimeline.ts        # Unified timeline from all sources
 │   ├── useProspectingMetrics.ts     # Weekly metrics data
 │   ├── useProspectingActivities.ts  # Activity logging
 │   ├── useProspectingNotes.ts       # Notes CRUD
 │   └── useProspectingTime.ts        # Time tracking
 └── types/
+    ├── timeline.ts                  # UnifiedTimelineItem types
     └── prospecting.ts               # Type definitions
 ```
 
@@ -335,6 +358,14 @@ Settings stored in `prospecting_settings` table:
 
 | Date | Changes |
 |------|---------|
+| 2026-02-17 | Expanded scorecard to 6 activity types (Email, LinkedIn, SMS, Voicemail, Call, Meeting) |
+| 2026-02-17 | Added `hidden_from_timeline` column to prospecting_activity table |
+| 2026-02-17 | Hidden activities excluded from scorecard counts and Activity tab |
+| 2026-02-17 | Email display fixed - Activity tab shows subject only, Email History has expandable body |
+| 2026-02-17 | Gmail sender name now displays properly via RFC 2047 encoding |
+| 2026-02-17 | Added Find Contact modal to ProspectingWorkspace |
+| 2026-02-17 | Created ContactDetailDrawer reusable component |
+| 2026-02-17 | Created useContactTimeline hook for unified timeline data |
 | 2026-02-12 | Initial Hunter/Prospecting system implementation |
 | 2026-02-12 | Merged Hunter and Prospecting dashboards |
 | 2026-02-12 | Added Today's Plan as default landing page |
