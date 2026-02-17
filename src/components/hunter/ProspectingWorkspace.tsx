@@ -306,10 +306,10 @@ export default function ProspectingWorkspace() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // Use local timezone for "today" calculations, then convert to ISO for Supabase
-      const now = new Date();
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).toISOString();
-      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
+      // Use simple date strings (Supabase interprets these as-is without timezone conversion)
+      const today = new Date().toISOString().split('T')[0];
+      const todayStart = `${today}T00:00:00`;
+      const todayEnd = `${today}T23:59:59`;
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -378,52 +378,19 @@ export default function ProspectingWorkspace() {
       setNewHunterLeads((newLeads || []) as NewHunterLead[]);
 
       // Fetch contacts with prospecting activity logged today
-      // Note: hidden_from_timeline column may not exist yet - don't select it to avoid query failure
-      // First, fetch activity data (simple query)
-      const { data: recentActivityData, error: activityError } = await supabase
+      const { data: recentlyContactedData } = await supabase
         .from('prospecting_activity')
-        .select('id, contact_id, activity_type, created_at')
+        .select(`
+          contact_id,
+          activity_type,
+          created_at,
+          contact:contact!fk_prospecting_activity_contact_id(
+            id, first_name, last_name, company, email, phone, mobile_phone, title, target_id
+          )
+        `)
         .gte('created_at', todayStart)
-        .order('created_at', { ascending: false })
-        .limit(500);
-
-      // Filter to only include activities from today (in local timezone)
-      const todayEndTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0).getTime();
-      const todayActivities = (recentActivityData || []).filter(item => {
-        const itemTime = new Date(item.created_at).getTime();
-        return itemTime < todayEndTime;
-      });
-
-      // Get unique contact IDs from today's activities
-      const contactIds = [...new Set(todayActivities.map(a => a.contact_id).filter(Boolean))];
-
-      // Fetch contact details separately if we have contacts
-      let contactsById: Record<string, ContactDetails> = {};
-      if (contactIds.length > 0) {
-        const { data: contactData } = await supabase
-          .from('contact')
-          .select('id, first_name, last_name, company, email, phone, mobile_phone, title, target_id')
-          .in('id', contactIds);
-
-        (contactData || []).forEach(c => {
-          contactsById[c.id] = c as ContactDetails;
-        });
-      }
-
-      // Combine activity data with contact data
-      const recentlyContactedData = todayActivities.map(activity => ({
-        ...activity,
-        contact: activity.contact_id ? contactsById[activity.contact_id] || null : null
-      }));
-
-      console.log('📊 Scorecard Debug:', {
-        todayStart,
-        todayEndTime: new Date(todayEndTime).toISOString(),
-        rawCount: recentActivityData?.length || 0,
-        filteredCount: todayActivities.length,
-        contactIds: contactIds.length,
-        activityError
-      });
+        .lte('created_at', todayEnd)
+        .order('created_at', { ascending: false });
 
       // Deduplicate contacts and calculate stats
       const contactMap = new Map<string, ContactDetails>();
