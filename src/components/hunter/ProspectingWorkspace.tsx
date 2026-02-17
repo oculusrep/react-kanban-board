@@ -306,9 +306,10 @@ export default function ProspectingWorkspace() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const todayStart = `${today}T00:00:00`;
-      const todayEnd = `${today}T23:59:59`;
+      // Use local timezone for "today" calculations, then convert to ISO for Supabase
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).toISOString();
+      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
