@@ -377,8 +377,9 @@ export default function ProspectingWorkspace() {
 
       setNewHunterLeads((newLeads || []) as NewHunterLead[]);
 
-      // Fetch contacts with prospecting activity logged today (excluding hidden activities)
-      const { data: recentlyContactedData } = await supabase
+      // Fetch contacts with prospecting activity logged today
+      // Use single date filter to avoid PostgREST 400 error, then filter in JS
+      const { data: rawActivityData } = await supabase
         .from('prospecting_activity')
         .select(`
           contact_id,
@@ -390,9 +391,17 @@ export default function ProspectingWorkspace() {
           )
         `)
         .gte('created_at', todayStart)
-        .lte('created_at', todayEnd)
-        .or('hidden_from_timeline.is.null,hidden_from_timeline.eq.false')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(500);
+
+      // Filter to today only and exclude hidden activities
+      const todayEndDate = new Date(`${today}T23:59:59`);
+      const recentlyContactedData = (rawActivityData || []).filter(item => {
+        const itemDate = new Date(item.created_at);
+        const isToday = itemDate <= todayEndDate;
+        const isVisible = !item.hidden_from_timeline;
+        return isToday && isVisible;
+      });
 
       // Deduplicate contacts and calculate stats
       const contactMap = new Map<string, ContactDetails>();
@@ -408,7 +417,7 @@ export default function ProspectingWorkspace() {
         if (item.contact && !contactMap.has(item.contact_id)) {
           contactMap.set(item.contact_id, item.contact as ContactDetails);
         }
-        // Count activity types (only non-hidden)
+        // Count activity types
         if (item.activity_type === 'email') emailCount++;
         if (item.activity_type === 'call') callCount++;
       });
