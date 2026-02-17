@@ -401,19 +401,29 @@ export default function ProspectingWorkspace() {
 
       // Query 2: activity table with is_prospecting=true OR is_prospecting_call=true
       // Note: is_prospecting is the general flag, is_prospecting_call is set by LogCallModal
-      const { data: mainActivityData } = await supabase
+      const { data: mainActivityData, error: activityError } = await supabase
         .from('activity')
         .select(`
           contact_id,
           created_at,
           activity_type:activity_type_id (name),
           completed_call,
-          meeting_held
+          meeting_held,
+          is_prospecting,
+          is_prospecting_call
         `)
         .or('is_prospecting.eq.true,is_prospecting_call.eq.true')
         .gte('created_at', todayStart)
         .order('created_at', { ascending: false })
         .limit(500);
+
+      // Debug logging
+      console.log('📊 Activity table query results:', {
+        count: mainActivityData?.length || 0,
+        error: activityError,
+        data: mainActivityData,
+        todayStart
+      });
 
       // Filter to today only and exclude hidden activities
       const todayEndDate = new Date(`${today}T23:59:59`);
