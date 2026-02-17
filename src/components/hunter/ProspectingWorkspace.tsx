@@ -377,19 +377,21 @@ export default function ProspectingWorkspace() {
 
       setNewHunterLeads((newLeads || []) as NewHunterLead[]);
 
-      // Fetch contacts with prospecting activity logged today
+      // Fetch contacts with prospecting activity logged today (excluding hidden activities)
       const { data: recentlyContactedData } = await supabase
         .from('prospecting_activity')
         .select(`
           contact_id,
           activity_type,
           created_at,
+          hidden_from_timeline,
           contact:contact!fk_prospecting_activity_contact_id(
             id, first_name, last_name, company, email, phone, mobile_phone, title, target_id
           )
         `)
         .gte('created_at', todayStart)
         .lte('created_at', todayEnd)
+        .or('hidden_from_timeline.is.null,hidden_from_timeline.eq.false')
         .order('created_at', { ascending: false });
 
       // Deduplicate contacts and calculate stats
@@ -399,13 +401,14 @@ export default function ProspectingWorkspace() {
       interface ActivityItem {
         contact_id: string;
         activity_type?: string;
+        hidden_from_timeline?: boolean;
         contact: ContactDetails | null;
       }
       (recentlyContactedData || []).forEach((item: ActivityItem) => {
         if (item.contact && !contactMap.has(item.contact_id)) {
           contactMap.set(item.contact_id, item.contact as ContactDetails);
         }
-        // Count activity types
+        // Count activity types (only non-hidden)
         if (item.activity_type === 'email') emailCount++;
         if (item.activity_type === 'call') callCount++;
       });

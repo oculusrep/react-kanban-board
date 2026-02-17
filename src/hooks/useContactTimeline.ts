@@ -80,11 +80,10 @@ export function useContactTimeline(
       const allItems: UnifiedTimelineItem[] = [];
 
       // 1. Fetch from prospecting_activity
-      // Note: hidden_from_timeline column may not exist yet - omit to avoid query failure
       if (sources.includes('prospecting_activity')) {
         let query = supabase
           .from('prospecting_activity')
-          .select('id, activity_type, notes, email_subject, created_at, created_by')
+          .select('id, activity_type, notes, email_subject, created_at, created_by, hidden_from_timeline')
           .order('created_at', { ascending: false });
 
         if (targetId) {
@@ -105,6 +104,7 @@ export function useContactTimeline(
             email_subject: a.email_subject,
             created_by: a.created_by,
             contact_id: contactId,
+            hidden_from_timeline: a.hidden_from_timeline || false,
           });
         });
       }
