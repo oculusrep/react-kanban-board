@@ -81,7 +81,7 @@ export default function PortalDetailSidebar({
   const navigate = useNavigate();
   const location = useLocation();
   const { userRole } = useAuth();
-  const { isInternalUser, viewMode } = usePortal();
+  const { isInternalUser, viewMode, siteSubmitRefreshTrigger } = usePortal();
 
   // Show broker features only when internal user AND in broker view mode
   const showBrokerFeatures = isInternalUser && viewMode === 'broker';
@@ -219,7 +219,7 @@ export default function PortalDetailSidebar({
     if (isOpen && siteSubmitId) {
       fetchSiteSubmit();
     }
-  }, [siteSubmitId, isOpen]);
+  }, [siteSubmitId, isOpen, siteSubmitRefreshTrigger]);
 
   // Stages that should open to their specific tab in pipeline
   const PIPELINE_TAB_STAGES = ['LOI', 'Submitted-Reviewing', 'At Lease/PSA'];
