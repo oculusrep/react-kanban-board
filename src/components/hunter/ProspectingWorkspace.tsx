@@ -406,7 +406,7 @@ export default function ProspectingWorkspace() {
         .select(`
           contact_id,
           created_at,
-          activity_type:activity_type_id (name),
+          activity_type!fk_activity_type_id (name),
           completed_call,
           meeting_held,
           is_prospecting,
