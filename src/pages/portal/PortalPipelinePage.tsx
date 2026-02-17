@@ -80,7 +80,7 @@ const VISIBLE_STAGES = [
  * PortalPipelinePage - Pipeline table view for the client portal
  */
 export default function PortalPipelinePage() {
-  const { selectedClient, selectedClientId, accessibleClients, isInternalUser, viewMode, siteSubmitRefreshTrigger } = usePortal();
+  const { selectedClient, selectedClientId, accessibleClients, isInternalUser, viewMode, siteSubmitRefreshTrigger, triggerSiteSubmitRefresh } = usePortal();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   usePortalActivityTracker(); // Auto-tracks page views
@@ -500,7 +500,9 @@ export default function PortalPipelinePage() {
         return ss;
       })
     );
-  }, []);
+    // Trigger refresh for other portal pages (e.g., map) when navigating
+    triggerSiteSubmitRefresh();
+  }, [triggerSiteSubmitRefresh]);
 
   // If no client selected and multiple available, redirect to select
   if (!selectedClientId && accessibleClients.length > 1) {

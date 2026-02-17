@@ -60,7 +60,7 @@ export default function PortalMapPage() {
  */
 function PortalMapContent() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { selectedClientId, accessibleClients, isInternalUser, viewMode, triggerSiteSubmitRefresh } = usePortal();
+  const { selectedClientId, accessibleClients, isInternalUser, viewMode, siteSubmitRefreshTrigger, triggerSiteSubmitRefresh } = usePortal();
   const { trackEvent } = usePortalActivityTracker();
   const { refreshLayer } = useLayerManager();
 
@@ -139,6 +139,13 @@ function PortalMapContent() {
   useEffect(() => {
     document.title = 'Map | Client Portal';
   }, []);
+
+  // Refresh site submits layer when portal-wide refresh is triggered (e.g., from Pipeline page)
+  useEffect(() => {
+    if (siteSubmitRefreshTrigger > 0) {
+      refreshLayer('site_submits');
+    }
+  }, [siteSubmitRefreshTrigger, refreshLayer]);
 
   // Listen for Street View visibility changes
   useEffect(() => {
