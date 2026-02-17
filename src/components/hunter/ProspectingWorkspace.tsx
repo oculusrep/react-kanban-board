@@ -421,6 +421,9 @@ export default function ProspectingWorkspace() {
       console.log('📊 Activity table query results:', {
         count: mainActivityData?.length || 0,
         error: activityError,
+        errorMessage: activityError?.message,
+        errorDetails: activityError?.details,
+        errorHint: activityError?.hint,
         data: mainActivityData,
         todayStart
       });
