@@ -937,6 +937,17 @@ export default function ProspectingWorkspace() {
 
       if (outreachError) throw outreachError;
 
+      // Apply inline styles to normalize paragraph spacing (Gmail strips <style> tags)
+      // Replace <p> tags with inline-styled versions
+      let styledEmailBody = emailBody
+        .replace(/<p>/gi, '<p style="margin: 0 0 8px 0; line-height: 1.4;">')
+        .replace(/<p\s+style="/gi, '<p style="margin: 0 0 8px 0; line-height: 1.4; ')
+        .replace(/<div>/gi, '<div style="line-height: 1.4;">')
+        .replace(/<div\s+style="/gi, '<div style="line-height: 1.4; ');
+
+      // Wrap in a container div with base styling
+      styledEmailBody = `<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.4; color: #333;">${styledEmailBody}</div>`;
+
       // Send via Gmail
       const response = await supabase.functions.invoke('hunter-send-outreach', {
         body: {
@@ -944,7 +955,7 @@ export default function ProspectingWorkspace() {
           user_email: user.email,
           to: [selectedContact.email],
           subject: emailSubject,
-          body_html: emailBody,
+          body_html: styledEmailBody,
           body_text: emailBody.replace(/<[^>]*>/g, ''),
           attachments: emailAttachments.length > 0 ? emailAttachments : undefined
         }
