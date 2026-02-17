@@ -379,6 +379,7 @@ export default function ProspectingWorkspace() {
 
       // Fetch contacts with prospecting activity logged today
       // Note: hidden_from_timeline column may not exist yet - don't select it to avoid query failure
+      // Use .and() with combined filter to avoid duplicate query params (PostgREST rejects duplicate column names)
       const { data: recentlyContactedData, error: recentlyContactedError } = await supabase
         .from('prospecting_activity')
         .select(`
@@ -390,7 +391,7 @@ export default function ProspectingWorkspace() {
           )
         `)
         .gte('created_at', todayStart)
-        .lte('created_at', todayEnd)
+        .lt('created_at', new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0).toISOString())
         .order('created_at', { ascending: false });
 
       console.log('📊 Scorecard Debug:', {
