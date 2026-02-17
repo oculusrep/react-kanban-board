@@ -744,6 +744,32 @@ function encodeBase64Url(str: string): string {
 }
 
 /**
+ * Encode email header value using RFC 2047 base64 encoding
+ * This is required for non-ASCII characters (like em-dashes, accented letters, etc.)
+ * Format: =?charset?encoding?encoded_text?=
+ */
+function encodeHeaderValue(value: string): string {
+  // Check if the string contains any non-ASCII characters
+  const hasNonAscii = /[^\x00-\x7F]/.test(value);
+
+  if (!hasNonAscii) {
+    // Pure ASCII - no encoding needed
+    return value;
+  }
+
+  // Encode using RFC 2047 base64 encoding
+  // Format: =?UTF-8?B?base64_encoded_text?=
+  const utf8Bytes = new TextEncoder().encode(value);
+  let binary = '';
+  for (const byte of utf8Bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  const base64 = btoa(binary);
+
+  return `=?UTF-8?B?${base64}?=`;
+}
+
+/**
  * Build a MIME message for Gmail API
  */
 function buildMimeMessage(
@@ -766,7 +792,7 @@ function buildMimeMessage(
     headers.push(`Bcc: ${options.bcc.join(', ')}`);
   }
 
-  headers.push(`Subject: ${options.subject}`);
+  headers.push(`Subject: ${encodeHeaderValue(options.subject)}`);
 
   if (options.replyTo) {
     headers.push(`Reply-To: ${options.replyTo}`);
