@@ -376,19 +376,21 @@ export default function ProspectingWorkspace() {
 
       setNewHunterLeads((newLeads || []) as NewHunterLead[]);
 
-      // Fetch contacts with prospecting activity logged today
+      // Fetch contacts with prospecting activity logged today (excluding hidden activities)
       const { data: recentlyContactedData } = await supabase
         .from('prospecting_activity')
         .select(`
           contact_id,
           activity_type,
           created_at,
+          hidden_from_timeline,
           contact:contact!fk_prospecting_activity_contact_id(
             id, first_name, last_name, company, email, phone, mobile_phone, title, target_id
           )
         `)
         .gte('created_at', todayStart)
         .lte('created_at', todayEnd)
+        .or('hidden_from_timeline.is.null,hidden_from_timeline.eq.false')
         .order('created_at', { ascending: false });
 
       // Deduplicate contacts and calculate stats

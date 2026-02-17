@@ -92,6 +92,9 @@ export interface UnifiedTimelineItem {
   hunter_outreach_id?: string | null;
   ai_reasoning?: string | null;
 
+  // Hidden from timeline (soft-delete for scorecard)
+  hidden_from_timeline?: boolean;
+
   // UI state helpers
   isExpanded?: boolean;
 

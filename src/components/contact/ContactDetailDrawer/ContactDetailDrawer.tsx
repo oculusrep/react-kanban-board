@@ -632,14 +632,14 @@ export default function ContactDetailDrawer({
               {/* Tab Content */}
               <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
                 {activeTab === 'activity' ? (
-                  /* Activity Timeline Tab */
+                  /* Activity Timeline Tab - Filter out hidden items */
                   <>
                     <div className="flex-1 overflow-y-auto">
                       {loadingTimeline ? (
                         <div className="p-8 text-center">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto"></div>
                         </div>
-                      ) : timelineItems.length === 0 ? (
+                      ) : timelineItems.filter(item => !item.hidden_from_timeline).length === 0 ? (
                         <div className="p-8 text-center text-gray-400">
                           <DocumentTextIcon className="w-12 h-12 mx-auto mb-2" />
                           <p className="font-medium">No activity yet</p>
@@ -647,7 +647,7 @@ export default function ContactDetailDrawer({
                         </div>
                       ) : (
                         <div className="divide-y divide-gray-100">
-                          {timelineItems.map((item) => (
+                          {timelineItems.filter(item => !item.hidden_from_timeline).map((item) => (
                             <div key={item.id} className="p-4 hover:bg-gray-50 group">
                               <div className="flex items-start gap-3">
                                 <div className={`p-2 rounded-full ${
