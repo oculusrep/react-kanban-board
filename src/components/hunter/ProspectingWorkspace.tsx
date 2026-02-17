@@ -269,6 +269,12 @@ export default function ProspectingWorkspace() {
   const [searchingContacts, setSearchingContacts] = useState(false);
   const [selectedNewContact, setSelectedNewContact] = useState<ContactDetails | null>(null);
 
+  // Find contact modal (opens drawer directly)
+  const [showFindContactModal, setShowFindContactModal] = useState(false);
+  const [findContactSearch, setFindContactSearch] = useState('');
+  const [findContactResults, setFindContactResults] = useState<ContactDetails[]>([]);
+  const [searchingFindContact, setSearchingFindContact] = useState(false);
+
   // Multi-select and date change
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [editingDateTaskId, setEditingDateTaskId] = useState<string | null>(null);
@@ -1320,6 +1326,76 @@ export default function ProspectingWorkspace() {
     return () => clearTimeout(timer);
   }, [contactSearch, searchContacts]);
 
+  // Search contacts for Find Contact modal
+  const searchFindContacts = useCallback(async (query: string) => {
+    if (query.length < 2) {
+      setFindContactResults([]);
+      return;
+    }
+
+    setSearchingFindContact(true);
+    try {
+      const { data: contacts } = await supabase
+        .from('contact')
+        .select(`
+          id, first_name, last_name, company, email, phone, mobile_phone, title,
+          target_id, linked_in_profile_link, mailing_city, mailing_state
+        `)
+        .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,company.ilike.%${query}%,email.ilike.%${query}%`)
+        .limit(10);
+
+      const targetIds = contacts?.filter(c => c.target_id).map(c => c.target_id) || [];
+      let targets: Record<string, any> = {};
+
+      if (targetIds.length > 0) {
+        const { data: targetData } = await supabase
+          .from('target')
+          .select('id, concept_name, signal_strength, industry_segment, website, score_reasoning')
+          .in('id', targetIds);
+
+        targets = (targetData || []).reduce((acc, t) => {
+          acc[t.id] = t;
+          return acc;
+        }, {} as Record<string, any>);
+      }
+
+      const data = contacts?.map(c => ({
+        ...c,
+        target: c.target_id ? targets[c.target_id] || null : null
+      }));
+
+      setFindContactResults((data || []) as ContactDetails[]);
+    } catch (err) {
+      console.error('Error searching contacts:', err);
+    } finally {
+      setSearchingFindContact(false);
+    }
+  }, []);
+
+  // Debounced search for Find Contact
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (findContactSearch) {
+        searchFindContacts(findContactSearch);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [findContactSearch, searchFindContacts]);
+
+  // Open contact in drawer directly (without a task)
+  const openContactInDrawer = useCallback((contact: ContactDetails) => {
+    setSelectedContact(contact);
+    setSelectedTask(null); // Clear any selected task
+    setDrawerOpen(true);
+    setDrawerTab('activity');
+    // Load activity feed for this contact
+    loadActivityFeed(contact.id, contact.target_id);
+    // Close the find modal
+    setShowFindContactModal(false);
+    setFindContactSearch('');
+    setFindContactResults([]);
+  }, [loadActivityFeed]);
+
   // ============================================================================
   // Filtered Task Lists
   // ============================================================================
@@ -1397,6 +1473,13 @@ export default function ProspectingWorkspace() {
 
         {/* Action buttons row */}
         <div className="flex gap-2 mb-4 flex-shrink-0">
+          <button
+            onClick={() => setShowFindContactModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            <MagnifyingGlassIcon className="w-5 h-5" />
+            Find Contact
+          </button>
           <button
             onClick={() => setShowNewFollowUpModal(true)}
             className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
@@ -2524,6 +2607,86 @@ export default function ProspectingWorkspace() {
                     ))}
                   </div>
                 ) : contactSearch.length >= 2 ? (
+                  <div className="p-4 text-center text-gray-500">No contacts found</div>
+                ) : (
+                  <div className="p-4 text-center text-gray-500">Type at least 2 characters to search</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Find Contact Modal - opens drawer directly */}
+      {showFindContactModal && (
+        <>
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-[70]" onClick={() => {
+            setShowFindContactModal(false);
+            setFindContactSearch('');
+            setFindContactResults([]);
+          }} />
+          <div className="fixed inset-0 flex items-center justify-center z-[70] p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[80vh] flex flex-col">
+              <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-gray-900">Find Contact</h3>
+                  <p className="text-sm text-gray-500">Search for any contact to view details or log activity</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowFindContactModal(false);
+                    setFindContactSearch('');
+                    setFindContactResults([]);
+                  }}
+                  className="p-1 hover:bg-gray-100 rounded"
+                >
+                  <XMarkIcon className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              <div className="p-4">
+                <input
+                  type="text"
+                  value={findContactSearch}
+                  onChange={(e) => setFindContactSearch(e.target.value)}
+                  placeholder="Search by name, company, or email..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex-1 overflow-y-auto border-t border-gray-100">
+                {searchingFindContact ? (
+                  <div className="p-4 text-center text-gray-500">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
+                  </div>
+                ) : findContactResults.length > 0 ? (
+                  <div className="divide-y divide-gray-100">
+                    {findContactResults.map((contact) => (
+                      <button
+                        key={contact.id}
+                        onClick={() => openContactInDrawer(contact)}
+                        className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-gray-900">
+                              {contact.first_name} {contact.last_name}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                              {contact.title ? `${contact.title} at ` : ''}{contact.company || contact.email || 'No company'}
+                            </p>
+                          </div>
+                          {contact.target && (
+                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${SIGNAL_COLORS[contact.target.signal_strength]}`}>
+                              {contact.target.signal_strength}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : findContactSearch.length >= 2 ? (
                   <div className="p-4 text-center text-gray-500">No contacts found</div>
                 ) : (
                   <div className="p-4 text-center text-gray-500">Type at least 2 characters to search</div>
