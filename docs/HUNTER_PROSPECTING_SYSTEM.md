@@ -358,10 +358,11 @@ Settings stored in `prospecting_settings` table:
 
 | Date | Changes |
 |------|---------|
+| 2026-02-17 | ProspectingWorkspace Email History tab: click-to-expand emails with subject/date in collapsed view |
+| 2026-02-17 | ProspectingWorkspace Activity tab: hide email body, show subject only |
 | 2026-02-17 | Expanded scorecard to 6 activity types (Email, LinkedIn, SMS, Voicemail, Call, Meeting) |
 | 2026-02-17 | Added `hidden_from_timeline` column to prospecting_activity table |
 | 2026-02-17 | Hidden activities excluded from scorecard counts and Activity tab |
-| 2026-02-17 | Email display fixed - Activity tab shows subject only, Email History has expandable body |
 | 2026-02-17 | Gmail sender name now displays properly via RFC 2047 encoding |
 | 2026-02-17 | Added Find Contact modal to ProspectingWorkspace |
 | 2026-02-17 | Created ContactDetailDrawer reusable component |
