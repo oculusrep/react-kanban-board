@@ -30,7 +30,8 @@ import {
   ClipboardDocumentListIcon,
   PlusCircleIcon,
   ClipboardIcon,
-  ArrowTopRightOnSquareIcon
+  ArrowTopRightOnSquareIcon,
+  MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
 
 // Lazy load ReactQuill for email compose
@@ -273,6 +274,15 @@ export default function ProspectingWorkspace() {
   const [editingDateTaskId, setEditingDateTaskId] = useState<string | null>(null);
   const [bulkNewDate, setBulkNewDate] = useState('');
 
+  // Task list search/filter
+  const [taskSearch, setTaskSearch] = useState('');
+
+  // Recently contacted today
+  const [recentlyContactedToday, setRecentlyContactedToday] = useState<ContactDetails[]>([]);
+
+  // Daily prospecting stats
+  const [todayStats, setTodayStats] = useState({ emails: 0, calls: 0, contacts: 0 });
+
   // ZoomInfo enrichment
   const [showZoomInfoModal, setShowZoomInfoModal] = useState(false);
   const [zoomInfoLoading, setZoomInfoLoading] = useState(false);
@@ -359,6 +369,45 @@ export default function ProspectingWorkspace() {
 
       setNewHunterLeads((newLeads || []) as NewHunterLead[]);
 
+      // Fetch contacts with prospecting activity logged today
+      const { data: recentlyContactedData } = await supabase
+        .from('prospecting_activity')
+        .select(`
+          contact_id,
+          activity_type,
+          created_at,
+          contact:contact!fk_prospecting_activity_contact_id(
+            id, first_name, last_name, company, email, phone, mobile_phone, title, target_id
+          )
+        `)
+        .gte('created_at', todayStart)
+        .lte('created_at', todayEnd)
+        .order('created_at', { ascending: false });
+
+      // Deduplicate contacts and calculate stats
+      const contactMap = new Map<string, ContactDetails>();
+      let emailCount = 0;
+      let callCount = 0;
+      interface ActivityItem {
+        contact_id: string;
+        activity_type?: string;
+        contact: ContactDetails | null;
+      }
+      (recentlyContactedData || []).forEach((item: ActivityItem) => {
+        if (item.contact && !contactMap.has(item.contact_id)) {
+          contactMap.set(item.contact_id, item.contact as ContactDetails);
+        }
+        // Count activity types
+        if (item.activity_type === 'email') emailCount++;
+        if (item.activity_type === 'call') callCount++;
+      });
+      setRecentlyContactedToday(Array.from(contactMap.values()));
+      setTodayStats({
+        emails: emailCount,
+        calls: callCount,
+        contacts: contactMap.size
+      });
+
       // Get current user ID for templates and signature
       let userId: string | null = null;
       if (user?.email) {
@@ -441,7 +490,7 @@ export default function ProspectingWorkspace() {
           completed_at,
           completed_call,
           call_duration_seconds,
-          activity_type:activity_type_id (
+          activity_type!fk_activity_type_id (
             name
           )
         `)
@@ -606,6 +655,44 @@ export default function ProspectingWorkspace() {
           .update({ last_contacted_at: new Date().toISOString() })
           .eq('id', selectedContact.target_id);
       }
+
+      // Auto-complete any open task for this contact
+      if (selectedTask && selectedTask.contact_id === selectedContact.id) {
+        const { data: completedStatus } = await supabase
+          .from('activity_status')
+          .select('id')
+          .eq('is_closed', true)
+          .limit(1)
+          .single();
+
+        if (completedStatus) {
+          await supabase
+            .from('activity')
+            .update({
+              status_id: completedStatus.id,
+              completed_at: new Date().toISOString()
+            })
+            .eq('id', selectedTask.id);
+
+          // Clear the completed task but keep contact drawer open
+          setSelectedTask(null);
+          fetchData();
+        }
+      }
+
+      // Add to "Contacted Today" list (at the top, avoiding duplicates)
+      const isNewContact = !recentlyContactedToday.some(c => c.id === selectedContact.id);
+      setRecentlyContactedToday(prev => {
+        const filtered = prev.filter(c => c.id !== selectedContact.id);
+        return [selectedContact, ...filtered];
+      });
+
+      // Update today's stats
+      setTodayStats(prev => ({
+        emails: prev.emails + (activityType === 'email' ? 1 : 0),
+        calls: prev.calls + (activityType === 'call' ? 1 : 0),
+        contacts: isNewContact ? prev.contacts + 1 : prev.contacts
+      }));
 
       // Show success feedback
       setRecentlyLogged({ type: activityType, timestamp: Date.now() });
@@ -881,7 +968,8 @@ export default function ProspectingWorkspace() {
 
         fetchData();
         if (selectedTask?.id === taskId) {
-          closeDrawer();
+          // Clear the completed task but keep the contact drawer open
+          setSelectedTask(null);
         }
       }
     } catch (err) {
@@ -1233,6 +1321,23 @@ export default function ProspectingWorkspace() {
   }, [contactSearch, searchContacts]);
 
   // ============================================================================
+  // Filtered Task Lists
+  // ============================================================================
+
+  const filterTasks = (tasks: FollowUpTask[]) => {
+    if (!taskSearch.trim()) return tasks;
+    const search = taskSearch.toLowerCase();
+    return tasks.filter(task => {
+      const contactName = getContactName(task.contact).toLowerCase();
+      const company = (task.contact?.company || task.target?.concept_name || '').toLowerCase();
+      return contactName.includes(search) || company.includes(search);
+    });
+  };
+
+  const filteredOverdue = filterTasks(overdueFollowUps);
+  const filteredDueToday = filterTasks(followUpsDue);
+
+  // ============================================================================
   // Render
   // ============================================================================
 
@@ -1248,8 +1353,8 @@ export default function ProspectingWorkspace() {
     <div className="h-[calc(100vh-220px)] relative">
       {/* Main Content Area - Full Width */}
       <div className="h-full flex flex-col">
-        {/* Stats Row */}
-        <div className="grid grid-cols-4 gap-4 mb-4 flex-shrink-0">
+        {/* Stats Row - Tasks */}
+        <div className="grid grid-cols-7 gap-4 mb-4 flex-shrink-0">
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
             <p className="text-3xl font-bold text-blue-600">{followUpsDue.length}</p>
             <p className="text-sm text-gray-500">Due Today</p>
@@ -1259,12 +1364,34 @@ export default function ProspectingWorkspace() {
             <p className="text-sm text-gray-500">Overdue</p>
           </div>
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <p className="text-3xl font-bold text-green-600">{overdueFollowUps.length + followUpsDue.length}</p>
+            <p className="text-3xl font-bold text-purple-600">{overdueFollowUps.length + followUpsDue.length}</p>
             <p className="text-sm text-gray-500">Total Tasks</p>
           </div>
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
             <p className="text-3xl font-bold text-orange-600">{newHunterLeads.length}</p>
             <p className="text-sm text-gray-500">New Leads</p>
+          </div>
+          {/* Prospecting Scorecard */}
+          <div className="bg-gradient-to-br from-green-50 to-white rounded-lg shadow-sm border border-green-200 p-4">
+            <p className="text-3xl font-bold text-green-600">{todayStats.emails}</p>
+            <p className="text-sm text-gray-500 flex items-center gap-1">
+              <EnvelopeIcon className="w-3.5 h-3.5" />
+              Emails Sent
+            </p>
+          </div>
+          <div className="bg-gradient-to-br from-green-50 to-white rounded-lg shadow-sm border border-green-200 p-4">
+            <p className="text-3xl font-bold text-green-600">{todayStats.calls}</p>
+            <p className="text-sm text-gray-500 flex items-center gap-1">
+              <PhoneIcon className="w-3.5 h-3.5" />
+              Calls Made
+            </p>
+          </div>
+          <div className="bg-gradient-to-br from-green-50 to-white rounded-lg shadow-sm border border-green-200 p-4">
+            <p className="text-3xl font-bold text-green-600">{todayStats.contacts}</p>
+            <p className="text-sm text-gray-500 flex items-center gap-1">
+              <UserGroupIcon className="w-3.5 h-3.5" />
+              Contacts
+            </p>
           </div>
         </div>
 
@@ -1293,7 +1420,7 @@ export default function ProspectingWorkspace() {
             <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between flex-shrink-0">
               <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                 <ClipboardDocumentListIcon className="w-5 h-5 text-orange-600" />
-                Call List ({overdueFollowUps.length + followUpsDue.length})
+                Call List ({taskSearch ? `${filteredOverdue.length + filteredDueToday.length} of ` : ''}{overdueFollowUps.length + followUpsDue.length})
               </h3>
               {(overdueFollowUps.length + followUpsDue.length) > 0 && (
                 <button
@@ -1306,6 +1433,28 @@ export default function ProspectingWorkspace() {
                   {[...overdueFollowUps, ...followUpsDue].every(t => selectedTaskIds.has(t.id)) ? 'Deselect All' : 'Select All'}
                 </button>
               )}
+            </div>
+
+            {/* Search bar */}
+            <div className="px-4 py-2 border-b border-gray-200 flex-shrink-0">
+              <div className="relative">
+                <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search by name or company..."
+                  value={taskSearch}
+                  onChange={(e) => setTaskSearch(e.target.value)}
+                  className="w-full pl-9 pr-8 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                />
+                {taskSearch && (
+                  <button
+                    onClick={() => setTaskSearch('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <XMarkIcon className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Bulk date change bar */}
@@ -1344,10 +1493,16 @@ export default function ProspectingWorkspace() {
                   <p className="text-lg font-medium">All caught up!</p>
                   <p className="text-sm mt-1">No tasks due</p>
                 </div>
+              ) : (filteredOverdue.length + filteredDueToday.length) === 0 && taskSearch ? (
+                <div className="p-8 text-center text-gray-500">
+                  <MagnifyingGlassIcon className="w-12 h-12 mx-auto text-gray-300 mb-2" />
+                  <p className="text-lg font-medium">No matches found</p>
+                  <p className="text-sm mt-1">Try a different search term</p>
+                </div>
               ) : (
                 <div className="divide-y divide-gray-100">
                   {/* Overdue tasks */}
-                  {overdueFollowUps.map((task) => {
+                  {filteredOverdue.map((task) => {
                     const daysOver = getDaysOverdue(task.activity_date);
                     return (
                       <div
@@ -1406,14 +1561,14 @@ export default function ProspectingWorkspace() {
                   })}
 
                   {/* Today divider */}
-                  {overdueFollowUps.length > 0 && followUpsDue.length > 0 && (
+                  {filteredOverdue.length > 0 && filteredDueToday.length > 0 && (
                     <div className="px-4 py-2 bg-blue-50 text-sm font-medium text-blue-700 border-y border-blue-100">
                       Due Today
                     </div>
                   )}
 
                   {/* Due today tasks */}
-                  {followUpsDue.map((task) => (
+                  {filteredDueToday.map((task) => (
                     <div
                       key={task.id}
                       onClick={() => handleTaskSelect(task)}
@@ -1467,39 +1622,78 @@ export default function ProspectingWorkspace() {
             </div>
           </div>
 
-          {/* New Leads Column */}
-          <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col min-h-0">
-            <div className="px-4 py-3 border-b border-gray-200 bg-orange-50 flex-shrink-0">
-              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                <SparklesIcon className="w-5 h-5 text-orange-600" />
-                New Leads ({newHunterLeads.length})
-              </h3>
-            </div>
-            <div className="flex-1 overflow-y-auto divide-y divide-gray-100 min-h-0">
-              {newHunterLeads.length === 0 ? (
-                <div className="p-6 text-center text-gray-500">
-                  <SparklesIcon className="w-10 h-10 mx-auto text-gray-300 mb-2" />
-                  <p className="text-sm">No new leads</p>
-                </div>
-              ) : (
-                newHunterLeads.map((lead) => (
-                  <div
-                    key={lead.id}
-                    onClick={() => navigate(`/hunter/lead/${lead.id}`)}
-                    className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
-                  >
-                    <div className="flex items-center justify-between">
-                      <p className="font-medium text-gray-900 truncate">{lead.concept_name}</p>
-                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${SIGNAL_COLORS[lead.signal_strength]}`}>
-                        {lead.signal_strength}
-                      </span>
-                    </div>
-                    {lead.industry_segment && (
-                      <p className="text-sm text-gray-500 truncate mt-1">{lead.industry_segment}</p>
-                    )}
+          {/* Right Side Column - New Leads + Recently Contacted */}
+          <div className="flex-1 flex flex-col gap-4 min-h-0">
+            {/* New Leads */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col flex-1 min-h-0">
+              <div className="px-4 py-3 border-b border-gray-200 bg-orange-50 flex-shrink-0">
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <SparklesIcon className="w-5 h-5 text-orange-600" />
+                  New Leads ({newHunterLeads.length})
+                </h3>
+              </div>
+              <div className="flex-1 overflow-y-auto divide-y divide-gray-100 min-h-0">
+                {newHunterLeads.length === 0 ? (
+                  <div className="p-6 text-center text-gray-500">
+                    <SparklesIcon className="w-10 h-10 mx-auto text-gray-300 mb-2" />
+                    <p className="text-sm">No new leads</p>
                   </div>
-                ))
-              )}
+                ) : (
+                  newHunterLeads.map((lead) => (
+                    <div
+                      key={lead.id}
+                      onClick={() => navigate(`/hunter/lead/${lead.id}`)}
+                      className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="font-medium text-gray-900 truncate">{lead.concept_name}</p>
+                        <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${SIGNAL_COLORS[lead.signal_strength]}`}>
+                          {lead.signal_strength}
+                        </span>
+                      </div>
+                      {lead.industry_segment && (
+                        <p className="text-sm text-gray-500 truncate mt-1">{lead.industry_segment}</p>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Recently Contacted Today */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col flex-1 min-h-0">
+              <div className="px-4 py-3 border-b border-gray-200 bg-green-50 flex-shrink-0">
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <CheckCircleIcon className="w-5 h-5 text-green-600" />
+                  Contacted Today ({recentlyContactedToday.length})
+                </h3>
+              </div>
+              <div className="flex-1 overflow-y-auto divide-y divide-gray-100 min-h-0">
+                {recentlyContactedToday.length === 0 ? (
+                  <div className="p-6 text-center text-gray-500">
+                    <CheckCircleIcon className="w-10 h-10 mx-auto text-gray-300 mb-2" />
+                    <p className="text-sm">No contacts reached yet today</p>
+                  </div>
+                ) : (
+                  recentlyContactedToday.map((contact) => (
+                    <div
+                      key={contact.id}
+                      onClick={() => {
+                        setDrawerOpen(true);
+                        loadContactDetails(contact.id);
+                      }}
+                      className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
+                    >
+                      <p className="font-medium text-gray-900 truncate">
+                        {contact.first_name} {contact.last_name}
+                      </p>
+                      <p className="text-sm text-gray-500 truncate">
+                        {contact.company || 'No company'}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </div>
