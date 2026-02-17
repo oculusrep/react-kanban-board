@@ -288,7 +288,14 @@ export default function ProspectingWorkspace() {
   const [recentlyContactedToday, setRecentlyContactedToday] = useState<ContactDetails[]>([]);
 
   // Daily prospecting stats
-  const [todayStats, setTodayStats] = useState({ emails: 0, calls: 0, contacts: 0 });
+  const [todayStats, setTodayStats] = useState({
+    emails: 0,
+    linkedin: 0,
+    sms: 0,
+    voicemail: 0,
+    calls: 0,
+    meetings: 0,
+  });
 
   // ZoomInfo enrichment
   const [showZoomInfoModal, setShowZoomInfoModal] = useState(false);
@@ -411,24 +418,44 @@ export default function ProspectingWorkspace() {
 
       // Deduplicate contacts and calculate stats
       const contactMap = new Map<string, ContactDetails>();
-      let emailCount = 0;
-      let callCount = 0;
+      const activityCounts = {
+        emails: 0,
+        linkedin: 0,
+        sms: 0,
+        voicemail: 0,
+        calls: 0,
+        meetings: 0,
+      };
 
       todayActivities.forEach((item) => {
         const contact = item.contact_id ? contactsById[item.contact_id] : null;
         if (contact && !contactMap.has(item.contact_id)) {
           contactMap.set(item.contact_id, contact);
         }
-        // Count activity types
-        if (item.activity_type === 'email') emailCount++;
-        if (item.activity_type === 'call') callCount++;
+        // Count each activity type
+        switch (item.activity_type) {
+          case 'email':
+            activityCounts.emails++;
+            break;
+          case 'linkedin':
+            activityCounts.linkedin++;
+            break;
+          case 'sms':
+            activityCounts.sms++;
+            break;
+          case 'voicemail':
+            activityCounts.voicemail++;
+            break;
+          case 'call':
+            activityCounts.calls++;
+            break;
+          case 'meeting':
+            activityCounts.meetings++;
+            break;
+        }
       });
       setRecentlyContactedToday(Array.from(contactMap.values()));
-      setTodayStats({
-        emails: emailCount,
-        calls: callCount,
-        contacts: contactMap.size
-      });
+      setTodayStats(activityCounts);
 
       // Get current user ID for templates and signature
       let userId: string | null = null;
@@ -1506,26 +1533,49 @@ export default function ProspectingWorkspace() {
             <p className="text-3xl font-bold text-orange-600">{newHunterLeads.length}</p>
             <p className="text-sm text-gray-500">New Leads</p>
           </div>
-          {/* Prospecting Scorecard */}
-          <div className="bg-gradient-to-br from-green-50 to-white rounded-lg shadow-sm border border-green-200 p-4">
-            <p className="text-3xl font-bold text-green-600">{todayStats.emails}</p>
+          {/* Prospecting Scorecard - 6 Activity Types */}
+          <div className="bg-gradient-to-br from-blue-50 to-white rounded-lg shadow-sm border border-blue-200 p-4">
+            <p className="text-3xl font-bold text-blue-600">{todayStats.emails}</p>
             <p className="text-sm text-gray-500 flex items-center gap-1">
               <EnvelopeIcon className="w-3.5 h-3.5" />
               Emails Sent
             </p>
           </div>
-          <div className="bg-gradient-to-br from-green-50 to-white rounded-lg shadow-sm border border-green-200 p-4">
-            <p className="text-3xl font-bold text-green-600">{todayStats.calls}</p>
+          <div className="bg-gradient-to-br from-indigo-50 to-white rounded-lg shadow-sm border border-indigo-200 p-4">
+            <p className="text-3xl font-bold text-indigo-600">{todayStats.linkedin}</p>
             <p className="text-sm text-gray-500 flex items-center gap-1">
-              <PhoneIcon className="w-3.5 h-3.5" />
-              Calls Made
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+              </svg>
+              LinkedIn
             </p>
           </div>
-          <div className="bg-gradient-to-br from-green-50 to-white rounded-lg shadow-sm border border-green-200 p-4">
-            <p className="text-3xl font-bold text-green-600">{todayStats.contacts}</p>
+          <div className="bg-gradient-to-br from-purple-50 to-white rounded-lg shadow-sm border border-purple-200 p-4">
+            <p className="text-3xl font-bold text-purple-600">{todayStats.sms}</p>
             <p className="text-sm text-gray-500 flex items-center gap-1">
-              <UserGroupIcon className="w-3.5 h-3.5" />
-              Contacts
+              <ChatBubbleLeftIcon className="w-3.5 h-3.5" />
+              SMS
+            </p>
+          </div>
+          <div className="bg-gradient-to-br from-orange-50 to-white rounded-lg shadow-sm border border-orange-200 p-4">
+            <p className="text-3xl font-bold text-orange-600">{todayStats.voicemail}</p>
+            <p className="text-sm text-gray-500 flex items-center gap-1">
+              <PhoneIcon className="w-3.5 h-3.5" />
+              Voicemail
+            </p>
+          </div>
+          <div className="bg-gradient-to-br from-emerald-50 to-white rounded-lg shadow-sm border border-emerald-200 p-4">
+            <p className="text-3xl font-bold text-emerald-600">{todayStats.calls}</p>
+            <p className="text-sm text-gray-500 flex items-center gap-1">
+              <PhoneIcon className="w-3.5 h-3.5" />
+              Call Connect
+            </p>
+          </div>
+          <div className="bg-gradient-to-br from-teal-50 to-white rounded-lg shadow-sm border border-teal-200 p-4">
+            <p className="text-3xl font-bold text-teal-600">{todayStats.meetings}</p>
+            <p className="text-sm text-gray-500 flex items-center gap-1">
+              <CalendarDaysIcon className="w-3.5 h-3.5" />
+              Meeting Held
             </p>
           </div>
         </div>
