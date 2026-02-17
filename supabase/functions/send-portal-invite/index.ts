@@ -73,19 +73,24 @@ serve(async (req: Request) => {
       day: 'numeric',
     });
 
-    // Get Gmail connection for the inviting user
+    // Get Gmail connection for the inviting user (with user name for email sender)
     // If no invitedByUserId provided, try to get a default/system Gmail connection
-    let gmailConnection: GmailConnection | null = null;
+    let gmailConnection: (GmailConnection & {
+      user?: { name?: string; first_name?: string; last_name?: string } | null;
+    }) | null = null;
 
     if (invitedByUserId) {
       const { data: connection } = await supabase
         .from('gmail_connection')
-        .select('*')
+        .select(`
+          *,
+          user:user_id (name, first_name, last_name)
+        `)
         .eq('user_id', invitedByUserId)
         .eq('is_active', true)
         .single();
 
-      gmailConnection = connection as GmailConnection | null;
+      gmailConnection = connection;
     }
 
     // If no connection found for the user, try to find any active Gmail connection
@@ -93,12 +98,15 @@ serve(async (req: Request) => {
     if (!gmailConnection) {
       const { data: anyConnection } = await supabase
         .from('gmail_connection')
-        .select('*')
+        .select(`
+          *,
+          user:user_id (name, first_name, last_name)
+        `)
         .eq('is_active', true)
         .limit(1)
         .single();
 
-      gmailConnection = anyConnection as GmailConnection | null;
+      gmailConnection = anyConnection;
     }
 
     if (!gmailConnection) {
@@ -213,6 +221,15 @@ serve(async (req: Request) => {
       ? `${customMessage}\n\nClick here to set up your account: ${inviteLink}\n\nThis invitation link will expire on ${expiresDate}.`
       : `Hi ${firstName},\n\nYou've been invited to access the Oculus Client Portal. This portal gives you visibility into your real estate projects.\n\nClick here to set up your account: ${inviteLink}\n\nThis invitation link will expire on ${expiresDate}.\n\nBest regards,\nThe Oculus Team`;
 
+    // Get sender display name from user record
+    const senderUser = gmailConnection.user;
+    const senderName = senderUser?.name ||
+      (senderUser?.first_name && senderUser?.last_name
+        ? `${senderUser.first_name} ${senderUser.last_name}`
+        : null) ||
+      senderUser?.first_name ||
+      null;
+
     // Send email via Gmail API (CC the sender so they have a record)
     const sendResult = await sendEmail(
       accessToken,
@@ -223,6 +240,7 @@ serve(async (req: Request) => {
         subject: emailSubject,
         bodyHtml: emailHtml,
         bodyText: plainTextMessage,
+        fromName: senderName || undefined,
       }
     );
 

@@ -64,10 +64,13 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // For briefings, we need to find an admin user's Gmail connection
-    // Get the first active Gmail connection (typically the admin's)
+    // Get the first active Gmail connection (typically the admin's) with user info
     const { data: connection, error: connError } = await supabase
       .from('gmail_connection')
-      .select('*')
+      .select(`
+        *,
+        user:user_id (name, first_name, last_name)
+      `)
       .eq('is_active', true)
       .order('created_at', { ascending: true })
       .limit(1)
@@ -83,7 +86,18 @@ serve(async (req) => {
       );
     }
 
-    const gmailConnection = connection as GmailConnection;
+    const gmailConnection = connection as GmailConnection & {
+      user?: { name?: string; first_name?: string; last_name?: string } | null;
+    };
+
+    // Get sender display name from user record
+    const senderUser = gmailConnection.user;
+    const senderName = senderUser?.name ||
+      (senderUser?.first_name && senderUser?.last_name
+        ? `${senderUser.first_name} ${senderUser.last_name}`
+        : null) ||
+      senderUser?.first_name ||
+      null;
 
     // Check if token needs refresh
     let accessToken = gmailConnection.access_token;
@@ -119,6 +133,7 @@ serve(async (req) => {
       subject: request.subject,
       bodyHtml: request.body_html,
       bodyText: request.body_text,
+      fromName: senderName || undefined,
     };
 
     // Send the email

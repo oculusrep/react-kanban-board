@@ -67,10 +67,10 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get user from database
+    // Get user from database (including name for email sender display)
     const { data: user, error: userError } = await supabase
       .from('user')
-      .select('id')
+      .select('id, name, first_name, last_name')
       .eq('email', request.user_email)
       .single();
 
@@ -129,6 +129,12 @@ serve(async (req) => {
         .eq('id', gmailConnection.id);
     }
 
+    // Get the sender's display name (prefer full name, fall back to first+last, then email username)
+    const senderName = user.name ||
+      (user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : null) ||
+      user.first_name ||
+      null;
+
     // Prepare email options
     const emailOptions: SendEmailOptions = {
       to: request.to,
@@ -136,6 +142,7 @@ serve(async (req) => {
       subject: request.subject,
       bodyHtml: request.body_html,
       bodyText: request.body_text,
+      fromName: senderName || undefined,
     };
 
     // Send the email

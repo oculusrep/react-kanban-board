@@ -719,6 +719,7 @@ export interface SendEmailOptions {
   replyTo?: string;
   inReplyTo?: string;   // Message-ID for threading
   references?: string;  // Reference chain for threading
+  fromName?: string;    // Display name for the sender (e.g., "Mike Minihan")
 }
 
 export interface SendEmailResult {
@@ -778,9 +779,20 @@ function buildMimeMessage(
 ): string {
   const boundary = `boundary_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
+  // Format the From header with display name if provided
+  // Format: "Display Name" <email@example.com>
+  let fromHeader: string;
+  if (options.fromName) {
+    // Encode the display name if it contains non-ASCII characters
+    const encodedName = encodeHeaderValue(options.fromName);
+    fromHeader = `${encodedName} <${from}>`;
+  } else {
+    fromHeader = from;
+  }
+
   // Build headers
   const headers: string[] = [
-    `From: ${from}`,
+    `From: ${fromHeader}`,
     `To: ${options.to.join(', ')}`,
   ];
 
