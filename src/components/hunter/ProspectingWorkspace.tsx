@@ -115,6 +115,7 @@ interface ActivityFeedItem {
   subject?: string | null;
   activity_type_name?: string | null;
   completed_at?: string | null;
+  hidden_from_timeline?: boolean; // Hidden from activity timeline but still in email history
 }
 
 interface EmailTemplate {
@@ -464,7 +465,7 @@ export default function ProspectingWorkspace() {
       // Build query filter to include activities on contact OR their linked target
       let activitiesQuery = supabase
         .from('prospecting_activity')
-        .select('id, activity_type, notes, email_subject, created_at, created_by');
+        .select('id, activity_type, notes, email_subject, created_at, created_by, hidden_from_timeline');
 
       let notesQuery = supabase
         .from('prospecting_note')
@@ -515,7 +516,8 @@ export default function ProspectingWorkspace() {
           email_subject: a.email_subject,
           created_at: a.created_at,
           created_by: a.created_by,
-          source: 'prospecting' as const
+          source: 'prospecting' as const,
+          hidden_from_timeline: a.hidden_from_timeline || false
         })),
         // Notes
         ...(notes || []).map(n => ({
@@ -769,11 +771,27 @@ export default function ProspectingWorkspace() {
     }
     try {
       const table = item.type === 'note' ? 'prospecting_note' : 'prospecting_activity';
-      const { error } = await supabase.from(table).delete().eq('id', item.id);
-      if (error) throw error;
-      setActivityFeed(prev => prev.filter(i => i.id !== item.id));
+
+      // For email activities, hide from timeline instead of deleting
+      // This keeps them in Email History but removes from Activity Timeline
+      if (item.type === 'email') {
+        const { error } = await supabase
+          .from(table)
+          .update({ hidden_from_timeline: true })
+          .eq('id', item.id);
+        if (error) throw error;
+        // Update local state to mark as hidden
+        setActivityFeed(prev => prev.map(i =>
+          i.id === item.id ? { ...i, hidden_from_timeline: true } : i
+        ));
+      } else {
+        // For non-email activities, delete completely
+        const { error } = await supabase.from(table).delete().eq('id', item.id);
+        if (error) throw error;
+        setActivityFeed(prev => prev.filter(i => i.id !== item.id));
+      }
     } catch (err) {
-      console.error('Error deleting item:', err);
+      console.error('Error deleting/hiding item:', err);
     }
   };
 
@@ -2224,7 +2242,7 @@ export default function ProspectingWorkspace() {
                           <div className="p-8 text-center">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto"></div>
                           </div>
-                        ) : activityFeed.length === 0 ? (
+                        ) : activityFeed.filter(i => !i.hidden_from_timeline).length === 0 ? (
                           <div className="p-8 text-center text-gray-400">
                             <DocumentTextIcon className="w-12 h-12 mx-auto mb-2" />
                             <p className="font-medium">No activity yet</p>
@@ -2232,7 +2250,7 @@ export default function ProspectingWorkspace() {
                           </div>
                         ) : (
                           <div className="divide-y divide-gray-100">
-                            {activityFeed.map((item) => (
+                            {activityFeed.filter(i => !i.hidden_from_timeline).map((item) => (
                               <div key={item.id} className="p-4 hover:bg-gray-50 group">
                                 <div className="flex items-start gap-3">
                                   <div className={`p-2 rounded-full ${
@@ -2261,6 +2279,7 @@ export default function ProspectingWorkspace() {
                                           <button
                                             onClick={() => deleteActivityItem(item)}
                                             className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity"
+                                            title={item.type === 'email' ? 'Hide from timeline' : 'Delete'}
                                           >
                                             <XMarkIcon className="w-4 h-4" />
                                           </button>
