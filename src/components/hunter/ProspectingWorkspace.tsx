@@ -424,8 +424,15 @@ export default function ProspectingWorkspace() {
         errorMessage: activityError?.message,
         errorDetails: activityError?.details,
         errorHint: activityError?.hint,
-        data: mainActivityData,
-        todayStart
+        todayStart,
+        rawData: mainActivityData?.map(a => ({
+          activity_type_name: (a.activity_type as { name?: string })?.name,
+          completed_call: a.completed_call,
+          meeting_held: a.meeting_held,
+          is_prospecting: a.is_prospecting,
+          is_prospecting_call: a.is_prospecting_call,
+          created_at: a.created_at
+        }))
       });
 
       // Filter to today only and exclude hidden activities
@@ -477,11 +484,27 @@ export default function ProspectingWorkspace() {
         };
       });
 
+      // Debug: Log mapped activities from activity table
+      console.log('📊 Mapped main activities:', {
+        count: mainActivitiesToday.length,
+        activities: mainActivitiesToday.map(a => ({
+          activity_type: a.activity_type,
+          created_at: a.created_at,
+          contact_id: a.contact_id
+        }))
+      });
+
       // Combine activities from both tables
       const allTodayActivities = [
         ...todayActivities.map(a => ({ ...a, source: 'prospecting_activity' as const })),
         ...mainActivitiesToday
       ];
+
+      console.log('📊 Combined allTodayActivities:', {
+        total: allTodayActivities.length,
+        fromProspecting: todayActivities.length,
+        fromActivity: mainActivitiesToday.length
+      });
 
       // Get unique contact IDs and fetch contact details separately
       const contactIds = [...new Set(allTodayActivities.map(a => a.contact_id).filter(Boolean))] as string[];
@@ -536,6 +559,9 @@ export default function ProspectingWorkspace() {
             break;
         }
       });
+
+      console.log('📊 Final activity counts:', activityCounts);
+
       setRecentlyContactedToday(Array.from(contactMap.values()));
       setTodayStats(activityCounts);
 
