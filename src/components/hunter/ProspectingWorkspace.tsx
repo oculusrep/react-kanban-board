@@ -1335,16 +1335,46 @@ export default function ProspectingWorkspace() {
 
     setSearchingFindContact(true);
     try {
-      const { data: contacts } = await supabase
+      // Split query into terms for fuzzy multi-word matching
+      const searchTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+      const firstTerm = searchTerms[0];
+
+      // Build OR filter for first term across all searchable fields
+      const { data: contacts, error } = await supabase
         .from('contact')
         .select(`
           id, first_name, last_name, company, email, phone, mobile_phone, title,
           target_id, linked_in_profile_link, mailing_city, mailing_state
         `)
-        .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,company.ilike.%${query}%,email.ilike.%${query}%`)
-        .limit(10);
+        .or(`first_name.ilike.%${firstTerm}%,last_name.ilike.%${firstTerm}%,company.ilike.%${firstTerm}%,email.ilike.%${firstTerm}%`)
+        .limit(50);
 
-      const targetIds = contacts?.filter(c => c.target_id).map(c => c.target_id) || [];
+      if (error) {
+        console.error('Find Contact search error:', error);
+        setFindContactResults([]);
+        return;
+      }
+
+      // Client-side filtering for multi-term queries (e.g., "john smith" or "smith acme")
+      let filteredContacts = contacts || [];
+      if (searchTerms.length > 1) {
+        filteredContacts = filteredContacts.filter(contact => {
+          const searchableText = [
+            contact.first_name,
+            contact.last_name,
+            contact.company,
+            contact.email,
+            contact.title
+          ].filter(Boolean).join(' ').toLowerCase();
+
+          return searchTerms.every(term => searchableText.includes(term));
+        });
+      }
+
+      // Limit to 10 results
+      filteredContacts = filteredContacts.slice(0, 10);
+
+      const targetIds = filteredContacts.filter(c => c.target_id).map(c => c.target_id) || [];
       let targets: Record<string, any> = {};
 
       if (targetIds.length > 0) {
@@ -1359,12 +1389,12 @@ export default function ProspectingWorkspace() {
         }, {} as Record<string, any>);
       }
 
-      const data = contacts?.map(c => ({
+      const data = filteredContacts.map(c => ({
         ...c,
         target: c.target_id ? targets[c.target_id] || null : null
       }));
 
-      setFindContactResults((data || []) as ContactDetails[]);
+      setFindContactResults(data as ContactDetails[]);
     } catch (err) {
       console.error('Error searching contacts:', err);
     } finally {
