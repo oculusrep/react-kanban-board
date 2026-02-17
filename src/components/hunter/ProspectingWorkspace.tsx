@@ -378,7 +378,7 @@ export default function ProspectingWorkspace() {
 
       // Fetch contacts with prospecting activity logged today
       // Note: hidden_from_timeline column may not exist yet - don't select it to avoid query failure
-      const { data: recentlyContactedData } = await supabase
+      const { data: recentlyContactedData, error: recentlyContactedError } = await supabase
         .from('prospecting_activity')
         .select(`
           contact_id,
@@ -391,6 +391,14 @@ export default function ProspectingWorkspace() {
         .gte('created_at', todayStart)
         .lte('created_at', todayEnd)
         .order('created_at', { ascending: false });
+
+      console.log('📊 Scorecard Debug:', {
+        todayStart,
+        todayEnd,
+        recentlyContactedData,
+        recentlyContactedError,
+        count: recentlyContactedData?.length || 0
+      });
 
       // Deduplicate contacts and calculate stats
       const contactMap = new Map<string, ContactDetails>();
