@@ -377,45 +377,47 @@ export default function ProspectingWorkspace() {
 
       setNewHunterLeads((newLeads || []) as NewHunterLead[]);
 
-      // Fetch contacts with prospecting activity logged today
-      // Use single date filter to avoid PostgREST 400 error, then filter in JS
+      // Fetch prospecting activities logged today (simple query without joins to avoid 400 errors)
       const { data: rawActivityData } = await supabase
         .from('prospecting_activity')
-        .select(`
-          contact_id,
-          activity_type,
-          created_at,
-          hidden_from_timeline,
-          contact:contact!fk_prospecting_activity_contact_id(
-            id, first_name, last_name, company, email, phone, mobile_phone, title, target_id
-          )
-        `)
+        .select('contact_id, activity_type, created_at, hidden_from_timeline')
         .gte('created_at', todayStart)
         .order('created_at', { ascending: false })
         .limit(500);
 
       // Filter to today only and exclude hidden activities
       const todayEndDate = new Date(`${today}T23:59:59`);
-      const recentlyContactedData = (rawActivityData || []).filter(item => {
+      const todayActivities = (rawActivityData || []).filter(item => {
         const itemDate = new Date(item.created_at);
         const isToday = itemDate <= todayEndDate;
         const isVisible = !item.hidden_from_timeline;
         return isToday && isVisible;
       });
 
+      // Get unique contact IDs and fetch contact details separately
+      const contactIds = [...new Set(todayActivities.map(a => a.contact_id).filter(Boolean))] as string[];
+      let contactsById: Record<string, ContactDetails> = {};
+
+      if (contactIds.length > 0) {
+        const { data: contactData } = await supabase
+          .from('contact')
+          .select('id, first_name, last_name, company, email, phone, mobile_phone, title, target_id')
+          .in('id', contactIds);
+
+        (contactData || []).forEach(c => {
+          contactsById[c.id] = c as ContactDetails;
+        });
+      }
+
       // Deduplicate contacts and calculate stats
       const contactMap = new Map<string, ContactDetails>();
       let emailCount = 0;
       let callCount = 0;
-      interface ActivityItem {
-        contact_id: string;
-        activity_type?: string;
-        hidden_from_timeline?: boolean;
-        contact: ContactDetails | null;
-      }
-      (recentlyContactedData || []).forEach((item: ActivityItem) => {
-        if (item.contact && !contactMap.has(item.contact_id)) {
-          contactMap.set(item.contact_id, item.contact as ContactDetails);
+
+      todayActivities.forEach((item) => {
+        const contact = item.contact_id ? contactsById[item.contact_id] : null;
+        if (contact && !contactMap.has(item.contact_id)) {
+          contactMap.set(item.contact_id, contact);
         }
         // Count activity types
         if (item.activity_type === 'email') emailCount++;
