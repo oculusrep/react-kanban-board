@@ -431,7 +431,7 @@ export default function ProspectingWorkspace() {
       const { data: notes } = await notesQuery.order('created_at', { ascending: false });
 
       // Fetch contact activities from the main activity table (logged calls, tasks, etc.)
-      const { data: contactActivities } = await supabase
+      const { data: contactActivities, error: contactActivitiesError } = await supabase
         .from('activity')
         .select(`
           id,
@@ -447,6 +447,8 @@ export default function ProspectingWorkspace() {
         `)
         .eq('contact_id', contactId)
         .order('created_at', { ascending: false });
+
+      console.log('🔍 Contact activities query:', { contactId, contactActivities, contactActivitiesError });
 
       // Combine and sort chronologically
       const feedItems: ActivityFeedItem[] = [
