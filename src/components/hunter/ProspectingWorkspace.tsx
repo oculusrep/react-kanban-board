@@ -2425,36 +2425,45 @@ export default function ProspectingWorkspace() {
         )}
       </div>
 
-      {/* Email Compose Modal */}
+      {/* Email Compose Panel - Positioned to leave drawer visible */}
       {showEmailModal && selectedContact && (
         <>
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-[60]" onClick={() => setShowEmailModal(false)} />
-          <div className="fixed inset-4 md:inset-x-20 md:inset-y-8 bg-white rounded-xl shadow-2xl z-[60] flex flex-col overflow-hidden">
-            {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Compose Email</h3>
-                <p className="text-sm text-gray-500">
+          {/* Semi-transparent backdrop that doesn't cover the drawer */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-30 z-[55]"
+            style={{ right: '620px' }}
+            onClick={() => setShowEmailModal(false)}
+          />
+          {/* Compact email composer positioned to the left of the drawer */}
+          <div
+            className="fixed top-4 bottom-4 left-4 bg-white rounded-xl shadow-2xl z-[55] flex flex-col overflow-hidden"
+            style={{ right: '640px', minWidth: '500px' }}
+          >
+            {/* Modal Header - More compact */}
+            <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-semibold text-gray-900">Compose Email</h3>
+                <p className="text-xs text-gray-500 truncate">
                   To: {selectedContact.first_name} {selectedContact.last_name} &lt;{selectedContact.email}&gt;
                 </p>
               </div>
               <button
                 onClick={() => setShowEmailModal(false)}
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg ml-2"
               >
                 <XMarkIcon className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Modal Body */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            {/* Modal Body - More compact spacing */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {/* Template selector + Settings link */}
               <div className="flex gap-2">
                 {emailTemplates.length > 0 ? (
                   <select
                     value={selectedTemplate}
                     onChange={(e) => handleTemplateSelect(e.target.value)}
-                    className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                    className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg"
                   >
                     <option value="">Select a template...</option>
                     {emailTemplates.map((t) => (
@@ -2466,17 +2475,17 @@ export default function ProspectingWorkspace() {
                 ) : (
                   <Link
                     to="/hunter/settings"
-                    className="flex-1 px-3 py-2 text-sm text-gray-500 border border-gray-300 border-dashed rounded-lg hover:bg-gray-50 text-center"
+                    className="flex-1 px-3 py-1.5 text-sm text-gray-500 border border-gray-300 border-dashed rounded-lg hover:bg-gray-50 text-center"
                   >
                     + Create email templates
                   </Link>
                 )}
                 <Link
                   to="/hunter/settings"
-                  className="px-3 py-2 text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-100"
+                  className="px-2 py-1.5 text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-100"
                   title="Manage templates & signature"
                 >
-                  <Cog6ToothIcon className="w-5 h-5" />
+                  <Cog6ToothIcon className="w-4 h-4" />
                 </Link>
               </div>
 
@@ -2486,26 +2495,26 @@ export default function ProspectingWorkspace() {
                 value={emailSubject}
                 onChange={(e) => setEmailSubject(e.target.value)}
                 placeholder="Subject"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-base"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
               />
 
-              {/* Rich Text Editor */}
-              <div className="border border-gray-300 rounded-lg overflow-hidden bg-white" style={{ minHeight: '300px' }}>
-                <Suspense fallback={<div className="h-72 flex items-center justify-center text-gray-400">Loading editor...</div>}>
+              {/* Rich Text Editor - Smaller */}
+              <div className="border border-gray-300 rounded-lg overflow-hidden bg-white flex-1" style={{ minHeight: '200px' }}>
+                <Suspense fallback={<div className="h-48 flex items-center justify-center text-gray-400">Loading editor...</div>}>
                   <ReactQuill
                     theme="snow"
                     value={emailBody}
                     onChange={setEmailBody}
                     modules={quillModules}
                     formats={quillFormats}
-                    style={{ height: '250px' }}
+                    style={{ height: '180px' }}
                   />
                 </Suspense>
               </div>
 
               {/* Attachments */}
               <div className="flex items-center gap-2">
-                <label className="cursor-pointer px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100 flex items-center gap-2">
+                <label className="cursor-pointer px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100 flex items-center gap-1.5">
                   <input
                     type="file"
                     multiple
@@ -2513,21 +2522,21 @@ export default function ProspectingWorkspace() {
                     className="sr-only"
                   />
                   <PaperClipIcon className="w-4 h-4" />
-                  Attach Files
+                  Attach
                 </label>
                 {emailAttachments.length > 0 && (
-                  <div className="flex flex-wrap gap-2 flex-1">
+                  <div className="flex flex-wrap gap-1.5 flex-1">
                     {emailAttachments.map((att, idx) => (
                       <span
                         key={idx}
-                        className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-600 rounded text-sm"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs"
                       >
                         {att.filename}
                         <button
                           onClick={() => removeAttachment(idx)}
                           className="text-gray-400 hover:text-red-500"
                         >
-                          <XMarkIcon className="w-4 h-4" />
+                          <XMarkIcon className="w-3 h-3" />
                         </button>
                       </span>
                     ))}
@@ -2536,36 +2545,36 @@ export default function ProspectingWorkspace() {
               </div>
             </div>
 
-            {/* Modal Footer */}
-            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
-              <div className="text-sm text-gray-500">
+            {/* Modal Footer - More compact */}
+            <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
+              <div className="text-xs text-gray-500">
                 {!emailSignature && (
                   <Link to="/hunter/settings" className="text-blue-600 hover:underline">
-                    Add email signature
+                    Add signature
                   </Link>
                 )}
               </div>
-              <div className="flex gap-3">
+              <div className="flex gap-2">
                 <button
                   onClick={() => setShowEmailModal(false)}
-                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={sendEmail}
                   disabled={sendingEmail || !emailSubject.trim() || !emailBody.replace(/<[^>]*>/g, '').trim() || !selectedContact?.email}
-                  className="flex items-center gap-2 px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                 >
                   {sendingEmail ? (
                     <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                      <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white" />
                       Sending...
                     </>
                   ) : (
                     <>
                       <PaperAirplaneIcon className="w-4 h-4" />
-                      Send via Gmail
+                      Send
                     </>
                   )}
                 </button>
