@@ -508,10 +508,9 @@ export default function ProspectingWorkspace() {
     setLoadingFeed(true);
     try {
       // Build query filter to include activities on contact OR their linked target
-      // Note: hidden_from_timeline column may not exist yet - omit to avoid query failure
       let activitiesQuery = supabase
         .from('prospecting_activity')
-        .select('id, activity_type, notes, email_subject, created_at, created_by');
+        .select('id, activity_type, notes, email_subject, created_at, created_by, hidden_from_timeline');
 
       let notesQuery = supabase
         .from('prospecting_note')
@@ -562,7 +561,8 @@ export default function ProspectingWorkspace() {
           email_subject: a.email_subject,
           created_at: a.created_at,
           created_by: a.created_by,
-          source: 'prospecting' as const
+          source: 'prospecting' as const,
+          hidden_from_timeline: a.hidden_from_timeline || false
         })),
         // Notes
         ...(notes || []).map(n => ({
@@ -2452,8 +2452,8 @@ export default function ProspectingWorkspace() {
                                             </span>
                                             <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
                                           </div>
-                                          {item.email_subject && (
-                                            <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject}</p>
+                                          {(item.email_subject || item.subject) && (
+                                            <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject || item.subject}</p>
                                           )}
                                           {/* Expandable email body */}
                                           {isExpanded && hasBody && (
