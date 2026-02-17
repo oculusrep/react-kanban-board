@@ -249,6 +249,9 @@ export default function ProspectingWorkspace() {
   const [newNoteText, setNewNoteText] = useState('');
   const [addingNote, setAddingNote] = useState(false);
 
+  // Expanded email state (for Email History tab)
+  const [expandedEmailIds, setExpandedEmailIds] = useState<Set<string>>(new Set());
+
   // Email compose modal
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
@@ -2417,32 +2420,56 @@ export default function ProspectingWorkspace() {
                             <div className="divide-y divide-gray-100">
                               {activityFeed
                                 .filter(item => item.type === 'email')
-                                .map((item) => (
-                                  <div key={item.id} className="p-4 hover:bg-gray-50 group">
-                                    <div className="flex items-start gap-3">
-                                      <div className="p-2 rounded-full bg-blue-100 text-blue-600">
-                                        <EnvelopeIcon className="w-4 h-4" />
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-sm font-medium text-blue-700">
-                                            Email Sent
-                                          </span>
-                                          <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
+                                .map((item) => {
+                                  const isExpanded = expandedEmailIds.has(item.id);
+                                  const hasBody = item.content;
+                                  return (
+                                    <div
+                                      key={item.id}
+                                      className={`p-4 hover:bg-gray-50 ${hasBody ? 'cursor-pointer' : ''}`}
+                                      onClick={() => {
+                                        if (hasBody) {
+                                          setExpandedEmailIds(prev => {
+                                            const next = new Set(prev);
+                                            if (next.has(item.id)) {
+                                              next.delete(item.id);
+                                            } else {
+                                              next.add(item.id);
+                                            }
+                                            return next;
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      <div className="flex items-start gap-3">
+                                        <div className="p-2 rounded-full bg-blue-100 text-blue-600">
+                                          <EnvelopeIcon className="w-4 h-4" />
                                         </div>
-                                        {item.email_subject && (
-                                          <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject}</p>
-                                        )}
-                                        {item.content && (
-                                          <p className="text-sm text-gray-600 whitespace-pre-wrap mt-1">{item.content}</p>
-                                        )}
-                                        <p className="text-xs text-gray-400 mt-2">
-                                          Email thread viewing coming soon
-                                        </p>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-sm font-medium text-blue-700">
+                                              Email Sent
+                                            </span>
+                                            <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
+                                          </div>
+                                          {item.email_subject && (
+                                            <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject}</p>
+                                          )}
+                                          {/* Expandable email body */}
+                                          {isExpanded && hasBody && (
+                                            <div
+                                              className="text-sm text-gray-600 mt-3 pt-3 border-t border-gray-100 whitespace-pre-wrap"
+                                              dangerouslySetInnerHTML={{ __html: item.content || '' }}
+                                            />
+                                          )}
+                                          {!isExpanded && hasBody && (
+                                            <p className="text-xs text-gray-400 mt-2">Click to expand</p>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                             </div>
                           )}
                         </>
