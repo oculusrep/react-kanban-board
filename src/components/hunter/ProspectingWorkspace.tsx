@@ -2350,7 +2350,8 @@ export default function ProspectingWorkspace() {
                                     {(item.email_subject || item.subject) && (
                                       <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject || item.subject}</p>
                                     )}
-                                    {item.content && (
+                                    {/* For non-email items, show content. For emails, don't show body in activity tab */}
+                                    {item.content && item.type !== 'email' && (
                                       <p className="text-sm text-gray-600 whitespace-pre-wrap mt-1">{item.content}</p>
                                     )}
                                     {item.source === 'contact_activity' && (
