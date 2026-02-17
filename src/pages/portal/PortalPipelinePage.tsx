@@ -182,7 +182,7 @@ export default function PortalPipelinePage() {
       return;
     }
 
-    // If a property is selected, switch to its stage's tab
+    // If a property is selected, switch to its stage's tab (only if the stage has an explicit tab)
     if (selectedParam && siteSubmits.length > 0) {
       const selectedSubmit = siteSubmits.find(ss => ss.id === selectedParam);
       if (selectedSubmit?.submit_stage?.name) {
@@ -190,12 +190,15 @@ export default function PortalPipelinePage() {
         // Check if it's a "Signed" stage
         if (SIGNED_STAGE_NAMES.includes(stageName)) {
           setSelectedStageId('signed');
-        } else {
-          // Find the stage ID
+        } else if (STAGE_TAB_ORDER.includes(stageName)) {
+          // Only switch to tab if the stage has an explicit tab in STAGE_TAB_ORDER
           const stage = stages.find(s => s.name === stageName);
           if (stage) {
             setSelectedStageId(stage.id);
           }
+        } else {
+          // Stage doesn't have its own tab - show in "All Sites"
+          setSelectedStageId(null);
         }
       }
       return;
