@@ -464,9 +464,10 @@ export default function ProspectingWorkspace() {
     setLoadingFeed(true);
     try {
       // Build query filter to include activities on contact OR their linked target
+      // Note: hidden_from_timeline column may not exist yet - omit to avoid query failure
       let activitiesQuery = supabase
         .from('prospecting_activity')
-        .select('id, activity_type, notes, email_subject, created_at, created_by, hidden_from_timeline');
+        .select('id, activity_type, notes, email_subject, created_at, created_by');
 
       let notesQuery = supabase
         .from('prospecting_note')
@@ -517,8 +518,7 @@ export default function ProspectingWorkspace() {
           email_subject: a.email_subject,
           created_at: a.created_at,
           created_by: a.created_by,
-          source: 'prospecting' as const,
-          hidden_from_timeline: a.hidden_from_timeline || false
+          source: 'prospecting' as const
         })),
         // Notes
         ...(notes || []).map(n => ({
@@ -772,27 +772,12 @@ export default function ProspectingWorkspace() {
     }
     try {
       const table = item.type === 'note' ? 'prospecting_note' : 'prospecting_activity';
-
-      // For email activities, hide from timeline instead of deleting
-      // This keeps them in Email History but removes from Activity Timeline
-      if (item.type === 'email') {
-        const { error } = await supabase
-          .from(table)
-          .update({ hidden_from_timeline: true })
-          .eq('id', item.id);
-        if (error) throw error;
-        // Update local state to mark as hidden
-        setActivityFeed(prev => prev.map(i =>
-          i.id === item.id ? { ...i, hidden_from_timeline: true } : i
-        ));
-      } else {
-        // For non-email activities, delete completely
-        const { error } = await supabase.from(table).delete().eq('id', item.id);
-        if (error) throw error;
-        setActivityFeed(prev => prev.filter(i => i.id !== item.id));
-      }
+      // Delete the activity (hide from timeline feature requires DB migration)
+      const { error } = await supabase.from(table).delete().eq('id', item.id);
+      if (error) throw error;
+      setActivityFeed(prev => prev.filter(i => i.id !== item.id));
     } catch (err) {
-      console.error('Error deleting/hiding item:', err);
+      console.error('Error deleting item:', err);
     }
   };
 
