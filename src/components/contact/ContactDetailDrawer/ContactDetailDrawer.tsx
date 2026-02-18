@@ -30,13 +30,16 @@ import {
   DEFAULT_FEATURES,
   ACTIVITY_CONFIG,
   ALL_ACTIVITY_CONFIG,
+  RESPONSE_CONFIG,
   OUTREACH_TYPES,
   CONNECTION_TYPES,
   RESPONSE_TYPES,
   SIGNAL_COLORS,
   QuickLogActivityType,
+  QuickLogResponseType,
   isResponseType,
 } from './types';
+import LogResponseModal from '../../hunter/LogResponseModal';
 
 // Activity icon component
 function ActivityIcon({ type, className = 'w-4 h-4' }: { type: string; className?: string }) {
@@ -116,6 +119,9 @@ export default function ContactDetailDrawer({
   const [loggingActivity, setLoggingActivity] = useState<QuickLogActivityType | null>(null);
   const [recentlyLogged, setRecentlyLogged] = useState<{ type: string; timestamp: number } | null>(null);
 
+  // Response logging state
+  const [responseModalType, setResponseModalType] = useState<QuickLogResponseType | null>(null);
+
   // Note input state
   const [newNoteText, setNewNoteText] = useState('');
   const [addingNote, setAddingNote] = useState(false);
@@ -192,6 +198,62 @@ export default function ContactDetailDrawer({
       setLoggingActivity(null);
     }
   }, [contact, hookLogActivity, callbacks]);
+
+  // Log response (inbound engagement)
+  const handleLogResponse = useCallback(async (
+    type: QuickLogResponseType,
+    date: string,
+    notes?: string
+  ): Promise<boolean> => {
+    if (!contact) return false;
+
+    try {
+      // For responses logged on a different date, we need to insert directly with created_at
+      // The hookLogActivity uses current timestamp, so we use supabase directly for backdating
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return false;
+
+      const { data, error } = await supabase
+        .from('prospecting_activity')
+        .insert({
+          contact_id: contact.id,
+          target_id: contact.target_id || null,
+          activity_type: type,
+          notes: notes || null,
+          created_by: user.id,
+          created_at: `${date}T12:00:00.000Z`, // Use noon on the selected date
+        })
+        .select('id, activity_type, notes, created_at, created_by')
+        .single();
+
+      if (error) throw error;
+
+      // Show success feedback
+      setRecentlyLogged({ type, timestamp: Date.now() });
+      setTimeout(() => setRecentlyLogged(null), 3000);
+
+      // Refresh timeline
+      refreshTimeline();
+
+      // Notify parent
+      if (data) {
+        callbacks.onActivityLogged?.({
+          id: data.id,
+          source: 'prospecting_activity',
+          type: data.activity_type as TimelineActivityType,
+          created_at: data.created_at,
+          content: data.notes,
+          created_by: data.created_by,
+          contact_id: contact.id,
+        });
+      }
+
+      return true;
+    } catch (err) {
+      console.error('Error logging response:', err);
+      return false;
+    }
+  }, [contact, refreshTimeline, callbacks]);
 
   // Add note
   const handleAddNote = useCallback(async () => {
@@ -610,6 +672,26 @@ export default function ContactDetailDrawer({
                           </div>
                         </div>
                       )}
+
+                      {/* Log Response Section (inbound engagement) */}
+                      <div className="mt-4 pt-3 border-t border-gray-200">
+                        <p className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-2">
+                          Log Response (They Replied)
+                        </p>
+                        <div className="grid grid-cols-4 gap-2">
+                          {RESPONSE_TYPES.map((type) => (
+                            <button
+                              key={type}
+                              onClick={() => setResponseModalType(type)}
+                              title={`Log ${RESPONSE_CONFIG[type].label}`}
+                              className="flex flex-col items-center gap-1 p-2 text-xs rounded-lg transition-all bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 hover:border-green-400"
+                            >
+                              <ActivityIcon type={type} className="w-5 h-5" />
+                              <span className="font-medium text-[10px]">{RESPONSE_CONFIG[type].label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -841,6 +923,16 @@ export default function ContactDetailDrawer({
           )}
         </div>
       </div>
+
+      {/* Response Modal */}
+      {responseModalType && (
+        <LogResponseModal
+          isOpen={!!responseModalType}
+          onClose={() => setResponseModalType(null)}
+          onSave={handleLogResponse}
+          responseType={responseModalType}
+        />
+      )}
     </>
   );
 }
