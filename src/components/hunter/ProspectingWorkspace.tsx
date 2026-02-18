@@ -35,7 +35,8 @@ import {
   PlusCircleIcon,
   ClipboardIcon,
   ArrowTopRightOnSquareIcon,
-  MagnifyingGlassIcon
+  MagnifyingGlassIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
 
 // Lazy load ReactQuill for email compose
@@ -1277,6 +1278,29 @@ export default function ProspectingWorkspace() {
     }
   };
 
+  // Delete task
+  const deleteTask = async (taskId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('Delete this task? This cannot be undone.')) return;
+
+    try {
+      await supabase
+        .from('activity')
+        .delete()
+        .eq('id', taskId);
+
+      // Clear selection if this task was selected
+      if (selectedTask?.id === taskId) {
+        setSelectedTask(null);
+        setSelectedContact(null);
+      }
+
+      fetchData();
+    } catch (err) {
+      console.error('Error deleting task:', err);
+    }
+  };
+
   // Bulk update selected task dates
   const bulkUpdateDates = async () => {
     if (!bulkNewDate || selectedTaskIds.size === 0) return;
@@ -2017,16 +2041,25 @@ export default function ProspectingWorkspace() {
                               className="text-sm border border-gray-300 rounded px-2 py-1"
                             />
                           ) : (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingDateTaskId(task.id);
-                              }}
-                              className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-gray-600 transition-opacity"
-                              title="Change date"
-                            >
-                              <CalendarIcon className="w-5 h-5" />
-                            </button>
+                            <>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingDateTaskId(task.id);
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-gray-600 transition-opacity"
+                                title="Change date"
+                              >
+                                <CalendarIcon className="w-5 h-5" />
+                              </button>
+                              <button
+                                onClick={(e) => deleteTask(task.id, e)}
+                                className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-red-600 transition-opacity"
+                                title="Delete task"
+                              >
+                                <TrashIcon className="w-5 h-5" />
+                              </button>
+                            </>
                           )}
                         </div>
                       </div>
@@ -2076,16 +2109,25 @@ export default function ProspectingWorkspace() {
                             className="text-sm border border-gray-300 rounded px-2 py-1"
                           />
                         ) : (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingDateTaskId(task.id);
-                            }}
-                            className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-gray-600 transition-opacity"
-                            title="Change date"
-                          >
-                            <CalendarIcon className="w-5 h-5" />
-                          </button>
+                          <>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingDateTaskId(task.id);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-gray-600 transition-opacity"
+                              title="Change date"
+                            >
+                              <CalendarIcon className="w-5 h-5" />
+                            </button>
+                            <button
+                              onClick={(e) => deleteTask(task.id, e)}
+                              className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-red-600 transition-opacity"
+                              title="Delete task"
+                            >
+                              <TrashIcon className="w-5 h-5" />
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>

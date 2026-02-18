@@ -134,7 +134,9 @@ export default function AddLeadModal({ isOpen, onClose, onLeadAdded }: AddLeadMo
               status_id: openStatus.id,
               activity_type_id: callType?.id || null,
               is_prospecting: true,
-              is_prospecting_call: true,
+              // Note: is_prospecting_call and completed_call are NOT set
+              // This creates an open task that appears in the call list
+              // Those flags are set when the call is actually completed
               created_at: now.toISOString(),
               updated_at: now.toISOString(),
             });
