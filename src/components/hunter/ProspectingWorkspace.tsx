@@ -2730,6 +2730,7 @@ export default function ProspectingWorkspace() {
                                         'text-emerald-700'
                                       }`}>
                                         {item.type === 'note' ? 'Note' :
+                                         item.type === 'task' ? 'Follow-up' :
                                          item.source === 'contact_activity' && item.activity_type_name ? item.activity_type_name :
                                          isResponse ? RESPONSE_CONFIG[item.type as ResponseType]?.label :
                                          ACTIVITY_CONFIG[item.type as ActivityType]?.label || item.type}
@@ -2740,13 +2741,16 @@ export default function ProspectingWorkspace() {
                                           (() => {
                                             const now = new Date();
                                             const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-                                            const scheduledDate = new Date(item.activity_date + 'T00:00:00');
-                                            const isToday = item.activity_date === todayStr;
-                                            const isPast = item.activity_date < todayStr;
+                                            const activityDateStr = typeof item.activity_date === 'string' && item.activity_date.includes('T')
+                                              ? item.activity_date.split('T')[0]
+                                              : item.activity_date;
+                                            const scheduledDate = new Date(activityDateStr + 'T00:00:00');
+                                            const isToday = activityDateStr === todayStr;
+                                            const isPast = activityDateStr < todayStr;
                                             const isTomorrow = (() => {
                                               const tomorrow = new Date(now);
                                               tomorrow.setDate(tomorrow.getDate() + 1);
-                                              return item.activity_date === `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+                                              return activityDateStr === `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
                                             })();
 
                                             return (
@@ -2776,6 +2780,21 @@ export default function ProspectingWorkspace() {
                                         </button>
                                       </div>
                                     </div>
+                                    {/* For tasks, show "Scheduled for" with the date prominently */}
+                                    {item.type === 'task' && item.activity_date && (
+                                      (() => {
+                                        const activityDateStr = typeof item.activity_date === 'string' && item.activity_date.includes('T')
+                                          ? item.activity_date.split('T')[0]
+                                          : item.activity_date;
+                                        const scheduledDate = new Date(activityDateStr + 'T00:00:00');
+                                        return (
+                                          <p className="text-sm text-blue-600 font-medium mt-1 flex items-center gap-1">
+                                            <CalendarDaysIcon className="w-3.5 h-3.5" />
+                                            Scheduled for {scheduledDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                          </p>
+                                        );
+                                      })()
+                                    )}
                                     {(item.email_subject || item.subject) && (
                                       <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject || item.subject}</p>
                                     )}
