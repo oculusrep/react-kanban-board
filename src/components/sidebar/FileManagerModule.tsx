@@ -216,6 +216,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
   const handleDragEnd = () => {
     setDraggedItem(null);
     setDropTargetPath(null);
+    setDropTargetFolder(null);
   };
 
   const handleDragOver = (e: React.DragEvent, folder: DropboxFile) => {
@@ -249,16 +250,30 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
     e.preventDefault();
     e.stopPropagation();
     setDropTargetPath(null);
+    setDropTargetFolder(null);
 
     if (targetFolder.type !== 'folder') return;
 
     // Check if this is a native file drop (from computer) or internal move
-    const hasNativeFiles = e.dataTransfer.files && e.dataTransfer.files.length > 0;
+    const nativeFiles = e.dataTransfer.files;
+    const hasNativeFiles = nativeFiles && nativeFiles.length > 0;
 
     if (hasNativeFiles) {
-      // Native file drop - upload to target folder
-      setDropTargetFolder(targetFolder);
-      // React-dropzone will handle the actual drop and call onDrop
+      console.log('📁 Native file drop on folder:', targetFolder.path, 'files:', nativeFiles.length);
+      // Handle file upload directly - don't rely on react-dropzone
+      const uploadPath = targetFolder.path.replace(folderPath || '', '');
+
+      try {
+        setUploading(true);
+        console.log('📤 Uploading', nativeFiles.length, 'files to:', uploadPath);
+        await uploadFiles(nativeFiles, uploadPath);
+        console.log('✅ Upload complete');
+      } catch (err) {
+        console.error('❌ Error uploading files:', err);
+        alert('Failed to upload files. Please try again.');
+      } finally {
+        setUploading(false);
+      }
       return;
     }
 
@@ -284,7 +299,6 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
       alert('Failed to move item. Please try again.');
     } finally {
       setDraggedItem(null);
-      setDropTargetFolder(null);
     }
   };
 
@@ -414,12 +428,18 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
   // Setup react-dropzone
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: async (acceptedFiles) => {
-      // Convert accepted files to FileList format
-      const fileList = {
-        ...acceptedFiles,
-        length: acceptedFiles.length,
-        item: (index: number) => acceptedFiles[index]
-      } as unknown as FileList;
+      console.log('🔥 react-dropzone onDrop triggered', {
+        acceptedFilesCount: acceptedFiles.length,
+        fileNames: acceptedFiles.map(f => f.name),
+        dropTargetFolder: dropTargetFolder?.path
+      });
+
+      if (acceptedFiles.length === 0) {
+        console.log('⚠️ No files accepted by react-dropzone');
+        return;
+      }
+
+      // acceptedFiles is already a File[] - uploadFiles accepts both FileList and File[]
 
       // Determine upload path - use dropTargetFolder if set, otherwise currentPath
       let uploadPath = currentPath;
@@ -429,16 +449,21 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
         setDropTargetFolder(null); // Clear after use
       }
 
+      console.log('📂 Upload path determined:', uploadPath);
+
       // Upload files to the determined path
       try {
+        console.log('⏳ Setting uploading to true');
         setUploading(true);
-        await uploadFiles(fileList, uploadPath);
-        console.log('📤 Uploaded to subfolder:', uploadPath);
+        console.log('📤 Calling uploadFiles...');
+        await uploadFiles(acceptedFiles, uploadPath);
+        console.log('✅ uploadFiles completed successfully');
         // Note: uploadFiles already calls refreshFiles internally, no need to call again
       } catch (err) {
-        console.error('Error uploading files:', err);
+        console.error('❌ Error uploading files:', err);
         alert('Failed to upload files. Please try again.');
       } finally {
+        console.log('🏁 Setting uploading to false');
         setUploading(false);
       }
     },

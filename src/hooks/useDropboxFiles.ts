@@ -3,6 +3,9 @@ import { supabase } from '../lib/supabaseClient';
 import DropboxService, { DropboxFile } from '../services/dropboxService';
 import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 
+// Type for files that can be uploaded - supports both FileList and File[]
+type UploadableFiles = FileList | File[];
+
 // Return type for the hook
 interface UseDropboxFilesReturn {
   files: DropboxFile[];
@@ -11,7 +14,7 @@ interface UseDropboxFilesReturn {
   uploading: boolean;
   error: string | null;
   refreshFiles: (silent?: boolean) => Promise<void>;
-  uploadFiles: (fileList: FileList, subPath?: string) => Promise<void>;
+  uploadFiles: (fileList: UploadableFiles, subPath?: string) => Promise<void>;
   createFolder: (folderName: string) => Promise<void>;
   deleteItem: (path: string) => Promise<void>;
   moveItem: (sourcePath: string, destinationFolderPath: string) => Promise<void>;
@@ -375,15 +378,30 @@ export function useDropboxFiles(
    * @param subPath - Optional subfolder path relative to base folder (e.g., "/_Closed")
    */
   const uploadFiles = useCallback(
-    async (fileList: FileList, subPath: string = '') => {
+    async (fileList: UploadableFiles, subPath: string = '') => {
+      // Convert to array for consistent handling
+      const filesArray = Array.from(fileList);
+
+      console.log('🚀 useDropboxFiles.uploadFiles called:', {
+        fileCount: filesArray.length,
+        fileNames: filesArray.map(f => f.name),
+        subPath,
+        hasDropboxService: !!dropboxService,
+        entityId,
+        folderPath
+      });
+
       if (!dropboxService) {
+        console.error('❌ No Dropbox service');
         throw new Error('Dropbox service not initialized');
       }
 
       if (!entityId) {
+        console.error('❌ No entity ID');
         throw new Error('No entity ID available');
       }
 
+      console.log('⏳ Setting uploading state...');
       setUploading(true);
       setError(null);
       setFolderCreatedMessage(null);
@@ -410,19 +428,26 @@ export function useDropboxFiles(
         console.log('📤 Uploading to:', targetFolderPath);
 
         // Upload all files in parallel
-        const uploadPromises = Array.from(fileList).map(file =>
-          dropboxService!.uploadFile(file, targetFolderPath)
-        );
+        console.log('📤 Creating upload promises for', filesArray.length, 'files...');
+        const uploadPromises = filesArray.map((file, index) => {
+          console.log(`📤 Starting upload ${index + 1}:`, file.name, file.size, 'bytes');
+          return dropboxService!.uploadFile(file, targetFolderPath);
+        });
 
+        console.log('⏳ Awaiting all uploads...');
         await Promise.all(uploadPromises);
+        console.log('✅ All uploads completed');
 
         // Refresh file list after uploads complete
+        console.log('🔄 Refreshing files...');
         await refreshFiles();
+        console.log('✅ Files refreshed');
       } catch (err: any) {
-        console.error('Error uploading files:', err);
+        console.error('❌ Error uploading files:', err);
         setError(err.message || 'Failed to upload files');
         throw err;
       } finally {
+        console.log('🏁 Upload finally block - setting uploading to false');
         setUploading(false);
       }
     },
