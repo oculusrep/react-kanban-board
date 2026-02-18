@@ -85,7 +85,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
       try {
         setUploading(true);
         await uploadFiles(fileList);
-        await refreshFiles();
+        // Note: uploadFiles already calls refreshFiles internally, no need to call again
       } catch (err) {
         console.error('Error uploading files:', err);
         alert('Failed to upload files. Please try again.');
@@ -434,7 +434,7 @@ const FileManagerModule: React.FC<FileManagerModuleProps> = ({
         setUploading(true);
         await uploadFiles(fileList, uploadPath);
         console.log('📤 Uploaded to subfolder:', uploadPath);
-        await refreshFiles();
+        // Note: uploadFiles already calls refreshFiles internally, no need to call again
       } catch (err) {
         console.error('Error uploading files:', err);
         alert('Failed to upload files. Please try again.');

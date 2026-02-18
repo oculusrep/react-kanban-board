@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import DropboxService, { DropboxFile } from '../services/dropboxService';
 import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
@@ -41,18 +41,20 @@ export function useDropboxFiles(
   const [folderCreatedMessage, setFolderCreatedMessage] = useState<string | null>(null);
 
   // Initialize Dropbox service with access token and refresh credentials from environment
-  let dropboxService: DropboxService | null = null;
-
-  try {
-    dropboxService = new DropboxService(
-      import.meta.env.VITE_DROPBOX_ACCESS_TOKEN || '',
-      import.meta.env.VITE_DROPBOX_REFRESH_TOKEN || '',
-      import.meta.env.VITE_DROPBOX_APP_KEY || '',
-      import.meta.env.VITE_DROPBOX_APP_SECRET || ''
-    );
-  } catch (err: any) {
-    // Token not configured - will be handled in fetchFiles
-  }
+  // Memoize to avoid recreating on every render
+  const dropboxService = useMemo(() => {
+    try {
+      return new DropboxService(
+        import.meta.env.VITE_DROPBOX_ACCESS_TOKEN || '',
+        import.meta.env.VITE_DROPBOX_REFRESH_TOKEN || '',
+        import.meta.env.VITE_DROPBOX_APP_KEY || '',
+        import.meta.env.VITE_DROPBOX_APP_SECRET || ''
+      );
+    } catch (err: any) {
+      // Token not configured - will be handled in fetchFiles
+      return null;
+    }
+  }, []); // Empty deps - env vars don't change at runtime
 
   /**
    * Fetch files from Dropbox for the current entity
@@ -157,7 +159,7 @@ export function useDropboxFiles(
     } finally {
       setLoading(false);
     }
-  }, [entityId, entityType]);
+  }, [entityId, entityType, dropboxService]);
 
   /**
    * Refresh the file list
