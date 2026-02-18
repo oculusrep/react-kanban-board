@@ -2432,72 +2432,62 @@ export default function ProspectingWorkspace() {
                     )}
                   </div>
 
-                  {/* Log Activity Section - clearly labeled */}
+                  {/* Compact Activity Log Bar */}
                   <div className="border-t border-gray-200 pt-3">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                      Quick Log Activity
-                    </p>
-                    <div className="grid grid-cols-5 gap-2">
-                      {/* Outreach activities */}
-                      {OUTREACH_TYPES.filter(t => t !== 'email').map((type) => (
-                        <button
-                          key={type}
-                          onClick={() => handleActivityClick(type)}
-                          disabled={!!loggingActivity}
-                          title={`Log ${ACTIVITY_CONFIG[type].label}`}
-                          className={`flex flex-col items-center gap-1 p-2 text-xs rounded-lg transition-all ${
-                            showActivityNoteInput === type
-                              ? 'bg-blue-600 text-white ring-2 ring-blue-300'
-                              : 'bg-white text-gray-600 border border-gray-200 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700'
-                          } disabled:opacity-50`}
-                        >
-                          <ActivityIcon type={type} className="w-5 h-5" />
-                          <span className="font-medium">{ACTIVITY_CONFIG[type].label}</span>
-                        </button>
-                      ))}
-                      {/* Connection activities */}
-                      {CONNECTION_TYPES.map((type) => (
-                        <button
-                          key={type}
-                          onClick={() => handleActivityClick(type)}
-                          disabled={!!loggingActivity}
-                          title={`Log ${ACTIVITY_CONFIG[type].label}`}
-                          className={`flex flex-col items-center gap-1 p-2 text-xs rounded-lg transition-all ${
-                            showActivityNoteInput === type
-                              ? 'bg-emerald-600 text-white ring-2 ring-emerald-300'
-                              : 'bg-white text-gray-600 border border-gray-200 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700'
-                          } disabled:opacity-50`}
-                        >
-                          <ActivityIcon type={type} className="w-5 h-5" />
-                          <span className="font-medium">{ACTIVITY_CONFIG[type].label}</span>
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-xs text-gray-400 mt-2 text-center">
-                      Click to log activity to timeline
-                    </p>
+                    <div className="flex items-center gap-3">
+                      {/* Outreach section */}
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-gray-400 mr-1">Log:</span>
+                        {OUTREACH_TYPES.filter(t => t !== 'email').map((type) => (
+                          <button
+                            key={type}
+                            onClick={() => handleActivityClick(type)}
+                            disabled={!!loggingActivity}
+                            title={ACTIVITY_CONFIG[type].label}
+                            className={`p-2 rounded-lg transition-all ${
+                              showActivityNoteInput === type
+                                ? 'bg-blue-600 text-white ring-2 ring-blue-300'
+                                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                            } disabled:opacity-50`}
+                          >
+                            <ActivityIcon type={type} className="w-5 h-5" />
+                          </button>
+                        ))}
+                        {/* Connection activities */}
+                        {CONNECTION_TYPES.map((type) => (
+                          <button
+                            key={type}
+                            onClick={() => handleActivityClick(type)}
+                            disabled={!!loggingActivity}
+                            title={ACTIVITY_CONFIG[type].label}
+                            className={`p-2 rounded-lg transition-all ${
+                              showActivityNoteInput === type
+                                ? 'bg-emerald-600 text-white ring-2 ring-emerald-300'
+                                : 'text-gray-500 hover:bg-emerald-50 hover:text-emerald-600'
+                            } disabled:opacity-50`}
+                          >
+                            <ActivityIcon type={type} className="w-5 h-5" />
+                          </button>
+                        ))}
+                      </div>
 
-                    {/* Log Response Section (inbound engagement) */}
-                    <div className="mt-4 pt-3 border-t border-gray-200">
-                      <p className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-2">
-                        Log Response (They Replied)
-                      </p>
-                      <div className="grid grid-cols-4 gap-2">
+                      {/* Divider */}
+                      <div className="h-6 w-px bg-gray-300" />
+
+                      {/* Response section */}
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-green-600 mr-1">Replied:</span>
                         {RESPONSE_TYPES.map((type) => (
                           <button
                             key={type}
                             onClick={() => setResponseModalType(type)}
-                            title={`Log ${RESPONSE_CONFIG[type].label}`}
-                            className="flex flex-col items-center gap-1 p-2 text-xs rounded-lg transition-all bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 hover:border-green-400"
+                            title={RESPONSE_CONFIG[type].label}
+                            className="p-2 rounded-lg text-green-600 hover:bg-green-50 transition-all"
                           >
                             <ActivityIcon type={type.replace('_response', '').replace('return_', '')} className="w-5 h-5" />
-                            <span className="font-medium">{RESPONSE_CONFIG[type].shortLabel}</span>
                           </button>
                         ))}
                       </div>
-                      <p className="text-xs text-gray-400 mt-2 text-center">
-                        Counts as a Connection in your scorecard
-                      </p>
                     </div>
                   </div>
 
