@@ -65,7 +65,7 @@ WITH daily_prospecting_activities AS (
     COUNT(*) FILTER (WHERE pa.activity_type = 'sms_response') as sms_responses,
     COUNT(*) FILTER (WHERE pa.activity_type = 'return_call') as return_calls,
     -- Count unique contacts/leads touched
-    COUNT(DISTINCT COALESCE(pa.contact_id, pa.target_id::text)) as contacts_touched
+    COUNT(DISTINCT COALESCE(pa.contact_id::text, pa.target_id::text)) as contacts_touched
   FROM prospecting_activity pa
   GROUP BY COALESCE(pa.activity_date, DATE(pa.created_at)), pa.created_by
 ),

@@ -87,9 +87,9 @@ function getPeriodDateRange(period: ScorecardPeriod): { start: Date; end: Date; 
   return { start, end, previousStart, previousEnd };
 }
 
-// Helper to format date as YYYY-MM-DD
+// Helper to format date as YYYY-MM-DD (using local timezone, not UTC)
 function formatDate(date: Date): string {
-  return date.toISOString().split('T')[0];
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 // Helper to get period label
