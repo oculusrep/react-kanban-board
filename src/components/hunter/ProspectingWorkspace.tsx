@@ -802,12 +802,17 @@ export default function ProspectingWorkspace() {
 
     setLoggingActivity(activityType);
     try {
+      // Use local EST date for activity_date
+      const now = new Date();
+      const activityDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
       const { data: activityData, error } = await supabase
         .from('prospecting_activity')
         .insert({
           contact_id: selectedContact.id,
           target_id: selectedContact.target_id,
           activity_type: activityType,
+          activity_date: activityDate,
           notes: note || null,
           created_by: user.id
         })
@@ -896,7 +901,8 @@ export default function ProspectingWorkspace() {
     if (!selectedContact || !user) return false;
 
     try {
-      // Use the specified date for backdating, format as ISO timestamp at end of day
+      // Use the specified date for backdating
+      // activity_date stores the actual date of the response for scorecard grouping
       const createdAt = new Date(date + 'T23:59:59').toISOString();
 
       const { data: activityData, error } = await supabase
@@ -905,6 +911,7 @@ export default function ProspectingWorkspace() {
           contact_id: selectedContact.id,
           target_id: selectedContact.target_id,
           activity_type: type,
+          activity_date: date, // Store the actual date for accurate reporting
           notes: notes || null,
           created_by: user.id,
           created_at: createdAt
