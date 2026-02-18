@@ -255,15 +255,18 @@ export const useScorecardMetrics = (userId?: string): UseScorecardMetricsReturn 
 
       for (const period of periods) {
         const { start, end, previousStart, previousEnd } = getPeriodDateRange(period);
+        // Use string comparison to avoid timezone issues with Date parsing
+        const startStr = formatDate(start);
+        const endStr = formatDate(end);
+        const previousStartStr = formatDate(previousStart);
+        const previousEndStr = formatDate(previousEnd);
 
         const currentRows = metrics.filter(m => {
-          const d = new Date(m.activity_date);
-          return d >= start && d <= end;
+          return m.activity_date >= startStr && m.activity_date <= endStr;
         });
 
         const previousRows = metrics.filter(m => {
-          const d = new Date(m.activity_date);
-          return d >= previousStart && d <= previousEnd;
+          return m.activity_date >= previousStartStr && m.activity_date <= previousEndStr;
         });
 
         const periodData = calculatePeriodData(period, currentRows, previousRows);
@@ -281,9 +284,10 @@ export const useScorecardMetrics = (userId?: string): UseScorecardMetricsReturn 
       const comparisonData: PeriodComparisonData[] = [];
       for (const period of periods) {
         const { start, end } = getPeriodDateRange(period);
+        const startStr = formatDate(start);
+        const endStr = formatDate(end);
         const rows = metrics.filter(m => {
-          const d = new Date(m.activity_date);
-          return d >= start && d <= end;
+          return m.activity_date >= startStr && m.activity_date <= endStr;
         });
         const agg = aggregateMetrics(rows);
 
@@ -332,9 +336,10 @@ export const useScorecardMetrics = (userId?: string): UseScorecardMetricsReturn 
         const weekStart = new Date(weekEnd);
         weekStart.setDate(weekStart.getDate() - 6);
 
+        const weekStartStr = formatDate(weekStart);
+        const weekEndStr = formatDate(weekEnd);
         const weekRows = metrics.filter(m => {
-          const d = new Date(m.activity_date);
-          return d >= weekStart && d <= weekEnd;
+          return m.activity_date >= weekStartStr && m.activity_date <= weekEndStr;
         });
         const agg = aggregateMetrics(weekRows);
 
