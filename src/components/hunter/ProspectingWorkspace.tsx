@@ -123,6 +123,7 @@ interface ActivityFeedItem {
   activity_type_name?: string | null;
   completed_at?: string | null;
   hidden_from_timeline?: boolean; // Hidden from activity timeline but still in email history
+  activity_date?: string | null; // Scheduled date for tasks/follow-ups
 }
 
 interface EmailTemplate {
@@ -672,6 +673,7 @@ export default function ProspectingWorkspace() {
           completed_at,
           completed_call,
           call_duration_seconds,
+          activity_date,
           activity_type!fk_activity_type_id (
             name
           )
@@ -732,7 +734,8 @@ export default function ProspectingWorkspace() {
             created_at: a.created_at,
             completed_at: a.completed_at,
             source: 'contact_activity' as const,
-            activity_type_name: (a.activity_type as { name: string } | null)?.name || null
+            activity_type_name: (a.activity_type as { name: string } | null)?.name || null,
+            activity_date: a.activity_date
           };
         })
       ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -2485,6 +2488,50 @@ export default function ProspectingWorkspace() {
                     <SparklesIcon className="w-4 h-4" />
                     {zoomInfoLoading ? 'Searching ZoomInfo...' : 'Enrich with ZoomInfo'}
                   </button>
+
+                  {/* Next Follow-up Indicator */}
+                  {(() => {
+                    const now = new Date();
+                    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                    const nextFollowUp = activityFeed
+                      .filter(item => item.type === 'task' && item.activity_date && !item.completed_at && item.activity_date >= todayStr)
+                      .sort((a, b) => (a.activity_date || '').localeCompare(b.activity_date || ''))[0];
+
+                    if (nextFollowUp?.activity_date) {
+                      const followUpDate = new Date(nextFollowUp.activity_date + 'T00:00:00');
+                      const isToday = nextFollowUp.activity_date === todayStr;
+                      const isTomorrow = (() => {
+                        const tomorrow = new Date(now);
+                        tomorrow.setDate(tomorrow.getDate() + 1);
+                        return nextFollowUp.activity_date === `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+                      })();
+
+                      return (
+                        <div className={`mt-3 flex items-center gap-2 px-3 py-2 rounded-lg ${
+                          isToday ? 'bg-orange-100 border border-orange-300' : 'bg-blue-50 border border-blue-200'
+                        }`}>
+                          <CalendarDaysIcon className={`w-4 h-4 ${isToday ? 'text-orange-600' : 'text-blue-600'}`} />
+                          <span className={`text-sm font-medium ${isToday ? 'text-orange-800' : 'text-blue-800'}`}>
+                            Follow-up: {isToday ? 'Today' : isTomorrow ? 'Tomorrow' : followUpDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </span>
+                        </div>
+                      );
+                    }
+
+                    // No follow-up scheduled
+                    return (
+                      <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 border border-gray-200">
+                        <CalendarDaysIcon className="w-4 h-4 text-gray-400" />
+                        <span className="text-sm text-gray-500">No follow-up scheduled</span>
+                        <button
+                          onClick={() => setShowFollowUpModal(true)}
+                          className="ml-auto text-xs text-blue-600 hover:text-blue-800 font-medium"
+                        >
+                          Schedule
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </>
               )}
             </div>
@@ -2688,7 +2735,38 @@ export default function ProspectingWorkspace() {
                                          ACTIVITY_CONFIG[item.type as ActivityType]?.label || item.type}
                                       </span>
                                       <div className="flex items-center gap-2">
-                                        <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
+                                        {/* For tasks, show scheduled date instead of created date */}
+                                        {item.type === 'task' && item.activity_date ? (
+                                          (() => {
+                                            const now = new Date();
+                                            const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                                            const scheduledDate = new Date(item.activity_date + 'T00:00:00');
+                                            const isToday = item.activity_date === todayStr;
+                                            const isPast = item.activity_date < todayStr;
+                                            const isTomorrow = (() => {
+                                              const tomorrow = new Date(now);
+                                              tomorrow.setDate(tomorrow.getDate() + 1);
+                                              return item.activity_date === `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+                                            })();
+
+                                            return (
+                                              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                                item.completed_at ? 'bg-green-100 text-green-700' :
+                                                isPast ? 'bg-red-100 text-red-700' :
+                                                isToday ? 'bg-orange-100 text-orange-700' :
+                                                'bg-blue-100 text-blue-700'
+                                              }`}>
+                                                {item.completed_at ? 'Completed' :
+                                                 isPast ? 'Overdue' :
+                                                 isToday ? 'Due today' :
+                                                 isTomorrow ? 'Tomorrow' :
+                                                 scheduledDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                              </span>
+                                            );
+                                          })()
+                                        ) : (
+                                          <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
+                                        )}
                                         <button
                                           onClick={() => deleteActivityItem(item)}
                                           className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity"
@@ -2705,7 +2783,7 @@ export default function ProspectingWorkspace() {
                                     {item.content && item.type !== 'email' && (
                                       <p className="text-sm text-gray-600 whitespace-pre-wrap mt-1">{item.content}</p>
                                     )}
-                                    {item.source === 'contact_activity' && (
+                                    {item.source === 'contact_activity' && item.type !== 'task' && (
                                       <span className="inline-flex items-center mt-1 text-xs text-gray-400">
                                         from contact record
                                       </span>
