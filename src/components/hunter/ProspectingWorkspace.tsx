@@ -1031,13 +1031,20 @@ export default function ProspectingWorkspace() {
   };
 
   const deleteActivityItem = async (item: ActivityFeedItem) => {
-    // Don't allow deleting contact activities - they should be managed from the contact page
-    if (item.source === 'contact_activity') {
-      return;
-    }
+    // Confirm deletion
+    if (!confirm('Delete this activity? This cannot be undone.')) return;
+
     try {
-      const table = item.type === 'note' ? 'prospecting_note' : 'prospecting_activity';
-      // Delete the activity (hide from timeline feature requires DB migration)
+      let table: string;
+      if (item.source === 'contact_activity') {
+        // Activities logged via LogCallModal are in the activity table
+        table = 'activity';
+      } else if (item.type === 'note') {
+        table = 'prospecting_note';
+      } else {
+        table = 'prospecting_activity';
+      }
+
       const { error } = await supabase.from(table).delete().eq('id', item.id);
       if (error) throw error;
       setActivityFeed(prev => prev.filter(i => i.id !== item.id));
@@ -2679,15 +2686,13 @@ export default function ProspectingWorkspace() {
                                       </span>
                                       <div className="flex items-center gap-2">
                                         <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
-                                        {item.source !== 'contact_activity' && (
-                                          <button
-                                            onClick={() => deleteActivityItem(item)}
-                                            className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity"
-                                            title={item.type === 'email' ? 'Hide from timeline' : 'Delete'}
-                                          >
-                                            <XMarkIcon className="w-4 h-4" />
-                                          </button>
-                                        )}
+                                        <button
+                                          onClick={() => deleteActivityItem(item)}
+                                          className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity"
+                                          title={item.type === 'email' ? 'Hide from timeline' : 'Delete'}
+                                        >
+                                          <XMarkIcon className="w-4 h-4" />
+                                        </button>
                                       </div>
                                     </div>
                                     {(item.email_subject || item.subject) && (
