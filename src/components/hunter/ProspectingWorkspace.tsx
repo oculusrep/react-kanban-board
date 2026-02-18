@@ -350,8 +350,9 @@ export default function ProspectingWorkspace() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // Use simple date strings (Supabase interprets these as-is without timezone conversion)
-      const today = new Date().toISOString().split('T')[0];
+      // Use LOCAL date for "today" calculations (user's timezone, not UTC)
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const todayStart = `${today}T00:00:00`;
       const todayEnd = `${today}T23:59:59`;
       const thirtyDaysAgo = new Date();
