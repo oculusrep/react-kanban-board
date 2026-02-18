@@ -72,30 +72,33 @@ WITH daily_prospecting_activities AS (
 ),
 daily_activity_table AS (
   -- Count prospecting activities from activity table (legacy/alternative logging)
-  -- Join activity_type table to get type names; use is_prospecting_call flag
-  -- Use Eastern time for date conversion
+  -- Join activity_type table to get type names
+  -- Calls and Meetings are counted if completed, regardless of is_prospecting_call flag
+  -- Other outreach types require is_prospecting_call = true
+  -- Note: activity_date is already a DATE type, no timezone conversion needed
+  -- Use COALESCE for user since LogCallModal sets owner_id, not user_id
   SELECT
-    DATE(a.activity_date AT TIME ZONE 'America/New_York') as activity_date,
-    a.user_id,
-    -- Outreach counts based on activity_type name
+    a.activity_date as activity_date,
+    COALESCE(a.user_id, a.owner_id) as user_id,
+    -- Outreach counts based on activity_type name (require is_prospecting_call)
     COUNT(*) FILTER (WHERE atype.name = 'Email' AND a.is_prospecting_call = true) as emails,
     COUNT(*) FILTER (WHERE atype.name = 'LinkedIn Message' AND a.is_prospecting_call = true) as linkedin,
     COUNT(*) FILTER (WHERE atype.name = 'SMS' AND a.is_prospecting_call = true) as sms,
     COUNT(*) FILTER (WHERE atype.name = 'Voicemail' AND a.is_prospecting_call = true) as voicemail,
-    -- Connection counts
-    COUNT(*) FILTER (WHERE atype.name = 'Call' AND a.is_prospecting_call = true AND a.completed_call = true) as calls,
-    COUNT(*) FILTER (WHERE atype.name = 'Meeting' AND a.is_prospecting_call = true) as meetings,
+    -- Connection counts - Calls/Meetings count if completed (from any source)
+    COUNT(*) FILTER (WHERE atype.name = 'Call' AND a.completed_call = true) as calls,
+    COUNT(*) FILTER (WHERE atype.name = 'Meeting') as meetings,
     -- Responses aren't tracked in activity table, so zeros
     0::bigint as email_responses,
     0::bigint as linkedin_responses,
     0::bigint as sms_responses,
     0::bigint as return_calls,
-    -- Count unique contacts touched
-    COUNT(DISTINCT a.contact_id) FILTER (WHERE a.is_prospecting_call = true) as contacts_touched
+    -- Count unique contacts touched (any prospecting activity OR completed call/meeting)
+    COUNT(DISTINCT a.contact_id) FILTER (WHERE a.is_prospecting_call = true OR a.completed_call = true OR atype.name = 'Meeting') as contacts_touched
   FROM activity a
   LEFT JOIN activity_type atype ON a.activity_type_id = atype.id
-  WHERE a.is_prospecting_call = true
-  GROUP BY DATE(a.activity_date AT TIME ZONE 'America/New_York'), a.user_id
+  WHERE a.is_prospecting_call = true OR a.completed_call = true OR atype.name = 'Meeting'
+  GROUP BY a.activity_date, COALESCE(a.user_id, a.owner_id)
 )
 -- Combine both sources
 SELECT

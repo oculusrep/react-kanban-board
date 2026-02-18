@@ -364,13 +364,17 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
         }
 
         // Prepare the activity data
+        // Use local date for activity_date to match Eastern timezone (per CLAUDE.md)
+        const now = new Date();
+        const localActivityDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
         const activityData: any = {
           subject: formData.subject,
           description: formData.comments || null,
           activity_type_id: callType.id,
           status_id: completedStatus.id,
-          activity_date: new Date().toISOString(),
-          completed_at: new Date().toISOString(),
+          activity_date: localActivityDate,
+          completed_at: now.toISOString(),
           contact_id: formData.contact_id || null,
           owner_id: currentUserId, // Assign to current user
           is_prospecting_call: formData.is_prospecting_call,
@@ -493,11 +497,14 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
       }
 
       // Create the follow-up task
+      // Use local date format for activity_date (per CLAUDE.md timezone rules)
+      const followUpLocalDate = `${followUpDate.getFullYear()}-${String(followUpDate.getMonth() + 1).padStart(2, '0')}-${String(followUpDate.getDate()).padStart(2, '0')}`;
+
       const taskData: any = {
         subject: followUpSubject || `Follow-up call with ${followUp.contactName}`,
         activity_type_id: taskType.id,
         status_id: openStatus.id,
-        activity_date: followUpDate.toISOString(),
+        activity_date: followUpLocalDate,
         contact_id: followUp.contactId,
         owner_id: currentUserId
       };
