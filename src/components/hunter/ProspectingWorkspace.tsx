@@ -8,6 +8,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
 import FollowUpModal from '../FollowUpModal';
 import LogResponseModal from './LogResponseModal';
+import AddLeadModal from '../prospecting/AddLeadModal';
 import { ProspectingResponseType } from '../../lib/types';
 import {
   PhoneIcon,
@@ -306,6 +307,9 @@ export default function ProspectingWorkspace() {
   const [findContactSearch, setFindContactSearch] = useState('');
   const [findContactResults, setFindContactResults] = useState<ContactDetails[]>([]);
   const [searchingFindContact, setSearchingFindContact] = useState(false);
+
+  // Add Lead modal
+  const [showAddLeadModal, setShowAddLeadModal] = useState(false);
 
   // Multi-select and date change
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
@@ -1858,6 +1862,13 @@ export default function ProspectingWorkspace() {
           >
             <MagnifyingGlassIcon className="w-5 h-5" />
             Find Contact
+          </button>
+          <button
+            onClick={() => setShowAddLeadModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+          >
+            <PlusCircleIcon className="w-5 h-5" />
+            Add Lead
           </button>
           <button
             onClick={() => setShowNewFollowUpModal(true)}
@@ -3448,6 +3459,17 @@ export default function ProspectingWorkspace() {
           responseType={responseModalType}
         />
       )}
+
+      {/* Add Lead Modal */}
+      <AddLeadModal
+        isOpen={showAddLeadModal}
+        onClose={() => setShowAddLeadModal(false)}
+        onLeadAdded={(contactId, contactName) => {
+          console.log('✅ Lead added:', contactName, contactId);
+          setShowAddLeadModal(false);
+          fetchData(); // Refresh to show new lead in call list
+        }}
+      />
     </div>
   );
 }
