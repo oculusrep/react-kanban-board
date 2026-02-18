@@ -1048,6 +1048,9 @@ export default function ProspectingWorkspace() {
       const { error } = await supabase.from(table).delete().eq('id', item.id);
       if (error) throw error;
       setActivityFeed(prev => prev.filter(i => i.id !== item.id));
+
+      // Refresh scorecard data
+      fetchData();
     } catch (err) {
       console.error('Error deleting item:', err);
     }
