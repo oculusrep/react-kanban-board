@@ -1033,28 +1033,10 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     }
   }, [data, type]);
 
-  // Center map on property when sidebar opens
-  useEffect(() => {
-    if (isOpen && data && onCenterOnPin) {
-      const isProperty = type === 'property';
-      const property = isProperty ? (data as Property) : (data as SiteSubmit).property;
-
-      if (property) {
-        // Use verified coordinates if available, otherwise use regular coordinates
-        const coords = property.verified_latitude && property.verified_longitude
-          ? { lat: property.verified_latitude, lng: property.verified_longitude }
-          : { lat: property.latitude, lng: property.longitude };
-
-        console.log('🎯 Centering map on property:', {
-          propertyId: property.id,
-          propertyName: property.property_name,
-          coordinates: coords
-        });
-
-        onCenterOnPin(coords.lat, coords.lng);
-      }
-    }
-  }, [isOpen, data, type, onCenterOnPin]);
+  // NOTE: Map centering on property selection is now handled in MappingPageNew.tsx
+  // via handlePinClick -> handleCenterOnPin pattern. The slideout should NOT
+  // auto-center the map - this caused issues with map snapping back when panning.
+  // The "Center on Pin" button in the UI still works via onCenterOnPin callback.
 
   // Load submit stages for dropdown
   useEffect(() => {

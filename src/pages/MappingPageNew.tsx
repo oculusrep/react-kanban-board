@@ -1027,6 +1027,19 @@ const MappingPageContent: React.FC = () => {
       });
     }
 
+    // Center map on the clicked pin (one-time, before opening sidebar)
+    if (mapInstance && data) {
+      const property = type === 'property' ? data : data?.property;
+      if (property) {
+        const lat = property.verified_latitude ?? property.latitude;
+        const lng = property.verified_longitude ?? property.longitude;
+        if (lat && lng) {
+          console.log('🎯 Centering map on clicked pin:', { lat, lng, type });
+          mapInstance.setCenter({ lat, lng });
+        }
+      }
+    }
+
     // Always update the selected data when clicking on a pin
     setSelectedPinData(data);
     setSelectedPinType(type);
