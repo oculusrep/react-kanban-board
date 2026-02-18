@@ -43,7 +43,7 @@ CREATE INDEX IF NOT EXISTS idx_prospecting_activity_date ON prospecting_activity
 
 -- This view aggregates daily activity counts for scorecard display
 -- It pulls from BOTH prospecting_activity table AND activity table
--- (activity table has is_prospecting flag for tasks logged as prospecting)
+-- (activity table uses activity_type_id FK and is_prospecting_call flag)
 
 CREATE OR REPLACE VIEW v_prospecting_daily_metrics AS
 WITH daily_prospecting_activities AS (
@@ -71,63 +71,64 @@ WITH daily_prospecting_activities AS (
 ),
 daily_activity_table AS (
   -- Count prospecting activities from activity table (legacy/alternative logging)
-  -- These are activities marked with is_prospecting = true
+  -- Join activity_type table to get type names; use is_prospecting_call flag
   SELECT
     DATE(a.activity_date) as activity_date,
     a.user_id,
-    -- Outreach counts based on activity_type
-    COUNT(*) FILTER (WHERE a.activity_type = 'Email' AND a.is_prospecting = true) as emails,
-    COUNT(*) FILTER (WHERE a.activity_type = 'LinkedIn Message' AND a.is_prospecting = true) as linkedin,
-    COUNT(*) FILTER (WHERE a.activity_type = 'SMS' AND a.is_prospecting = true) as sms,
-    COUNT(*) FILTER (WHERE a.activity_type = 'Voicemail' AND a.is_prospecting = true) as voicemail,
+    -- Outreach counts based on activity_type name
+    COUNT(*) FILTER (WHERE atype.name = 'Email' AND a.is_prospecting_call = true) as emails,
+    COUNT(*) FILTER (WHERE atype.name = 'LinkedIn Message' AND a.is_prospecting_call = true) as linkedin,
+    COUNT(*) FILTER (WHERE atype.name = 'SMS' AND a.is_prospecting_call = true) as sms,
+    COUNT(*) FILTER (WHERE atype.name = 'Voicemail' AND a.is_prospecting_call = true) as voicemail,
     -- Connection counts
-    COUNT(*) FILTER (WHERE a.activity_type = 'Call' AND a.is_prospecting = true AND a.completed_call = true) as calls,
-    COUNT(*) FILTER (WHERE a.activity_type = 'Meeting' AND a.is_prospecting = true) as meetings,
+    COUNT(*) FILTER (WHERE atype.name = 'Call' AND a.is_prospecting_call = true AND a.completed_call = true) as calls,
+    COUNT(*) FILTER (WHERE atype.name = 'Meeting' AND a.is_prospecting_call = true) as meetings,
     -- Responses aren't tracked in activity table, so zeros
-    0 as email_responses,
-    0 as linkedin_responses,
-    0 as sms_responses,
-    0 as return_calls,
+    0::bigint as email_responses,
+    0::bigint as linkedin_responses,
+    0::bigint as sms_responses,
+    0::bigint as return_calls,
     -- Count unique contacts touched
-    COUNT(DISTINCT a.contact_id) FILTER (WHERE a.is_prospecting = true) as contacts_touched
+    COUNT(DISTINCT a.contact_id) FILTER (WHERE a.is_prospecting_call = true) as contacts_touched
   FROM activity a
-  WHERE a.is_prospecting = true
+  LEFT JOIN activity_type atype ON a.activity_type_id = atype.id
+  WHERE a.is_prospecting_call = true
   GROUP BY DATE(a.activity_date), a.user_id
 )
 -- Combine both sources
 SELECT
-  COALESCE(pa.activity_date, at.activity_date) as activity_date,
-  COALESCE(pa.user_id, at.user_id) as user_id,
+  COALESCE(pa.activity_date, dat.activity_date) as activity_date,
+  COALESCE(pa.user_id, dat.user_id) as user_id,
   -- Outreach totals
-  COALESCE(pa.emails, 0) + COALESCE(at.emails, 0) as emails,
-  COALESCE(pa.linkedin, 0) + COALESCE(at.linkedin, 0) as linkedin,
-  COALESCE(pa.sms, 0) + COALESCE(at.sms, 0) as sms,
-  COALESCE(pa.voicemail, 0) + COALESCE(at.voicemail, 0) as voicemail,
+  COALESCE(pa.emails, 0) + COALESCE(dat.emails, 0) as emails,
+  COALESCE(pa.linkedin, 0) + COALESCE(dat.linkedin, 0) as linkedin,
+  COALESCE(pa.sms, 0) + COALESCE(dat.sms, 0) as sms,
+  COALESCE(pa.voicemail, 0) + COALESCE(dat.voicemail, 0) as voicemail,
   -- Connection totals
-  COALESCE(pa.calls, 0) + COALESCE(at.calls, 0) as calls,
-  COALESCE(pa.meetings, 0) + COALESCE(at.meetings, 0) as meetings,
+  COALESCE(pa.calls, 0) + COALESCE(dat.calls, 0) as calls,
+  COALESCE(pa.meetings, 0) + COALESCE(dat.meetings, 0) as meetings,
   -- Response totals (only from prospecting_activity table)
   COALESCE(pa.email_responses, 0) as email_responses,
   COALESCE(pa.linkedin_responses, 0) as linkedin_responses,
   COALESCE(pa.sms_responses, 0) as sms_responses,
   COALESCE(pa.return_calls, 0) as return_calls,
   -- Calculated totals
-  (COALESCE(pa.emails, 0) + COALESCE(at.emails, 0) +
-   COALESCE(pa.linkedin, 0) + COALESCE(at.linkedin, 0) +
-   COALESCE(pa.sms, 0) + COALESCE(at.sms, 0) +
-   COALESCE(pa.voicemail, 0) + COALESCE(at.voicemail, 0)) as total_outreach,
-  (COALESCE(pa.calls, 0) + COALESCE(at.calls, 0) +
-   COALESCE(pa.meetings, 0) + COALESCE(at.meetings, 0) +
+  (COALESCE(pa.emails, 0) + COALESCE(dat.emails, 0) +
+   COALESCE(pa.linkedin, 0) + COALESCE(dat.linkedin, 0) +
+   COALESCE(pa.sms, 0) + COALESCE(dat.sms, 0) +
+   COALESCE(pa.voicemail, 0) + COALESCE(dat.voicemail, 0)) as total_outreach,
+  (COALESCE(pa.calls, 0) + COALESCE(dat.calls, 0) +
+   COALESCE(pa.meetings, 0) + COALESCE(dat.meetings, 0) +
    COALESCE(pa.email_responses, 0) +
    COALESCE(pa.linkedin_responses, 0) +
    COALESCE(pa.sms_responses, 0) +
    COALESCE(pa.return_calls, 0)) as total_connections,
   -- Contacts touched
-  COALESCE(pa.contacts_touched, 0) + COALESCE(at.contacts_touched, 0) as contacts_touched
+  COALESCE(pa.contacts_touched, 0) + COALESCE(dat.contacts_touched, 0) as contacts_touched
 FROM daily_prospecting_activities pa
-FULL OUTER JOIN daily_activity_table at
-  ON pa.activity_date = at.activity_date AND pa.user_id = at.user_id
-WHERE COALESCE(pa.activity_date, at.activity_date) IS NOT NULL;
+FULL OUTER JOIN daily_activity_table dat
+  ON pa.activity_date = dat.activity_date AND pa.user_id = dat.user_id
+WHERE COALESCE(pa.activity_date, dat.activity_date) IS NOT NULL;
 
 -- ============================================================================
 -- 3. Comments
