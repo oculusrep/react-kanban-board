@@ -11,7 +11,8 @@ import {
   ExclamationCircleIcon,
   ClockIcon,
   CalendarDaysIcon,
-  BuildingOffice2Icon
+  BuildingOffice2Icon,
+  PresentationChartBarIcon
 } from '@heroicons/react/24/outline';
 import { supabase } from '../lib/supabaseClient';
 import ProspectingWorkspace from '../components/hunter/ProspectingWorkspace';
@@ -19,8 +20,9 @@ import HunterLeadsTab from '../components/hunter/HunterLeadsTab';
 import HunterSourcesTab from '../components/hunter/HunterSourcesTab';
 import HunterOutreachTab from '../components/hunter/HunterOutreachTab';
 import HunterStatsTab from '../components/hunter/HunterStatsTab';
+import { MasterScorecard } from '../components/scorecard';
 
-type TabType = 'today' | 'targets' | 'sources' | 'outreach' | 'stats';
+type TabType = 'today' | 'targets' | 'sources' | 'outreach' | 'stats' | 'scorecard';
 
 interface RunStatus {
   id: string;
@@ -156,6 +158,12 @@ export default function HunterDashboardPage() {
       label: 'Stats',
       icon: ChartBarIcon,
       description: 'Hunter performance metrics'
+    },
+    {
+      id: 'scorecard' as TabType,
+      label: 'Scorecard',
+      icon: PresentationChartBarIcon,
+      description: 'Master prospecting scorecard'
     }
   ];
 
@@ -274,6 +282,7 @@ export default function HunterDashboardPage() {
         {activeTab === 'outreach' && <HunterOutreachTab />}
         {activeTab === 'sources' && <HunterSourcesTab />}
         {activeTab === 'stats' && <HunterStatsTab />}
+        {activeTab === 'scorecard' && <MasterScorecard mode="full" />}
       </div>
     </div>
   );

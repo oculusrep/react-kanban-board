@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import RobReport from '../components/reports/RobReport';
 import GoalDashboard from '../components/reports/GoalDashboard';
+import { MasterScorecard } from '../components/scorecard';
 
 type ReportType = 'rob-report' | null;
 
@@ -62,6 +63,11 @@ export default function CoachDashboardPage() {
         {/* Goal Dashboard at the top */}
         <div className="mb-8">
           <GoalDashboard />
+        </div>
+
+        {/* Prospecting Scorecard */}
+        <div className="mb-8">
+          <MasterScorecard mode="embedded" readOnly />
         </div>
 
         {/* Reports Section */}

@@ -864,11 +864,15 @@ export default function ProspectingWorkspace() {
         return [selectedContact, ...filtered];
       });
 
-      // Update today's stats
+      // Update today's stats - increment the appropriate counter
       setTodayStats(prev => ({
+        ...prev,
         emails: prev.emails + (activityType === 'email' ? 1 : 0),
+        linkedin: prev.linkedin + (activityType === 'linkedin' ? 1 : 0),
+        sms: prev.sms + (activityType === 'sms' ? 1 : 0),
+        voicemail: prev.voicemail + (activityType === 'voicemail' ? 1 : 0),
         calls: prev.calls + (activityType === 'call' ? 1 : 0),
-        contacts: isNewContact ? prev.contacts + 1 : prev.contacts
+        meetings: prev.meetings + (activityType === 'meeting' ? 1 : 0),
       }));
 
       // Show success feedback
@@ -947,7 +951,10 @@ export default function ProspectingWorkspace() {
         // Update today's stats - responses count as connections
         setTodayStats(prev => ({
           ...prev,
-          contacts: isNewContact ? prev.contacts + 1 : prev.contacts
+          emailResponses: prev.emailResponses + (type === 'email_response' ? 1 : 0),
+          linkedinResponses: prev.linkedinResponses + (type === 'linkedin_response' ? 1 : 0),
+          smsResponses: prev.smsResponses + (type === 'sms_response' ? 1 : 0),
+          returnCalls: prev.returnCalls + (type === 'return_call' ? 1 : 0),
         }));
       }
 

@@ -75,6 +75,7 @@ import UnpaidReferralFeesReportPage from "./pages/UnpaidReferralFeesReportPage";
 import TypographyTestPage from "./pages/TypographyTestPage";
 import VelocityAnalyticsPage from "./pages/VelocityAnalyticsPage";
 import HistoricalVelocityPage from "./pages/HistoricalVelocityPage";
+import ProspectingScorecardPage from "./pages/ProspectingScorecardPage";
 
 function ProtectedLayout() {
   const location = useLocation();
@@ -167,6 +168,7 @@ function App() {
           <Route path="reports/unpaid-referral-fees" element={<CoachRoute><UnpaidReferralFeesReportPage /></CoachRoute>} />
           <Route path="reports/velocity-analytics" element={<CoachRoute><VelocityAnalyticsPage /></CoachRoute>} />
           <Route path="reports/historical-velocity" element={<CoachRoute><HistoricalVelocityPage /></CoachRoute>} />
+          <Route path="reports/prospecting-scorecard" element={<CoachRoute><ProspectingScorecardPage /></CoachRoute>} />
           <Route path="prospecting" element={<Navigate to="/hunter" replace />} />
           <Route path="kpi-dashboard" element={<CoachRoute><KPIDashboardPage /></CoachRoute>} />
           <Route path="admin/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />

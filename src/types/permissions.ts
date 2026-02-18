@@ -65,6 +65,7 @@ export interface RolePermissions {
   can_view_mike_is_owed_report?: boolean;
   can_view_unpaid_referral_fees_report?: boolean;
   can_view_velocity_analytics?: boolean;
+  can_view_prospecting_scorecard?: boolean;
 
   // Tab-Level Visibility (Deal Page)
   can_view_deal_commission_tab?: boolean;
@@ -429,6 +430,13 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     key: 'can_view_velocity_analytics',
     label: "Deal Velocity Analytics",
     description: "View deal velocity analytics showing time spent in each pipeline stage",
+    category: 'reporting',
+    defaultValue: false,
+  },
+  {
+    key: 'can_view_prospecting_scorecard',
+    label: "Prospecting Scorecard Report",
+    description: "View the Master Prospecting Scorecard showing outreach and connection metrics",
     category: 'reporting',
     defaultValue: false,
   },

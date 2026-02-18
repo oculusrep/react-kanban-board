@@ -145,6 +145,14 @@ export default function ReportsPage() {
       route: "/reports/historical-velocity",
       icon: "📅",
       permission: "can_view_velocity_analytics"
+    },
+    {
+      id: "prospecting-scorecard",
+      name: "Prospecting Scorecard",
+      description: "Master scorecard showing outreach vs connections across time periods",
+      route: "/reports/prospecting-scorecard",
+      icon: "🎯",
+      permission: "can_view_prospecting_scorecard"
     }
   ];
 
