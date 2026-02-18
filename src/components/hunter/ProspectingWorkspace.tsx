@@ -218,6 +218,14 @@ function ActivityIcon({ type, className = "w-4 h-4" }: { type: string; className
     case 'sms':
       return <ChatBubbleLeftIcon className={className} />;
     case 'voicemail':
+      // Voicemail icon: two circles connected (like cassette reels)
+      return (
+        <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="6" cy="12" r="4" />
+          <circle cx="18" cy="12" r="4" />
+          <line x1="6" y1="16" x2="18" y2="16" />
+        </svg>
+      );
     case 'call':
       return <PhoneIcon className={className} />;
     case 'meeting':
