@@ -29,9 +29,9 @@ ALTER TABLE prospecting_activity ADD CONSTRAINT prospecting_activity_activity_ty
 -- This allows logging a response with the actual date it occurred
 ALTER TABLE prospecting_activity ADD COLUMN IF NOT EXISTS activity_date DATE;
 
--- Set default for activity_date based on created_at for existing records
+-- Set default for activity_date based on created_at for existing records (Eastern time)
 UPDATE prospecting_activity
-SET activity_date = DATE(created_at)
+SET activity_date = DATE(created_at AT TIME ZONE 'America/New_York')
 WHERE activity_date IS NULL;
 
 -- Add index for date-based queries
@@ -48,8 +48,9 @@ CREATE INDEX IF NOT EXISTS idx_prospecting_activity_date ON prospecting_activity
 CREATE OR REPLACE VIEW v_prospecting_daily_metrics AS
 WITH daily_prospecting_activities AS (
   -- Count activities from prospecting_activity table by day
+  -- Use Eastern time for date conversion to match user's timezone
   SELECT
-    COALESCE(pa.activity_date, DATE(pa.created_at)) as activity_date,
+    COALESCE(pa.activity_date, DATE(pa.created_at AT TIME ZONE 'America/New_York')) as activity_date,
     pa.created_by as user_id,
     -- Outreach counts
     COUNT(*) FILTER (WHERE pa.activity_type = 'email') as emails,
@@ -67,13 +68,14 @@ WITH daily_prospecting_activities AS (
     -- Count unique contacts/leads touched
     COUNT(DISTINCT COALESCE(pa.contact_id::text, pa.target_id::text)) as contacts_touched
   FROM prospecting_activity pa
-  GROUP BY COALESCE(pa.activity_date, DATE(pa.created_at)), pa.created_by
+  GROUP BY COALESCE(pa.activity_date, DATE(pa.created_at AT TIME ZONE 'America/New_York')), pa.created_by
 ),
 daily_activity_table AS (
   -- Count prospecting activities from activity table (legacy/alternative logging)
   -- Join activity_type table to get type names; use is_prospecting_call flag
+  -- Use Eastern time for date conversion
   SELECT
-    DATE(a.activity_date) as activity_date,
+    DATE(a.activity_date AT TIME ZONE 'America/New_York') as activity_date,
     a.user_id,
     -- Outreach counts based on activity_type name
     COUNT(*) FILTER (WHERE atype.name = 'Email' AND a.is_prospecting_call = true) as emails,
@@ -93,7 +95,7 @@ daily_activity_table AS (
   FROM activity a
   LEFT JOIN activity_type atype ON a.activity_type_id = atype.id
   WHERE a.is_prospecting_call = true
-  GROUP BY DATE(a.activity_date), a.user_id
+  GROUP BY DATE(a.activity_date AT TIME ZONE 'America/New_York'), a.user_id
 )
 -- Combine both sources
 SELECT
