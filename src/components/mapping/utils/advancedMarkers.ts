@@ -688,8 +688,8 @@ export function createStageMarkerElement(
 }
 
 /**
- * Create a SELECTED marker element - orange, larger, higher visibility
- * Used when a property is selected from the Pipeline view
+ * Create a SELECTED marker element - orange, larger, with red pulsing halo
+ * Used when a site submit is selected on the map
  */
 export function createSelectedStageMarkerElement(
   stageName: string,
@@ -699,13 +699,68 @@ export function createSelectedStageMarkerElement(
 ): HTMLElement {
   // Use orange color for selected markers
   const SELECTED_COLOR = '#f97316'; // Orange - matches View on Map button
-  return createMarkerElement({
+
+  // Create wrapper with red halo effect
+  const wrapper = document.createElement('div');
+  wrapper.className = 'selected-marker-wrapper';
+  wrapper.style.cssText = `
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  `;
+
+  // Create pulsing red halo ring
+  const halo = document.createElement('div');
+  halo.className = 'selected-marker-halo';
+  const haloSize = size + 24; // Halo is 24px larger than marker
+  halo.style.cssText = `
+    position: absolute;
+    width: ${haloSize}px;
+    height: ${haloSize}px;
+    border-radius: 50%;
+    border: 3px solid #ef4444;
+    box-shadow: 0 0 12px 4px rgba(239, 68, 68, 0.5), inset 0 0 8px rgba(239, 68, 68, 0.3);
+    animation: pulse-halo 1.5s ease-in-out infinite;
+    pointer-events: none;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    margin-top: -5px;
+  `;
+
+  // Add keyframes for pulse animation if not already added
+  if (!document.getElementById('selected-marker-halo-styles')) {
+    const style = document.createElement('style');
+    style.id = 'selected-marker-halo-styles';
+    style.textContent = `
+      @keyframes pulse-halo {
+        0%, 100% {
+          opacity: 1;
+          transform: translate(-50%, -50%) scale(1);
+        }
+        50% {
+          opacity: 0.7;
+          transform: translate(-50%, -50%) scale(1.1);
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // Create the marker element
+  const marker = createMarkerElement({
     color: SELECTED_COLOR,
     shape,
     size,
     icon: stageName,
     verified
   });
+
+  wrapper.appendChild(halo);
+  wrapper.appendChild(marker);
+
+  return wrapper;
 }
 
 /**
