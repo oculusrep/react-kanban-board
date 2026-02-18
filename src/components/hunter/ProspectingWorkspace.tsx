@@ -7,6 +7,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
 import FollowUpModal from '../FollowUpModal';
+import LogResponseModal from './LogResponseModal';
+import { ProspectingResponseType } from '../../lib/types';
 import {
   PhoneIcon,
   EnvelopeIcon,
@@ -106,7 +108,9 @@ interface NewHunterLead {
 // Unified activity feed item (combines notes and logged activities)
 interface ActivityFeedItem {
   id: string;
-  type: 'note' | 'email' | 'linkedin' | 'sms' | 'voicemail' | 'call' | 'meeting' | 'task';
+  type: 'note' | 'email' | 'linkedin' | 'sms' | 'voicemail' | 'call' | 'meeting' | 'task'
+    // Response types (inbound engagement)
+    | 'email_response' | 'linkedin_response' | 'sms_response' | 'return_call';
   content: string | null; // Note content or activity notes
   email_subject?: string | null;
   created_at: string;
@@ -163,10 +167,14 @@ interface ZoomInfoMatch {
 const OUTREACH_TYPES = ['email', 'linkedin', 'sms', 'voicemail'] as const;
 const CONNECTION_TYPES = ['call', 'meeting'] as const;
 const OTHER_ACTIVITY_TYPES = ['task'] as const;
+// Response types (inbound engagement from prospect)
+const RESPONSE_TYPES = ['email_response', 'linkedin_response', 'sms_response', 'return_call'] as const;
 type OutreachType = typeof OUTREACH_TYPES[number];
 type ConnectionType = typeof CONNECTION_TYPES[number];
 type OtherActivityType = typeof OTHER_ACTIVITY_TYPES[number];
+type ResponseType = typeof RESPONSE_TYPES[number];
 type ActivityType = OutreachType | ConnectionType | OtherActivityType;
+type AllActivityType = ActivityType | ResponseType;
 
 const ACTIVITY_CONFIG: Record<ActivityType, { label: string; icon: string; color: string }> = {
   email: { label: 'Email', icon: 'envelope', color: 'blue' },
@@ -176,6 +184,14 @@ const ACTIVITY_CONFIG: Record<ActivityType, { label: string; icon: string; color
   call: { label: 'Call', icon: 'phone-solid', color: 'emerald' },
   meeting: { label: 'Meeting', icon: 'users', color: 'purple' },
   task: { label: 'Task', icon: 'clipboard', color: 'slate' },
+};
+
+// Response activity config (green theme for inbound engagement)
+const RESPONSE_CONFIG: Record<ResponseType, { label: string; shortLabel: string; icon: string; color: string }> = {
+  email_response: { label: 'Email Reply', shortLabel: 'Email', icon: 'envelope-open', color: 'green' },
+  linkedin_response: { label: 'LinkedIn Reply', shortLabel: 'LinkedIn', icon: 'linkedin', color: 'green' },
+  sms_response: { label: 'SMS Reply', shortLabel: 'SMS', icon: 'chat', color: 'green' },
+  return_call: { label: 'Return Call', shortLabel: 'Call', icon: 'phone-incoming', color: 'green' },
 };
 
 const SIGNAL_COLORS: Record<string, string> = {
@@ -243,8 +259,11 @@ export default function ProspectingWorkspace() {
   const [loggingActivity, setLoggingActivity] = useState<ActivityType | null>(null);
   const [activityNote, setActivityNote] = useState('');
   const [showActivityNoteInput, setShowActivityNoteInput] = useState<ActivityType | null>(null);
-  const [recentlyLogged, setRecentlyLogged] = useState<{ type: ActivityType; timestamp: number } | null>(null);
+  const [recentlyLogged, setRecentlyLogged] = useState<{ type: AllActivityType; timestamp: number } | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Response logging (inbound engagement)
+  const [responseModalType, setResponseModalType] = useState<ProspectingResponseType | null>(null);
 
   // New note input
   const [newNoteText, setNewNoteText] = useState('');
@@ -856,6 +875,83 @@ export default function ProspectingWorkspace() {
       alert('Failed to log activity');
     } finally {
       setLoggingActivity(null);
+    }
+  };
+
+  // Log response (inbound engagement from prospect)
+  const handleLogResponse = async (type: ProspectingResponseType, date: string, notes?: string): Promise<boolean> => {
+    if (!selectedContact || !user) return false;
+
+    try {
+      // Use the specified date for backdating, format as ISO timestamp at end of day
+      const createdAt = new Date(date + 'T23:59:59').toISOString();
+
+      const { data: activityData, error } = await supabase
+        .from('prospecting_activity')
+        .insert({
+          contact_id: selectedContact.id,
+          target_id: selectedContact.target_id,
+          activity_type: type,
+          notes: notes || null,
+          created_by: user.id,
+          created_at: createdAt
+        })
+        .select('id, activity_type, notes, created_at')
+        .single();
+
+      if (error) throw error;
+
+      // Add to feed (sorted by date)
+      if (activityData) {
+        setActivityFeed(prev => {
+          const newItem: ActivityFeedItem = {
+            id: activityData.id,
+            type: activityData.activity_type as ActivityFeedItem['type'],
+            content: activityData.notes,
+            created_at: activityData.created_at
+          };
+          // Insert in correct position by date
+          const newFeed = [...prev, newItem].sort((a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+          return newFeed;
+        });
+      }
+
+      // Update last_contacted_at on target if linked
+      if (selectedContact.target_id) {
+        await supabase
+          .from('target')
+          .update({ last_contacted_at: new Date().toISOString() })
+          .eq('id', selectedContact.target_id);
+      }
+
+      // Add to "Contacted Today" list if response is from today
+      const responseDate = new Date(date);
+      const today = new Date();
+      if (responseDate.toDateString() === today.toDateString()) {
+        const isNewContact = !recentlyContactedToday.some(c => c.id === selectedContact.id);
+        setRecentlyContactedToday(prev => {
+          const filtered = prev.filter(c => c.id !== selectedContact.id);
+          return [selectedContact, ...filtered];
+        });
+
+        // Update today's stats - responses count as connections
+        setTodayStats(prev => ({
+          ...prev,
+          contacts: isNewContact ? prev.contacts + 1 : prev.contacts
+        }));
+      }
+
+      // Show success feedback using the response config label
+      setRecentlyLogged({ type, timestamp: Date.now() });
+      setTimeout(() => setRecentlyLogged(null), 3000);
+
+      return true;
+    } catch (err) {
+      console.error('Error logging response:', err);
+      alert('Failed to log response');
+      return false;
     }
   };
 
@@ -2315,7 +2411,9 @@ export default function ProspectingWorkspace() {
                   {recentlyLogged && (
                     <div className="mb-3 px-3 py-2 bg-green-100 border border-green-300 text-green-800 rounded-lg text-sm flex items-center gap-2 animate-pulse">
                       <CheckCircleIcon className="w-4 h-4" />
-                      {ACTIVITY_CONFIG[recentlyLogged.type].label} logged successfully
+                      {RESPONSE_TYPES.includes(recentlyLogged.type as ResponseType)
+                        ? RESPONSE_CONFIG[recentlyLogged.type as ResponseType].label
+                        : ACTIVITY_CONFIG[recentlyLogged.type as ActivityType].label} logged successfully
                     </div>
                   )}
 
@@ -2378,6 +2476,29 @@ export default function ProspectingWorkspace() {
                     <p className="text-xs text-gray-400 mt-2 text-center">
                       Click to log activity to timeline
                     </p>
+
+                    {/* Log Response Section (inbound engagement) */}
+                    <div className="mt-4 pt-3 border-t border-gray-200">
+                      <p className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-2">
+                        Log Response (They Replied)
+                      </p>
+                      <div className="grid grid-cols-4 gap-2">
+                        {RESPONSE_TYPES.map((type) => (
+                          <button
+                            key={type}
+                            onClick={() => setResponseModalType(type)}
+                            title={`Log ${RESPONSE_CONFIG[type].label}`}
+                            className="flex flex-col items-center gap-1 p-2 text-xs rounded-lg transition-all bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 hover:border-green-400"
+                          >
+                            <ActivityIcon type={type.replace('_response', '').replace('return_', '')} className="w-5 h-5" />
+                            <span className="font-medium">{RESPONSE_CONFIG[type].shortLabel}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-400 mt-2 text-center">
+                        Counts as a Connection in your scorecard
+                      </p>
+                    </div>
                   </div>
 
                   {/* Activity note input */}
@@ -2462,27 +2583,32 @@ export default function ProspectingWorkspace() {
                           </div>
                         ) : (
                           <div className="divide-y divide-gray-100">
-                            {activityFeed.filter(i => !i.hidden_from_timeline).map((item) => (
+                            {activityFeed.filter(i => !i.hidden_from_timeline).map((item) => {
+                              const isResponse = RESPONSE_TYPES.includes(item.type as ResponseType);
+                              return (
                               <div key={item.id} className="p-4 hover:bg-gray-50 group">
                                 <div className="flex items-start gap-3">
                                   <div className={`p-2 rounded-full ${
                                     item.type === 'note' ? 'bg-gray-100 text-gray-600' :
                                     item.type === 'task' ? 'bg-slate-100 text-slate-600' :
+                                    isResponse ? 'bg-green-100 text-green-600' :
                                     OUTREACH_TYPES.includes(item.type as OutreachType) ? 'bg-blue-100 text-blue-600' :
                                     'bg-emerald-100 text-emerald-600'
                                   }`}>
-                                    <ActivityIcon type={item.type} className="w-4 h-4" />
+                                    <ActivityIcon type={isResponse ? item.type.replace('_response', '').replace('return_', '') : item.type} className="w-4 h-4" />
                                   </div>
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center justify-between">
                                       <span className={`text-sm font-medium ${
                                         item.type === 'note' ? 'text-gray-700' :
                                         item.type === 'task' ? 'text-slate-700' :
+                                        isResponse ? 'text-green-700' :
                                         OUTREACH_TYPES.includes(item.type as OutreachType) ? 'text-blue-700' :
                                         'text-emerald-700'
                                       }`}>
                                         {item.type === 'note' ? 'Note' :
                                          item.source === 'contact_activity' && item.activity_type_name ? item.activity_type_name :
+                                         isResponse ? RESPONSE_CONFIG[item.type as ResponseType]?.label :
                                          ACTIVITY_CONFIG[item.type as ActivityType]?.label || item.type}
                                       </span>
                                       <div className="flex items-center gap-2">
@@ -2513,7 +2639,7 @@ export default function ProspectingWorkspace() {
                                   </div>
                                 </div>
                               </div>
-                            ))}
+                            );})}
                           </div>
                         )}
                       </div>
@@ -3298,6 +3424,16 @@ export default function ProspectingWorkspace() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Log Response Modal */}
+      {responseModalType && (
+        <LogResponseModal
+          isOpen={!!responseModalType}
+          onClose={() => setResponseModalType(null)}
+          onSave={handleLogResponse}
+          responseType={responseModalType}
+        />
       )}
     </div>
   );
