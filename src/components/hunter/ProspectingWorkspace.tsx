@@ -738,7 +738,20 @@ export default function ProspectingWorkspace() {
             activity_date: a.activity_date
           };
         })
-      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      ].sort((a, b) => {
+        // For tasks/follow-ups, use activity_date; for everything else use created_at
+        const getDate = (item: ActivityFeedItem) => {
+          if (item.type === 'task' && item.activity_date) {
+            // Handle both ISO timestamp and date-only formats
+            const dateStr = typeof item.activity_date === 'string' && item.activity_date.includes('T')
+              ? item.activity_date
+              : item.activity_date + 'T00:00:00';
+            return new Date(dateStr).getTime();
+          }
+          return new Date(item.created_at).getTime();
+        };
+        return getDate(b) - getDate(a);
+      });
 
       setActivityFeed(feedItems);
     } catch (err) {
@@ -2736,35 +2749,16 @@ export default function ProspectingWorkspace() {
                                          ACTIVITY_CONFIG[item.type as ActivityType]?.label || item.type}
                                       </span>
                                       <div className="flex items-center gap-2">
-                                        {/* For tasks, show scheduled date instead of created date */}
+                                        {/* For tasks, show scheduled date; for others show created date */}
                                         {item.type === 'task' && item.activity_date ? (
                                           (() => {
-                                            const now = new Date();
-                                            const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
                                             const activityDateStr = typeof item.activity_date === 'string' && item.activity_date.includes('T')
                                               ? item.activity_date.split('T')[0]
                                               : item.activity_date;
                                             const scheduledDate = new Date(activityDateStr + 'T00:00:00');
-                                            const isToday = activityDateStr === todayStr;
-                                            const isPast = activityDateStr < todayStr;
-                                            const isTomorrow = (() => {
-                                              const tomorrow = new Date(now);
-                                              tomorrow.setDate(tomorrow.getDate() + 1);
-                                              return activityDateStr === `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
-                                            })();
-
                                             return (
-                                              <span className={`text-xs px-2 py-0.5 rounded-full ${
-                                                item.completed_at ? 'bg-green-100 text-green-700' :
-                                                isPast ? 'bg-red-100 text-red-700' :
-                                                isToday ? 'bg-orange-100 text-orange-700' :
-                                                'bg-blue-100 text-blue-700'
-                                              }`}>
-                                                {item.completed_at ? 'Completed' :
-                                                 isPast ? 'Overdue' :
-                                                 isToday ? 'Due today' :
-                                                 isTomorrow ? 'Tomorrow' :
-                                                 scheduledDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                              <span className="text-xs text-gray-400">
+                                                {scheduledDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                               </span>
                                             );
                                           })()
@@ -2780,21 +2774,6 @@ export default function ProspectingWorkspace() {
                                         </button>
                                       </div>
                                     </div>
-                                    {/* For tasks, show "Scheduled for" with the date prominently */}
-                                    {item.type === 'task' && item.activity_date && (
-                                      (() => {
-                                        const activityDateStr = typeof item.activity_date === 'string' && item.activity_date.includes('T')
-                                          ? item.activity_date.split('T')[0]
-                                          : item.activity_date;
-                                        const scheduledDate = new Date(activityDateStr + 'T00:00:00');
-                                        return (
-                                          <p className="text-sm text-blue-600 font-medium mt-1 flex items-center gap-1">
-                                            <CalendarDaysIcon className="w-3.5 h-3.5" />
-                                            Scheduled for {scheduledDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                                          </p>
-                                        );
-                                      })()
-                                    )}
                                     {(item.email_subject || item.subject) && (
                                       <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject || item.subject}</p>
                                     )}
