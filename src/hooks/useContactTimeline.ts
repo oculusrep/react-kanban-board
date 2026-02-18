@@ -324,6 +324,10 @@ export function useContactTimeline(
       voicemails: 0,
       notes: 0,
       tasks: 0,
+      email_responses: 0,
+      linkedin_responses: 0,
+      sms_responses: 0,
+      return_calls: 0,
     };
 
     items.forEach((item) => {
@@ -358,6 +362,18 @@ export function useContactTimeline(
           break;
         case 'task':
           counts.tasks++;
+          break;
+        case 'email_response':
+          counts.email_responses++;
+          break;
+        case 'linkedin_response':
+          counts.linkedin_responses++;
+          break;
+        case 'sms_response':
+          counts.sms_responses++;
+          break;
+        case 'return_call':
+          counts.return_calls++;
           break;
       }
     });

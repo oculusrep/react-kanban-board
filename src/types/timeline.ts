@@ -28,7 +28,12 @@ export type TimelineActivityType =
   | 'task'
   | 'status_change'
   | 'system'
-  | 'unknown';
+  | 'unknown'
+  // Response types (inbound engagement from prospect)
+  | 'email_response'          // They replied to an email
+  | 'linkedin_response'       // They replied on LinkedIn
+  | 'sms_response'            // They replied via SMS
+  | 'return_call';            // They called back
 
 // Direction for emails and calls
 export type ActivityDirection = 'inbound' | 'outbound' | 'unknown';
@@ -140,6 +145,11 @@ export interface TimelineSummary {
     voicemails: number;
     notes: number;
     tasks: number;
+    // Response counts (inbound engagement)
+    email_responses: number;
+    linkedin_responses: number;
+    sms_responses: number;
+    return_calls: number;
   };
 
   // All items in chronological order (for AI processing)
@@ -175,4 +185,9 @@ export const ACTIVITY_TYPE_CONFIG: Record<TimelineActivityType, ActivityTypeConf
   status_change: { label: 'Status Change', icon: 'ArrowPathIcon', color: 'text-gray-500', bgColor: 'bg-gray-50' },
   system: { label: 'System', icon: 'CogIcon', color: 'text-gray-400', bgColor: 'bg-gray-50' },
   unknown: { label: 'Activity', icon: 'QuestionMarkCircleIcon', color: 'text-gray-400', bgColor: 'bg-gray-50' },
+  // Response types - green to indicate inbound engagement
+  email_response: { label: 'Email Reply', icon: 'EnvelopeOpenIcon', color: 'text-green-600', bgColor: 'bg-green-100' },
+  linkedin_response: { label: 'LinkedIn Reply', icon: 'LinkIcon', color: 'text-green-600', bgColor: 'bg-green-100' },
+  sms_response: { label: 'SMS Reply', icon: 'ChatBubbleLeftIcon', color: 'text-green-600', bgColor: 'bg-green-100' },
+  return_call: { label: 'Return Call', icon: 'PhoneArrowDownLeftIcon', color: 'text-green-600', bgColor: 'bg-green-100' },
 };

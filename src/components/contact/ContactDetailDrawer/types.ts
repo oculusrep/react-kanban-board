@@ -64,7 +64,7 @@ export interface DrawerFeatures {
   enableAISummary?: boolean;            // Enable AI summary generation
 }
 
-// Activity types available for quick logging
+// Activity types available for quick logging (outreach)
 export type QuickLogActivityType =
   | 'email'
   | 'linkedin'
@@ -72,6 +72,16 @@ export type QuickLogActivityType =
   | 'voicemail'
   | 'call'
   | 'meeting';
+
+// Response types available for logging (inbound engagement)
+export type QuickLogResponseType =
+  | 'email_response'
+  | 'linkedin_response'
+  | 'sms_response'
+  | 'return_call';
+
+// All loggable activity types
+export type AllQuickLogType = QuickLogActivityType | QuickLogResponseType;
 
 // Activity configuration for UI
 export interface ActivityConfig {
@@ -89,11 +99,33 @@ export const ACTIVITY_CONFIG: Record<QuickLogActivityType, ActivityConfig> = {
   meeting: { label: 'Meeting', color: 'text-teal-600', bgColor: 'bg-teal-50' },
 };
 
+// Response configuration for UI (green theme for inbound engagement)
+export const RESPONSE_CONFIG: Record<QuickLogResponseType, ActivityConfig> = {
+  email_response: { label: 'Email Reply', color: 'text-green-600', bgColor: 'bg-green-50' },
+  linkedin_response: { label: 'LinkedIn Reply', color: 'text-green-600', bgColor: 'bg-green-50' },
+  sms_response: { label: 'SMS Reply', color: 'text-green-600', bgColor: 'bg-green-50' },
+  return_call: { label: 'Return Call', color: 'text-green-600', bgColor: 'bg-green-50' },
+};
+
+// Combined config for all activity types
+export const ALL_ACTIVITY_CONFIG: Record<AllQuickLogType, ActivityConfig> = {
+  ...ACTIVITY_CONFIG,
+  ...RESPONSE_CONFIG,
+};
+
+// Helper to check if a type is a response type
+export function isResponseType(type: string): type is QuickLogResponseType {
+  return ['email_response', 'linkedin_response', 'sms_response', 'return_call'].includes(type);
+}
+
 // Outreach activity types (for logging)
 export const OUTREACH_TYPES: QuickLogActivityType[] = ['email', 'linkedin', 'sms', 'voicemail'];
 
 // Connection activity types (for logging)
 export const CONNECTION_TYPES: QuickLogActivityType[] = ['call', 'meeting'];
+
+// Response types (inbound engagement)
+export const RESPONSE_TYPES: QuickLogResponseType[] = ['email_response', 'linkedin_response', 'sms_response', 'return_call'];
 
 // Main component props
 export interface ContactDetailDrawerProps {

@@ -29,10 +29,13 @@ import {
   DrawerFeatures,
   DEFAULT_FEATURES,
   ACTIVITY_CONFIG,
+  ALL_ACTIVITY_CONFIG,
   OUTREACH_TYPES,
   CONNECTION_TYPES,
+  RESPONSE_TYPES,
   SIGNAL_COLORS,
   QuickLogActivityType,
+  isResponseType,
 } from './types';
 
 // Activity icon component
@@ -41,12 +44,16 @@ function ActivityIcon({ type, className = 'w-4 h-4' }: { type: string; className
     case 'email':
     case 'email_sent':
     case 'email_received':
+    case 'email_response':
       return <EnvelopeIcon className={className} />;
     case 'call':
     case 'voicemail':
+    case 'return_call':
       return <PhoneIcon className={className} />;
     case 'linkedin':
+    case 'linkedin_response':
     case 'sms':
+    case 'sms_response':
       return <ChatBubbleLeftIcon className={className} />;
     case 'meeting':
       return <CalendarDaysIcon className={className} />;
@@ -656,8 +663,11 @@ export default function ContactDetailDrawer({
                                 <div className={`p-2 rounded-full ${
                                   item.type === 'note' ? 'bg-gray-100 text-gray-600' :
                                   item.type === 'task' ? 'bg-slate-100 text-slate-600' :
-                                  item.type === 'email_received' ? 'bg-green-100 text-green-600' :
+                                  // Response types - green background (inbound engagement)
+                                  isResponseType(item.type) || item.type === 'email_received' ? 'bg-green-100 text-green-600' :
+                                  // Outreach types - blue background
                                   ['email', 'email_sent', 'linkedin', 'sms', 'voicemail'].includes(item.type) ? 'bg-blue-100 text-blue-600' :
+                                  // Connections (call, meeting) - emerald background
                                   'bg-emerald-100 text-emerald-600'
                                 }`}>
                                   <ActivityIcon type={item.type} className="w-4 h-4" />
@@ -667,15 +677,21 @@ export default function ContactDetailDrawer({
                                     <span className={`text-sm font-medium ${
                                       item.type === 'note' ? 'text-gray-700' :
                                       item.type === 'task' ? 'text-slate-700' :
-                                      item.type === 'email_received' ? 'text-green-700' :
+                                      // Response types - green text (inbound engagement)
+                                      isResponseType(item.type) || item.type === 'email_received' ? 'text-green-700' :
+                                      // Outreach types - blue text
                                       ['email', 'email_sent', 'linkedin', 'sms', 'voicemail'].includes(item.type) ? 'text-blue-700' :
+                                      // Connections - emerald text
                                       'text-emerald-700'
                                     }`}>
                                       {item.type === 'note' ? 'Note' :
                                        item.type === 'email_sent' ? 'Email Sent' :
                                        item.type === 'email_received' ? 'Email Received' :
-                                       item.activity_type_name ? item.activity_type_name :
-                                       ACTIVITY_CONFIG[item.type as QuickLogActivityType]?.label || item.type}
+                                       // Response type labels
+                                       ALL_ACTIVITY_CONFIG[item.type as keyof typeof ALL_ACTIVITY_CONFIG]?.label ||
+                                       item.activity_type_name ||
+                                       ACTIVITY_CONFIG[item.type as QuickLogActivityType]?.label ||
+                                       item.type}
                                     </span>
                                     <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
                                   </div>

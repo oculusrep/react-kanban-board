@@ -502,14 +502,33 @@ export const PROSPECTING_ACTIVITY_TYPES = [
   'meeting'     // Meeting held
 ] as const;
 
+// Response types (inbound engagement from prospect)
+export const PROSPECTING_RESPONSE_TYPES = [
+  'email_response',     // They replied to an email
+  'linkedin_response',  // They replied on LinkedIn
+  'sms_response',       // They replied via SMS
+  'return_call'         // They called back
+] as const;
+
+export type ProspectingResponseType = typeof PROSPECTING_RESPONSE_TYPES[number];
+
+// All activity types combined (for database storage)
+export const ALL_PROSPECTING_ACTIVITY_TYPES = [
+  ...PROSPECTING_ACTIVITY_TYPES,
+  ...PROSPECTING_RESPONSE_TYPES
+] as const;
+
 export type ProspectingActivityType = typeof PROSPECTING_ACTIVITY_TYPES[number];
+
+// Combined type for all activity types (outreach + responses)
+export type AllProspectingActivityType = typeof ALL_PROSPECTING_ACTIVITY_TYPES[number];
 
 // Prospecting Activity
 export interface ProspectingActivity {
   id: string;
   target_id: string | null;
   contact_id: string | null;
-  activity_type: ProspectingActivityType;
+  activity_type: AllProspectingActivityType;
   notes: string | null;
   email_subject: string | null;
   created_at: string;
@@ -632,7 +651,7 @@ export interface StaleLead extends HunterLead {
   days_since_contact: number;
 }
 
-// Activity type display info for UI
+// Activity type display info for UI (outreach)
 export const ACTIVITY_TYPE_INFO: Record<ProspectingActivityType, { label: string; icon: string; color: string }> = {
   email: { label: 'Email Sent', icon: 'EnvelopeIcon', color: 'blue' },
   linkedin: { label: 'LinkedIn Message', icon: 'BriefcaseIcon', color: 'indigo' },
@@ -640,6 +659,20 @@ export const ACTIVITY_TYPE_INFO: Record<ProspectingActivityType, { label: string
   voicemail: { label: 'Voicemail Left', icon: 'PhoneIcon', color: 'yellow' },
   call: { label: 'Call Complete', icon: 'PhoneArrowUpRightIcon', color: 'emerald' },
   meeting: { label: 'Meeting Held', icon: 'UserGroupIcon', color: 'purple' }
+};
+
+// Response type display info for UI (inbound engagement)
+export const RESPONSE_TYPE_INFO: Record<ProspectingResponseType, { label: string; icon: string; color: string }> = {
+  email_response: { label: 'Email Reply', icon: 'EnvelopeOpenIcon', color: 'green' },
+  linkedin_response: { label: 'LinkedIn Reply', icon: 'BriefcaseIcon', color: 'green' },
+  sms_response: { label: 'SMS Reply', icon: 'ChatBubbleLeftIcon', color: 'green' },
+  return_call: { label: 'Return Call', icon: 'PhoneArrowDownLeftIcon', color: 'green' }
+};
+
+// Combined activity type info (for use in components that handle both)
+export const ALL_ACTIVITY_TYPE_INFO: Record<AllProspectingActivityType, { label: string; icon: string; color: string }> = {
+  ...ACTIVITY_TYPE_INFO,
+  ...RESPONSE_TYPE_INFO
 };
 
 // Lead status display info for UI

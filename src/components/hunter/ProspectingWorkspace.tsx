@@ -10,6 +10,7 @@ import FollowUpModal from '../FollowUpModal';
 import {
   PhoneIcon,
   EnvelopeIcon,
+  EnvelopeOpenIcon,
   ChatBubbleLeftIcon,
   CalendarDaysIcon,
   CheckCircleIcon,
@@ -292,12 +293,18 @@ export default function ProspectingWorkspace() {
 
   // Daily prospecting stats
   const [todayStats, setTodayStats] = useState({
+    // Outreach (things you initiate)
     emails: 0,
     linkedin: 0,
     sms: 0,
     voicemail: 0,
     calls: 0,
     meetings: 0,
+    // Responses (inbound engagement - connections)
+    emailResponses: 0,
+    linkedinResponses: 0,
+    smsResponses: 0,
+    returnCalls: 0,
   });
 
   // ZoomInfo enrichment
@@ -491,12 +498,18 @@ export default function ProspectingWorkspace() {
       // Deduplicate contacts and calculate stats
       const contactMap = new Map<string, ContactDetails>();
       const activityCounts = {
+        // Outreach
         emails: 0,
         linkedin: 0,
         sms: 0,
         voicemail: 0,
         calls: 0,
         meetings: 0,
+        // Responses (connections)
+        emailResponses: 0,
+        linkedinResponses: 0,
+        smsResponses: 0,
+        returnCalls: 0,
       };
 
       allTodayActivities.forEach((item) => {
@@ -506,6 +519,7 @@ export default function ProspectingWorkspace() {
         }
         // Count each activity type (skip 'task' type from activity table)
         switch (item.activity_type) {
+          // Outreach types
           case 'email':
             activityCounts.emails++;
             break;
@@ -523,6 +537,19 @@ export default function ProspectingWorkspace() {
             break;
           case 'meeting':
             activityCounts.meetings++;
+            break;
+          // Response types (connections)
+          case 'email_response':
+            activityCounts.emailResponses++;
+            break;
+          case 'linkedin_response':
+            activityCounts.linkedinResponses++;
+            break;
+          case 'sms_response':
+            activityCounts.smsResponses++;
+            break;
+          case 'return_call':
+            activityCounts.returnCalls++;
             break;
         }
       });
@@ -1618,57 +1645,86 @@ export default function ProspectingWorkspace() {
             </div>
           </div>
 
-          {/* Daily Scorecard - 6 Activity Types in 3x2 grid */}
+          {/* Daily Scorecard - Outreach & Connections */}
           <div className="flex-1 bg-gradient-to-br from-slate-50 to-white rounded-xl shadow-sm border-2 border-slate-200 p-3">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
               <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Today's Scorecard</h3>
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              {/* Row 1: Email, LinkedIn, SMS */}
-              <div className="bg-white rounded-lg shadow-sm border border-blue-200 p-3 text-center">
-                <p className="text-2xl font-bold text-blue-600">{todayStats.emails}</p>
-                <p className="text-xs text-gray-500 flex items-center justify-center gap-1">
-                  <EnvelopeIcon className="w-3 h-3" />
-                  Emails
+            <div className="flex gap-4">
+              {/* OUTREACH Section */}
+              <div className="flex-1">
+                <p className="text-[10px] font-semibold text-blue-600 uppercase tracking-wide mb-1.5 text-center">Outreach</p>
+                <div className="grid grid-cols-4 gap-1.5">
+                  <div className="bg-white rounded-lg shadow-sm border border-blue-200 p-2 text-center">
+                    <p className="text-xl font-bold text-blue-600">{todayStats.emails}</p>
+                    <p className="text-[10px] text-gray-500 flex items-center justify-center gap-0.5">
+                      <EnvelopeIcon className="w-2.5 h-2.5" />
+                      Email
+                    </p>
+                  </div>
+                  <div className="bg-white rounded-lg shadow-sm border border-indigo-200 p-2 text-center">
+                    <p className="text-xl font-bold text-indigo-600">{todayStats.linkedin}</p>
+                    <p className="text-[10px] text-gray-500 flex items-center justify-center gap-0.5">
+                      <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                      </svg>
+                      LI
+                    </p>
+                  </div>
+                  <div className="bg-white rounded-lg shadow-sm border border-purple-200 p-2 text-center">
+                    <p className="text-xl font-bold text-purple-600">{todayStats.sms}</p>
+                    <p className="text-[10px] text-gray-500 flex items-center justify-center gap-0.5">
+                      <ChatBubbleLeftIcon className="w-2.5 h-2.5" />
+                      SMS
+                    </p>
+                  </div>
+                  <div className="bg-white rounded-lg shadow-sm border border-orange-200 p-2 text-center">
+                    <p className="text-xl font-bold text-orange-600">{todayStats.voicemail}</p>
+                    <p className="text-[10px] text-gray-500 flex items-center justify-center gap-0.5">
+                      <PhoneIcon className="w-2.5 h-2.5" />
+                      VM
+                    </p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-gray-400 text-center mt-1">
+                  {todayStats.emails + todayStats.linkedin + todayStats.sms + todayStats.voicemail} touches
                 </p>
               </div>
-              <div className="bg-white rounded-lg shadow-sm border border-indigo-200 p-3 text-center">
-                <p className="text-2xl font-bold text-indigo-600">{todayStats.linkedin}</p>
-                <p className="text-xs text-gray-500 flex items-center justify-center gap-1">
-                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-                  </svg>
-                  LinkedIn
-                </p>
-              </div>
-              <div className="bg-white rounded-lg shadow-sm border border-purple-200 p-3 text-center">
-                <p className="text-2xl font-bold text-purple-600">{todayStats.sms}</p>
-                <p className="text-xs text-gray-500 flex items-center justify-center gap-1">
-                  <ChatBubbleLeftIcon className="w-3 h-3" />
-                  SMS
-                </p>
-              </div>
-              {/* Row 2: Voicemail, Call Connect, Meeting */}
-              <div className="bg-white rounded-lg shadow-sm border border-orange-200 p-3 text-center">
-                <p className="text-2xl font-bold text-orange-600">{todayStats.voicemail}</p>
-                <p className="text-xs text-gray-500 flex items-center justify-center gap-1">
-                  <PhoneIcon className="w-3 h-3" />
-                  Voicemail
-                </p>
-              </div>
-              <div className="bg-white rounded-lg shadow-sm border border-emerald-200 p-3 text-center">
-                <p className="text-2xl font-bold text-emerald-600">{todayStats.calls}</p>
-                <p className="text-xs text-gray-500 flex items-center justify-center gap-1">
-                  <PhoneIcon className="w-3 h-3" />
-                  Call Connect
-                </p>
-              </div>
-              <div className="bg-white rounded-lg shadow-sm border border-teal-200 p-3 text-center">
-                <p className="text-2xl font-bold text-teal-600">{todayStats.meetings}</p>
-                <p className="text-xs text-gray-500 flex items-center justify-center gap-1">
-                  <CalendarDaysIcon className="w-3 h-3" />
-                  Meeting
+
+              {/* Divider */}
+              <div className="w-px bg-slate-200"></div>
+
+              {/* CONNECTIONS Section */}
+              <div className="flex-1">
+                <p className="text-[10px] font-semibold text-green-600 uppercase tracking-wide mb-1.5 text-center">Connections</p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <div className="bg-white rounded-lg shadow-sm border border-emerald-200 p-2 text-center">
+                    <p className="text-xl font-bold text-emerald-600">{todayStats.calls}</p>
+                    <p className="text-[10px] text-gray-500 flex items-center justify-center gap-0.5">
+                      <PhoneIcon className="w-2.5 h-2.5" />
+                      Call
+                    </p>
+                  </div>
+                  <div className="bg-white rounded-lg shadow-sm border border-teal-200 p-2 text-center">
+                    <p className="text-xl font-bold text-teal-600">{todayStats.meetings}</p>
+                    <p className="text-[10px] text-gray-500 flex items-center justify-center gap-0.5">
+                      <CalendarDaysIcon className="w-2.5 h-2.5" />
+                      Meet
+                    </p>
+                  </div>
+                  <div className="bg-white rounded-lg shadow-sm border border-green-200 p-2 text-center">
+                    <p className="text-xl font-bold text-green-600">
+                      {todayStats.emailResponses + todayStats.linkedinResponses + todayStats.smsResponses + todayStats.returnCalls}
+                    </p>
+                    <p className="text-[10px] text-gray-500 flex items-center justify-center gap-0.5">
+                      <EnvelopeOpenIcon className="w-2.5 h-2.5" />
+                      Reply
+                    </p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-gray-400 text-center mt-1">
+                  {todayStats.calls + todayStats.meetings + todayStats.emailResponses + todayStats.linkedinResponses + todayStats.smsResponses + todayStats.returnCalls} connects
                 </p>
               </div>
             </div>
