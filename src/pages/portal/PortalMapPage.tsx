@@ -212,14 +212,28 @@ function PortalMapContent() {
     };
   }, [selectedClientId, visibleStages, isInternalUser, accessibleClients]);
 
-  // Handle site submit click
+  // Handle site submit click - center map on pin and open sidebar
   const handleSiteSubmitClick = useCallback((siteSubmit: any) => {
     setSelectedSiteSubmitId(siteSubmit.id);
     setIsSidebarOpen(true);
 
     // Update URL
     setSearchParams({ selected: siteSubmit.id });
-  }, [setSearchParams]);
+
+    // Center map on the clicked pin (one-time, not continuous)
+    if (mapInstance) {
+      // Get coordinates from site submit (verified coords take priority)
+      const lat = siteSubmit.verified_latitude ?? siteSubmit.property?.verified_latitude ?? siteSubmit.property?.latitude;
+      const lng = siteSubmit.verified_longitude ?? siteSubmit.property?.verified_longitude ?? siteSubmit.property?.longitude;
+
+      if (lat && lng) {
+        mapInstance.setCenter({ lat, lng });
+        mapInstance.setZoom(15);
+        // Mark as centered so the position callback doesn't re-center
+        centeredOnSelectionRef.current = siteSubmit.id;
+      }
+    }
+  }, [setSearchParams, mapInstance]);
 
   // Handle selected site submit position - center map on it (from "View on Map" in Pipeline)
   // Uses ref instead of state to prevent callback recreation and re-centering on tab switch

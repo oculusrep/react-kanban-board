@@ -688,8 +688,9 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     // Build set of current property IDs
     const currentPropertyIds = new Set(filteredProperties.map(p => p.id));
 
-    // Check if selected property changed
-    const selectionChanged = previousSelectedId.current !== selectedPropertyId;
+    // Check if selected property changed - capture old ID before updating ref
+    const oldSelectedId = previousSelectedId.current;
+    const selectionChanged = oldSelectedId !== selectedPropertyId;
     previousSelectedId.current = selectedPropertyId;
 
     // If force recreate or marker style changed, clear everything
@@ -720,7 +721,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     for (const property of filteredProperties) {
       const existingMarker = markersByPropertyId.current.get(property.id);
       const isSelected = selectedPropertyId === property.id;
-      const wasSelected = selectionChanged && previousSelectedId.current === property.id;
+      const wasSelected = selectionChanged && oldSelectedId === property.id;
 
       // Reuse existing marker if:
       // 1. It exists AND
