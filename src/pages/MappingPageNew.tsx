@@ -2226,6 +2226,7 @@ const MappingPageContent: React.FC = () => {
               verifyingSiteSubmitId={verifyingSiteSubmitId}
               verifyingSiteSubmit={verifyingSiteSubmit}
               onLocationVerified={handleSiteSubmitLocationVerified}
+              selectedSiteSubmitId={selectedPinType === 'site_submit' && selectedPinData ? selectedPinData.id : null}
             />
 
             {/* Restaurant Layer - Connected to Layer Manager */}
