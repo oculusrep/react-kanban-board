@@ -20,6 +20,17 @@ const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0'
 const today = new Date().toISOString().split('T')[0];
 ```
 
+### Database DATE columns
+When inserting into PostgreSQL `DATE` columns:
+- Use `YYYY-MM-DD` string format with local date (as shown above)
+- Do NOT use `toISOString()` - it returns UTC which can be wrong date in evening
+- DATE columns don't need `AT TIME ZONE` conversion in SQL views (they have no timezone info)
+
+### Activity table user tracking
+The `activity` table has both `user_id` and `owner_id` columns:
+- `LogCallModal` sets `owner_id` (the person who owns/created the activity)
+- Views should use `COALESCE(user_id, owner_id)` to handle both cases
+
 ## Tech Stack
 
 - React 18 with TypeScript

@@ -64,6 +64,7 @@ The main prospecting interface with 5 tabs:
 | **Outreach** | `HunterOutreachTab.tsx` | AI-drafted emails and voicemail scripts |
 | **Sources** | `HunterSourcesTab.tsx` | Manage RSS feeds and news sources |
 | **Stats** | `HunterStatsTab.tsx` | Analytics and performance metrics |
+| **Scorecard** | `MasterScorecard.tsx` | Master prospecting scorecard with multi-period metrics |
 
 #### Target Detail Page (`/hunter/lead/:leadId`)
 Comprehensive view of a single target with:
@@ -143,12 +144,14 @@ The main prospecting interface with:
 | `20260212100000_rename_hunter_lead_to_target.sql` | Renamed `hunter_lead` to `target` |
 | `20260212110000_add_dismiss_tracking.sql` | Dismiss columns, `v_dismissed_targets` view |
 | `20260212120000_add_target_id_to_activity.sql` | Added `target_id` and `is_prospecting` to activity |
+| `20260217_create_daily_metrics_view.sql` | Master Scorecard view aggregating daily metrics from both tables |
 
 ### Key Views
 
 | View | Purpose |
 |------|---------|
 | `v_prospecting_weekly_metrics` | Weekly outreach stats (emails, calls, etc.) |
+| `v_prospecting_daily_metrics` | Daily metrics aggregating `prospecting_activity` + `activity` tables for Master Scorecard |
 | `v_prospecting_stale_targets` | Targets not contacted in 45+ days |
 | `v_dismissed_targets` | Dismissed targets with reasons |
 
@@ -360,6 +363,12 @@ Settings stored in `prospecting_settings` table:
   - `is_prospecting_call = true`
   - `completed_call = true`
 - Call type mapping: `completed_call=true` → Call Connect, `completed_call=false` → Voicemail
+- The view uses `COALESCE(user_id, owner_id)` since LogCallModal sets `owner_id` not `user_id`
+
+**Scorecard showing zeros for Today but correct for Week**
+- Check if activities have correct `activity_date` values
+- LogCallModal now uses local date format (`YYYY-MM-DD`) per CLAUDE.md timezone rules
+- Previously used `toISOString()` which could cause date mismatches in evening hours (UTC vs Eastern)
 
 ---
 
@@ -374,6 +383,13 @@ Settings stored in `prospecting_settings` table:
 
 | Date | Changes |
 |------|---------|
+| 2026-02-17 | Added Master Prospecting Scorecard with Today/Week/Month/Quarter/Year periods |
+| 2026-02-17 | Created `v_prospecting_daily_metrics` view combining both activity tables |
+| 2026-02-17 | Fixed view to use `COALESCE(user_id, owner_id)` for activities logged via LogCallModal |
+| 2026-02-17 | Fixed LogCallModal to use local date format per CLAUDE.md timezone rules |
+| 2026-02-17 | Added Scorecard tab to Hunter Dashboard |
+| 2026-02-17 | Added Prospecting Scorecard to Reports page |
+| 2026-02-17 | Embedded compact scorecard in Coach Dashboard |
 | 2026-02-17 | Fixed scorecard to include calls with `completed_call=true` regardless of prospecting flags |
 | 2026-02-17 | Hunter scorecard now counts activities from both `prospecting_activity` AND `activity` tables |
 | 2026-02-17 | ProspectingWorkspace Email History tab: click-to-expand emails with subject/date in collapsed view |
