@@ -785,7 +785,12 @@ function buildMimeMessage(
   if (options.fromName) {
     // Encode the display name if it contains non-ASCII characters
     const encodedName = encodeHeaderValue(options.fromName);
-    fromHeader = `${encodedName} <${from}>`;
+    // Wrap in quotes if it's not already RFC 2047 encoded
+    if (encodedName.startsWith('=?')) {
+      fromHeader = `${encodedName} <${from}>`;
+    } else {
+      fromHeader = `"${encodedName}" <${from}>`;
+    }
   } else {
     fromHeader = from;
   }

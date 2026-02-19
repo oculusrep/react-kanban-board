@@ -2,7 +2,8 @@
  * Shared Site Submit Email Template Generator
  *
  * This utility generates the email template for site submit notifications.
- * Uses a clean table-based layout for professional appearance across email clients.
+ * Uses simple HTML that's compatible with ReactQuill editor while still
+ * looking professional in email clients.
  * Supports user email signatures from the user_email_signature table.
  */
 
@@ -23,16 +24,6 @@ export interface SiteSubmitEmailData {
   portalBaseUrl?: string; // Base URL for portal links (e.g., https://app.example.com)
   userSignatureHtml?: string; // User's saved email signature HTML
 }
-
-// Common styles for email compatibility
-const styles = {
-  table: 'border-collapse: collapse; width: 100%; max-width: 600px; font-family: Arial, Helvetica, sans-serif;',
-  headerCell: 'background-color: #f8f9fa; padding: 8px 12px; text-align: left; font-weight: 600; color: #374151; border: 1px solid #e5e7eb; width: 160px; font-size: 14px;',
-  valueCell: 'padding: 8px 12px; color: #1f2937; border: 1px solid #e5e7eb; font-size: 14px;',
-  sectionHeader: 'background-color: #1e40af; color: white; padding: 10px 12px; font-weight: 600; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;',
-  link: 'color: #2563eb; text-decoration: none;',
-  paragraph: 'font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.6; color: #374151; margin: 0 0 16px 0;',
-};
 
 export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): string {
   const { siteSubmit, siteSubmitId, property, propertyUnit, contacts, userData, propertyUnitFiles, propertyFiles, portalBaseUrl, userSignatureHtml } = data;
@@ -55,18 +46,6 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
     const lat = property?.verified_latitude || property?.latitude;
     const lng = property?.verified_longitude || property?.longitude;
     return (lat && lng) ? `https://www.google.com/maps?q=${lat},${lng}` : null;
-  };
-
-  // Helper: Create table row
-  const tableRow = (label: string, value: string | null | undefined, isLink = false, linkText?: string) => {
-    if (!value) return '';
-    const displayValue = isLink
-      ? `<a href="${value}" style="${styles.link}">${linkText || value}</a>`
-      : value;
-    return `<tr>
-      <td style="${styles.headerCell}">${label}</td>
-      <td style="${styles.valueCell}">${displayValue}</td>
-    </tr>`;
   };
 
   // Contact names for greeting
@@ -124,81 +103,86 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
   // Portal link
   const portalLink = (portalBaseUrl && siteSubmitId) ? `${portalBaseUrl}/portal/map?selected=${siteSubmitId}` : null;
 
-  // Start building email
-  let emailHtml = `
-<div style="font-family: Arial, Helvetica, sans-serif; max-width: 650px; margin: 0 auto;">
-  <!-- Greeting -->
-  <p style="${styles.paragraph}">${contactNames},</p>
-  <p style="${styles.paragraph}">Please find below a new site for your review. Your feedback is appreciated.</p>
+  // Start building email - using simple HTML compatible with Quill
+  let emailHtml = `<p>${contactNames},</p>`;
+  emailHtml += `<p>Please find below a new site for your review. Your feedback is appreciated.</p>`;
+  emailHtml += `<p><br></p>`;
 
-  <!-- Property Details Table -->
-  <table style="${styles.table}" cellpadding="0" cellspacing="0">
-    <tr>
-      <td colspan="2" style="${styles.sectionHeader}">Property Details</td>
-    </tr>
-    ${tableRow('Property Name', propertyName)}
-    ${tableRow('Address', address)}
-    ${propertyUnit?.property_unit_name ? tableRow('Unit', propertyUnit.property_unit_name) : ''}
-    ${property?.trade_area ? tableRow('Trade Area', property.trade_area) : ''}
-    ${sizeInfo ? tableRow('Size', sizeInfo) : ''}
-    ${pricingValue ? tableRow(pricingLabel, pricingValue) : ''}
-    ${nnnValue ? tableRow('NNN', nnnValue) : ''}
-    ${siteSubmit.delivery_timeframe ? tableRow('Delivery', siteSubmit.delivery_timeframe) : ''}
-  </table>
-`;
+  // Property Details section
+  emailHtml += `<p><strong>PROPERTY DETAILS</strong></p>`;
+  emailHtml += `<p>`;
+  emailHtml += `<strong>Property Name:</strong> ${propertyName}<br>`;
 
-  // Quick Links row
-  if (mapLink || portalLink) {
-    emailHtml += `
-  <table style="${styles.table}; margin-top: -1px;" cellpadding="0" cellspacing="0">
-    <tr>
-      <td style="${styles.headerCell}">Quick Links</td>
-      <td style="${styles.valueCell}">`;
-
-    const links = [];
-    if (mapLink) links.push(`<a href="${mapLink}" style="${styles.link}">View on Map</a>`);
-    if (portalLink) links.push(`<a href="${portalLink}" style="${styles.link}">View in Portal</a>`);
-    emailHtml += links.join(' &nbsp;|&nbsp; ');
-
-    emailHtml += `</td>
-    </tr>
-  </table>
-`;
+  if (address) {
+    emailHtml += `<strong>Address:</strong> ${address}<br>`;
   }
 
-  // Demographics section (if available)
+  if (propertyUnit?.property_unit_name) {
+    emailHtml += `<strong>Unit:</strong> ${propertyUnit.property_unit_name}<br>`;
+  }
+
+  if (property?.trade_area) {
+    emailHtml += `<strong>Trade Area:</strong> ${property.trade_area}<br>`;
+  }
+
+  if (sizeInfo) {
+    emailHtml += `<strong>Size:</strong> ${sizeInfo}<br>`;
+  }
+
+  if (pricingValue) {
+    emailHtml += `<strong>${pricingLabel}:</strong> ${pricingValue}<br>`;
+  }
+
+  if (nnnValue) {
+    emailHtml += `<strong>NNN:</strong> ${nnnValue}<br>`;
+  }
+
+  if (siteSubmit.delivery_timeframe) {
+    emailHtml += `<strong>Delivery:</strong> ${siteSubmit.delivery_timeframe}<br>`;
+  }
+
+  emailHtml += `</p>`;
+
+  // Quick Links
+  if (mapLink || portalLink) {
+    emailHtml += `<p>`;
+    emailHtml += `<strong>Quick Links:</strong> `;
+    const links = [];
+    if (mapLink) links.push(`<a href="${mapLink}">View on Map</a>`);
+    if (portalLink) links.push(`<a href="${portalLink}">View in Portal</a>`);
+    emailHtml += links.join(' | ');
+    emailHtml += `</p>`;
+  }
+
+  // Demographics section
   const hasDemo = property?.['1_mile_pop'] || property?.['3_mile_pop'] || property?.hh_income_median_3_mile;
   const hasTraffic = property?.traffic_count || property?.traffic_count_2nd || property?.total_traffic;
 
   if (hasDemo || hasTraffic) {
-    emailHtml += `
-  <table style="${styles.table}; margin-top: 16px;" cellpadding="0" cellspacing="0">
-    <tr>
-      <td colspan="2" style="${styles.sectionHeader}">Location &amp; Demographics</td>
-    </tr>`;
+    emailHtml += `<p><br></p>`;
+    emailHtml += `<p><strong>LOCATION & DEMOGRAPHICS</strong></p>`;
+    emailHtml += `<p>`;
 
     if (property?.['1_mile_pop']) {
-      emailHtml += tableRow('1-Mile Population', formatNumber(property['1_mile_pop']));
+      emailHtml += `<strong>1-Mile Population:</strong> ${formatNumber(property['1_mile_pop'])}<br>`;
     }
     if (property?.['3_mile_pop']) {
-      emailHtml += tableRow('3-Mile Population', formatNumber(property['3_mile_pop']));
+      emailHtml += `<strong>3-Mile Population:</strong> ${formatNumber(property['3_mile_pop'])}<br>`;
     }
     if (property?.hh_income_median_3_mile) {
-      emailHtml += tableRow('Median HH Income (3mi)', formatCurrency(property.hh_income_median_3_mile));
+      emailHtml += `<strong>Median HH Income (3mi):</strong> ${formatCurrency(property.hh_income_median_3_mile)}<br>`;
     }
     if (property?.traffic_count) {
-      emailHtml += tableRow('Traffic Count', formatNumber(property.traffic_count));
+      emailHtml += `<strong>Traffic Count:</strong> ${formatNumber(property.traffic_count)}<br>`;
     }
     if (property?.traffic_count_2nd) {
-      emailHtml += tableRow('Traffic Count (2nd)', formatNumber(property.traffic_count_2nd));
+      emailHtml += `<strong>Traffic Count (2nd):</strong> ${formatNumber(property.traffic_count_2nd)}<br>`;
     }
     if (property?.total_traffic) {
-      emailHtml += tableRow('Total Traffic', formatNumber(property.total_traffic));
+      emailHtml += `<strong>Total Traffic:</strong> ${formatNumber(property.total_traffic)}<br>`;
     }
 
-    emailHtml += `
-  </table>
-`;
+    emailHtml += `</p>`;
   }
 
   // Supporting Files section
@@ -207,105 +191,71 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
   const hasGenericFiles = property?.marketing_materials || property?.site_plan || property?.demographics;
 
   if (hasPropertyUnitFiles || hasPropertyFiles || hasGenericFiles) {
-    emailHtml += `
-  <table style="${styles.table}; margin-top: 16px;" cellpadding="0" cellspacing="0">
-    <tr>
-      <td colspan="2" style="${styles.sectionHeader}">Supporting Documents</td>
-    </tr>
-    <tr>
-      <td colspan="2" style="${styles.valueCell}">`;
-
-    const fileLinks: string[] = [];
+    emailHtml += `<p><br></p>`;
+    emailHtml += `<p><strong>SUPPORTING DOCUMENTS</strong></p>`;
+    emailHtml += `<p>`;
 
     // Property-level Dropbox files
     if (hasPropertyFiles) {
       propertyFiles!.forEach(file => {
-        fileLinks.push(`<a href="${file.sharedLink}" style="${styles.link}">${file.name}</a>`);
+        emailHtml += `<a href="${file.sharedLink}">${file.name}</a><br>`;
       });
     }
 
     // Generic property links
     if (property?.marketing_materials) {
-      fileLinks.push(`<a href="${property.marketing_materials}" style="${styles.link}">Marketing Materials</a>`);
+      emailHtml += `<a href="${property.marketing_materials}">Marketing Materials</a><br>`;
     }
     if (property?.site_plan) {
-      fileLinks.push(`<a href="${property.site_plan}" style="${styles.link}">Site Plan</a>`);
+      emailHtml += `<a href="${property.site_plan}">Site Plan</a><br>`;
     }
     if (property?.demographics) {
-      fileLinks.push(`<a href="${property.demographics}" style="${styles.link}">Demographics Report</a>`);
+      emailHtml += `<a href="${property.demographics}">Demographics Report</a><br>`;
     }
 
     // Property unit Dropbox files
     if (hasPropertyUnitFiles) {
       propertyUnitFiles!.forEach(file => {
-        fileLinks.push(`<a href="${file.sharedLink}" style="${styles.link}">${file.name}</a>`);
+        emailHtml += `<a href="${file.sharedLink}">${file.name}</a><br>`;
       });
     }
 
-    emailHtml += fileLinks.join('<br>');
-    emailHtml += `</td>
-    </tr>
-  </table>
-`;
+    emailHtml += `</p>`;
   }
 
   // Site Notes
   if (siteSubmit.notes) {
-    emailHtml += `
-  <table style="${styles.table}; margin-top: 16px;" cellpadding="0" cellspacing="0">
-    <tr>
-      <td colspan="2" style="${styles.sectionHeader}">Site Notes</td>
-    </tr>
-    <tr>
-      <td colspan="2" style="${styles.valueCell}">${siteSubmit.notes.replace(/\n/g, '<br>')}</td>
-    </tr>
-  </table>
-`;
+    emailHtml += `<p><br></p>`;
+    emailHtml += `<p><strong>SITE NOTES</strong></p>`;
+    emailHtml += `<p>${siteSubmit.notes.replace(/\n/g, '<br>')}</p>`;
   }
 
   // Competitor Data
   if (siteSubmit.competitor_data) {
-    emailHtml += `
-  <table style="${styles.table}; margin-top: 16px;" cellpadding="0" cellspacing="0">
-    <tr>
-      <td colspan="2" style="${styles.sectionHeader}">Competitor Information</td>
-    </tr>
-    <tr>
-      <td colspan="2" style="${styles.valueCell}">${siteSubmit.competitor_data.replace(/\n/g, '<br>')}</td>
-    </tr>
-  </table>
-`;
+    emailHtml += `<p><br></p>`;
+    emailHtml += `<p><strong>COMPETITOR INFORMATION</strong></p>`;
+    emailHtml += `<p>${siteSubmit.competitor_data.replace(/\n/g, '<br>')}</p>`;
   }
 
   // Closing message
-  emailHtml += `
-  <p style="${styles.paragraph}; margin-top: 24px;">
-    If this property is a pass, please reply with a brief reason. If you need more information or want to discuss further, let me know.
-  </p>
+  emailHtml += `<p><br></p>`;
+  emailHtml += `<p>If this property is a pass, please reply with a brief reason. If you need more information or want to discuss further, let me know.</p>`;
+  emailHtml += `<p>Thanks!</p>`;
 
-  <p style="${styles.paragraph}">Thanks!</p>
-`;
+  // Signature
+  emailHtml += `<p><br></p>`;
 
-  // Signature - use user's saved signature if available, otherwise fall back to basic info
   if (userSignatureHtml) {
-    emailHtml += `
-  <div style="margin-top: 16px;">
-    ${userSignatureHtml}
-  </div>
-`;
+    emailHtml += userSignatureHtml;
   } else {
     // Fallback signature using userData
-    emailHtml += `
-  <div style="${styles.paragraph}; margin-top: 16px;">
-    <strong>${userData?.first_name || ''} ${userData?.last_name || ''}</strong><br>
-    ${userData?.email || ''}${userData?.mobile_phone ? `<br>M: ${userData.mobile_phone}` : ''}
-  </div>
-`;
+    emailHtml += `<p><strong>${userData?.first_name || ''} ${userData?.last_name || ''}</strong><br>`;
+    emailHtml += `${userData?.email || ''}`;
+    if (userData?.mobile_phone) {
+      emailHtml += `<br>M: ${userData.mobile_phone}`;
+    }
+    emailHtml += `</p>`;
   }
-
-  emailHtml += `
-</div>
-`;
 
   return emailHtml;
 }
