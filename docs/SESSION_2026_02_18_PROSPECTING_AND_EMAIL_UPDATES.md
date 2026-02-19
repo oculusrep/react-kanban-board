@@ -428,3 +428,46 @@ const COLORS = {
   accent: '#059669',       // Green for success/highlights
 };
 ```
+
+---
+
+## 10. QuickBooks Invoice Sync Fixes (2026-02-19)
+
+### Problem 1: Inactive Entities (Error 610)
+When syncing invoices to QuickBooks, the sync would fail with error:
+```
+QBO API error: 400 - "Object Not Found: Something you're trying to use has been made inactive"
+```
+
+This occurs when a customer, service item, or account has been marked inactive in QuickBooks.
+
+### Solution
+Updated `findOrCreateCustomer` and `findOrCreateServiceItem` functions to:
+1. Check if the returned entity is inactive (`Active === false`)
+2. Automatically reactivate inactive entities before use
+3. Provide clear error messages if reactivation fails
+
+#### Files Modified
+- `supabase/functions/_shared/quickbooks.ts` - Added inactive entity detection and auto-reactivation
+
+### Problem 2: Orphaned Invoice Links
+Invoices showing as "synced" in OVIS but not actually existing in QuickBooks. This happens when an invoice is deleted directly in QBO.
+
+### Solution
+Updated `quickbooks-sync-invoice` function to:
+1. **Verify invoice exists** before reporting "already synced" - actually calls QBO API
+2. **Auto-detect orphaned links** - if invoice doesn't exist in QBO:
+   - Clears `qb_invoice_id` and `qb_invoice_number` from payment
+   - Sets `qb_sync_status` to `'orphaned'`
+   - Sets `qb_sync_pending` to `true` for re-sync
+   - Logs the orphan detection for audit
+3. **Handle forceResync gracefully** - if invoice is missing during resync, clears link and prompts for new sync
+
+#### Files Modified
+- `supabase/functions/quickbooks-sync-invoice/index.ts` - Added orphan detection and recovery
+
+### Commits
+```
+50629f9a Fix orphaned QBO invoice detection and auto-recovery
+918dab3d Fix QBO sync error 610 by auto-reactivating inactive entities
+```
