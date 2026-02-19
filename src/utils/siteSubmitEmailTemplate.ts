@@ -212,6 +212,7 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
     emailHtml += `<tr><td colspan="2" style="padding: 10px 12px; background-color: #1f2937; color: white; font-weight: bold; font-size: 14px;">LOCATION & DEMOGRAPHICS</td></tr>`;
     emailHtml += demoRows.join('');
     emailHtml += `</table>`;
+    emailHtml += `<br>`;
   }
 
   // Supporting Documents
@@ -220,6 +221,7 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
     emailHtml += `<tr><td style="padding: 10px 12px; background-color: #1f2937; color: white; font-weight: bold; font-size: 14px;">SUPPORTING DOCUMENTS</td></tr>`;
     emailHtml += `<tr><td style="padding: 12px; line-height: 1.8;">${docLinks.join('<br>')}</td></tr>`;
     emailHtml += `</table>`;
+    emailHtml += `<br>`;
   }
 
   // Site Notes

@@ -112,24 +112,31 @@ export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
       }
 
       // Fetch logged-in user data for email signature
-      const { data: { user } } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
+      const authUserId = session?.user?.id;
+
       const { data: userData } = await supabase
         .from('user')
         .select('id, first_name, last_name, email, mobile_phone')
-        .eq('auth_user_id', user?.id)
+        .eq('auth_user_id', authUserId)
         .single();
 
       // Fetch user's default email signature
       let userSignatureHtml: string | undefined;
       if (userData?.id) {
-        const { data: signatureData } = await supabase
+        const { data: signatureData, error: sigError } = await supabase
           .from('user_email_signature')
           .select('signature_html')
           .eq('user_id', userData.id)
           .eq('is_default', true)
           .single();
 
-        userSignatureHtml = signatureData?.signature_html;
+        if (sigError) {
+          console.log('No default signature found for user:', userData.id, sigError.message);
+        } else {
+          userSignatureHtml = signatureData?.signature_html;
+          console.log('Found user signature:', userSignatureHtml ? 'yes' : 'no');
+        }
       }
 
       // Fetch property unit files if property_unit_id exists
