@@ -8,13 +8,15 @@
  * - Embedded widget in Coach Dashboard
  */
 
-import { useState } from 'react';
-import { ArrowPathIcon } from '@heroicons/react/24/outline';
+import { useState, useEffect } from 'react';
+import { ArrowPathIcon, ClockIcon, CalendarDaysIcon } from '@heroicons/react/24/outline';
 import { useScorecardMetrics } from '../../hooks/useScorecardMetrics';
+import { useProspectingTime } from '../../hooks/useProspectingTime';
 import { MasterScorecardProps, ScorecardPeriod } from '../../types/scorecard';
 import ScorecardSummaryCards from './ScorecardSummaryCards';
 import OutreachConnectionsChart from './OutreachConnectionsChart';
 import ActivityTrendChart from './ActivityTrendChart';
+import TimeHistoryModal from '../prospecting/TimeHistoryModal';
 
 export default function MasterScorecard({
   mode = 'full',
@@ -25,6 +27,12 @@ export default function MasterScorecard({
 }: MasterScorecardProps) {
   const [selectedPeriod, setSelectedPeriod] = useState<ScorecardPeriod>(defaultPeriod);
   const [trendView, setTrendView] = useState<'daily' | 'weekly'>('daily');
+
+  // Time tracking state
+  const [hours, setHours] = useState(0);
+  const [minutes, setMinutes] = useState(0);
+  const [isSavingTime, setIsSavingTime] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
   const {
     today,
@@ -39,6 +47,39 @@ export default function MasterScorecard({
     error,
     refresh
   } = useScorecardMetrics(userId);
+
+  // Prospecting time tracking
+  const { stats: timeStats, saveTimeEntry, loadTimeData } = useProspectingTime();
+
+  // Load time data on mount
+  useEffect(() => {
+    loadTimeData();
+  }, [loadTimeData]);
+
+  // Sync local state with loaded data
+  useEffect(() => {
+    setHours(Math.floor(timeStats.todayMinutes / 60));
+    setMinutes(timeStats.todayMinutes % 60);
+  }, [timeStats.todayMinutes]);
+
+  // Save time entry handler
+  const handleSaveTime = async () => {
+    setIsSavingTime(true);
+    const totalMinutes = hours * 60 + minutes;
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    await saveTimeEntry(dateStr, totalMinutes);
+    setIsSavingTime(false);
+  };
+
+  // Format time for display
+  const formatTime = (totalMinutes: number) => {
+    const hrs = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    if (hrs === 0) return `${mins}m`;
+    if (mins === 0) return `${hrs}h`;
+    return `${hrs}h ${mins}m`;
+  };
 
   // Get currently selected period data
   const getSelectedData = () => {
@@ -158,6 +199,80 @@ export default function MasterScorecard({
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
           <p className="text-sm text-red-600">{error}</p>
+        </div>
+      )}
+
+      {/* Prospecting Time Tracking */}
+      {!readOnly && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <ClockIcon className="w-5 h-5 text-gray-400" />
+                <span className="text-sm font-medium text-gray-700">Time Logged Today:</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  max="12"
+                  value={hours}
+                  onChange={(e) => setHours(Math.max(0, Math.min(12, parseInt(e.target.value) || 0)))}
+                  className="w-14 px-2 py-1.5 text-center border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <span className="text-sm text-gray-500">hrs</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="59"
+                  step="5"
+                  value={minutes}
+                  onChange={(e) => setMinutes(Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))}
+                  className="w-14 px-2 py-1.5 text-center border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <span className="text-sm text-gray-500">min</span>
+              </div>
+              <button
+                onClick={handleSaveTime}
+                disabled={isSavingTime}
+                className="px-3 py-1.5 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50 transition-colors"
+              >
+                {isSavingTime ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={() => setIsHistoryModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+              >
+                <CalendarDaysIcon className="w-4 h-4" />
+                History
+              </button>
+            </div>
+
+            <div className="flex items-center gap-6">
+              {/* Weekly Total */}
+              <div className="text-right">
+                <div className="text-xs text-gray-500 uppercase tracking-wide">This Week</div>
+                <div className="text-lg font-semibold text-gray-900">{formatTime(timeStats.weekMinutes)}</div>
+              </div>
+              {/* Goal Progress */}
+              <div className="text-right">
+                <div className="text-xs text-gray-500 uppercase tracking-wide">Daily Goal</div>
+                <div className="text-lg font-semibold text-gray-900">
+                  {timeStats.todayPercentage}%
+                  <span className="text-sm font-normal text-gray-500 ml-1">
+                    of {formatTime(timeStats.dailyGoalMinutes)}
+                  </span>
+                </div>
+              </div>
+              {/* Streak */}
+              {timeStats.streak > 0 && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 rounded-lg">
+                  <span className="text-lg">🔥</span>
+                  <span className="text-sm font-semibold text-orange-600">{timeStats.streak} day streak</span>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -312,6 +427,13 @@ export default function MasterScorecard({
           />
         </div>
       </div>
+
+      {/* Time History Modal */}
+      <TimeHistoryModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        onRefresh={loadTimeData}
+      />
     </div>
   );
 }
