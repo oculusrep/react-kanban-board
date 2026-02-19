@@ -113,6 +113,7 @@ serve(async (req) => {
       .select(`
         id,
         payment_name,
+        payment_sequence,
         payment_amount,
         payment_date_estimated,
         payment_invoice_date,
@@ -123,6 +124,7 @@ serve(async (req) => {
           id,
           deal_name,
           deal_team_id,
+          number_of_payments,
           contract_signed_date,
           bill_to_contact_name,
           bill_to_company_name,
@@ -325,10 +327,11 @@ serve(async (req) => {
 
       // Build description matching create invoice format
       // Format: "Payment 1 of 2 Now Due for Commission related to procuring cause of Contract Agreement with Deal Name"
-      console.log('DEBUG - payment object keys:', Object.keys(payment))
-      console.log('DEBUG - payment.payment_name:', payment.payment_name, 'type:', typeof payment.payment_name)
-      const description = `${payment.payment_name || 'Payment'} Now Due for Commission related to procuring cause of Contract Agreement with ${deal.deal_name || client.client_name}`
-      console.log('DEBUG - built description:', description)
+      // Generate payment name dynamically if not stored (matching UI logic)
+      const totalPayments = deal.number_of_payments || 1
+      const paymentName = payment.payment_name || `Payment ${payment.payment_sequence || 1} of ${totalPayments}`
+      const description = `${paymentName} Now Due for Commission related to procuring cause of Contract Agreement with ${deal.deal_name || client.client_name}`
+      console.log('Invoice description:', description)
 
       // Build invoice line with updated amount (matching create invoice format)
       const invoiceLine: QBInvoiceLine = {
@@ -660,9 +663,11 @@ serve(async (req) => {
 
     // Build invoice line with service date from contract_signed_date
     // Description format: "Payment 1 of 2 Now Due for Commission related to procuring cause of Contract Agreement with Deal Name"
-    console.log('DEBUG CREATE - payment.payment_name:', payment.payment_name, 'type:', typeof payment.payment_name)
-    const description = `${payment.payment_name || 'Payment'} Now Due for Commission related to procuring cause of Contract Agreement with ${deal.deal_name || client.client_name}`
-    console.log('DEBUG CREATE - built description:', description)
+    // Generate payment name dynamically if not stored (matching UI logic)
+    const totalPayments = deal.number_of_payments || 1
+    const paymentName = payment.payment_name || `Payment ${payment.payment_sequence || 1} of ${totalPayments}`
+    const description = `${paymentName} Now Due for Commission related to procuring cause of Contract Agreement with ${deal.deal_name || client.client_name}`
+    console.log('Invoice description:', description)
 
     const invoiceLine: QBInvoiceLine = {
       Amount: Number(payment.payment_amount),
