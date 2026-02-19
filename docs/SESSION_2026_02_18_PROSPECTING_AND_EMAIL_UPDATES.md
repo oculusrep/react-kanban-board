@@ -466,8 +466,53 @@ Updated `quickbooks-sync-invoice` function to:
 #### Files Modified
 - `supabase/functions/quickbooks-sync-invoice/index.ts` - Added orphan detection and recovery
 
+### Problem 3: Payment Name Missing from Invoice Description
+Invoice descriptions in QuickBooks were showing:
+```
+Payment Now Due for Commission related to procuring cause of Contract Agreement with...
+```
+Instead of the expected format:
+```
+Payment 1 of 2 Now Due for Commission related to procuring cause of Contract Agreement with...
+```
+
+### Root Cause
+The `payment_name` column in the database was `null`. The UI generates payment names dynamically using `payment_sequence` and `number_of_payments`, but the QBO sync function was relying on the stored `payment_name` value.
+
+### Solution
+Updated `quickbooks-sync-invoice` function to dynamically generate the payment name using the same logic as the UI:
+
+1. Added `payment_sequence` to the payment query
+2. Added `number_of_payments` to the deal query
+3. Generate payment name dynamically:
+```typescript
+const totalPayments = deal.number_of_payments || 1
+const paymentName = payment.payment_name || `Payment ${payment.payment_sequence || 1} of ${totalPayments}`
+const description = `${paymentName} Now Due for Commission related to procuring cause of Contract Agreement with ${deal.deal_name || client.client_name}`
+```
+
+#### Files Modified
+- `supabase/functions/quickbooks-sync-invoice/index.ts` - Dynamic payment name generation
+
+### Problem 4: Error Messages Disappearing Too Quickly
+QBO sync error messages were auto-dismissing after 3 seconds, making it impossible to read the full error.
+
+### Solution
+1. Error messages now persist until manually dismissed
+2. Added dismiss button (X) to error messages
+3. Success messages still auto-dismiss after 5 seconds
+4. Added modal popup for missing Contract Signed Date with clear instructions
+
+#### Files Modified
+- `src/components/payments/PaymentDetailPanel.tsx` - Persistent error messages, contract date modal
+
 ### Commits
 ```
+cfb990a5 Fix QBO invoice description to dynamically generate payment name
+166c29e4 Add debug logging to QBO invoice sync for payment_name investigation
+d572878a Fix QBO invoice description format in resync to match create
+df4f0753 Add modal popup for missing Contract Signed Date on QBO sync
+a35f8cf9 Keep QBO sync error messages visible until dismissed
 50629f9a Fix orphaned QBO invoice detection and auto-recovery
 918dab3d Fix QBO sync error 610 by auto-reactivating inactive entities
 ```
