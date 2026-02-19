@@ -24,6 +24,19 @@ export interface SiteSubmitEmailData {
   userSignatureHtml?: string; // User's saved email signature HTML
 }
 
+// Color palette for consistent styling
+const COLORS = {
+  primary: '#2563eb',      // Blue for headers and buttons
+  primaryDark: '#1d4ed8',  // Darker blue for hover states
+  headerBg: '#1e40af',     // Professional blue for section headers
+  rowEven: '#ffffff',      // White for even rows
+  rowOdd: '#f8fafc',       // Very light gray for odd rows
+  border: '#e2e8f0',       // Light gray border
+  text: '#1e293b',         // Dark text
+  textMuted: '#64748b',    // Muted text
+  accent: '#059669',       // Green for success/highlights
+};
+
 export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): string {
   const { siteSubmit, siteSubmitId, property, propertyUnit, contacts, userData, propertyUnitFiles, propertyFiles, portalBaseUrl, userSignatureHtml } = data;
 
@@ -45,6 +58,12 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
     const lat = property?.verified_latitude || property?.latitude;
     const lng = property?.verified_longitude || property?.longitude;
     return (lat && lng) ? `https://www.google.com/maps?q=${lat},${lng}` : null;
+  };
+
+  // Helper: Generate alternating row style
+  const getRowStyle = (index: number) => {
+    const bgColor = index % 2 === 0 ? COLORS.rowEven : COLORS.rowOdd;
+    return `background-color: ${bgColor};`;
   };
 
   // Contact names for greeting
@@ -102,67 +121,39 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
   // Portal link
   const portalLink = (portalBaseUrl && siteSubmitId) ? `${portalBaseUrl}/portal/map?selected=${siteSubmitId}` : null;
 
-  // Build property details rows
-  const propertyRows: string[] = [];
-  propertyRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151; width: 40%;">Property Name</td><td style="padding: 6px 12px; color: #111827;">${propertyName}</td></tr>`);
+  // Build property details rows with zebra striping
+  const propertyRowsData: { label: string; value: string }[] = [];
+  propertyRowsData.push({ label: 'Property Name', value: propertyName });
+  if (address) propertyRowsData.push({ label: 'Address', value: address });
+  if (propertyUnit?.property_unit_name) propertyRowsData.push({ label: 'Unit', value: propertyUnit.property_unit_name });
+  if (property?.trade_area) propertyRowsData.push({ label: 'Trade Area', value: property.trade_area });
+  if (sizeInfo) propertyRowsData.push({ label: 'Size', value: sizeInfo });
+  if (pricingValue) propertyRowsData.push({ label: pricingLabel, value: pricingValue });
+  if (nnnValue) propertyRowsData.push({ label: 'NNN', value: nnnValue });
+  if (siteSubmit.delivery_timeframe) propertyRowsData.push({ label: 'Delivery', value: siteSubmit.delivery_timeframe });
 
-  if (address) {
-    propertyRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Address</td><td style="padding: 6px 12px; color: #111827;">${address}</td></tr>`);
-  }
+  const propertyRows = propertyRowsData.map((row, idx) =>
+    `<tr style="${getRowStyle(idx)}">
+      <td style="padding: 10px 16px; font-weight: 600; color: ${COLORS.textMuted}; width: 35%; border-bottom: 1px solid ${COLORS.border};">${row.label}</td>
+      <td style="padding: 10px 16px; color: ${COLORS.text}; border-bottom: 1px solid ${COLORS.border};">${row.value}</td>
+    </tr>`
+  ).join('');
 
-  if (propertyUnit?.property_unit_name) {
-    propertyRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Unit</td><td style="padding: 6px 12px; color: #111827;">${propertyUnit.property_unit_name}</td></tr>`);
-  }
+  // Build demographics rows with zebra striping
+  const demoRowsData: { label: string; value: string }[] = [];
+  if (property?.['1_mile_pop']) demoRowsData.push({ label: '1-Mile Population', value: formatNumber(property['1_mile_pop']) || '' });
+  if (property?.['3_mile_pop']) demoRowsData.push({ label: '3-Mile Population', value: formatNumber(property['3_mile_pop']) || '' });
+  if (property?.hh_income_median_3_mile) demoRowsData.push({ label: 'Median HH Income (3mi)', value: formatCurrency(property.hh_income_median_3_mile) || '' });
+  if (property?.traffic_count) demoRowsData.push({ label: 'Traffic Count', value: formatNumber(property.traffic_count) || '' });
+  if (property?.traffic_count_2nd) demoRowsData.push({ label: 'Traffic Count (2nd)', value: formatNumber(property.traffic_count_2nd) || '' });
+  if (property?.total_traffic) demoRowsData.push({ label: 'Total Traffic', value: formatNumber(property.total_traffic) || '' });
 
-  if (property?.trade_area) {
-    propertyRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Trade Area</td><td style="padding: 6px 12px; color: #111827;">${property.trade_area}</td></tr>`);
-  }
-
-  if (sizeInfo) {
-    propertyRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Size</td><td style="padding: 6px 12px; color: #111827;">${sizeInfo}</td></tr>`);
-  }
-
-  if (pricingValue) {
-    propertyRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">${pricingLabel}</td><td style="padding: 6px 12px; color: #111827;">${pricingValue}</td></tr>`);
-  }
-
-  if (nnnValue) {
-    propertyRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">NNN</td><td style="padding: 6px 12px; color: #111827;">${nnnValue}</td></tr>`);
-  }
-
-  if (siteSubmit.delivery_timeframe) {
-    propertyRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Delivery</td><td style="padding: 6px 12px; color: #111827;">${siteSubmit.delivery_timeframe}</td></tr>`);
-  }
-
-  // Build demographics rows
-  const demoRows: string[] = [];
-  if (property?.['1_mile_pop']) {
-    demoRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151; width: 40%;">1-Mile Population</td><td style="padding: 6px 12px; color: #111827;">${formatNumber(property['1_mile_pop'])}</td></tr>`);
-  }
-  if (property?.['3_mile_pop']) {
-    demoRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">3-Mile Population</td><td style="padding: 6px 12px; color: #111827;">${formatNumber(property['3_mile_pop'])}</td></tr>`);
-  }
-  if (property?.hh_income_median_3_mile) {
-    demoRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Median HH Income (3mi)</td><td style="padding: 6px 12px; color: #111827;">${formatCurrency(property.hh_income_median_3_mile)}</td></tr>`);
-  }
-  if (property?.traffic_count) {
-    demoRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Traffic Count</td><td style="padding: 6px 12px; color: #111827;">${formatNumber(property.traffic_count)}</td></tr>`);
-  }
-  if (property?.traffic_count_2nd) {
-    demoRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Traffic Count (2nd)</td><td style="padding: 6px 12px; color: #111827;">${formatNumber(property.traffic_count_2nd)}</td></tr>`);
-  }
-  if (property?.total_traffic) {
-    demoRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Total Traffic</td><td style="padding: 6px 12px; color: #111827;">${formatNumber(property.total_traffic)}</td></tr>`);
-  }
-
-  // Build links
-  const linkItems: string[] = [];
-  if (mapLink) {
-    linkItems.push(`<a href="${mapLink}" style="color: #2563eb; text-decoration: underline;">View on Map</a>`);
-  }
-  if (portalLink) {
-    linkItems.push(`<a href="${portalLink}" style="color: #2563eb; text-decoration: underline;">View in Portal</a>`);
-  }
+  const demoRows = demoRowsData.map((row, idx) =>
+    `<tr style="${getRowStyle(idx)}">
+      <td style="padding: 10px 16px; font-weight: 600; color: ${COLORS.textMuted}; width: 35%; border-bottom: 1px solid ${COLORS.border};">${row.label}</td>
+      <td style="padding: 10px 16px; color: ${COLORS.text}; border-bottom: 1px solid ${COLORS.border};">${row.value}</td>
+    </tr>`
+  ).join('');
 
   // Build supporting documents
   const docLinks: string[] = [];
@@ -171,89 +162,147 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
 
   if (hasPropertyFiles) {
     propertyFiles!.forEach(file => {
-      docLinks.push(`<a href="${file.sharedLink}" style="color: #2563eb; text-decoration: underline;">${file.name}</a>`);
+      docLinks.push(`<a href="${file.sharedLink}" style="color: ${COLORS.primary}; text-decoration: none; font-weight: 500;">${file.name}</a>`);
     });
   }
   if (property?.marketing_materials) {
-    docLinks.push(`<a href="${property.marketing_materials}" style="color: #2563eb; text-decoration: underline;">Marketing Materials</a>`);
+    docLinks.push(`<a href="${property.marketing_materials}" style="color: ${COLORS.primary}; text-decoration: none; font-weight: 500;">Marketing Materials</a>`);
   }
   if (property?.site_plan) {
-    docLinks.push(`<a href="${property.site_plan}" style="color: #2563eb; text-decoration: underline;">Site Plan</a>`);
+    docLinks.push(`<a href="${property.site_plan}" style="color: ${COLORS.primary}; text-decoration: none; font-weight: 500;">Site Plan</a>`);
   }
   if (property?.demographics) {
-    docLinks.push(`<a href="${property.demographics}" style="color: #2563eb; text-decoration: underline;">Demographics Report</a>`);
+    docLinks.push(`<a href="${property.demographics}" style="color: ${COLORS.primary}; text-decoration: none; font-weight: 500;">Demographics Report</a>`);
   }
   if (hasPropertyUnitFiles) {
     propertyUnitFiles!.forEach(file => {
-      docLinks.push(`<a href="${file.sharedLink}" style="color: #2563eb; text-decoration: underline;">${file.name}</a>`);
+      docLinks.push(`<a href="${file.sharedLink}" style="color: ${COLORS.primary}; text-decoration: none; font-weight: 500;">${file.name}</a>`);
     });
   }
 
+  // Button style for CTA buttons
+  const buttonStyle = `
+    display: inline-block;
+    padding: 10px 20px;
+    background-color: ${COLORS.primary};
+    color: white;
+    text-decoration: none;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 14px;
+    margin-right: 12px;
+    margin-bottom: 8px;
+  `;
+
+  // Section header style
+  const sectionHeaderStyle = `
+    padding: 12px 16px;
+    background: linear-gradient(135deg, ${COLORS.headerBg} 0%, ${COLORS.primary} 100%);
+    color: white;
+    font-weight: 700;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-radius: 6px 6px 0 0;
+  `;
+
+  // Table wrapper style
+  const tableWrapperStyle = `
+    border: 1px solid ${COLORS.border};
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  `;
+
   // Start building email
-  let emailHtml = `<p>${contactNames},</p>`;
-  emailHtml += `<p>Please find below a new site for your review. Your feedback is appreciated.</p>`;
-  emailHtml += `<br>`;
+  let emailHtml = '';
 
-  // Property Details Table
-  emailHtml += `<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">`;
-  emailHtml += `<tr><td colspan="2" style="padding: 10px 12px; background-color: #1f2937; color: white; font-weight: bold; font-size: 14px;">PROPERTY DETAILS</td></tr>`;
-  emailHtml += propertyRows.join('');
-  emailHtml += `</table>`;
+  // Greeting
+  emailHtml += `<p style="font-size: 15px; color: ${COLORS.text}; margin-bottom: 8px;">${contactNames},</p>`;
+  emailHtml += `<p style="font-size: 15px; color: ${COLORS.text}; margin-bottom: 24px;">Please find below a new site for your review. Your feedback is appreciated.</p>`;
 
-  // Quick Links
-  if (linkItems.length > 0) {
-    emailHtml += `<p><strong>Quick Links:</strong> ${linkItems.join(' | ')}</p>`;
-    emailHtml += `<br>`;
+  // Property Header Banner
+  emailHtml += `
+    <table style="width: 100%; margin-bottom: 24px;" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="background: linear-gradient(135deg, ${COLORS.headerBg} 0%, ${COLORS.primary} 100%); padding: 20px 24px; border-radius: 8px;">
+          <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: white;">${propertyName}</h1>
+          ${address ? `<p style="margin: 6px 0 0 0; font-size: 14px; color: rgba(255,255,255,0.85);">${address}</p>` : ''}
+        </td>
+      </tr>
+    </table>
+  `;
+
+  // Quick Action Buttons
+  if (mapLink || portalLink) {
+    emailHtml += `<table style="width: 100%; margin-bottom: 24px;" cellpadding="0" cellspacing="0"><tr><td>`;
+    if (mapLink) {
+      emailHtml += `<a href="${mapLink}" style="${buttonStyle}">📍 View on Map</a>`;
+    }
+    if (portalLink) {
+      emailHtml += `<a href="${portalLink}" style="${buttonStyle}">🌐 View in Portal</a>`;
+    }
+    emailHtml += `</td></tr></table>`;
   }
 
+  // Property Details Table
+  emailHtml += `<table style="${tableWrapperStyle} width: 100%; border-collapse: collapse;" cellpadding="0" cellspacing="0">`;
+  emailHtml += `<tr><td colspan="2" style="${sectionHeaderStyle}">Property Details</td></tr>`;
+  emailHtml += propertyRows;
+  emailHtml += `</table>`;
+
   // Demographics Table (if data exists)
-  if (demoRows.length > 0) {
-    emailHtml += `<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">`;
-    emailHtml += `<tr><td colspan="2" style="padding: 10px 12px; background-color: #1f2937; color: white; font-weight: bold; font-size: 14px;">LOCATION & DEMOGRAPHICS</td></tr>`;
-    emailHtml += demoRows.join('');
+  if (demoRowsData.length > 0) {
+    emailHtml += `<table style="${tableWrapperStyle} width: 100%; border-collapse: collapse;" cellpadding="0" cellspacing="0">`;
+    emailHtml += `<tr><td colspan="2" style="${sectionHeaderStyle}">Location & Demographics</td></tr>`;
+    emailHtml += demoRows;
     emailHtml += `</table>`;
-    emailHtml += `<br>`;
   }
 
   // Supporting Documents
   if (docLinks.length > 0) {
-    emailHtml += `<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">`;
-    emailHtml += `<tr><td style="padding: 10px 12px; background-color: #1f2937; color: white; font-weight: bold; font-size: 14px;">SUPPORTING DOCUMENTS</td></tr>`;
-    emailHtml += `<tr><td style="padding: 12px; line-height: 1.8;">${docLinks.join('<br>')}</td></tr>`;
-    emailHtml += `</table>`;
-    emailHtml += `<br>`;
+    emailHtml += `<table style="${tableWrapperStyle} width: 100%; border-collapse: collapse;" cellpadding="0" cellspacing="0">`;
+    emailHtml += `<tr><td style="${sectionHeaderStyle}">Supporting Documents</td></tr>`;
+    emailHtml += `<tr><td style="padding: 16px; background-color: ${COLORS.rowEven}; line-height: 2;">`;
+    docLinks.forEach((link, idx) => {
+      emailHtml += `<span style="display: inline-block; margin-right: 8px;">📄</span>${link}`;
+      if (idx < docLinks.length - 1) emailHtml += `<br>`;
+    });
+    emailHtml += `</td></tr></table>`;
   }
 
   // Site Notes
   if (siteSubmit.notes) {
-    emailHtml += `<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">`;
-    emailHtml += `<tr><td style="padding: 10px 12px; background-color: #1f2937; color: white; font-weight: bold; font-size: 14px;">SITE NOTES</td></tr>`;
-    emailHtml += `<tr><td style="padding: 12px; color: #111827;">${siteSubmit.notes.replace(/\n/g, '<br>')}</td></tr>`;
+    emailHtml += `<table style="${tableWrapperStyle} width: 100%; border-collapse: collapse;" cellpadding="0" cellspacing="0">`;
+    emailHtml += `<tr><td style="${sectionHeaderStyle}">Site Notes</td></tr>`;
+    emailHtml += `<tr><td style="padding: 16px; background-color: ${COLORS.rowEven}; color: ${COLORS.text}; line-height: 1.6;">${siteSubmit.notes.replace(/\n/g, '<br>')}</td></tr>`;
     emailHtml += `</table>`;
   }
 
   // Competitor Data
   if (siteSubmit.competitor_data) {
-    emailHtml += `<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">`;
-    emailHtml += `<tr><td style="padding: 10px 12px; background-color: #1f2937; color: white; font-weight: bold; font-size: 14px;">COMPETITOR INFORMATION</td></tr>`;
-    emailHtml += `<tr><td style="padding: 12px; color: #111827;">${siteSubmit.competitor_data.replace(/\n/g, '<br>')}</td></tr>`;
+    emailHtml += `<table style="${tableWrapperStyle} width: 100%; border-collapse: collapse;" cellpadding="0" cellspacing="0">`;
+    emailHtml += `<tr><td style="${sectionHeaderStyle}">Competitor Information</td></tr>`;
+    emailHtml += `<tr><td style="padding: 16px; background-color: ${COLORS.rowEven}; color: ${COLORS.text}; line-height: 1.6;">${siteSubmit.competitor_data.replace(/\n/g, '<br>')}</td></tr>`;
     emailHtml += `</table>`;
   }
 
+  // Divider before closing
+  emailHtml += `<hr style="border: none; border-top: 1px solid ${COLORS.border}; margin: 32px 0;">`;
+
   // Closing message
-  emailHtml += `<p>If this property is a pass, please reply with a brief reason. If you need more information or want to discuss further, let me know.</p>`;
-  emailHtml += `<p>Thanks!</p>`;
-  emailHtml += `<br>`;
+  emailHtml += `<p style="font-size: 15px; color: ${COLORS.text}; margin-bottom: 8px;">If this property is a pass, please reply with a brief reason. If you need more information or want to discuss further, let me know.</p>`;
+  emailHtml += `<p style="font-size: 15px; color: ${COLORS.text}; margin-bottom: 24px;">Thanks!</p>`;
 
   // Signature
   if (userSignatureHtml) {
     emailHtml += userSignatureHtml;
   } else {
     // Fallback signature using userData
-    emailHtml += `<p><strong>${userData?.first_name || ''} ${userData?.last_name || ''}</strong><br>`;
-    emailHtml += `${userData?.email || ''}`;
+    emailHtml += `<p style="font-size: 14px; color: ${COLORS.text};"><strong>${userData?.first_name || ''} ${userData?.last_name || ''}</strong><br>`;
+    emailHtml += `<span style="color: ${COLORS.textMuted};">${userData?.email || ''}</span>`;
     if (userData?.mobile_phone) {
-      emailHtml += `<br>M: ${userData.mobile_phone}`;
+      emailHtml += `<br><span style="color: ${COLORS.textMuted};">M: ${userData.mobile_phone}</span>`;
     }
     emailHtml += `</p>`;
   }
