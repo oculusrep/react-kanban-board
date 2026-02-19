@@ -28,7 +28,12 @@ interface UseProspectingTimeReturn {
   updateSettings: (updates: Partial<Pick<ProspectingSettings, 'daily_time_goal_minutes' | 'stale_lead_days'>>) => Promise<boolean>;
 }
 
-// Helper to get week bounds (Monday to Sunday)
+// Helper to format date as YYYY-MM-DD in local timezone
+const formatLocalDate = (date: Date): string => {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+// Helper to get week bounds (Monday to Sunday) in local timezone
 const getWeekBounds = () => {
   const today = new Date();
   const dayOfWeek = today.getDay();
@@ -41,8 +46,8 @@ const getWeekBounds = () => {
   sunday.setHours(23, 59, 59, 999);
 
   return {
-    start: monday.toISOString().split('T')[0],
-    end: sunday.toISOString().split('T')[0]
+    start: formatLocalDate(monday),
+    end: formatLocalDate(sunday)
   };
 };
 
@@ -70,7 +75,8 @@ export const useProspectingTime = (): UseProspectingTimeReturn => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const today = new Date().toISOString().split('T')[0];
+      // Use LOCAL date (not UTC) to match what we save
+      const today = formatLocalDate(new Date());
       const weekBounds = getWeekBounds();
 
       // Load settings (or create defaults)
@@ -186,8 +192,8 @@ export const useProspectingTime = (): UseProspectingTimeReturn => {
 
       if (upsertError) throw upsertError;
 
-      // Update local state if it's today
-      const today = new Date().toISOString().split('T')[0];
+      // Update local state if it's today (use local date, not UTC)
+      const today = formatLocalDate(new Date());
       if (date === today) {
         setTimeEntry(data);
       }
