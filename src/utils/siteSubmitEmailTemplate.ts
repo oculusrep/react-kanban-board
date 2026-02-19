@@ -198,7 +198,7 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
   emailHtml += `<p style="font-size: 15px; color: ${COLORS.text}; margin-bottom: 24px;">Please find below a new site for your review. Your feedback is appreciated.</p>`;
 
   // Property Header Banner (solid color for email compatibility)
-  emailHtml += `<table style="max-width: 600px; margin-bottom: 24px;" cellpadding="0" cellspacing="0"><tr><td style="background-color: ${COLORS.headerBg}; padding: 20px 24px; border-radius: 8px;"><h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #ffffff;">${propertyName}</h1>${address ? `<p style="margin: 6px 0 0 0; font-size: 14px; color: #8FA9C8;">${address}</p>` : ''}</td></tr></table>`;
+  emailHtml += `<table style="width: 100%; max-width: 600px; margin-bottom: 24px;" cellpadding="0" cellspacing="0"><tr><td style="background-color: ${COLORS.headerBg}; padding: 20px 24px; border-radius: 8px;"><h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #ffffff;">${propertyName}</h1>${address ? `<p style="margin: 6px 0 0 0; font-size: 14px; color: #8FA9C8;">${address}</p>` : ''}</td></tr></table>`;
 
   // Quick Action Buttons - using table-based buttons for better email compatibility
   if (mapLink || portalLink) {

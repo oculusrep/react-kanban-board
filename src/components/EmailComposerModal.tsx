@@ -252,12 +252,12 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
 
     if (match) {
       // Insert custom note after the greeting with "Broker Commentary" heading
-      const noteHtml = `<div style="margin-top: 16px; margin-bottom: 24px; padding: 12px 16px; background-color: #f0f4f8; border-left: 4px solid #4A6B94; border-radius: 4px;"><p style="font-size: 12px; font-weight: 600; color: #4A6B94; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px 0;">Broker Commentary</p><p style="font-size: 15px; color: #002147; margin: 0; line-height: 1.6;">${customNote.replace(/\n/g, '<br>')}</p></div>`;
+      const noteHtml = `<div style="margin-top: 16px; margin-bottom: 24px; max-width: 600px;"><p style="font-size: 12px; font-weight: 600; color: #4A6B94; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px 0;">Broker Commentary</p><p style="font-size: 15px; color: #002147; margin: 0; line-height: 1.6;">${customNote.replace(/\n/g, '<br>')}</p></div>`;
       return baseBody.replace(greetingEndPattern, `$1${noteHtml}`);
     }
 
     // Fallback: prepend to top if greeting not found
-    const noteHtml = `<div style="margin-bottom: 16px; padding: 12px 16px; background-color: #f0f4f8; border-left: 4px solid #4A6B94; border-radius: 4px;"><p style="font-size: 12px; font-weight: 600; color: #4A6B94; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px 0;">Broker Commentary</p><p style="font-size: 15px; color: #002147; margin: 0; line-height: 1.6;">${customNote.replace(/\n/g, '<br>')}</p></div>`;
+    const noteHtml = `<div style="margin-bottom: 16px; max-width: 600px;"><p style="font-size: 12px; font-weight: 600; color: #4A6B94; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px 0;">Broker Commentary</p><p style="font-size: 15px; color: #002147; margin: 0; line-height: 1.6;">${customNote.replace(/\n/g, '<br>')}</p></div>`;
     return noteHtml + baseBody;
   };
 
