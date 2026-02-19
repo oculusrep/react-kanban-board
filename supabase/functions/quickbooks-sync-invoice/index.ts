@@ -325,7 +325,10 @@ serve(async (req) => {
 
       // Build description matching create invoice format
       // Format: "Payment 1 of 2 Now Due for Commission related to procuring cause of Contract Agreement with Deal Name"
+      console.log('DEBUG - payment object keys:', Object.keys(payment))
+      console.log('DEBUG - payment.payment_name:', payment.payment_name, 'type:', typeof payment.payment_name)
       const description = `${payment.payment_name || 'Payment'} Now Due for Commission related to procuring cause of Contract Agreement with ${deal.deal_name || client.client_name}`
+      console.log('DEBUG - built description:', description)
 
       // Build invoice line with updated amount (matching create invoice format)
       const invoiceLine: QBInvoiceLine = {
@@ -657,7 +660,9 @@ serve(async (req) => {
 
     // Build invoice line with service date from contract_signed_date
     // Description format: "Payment 1 of 2 Now Due for Commission related to procuring cause of Contract Agreement with Deal Name"
+    console.log('DEBUG CREATE - payment.payment_name:', payment.payment_name, 'type:', typeof payment.payment_name)
     const description = `${payment.payment_name || 'Payment'} Now Due for Commission related to procuring cause of Contract Agreement with ${deal.deal_name || client.client_name}`
+    console.log('DEBUG CREATE - built description:', description)
 
     const invoiceLine: QBInvoiceLine = {
       Amount: Number(payment.payment_amount),
