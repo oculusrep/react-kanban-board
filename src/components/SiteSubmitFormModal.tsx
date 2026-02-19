@@ -11,6 +11,7 @@ import { useAutosave } from '../hooks/useAutosave';
 import ClientSelector from './mapping/ClientSelector';
 import { ClientSearchResult } from '../hooks/useClientSearch';
 import { generateSiteSubmitEmailTemplate, PropertyUnitFile } from '../utils/siteSubmitEmailTemplate';
+import { EmailTemplateData, AvailableFiles } from '../hooks/useSiteSubmitEmail';
 import DropboxService from '../services/dropboxService';
 import AutosaveIndicator from './AutosaveIndicator';
 import RecordMetadata from './RecordMetadata';
@@ -97,7 +98,13 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
   const [propertyName, setPropertyName] = useState<string>('');
   const [userEditedName, setUserEditedName] = useState(false);
   const [showEmailComposer, setShowEmailComposer] = useState(false);
-  const [emailDefaultData, setEmailDefaultData] = useState<any>(null);
+  const [emailDefaultData, setEmailDefaultData] = useState<{
+    subject: string;
+    body: string;
+    recipients: any[];
+    templateData?: EmailTemplateData;
+    availableFiles?: AvailableFiles;
+  } | null>(null);
   const { toast, showToast, hideToast } = useToast();
 
   // State for metadata display
@@ -633,18 +640,86 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
         }
       }
 
+      // Fetch property-level files if property_id exists
+      let propertyFiles: PropertyUnitFile[] = [];
+      if (siteSubmitData.property_id) {
+        try {
+          const { data: dropboxMapping } = await supabase
+            .from('dropbox_mapping')
+            .select('dropbox_folder_path')
+            .eq('entity_type', 'property')
+            .eq('entity_id', siteSubmitData.property_id)
+            .single();
+
+          if (dropboxMapping?.dropbox_folder_path) {
+            const dropboxService = new DropboxService(
+              import.meta.env.VITE_DROPBOX_ACCESS_TOKEN || '',
+              import.meta.env.VITE_DROPBOX_REFRESH_TOKEN || '',
+              import.meta.env.VITE_DROPBOX_APP_KEY || '',
+              import.meta.env.VITE_DROPBOX_APP_SECRET || ''
+            );
+
+            const contents = await dropboxService.listFolderContents(dropboxMapping.dropbox_folder_path);
+
+            // Filter to only include files (not subfolders like "Units/")
+            const filePromises = contents
+              .filter(item => item.type === 'file')
+              .map(async (file) => {
+                try {
+                  const sharedLink = await dropboxService.getSharedLink(file.path);
+                  return {
+                    name: file.name,
+                    sharedLink: sharedLink
+                  };
+                } catch (error) {
+                  console.error(`Failed to get shared link for ${file.name}:`, error);
+                  return null;
+                }
+              });
+
+            const filesWithLinks = await Promise.all(filePromises);
+            propertyFiles = filesWithLinks.filter((file): file is PropertyUnitFile => file !== null);
+          }
+        } catch (error) {
+          console.error('Error fetching property files:', error);
+        }
+      }
+
       // Generate email template
       // Sanitize subject to use ASCII-only characters (replace Unicode dashes with hyphens)
       const sanitizeForSubject = (str: string) => str.replace(/[\u2013\u2014\u2015\u2212]/g, '-');
       const propertyName = sanitizeForSubject(siteSubmitData.property?.property_name || 'Untitled');
       const clientName = sanitizeForSubject(siteSubmitData.client?.client_name || 'N/A');
       const defaultSubject = `New site for Review - ${propertyName} - ${clientName}`;
-      const defaultBody = generateEmailTemplate(siteSubmitData, uniqueContacts, userData, propertyUnitFiles, userSignatureHtml);
+      const defaultBody = generateEmailTemplate(siteSubmitData, uniqueContacts, userData, propertyUnitFiles, propertyFiles, userSignatureHtml);
+
+      // Store template data for regeneration when files are selected/deselected
+      const templateData: EmailTemplateData = {
+        siteSubmit: siteSubmitData,
+        siteSubmitId: siteSubmitData.id,
+        property: siteSubmitData.property,
+        propertyUnit: siteSubmitData.property_unit,
+        contacts: uniqueContacts,
+        userData,
+        portalBaseUrl: window.location.origin,
+        userSignatureHtml,
+      };
+
+      // Available files that can be selected/deselected
+      const availableFiles: AvailableFiles = {
+        propertyUnitFiles,
+        propertyFiles,
+        marketingMaterials: siteSubmitData.property?.marketing_materials,
+        sitePlan: siteSubmitData.property?.site_plan,
+        demographics: siteSubmitData.property?.demographics,
+      };
 
       setEmailDefaultData({
         subject: defaultSubject,
         body: defaultBody,
         recipients: uniqueContacts,
+        templateData,
+        availableFiles,
       });
       setShowEmailComposer(true);
     } catch (error) {
@@ -653,7 +728,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
     }
   };
 
-  const generateEmailTemplate = (siteSubmit: any, contacts: any[], userData: any, propertyUnitFiles: PropertyUnitFile[] = [], signatureHtml?: string): string => {
+  const generateEmailTemplate = (siteSubmit: any, contacts: any[], userData: any, propertyUnitFiles: PropertyUnitFile[] = [], propertyFiles: PropertyUnitFile[] = [], signatureHtml?: string): string => {
     return generateSiteSubmitEmailTemplate({
       siteSubmit,
       siteSubmitId: siteSubmit.id,
@@ -662,6 +737,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
       contacts,
       userData,
       propertyUnitFiles,
+      propertyFiles,
       portalBaseUrl: window.location.origin,
       userSignatureHtml: signatureHtml,
     });
@@ -1091,6 +1167,8 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
           defaultBody={emailDefaultData.body}
           defaultRecipients={emailDefaultData.recipients || []}
           siteSubmitName={formData.site_submit_name || 'Untitled'}
+          templateData={emailDefaultData.templateData}
+          availableFiles={emailDefaultData.availableFiles}
         />
       )}
 

@@ -1102,6 +1102,8 @@ const SiteSubmitDetailsPage: React.FC = () => {
         defaultBody={emailDefaultData.body}
         defaultRecipients={emailDefaultData.recipients}
         siteSubmitName={formData.site_submit_name}
+        templateData={emailDefaultData.templateData}
+        availableFiles={emailDefaultData.availableFiles}
       />
 
       {/* Add Assignment Modal */}

@@ -1,10 +1,32 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { generateSiteSubmitEmailTemplate, PropertyUnitFile } from '../utils/siteSubmitEmailTemplate';
 
 interface Contact {
   id: string;
   first_name: string | null;
   last_name: string | null;
   email: string;
+}
+
+// Email template data for regeneration
+export interface EmailTemplateData {
+  siteSubmit: any;
+  siteSubmitId: string;
+  property: any;
+  propertyUnit: any;
+  contacts: any[];
+  userData: any;
+  portalBaseUrl: string;
+  userSignatureHtml?: string;
+}
+
+// Available files that can be selected/deselected
+export interface AvailableFiles {
+  propertyUnitFiles: PropertyUnitFile[];
+  propertyFiles: PropertyUnitFile[];
+  marketingMaterials?: string;
+  sitePlan?: string;
+  demographics?: string;
 }
 
 interface EmailComposerModalProps {
@@ -15,6 +37,9 @@ interface EmailComposerModalProps {
   defaultBody: string;
   defaultRecipients: Contact[];
   siteSubmitName: string;
+  // Optional: for file selection feature
+  templateData?: EmailTemplateData;
+  availableFiles?: AvailableFiles;
 }
 
 export interface Attachment {
@@ -40,6 +65,8 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
   defaultBody,
   defaultRecipients,
   siteSubmitName,
+  templateData,
+  availableFiles,
 }) => {
   const [toRecipients, setToRecipients] = useState<string[]>([]);
   const [ccRecipients, setCcRecipients] = useState<string[]>(['mike@oculusrep.com', 'asantos@oculusrep.com']);
@@ -48,6 +75,13 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
   const [customNote, setCustomNote] = useState('');
   const [sending, setSending] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+
+  // File selection state - track which files are selected (all selected by default)
+  const [selectedPropertyUnitFiles, setSelectedPropertyUnitFiles] = useState<Set<string>>(new Set());
+  const [selectedPropertyFiles, setSelectedPropertyFiles] = useState<Set<string>>(new Set());
+  const [includeMarketingMaterials, setIncludeMarketingMaterials] = useState(true);
+  const [includeSitePlan, setIncludeSitePlan] = useState(true);
+  const [includeDemographics, setIncludeDemographics] = useState(true);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -58,8 +92,17 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
       setSubject(defaultSubject);
       setCustomNote('');
       setAttachments([]);
+
+      // Initialize file selections - all files selected by default
+      if (availableFiles) {
+        setSelectedPropertyUnitFiles(new Set(availableFiles.propertyUnitFiles.map(f => f.name)));
+        setSelectedPropertyFiles(new Set(availableFiles.propertyFiles.map(f => f.name)));
+        setIncludeMarketingMaterials(!!availableFiles.marketingMaterials);
+        setIncludeSitePlan(!!availableFiles.sitePlan);
+        setIncludeDemographics(!!availableFiles.demographics);
+      }
     }
-  }, [isOpen, defaultRecipients, defaultSubject]);
+  }, [isOpen, defaultRecipients, defaultSubject, availableFiles]);
 
   const handleAddRecipient = (type: 'to' | 'cc' | 'bcc', email: string) => {
     const trimmedEmail = email.trim();
@@ -148,27 +191,105 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   };
 
+  // Generate email body based on selected files
+  const generatedEmailBody = useMemo(() => {
+    // If we have template data, regenerate the email with selected files
+    if (templateData && availableFiles) {
+      // Filter files based on selection
+      const filteredPropertyUnitFiles = availableFiles.propertyUnitFiles.filter(
+        f => selectedPropertyUnitFiles.has(f.name)
+      );
+      const filteredPropertyFiles = availableFiles.propertyFiles.filter(
+        f => selectedPropertyFiles.has(f.name)
+      );
+
+      // Create a modified property object with filtered static URLs
+      const modifiedProperty = {
+        ...templateData.property,
+        marketing_materials: includeMarketingMaterials ? templateData.property?.marketing_materials : null,
+        site_plan: includeSitePlan ? templateData.property?.site_plan : null,
+        demographics: includeDemographics ? templateData.property?.demographics : null,
+      };
+
+      return generateSiteSubmitEmailTemplate({
+        siteSubmit: templateData.siteSubmit,
+        siteSubmitId: templateData.siteSubmitId,
+        property: modifiedProperty,
+        propertyUnit: templateData.propertyUnit,
+        contacts: templateData.contacts,
+        userData: templateData.userData,
+        propertyUnitFiles: filteredPropertyUnitFiles,
+        propertyFiles: filteredPropertyFiles,
+        portalBaseUrl: templateData.portalBaseUrl,
+        userSignatureHtml: templateData.userSignatureHtml,
+      });
+    }
+    // Fall back to default body if no template data
+    return defaultBody;
+  }, [
+    templateData,
+    availableFiles,
+    selectedPropertyUnitFiles,
+    selectedPropertyFiles,
+    includeMarketingMaterials,
+    includeSitePlan,
+    includeDemographics,
+    defaultBody,
+  ]);
+
   // Build final HTML body with custom note inserted after greeting
   const getFinalHtmlBody = (): string => {
+    const baseBody = generatedEmailBody;
+
     if (!customNote.trim()) {
-      return defaultBody;
+      return baseBody;
     }
 
     // Find the greeting paragraph that ends with "Your feedback is appreciated."
     // Insert custom note right after it (before the Property Header Banner)
     const greetingEndPattern = /(<p[^>]*>Please find below a new site for your review\. Your feedback is appreciated\.<\/p>)/i;
-    const match = defaultBody.match(greetingEndPattern);
+    const match = baseBody.match(greetingEndPattern);
 
     if (match) {
       // Insert custom note after the greeting with "Broker Commentary" heading
       const noteHtml = `<div style="margin-top: 16px; margin-bottom: 24px; padding: 12px 16px; background-color: #f0f4f8; border-left: 4px solid #4A6B94; border-radius: 4px;"><p style="font-size: 12px; font-weight: 600; color: #4A6B94; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px 0;">Broker Commentary</p><p style="font-size: 15px; color: #002147; margin: 0; line-height: 1.6;">${customNote.replace(/\n/g, '<br>')}</p></div>`;
-      return defaultBody.replace(greetingEndPattern, `$1${noteHtml}`);
+      return baseBody.replace(greetingEndPattern, `$1${noteHtml}`);
     }
 
     // Fallback: prepend to top if greeting not found
     const noteHtml = `<div style="margin-bottom: 16px; padding: 12px 16px; background-color: #f0f4f8; border-left: 4px solid #4A6B94; border-radius: 4px;"><p style="font-size: 12px; font-weight: 600; color: #4A6B94; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px 0;">Broker Commentary</p><p style="font-size: 15px; color: #002147; margin: 0; line-height: 1.6;">${customNote.replace(/\n/g, '<br>')}</p></div>`;
-    return noteHtml + defaultBody;
+    return noteHtml + baseBody;
   };
+
+  // Toggle file selection helpers
+  const togglePropertyUnitFile = (fileName: string) => {
+    const newSet = new Set(selectedPropertyUnitFiles);
+    if (newSet.has(fileName)) {
+      newSet.delete(fileName);
+    } else {
+      newSet.add(fileName);
+    }
+    setSelectedPropertyUnitFiles(newSet);
+  };
+
+  const togglePropertyFile = (fileName: string) => {
+    const newSet = new Set(selectedPropertyFiles);
+    if (newSet.has(fileName)) {
+      newSet.delete(fileName);
+    } else {
+      newSet.add(fileName);
+    }
+    setSelectedPropertyFiles(newSet);
+  };
+
+  // Check if any files are available for selection
+  const hasSelectableFiles = availableFiles && (
+    availableFiles.propertyUnitFiles.length > 0 ||
+    availableFiles.propertyFiles.length > 0 ||
+    availableFiles.marketingMaterials ||
+    availableFiles.sitePlan ||
+    availableFiles.demographics
+  );
 
   const handleSend = async () => {
     if (toRecipients.length === 0) {
@@ -268,10 +389,102 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
               />
             </div>
 
+            {/* Supporting Documents Selection */}
+            {hasSelectableFiles && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Supporting Documents <span className="text-gray-400 font-normal">(select which to include as links)</span>
+                </label>
+                <div className="border border-gray-300 rounded-md p-3 bg-gray-50 max-h-48 overflow-y-auto">
+                  {/* Property Files (from Dropbox) */}
+                  {availableFiles!.propertyFiles.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-xs font-medium text-gray-500 uppercase mb-2">Property Files</p>
+                      <div className="space-y-1">
+                        {availableFiles!.propertyFiles.map((file) => (
+                          <label key={file.name} className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 p-1 rounded">
+                            <input
+                              type="checkbox"
+                              checked={selectedPropertyFiles.has(file.name)}
+                              onChange={() => togglePropertyFile(file.name)}
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            />
+                            <span className="text-sm text-gray-700 truncate">{file.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Property Unit Files (from Dropbox) */}
+                  {availableFiles!.propertyUnitFiles.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-xs font-medium text-gray-500 uppercase mb-2">Unit Files</p>
+                      <div className="space-y-1">
+                        {availableFiles!.propertyUnitFiles.map((file) => (
+                          <label key={file.name} className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 p-1 rounded">
+                            <input
+                              type="checkbox"
+                              checked={selectedPropertyUnitFiles.has(file.name)}
+                              onChange={() => togglePropertyUnitFile(file.name)}
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            />
+                            <span className="text-sm text-gray-700 truncate">{file.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Static URLs from Property Record */}
+                  {(availableFiles!.marketingMaterials || availableFiles!.sitePlan || availableFiles!.demographics) && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase mb-2">Property Record Links</p>
+                      <div className="space-y-1">
+                        {availableFiles!.marketingMaterials && (
+                          <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 p-1 rounded">
+                            <input
+                              type="checkbox"
+                              checked={includeMarketingMaterials}
+                              onChange={() => setIncludeMarketingMaterials(!includeMarketingMaterials)}
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            />
+                            <span className="text-sm text-gray-700">Marketing Materials</span>
+                          </label>
+                        )}
+                        {availableFiles!.sitePlan && (
+                          <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 p-1 rounded">
+                            <input
+                              type="checkbox"
+                              checked={includeSitePlan}
+                              onChange={() => setIncludeSitePlan(!includeSitePlan)}
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            />
+                            <span className="text-sm text-gray-700">Site Plan</span>
+                          </label>
+                        )}
+                        {availableFiles!.demographics && (
+                          <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 p-1 rounded">
+                            <input
+                              type="checkbox"
+                              checked={includeDemographics}
+                              onChange={() => setIncludeDemographics(!includeDemographics)}
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            />
+                            <span className="text-sm text-gray-700">Demographics Report</span>
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Attachments */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Attachments
+                Attachments <span className="text-gray-400 font-normal">(optional - attach local files)</span>
               </label>
               <div className="flex items-center gap-2">
                 <label className="cursor-pointer px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus-within:ring-2 focus-within:ring-blue-500">

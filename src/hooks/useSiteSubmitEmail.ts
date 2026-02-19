@@ -8,6 +8,31 @@ interface UseSiteSubmitEmailOptions {
   showToast: (message: string, options?: { type?: 'success' | 'error' | 'info'; duration?: number }) => void;
 }
 
+// Re-export PropertyUnitFile for use in components
+export type { PropertyUnitFile } from '../utils/siteSubmitEmailTemplate';
+
+// Email template data that can be used to regenerate the email body
+export interface EmailTemplateData {
+  siteSubmit: any;
+  siteSubmitId: string;
+  property: any;
+  propertyUnit: any;
+  contacts: any[];
+  userData: any;
+  portalBaseUrl: string;
+  userSignatureHtml?: string;
+}
+
+// Available files that can be selected/deselected
+export interface AvailableFiles {
+  propertyUnitFiles: PropertyUnitFile[];
+  propertyFiles: PropertyUnitFile[];
+  // Static URLs from property record
+  marketingMaterials?: string;
+  sitePlan?: string;
+  demographics?: string;
+}
+
 export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
   const [showEmailComposer, setShowEmailComposer] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
@@ -15,6 +40,8 @@ export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
     subject: string;
     body: string;
     recipients: any[];
+    templateData?: EmailTemplateData;
+    availableFiles?: AvailableFiles;
   }>({ subject: '', body: '', recipients: [] });
 
   const prepareEmail = async (siteSubmitId: string) => {
@@ -247,11 +274,34 @@ export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
         userSignatureHtml,
       });
 
+      // Store template data for regeneration when files are selected/deselected
+      const templateData: EmailTemplateData = {
+        siteSubmit: siteSubmitData,
+        siteSubmitId: siteSubmitId,
+        property: siteSubmitData.property,
+        propertyUnit: siteSubmitData.property_unit,
+        contacts: uniqueContacts,
+        userData,
+        portalBaseUrl: window.location.origin,
+        userSignatureHtml,
+      };
+
+      // Available files that can be selected/deselected
+      const availableFiles: AvailableFiles = {
+        propertyUnitFiles,
+        propertyFiles,
+        marketingMaterials: siteSubmitData.property?.marketing_materials,
+        sitePlan: siteSubmitData.property?.site_plan,
+        demographics: siteSubmitData.property?.demographics,
+      };
+
       // Set email default data and show composer modal
       setEmailDefaultData({
         subject: defaultSubject,
         body: defaultBody,
         recipients: contacts,
+        templateData,
+        availableFiles,
       });
       setShowEmailComposer(true);
       return true;
