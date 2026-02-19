@@ -732,9 +732,11 @@ export default function ProspectingWorkspace() {
     setLoadingFeed(true);
     try {
       // Build query filter to include activities on contact OR their linked target
+      // Exclude 'email' type since we load sent emails separately from hunter_outreach_draft
       let activitiesQuery = supabase
         .from('prospecting_activity')
-        .select('id, activity_type, notes, email_subject, created_at, created_by, hidden_from_timeline');
+        .select('id, activity_type, notes, email_subject, created_at, created_by, hidden_from_timeline')
+        .neq('activity_type', 'email');  // Exclude emails - loaded from hunter_outreach_draft
 
       let notesQuery = supabase
         .from('prospecting_note')
@@ -749,7 +751,7 @@ export default function ProspectingWorkspace() {
         notesQuery = notesQuery.eq('contact_id', contactId);
       }
 
-      // Fetch prospecting activities
+      // Fetch prospecting activities (excluding emails)
       const { data: activities } = await activitiesQuery.order('created_at', { ascending: false });
 
       // Fetch notes
@@ -818,15 +820,18 @@ export default function ProspectingWorkspace() {
           created_by: n.created_by,
           source: 'prospecting' as const
         })),
-        // Contact activities (logged calls, tasks, etc.)
-        ...(contactActivities || []).map(a => {
+        // Contact activities (logged calls, tasks, etc.) - exclude emails since we load them from hunter_outreach_draft
+        ...(contactActivities || [])
+          .filter(a => {
+            const typeName = (a.activity_type as { name: string } | null)?.name?.toLowerCase() || '';
+            return typeName !== 'email';  // Exclude emails - loaded from hunter_outreach_draft
+          })
+          .map(a => {
           // Map activity type name to our feed item types
           const activityTypeName = (a.activity_type as { name: string } | null)?.name?.toLowerCase() || '';
           let type: ActivityFeedItem['type'] = 'task';
           if (activityTypeName === 'call' || a.completed_call) {
             type = 'call';
-          } else if (activityTypeName === 'email') {
-            type = 'email';
           } else if (activityTypeName === 'meeting') {
             type = 'meeting';
           }
