@@ -159,10 +159,17 @@ serve(async (req) => {
       .eq('id', userId)
       .single()
 
-    const senderName = senderData?.name ||
-      (senderData?.first_name && senderData?.last_name ? `${senderData.first_name} ${senderData.last_name}` : null) ||
-      senderData?.first_name ||
-      null
+    // Prefer first_name + last_name for full name, fallback to name field
+    let senderName: string | null = null
+    if (senderData?.first_name && senderData?.last_name) {
+      senderName = `${senderData.first_name} ${senderData.last_name}`
+    } else if (senderData?.name) {
+      senderName = senderData.name
+    } else if (senderData?.first_name) {
+      senderName = senderData.first_name
+    }
+
+    console.log('[Site Submit Email] Sender name resolved:', senderName, 'from data:', senderData)
 
     // If custom email is provided, use it directly
     if (customEmail) {
