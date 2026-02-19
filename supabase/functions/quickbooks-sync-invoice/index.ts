@@ -324,10 +324,8 @@ serve(async (req) => {
       const serviceItemId = await findOrCreateServiceItem(connection, 'Brokerage Fee')
 
       // Build description matching create invoice format
-      const description = [
-        payment.payment_name,
-        deal.deal_name ? `procuring cause of Contract Agreement with ${deal.deal_name}` : null
-      ].filter(Boolean).join(' - ')
+      // Format: "Payment 1 of 2 Now Due for Commission related to procuring cause of Contract Agreement with Deal Name"
+      const description = `${payment.payment_name || 'Payment'} Now Due for Commission related to procuring cause of Contract Agreement with ${deal.deal_name || client.client_name}`
 
       // Build invoice line with updated amount (matching create invoice format)
       const invoiceLine: QBInvoiceLine = {
