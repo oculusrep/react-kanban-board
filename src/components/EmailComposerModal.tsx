@@ -1,28 +1,15 @@
-import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
-
-// Lazy load ReactQuill to prevent constructor conflicts with Google Maps AdvancedMarkerElement
-const ReactQuill = lazy(() => import('react-quill').then(module => {
-  // Import CSS side effect
-  import('react-quill/dist/quill.snow.css');
-  return module;
-}));
-
-// Custom styles for the email editor
-const editorStyles = `
-  .email-editor-wrapper .quill {
-    height: 400px;
-    display: flex;
-    flex-direction: column;
-  }
-  .email-editor-wrapper .ql-container {
-    flex: 1;
-    overflow-y: auto;
-    min-height: 0;
-  }
-  .email-editor-wrapper .ql-editor {
-    min-height: 100%;
-  }
-`;
+import React, { useState, useEffect, useCallback } from 'react';
+import { useEditor, EditorContent, Editor } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import { Link } from '@tiptap/extension-link';
+import { Table } from '@tiptap/extension-table';
+import { TableRow } from '@tiptap/extension-table-row';
+import { TableCell } from '@tiptap/extension-table-cell';
+import { TableHeader } from '@tiptap/extension-table-header';
+import { TextStyle } from '@tiptap/extension-text-style';
+import { Color } from '@tiptap/extension-color';
+import { Underline } from '@tiptap/extension-underline';
+import { TextAlign } from '@tiptap/extension-text-align';
 
 interface Contact {
   id: string;
@@ -56,6 +43,150 @@ export interface EmailData {
   attachments?: Attachment[];
 }
 
+// TipTap Toolbar Component
+const MenuBar = ({ editor }: { editor: Editor | null }) => {
+  if (!editor) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1 p-2 border-b border-gray-200 bg-gray-50">
+      <button
+        onClick={() => editor.chain().focus().toggleBold().run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive('bold') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Bold"
+      >
+        <strong>B</strong>
+      </button>
+      <button
+        onClick={() => editor.chain().focus().toggleItalic().run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive('italic') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Italic"
+      >
+        <em>I</em>
+      </button>
+      <button
+        onClick={() => editor.chain().focus().toggleUnderline().run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive('underline') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Underline"
+      >
+        <u>U</u>
+      </button>
+      <button
+        onClick={() => editor.chain().focus().toggleStrike().run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive('strike') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Strikethrough"
+      >
+        <s>S</s>
+      </button>
+
+      <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
+
+      <button
+        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive('heading', { level: 2 }) ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Heading"
+      >
+        H
+      </button>
+      <button
+        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive('bulletList') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Bullet List"
+      >
+        •
+      </button>
+      <button
+        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive('orderedList') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Numbered List"
+      >
+        1.
+      </button>
+
+      <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
+
+      <button
+        onClick={() => editor.chain().focus().setTextAlign('left').run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive({ textAlign: 'left' }) ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Align Left"
+      >
+        ⫷
+      </button>
+      <button
+        onClick={() => editor.chain().focus().setTextAlign('center').run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive({ textAlign: 'center' }) ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Align Center"
+      >
+        ≡
+      </button>
+      <button
+        onClick={() => editor.chain().focus().setTextAlign('right').run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive({ textAlign: 'right' }) ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Align Right"
+      >
+        ⫸
+      </button>
+
+      <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
+
+      <button
+        onClick={() => {
+          const url = window.prompt('Enter URL:');
+          if (url) {
+            editor.chain().focus().setLink({ href: url }).run();
+          }
+        }}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive('link') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Add Link"
+      >
+        🔗
+      </button>
+      <button
+        onClick={() => editor.chain().focus().unsetLink().run()}
+        disabled={!editor.isActive('link')}
+        className="px-2 py-1 text-sm rounded hover:bg-gray-200 disabled:opacity-40"
+        title="Remove Link"
+      >
+        ⛓️‍💥
+      </button>
+
+      <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
+
+      <button
+        onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: false }).run()}
+        className="px-2 py-1 text-sm rounded hover:bg-gray-200"
+        title="Insert Table"
+      >
+        📊
+      </button>
+      {editor.isActive('table') && (
+        <>
+          <button
+            onClick={() => editor.chain().focus().addColumnAfter().run()}
+            className="px-2 py-1 text-sm rounded hover:bg-gray-200"
+            title="Add Column"
+          >
+            +Col
+          </button>
+          <button
+            onClick={() => editor.chain().focus().addRowAfter().run()}
+            className="px-2 py-1 text-sm rounded hover:bg-gray-200"
+            title="Add Row"
+          >
+            +Row
+          </button>
+          <button
+            onClick={() => editor.chain().focus().deleteTable().run()}
+            className="px-2 py-1 text-sm rounded hover:bg-gray-200 text-red-600"
+            title="Delete Table"
+          >
+            ✕
+          </button>
+        </>
+      )}
+    </div>
+  );
+};
+
 const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
   isOpen,
   onClose,
@@ -69,10 +200,46 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
   const [ccRecipients, setCcRecipients] = useState<string[]>(['mike@oculusrep.com', 'asantos@oculusrep.com']);
   const [bccRecipients, setBccRecipients] = useState<string[]>([]);
   const [subject, setSubject] = useState('');
-  const [emailBody, setEmailBody] = useState('');
   const [sending, setSending] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        heading: {
+          levels: [1, 2, 3],
+        },
+      }),
+      Link.configure({
+        openOnClick: false,
+        HTMLAttributes: {
+          class: 'text-blue-600 underline',
+        },
+      }),
+      Table.configure({
+        resizable: true,
+        HTMLAttributes: {
+          class: 'border-collapse',
+        },
+      }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      TextStyle,
+      Color,
+      Underline,
+      TextAlign.configure({
+        types: ['heading', 'paragraph'],
+      }),
+    ],
+    content: '',
+    editorProps: {
+      attributes: {
+        class: 'prose prose-sm max-w-none focus:outline-none min-h-[350px] p-4',
+      },
+    },
+  });
 
   // Reset state when modal opens
   useEffect(() => {
@@ -81,33 +248,15 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
       setCcRecipients(['mike@oculusrep.com', 'asantos@oculusrep.com']);
       setBccRecipients([]);
       setSubject(defaultSubject);
-      setEmailBody(defaultBody);
       setShowPreview(false);
       setAttachments([]);
+
+      // Set editor content
+      if (editor) {
+        editor.commands.setContent(defaultBody);
+      }
     }
-  }, [isOpen, defaultRecipients, defaultSubject, defaultBody]);
-
-  // Quill modules configuration
-  const modules = useMemo(() => ({
-    toolbar: [
-      [{ 'header': [1, 2, 3, false] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ 'color': [] }, { 'background': [] }],
-      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      [{ 'align': [] }],
-      ['link'],
-      ['clean']
-    ],
-  }), []);
-
-  const formats = [
-    'header',
-    'bold', 'italic', 'underline', 'strike',
-    'color', 'background',
-    'list', 'bullet',
-    'align',
-    'link'
-  ];
+  }, [isOpen, defaultRecipients, defaultSubject, defaultBody, editor]);
 
   const handleAddRecipient = (type: 'to' | 'cc' | 'bcc', email: string) => {
     const trimmedEmail = email.trim();
@@ -141,7 +290,7 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
     if (!files || files.length === 0) return;
 
     const newAttachments: Attachment[] = [];
-    const maxSize = 40 * 1024 * 1024; // 40MB limit for Resend
+    const maxSize = 40 * 1024 * 1024; // 40MB limit for Gmail
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -196,6 +345,11 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   };
 
+  const getEmailBody = useCallback(() => {
+    if (!editor) return '';
+    return editor.getHTML();
+  }, [editor]);
+
   const handleSend = async () => {
     if (toRecipients.length === 0) {
       alert('Please add at least one recipient');
@@ -214,11 +368,9 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
         cc: ccRecipients,
         bcc: bccRecipients,
         subject,
-        htmlBody: emailBody,
+        htmlBody: getEmailBody(),
         attachments: attachments.length > 0 ? attachments : undefined,
       });
-      // Don't close immediately - let parent handle closing
-      // onClose();
     } catch (error) {
       console.error('Error sending email:', error);
     } finally {
@@ -230,7 +382,35 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
 
   return (
     <>
-      <style>{editorStyles}</style>
+      <style>{`
+        .email-editor-wrapper .ProseMirror {
+          min-height: 350px;
+          max-height: 400px;
+          overflow-y: auto;
+        }
+        .email-editor-wrapper .ProseMirror table {
+          border-collapse: collapse;
+          width: 100%;
+          margin: 0;
+        }
+        .email-editor-wrapper .ProseMirror td,
+        .email-editor-wrapper .ProseMirror th {
+          border: 1px solid #ccc;
+          padding: 8px;
+          vertical-align: top;
+        }
+        .email-editor-wrapper .ProseMirror th {
+          background-color: #f5f5f5;
+          font-weight: bold;
+        }
+        .email-editor-wrapper .ProseMirror p {
+          margin: 0 0 0.5em 0;
+        }
+        .email-editor-wrapper .ProseMirror a {
+          color: #2563eb;
+          text-decoration: underline;
+        }
+      `}</style>
       <div className="fixed inset-0 z-[100] overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
         {/* Background overlay */}
@@ -370,26 +550,18 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
             {/* Email Body Editor / Preview */}
             {showPreview ? (
               <div className="border border-gray-300 rounded-md p-4 bg-white min-h-[400px] max-h-[500px] overflow-y-auto">
-                <div dangerouslySetInnerHTML={{ __html: emailBody }} />
+                <div dangerouslySetInnerHTML={{ __html: getEmailBody() }} />
               </div>
             ) : (
               <div className="border border-gray-300 rounded-md email-editor-wrapper">
-                <Suspense fallback={<div className="h-[400px] flex items-center justify-center text-gray-400">Loading editor...</div>}>
-                  <ReactQuill
-                    theme="snow"
-                    value={emailBody}
-                    onChange={setEmailBody}
-                    modules={modules}
-                    formats={formats}
-                    style={{ height: '400px' }}
-                  />
-                </Suspense>
+                <MenuBar editor={editor} />
+                <EditorContent editor={editor} />
               </div>
             )}
           </div>
 
           {/* Footer */}
-          <div className="bg-gray-50 px-6 py-4 flex justify-between items-center mt-24">
+          <div className="bg-gray-50 px-6 py-4 flex justify-between items-center">
             <div className="text-sm text-gray-500">
               {toRecipients.length} recipient{toRecipients.length !== 1 ? 's' : ''}
               {ccRecipients.length > 0 && `, ${ccRecipients.length} CC`}

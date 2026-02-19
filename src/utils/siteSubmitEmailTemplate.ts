@@ -2,8 +2,7 @@
  * Shared Site Submit Email Template Generator
  *
  * This utility generates the email template for site submit notifications.
- * Uses simple HTML that's compatible with ReactQuill editor while still
- * looking professional in email clients.
+ * Uses table-based HTML layout for professional appearance in email clients.
  * Supports user email signatures from the user_email_signature table.
  */
 
@@ -103,148 +102,148 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
   // Portal link
   const portalLink = (portalBaseUrl && siteSubmitId) ? `${portalBaseUrl}/portal/map?selected=${siteSubmitId}` : null;
 
-  // Start building email - using simple HTML compatible with Quill
-  let emailHtml = `<p>${contactNames},</p>`;
-  emailHtml += `<p>Please find below a new site for your review. Your feedback is appreciated.</p>`;
-  emailHtml += `<p><br></p>`;
-
-  // Property Details section
-  emailHtml += `<p><strong>PROPERTY DETAILS</strong></p>`;
-  emailHtml += `<p>`;
-  emailHtml += `<strong>Property Name:</strong> ${propertyName}<br>`;
+  // Build property details rows
+  const propertyRows: string[] = [];
+  propertyRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151; width: 40%;">Property Name</td><td style="padding: 6px 12px; color: #111827;">${propertyName}</td></tr>`);
 
   if (address) {
-    emailHtml += `<strong>Address:</strong> ${address}<br>`;
+    propertyRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Address</td><td style="padding: 6px 12px; color: #111827;">${address}</td></tr>`);
   }
 
   if (propertyUnit?.property_unit_name) {
-    emailHtml += `<strong>Unit:</strong> ${propertyUnit.property_unit_name}<br>`;
+    propertyRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Unit</td><td style="padding: 6px 12px; color: #111827;">${propertyUnit.property_unit_name}</td></tr>`);
   }
 
   if (property?.trade_area) {
-    emailHtml += `<strong>Trade Area:</strong> ${property.trade_area}<br>`;
+    propertyRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Trade Area</td><td style="padding: 6px 12px; color: #111827;">${property.trade_area}</td></tr>`);
   }
 
   if (sizeInfo) {
-    emailHtml += `<strong>Size:</strong> ${sizeInfo}<br>`;
+    propertyRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Size</td><td style="padding: 6px 12px; color: #111827;">${sizeInfo}</td></tr>`);
   }
 
   if (pricingValue) {
-    emailHtml += `<strong>${pricingLabel}:</strong> ${pricingValue}<br>`;
+    propertyRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">${pricingLabel}</td><td style="padding: 6px 12px; color: #111827;">${pricingValue}</td></tr>`);
   }
 
   if (nnnValue) {
-    emailHtml += `<strong>NNN:</strong> ${nnnValue}<br>`;
+    propertyRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">NNN</td><td style="padding: 6px 12px; color: #111827;">${nnnValue}</td></tr>`);
   }
 
   if (siteSubmit.delivery_timeframe) {
-    emailHtml += `<strong>Delivery:</strong> ${siteSubmit.delivery_timeframe}<br>`;
+    propertyRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Delivery</td><td style="padding: 6px 12px; color: #111827;">${siteSubmit.delivery_timeframe}</td></tr>`);
   }
 
-  emailHtml += `</p>`;
-
-  // Quick Links
-  if (mapLink || portalLink) {
-    emailHtml += `<p>`;
-    emailHtml += `<strong>Quick Links:</strong> `;
-    const links = [];
-    if (mapLink) links.push(`<a href="${mapLink}">View on Map</a>`);
-    if (portalLink) links.push(`<a href="${portalLink}">View in Portal</a>`);
-    emailHtml += links.join(' | ');
-    emailHtml += `</p>`;
+  // Build demographics rows
+  const demoRows: string[] = [];
+  if (property?.['1_mile_pop']) {
+    demoRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151; width: 40%;">1-Mile Population</td><td style="padding: 6px 12px; color: #111827;">${formatNumber(property['1_mile_pop'])}</td></tr>`);
+  }
+  if (property?.['3_mile_pop']) {
+    demoRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">3-Mile Population</td><td style="padding: 6px 12px; color: #111827;">${formatNumber(property['3_mile_pop'])}</td></tr>`);
+  }
+  if (property?.hh_income_median_3_mile) {
+    demoRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Median HH Income (3mi)</td><td style="padding: 6px 12px; color: #111827;">${formatCurrency(property.hh_income_median_3_mile)}</td></tr>`);
+  }
+  if (property?.traffic_count) {
+    demoRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Traffic Count</td><td style="padding: 6px 12px; color: #111827;">${formatNumber(property.traffic_count)}</td></tr>`);
+  }
+  if (property?.traffic_count_2nd) {
+    demoRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Traffic Count (2nd)</td><td style="padding: 6px 12px; color: #111827;">${formatNumber(property.traffic_count_2nd)}</td></tr>`);
+  }
+  if (property?.total_traffic) {
+    demoRows.push(`<tr><td style="padding: 6px 12px; font-weight: bold; color: #374151;">Total Traffic</td><td style="padding: 6px 12px; color: #111827;">${formatNumber(property.total_traffic)}</td></tr>`);
   }
 
-  // Demographics section
-  const hasDemo = property?.['1_mile_pop'] || property?.['3_mile_pop'] || property?.hh_income_median_3_mile;
-  const hasTraffic = property?.traffic_count || property?.traffic_count_2nd || property?.total_traffic;
-
-  if (hasDemo || hasTraffic) {
-    emailHtml += `<p><br></p>`;
-    emailHtml += `<p><strong>LOCATION & DEMOGRAPHICS</strong></p>`;
-    emailHtml += `<p>`;
-
-    if (property?.['1_mile_pop']) {
-      emailHtml += `<strong>1-Mile Population:</strong> ${formatNumber(property['1_mile_pop'])}<br>`;
-    }
-    if (property?.['3_mile_pop']) {
-      emailHtml += `<strong>3-Mile Population:</strong> ${formatNumber(property['3_mile_pop'])}<br>`;
-    }
-    if (property?.hh_income_median_3_mile) {
-      emailHtml += `<strong>Median HH Income (3mi):</strong> ${formatCurrency(property.hh_income_median_3_mile)}<br>`;
-    }
-    if (property?.traffic_count) {
-      emailHtml += `<strong>Traffic Count:</strong> ${formatNumber(property.traffic_count)}<br>`;
-    }
-    if (property?.traffic_count_2nd) {
-      emailHtml += `<strong>Traffic Count (2nd):</strong> ${formatNumber(property.traffic_count_2nd)}<br>`;
-    }
-    if (property?.total_traffic) {
-      emailHtml += `<strong>Total Traffic:</strong> ${formatNumber(property.total_traffic)}<br>`;
-    }
-
-    emailHtml += `</p>`;
+  // Build links
+  const linkItems: string[] = [];
+  if (mapLink) {
+    linkItems.push(`<a href="${mapLink}" style="color: #2563eb; text-decoration: underline;">View on Map</a>`);
+  }
+  if (portalLink) {
+    linkItems.push(`<a href="${portalLink}" style="color: #2563eb; text-decoration: underline;">View in Portal</a>`);
   }
 
-  // Supporting Files section
+  // Build supporting documents
+  const docLinks: string[] = [];
   const hasPropertyUnitFiles = propertyUnitFiles && propertyUnitFiles.length > 0;
   const hasPropertyFiles = propertyFiles && propertyFiles.length > 0;
-  const hasGenericFiles = property?.marketing_materials || property?.site_plan || property?.demographics;
 
-  if (hasPropertyUnitFiles || hasPropertyFiles || hasGenericFiles) {
-    emailHtml += `<p><br></p>`;
-    emailHtml += `<p><strong>SUPPORTING DOCUMENTS</strong></p>`;
-    emailHtml += `<p>`;
+  if (hasPropertyFiles) {
+    propertyFiles!.forEach(file => {
+      docLinks.push(`<a href="${file.sharedLink}" style="color: #2563eb; text-decoration: underline;">${file.name}</a>`);
+    });
+  }
+  if (property?.marketing_materials) {
+    docLinks.push(`<a href="${property.marketing_materials}" style="color: #2563eb; text-decoration: underline;">Marketing Materials</a>`);
+  }
+  if (property?.site_plan) {
+    docLinks.push(`<a href="${property.site_plan}" style="color: #2563eb; text-decoration: underline;">Site Plan</a>`);
+  }
+  if (property?.demographics) {
+    docLinks.push(`<a href="${property.demographics}" style="color: #2563eb; text-decoration: underline;">Demographics Report</a>`);
+  }
+  if (hasPropertyUnitFiles) {
+    propertyUnitFiles!.forEach(file => {
+      docLinks.push(`<a href="${file.sharedLink}" style="color: #2563eb; text-decoration: underline;">${file.name}</a>`);
+    });
+  }
 
-    // Property-level Dropbox files
-    if (hasPropertyFiles) {
-      propertyFiles!.forEach(file => {
-        emailHtml += `<a href="${file.sharedLink}">${file.name}</a><br>`;
-      });
-    }
+  // Start building email
+  let emailHtml = `<p>${contactNames},</p>`;
+  emailHtml += `<p>Please find below a new site for your review. Your feedback is appreciated.</p>`;
+  emailHtml += `<br>`;
 
-    // Generic property links
-    if (property?.marketing_materials) {
-      emailHtml += `<a href="${property.marketing_materials}">Marketing Materials</a><br>`;
-    }
-    if (property?.site_plan) {
-      emailHtml += `<a href="${property.site_plan}">Site Plan</a><br>`;
-    }
-    if (property?.demographics) {
-      emailHtml += `<a href="${property.demographics}">Demographics Report</a><br>`;
-    }
+  // Property Details Table
+  emailHtml += `<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">`;
+  emailHtml += `<tr><td colspan="2" style="padding: 10px 12px; background-color: #1f2937; color: white; font-weight: bold; font-size: 14px;">PROPERTY DETAILS</td></tr>`;
+  emailHtml += propertyRows.join('');
+  emailHtml += `</table>`;
 
-    // Property unit Dropbox files
-    if (hasPropertyUnitFiles) {
-      propertyUnitFiles!.forEach(file => {
-        emailHtml += `<a href="${file.sharedLink}">${file.name}</a><br>`;
-      });
-    }
+  // Quick Links
+  if (linkItems.length > 0) {
+    emailHtml += `<p><strong>Quick Links:</strong> ${linkItems.join(' | ')}</p>`;
+    emailHtml += `<br>`;
+  }
 
-    emailHtml += `</p>`;
+  // Demographics Table (if data exists)
+  if (demoRows.length > 0) {
+    emailHtml += `<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">`;
+    emailHtml += `<tr><td colspan="2" style="padding: 10px 12px; background-color: #1f2937; color: white; font-weight: bold; font-size: 14px;">LOCATION & DEMOGRAPHICS</td></tr>`;
+    emailHtml += demoRows.join('');
+    emailHtml += `</table>`;
+  }
+
+  // Supporting Documents
+  if (docLinks.length > 0) {
+    emailHtml += `<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">`;
+    emailHtml += `<tr><td style="padding: 10px 12px; background-color: #1f2937; color: white; font-weight: bold; font-size: 14px;">SUPPORTING DOCUMENTS</td></tr>`;
+    emailHtml += `<tr><td style="padding: 12px; line-height: 1.8;">${docLinks.join('<br>')}</td></tr>`;
+    emailHtml += `</table>`;
   }
 
   // Site Notes
   if (siteSubmit.notes) {
-    emailHtml += `<p><br></p>`;
-    emailHtml += `<p><strong>SITE NOTES</strong></p>`;
-    emailHtml += `<p>${siteSubmit.notes.replace(/\n/g, '<br>')}</p>`;
+    emailHtml += `<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">`;
+    emailHtml += `<tr><td style="padding: 10px 12px; background-color: #1f2937; color: white; font-weight: bold; font-size: 14px;">SITE NOTES</td></tr>`;
+    emailHtml += `<tr><td style="padding: 12px; color: #111827;">${siteSubmit.notes.replace(/\n/g, '<br>')}</td></tr>`;
+    emailHtml += `</table>`;
   }
 
   // Competitor Data
   if (siteSubmit.competitor_data) {
-    emailHtml += `<p><br></p>`;
-    emailHtml += `<p><strong>COMPETITOR INFORMATION</strong></p>`;
-    emailHtml += `<p>${siteSubmit.competitor_data.replace(/\n/g, '<br>')}</p>`;
+    emailHtml += `<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">`;
+    emailHtml += `<tr><td style="padding: 10px 12px; background-color: #1f2937; color: white; font-weight: bold; font-size: 14px;">COMPETITOR INFORMATION</td></tr>`;
+    emailHtml += `<tr><td style="padding: 12px; color: #111827;">${siteSubmit.competitor_data.replace(/\n/g, '<br>')}</td></tr>`;
+    emailHtml += `</table>`;
   }
 
   // Closing message
-  emailHtml += `<p><br></p>`;
   emailHtml += `<p>If this property is a pass, please reply with a brief reason. If you need more information or want to discuss further, let me know.</p>`;
   emailHtml += `<p>Thanks!</p>`;
+  emailHtml += `<br>`;
 
   // Signature
-  emailHtml += `<p><br></p>`;
-
   if (userSignatureHtml) {
     emailHtml += userSignatureHtml;
   } else {
