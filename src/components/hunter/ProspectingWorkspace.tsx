@@ -3294,6 +3294,8 @@ export default function ProspectingWorkspace() {
           onFollowUpCreated={() => {
             setShowFollowUpModal(false);
             fetchData();
+            // Refresh activity feed to show the new follow-up
+            loadActivityFeed(selectedContact.id, selectedContact.target_id);
           }}
           contactId={selectedContact.id}
           contactName={`${selectedContact.first_name || ''} ${selectedContact.last_name || ''}`.trim()}
