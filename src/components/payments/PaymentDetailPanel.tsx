@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Payment, PaymentSplit, Broker, Deal, Client, CommissionSplit } from '../../lib/types';
-import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { ChevronDownIcon, ChevronRightIcon, ExclamationTriangleIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import BrokerSplitEditor from '../BrokerSplitEditor';
 import PaymentDetails from './PaymentDetails';
 import PaymentCheckProcessing from './PaymentCheckProcessing';
@@ -41,6 +41,7 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
   const [syncingToQB, setSyncingToQB] = useState(false);
   const [deletingFromQB, setDeletingFromQB] = useState(false);
   const [qbSyncMessage, setQbSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showContractDateModal, setShowContractDateModal] = useState(false);
 
   const getBrokerName = (brokerId: string) => {
     const broker = brokers.find(b => b.id === brokerId);
@@ -54,8 +55,14 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
   };
 
   // Validate required fields for QuickBooks invoice creation
-  const validateInvoiceFields = (): string[] => {
+  const validateInvoiceFields = (): { errors: string[]; missingContractDate: boolean } => {
     const errors: string[] = [];
+    let missingContractDate = false;
+
+    // Check contract signed date first - this is critical for QBO invoices
+    if (!deal.contract_signed_date) {
+      missingContractDate = true;
+    }
 
     if (!deal.bill_to_company_name) {
       errors.push('Bill-To Company is required');
@@ -73,13 +80,20 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
       errors.push('Estimated Payment Date is required');
     }
 
-    return errors;
+    return { errors, missingContractDate };
   };
 
   // QuickBooks sync functions
   const handleSyncToQuickBooks = async (sendEmail: boolean = false, forceResync: boolean = false) => {
     // Validate required fields before syncing
-    const validationErrors = validateInvoiceFields();
+    const { errors: validationErrors, missingContractDate } = validateInvoiceFields();
+
+    // Show modal for missing contract date - this is a critical field
+    if (missingContractDate) {
+      setShowContractDateModal(true);
+      return;
+    }
+
     if (validationErrors.length > 0) {
       setQbSyncMessage({
         type: 'error',
@@ -583,6 +597,53 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
           />
         )}
       </div>
+
+      {/* Contract Date Required Modal */}
+      {showContractDateModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setShowContractDateModal(false)} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full">
+              <div className="p-6">
+                <div className="flex items-start">
+                  <div className="flex-shrink-0">
+                    <ExclamationTriangleIcon className="h-8 w-8 text-amber-500" />
+                  </div>
+                  <div className="ml-4 flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Contract Signed Date Required
+                    </h3>
+                    <p className="mt-2 text-sm text-gray-600">
+                      A Contract Signed Date must be set on the deal before an invoice can be created in QuickBooks.
+                    </p>
+                    <p className="mt-3 text-sm text-gray-600">
+                      QuickBooks uses this date as the Service Date on the invoice line item.
+                    </p>
+                    <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <p className="text-sm font-medium text-amber-800">
+                        To fix this:
+                      </p>
+                      <ol className="mt-2 text-sm text-amber-700 list-decimal list-inside space-y-1">
+                        <li>Go to the Deal tab</li>
+                        <li>Set the Contract Signed Date field</li>
+                        <li>Return here and try syncing again</li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-6 flex justify-end">
+                  <button
+                    onClick={() => setShowContractDateModal(false)}
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    Got it
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
