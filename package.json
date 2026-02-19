@@ -21,6 +21,7 @@
     "@heroicons/react": "^2.2.0",
     "@supabase/supabase-js": "^2.53.0",
     "@tiptap/extension-color": "^3.20.0",
+    "@tiptap/extension-image": "^3.20.0",
     "@tiptap/extension-link": "^3.20.0",
     "@tiptap/extension-table": "^3.20.0",
     "@tiptap/extension-table-cell": "^3.20.0",

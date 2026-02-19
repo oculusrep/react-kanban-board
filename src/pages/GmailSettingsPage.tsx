@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
@@ -10,12 +10,14 @@ import {
   XMarkIcon,
   PhotoIcon,
 } from '@heroicons/react/24/outline';
-
-// Lazy load ReactQuill for signature editor
-const ReactQuill = lazy(() => import('react-quill').then(module => {
-  import('react-quill/dist/quill.snow.css');
-  return module;
-}));
+import { useEditor, EditorContent, Editor } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import { Link as TipTapLink } from '@tiptap/extension-link';
+import { TextStyle } from '@tiptap/extension-text-style';
+import { Color } from '@tiptap/extension-color';
+import { Underline } from '@tiptap/extension-underline';
+import { TextAlign } from '@tiptap/extension-text-align';
+import Image from '@tiptap/extension-image';
 
 interface GmailConnection {
   id: string;
@@ -51,6 +53,150 @@ interface EmailSignature {
   created_at: string;
   updated_at: string;
 }
+
+// TipTap Toolbar Component for Signature Editor
+const SignatureMenuBar = ({ editor }: { editor: Editor | null }) => {
+  if (!editor) return null;
+
+  const addImage = () => {
+    const url = window.prompt('Enter image URL:');
+    if (url) {
+      editor.chain().focus().setImage({ src: url }).run();
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap gap-1 p-2 border-b border-gray-200 bg-gray-50">
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleBold().run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive('bold') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Bold"
+      >
+        <strong>B</strong>
+      </button>
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleItalic().run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive('italic') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Italic"
+      >
+        <em>I</em>
+      </button>
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleUnderline().run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive('underline') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Underline"
+      >
+        <u>U</u>
+      </button>
+
+      <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
+
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive('bulletList') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Bullet List"
+      >
+        •
+      </button>
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive('orderedList') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Numbered List"
+      >
+        1.
+      </button>
+
+      <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
+
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().setTextAlign('left').run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive({ textAlign: 'left' }) ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Align Left"
+      >
+        ≡
+      </button>
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().setTextAlign('center').run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive({ textAlign: 'center' }) ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Align Center"
+      >
+        ≡
+      </button>
+
+      <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
+
+      <button
+        type="button"
+        onClick={() => {
+          const url = window.prompt('Enter link URL:');
+          if (url) {
+            editor.chain().focus().setLink({ href: url }).run();
+          }
+        }}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive('link') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Add Link"
+      >
+        🔗
+      </button>
+      <button
+        type="button"
+        onClick={addImage}
+        className="px-2 py-1 text-sm rounded hover:bg-gray-200"
+        title="Add Image"
+      >
+        🖼️
+      </button>
+    </div>
+  );
+};
+
+// Signature Editor Component using TipTap
+interface SignatureEditorProps {
+  value: string;
+  onChange: (html: string) => void;
+}
+
+const SignatureEditor: React.FC<SignatureEditorProps> = ({ value, onChange }) => {
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      TipTapLink.configure({ openOnClick: false }),
+      TextStyle,
+      Color,
+      Underline,
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      Image.configure({ inline: true }),
+    ],
+    content: value,
+    onUpdate: ({ editor }) => {
+      onChange(editor.getHTML());
+    },
+  });
+
+  // Update editor content when value changes externally
+  useEffect(() => {
+    if (editor && value !== editor.getHTML()) {
+      editor.commands.setContent(value);
+    }
+  }, [value, editor]);
+
+  return (
+    <div className="border border-gray-300 rounded-lg overflow-hidden">
+      <SignatureMenuBar editor={editor} />
+      <EditorContent
+        editor={editor}
+        className="prose prose-sm max-w-none p-3 min-h-[200px] focus:outline-none"
+      />
+    </div>
+  );
+};
 
 const GmailSettingsPage: React.FC = () => {
   const { user, userRole } = useAuth();
@@ -307,30 +453,7 @@ const GmailSettingsPage: React.FC = () => {
     }
   };
 
-  // Quill modules configuration for signature editor
-  const quillModules = useMemo(() => ({
-    toolbar: [
-      [{ 'header': [1, 2, 3, false] }],
-      [{ 'font': [] }],
-      [{ 'size': ['small', false, 'large', 'huge'] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ 'color': [] }, { 'background': [] }],
-      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      [{ 'align': [] }],
-      ['link', 'image'],
-      ['clean']
-    ],
-  }), []);
-
-  const quillFormats = [
-    'header', 'font', 'size',
-    'bold', 'italic', 'underline', 'strike',
-    'color', 'background',
-    'list', 'bullet',
-    'align',
-    'link', 'image'
-  ];
-
+  
   const handleConnect = async () => {
     try {
       setConnecting(true);
@@ -923,18 +1046,10 @@ const GmailSettingsPage: React.FC = () => {
                 {/* Signature Editor */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Signature Content</label>
-                  <div className="border border-gray-300 rounded-lg overflow-hidden">
-                    <Suspense fallback={<div className="h-64 flex items-center justify-center text-gray-400">Loading editor...</div>}>
-                      <ReactQuill
-                        theme="snow"
-                        value={editingSignature.signature_html || ''}
-                        onChange={(value) => setEditingSignature({ ...editingSignature, signature_html: value })}
-                        modules={quillModules}
-                        formats={quillFormats}
-                        style={{ height: '250px' }}
-                      />
-                    </Suspense>
-                  </div>
+                  <SignatureEditor
+                    value={editingSignature.signature_html || ''}
+                    onChange={(value) => setEditingSignature({ ...editingSignature, signature_html: value })}
+                  />
                 </div>
 
                 {/* Default Option */}
