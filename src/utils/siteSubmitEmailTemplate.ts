@@ -180,39 +180,14 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
     });
   }
 
-  // Button style for CTA buttons
-  const buttonStyle = `
-    display: inline-block;
-    padding: 10px 20px;
-    background-color: ${COLORS.primary};
-    color: white;
-    text-decoration: none;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 14px;
-    margin-right: 12px;
-    margin-bottom: 8px;
-  `;
+  // Button style for CTA buttons (single-line for email client compatibility)
+  const buttonStyle = `display: inline-block; padding: 12px 24px; background-color: ${COLORS.primary}; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; margin-right: 12px; margin-bottom: 8px;`;
 
-  // Section header style
-  const sectionHeaderStyle = `
-    padding: 12px 16px;
-    background: linear-gradient(135deg, ${COLORS.headerBg} 0%, ${COLORS.primary} 100%);
-    color: white;
-    font-weight: 700;
-    font-size: 13px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-radius: 6px 6px 0 0;
-  `;
+  // Section header style (solid color instead of gradient for email compatibility)
+  const sectionHeaderStyle = `padding: 14px 16px; background-color: ${COLORS.headerBg}; color: #ffffff; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;`;
 
-  // Table wrapper style
-  const tableWrapperStyle = `
-    border: 1px solid ${COLORS.border};
-    border-radius: 8px;
-    overflow: hidden;
-    margin-bottom: 24px;
-  `;
+  // Table wrapper style - note: border-radius has limited support, using border instead
+  const tableWrapperStyle = `border: 2px solid ${COLORS.headerBg}; margin-bottom: 24px;`;
 
   // Start building email
   let emailHtml = '';
@@ -221,26 +196,17 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
   emailHtml += `<p style="font-size: 15px; color: ${COLORS.text}; margin-bottom: 8px;">${contactNames},</p>`;
   emailHtml += `<p style="font-size: 15px; color: ${COLORS.text}; margin-bottom: 24px;">Please find below a new site for your review. Your feedback is appreciated.</p>`;
 
-  // Property Header Banner
-  emailHtml += `
-    <table style="width: 100%; margin-bottom: 24px;" cellpadding="0" cellspacing="0">
-      <tr>
-        <td style="background: linear-gradient(135deg, ${COLORS.headerBg} 0%, ${COLORS.primary} 100%); padding: 20px 24px; border-radius: 8px;">
-          <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: white;">${propertyName}</h1>
-          ${address ? `<p style="margin: 6px 0 0 0; font-size: 14px; color: rgba(255,255,255,0.85);">${address}</p>` : ''}
-        </td>
-      </tr>
-    </table>
-  `;
+  // Property Header Banner (solid color for email compatibility)
+  emailHtml += `<table style="width: 100%; margin-bottom: 24px;" cellpadding="0" cellspacing="0"><tr><td style="background-color: ${COLORS.headerBg}; padding: 20px 24px; border-radius: 8px;"><h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #ffffff;">${propertyName}</h1>${address ? `<p style="margin: 6px 0 0 0; font-size: 14px; color: #e0e7ff;">${address}</p>` : ''}</td></tr></table>`;
 
-  // Quick Action Buttons
+  // Quick Action Buttons - using table-based buttons for better email compatibility
   if (mapLink || portalLink) {
     emailHtml += `<table style="width: 100%; margin-bottom: 24px;" cellpadding="0" cellspacing="0"><tr><td>`;
     if (mapLink) {
-      emailHtml += `<a href="${mapLink}" style="${buttonStyle}">📍 View on Map</a>`;
+      emailHtml += `<table cellpadding="0" cellspacing="0" style="display: inline-block; margin-right: 12px; margin-bottom: 8px;"><tr><td style="background-color: ${COLORS.primary}; border-radius: 6px; padding: 12px 24px;"><a href="${mapLink}" style="color: #ffffff; text-decoration: none; font-weight: 600; font-size: 14px;">📍 View on Map</a></td></tr></table>`;
     }
     if (portalLink) {
-      emailHtml += `<a href="${portalLink}" style="${buttonStyle}">🌐 View in Portal</a>`;
+      emailHtml += `<table cellpadding="0" cellspacing="0" style="display: inline-block; margin-right: 12px; margin-bottom: 8px;"><tr><td style="background-color: ${COLORS.primary}; border-radius: 6px; padding: 12px 24px;"><a href="${portalLink}" style="color: #ffffff; text-decoration: none; font-weight: 600; font-size: 14px;">🌐 View in Portal</a></td></tr></table>`;
     }
     emailHtml += `</td></tr></table>`;
   }

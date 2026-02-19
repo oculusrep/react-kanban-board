@@ -324,19 +324,22 @@ const GmailSettingsPage: React.FC = () => {
     fetchConnections();
   }, [fetchConnections]);
 
-  // Get current user ID for signature operations
+  // Get current user ID for signature operations (use auth_user_id for consistency with useSiteSubmitEmail)
   useEffect(() => {
     const fetchUserId = async () => {
-      if (!user?.email) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      const authUserId = session?.user?.id;
+      if (!authUserId) return;
+
       const { data } = await supabase
         .from('user')
         .select('id')
-        .eq('email', user.email)
+        .eq('auth_user_id', authUserId)
         .single();
       if (data) setCurrentUserId(data.id);
     };
     fetchUserId();
-  }, [user?.email]);
+  }, []);
 
   // Load signatures when we have user ID
   const loadSignatures = useCallback(async () => {

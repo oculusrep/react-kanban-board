@@ -12,7 +12,8 @@ import {
   ClockIcon,
   CalendarDaysIcon,
   BuildingOffice2Icon,
-  PresentationChartBarIcon
+  PresentationChartBarIcon,
+  Cog6ToothIcon
 } from '@heroicons/react/24/outline';
 import { supabase } from '../lib/supabaseClient';
 import ProspectingWorkspace from '../components/hunter/ProspectingWorkspace';
@@ -246,6 +247,15 @@ export default function HunterDashboardPage() {
                       Run Hunter
                     </>
                   )}
+                </button>
+
+                {/* Settings Button */}
+                <button
+                  onClick={() => navigate('/hunter/settings')}
+                  className="p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                  title="Hunter Settings"
+                >
+                  <Cog6ToothIcon className="w-6 h-6" />
                 </button>
               </div>
             </div>
