@@ -6,9 +6,11 @@ import { useEffect, useState, useCallback, useMemo, lazy, Suspense } from 'react
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProspectingTime } from '../../hooks/useProspectingTime';
 import FollowUpModal from '../FollowUpModal';
 import LogResponseModal from './LogResponseModal';
 import AddLeadModal from '../prospecting/AddLeadModal';
+import TimeHistoryModal from '../prospecting/TimeHistoryModal';
 import { ProspectingResponseType } from '../../lib/types';
 import {
   PhoneIcon,
@@ -36,7 +38,9 @@ import {
   ClipboardIcon,
   ArrowTopRightOnSquareIcon,
   MagnifyingGlassIcon,
-  TrashIcon
+  TrashIcon,
+  ClockIcon,
+  FireIcon
 } from '@heroicons/react/24/outline';
 
 // Lazy load ReactQuill for email compose
@@ -340,6 +344,13 @@ export default function ProspectingWorkspace() {
     returnCalls: 0,
   });
 
+  // Time tracking
+  const { stats: timeStats, saveTimeEntry, loadTimeData } = useProspectingTime();
+  const [hours, setHours] = useState(0);
+  const [minutes, setMinutes] = useState(0);
+  const [isSavingTime, setIsSavingTime] = useState(false);
+  const [isTimeHistoryOpen, setIsTimeHistoryOpen] = useState(false);
+
   // ZoomInfo enrichment
   const [showZoomInfoModal, setShowZoomInfoModal] = useState(false);
   const [zoomInfoLoading, setZoomInfoLoading] = useState(false);
@@ -632,7 +643,23 @@ export default function ProspectingWorkspace() {
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    loadTimeData();
+  }, [fetchData, loadTimeData]);
+
+  // Sync time fields with loaded data
+  useEffect(() => {
+    setHours(Math.floor(timeStats.todayMinutes / 60));
+    setMinutes(timeStats.todayMinutes % 60);
+  }, [timeStats.todayMinutes]);
+
+  const handleSaveTime = async () => {
+    setIsSavingTime(true);
+    const totalMinutes = hours * 60 + minutes;
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    await saveTimeEntry(dateStr, totalMinutes);
+    setIsSavingTime(false);
+  };
 
   // Load unified activity feed when contact changes
   const loadActivityFeed = useCallback(async (contactId: string, targetId?: string | null) => {
@@ -1901,6 +1928,57 @@ export default function ProspectingWorkspace() {
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* Time Logged Box */}
+          <div className="bg-gradient-to-br from-amber-50 to-white rounded-xl shadow-sm border-2 border-amber-200 p-3 w-48">
+            <div className="flex items-center gap-2 mb-2">
+              <ClockIcon className="w-4 h-4 text-amber-600" />
+              <h3 className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Time Logged</h3>
+            </div>
+            <div className="flex items-center gap-1.5 mb-2">
+              <input
+                type="number"
+                min="0"
+                max="12"
+                value={hours}
+                onChange={(e) => setHours(Math.max(0, Math.min(12, parseInt(e.target.value) || 0)))}
+                className="w-12 px-1.5 py-1 text-center border border-amber-300 rounded text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+              />
+              <span className="text-xs text-gray-500">h</span>
+              <input
+                type="number"
+                min="0"
+                max="59"
+                step="5"
+                value={minutes}
+                onChange={(e) => setMinutes(Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))}
+                className="w-12 px-1.5 py-1 text-center border border-amber-300 rounded text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+              />
+              <span className="text-xs text-gray-500">m</span>
+            </div>
+            <div className="flex gap-1.5">
+              <button
+                onClick={handleSaveTime}
+                disabled={isSavingTime}
+                className="flex-1 px-2 py-1 text-xs font-medium text-white bg-amber-600 rounded hover:bg-amber-700 disabled:opacity-50 transition-colors"
+              >
+                {isSavingTime ? '...' : 'Save'}
+              </button>
+              <button
+                onClick={() => setIsTimeHistoryOpen(true)}
+                className="px-2 py-1 text-xs font-medium text-amber-700 bg-amber-100 rounded hover:bg-amber-200 transition-colors"
+                title="View History"
+              >
+                <CalendarDaysIcon className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {timeStats.streak > 0 && (
+              <p className="text-[10px] text-amber-600 text-center mt-1.5 flex items-center justify-center gap-0.5">
+                <FireIcon className="w-3 h-3" />
+                {timeStats.streak} day streak
+              </p>
+            )}
           </div>
         </div>
 
@@ -3595,6 +3673,13 @@ export default function ProspectingWorkspace() {
           setShowAddLeadModal(false);
           fetchData(); // Refresh to show new lead in call list
         }}
+      />
+
+      {/* Time History Modal */}
+      <TimeHistoryModal
+        isOpen={isTimeHistoryOpen}
+        onClose={() => setIsTimeHistoryOpen(false)}
+        onRefresh={loadTimeData}
       />
     </div>
   );
