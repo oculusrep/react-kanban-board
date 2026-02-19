@@ -20,6 +20,7 @@ interface SiteSubmitData {
   competitor_data: string | null;
   property_id: string | null;
   property_unit_id: string | null;
+  client_id: string | null; // Client that owns this site submit - used for access control
   deal_id: string | null; // Deal associated with this site submit (if at LOI stage or beyond)
   property: {
     id: string;
@@ -81,7 +82,7 @@ export default function PortalDetailSidebar({
   const navigate = useNavigate();
   const location = useLocation();
   const { userRole } = useAuth();
-  const { isInternalUser, viewMode, siteSubmitRefreshTrigger } = usePortal();
+  const { isInternalUser, viewMode, siteSubmitRefreshTrigger, accessibleClients } = usePortal();
 
   // Show broker features only when internal user AND in broker view mode
   const showBrokerFeatures = isInternalUser && viewMode === 'broker';
@@ -148,7 +149,7 @@ export default function PortalDetailSidebar({
       setError(null);
 
       try {
-        // First fetch site submit data
+        // First fetch site submit data - include client_id for access control
         const { data, error: fetchError } = await supabase
           .from('site_submit')
           .select(`
@@ -163,6 +164,7 @@ export default function PortalDetailSidebar({
             competitor_data,
             property_id,
             property_unit_id,
+            client_id,
             property:property_id (
               id,
               property_name,
@@ -198,14 +200,25 @@ export default function PortalDetailSidebar({
           .eq('id', siteSubmitId)
           .single();
 
+        if (fetchError) throw fetchError;
+
+        // Security check: Verify user has access to this client's site submits
+        const siteSubmitClientId = (data as any).client_id;
+        const hasAccess = accessibleClients.some(client => client.id === siteSubmitClientId);
+
+        if (!hasAccess) {
+          setError('You do not have access to this property');
+          setSiteSubmit(null);
+          setLoading(false);
+          return;
+        }
+
         // Fetch associated deal (if any) - deals are linked via site_submit_id
         const { data: dealData } = await supabase
           .from('deal')
           .select('id')
           .eq('site_submit_id', siteSubmitId)
           .maybeSingle();
-
-        if (fetchError) throw fetchError;
 
         // Combine site submit data with deal_id
         setSiteSubmit({
@@ -226,10 +239,11 @@ export default function PortalDetailSidebar({
       }
     }
 
-    if (isOpen && siteSubmitId) {
+    // Only fetch if we have the accessible clients loaded (needed for access check)
+    if (isOpen && siteSubmitId && accessibleClients.length > 0) {
       fetchSiteSubmit();
     }
-  }, [siteSubmitId, isOpen, siteSubmitRefreshTrigger]);
+  }, [siteSubmitId, isOpen, siteSubmitRefreshTrigger, accessibleClients]);
 
   // Stages that should open to their specific tab in pipeline
   const PIPELINE_TAB_STAGES = ['LOI', 'Submitted-Reviewing', 'At Lease/PSA'];
