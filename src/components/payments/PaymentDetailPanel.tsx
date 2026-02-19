@@ -132,14 +132,16 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
           ? `Invoice #${result.qbInvoiceNumber} ${action} and sent${envLabel}`
           : `Invoice #${result.qbInvoiceNumber} ${action}${envLabel}`
       });
+      // Auto-dismiss success messages after 5 seconds
+      setTimeout(() => setQbSyncMessage(null), 5000);
 
       if (onRefresh) onRefresh();
     } catch (error: any) {
       console.error('QuickBooks sync error:', error);
       setQbSyncMessage({ type: 'error', text: error.message || 'Failed to sync to QuickBooks' });
+      // Error messages stay visible until manually dismissed
     } finally {
       setSyncingToQB(false);
-      setTimeout(() => setQbSyncMessage(null), 5000);
     }
   };
 
@@ -177,13 +179,15 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
       }
 
       setQbSyncMessage({ type: 'success', text: result.message || 'Invoice sent!' });
+      // Auto-dismiss success messages after 5 seconds
+      setTimeout(() => setQbSyncMessage(null), 5000);
       if (onRefresh) onRefresh();
     } catch (error: any) {
       console.error('Send invoice error:', error);
       setQbSyncMessage({ type: 'error', text: error.message || 'Failed to send invoice' });
+      // Error messages stay visible until manually dismissed
     } finally {
       setSyncingToQB(false);
-      setTimeout(() => setQbSyncMessage(null), 5000);
     }
   };
 
@@ -204,13 +208,15 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
       }
 
       setQbSyncMessage({ type: 'success', text: result.message || 'Invoice deleted from QuickBooks' });
+      // Auto-dismiss success messages after 5 seconds
+      setTimeout(() => setQbSyncMessage(null), 5000);
       if (onRefresh) onRefresh();
     } catch (error: any) {
       console.error('QuickBooks delete error:', error);
       setQbSyncMessage({ type: 'error', text: error.message || 'Failed to delete invoice' });
+      // Error messages stay visible until manually dismissed
     } finally {
       setDeletingFromQB(false);
-      setTimeout(() => setQbSyncMessage(null), 5000);
     }
   };
 
@@ -422,12 +428,21 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
             </div>
           )}
           {qbSyncMessage && (
-            <div className={`mt-2 p-2 rounded text-xs ${
+            <div className={`mt-2 p-2 rounded text-xs flex items-start justify-between gap-2 ${
               qbSyncMessage.type === 'success'
                 ? 'bg-green-50 text-green-700 border border-green-200'
                 : 'bg-red-50 text-red-700 border border-red-200'
             }`}>
-              {qbSyncMessage.text}
+              <span>{qbSyncMessage.text}</span>
+              {qbSyncMessage.type === 'error' && (
+                <button
+                  onClick={() => setQbSyncMessage(null)}
+                  className="flex-shrink-0 text-red-500 hover:text-red-700 font-medium"
+                  title="Dismiss"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           )}
         </div>
