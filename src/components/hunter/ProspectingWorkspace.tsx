@@ -728,8 +728,11 @@ export default function ProspectingWorkspace() {
   }, []);
 
   // Load unified activity feed when contact changes
-  const loadActivityFeed = useCallback(async (contactId: string, targetId?: string | null) => {
-    setLoadingFeed(true);
+  const loadActivityFeed = useCallback(async (contactId: string, targetId?: string | null, silent: boolean = false) => {
+    // Only show loading spinner for initial loads, not silent refreshes
+    if (!silent) {
+      setLoadingFeed(true);
+    }
     try {
       // Build query filter to include activities on contact OR their linked target
       // Exclude 'email' type since we load sent emails separately from hunter_outreach_draft
@@ -3299,8 +3302,8 @@ export default function ProspectingWorkspace() {
           onFollowUpCreated={() => {
             setShowFollowUpModal(false);
             fetchData();
-            // Refresh activity feed to show the new follow-up
-            loadActivityFeed(selectedContact.id, selectedContact.target_id);
+            // Refresh activity feed silently to show the new follow-up without jarring spinner
+            loadActivityFeed(selectedContact.id, selectedContact.target_id, true);
           }}
           contactId={selectedContact.id}
           contactName={`${selectedContact.first_name || ''} ${selectedContact.last_name || ''}`.trim()}
