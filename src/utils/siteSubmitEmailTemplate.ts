@@ -255,11 +255,11 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
   }
 
   // Divider before closing
-  emailHtml += `<hr style="border: none; border-top: 1px solid ${COLORS.border}; margin: 32px 0;">`;
+  emailHtml += `<hr style="border: none; border-top: 1px solid ${COLORS.border}; margin: 20px 0 16px 0;">`;
 
   // Closing message
-  emailHtml += `<p style="font-size: 15px; color: ${COLORS.text}; margin-bottom: 8px;">If this property is a pass, please reply with a brief reason. If you need more information or want to discuss further, let me know.</p>`;
-  emailHtml += `<p style="font-size: 15px; color: ${COLORS.text}; margin-bottom: 24px;">Thanks!</p>`;
+  emailHtml += `<p style="font-size: 15px; color: ${COLORS.text}; margin-bottom: 4px;">If this property is a pass, please reply with a brief reason. If you need more information or want to discuss further, let me know.</p>`;
+  emailHtml += `<p style="font-size: 15px; color: ${COLORS.text}; margin-bottom: 12px;">Thanks!</p>`;
 
   // Signature
   if (userSignatureHtml) {
