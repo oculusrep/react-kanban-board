@@ -692,3 +692,106 @@ Configured custom SMTP settings in Supabase Dashboard to send auth emails via Gm
 ```
 (No code changes - configuration only)
 ```
+
+---
+
+## 13. Site Submit Email Template Improvements (2026-02-19)
+
+### File Selection for Site Submit Emails
+Added ability to select which files from Dropbox to include in site submit emails.
+
+#### How It Works
+1. When opening email composer, system fetches all files from property's Dropbox folder
+2. Files are displayed with checkboxes in the "Supporting Documents" section
+3. User can check/uncheck files to include/exclude them
+4. Only checked files generate links in the final email
+
+#### Files Modified
+- `src/components/SiteSubmitFormModal.tsx` - Added file fetching and passed availableFiles to EmailComposerModal
+- `src/components/EmailComposerModal.tsx` - Already had file selection UI from SiteSubmitDetailsPage implementation
+
+### Email Layout Fixes
+
+#### Problem 1: Broker Commentary Spanning Full Width
+The Broker Commentary box was spanning the full screen width instead of matching the 600px email template width.
+
+#### Solution
+- Removed background shading from Broker Commentary
+- Added `max-width: 600px` to constrain width
+
+```typescript
+const noteHtml = `<div style="margin-top: 16px; margin-bottom: 24px; max-width: 600px;">
+  <p style="font-size: 12px; font-weight: 600; color: #4A6B94; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px 0;">Broker Commentary</p>
+  <p style="font-size: 15px; color: #002147; margin: 0; line-height: 1.6;">${customNote}</p>
+</div>`;
+```
+
+#### Problem 2: Property Header Banner Too Narrow
+The property name/address header wasn't filling the full 600px width like the tables below it.
+
+#### Solution
+Added `width: 100%` to the Property Header Banner table so it expands to fill the container:
+
+```typescript
+emailHtml += `<table style="width: 100%; max-width: 600px; margin-bottom: 24px;" ...>`;
+```
+
+#### Files Modified
+- `src/utils/siteSubmitEmailTemplate.ts` - Property Header width fix
+- `src/components/EmailComposerModal.tsx` - Broker Commentary layout fix
+
+### Footer Line Spacing
+Tightened the line spacing in the email footer section for better visual appearance.
+
+#### Changes
+- Divider margin: `32px 0` → `20px 0 16px 0`
+- Closing message spacing: `8px` → `4px`
+- Space before signature: `24px` → `12px`
+
+```typescript
+// Divider
+emailHtml += `<hr style="border: none; border-top: 1px solid ${COLORS.border}; margin: 20px 0 16px 0;">`;
+
+// Closing message
+emailHtml += `<p style="font-size: 15px; color: ${COLORS.text}; margin-bottom: 4px;">If this property is a pass...`;
+emailHtml += `<p style="font-size: 15px; color: ${COLORS.text}; margin-bottom: 12px;">Thanks!</p>`;
+```
+
+#### Files Modified
+- `src/utils/siteSubmitEmailTemplate.ts`
+
+### Email Signature Line Spacing Fix (Gmail Compatibility)
+Fixed email signatures rendering with large gaps between lines in Gmail.
+
+#### Problem
+User signatures (created in the TipTap editor) contained `<p>` tags. Gmail adds default paragraph margins (16px+) to these, causing large vertical gaps between lines that didn't appear in the preview.
+
+#### Solution
+Added post-processing to the signature HTML to inject email-safe inline styles:
+
+```typescript
+if (userSignatureHtml) {
+  const processedSignature = userSignatureHtml
+    // Add margin and line-height to plain <p> tags
+    .replace(/<p>/gi, '<p style="margin: 0 0 4px 0; line-height: 1.4;">')
+    // Merge with existing styles on <p> tags
+    .replace(/<p style="/gi, '<p style="margin: 0 0 4px 0; line-height: 1.4; ')
+    // Same for <div> tags
+    .replace(/<div>/gi, '<div style="margin: 0; line-height: 1.4;">')
+    .replace(/<div style="/gi, '<div style="margin: 0; line-height: 1.4; ');
+  emailHtml += processedSignature;
+}
+```
+
+This ensures consistent rendering across all email clients, especially Gmail which is known to apply aggressive default styles.
+
+#### Files Modified
+- `src/utils/siteSubmitEmailTemplate.ts`
+
+### Commits
+```
+d6541c3e Fix email signature line spacing in Gmail
+6b45b72c Tighten line spacing in email footer section
+0e13c1ae Fix email template layout for Broker Commentary and Property Header
+6409365a Add file selection UI for site submit email supporting documents
+```
