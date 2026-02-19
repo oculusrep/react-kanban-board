@@ -31,6 +31,8 @@ export interface QBCustomer {
     PostalCode?: string
   }
   PrimaryPhone?: { FreeFormNumber: string }
+  Active?: boolean      // Whether customer is active (true) or inactive (false)
+  SyncToken?: string    // Required for updates
 }
 
 export interface QBInvoiceLine {
@@ -248,6 +250,28 @@ export async function findOrCreateCustomer(
   if (searchResult.QueryResponse.Customer && searchResult.QueryResponse.Customer.length > 0) {
     const existingCustomer = searchResult.QueryResponse.Customer[0]
 
+    // Check if the customer is inactive and reactivate it
+    if (existingCustomer.Active === false) {
+      console.log(`Customer "${clientName}" is inactive, reactivating...`)
+      try {
+        await qbApiRequest(
+          connection,
+          'POST',
+          'customer',
+          {
+            Id: existingCustomer.Id,
+            SyncToken: existingCustomer.SyncToken,
+            sparse: true,
+            Active: true
+          }
+        )
+        console.log(`Reactivated customer "${clientName}" (ID: ${existingCustomer.Id})`)
+      } catch (reactivateError: any) {
+        console.error(`Failed to reactivate customer "${clientName}":`, reactivateError.message)
+        throw new Error(`Customer "${clientName}" is inactive in QuickBooks and could not be reactivated. Please manually activate the customer in QuickBooks.`)
+      }
+    }
+
     // Update existing customer with contact name if provided
     if (billTo?.contactName) {
       console.log(`Processing contact name update for customer ${existingCustomer.Id}: "${billTo.contactName}"`)
@@ -368,16 +392,40 @@ export async function findOrCreateServiceItem(
   connection: QBConnection,
   itemName: string
 ): Promise<string> {
-  // Search for existing item
+  // Search for existing item (including inactive items)
   const searchQuery = `SELECT * FROM Item WHERE Name = '${itemName.replace(/'/g, "\\'")}'`
-  const searchResult = await qbApiRequest<{ QueryResponse: { Item?: { Id: string }[] } }>(
+  const searchResult = await qbApiRequest<{ QueryResponse: { Item?: { Id: string; Active?: boolean; SyncToken?: string }[] } }>(
     connection,
     'GET',
     `query?query=${encodeURIComponent(searchQuery)}`
   )
 
   if (searchResult.QueryResponse.Item && searchResult.QueryResponse.Item.length > 0) {
-    return searchResult.QueryResponse.Item[0].Id
+    const existingItem = searchResult.QueryResponse.Item[0]
+
+    // Check if the item is inactive and reactivate it
+    if (existingItem.Active === false) {
+      console.log(`Service item "${itemName}" is inactive, reactivating...`)
+      try {
+        await qbApiRequest(
+          connection,
+          'POST',
+          'item',
+          {
+            Id: existingItem.Id,
+            SyncToken: existingItem.SyncToken,
+            sparse: true,
+            Active: true
+          }
+        )
+        console.log(`Reactivated service item "${itemName}" (ID: ${existingItem.Id})`)
+      } catch (reactivateError: any) {
+        console.error(`Failed to reactivate service item "${itemName}":`, reactivateError.message)
+        throw new Error(`Service item "${itemName}" is inactive in QuickBooks and could not be reactivated. Please manually activate it in QuickBooks.`)
+      }
+    }
+
+    return existingItem.Id
   }
 
   // Create new service item

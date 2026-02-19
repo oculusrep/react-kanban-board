@@ -814,10 +814,22 @@ serve(async (req) => {
 
   } catch (error: any) {
     console.error('Invoice sync error:', error)
+
+    // Parse QBO API error for better messages
+    let errorMessage = error.message || 'Failed to sync invoice'
+    let errorDetails: string | undefined
+
+    // Check for QBO error code 610 (inactive object)
+    if (errorMessage.includes('610') || errorMessage.includes('Object Not Found') || errorMessage.includes('made inactive')) {
+      errorMessage = 'A customer, item, or account referenced by this invoice has been marked inactive in QuickBooks.'
+      errorDetails = 'Please check QuickBooks and ensure the customer, "Brokerage Fee" service item, and related accounts are all active. The system will attempt to automatically reactivate them on the next sync.'
+    }
+
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Failed to sync invoice'
+        error: errorMessage,
+        details: errorDetails
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     )
