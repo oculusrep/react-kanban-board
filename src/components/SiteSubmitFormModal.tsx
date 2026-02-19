@@ -634,7 +634,11 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
       }
 
       // Generate email template
-      const defaultSubject = `New site for Review – ${siteSubmitData.property?.property_name || 'Untitled'} – ${siteSubmitData.client?.client_name || 'N/A'}`;
+      // Sanitize subject to use ASCII-only characters (replace Unicode dashes with hyphens)
+      const sanitizeForSubject = (str: string) => str.replace(/[\u2013\u2014\u2015\u2212]/g, '-');
+      const propertyName = sanitizeForSubject(siteSubmitData.property?.property_name || 'Untitled');
+      const clientName = sanitizeForSubject(siteSubmitData.client?.client_name || 'N/A');
+      const defaultSubject = `New site for Review - ${propertyName} - ${clientName}`;
       const defaultBody = generateEmailTemplate(siteSubmitData, uniqueContacts, userData, propertyUnitFiles, userSignatureHtml);
 
       setEmailDefaultData({
