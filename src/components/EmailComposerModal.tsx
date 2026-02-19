@@ -148,13 +148,24 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   };
 
-  // Build final HTML body with custom note prepended if present
+  // Build final HTML body with custom note inserted after greeting
   const getFinalHtmlBody = (): string => {
     if (!customNote.trim()) {
       return defaultBody;
     }
 
-    // Wrap custom note in styled paragraph and add it before the template
+    // Find the greeting paragraph that ends with "Your feedback is appreciated."
+    // Insert custom note right after it (before the Property Header Banner)
+    const greetingEndPattern = /(<p[^>]*>Please find below a new site for your review\. Your feedback is appreciated\.<\/p>)/i;
+    const match = defaultBody.match(greetingEndPattern);
+
+    if (match) {
+      // Insert custom note after the greeting
+      const noteHtml = `<p style="font-size: 15px; color: #1e293b; margin-top: 16px; margin-bottom: 24px; padding: 12px; background-color: #f8fafc; border-left: 4px solid #2563eb; border-radius: 4px;">${customNote.replace(/\n/g, '<br>')}</p>`;
+      return defaultBody.replace(greetingEndPattern, `$1${noteHtml}`);
+    }
+
+    // Fallback: prepend to top if greeting not found
     const noteHtml = `<p style="font-size: 15px; color: #1e293b; margin-bottom: 16px; padding: 12px; background-color: #f8fafc; border-left: 4px solid #2563eb; border-radius: 4px;">${customNote.replace(/\n/g, '<br>')}</p>`;
     return noteHtml + defaultBody;
   };
@@ -313,7 +324,7 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
             {/* Custom Note (optional) */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Custom Note <span className="text-gray-400 font-normal">(optional - appears at top of email)</span>
+                Custom Note <span className="text-gray-400 font-normal">(optional - appears after greeting)</span>
               </label>
               <textarea
                 value={customNote}
