@@ -351,6 +351,12 @@ export default function ProspectingWorkspace() {
   const [isSavingTime, setIsSavingTime] = useState(false);
   const [isTimeHistoryOpen, setIsTimeHistoryOpen] = useState(false);
 
+  // Contact history browser
+  const [showHistoryBrowser, setShowHistoryBrowser] = useState(false);
+  const [historyDate, setHistoryDate] = useState<string>('');
+  const [historyContacts, setHistoryContacts] = useState<ContactDetails[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
   // ZoomInfo enrichment
   const [showZoomInfoModal, setShowZoomInfoModal] = useState(false);
   const [zoomInfoLoading, setZoomInfoLoading] = useState(false);
@@ -660,6 +666,66 @@ export default function ProspectingWorkspace() {
     await saveTimeEntry(dateStr, totalMinutes);
     setIsSavingTime(false);
   };
+
+  // Load contacts for a specific date (for history browser)
+  const loadHistoryForDate = useCallback(async (dateStr: string) => {
+    if (!dateStr) return;
+    setLoadingHistory(true);
+    try {
+      const startOfDay = `${dateStr}T00:00:00`;
+      const endOfDay = `${dateStr}T23:59:59`;
+
+      // Query prospecting_activity for activities on this date
+      const { data: prospectingActivities } = await supabase
+        .from('prospecting_activity')
+        .select('contact_id, activity_type, created_at')
+        .gte('created_at', startOfDay)
+        .lte('created_at', endOfDay)
+        .not('hidden_from_timeline', 'eq', true);
+
+      // Query main activity table for prospecting-related activities on this date
+      const { data: mainActivities } = await supabase
+        .from('activity')
+        .select(`
+          contact_id,
+          created_at,
+          activity_type!fk_activity_type_id (name),
+          completed_call,
+          meeting_held,
+          is_prospecting,
+          is_prospecting_call
+        `)
+        .or('is_prospecting.eq.true,is_prospecting_call.eq.true,completed_call.eq.true')
+        .gte('created_at', startOfDay)
+        .lte('created_at', endOfDay);
+
+      // Get unique contact IDs
+      const contactIds = new Set<string>();
+      (prospectingActivities || []).forEach(a => {
+        if (a.contact_id) contactIds.add(a.contact_id);
+      });
+      (mainActivities || []).forEach(a => {
+        if (a.contact_id) contactIds.add(a.contact_id);
+      });
+
+      if (contactIds.size === 0) {
+        setHistoryContacts([]);
+        return;
+      }
+
+      // Fetch contact details
+      const { data: contactData } = await supabase
+        .from('contact')
+        .select('id, first_name, last_name, company, email, phone, mobile_phone, title, target_id')
+        .in('id', Array.from(contactIds));
+
+      setHistoryContacts((contactData || []) as ContactDetails[]);
+    } catch (err) {
+      console.error('Error loading history:', err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
 
   // Load unified activity feed when contact changes
   const loadActivityFeed = useCallback(async (contactId: string, targetId?: string | null) => {
@@ -2321,10 +2387,19 @@ export default function ProspectingWorkspace() {
             {/* Recently Contacted Today */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col flex-1 min-h-0">
               <div className="px-4 py-3 border-b border-gray-200 bg-green-50 flex-shrink-0">
-                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                  <CheckCircleIcon className="w-5 h-5 text-green-600" />
-                  Contacted Today ({recentlyContactedToday.length})
-                </h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <CheckCircleIcon className="w-5 h-5 text-green-600" />
+                    Contacted Today ({recentlyContactedToday.length})
+                  </h3>
+                  <button
+                    onClick={() => setShowHistoryBrowser(true)}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+                  >
+                    <CalendarIcon className="w-3.5 h-3.5" />
+                    Browse History
+                  </button>
+                </div>
               </div>
               <div className="flex-1 overflow-y-auto divide-y divide-gray-100 min-h-0">
                 {recentlyContactedToday.length === 0 ? (
@@ -2680,20 +2755,28 @@ export default function ProspectingWorkspace() {
                     </div>
                   )}
 
-                  {/* Send Email - Primary action with call to action */}
-                  <div className="mb-4">
+                  {/* Primary Actions Row */}
+                  <div className="mb-4 flex gap-2">
                     <button
                       onClick={openEmailModal}
                       disabled={!selectedContact.email}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                     >
                       <EnvelopeIcon className="w-5 h-5" />
                       Compose & Send Email
                     </button>
-                    {!selectedContact.email && (
-                      <p className="text-xs text-gray-500 mt-1 text-center">No email address on file</p>
-                    )}
+                    <button
+                      onClick={() => setShowFollowUpModal(true)}
+                      className="flex items-center justify-center gap-2 px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium"
+                      title="Schedule a follow-up task"
+                    >
+                      <CalendarDaysIcon className="w-5 h-5" />
+                      Follow-up
+                    </button>
                   </div>
+                  {!selectedContact.email && (
+                    <p className="text-xs text-gray-500 mb-3 text-center">No email address on file</p>
+                  )}
 
                   {/* Compact Activity Log Bar */}
                   <div className="border-t border-gray-200 pt-3">
@@ -3721,6 +3804,103 @@ export default function ProspectingWorkspace() {
         onClose={() => setIsTimeHistoryOpen(false)}
         onRefresh={loadTimeData}
       />
+
+      {/* Contact History Browser Modal */}
+      {showHistoryBrowser && (
+        <>
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-[70]"
+            onClick={() => {
+              setShowHistoryBrowser(false);
+              setHistoryDate('');
+              setHistoryContacts([]);
+            }}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-[70] p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[80vh] flex flex-col">
+              <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-blue-50">
+                <div>
+                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <CalendarIcon className="w-5 h-5 text-blue-600" />
+                    Contact History
+                  </h3>
+                  <p className="text-sm text-gray-500">View contacts reached on any date</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowHistoryBrowser(false);
+                    setHistoryDate('');
+                    setHistoryContacts([]);
+                  }}
+                  className="p-1 hover:bg-gray-100 rounded"
+                >
+                  <XMarkIcon className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              <div className="p-4 border-b border-gray-200">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Select Date</label>
+                <input
+                  type="date"
+                  value={historyDate}
+                  onChange={(e) => {
+                    setHistoryDate(e.target.value);
+                    loadHistoryForDate(e.target.value);
+                  }}
+                  max={new Date().toISOString().split('T')[0]}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex-1 overflow-y-auto min-h-0">
+                {!historyDate ? (
+                  <div className="p-8 text-center text-gray-400">
+                    <CalendarIcon className="w-12 h-12 mx-auto mb-2" />
+                    <p className="font-medium">Select a date</p>
+                    <p className="text-sm mt-1">Choose a date to see who you contacted</p>
+                  </div>
+                ) : loadingHistory ? (
+                  <div className="p-8 text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="mt-2 text-sm text-gray-500">Loading contacts...</p>
+                  </div>
+                ) : historyContacts.length === 0 ? (
+                  <div className="p-8 text-center text-gray-400">
+                    <CheckCircleIcon className="w-12 h-12 mx-auto mb-2" />
+                    <p className="font-medium">No contacts</p>
+                    <p className="text-sm mt-1">No prospecting activities logged on this date</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    <div className="px-4 py-2 bg-gray-50 text-xs text-gray-500 font-medium">
+                      {historyContacts.length} contact{historyContacts.length !== 1 ? 's' : ''} on {new Date(historyDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                    </div>
+                    {historyContacts.map((contact) => (
+                      <div
+                        key={contact.id}
+                        onClick={() => {
+                          setShowHistoryBrowser(false);
+                          setDrawerOpen(true);
+                          loadContactDetails(contact.id);
+                        }}
+                        className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
+                      >
+                        <p className="font-medium text-gray-900">
+                          {contact.first_name} {contact.last_name}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {contact.company || 'No company'}
+                          {contact.title ? ` • ${contact.title}` : ''}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
