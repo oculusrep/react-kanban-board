@@ -208,17 +208,57 @@ serve(async (req) => {
       )
     }
 
-    // Check if already synced by qb_invoice_id
+    // Check if already synced by qb_invoice_id - verify invoice still exists in QBO
     if (payment.qb_invoice_id && !forceResync && !deleteOnly) {
-      return new Response(
-        JSON.stringify({
-          success: true,
-          message: 'Invoice already synced to QuickBooks',
-          qbInvoiceId: payment.qb_invoice_id,
-          qbInvoiceNumber: payment.qb_invoice_number
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      try {
+        // Verify the invoice still exists in QBO
+        const existingInvoice = await getInvoice(connection, payment.qb_invoice_id)
+        console.log('Verified invoice exists in QBO:', existingInvoice.DocNumber)
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: 'Invoice already synced to QuickBooks',
+            qbInvoiceId: payment.qb_invoice_id,
+            qbInvoiceNumber: payment.qb_invoice_number || existingInvoice.DocNumber
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      } catch (verifyError: any) {
+        // Invoice doesn't exist in QBO anymore - it was deleted
+        console.log('Invoice not found in QBO during verification, clearing orphaned link:', verifyError.message)
+
+        // Clear the orphaned QBO link
+        await supabaseClient
+          .from('payment')
+          .update({
+            qb_invoice_id: null,
+            qb_invoice_number: null,
+            qb_sync_status: 'orphaned',
+            qb_last_sync: new Date().toISOString(),
+            qb_sync_pending: true
+          })
+          .eq('id', paymentId)
+
+        // Log the orphan detection
+        await logSync(
+          supabaseClient,
+          'invoice',
+          'outbound',
+          'failed',
+          paymentId,
+          'payment',
+          payment.qb_invoice_id,
+          'Invoice was deleted from QuickBooks - link cleared'
+        )
+
+        // Clear the in-memory value so we don't try to update a non-existent invoice
+        payment.qb_invoice_id = null
+        payment.qb_invoice_number = null
+
+        // Continue to create a new invoice (don't return early)
+        console.log('Will create new invoice since existing one was deleted')
+      }
     }
 
     // If forceResync is true and invoice exists, update it
@@ -247,9 +287,38 @@ serve(async (req) => {
         dealTeamLabel = dealTeam?.label || null
       }
 
-      // Get current invoice to get SyncToken
-      const currentInvoice = await getInvoice(connection, payment.qb_invoice_id)
-      console.log('Current QBO invoice SyncToken:', currentInvoice.SyncToken)
+      // Get current invoice to get SyncToken - if invoice doesn't exist in QBO, clear link and create new
+      let currentInvoice: { Id: string; SyncToken: string; DueDate?: string; DocNumber?: string }
+      try {
+        currentInvoice = await getInvoice(connection, payment.qb_invoice_id)
+        console.log('Current QBO invoice SyncToken:', currentInvoice.SyncToken)
+      } catch (invoiceError: any) {
+        // Invoice doesn't exist in QBO - it was deleted or never created
+        console.log('Invoice not found in QBO, clearing link and will create new:', invoiceError.message)
+
+        // Clear the orphaned QBO link
+        await supabaseClient
+          .from('payment')
+          .update({
+            qb_invoice_id: null,
+            qb_invoice_number: null,
+            qb_sync_status: null,
+            qb_last_sync: null,
+            qb_sync_pending: true  // Mark as pending so it gets picked up for creation
+          })
+          .eq('id', paymentId)
+
+        // Return a message indicating we need to create a new invoice
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Invoice was deleted from QuickBooks. The link has been cleared. Please sync again to create a new invoice.',
+            wasOrphaned: true,
+            needsResync: true
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        )
+      }
 
       // Find or create the service item (Brokerage Fee)
       const serviceItemId = await findOrCreateServiceItem(connection, 'Brokerage Fee')
