@@ -639,11 +639,13 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
   const generateEmailTemplate = (siteSubmit: any, contacts: any[], userData: any, propertyUnitFiles: PropertyUnitFile[] = []): string => {
     return generateSiteSubmitEmailTemplate({
       siteSubmit,
+      siteSubmitId: siteSubmit.id,
       property: siteSubmit.property,
       propertyUnit: siteSubmit.property_unit,
       contacts,
       userData,
       propertyUnitFiles,
+      portalBaseUrl: window.location.origin,
     });
   };
 

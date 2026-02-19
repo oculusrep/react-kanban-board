@@ -212,12 +212,14 @@ export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
       const defaultSubject = `New site for Review – ${siteSubmitData.property?.property_name || 'Untitled'} – ${siteSubmitData.client?.client_name || 'N/A'}`;
       const defaultBody = generateSiteSubmitEmailTemplate({
         siteSubmit: siteSubmitData,
+        siteSubmitId: siteSubmitId,
         property: siteSubmitData.property,
         propertyUnit: siteSubmitData.property_unit,
         contacts: uniqueContacts,
         userData,
         propertyUnitFiles,
         propertyFiles,
+        portalBaseUrl: window.location.origin,
       });
 
       // Set email default data and show composer modal

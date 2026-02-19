@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { trackPortalLogin } from '../../hooks/usePortalActivityTracker';
 
@@ -12,6 +12,7 @@ import { trackPortalLogin } from '../../hooks/usePortalActivityTracker';
  */
 export default function PortalLoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -56,8 +57,10 @@ export default function PortalLoginPage() {
       // Track login event
       await trackPortalLogin(contact.id);
 
-      // Navigate to portal
-      navigate('/portal');
+      // Navigate to the original destination or portal home
+      const from = (location.state as { from?: { pathname: string; search: string } })?.from;
+      const redirectTo = from ? `${from.pathname}${from.search || ''}` : '/portal';
+      navigate(redirectTo, { replace: true });
     } catch (err: any) {
       console.error('Login error:', err);
       setError(err.message || 'Failed to sign in');

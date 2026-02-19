@@ -1,6 +1,22 @@
+/**
+ * Send Site Submit Email Edge Function
+ *
+ * Sends site submit emails via Gmail API on behalf of the authenticated user.
+ * Uses the user's Gmail connection to send emails that appear in their Sent folder.
+ *
+ * Migrated from Resend to Gmail for consistency with Hunter outreach emails.
+ */
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { getUserIdFromAuthHeader } from '../_shared/jwt.ts'
+import {
+  sendEmail,
+  refreshAccessToken,
+  isTokenExpired,
+  type GmailConnection,
+  type SendEmailOptions,
+} from '../_shared/gmail.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -49,6 +65,7 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization')
     let userEmail = submitterEmail
     let authUserId: string | null = null
+    let userId: string | null = null
 
     // Always try to get authUserId from JWT for activity logging
     if (authHeader) {
@@ -56,129 +73,158 @@ serve(async (req) => {
         // Use local JWT verification instead of network call to auth.getUser()
         authUserId = await getUserIdFromAuthHeader(authHeader)
 
-        // If submitter email is not provided, fetch it from the user table
-        if (!userEmail && authUserId) {
+        // Get the user record from our user table
+        if (authUserId) {
           const { data: userData } = await supabaseClient
             .from('user')
-            .select('email')
+            .select('id, email, name, first_name, last_name')
             .eq('auth_user_id', authUserId)
             .single()
 
-          userEmail = userData?.email
+          if (userData) {
+            userId = userData.id
+            if (!userEmail) {
+              userEmail = userData.email
+            }
+          }
         }
       } catch (error) {
         console.error('Error fetching user data:', error)
       }
     }
 
-    // Send emails via Resend
-    const resendApiKey = Deno.env.get('RESEND_API_KEY')
-    if (!resendApiKey) {
-      throw new Error('RESEND_API_KEY not configured')
+    if (!userEmail) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'User email not found. Please ensure you are logged in.',
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
+
+    // Get Gmail connection for this user
+    const { data: connection, error: connError } = await supabaseClient
+      .from('gmail_connection')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .single()
+
+    if (connError || !connection) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Gmail not connected',
+          details: 'Please connect your Gmail account in Settings to send emails.',
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const gmailConnection = connection as GmailConnection
+
+    // Check if token needs refresh
+    let accessToken = gmailConnection.access_token
+
+    if (isTokenExpired(gmailConnection.token_expires_at)) {
+      console.log(`[Site Submit Email] Refreshing token for ${gmailConnection.google_email}`)
+
+      const clientId = Deno.env.get('GOOGLE_CLIENT_ID')!
+      const clientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET')!
+
+      const refreshResult = await refreshAccessToken(
+        gmailConnection.refresh_token,
+        clientId,
+        clientSecret
+      )
+
+      accessToken = refreshResult.access_token
+
+      // Update stored token
+      const newExpiresAt = new Date(Date.now() + refreshResult.expires_in * 1000).toISOString()
+      await supabaseClient
+        .from('gmail_connection')
+        .update({
+          access_token: accessToken,
+          token_expires_at: newExpiresAt,
+        })
+        .eq('id', gmailConnection.id)
+    }
+
+    // Get sender display name
+    const { data: senderData } = await supabaseClient
+      .from('user')
+      .select('name, first_name, last_name')
+      .eq('id', userId)
+      .single()
+
+    const senderName = senderData?.name ||
+      (senderData?.first_name && senderData?.last_name ? `${senderData.first_name} ${senderData.last_name}` : null) ||
+      senderData?.first_name ||
+      null
 
     // If custom email is provided, use it directly
     if (customEmail) {
-      // Determine the "From" address - use user email if available and has oculusrep.com domain
-      let fromAddress = Deno.env.get('RESEND_FROM_EMAIL') ?? 'onboarding@resend.dev'
-
-      if (userEmail && userEmail.endsWith('@oculusrep.com')) {
-        // Use user's actual email as From address
-        fromAddress = userEmail
-      } else if (userEmail) {
-        // If user has different domain, use default From with Reply-To
-        fromAddress = Deno.env.get('RESEND_FROM_EMAIL') ?? 'onboarding@resend.dev'
-      }
-
-      // Prepare email payload
-      const emailPayload: any = {
-        from: fromAddress,
-        reply_to: userEmail || undefined,
+      // Prepare email options for Gmail
+      const emailOptions: SendEmailOptions = {
         to: customEmail.to,
         cc: customEmail.cc.length > 0 ? customEmail.cc : undefined,
         bcc: customEmail.bcc.length > 0 ? customEmail.bcc : undefined,
         subject: customEmail.subject,
-        html: customEmail.htmlBody,
+        bodyHtml: customEmail.htmlBody,
+        fromName: senderName || undefined,
       }
 
-      // Add attachments if provided
-      if (customEmail.attachments && customEmail.attachments.length > 0) {
-        emailPayload.attachments = customEmail.attachments.map((att: Attachment) => ({
-          filename: att.filename,
-          content: att.content,
-          content_type: att.content_type,
-        }))
+      // Send the email via Gmail
+      const sendResult = await sendEmail(
+        accessToken,
+        gmailConnection.google_email,
+        emailOptions
+      )
+
+      if (!sendResult.success) {
+        console.error('[Site Submit Email] Failed to send:', sendResult.error)
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: sendResult.error,
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
       }
 
-      // Send email to actual recipients
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${resendApiKey}`,
-        },
-        body: JSON.stringify(emailPayload),
-      })
-
-      if (!res.ok) {
-        const error = await res.text()
-        console.error(`Failed to send email:`, error)
-        throw new Error(`Failed to send email`)
-      }
-
-      await res.json()
+      console.log(`[Site Submit Email] Email sent successfully: ${sendResult.messageId}`)
 
       // Log activity for custom email send
       try {
         console.log('📧 Starting activity logging for custom email...')
-        // Get the current user's ID from the user table using auth_user_id
-        let userId = null
-        if (authUserId) {
-          const { data: userData } = await supabaseClient
-            .from('user')
-            .select('id')
-            .eq('auth_user_id', authUserId)
-            .single()
-
-          if (userData?.id) {
-            userId = userData.id
-            console.log('✅ Got user ID:', userId)
-          } else {
-            console.warn('⚠️ No user found for auth_user_id:', authUserId)
-          }
-        } else {
-          console.warn('⚠️ No auth user ID available')
-        }
 
         console.log('📝 Inserting activity record...')
         // Create activity record for the email send
-        // NOTE: activity_type_id is set to NULL because the activity_type table is empty
-        // and the foreign key constraint would fail with a non-existent ID
         const { data: activityData, error: activityError } = await supabaseClient
           .from('activity')
           .insert({
-            activity_type_id: null, // Set to NULL - activity_type table is currently empty
+            activity_type_id: null,
             related_object_type: 'site_submit',
             related_object_id: siteSubmitId,
             activity_date: new Date().toISOString(),
             created_by_id: userId,
             owner_id: userId,
-            subject: 'Site Submit Email', // Adding subject for better identification
-            description: `Custom site submit email sent to ${customEmail.to.length} recipient(s): ${customEmail.to.join(', ')}`,
+            subject: 'Site Submit Email',
+            description: `Site submit email sent via Gmail to ${customEmail.to.length} recipient(s): ${customEmail.to.join(', ')}`,
             sf_status: 'Completed'
           })
           .select()
 
         if (activityError) {
           console.error('❌ Error logging activity:', activityError)
-          console.error('Activity error details:', JSON.stringify(activityError, null, 2))
-          // Don't fail the whole request if activity logging fails
         } else {
           console.log('✅ Activity logged successfully:', activityData)
         }
 
         console.log('📝 Updating site_submit metadata...')
-        // First, get the current site_submit to check if date_submitted is null
+        // Get current site_submit to check if date_submitted is null
         const { data: siteSubmit } = await supabaseClient
           .from('site_submit')
           .select('date_submitted, submit_stage_id')
@@ -198,10 +244,12 @@ serve(async (req) => {
           updated_at: emailSentAt,
           updated_by_id: userId,
           email_sent_at: emailSentAt,
-          email_sent_by_id: userId
+          email_sent_by_id: userId,
+          gmail_message_id: sendResult.messageId,
+          gmail_thread_id: sendResult.threadId,
         }
 
-        // If date_submitted is null, set it to the current date (marking it as "Submitted")
+        // If date_submitted is null, set it to the current date
         if (!siteSubmit?.date_submitted) {
           updateData.date_submitted = emailSentAt
           console.log('📅 Setting date_submitted to current date since it was null')
@@ -213,8 +261,6 @@ serve(async (req) => {
           console.log('📊 Setting submit_stage to "Submitted-Reviewing" since it was not set')
         }
 
-        console.log('📧 Setting email_sent_at and email_sent_by_id to track who sent this email')
-
         const { error: updateError } = await supabaseClient
           .from('site_submit')
           .update(updateData)
@@ -222,28 +268,27 @@ serve(async (req) => {
 
         if (updateError) {
           console.error('❌ Error updating site_submit metadata:', updateError)
-          console.error('Update error details:', JSON.stringify(updateError, null, 2))
-          // Don't fail the whole request if metadata update fails
         } else {
           console.log('✅ Site submit metadata updated successfully')
         }
       } catch (error) {
         console.error('❌ Error in activity logging:', error)
-        // Don't fail the whole request if activity logging fails
       }
 
       return new Response(
         JSON.stringify({
           success: true,
-          message: `Successfully sent email to ${customEmail.to.length} recipient(s)`,
+          message: `Successfully sent email to ${customEmail.to.length} recipient(s) via Gmail`,
           emailsSent: 1,
-          recipients: customEmail.to
+          recipients: customEmail.to,
+          messageId: sendResult.messageId,
+          threadId: sendResult.threadId,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Original logic for non-custom emails (kept for backward compatibility)
+    // Original logic for non-custom emails (backward compatibility)
     // Fetch site submit data with related information
     const { data: siteSubmit, error: siteSubmitError } = await supabaseClient
       .from('site_submit')
@@ -274,8 +319,6 @@ serve(async (req) => {
     if (!siteSubmit) throw new Error('Site submit not found')
 
     // Fetch Site Selector contacts for this client
-    // New query uses contact_client_role table to find all contacts with Site Selector role
-    // This includes contacts associated through contact_client_relation, not just contact.client_id
     const { data: contacts, error: contactsError } = await supabaseClient
       .from('contact_client_role')
       .select(`
@@ -294,8 +337,6 @@ serve(async (req) => {
 
     if (contactsError) throw contactsError
 
-    console.log('DEBUG: Raw contacts data:', JSON.stringify(contacts, null, 2))
-
     // Filter for Site Selector role and contacts with email addresses
     const siteSelectors = contacts
       ?.filter((item: any) =>
@@ -305,7 +346,7 @@ serve(async (req) => {
       .map((item: any) => item.contact)
       || []
 
-    // Deduplicate contacts by email (in case a contact has multiple associations)
+    // Deduplicate contacts by email
     const uniqueContacts = Array.from(
       new Map(siteSelectors.map((c: any) => [c.email, c])).values()
     )
@@ -320,129 +361,96 @@ serve(async (req) => {
       )
     }
 
-    // Determine the "From" address - use user email if available and has oculusrep.com domain
-    let fromAddress = Deno.env.get('RESEND_FROM_EMAIL') ?? 'onboarding@resend.dev'
-
-    if (userEmail && userEmail.endsWith('@oculusrep.com')) {
-      // Use user's actual email as From address
-      fromAddress = userEmail
-    }
-
     // Build CC list
     const ccList = ['mike@oculusrep.com', 'asantos@oculusrep.com']
     if (userEmail && !ccList.includes(userEmail)) {
       ccList.push(userEmail)
     }
 
-    const emailPromises = uniqueContacts.map(async (contact: any) => {
+    // Send email to each contact via Gmail
+    const results = []
+    for (const contact of uniqueContacts as any[]) {
       const emailHtml = generateEmailTemplate(siteSubmit, contact)
 
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${resendApiKey}`,
-        },
-        body: JSON.stringify({
-          from: fromAddress,
-          reply_to: userEmail || undefined,
-          to: [contact.email],
-          cc: ccList,
-          subject: `New Site Submit: ${siteSubmit.site_submit_name || 'Untitled'}`,
-          html: emailHtml,
-        }),
-      })
-
-      if (!res.ok) {
-        const error = await res.text()
-        console.error(`Failed to send email to ${contact.email}:`, error)
-        throw new Error(`Failed to send email to ${contact.email}`)
+      const emailOptions: SendEmailOptions = {
+        to: [contact.email],
+        cc: ccList,
+        subject: `New Site Submit: ${siteSubmit.site_submit_name || 'Untitled'}`,
+        bodyHtml: emailHtml,
+        fromName: senderName || undefined,
       }
 
-      return res.json()
-    })
+      const sendResult = await sendEmail(
+        accessToken,
+        gmailConnection.google_email,
+        emailOptions
+      )
 
-    const results = await Promise.all(emailPromises)
+      if (!sendResult.success) {
+        console.error(`Failed to send email to ${contact.email}:`, sendResult.error)
+        throw new Error(`Failed to send email to ${contact.email}: ${sendResult.error}`)
+      }
+
+      results.push({
+        email: contact.email,
+        messageId: sendResult.messageId,
+        threadId: sendResult.threadId,
+      })
+    }
 
     // Log activity for email send
     try {
       console.log('📧 Starting activity logging for automatic email...')
-      // Get the current user's ID from the user table using auth_user_id
-      let userId = null
-      if (authUserId) {
-        const { data: userData } = await supabaseClient
-          .from('user')
-          .select('id')
-          .eq('auth_user_id', authUserId)
-          .single()
-
-        if (userData?.id) {
-          userId = userData.id
-          console.log('✅ Got user ID:', userId)
-        } else {
-          console.warn('⚠️ No user found for auth_user_id:', authUserId)
-        }
-      } else {
-        console.warn('⚠️ No auth user ID available')
-      }
 
       console.log('📝 Inserting activity record...')
-      // Create activity record for the email send
-      // NOTE: activity_type_id is set to NULL because the activity_type table is empty
-      // and the foreign key constraint would fail with a non-existent ID
       const { data: activityData, error: activityError } = await supabaseClient
         .from('activity')
         .insert({
-          activity_type_id: null, // Set to NULL - activity_type table is currently empty
+          activity_type_id: null,
           related_object_type: 'site_submit',
           related_object_id: siteSubmitId,
           activity_date: new Date().toISOString(),
           created_by_id: userId,
           owner_id: userId,
-          subject: 'Site Submit Email', // Adding subject for better identification
-          description: `Site submit email sent to ${results.length} recipient(s): ${uniqueContacts.map((c: any) => c.email).join(', ')}`,
+          subject: 'Site Submit Email',
+          description: `Site submit email sent via Gmail to ${results.length} recipient(s): ${(uniqueContacts as any[]).map((c: any) => c.email).join(', ')}`,
           sf_status: 'Completed'
         })
         .select()
 
       if (activityError) {
         console.error('❌ Error logging activity:', activityError)
-        console.error('Activity error details:', JSON.stringify(activityError, null, 2))
-        // Don't fail the whole request if activity logging fails
       } else {
         console.log('✅ Activity logged successfully:', activityData)
       }
 
       console.log('📝 Updating site_submit metadata...')
-      // First, get the current site_submit to check if date_submitted is null
-      const { data: siteSubmit } = await supabaseClient
+      const { data: currentSiteSubmit } = await supabaseClient
         .from('site_submit')
         .select('date_submitted, submit_stage_id')
         .eq('id', siteSubmitId)
         .single()
 
-      // Get the "Submitted-Reviewing" stage ID
       const { data: submittedReviewingStage } = await supabaseClient
         .from('submit_stage')
         .select('id')
         .eq('name', 'Submitted-Reviewing')
         .single()
 
-      // Update site_submit with email metadata (who sent it and when)
       const emailSentAt = new Date().toISOString()
       const updateData: any = {
         updated_at: emailSentAt,
-        updated_by_id: userId
+        updated_by_id: userId,
+        email_sent_at: emailSentAt,
+        email_sent_by_id: userId,
       }
 
-      // If date_submitted is null, set it to the current date (marking it as "Submitted")
-      if (!siteSubmit?.date_submitted) {
+      if (!currentSiteSubmit?.date_submitted) {
         updateData.date_submitted = emailSentAt
         console.log('📅 Setting date_submitted to current date since it was null')
       }
 
-      // If submit_stage_id is not already set, set it to "Submitted-Reviewing"
-      if (!siteSubmit?.submit_stage_id && submittedReviewingStage?.id) {
+      if (!currentSiteSubmit?.submit_stage_id && submittedReviewingStage?.id) {
         updateData.submit_stage_id = submittedReviewingStage.id
         console.log('📊 Setting submit_stage to "Submitted-Reviewing" since it was not set')
       }
@@ -454,22 +462,19 @@ serve(async (req) => {
 
       if (updateError) {
         console.error('❌ Error updating site_submit metadata:', updateError)
-        console.error('Update error details:', JSON.stringify(updateError, null, 2))
-        // Don't fail the whole request if metadata update fails
       } else {
         console.log('✅ Site submit metadata updated successfully')
       }
     } catch (error) {
       console.error('❌ Error in activity logging:', error)
-      // Don't fail the whole request if activity logging fails
     }
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Successfully sent ${results.length} email(s) to Site Selectors`,
+        message: `Successfully sent ${results.length} email(s) via Gmail to Site Selectors`,
         emailsSent: results.length,
-        recipients: uniqueContacts.map((c: any) => c.email)
+        recipients: (uniqueContacts as any[]).map((c: any) => c.email)
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
@@ -492,7 +497,7 @@ function generateEmailTemplate(siteSubmit: any, contact: any): string {
   const propertyAddress = siteSubmit.property
     ? `${siteSubmit.property.address || ''}, ${siteSubmit.property.city || ''}, ${siteSubmit.property.state || ''} ${siteSubmit.property.zip || ''}`.trim()
     : 'N/A'
-  const stageName = 'N/A' // Stage info removed due to relationship ambiguity
+  const stageName = 'N/A'
   const dateSubmitted = siteSubmit.date_submitted
     ? new Date(siteSubmit.date_submitted).toLocaleDateString()
     : 'N/A'

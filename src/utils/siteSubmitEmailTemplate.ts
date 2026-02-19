@@ -12,16 +12,18 @@ export interface PropertyUnitFile {
 
 export interface SiteSubmitEmailData {
   siteSubmit: any;
+  siteSubmitId: string; // ID of the site submit for portal deep link
   property: any;
   propertyUnit: any;
   contacts: any[];
   userData: any;
   propertyUnitFiles?: PropertyUnitFile[]; // Array of property unit files with shared links
   propertyFiles?: PropertyUnitFile[]; // Array of property-level files with shared links
+  portalBaseUrl?: string; // Base URL for portal links (e.g., https://app.example.com)
 }
 
 export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): string {
-  const { siteSubmit, property, propertyUnit, contacts, userData, propertyUnitFiles, propertyFiles } = data;
+  const { siteSubmit, siteSubmitId, property, propertyUnit, contacts, userData, propertyUnitFiles, propertyFiles, portalBaseUrl } = data;
 
   // Helper: Format currency
   const formatCurrency = (value: number | null | undefined) => {
@@ -60,6 +62,12 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
   const mapLink = getMapLink();
   if (mapLink) {
     emailHtml += `<strong>Map Link:</strong> <a href="${mapLink}">View Map</a><br/>`;
+  }
+
+  // Portal Link - deep link to the portal map with this site submit selected
+  if (portalBaseUrl && siteSubmitId) {
+    const portalLink = `${portalBaseUrl}/portal/map?selected=${siteSubmitId}`;
+    emailHtml += `<strong>Portal:</strong> <a href="${portalLink}">View in Portal</a><br/>`;
   }
 
   // Address
