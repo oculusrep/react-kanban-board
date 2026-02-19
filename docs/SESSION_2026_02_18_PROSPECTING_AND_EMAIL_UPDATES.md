@@ -516,3 +516,106 @@ a35f8cf9 Keep QBO sync error messages visible until dismissed
 50629f9a Fix orphaned QBO invoice detection and auto-recovery
 918dab3d Fix QBO sync error 610 by auto-reactivating inactive entities
 ```
+
+---
+
+## 11. Prospecting Workspace Improvements (2026-02-19)
+
+### Problem 1: Email History Tab Not Showing Sent Emails
+Emails sent from the contact drawer weren't appearing in the Email History tab.
+
+### Root Cause
+The `hunter_outreach_draft` records had status `'approved'` but the query was looking for `'sent'`.
+
+### Solution
+1. Update draft status to `'sent'` after successfully sending email
+2. Query includes both `'sent'` and `'approved'` statuses for backwards compatibility
+
+### Problem 2: Activity Timeline Showing Duplicate Emails
+The same email was appearing 2-3 times in the Activity Timeline.
+
+### Root Cause
+Emails were being loaded from multiple sources without deduplication:
+1. `prospecting_activity` table (when `logActivity('email', ...)` was called)
+2. `activity` table (if email activities existed there)
+3. `hunter_outreach_draft` table (the actual sent emails)
+
+### Solution
+Excluded email types from both `prospecting_activity` and `activity` table queries since `hunter_outreach_draft` is the canonical source for sent emails.
+
+```typescript
+// prospecting_activity query now excludes emails
+let activitiesQuery = supabase
+  .from('prospecting_activity')
+  .select('...')
+  .neq('activity_type', 'email');  // Exclude emails
+
+// activity table also filters out email type
+...(contactActivities || [])
+  .filter(a => {
+    const typeName = (a.activity_type as { name: string } | null)?.name?.toLowerCase() || '';
+    return typeName !== 'email';  // Exclude emails
+  })
+```
+
+### Problem 3: Activity Timeline Raw HTML Display
+The Activity Timeline was showing raw HTML content for emails instead of just the subject line.
+
+### Root Cause
+`item.content` for `hunter_outreach` emails contained the full HTML body, and the display logic was falling back to content.
+
+### Solution
+Updated label logic to prioritize `item.subject` or `item.email_subject` for emails, only using `item.content` for non-hunter_outreach emails.
+
+### Problem 4: Follow-up Not Appearing After Creation
+When creating a follow-up from the contact drawer, it didn't immediately appear in the Activity Timeline.
+
+### Solution
+Added `loadActivityFeed()` call to the `onFollowUpCreated` callback to refresh the timeline after creating a follow-up.
+
+### Problem 5: Jarring Refresh When Adding Follow-up
+The activity timeline was flashing/resetting when a follow-up was added due to the loading spinner.
+
+### Solution
+Added a `silent` parameter to `loadActivityFeed()` that skips showing the loading spinner for background refreshes:
+
+```typescript
+const loadActivityFeed = useCallback(async (
+  contactId: string,
+  targetId?: string | null,
+  silent: boolean = false
+) => {
+  // Only show loading spinner for initial loads, not silent refreshes
+  if (!silent) {
+    setLoadingFeed(true);
+  }
+  // ... rest of function
+});
+
+// Usage for smooth refresh after follow-up creation
+loadActivityFeed(selectedContact.id, selectedContact.target_id, true);
+```
+
+### New Features Added
+
+#### Follow-up Button in Contact Drawer
+Added a "Follow-up" button next to "Compose & Send Email" button in the contact drawer. Clicking it opens the FollowUpModal to schedule a follow-up task that appears in the Call List.
+
+#### Contact History Browser
+Added "Browse History" link in the Contacted Today section that opens a modal with:
+- Date picker to select any past date
+- List of contacts reached on that date
+- Click a contact to view their details in the drawer
+
+#### Files Modified
+- `src/components/hunter/ProspectingWorkspace.tsx` - All fixes and new features
+
+### Commits
+```
+04640b71 Use silent refresh for Activity Timeline after follow-up creation
+b2f01b39 Fix duplicate emails in Activity Timeline
+6d921040 Refresh Activity Timeline after creating follow-up from contact drawer
+8521c51d Fix Activity Timeline showing raw HTML for emails from hunter_outreach
+9254f766 Add Follow-up button and Contact History browser to ProspectingWorkspace
+6a740065 Fix Email History tab to show sent emails from contact window
+```
