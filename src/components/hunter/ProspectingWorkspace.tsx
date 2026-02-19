@@ -720,12 +720,13 @@ export default function ProspectingWorkspace() {
 
       let sentEmails: any[] = [];
       if (contactData?.email) {
+        // Include both 'sent' (new behavior) and 'approved' (legacy - emails sent before status update was added)
         const { data: outreachData } = await supabase
           .from('hunter_outreach_draft')
           .select('id, subject, body, sent_at, created_at, contact_email')
           .eq('contact_email', contactData.email)
-          .eq('status', 'sent')
-          .order('sent_at', { ascending: false });
+          .in('status', ['sent', 'approved'])
+          .order('created_at', { ascending: false });
         sentEmails = outreachData || [];
       }
 
@@ -1295,6 +1296,15 @@ export default function ProspectingWorkspace() {
       });
 
       if (response.error) throw new Error(response.error.message);
+
+      // Update the outreach draft status to 'sent'
+      await supabase
+        .from('hunter_outreach_draft')
+        .update({
+          status: 'sent',
+          sent_at: new Date().toISOString()
+        })
+        .eq('id', outreach.id);
 
       // Log as email activity
       await logActivity('email', `Sent: "${emailSubject}"`);
