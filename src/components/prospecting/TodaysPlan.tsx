@@ -3,9 +3,11 @@ import { supabase } from '../../lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProspectingMetrics } from '../../hooks/useProspectingMetrics';
+import { useProspectingTime } from '../../hooks/useProspectingTime';
 import LogCallModal from '../LogCallModal';
 import FollowUpModal from '../FollowUpModal';
 import AddTargetModal from './AddTargetModal';
+import TimeHistoryModal from './TimeHistoryModal';
 import {
   PhoneIcon,
   PlusIcon,
@@ -21,7 +23,8 @@ import {
   ChevronRightIcon,
   EnvelopeIcon,
   ChatBubbleLeftIcon,
-  UserGroupIcon
+  UserGroupIcon,
+  ClockIcon
 } from '@heroicons/react/24/outline';
 import {
   ProspectingTargetView,
@@ -64,6 +67,7 @@ export default function TodaysPlan() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { data: metricsData, loadDashboardData: loadMetrics } = useProspectingMetrics();
+  const { stats: timeStats, saveTimeEntry, loadTimeData } = useProspectingTime();
   const [loading, setLoading] = useState(true);
   const [followUpsDue, setFollowUpsDue] = useState<FollowUpDue[]>([]);
   const [overdueFollowUps, setOverdueFollowUps] = useState<FollowUpDue[]>([]);
@@ -71,6 +75,12 @@ export default function TodaysPlan() {
   const [newHunterLeads, setNewHunterLeads] = useState<NewHunterLead[]>([]);
   const [todayStats, setTodayStats] = useState({ calls: 0, meetings: 0, newLeads: 0 });
   const metrics = metricsData.metrics;
+
+  // Time tracking state
+  const [hours, setHours] = useState(0);
+  const [minutes, setMinutes] = useState(0);
+  const [isSavingTime, setIsSavingTime] = useState(false);
+  const [isTimeHistoryOpen, setIsTimeHistoryOpen] = useState(false);
 
   // Modal states
   const [isLogCallModalOpen, setIsLogCallModalOpen] = useState(false);
@@ -81,7 +91,23 @@ export default function TodaysPlan() {
   useEffect(() => {
     fetchTodaysData();
     loadMetrics();
+    loadTimeData();
   }, []);
+
+  // Sync time fields with loaded data
+  useEffect(() => {
+    setHours(Math.floor(timeStats.todayMinutes / 60));
+    setMinutes(timeStats.todayMinutes % 60);
+  }, [timeStats.todayMinutes]);
+
+  const handleSaveTime = async () => {
+    setIsSavingTime(true);
+    const totalMinutes = hours * 60 + minutes;
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    await saveTimeEntry(dateStr, totalMinutes);
+    setIsSavingTime(false);
+  };
 
   const fetchTodaysData = async () => {
     setLoading(true);
@@ -311,13 +337,63 @@ export default function TodaysPlan() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900">Today's Progress</h2>
           <button
-            onClick={() => { fetchTodaysData(); loadMetrics(); }}
+            onClick={() => { fetchTodaysData(); loadMetrics(); loadTimeData(); }}
             className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
             title="Refresh"
           >
             <ArrowPathIcon className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Time Logging Row */}
+        <div className="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100">
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <ClockIcon className="w-4 h-4" />
+            <span className="font-medium">Time Logged:</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min="0"
+              max="12"
+              value={hours}
+              onChange={(e) => setHours(Math.max(0, Math.min(12, parseInt(e.target.value) || 0)))}
+              className="w-14 px-2 py-1 text-center border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+            />
+            <span className="text-sm text-gray-500">hrs</span>
+            <input
+              type="number"
+              min="0"
+              max="59"
+              step="5"
+              value={minutes}
+              onChange={(e) => setMinutes(Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))}
+              className="w-14 px-2 py-1 text-center border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+            />
+            <span className="text-sm text-gray-500">min</span>
+          </div>
+          <button
+            onClick={handleSaveTime}
+            disabled={isSavingTime}
+            className="px-3 py-1 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50 transition-colors"
+          >
+            {isSavingTime ? 'Saving...' : 'Save'}
+          </button>
+          <button
+            onClick={() => setIsTimeHistoryOpen(true)}
+            className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+          >
+            <CalendarDaysIcon className="w-4 h-4" />
+            History
+          </button>
+          {timeStats.streak > 0 && (
+            <span className="text-sm text-orange-600 font-medium flex items-center gap-1">
+              <FireIcon className="w-4 h-4" />
+              {timeStats.streak} day streak
+            </span>
+          )}
+        </div>
+
         <div className="grid grid-cols-5 gap-4">
           <div className="text-center p-4 bg-blue-50 rounded-lg">
             <p className="text-3xl font-bold text-blue-600">{followUpsDue.length}</p>
@@ -697,6 +773,13 @@ export default function TodaysPlan() {
           setIsAddTargetModalOpen(false);
           fetchTodaysData();
         }}
+      />
+
+      {/* Time History Modal */}
+      <TimeHistoryModal
+        isOpen={isTimeHistoryOpen}
+        onClose={() => setIsTimeHistoryOpen(false)}
+        onRefresh={loadTimeData}
       />
     </div>
   );
