@@ -24,17 +24,17 @@ export interface SiteSubmitEmailData {
   userSignatureHtml?: string; // User's saved email signature HTML
 }
 
-// Color palette for consistent styling
+// Oculus brand color palette
 const COLORS = {
-  primary: '#2563eb',      // Blue for headers and buttons
-  primaryDark: '#1d4ed8',  // Darker blue for hover states
-  headerBg: '#1e40af',     // Professional blue for section headers
-  rowEven: '#ffffff',      // White for even rows
-  rowOdd: '#f8fafc',       // Very light gray for odd rows
-  border: '#e2e8f0',       // Light gray border
-  text: '#1e293b',         // Dark text
-  textMuted: '#64748b',    // Muted text
-  accent: '#059669',       // Green for success/highlights
+  primary: '#4A6B94',      // Steel Blue - buttons and links
+  primaryDark: '#002147',  // Deep Midnight Blue - headers and emphasis
+  headerBg: '#002147',     // Deep Midnight Blue - section headers
+  rowEven: '#FFFFFF',      // Pure White - even rows
+  rowOdd: '#f0f4f8',       // Very light blue-gray - odd rows (derived from brand)
+  border: '#8FA9C8',       // Light Slate Blue - borders
+  text: '#002147',         // Deep Midnight Blue - main text
+  textMuted: '#4A6B94',    // Steel Blue - secondary text
+  accent: '#4A6B94',       // Steel Blue - accents
 };
 
 export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): string {
