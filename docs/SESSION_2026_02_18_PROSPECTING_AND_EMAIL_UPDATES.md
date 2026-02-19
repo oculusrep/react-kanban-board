@@ -174,21 +174,145 @@ Added prospecting time tracking to the Hunter Scorecard tab.
 
 ---
 
-## Known Issues / TODO for Next Session
+## 6. Email Signature Management (Gmail Settings Page)
 
-### Email Template Tweaks Needed
-1. **Signature block not appearing** - User's saved email signature may not be rendering correctly
-2. **Need extra blank lines**:
-   - Add blank line after LOCATION & DEMOGRAPHICS section (before SUPPORTING DOCUMENTS)
-   - Add blank line after SUPPORTING DOCUMENTS section
+### Features Added
+Added a full email signature management system to the Gmail Settings page (`/settings/gmail`).
 
-These will be addressed in the next session.
+#### TipTap Signature Editor
+- Rich text editor using TipTap (same as email composer)
+- Toolbar with: Bold, Italic, Underline, Lists, Alignment, Links, Images
+- Full HTML support for professional signatures
+
+#### Signature CRUD Operations
+- Create multiple signatures with custom names
+- Edit existing signatures
+- Delete signatures
+- Set default signature (used automatically in site submit emails)
+
+#### Database Table
+Uses `user_email_signature` table:
+- `id` - UUID primary key
+- `user_id` - FK to user table
+- `name` - Signature display name
+- `signature_html` - Rich HTML content
+- `is_default` - Boolean for default signature
+- `created_at`, `updated_at` - Timestamps
+
+### Files Modified
+- `src/pages/GmailSettingsPage.tsx` - Added signature management section with TipTap editor
 
 ---
 
-## Commits (Tonight's Session)
+## 7. Email Template Styling Fixes
+
+### Problem
+Email template styles weren't rendering in email clients:
+- Multi-line inline styles with newlines not parsed by email clients
+- CSS `linear-gradient` not supported in most email clients
+- Buttons appearing as plain text links
+
+### Solution
+Fixed all inline styles for email client compatibility:
+
+#### Single-Line Styles
+Converted all multi-line template literal styles to single-line:
+```typescript
+// Before (broken in email clients)
+const buttonStyle = `
+  display: inline-block;
+  padding: 12px 24px;
+  background-color: #2563eb;
+`;
+
+// After (works in email clients)
+const buttonStyle = `display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff;`;
+```
+
+#### Solid Colors Instead of Gradients
+Replaced CSS gradients with solid background colors:
+```typescript
+// Before
+background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%);
+
+// After
+background-color: #1e40af;
+```
+
+#### Table-Based Buttons
+Changed CTA buttons from styled anchor tags to table-based buttons for better email rendering:
+```html
+<table cellpadding="0" cellspacing="0" style="display: inline-block;">
+  <tr>
+    <td style="background-color: #2563eb; border-radius: 6px; padding: 12px 24px;">
+      <a href="..." style="color: #ffffff; text-decoration: none;">View on Map</a>
+    </td>
+  </tr>
+</table>
+```
+
+### Files Modified
+- `src/utils/siteSubmitEmailTemplate.ts` - Fixed all inline styles
+
+---
+
+## 8. Hunter Settings Access
+
+### Problem
+No easy way to access Hunter settings (email signatures, templates) from the Hunter dashboard.
+
+### Solution
+Added a settings gear icon to the Hunter dashboard header, next to the "Run Hunter" button.
+
+#### Implementation
+- Imported `Cog6ToothIcon` from Heroicons
+- Added button with click handler to navigate to `/hunter/settings`
+- Styled to match existing UI
+
+### Files Modified
+- `src/pages/HunterDashboardPage.tsx` - Added settings icon button
+
+---
+
+## 9. Signature Lookup Fix
+
+### Problem
+Email signatures not being found when preparing site submit emails.
+
+### Root Cause
+`GmailSettingsPage.tsx` was looking up user ID by `email` while `useSiteSubmitEmail.ts` was looking up by `auth_user_id`. If these resolved to different users, signatures wouldn't be found.
+
+### Solution
+Changed `GmailSettingsPage.tsx` to use `auth_user_id` for consistency:
+```typescript
+// Before
+const { data } = await supabase
+  .from('user')
+  .select('id')
+  .eq('email', user.email)
+  .single();
+
+// After
+const { data: { session } } = await supabase.auth.getSession();
+const authUserId = session?.user?.id;
+const { data } = await supabase
+  .from('user')
+  .select('id')
+  .eq('auth_user_id', authUserId)
+  .single();
+```
+
+### Files Modified
+- `src/pages/GmailSettingsPage.tsx` - Fixed user ID lookup
+
+---
+
+## Commits (This Session)
 
 ```
+32f91c16 Fix email template styling and add Hunter settings access
+fc3f0277 Add TipTap-based email signature editor to Gmail Settings page
+... (earlier commits from previous sessions)
 5a63d6d0 Replace ReactQuill with TipTap for email composer with table support
 be7d6b83 Fix site submit email template for Quill editor compatibility
 20b4f448 Redesign site submit email with clean table layout and signature support
@@ -285,4 +409,22 @@ Quick Links: View on Map | View in Portal
 
 [Closing message]
 [User's email signature]
+```
+
+---
+
+## Quick Reference: Email Template Color Palette
+
+```typescript
+const COLORS = {
+  primary: '#2563eb',      // Blue for headers and buttons
+  primaryDark: '#1d4ed8',  // Darker blue for hover states
+  headerBg: '#1e40af',     // Professional blue for section headers
+  rowEven: '#ffffff',      // White for even rows
+  rowOdd: '#f8fafc',       // Very light gray for odd rows (zebra striping)
+  border: '#e2e8f0',       // Light gray border
+  text: '#1e293b',         // Dark text
+  textMuted: '#64748b',    // Muted text
+  accent: '#059669',       // Green for success/highlights
+};
 ```
