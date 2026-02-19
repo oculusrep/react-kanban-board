@@ -2824,6 +2824,7 @@ export default function ProspectingWorkspace() {
                                          item.type === 'task' ? 'Follow-up' :
                                          item.source === 'contact_activity' && item.activity_type_name ? item.activity_type_name :
                                          isResponse ? RESPONSE_CONFIG[item.type as ResponseType]?.label :
+                                         item.type === 'email' && item.content ? `Email ${item.content}` :
                                          ACTIVITY_CONFIG[item.type as ActivityType]?.label || item.type}
                                       </span>
                                       <div className="flex items-center gap-2">
