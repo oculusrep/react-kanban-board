@@ -619,3 +619,76 @@ b2f01b39 Fix duplicate emails in Activity Timeline
 9254f766 Add Follow-up button and Contact History browser to ProspectingWorkspace
 6a740065 Fix Email History tab to show sent emails from contact window
 ```
+
+---
+
+## 12. Portal Password Reset Fixes (2026-02-19)
+
+### Problem 1: 406 Error on Forgot Password
+Portal users received a 406 error when trying to reset their password.
+
+### Root Cause
+The forgot password page was trying to query the `contact` table to verify the email existed before sending the reset email. Since Row Level Security (RLS) blocks unauthenticated queries to the contact table, this caused a 406 error.
+
+### Solution
+Removed the contact table verification query. The new approach:
+1. Sends password reset email directly via `supabase.auth.resetPasswordForEmail()`
+2. Always shows success message regardless of whether email exists (security best practice)
+3. Lets Supabase Auth handle user existence checking internally
+
+#### Files Modified
+- `src/pages/portal/PortalForgotPasswordPage.tsx` - Removed contact table query
+
+```typescript
+// New approach: Direct Supabase Auth call without pre-verification
+const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+  email.toLowerCase(),
+  { redirectTo: `${window.location.origin}/portal/reset-password` }
+);
+```
+
+### Problem 2: Generic "Supabase Auth" Sender Name
+Password reset emails were sent from "Supabase Auth" instead of a branded sender like "Oculus Portal".
+
+### Solution
+Configured custom SMTP settings in Supabase Dashboard to send auth emails via Gmail with a branded alias.
+
+#### Configuration Steps
+1. **Set up Gmail alias:**
+   - Go to Gmail Settings → "See all settings" → "Accounts and Import"
+   - Under "Send mail as", click "Add another email address"
+   - Add the alias (e.g., `portal@oculusrep.com`)
+   - Verify the alias via confirmation email
+
+2. **Generate Gmail App Password:**
+   - Go to Google Account → Security
+   - Ensure 2FA is enabled
+   - Under "Signing in to Google" → "App passwords"
+   - Generate a new app password for "Mail"
+   - Copy the 16-character password
+
+3. **Configure Supabase SMTP:**
+   - Go to Supabase Dashboard → Project Settings → Authentication → SMTP Settings
+   - Enable "Custom SMTP"
+   - Settings:
+     - **Sender email:** `portal@oculusrep.com` (your Gmail alias)
+     - **Sender name:** `Oculus Portal`
+     - **Host:** `smtp.gmail.com`
+     - **Port:** `587`
+     - **Username:** Your Gmail address (e.g., `you@gmail.com`)
+     - **Password:** The 16-character App Password (not your regular password)
+
+4. **Test the configuration:**
+   - No deployment needed - takes effect immediately
+   - Wait a few seconds between attempts (Supabase rate limits to 1 request per 6 seconds)
+
+### Important Notes
+- **App Password Required:** Regular Gmail passwords won't work for SMTP. You must use an App Password.
+- **2FA Required:** You must have 2-factor authentication enabled on your Google account to generate App Passwords.
+- **Rate Limiting:** If you get a 429 error ("Too Many Requests"), wait 6+ seconds and try again. This actually indicates the SMTP is configured correctly.
+- **No Code Changes:** This is purely a Supabase Dashboard configuration change.
+
+### Commits
+```
+(No code changes - configuration only)
+```
