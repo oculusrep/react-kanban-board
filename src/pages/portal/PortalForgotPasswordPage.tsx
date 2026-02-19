@@ -20,27 +20,12 @@ export default function PortalForgotPasswordPage() {
     setError(null);
 
     try {
-      // Verify email has portal access first
-      const { data: contact, error: contactError } = await supabase
-        .from('contact')
-        .select('id, portal_access_enabled')
-        .eq('email', email.toLowerCase())
-        .single();
-
-      if (contactError || !contact) {
-        // Don't reveal if email exists or not for security
-        setSuccess(true);
-        return;
-      }
-
-      if (!contact.portal_access_enabled) {
-        // Still show success to not reveal account status
-        setSuccess(true);
-        return;
-      }
-
-      // Send password reset email
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+      // Send password reset email via Supabase Auth
+      // Note: We don't verify portal access here because:
+      // 1. RLS prevents unauthenticated queries to the contact table
+      // 2. Supabase will only send the email if the user exists in auth.users
+      // 3. Showing success regardless is a security best practice (don't reveal account existence)
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.toLowerCase(), {
         redirectTo: `${window.location.origin}/portal/reset-password`,
       });
 
@@ -49,7 +34,8 @@ export default function PortalForgotPasswordPage() {
       setSuccess(true);
     } catch (err: any) {
       console.error('Password reset error:', err);
-      setError(err.message || 'Failed to send reset email');
+      // Still show success to not reveal whether the email exists
+      setSuccess(true);
     } finally {
       setLoading(false);
     }
