@@ -160,13 +160,13 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
     const match = defaultBody.match(greetingEndPattern);
 
     if (match) {
-      // Insert custom note after the greeting
-      const noteHtml = `<p style="font-size: 15px; color: #1e293b; margin-top: 16px; margin-bottom: 24px; padding: 12px; background-color: #f8fafc; border-left: 4px solid #2563eb; border-radius: 4px;">${customNote.replace(/\n/g, '<br>')}</p>`;
+      // Insert custom note after the greeting with "Broker Commentary" heading
+      const noteHtml = `<div style="margin-top: 16px; margin-bottom: 24px; padding: 12px 16px; background-color: #f0f4f8; border-left: 4px solid #4A6B94; border-radius: 4px;"><p style="font-size: 12px; font-weight: 600; color: #4A6B94; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px 0;">Broker Commentary</p><p style="font-size: 15px; color: #002147; margin: 0; line-height: 1.6;">${customNote.replace(/\n/g, '<br>')}</p></div>`;
       return defaultBody.replace(greetingEndPattern, `$1${noteHtml}`);
     }
 
     // Fallback: prepend to top if greeting not found
-    const noteHtml = `<p style="font-size: 15px; color: #1e293b; margin-bottom: 16px; padding: 12px; background-color: #f8fafc; border-left: 4px solid #2563eb; border-radius: 4px;">${customNote.replace(/\n/g, '<br>')}</p>`;
+    const noteHtml = `<div style="margin-bottom: 16px; padding: 12px 16px; background-color: #f0f4f8; border-left: 4px solid #4A6B94; border-radius: 4px;"><p style="font-size: 12px; font-weight: 600; color: #4A6B94; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px 0;">Broker Commentary</p><p style="font-size: 15px; color: #002147; margin: 0; line-height: 1.6;">${customNote.replace(/\n/g, '<br>')}</p></div>`;
     return noteHtml + defaultBody;
   };
 
@@ -321,17 +321,17 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
               )}
             </div>
 
-            {/* Custom Note (optional) */}
+            {/* Broker Commentary (optional) */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Custom Note <span className="text-gray-400 font-normal">(optional - appears after greeting)</span>
+                Broker Commentary <span className="text-gray-400 font-normal">(optional - appears after greeting)</span>
               </label>
               <textarea
                 value={customNote}
                 onChange={(e) => setCustomNote(e.target.value)}
                 rows={3}
                 className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                placeholder="Add a personal note that will appear before the property details..."
+                placeholder="Add your commentary about this property..."
               />
             </div>
 
