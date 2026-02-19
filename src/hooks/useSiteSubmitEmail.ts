@@ -115,9 +115,22 @@ export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
       const { data: { user } } = await supabase.auth.getSession();
       const { data: userData } = await supabase
         .from('user')
-        .select('first_name, last_name, email, mobile_phone')
+        .select('id, first_name, last_name, email, mobile_phone')
         .eq('auth_user_id', user?.id)
         .single();
+
+      // Fetch user's default email signature
+      let userSignatureHtml: string | undefined;
+      if (userData?.id) {
+        const { data: signatureData } = await supabase
+          .from('user_email_signature')
+          .select('signature_html')
+          .eq('user_id', userData.id)
+          .eq('is_default', true)
+          .single();
+
+        userSignatureHtml = signatureData?.signature_html;
+      }
 
       // Fetch property unit files if property_unit_id exists
       let propertyUnitFiles: PropertyUnitFile[] = [];
@@ -220,6 +233,7 @@ export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
         propertyUnitFiles,
         propertyFiles,
         portalBaseUrl: window.location.origin,
+        userSignatureHtml,
       });
 
       // Set email default data and show composer modal

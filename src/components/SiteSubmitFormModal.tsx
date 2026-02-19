@@ -561,15 +561,28 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
 
       // Fetch user data for signature
       const { data: { session } } = await supabase.auth.getSession();
-      let userData = null;
+      let userData: any = null;
+      let userSignatureHtml: string | undefined;
 
       if (session?.user?.id) {
         const { data } = await supabase
           .from('user')
-          .select('first_name, last_name, email, mobile_phone')
-          .eq('id', session.user.id)
+          .select('id, first_name, last_name, email, mobile_phone')
+          .eq('auth_user_id', session.user.id)
           .single();
         userData = data;
+
+        // Fetch user's default email signature
+        if (data?.id) {
+          const { data: signatureData } = await supabase
+            .from('user_email_signature')
+            .select('signature_html')
+            .eq('user_id', data.id)
+            .eq('is_default', true)
+            .single();
+
+          userSignatureHtml = signatureData?.signature_html;
+        }
       }
 
       // Fetch property unit files if property_unit_id exists
@@ -622,7 +635,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
 
       // Generate email template
       const defaultSubject = `New site for Review – ${siteSubmitData.property?.property_name || 'Untitled'} – ${siteSubmitData.client?.client_name || 'N/A'}`;
-      const defaultBody = generateEmailTemplate(siteSubmitData, uniqueContacts, userData, propertyUnitFiles);
+      const defaultBody = generateEmailTemplate(siteSubmitData, uniqueContacts, userData, propertyUnitFiles, userSignatureHtml);
 
       setEmailDefaultData({
         subject: defaultSubject,
@@ -636,7 +649,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
     }
   };
 
-  const generateEmailTemplate = (siteSubmit: any, contacts: any[], userData: any, propertyUnitFiles: PropertyUnitFile[] = []): string => {
+  const generateEmailTemplate = (siteSubmit: any, contacts: any[], userData: any, propertyUnitFiles: PropertyUnitFile[] = [], signatureHtml?: string): string => {
     return generateSiteSubmitEmailTemplate({
       siteSubmit,
       siteSubmitId: siteSubmit.id,
@@ -646,6 +659,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
       userData,
       propertyUnitFiles,
       portalBaseUrl: window.location.origin,
+      userSignatureHtml: signatureHtml,
     });
   };
 

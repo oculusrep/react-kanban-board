@@ -576,7 +576,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
     await sendEmail(siteSubmitId, emailData);
   };
 
-  const generateEmailTemplate = (siteSubmit: any, contacts: any[], userData: any, propertyUnitFiles: any[] = []): string => {
+  const generateEmailTemplate = (siteSubmit: any, contacts: any[], userData: any, propertyUnitFiles: any[] = [], signatureHtml?: string): string => {
     return generateSiteSubmitEmailTemplate({
       siteSubmit,
       siteSubmitId: siteSubmit.id,
@@ -586,6 +586,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
       userData,
       propertyUnitFiles,
       portalBaseUrl: window.location.origin,
+      userSignatureHtml: signatureHtml,
     });
   };
 
