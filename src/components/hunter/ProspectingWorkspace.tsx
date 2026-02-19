@@ -122,7 +122,7 @@ interface ActivityFeedItem {
   created_at: string;
   created_by?: string;
   // For activities from the main activity table
-  source?: 'prospecting' | 'contact_activity';
+  source?: 'prospecting' | 'contact_activity' | 'hunter_outreach';
   subject?: string | null;
   activity_type_name?: string | null;
   completed_at?: string | null;
@@ -710,6 +710,25 @@ export default function ProspectingWorkspace() {
 
       console.log('🔍 Contact activities query:', { contactId, contactActivities, contactActivitiesError });
 
+      // Fetch sent emails from hunter_outreach_draft for this contact's email
+      // First get contact email
+      const { data: contactData } = await supabase
+        .from('contact')
+        .select('email')
+        .eq('id', contactId)
+        .single();
+
+      let sentEmails: any[] = [];
+      if (contactData?.email) {
+        const { data: outreachData } = await supabase
+          .from('hunter_outreach_draft')
+          .select('id, subject, body, sent_at, created_at, contact_email')
+          .eq('contact_email', contactData.email)
+          .eq('status', 'sent')
+          .order('sent_at', { ascending: false });
+        sentEmails = outreachData || [];
+      }
+
       // Combine and sort chronologically
       const feedItems: ActivityFeedItem[] = [
         // Prospecting activities
@@ -764,7 +783,17 @@ export default function ProspectingWorkspace() {
             activity_type_name: (a.activity_type as { name: string } | null)?.name || null,
             activity_date: a.activity_date
           };
-        })
+        }),
+        // Sent emails from hunter_outreach_draft (with full body for Email History tab)
+        ...sentEmails.map(e => ({
+          id: `outreach-${e.id}`,
+          type: 'email' as const,
+          content: e.body,  // Full email body HTML
+          email_subject: e.subject,
+          subject: e.subject,
+          created_at: e.sent_at || e.created_at,
+          source: 'hunter_outreach' as const
+        }))
       ].sort((a, b) => {
         // For tasks/follow-ups, use activity_date; for everything else use created_at
         const getDate = (item: ActivityFeedItem) => {
@@ -2912,8 +2941,8 @@ export default function ProspectingWorkspace() {
                         </div>
                       ) : (
                         <>
-                          {/* Filter to only show email activities */}
-                          {activityFeed.filter(item => item.type === 'email').length === 0 ? (
+                          {/* Filter to show emails from hunter_outreach (with full body) */}
+                          {activityFeed.filter(item => item.type === 'email' && item.source === 'hunter_outreach').length === 0 ? (
                             <div className="p-8 text-center text-gray-400">
                               <EnvelopeIcon className="w-12 h-12 mx-auto mb-2" />
                               <p className="font-medium">No emails sent yet</p>
@@ -2922,7 +2951,7 @@ export default function ProspectingWorkspace() {
                           ) : (
                             <div className="divide-y divide-gray-100">
                               {activityFeed
-                                .filter(item => item.type === 'email')
+                                .filter(item => item.type === 'email' && item.source === 'hunter_outreach')
                                 .map((item) => {
                                   const isExpanded = expandedEmailIds.has(item.id);
                                   const hasBody = item.content;
