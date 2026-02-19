@@ -263,7 +263,16 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
 
   // Signature
   if (userSignatureHtml) {
-    emailHtml += userSignatureHtml;
+    // Process user signature to tighten line spacing for email clients
+    // Gmail and other clients add default paragraph margins, so we need to override
+    const processedSignature = userSignatureHtml
+      // Add tight margins and line-height to paragraphs
+      .replace(/<p>/gi, '<p style="margin: 0 0 4px 0; line-height: 1.4;">')
+      .replace(/<p style="/gi, '<p style="margin: 0 0 4px 0; line-height: 1.4; ')
+      // Handle divs similarly
+      .replace(/<div>/gi, '<div style="margin: 0; line-height: 1.4;">')
+      .replace(/<div style="/gi, '<div style="margin: 0; line-height: 1.4; ');
+    emailHtml += processedSignature;
   } else {
     // Fallback signature using userData
     emailHtml += `<p style="font-size: 14px; color: ${COLORS.text};"><strong>${userData?.first_name || ''} ${userData?.last_name || ''}</strong><br>`;
