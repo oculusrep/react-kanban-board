@@ -1,7 +1,21 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
+import {
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
+  CheckIcon,
+  XMarkIcon,
+  PhotoIcon,
+} from '@heroicons/react/24/outline';
+
+// Lazy load ReactQuill for signature editor
+const ReactQuill = lazy(() => import('react-quill').then(module => {
+  import('react-quill/dist/quill.snow.css');
+  return module;
+}));
 
 interface GmailConnection {
   id: string;
@@ -28,6 +42,16 @@ interface SyncStats {
   pending_suggestions: number;
 }
 
+interface EmailSignature {
+  id: string;
+  user_id: string;
+  name: string;
+  signature_html: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 const GmailSettingsPage: React.FC = () => {
   const { user, userRole } = useAuth();
   const [connections, setConnections] = useState<GmailConnection[]>([]);
@@ -38,6 +62,12 @@ const GmailSettingsPage: React.FC = () => {
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Signature state
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [signatures, setSignatures] = useState<EmailSignature[]>([]);
+  const [editingSignature, setEditingSignature] = useState<Partial<EmailSignature> | null>(null);
+  const [loadingSignatures, setLoadingSignatures] = useState(false);
 
   // Check URL params for OAuth callback status
   useEffect(() => {
@@ -147,6 +177,159 @@ const GmailSettingsPage: React.FC = () => {
   useEffect(() => {
     fetchConnections();
   }, [fetchConnections]);
+
+  // Get current user ID for signature operations
+  useEffect(() => {
+    const fetchUserId = async () => {
+      if (!user?.email) return;
+      const { data } = await supabase
+        .from('user')
+        .select('id')
+        .eq('email', user.email)
+        .single();
+      if (data) setCurrentUserId(data.id);
+    };
+    fetchUserId();
+  }, [user?.email]);
+
+  // Load signatures when we have user ID
+  const loadSignatures = useCallback(async () => {
+    if (!currentUserId) return;
+    setLoadingSignatures(true);
+    try {
+      const { data } = await supabase
+        .from('user_email_signature')
+        .select('*')
+        .eq('user_id', currentUserId)
+        .order('is_default', { ascending: false });
+      setSignatures(data || []);
+    } catch (err) {
+      console.error('Error loading signatures:', err);
+    } finally {
+      setLoadingSignatures(false);
+    }
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (currentUserId) loadSignatures();
+  }, [currentUserId, loadSignatures]);
+
+  // Signature CRUD operations
+  const saveSignature = async () => {
+    if (!editingSignature || !currentUserId) return;
+
+    try {
+      if (editingSignature.id) {
+        // Update existing
+        const { error } = await supabase
+          .from('user_email_signature')
+          .update({
+            name: editingSignature.name,
+            signature_html: editingSignature.signature_html,
+            is_default: editingSignature.is_default
+          })
+          .eq('id', editingSignature.id);
+
+        if (error) throw error;
+        setSuccessMessage('Signature updated');
+      } else {
+        // If this is the first signature or marked as default, make it default
+        const isDefault = signatures.length === 0 || editingSignature.is_default;
+
+        // If setting as default, unset other defaults
+        if (isDefault) {
+          await supabase
+            .from('user_email_signature')
+            .update({ is_default: false })
+            .eq('user_id', currentUserId);
+        }
+
+        const { error } = await supabase
+          .from('user_email_signature')
+          .insert({
+            user_id: currentUserId,
+            name: editingSignature.name || 'Default Signature',
+            signature_html: editingSignature.signature_html,
+            is_default: isDefault
+          });
+
+        if (error) throw error;
+        setSuccessMessage('Signature created');
+      }
+
+      setEditingSignature(null);
+      loadSignatures();
+    } catch (err: any) {
+      console.error('Error saving signature:', err);
+      setError('Failed to save signature');
+    }
+  };
+
+  const deleteSignature = async (id: string) => {
+    if (!confirm('Delete this signature?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('user_email_signature')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      setSuccessMessage('Signature deleted');
+      loadSignatures();
+    } catch (err: any) {
+      console.error('Error deleting signature:', err);
+      setError('Failed to delete signature');
+    }
+  };
+
+  const setDefaultSignature = async (id: string) => {
+    if (!currentUserId) return;
+
+    try {
+      // Unset all defaults
+      await supabase
+        .from('user_email_signature')
+        .update({ is_default: false })
+        .eq('user_id', currentUserId);
+
+      // Set new default
+      await supabase
+        .from('user_email_signature')
+        .update({ is_default: true })
+        .eq('id', id);
+
+      setSuccessMessage('Default signature updated');
+      loadSignatures();
+    } catch (err: any) {
+      console.error('Error setting default signature:', err);
+      setError('Failed to update default');
+    }
+  };
+
+  // Quill modules configuration for signature editor
+  const quillModules = useMemo(() => ({
+    toolbar: [
+      [{ 'header': [1, 2, 3, false] }],
+      [{ 'font': [] }],
+      [{ 'size': ['small', false, 'large', 'huge'] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ 'color': [] }, { 'background': [] }],
+      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+      [{ 'align': [] }],
+      ['link', 'image'],
+      ['clean']
+    ],
+  }), []);
+
+  const quillFormats = [
+    'header', 'font', 'size',
+    'bold', 'italic', 'underline', 'strike',
+    'color', 'background',
+    'list', 'bullet',
+    'align',
+    'link', 'image'
+  ];
 
   const handleConnect = async () => {
     try {
@@ -610,6 +793,184 @@ const GmailSettingsPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Email Signature Section */}
+      <div className="mt-8 bg-white rounded-lg border overflow-hidden">
+        <div className="px-4 py-5 sm:px-6 border-b flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-medium text-gray-900">Email Signature</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Manage your email signature for Site Submit and other outgoing emails.
+            </p>
+          </div>
+          <button
+            onClick={() => setEditingSignature({ name: 'Default Signature', signature_html: '', is_default: true })}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700"
+          >
+            <PlusIcon className="w-4 h-4" />
+            New Signature
+          </button>
+        </div>
+
+        {loadingSignatures ? (
+          <div className="p-8 text-center">
+            <svg className="animate-spin h-8 w-8 text-blue-600 mx-auto" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <p className="mt-2 text-sm text-gray-500">Loading signatures...</p>
+          </div>
+        ) : signatures.length === 0 ? (
+          <div className="p-8 text-center">
+            <PencilIcon className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No signatures yet</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Create a signature to automatically add to your outgoing emails.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-200">
+            {signatures.map((sig) => (
+              <div key={sig.id} className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <h4 className="font-medium text-gray-900">{sig.name}</h4>
+                    {sig.is_default && (
+                      <span className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded flex items-center gap-1">
+                        <CheckIcon className="w-3 h-3" />
+                        Default
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!sig.is_default && (
+                      <button
+                        onClick={() => setDefaultSignature(sig.id)}
+                        className="text-sm text-blue-600 hover:text-blue-800"
+                      >
+                        Set as default
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setEditingSignature(sig)}
+                      className="p-2 text-gray-400 hover:text-blue-600"
+                      title="Edit"
+                    >
+                      <PencilIcon className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => deleteSignature(sig.id)}
+                      className="p-2 text-gray-400 hover:text-red-600"
+                      title="Delete"
+                    >
+                      <TrashIcon className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                {/* Preview */}
+                <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                  <div
+                    className="prose prose-sm max-w-none"
+                    dangerouslySetInnerHTML={{ __html: sig.signature_html }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Signature Editor Modal */}
+      {editingSignature && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75" onClick={() => setEditingSignature(null)} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h3 className="text-lg font-medium">
+                  {editingSignature.id ? 'Edit Signature' : 'New Signature'}
+                </h3>
+                <button onClick={() => setEditingSignature(null)} className="text-gray-400 hover:text-gray-500">
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="px-6 py-4 space-y-4">
+                {/* Signature Name */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Signature Name</label>
+                  <input
+                    type="text"
+                    value={editingSignature.name || ''}
+                    onChange={(e) => setEditingSignature({ ...editingSignature, name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., Professional, Casual"
+                  />
+                </div>
+
+                {/* Info about images */}
+                <div className="bg-blue-50 rounded-lg p-3 flex items-start gap-3">
+                  <PhotoIcon className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-blue-800">Adding Images</p>
+                    <p className="text-sm text-blue-600">
+                      Click the image icon in the toolbar to add logos or photos.
+                      You can paste image URLs or upload from your computer.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Signature Editor */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Signature Content</label>
+                  <div className="border border-gray-300 rounded-lg overflow-hidden">
+                    <Suspense fallback={<div className="h-64 flex items-center justify-center text-gray-400">Loading editor...</div>}>
+                      <ReactQuill
+                        theme="snow"
+                        value={editingSignature.signature_html || ''}
+                        onChange={(value) => setEditingSignature({ ...editingSignature, signature_html: value })}
+                        modules={quillModules}
+                        formats={quillFormats}
+                        style={{ height: '250px' }}
+                      />
+                    </Suspense>
+                  </div>
+                </div>
+
+                {/* Default Option */}
+                <div className="flex items-center gap-2 pt-4">
+                  <input
+                    type="checkbox"
+                    id="is_default"
+                    checked={editingSignature.is_default || false}
+                    onChange={(e) => setEditingSignature({ ...editingSignature, is_default: e.target.checked })}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="is_default" className="text-sm text-gray-700">
+                    Set as default signature
+                  </label>
+                </div>
+              </div>
+
+              <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+                <button
+                  onClick={() => setEditingSignature(null)}
+                  className="px-4 py-2 text-gray-700 hover:text-gray-900"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveSignature}
+                  disabled={!editingSignature.signature_html}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Save Signature
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
