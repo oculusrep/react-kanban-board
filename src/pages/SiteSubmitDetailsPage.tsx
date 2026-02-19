@@ -105,6 +105,16 @@ const SiteSubmitDetailsPage: React.FC = () => {
     nnn?: number | null;
   } | null>(null);
   const [userEditedName, setUserEditedName] = useState(false);
+  const [portalLinkCopied, setPortalLinkCopied] = useState(false);
+
+  // Copy portal link to clipboard
+  const handleCopyPortalLink = () => {
+    if (!siteSubmitId || isNewSiteSubmit) return;
+    const url = `${window.location.origin}/portal/map?selected=${siteSubmitId}`;
+    navigator.clipboard.writeText(url);
+    setPortalLinkCopied(true);
+    setTimeout(() => setPortalLinkCopied(false), 2000);
+  };
 
   // State for metadata display
   const [siteSubmitMetadata, setSiteSubmitMetadata] = useState<{
@@ -618,6 +628,29 @@ const SiteSubmitDetailsPage: React.FC = () => {
                         <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
                       </svg>
                       Verify Location
+                    </button>
+                    <button
+                      onClick={handleCopyPortalLink}
+                      className={`px-3 py-1.5 text-xs font-medium text-white border border-transparent rounded flex items-center gap-1.5 ${
+                        portalLinkCopied ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700'
+                      }`}
+                      title="Copy portal link for sharing with clients"
+                    >
+                      {portalLinkCopied ? (
+                        <>
+                          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Copied!
+                        </>
+                      ) : (
+                        <>
+                          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                          </svg>
+                          Copy Portal Link
+                        </>
+                      )}
                     </button>
                     <button
                       onClick={handleSendEmail}
