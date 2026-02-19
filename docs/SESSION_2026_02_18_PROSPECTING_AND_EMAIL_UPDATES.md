@@ -104,9 +104,96 @@ Added clickable portal links to site submit emails.
 
 ---
 
+## 4. Email Composer Editor Upgrade
+
+### Problem
+ReactQuill editor stripped complex HTML like tables, making professional email templates render as plain text.
+
+### Solution
+Replaced ReactQuill with TipTap editor which fully supports tables and complex HTML.
+
+#### TipTap Features
+- Full table support (insert, add/remove rows/columns, delete)
+- Text formatting (bold, italic, underline, strikethrough)
+- Headings and lists (bullet, numbered)
+- Text alignment (left, center, right)
+- Link insertion and removal
+- Color support
+
+#### New Packages Installed
+```
+@tiptap/react
+@tiptap/starter-kit
+@tiptap/extension-table
+@tiptap/extension-table-row
+@tiptap/extension-table-cell
+@tiptap/extension-table-header
+@tiptap/extension-link
+@tiptap/extension-underline
+@tiptap/extension-text-align
+@tiptap/extension-text-style
+@tiptap/extension-color
+```
+
+#### Professional Table-Based Email Template
+The site submit email template now uses a professional table layout:
+- Dark header rows for section titles (PROPERTY DETAILS, LOCATION & DEMOGRAPHICS, etc.)
+- Two-column property details table
+- Styled links with consistent blue color
+- User's saved email signature appended at bottom
+
+### Files Modified
+- `src/components/EmailComposerModal.tsx` - Replaced ReactQuill with TipTap
+- `src/utils/siteSubmitEmailTemplate.ts` - Professional table-based layout
+- `src/hooks/useSiteSubmitEmail.ts` - Fetches user's default email signature
+- `supabase/functions/_shared/gmail.ts` - Fixed From header format for full name display
+
+### Email Sender Name Fix
+Gmail From header now properly displays full name:
+```
+"First Last" <email@example.com>
+```
+Instead of just the email address.
+
+---
+
+## 5. Hunter Scorecard Time Tracking
+
+Added prospecting time tracking to the Hunter Scorecard tab.
+
+### Features
+- Inline hours/minutes input fields
+- Save button to persist entry
+- History button opens TimeHistoryModal
+- Weekly total display
+- Daily goal progress percentage
+- Streak indicator with fire emoji
+
+### Files Modified
+- `src/components/scorecard/MasterScorecard.tsx` - Added time tracking UI
+
+---
+
+## Known Issues / TODO for Next Session
+
+### Email Template Tweaks Needed
+1. **Signature block not appearing** - User's saved email signature may not be rendering correctly
+2. **Need extra blank lines**:
+   - Add blank line after LOCATION & DEMOGRAPHICS section (before SUPPORTING DOCUMENTS)
+   - Add blank line after SUPPORTING DOCUMENTS section
+
+These will be addressed in the next session.
+
+---
+
 ## Commits (Tonight's Session)
 
 ```
+5a63d6d0 Replace ReactQuill with TipTap for email composer with table support
+be7d6b83 Fix site submit email template for Quill editor compatibility
+20b4f448 Redesign site submit email with clean table layout and signature support
+41678048 Add prospecting time tracking to Hunter Scorecard tab
+f139e1f0 Add session documentation for 2026-02-18
 726d84d1 Migrate site submit emails from Resend to Gmail and add portal deep links
 7726aed8 Fix timezone issue in useProspectingTime hook
 9e37d81d Fix TimeEntryModal z-index to appear above TimeHistoryModal
@@ -144,3 +231,58 @@ navigate(redirectTo, { replace: true });
 ```
 
 This ensures deep links work even when users need to log in first.
+
+### TipTap Editor Setup
+```typescript
+const editor = useEditor({
+  extensions: [
+    StarterKit,
+    Link.configure({ openOnClick: false }),
+    Table.configure({ resizable: true }),
+    TableRow,
+    TableHeader,
+    TableCell,
+    TextStyle,
+    Color,
+    Underline,
+    TextAlign.configure({ types: ['heading', 'paragraph'] }),
+  ],
+  content: '',
+});
+```
+
+### Email Template Structure
+```
+[Greeting]
+[Intro paragraph]
+
+┌────────────────────────────────────┐
+│ PROPERTY DETAILS                   │ ← Dark header
+├────────────────────────────────────┤
+│ Property Name │ Value              │
+│ Address       │ Value              │
+│ Size          │ Value              │
+│ ...           │ ...                │
+└────────────────────────────────────┘
+
+Quick Links: View on Map | View in Portal
+
+┌────────────────────────────────────┐
+│ LOCATION & DEMOGRAPHICS            │
+├────────────────────────────────────┤
+│ 1-Mile Population │ Value          │
+│ 3-Mile Population │ Value          │
+│ ...               │ ...            │
+└────────────────────────────────────┘
+
+┌────────────────────────────────────┐
+│ SUPPORTING DOCUMENTS               │
+├────────────────────────────────────┤
+│ Marketing Materials (link)         │
+│ Site Plan (link)                   │
+│ ...                                │
+└────────────────────────────────────┘
+
+[Closing message]
+[User's email signature]
+```
