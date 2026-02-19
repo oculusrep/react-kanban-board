@@ -845,7 +845,7 @@ export default function ProspectingWorkspace() {
   // Activity Logging
   // ============================================================================
 
-  const logActivity = async (activityType: ActivityType, note?: string, emailSubject?: string) => {
+  const logActivity = async (activityType: ActivityType, note?: string) => {
     if (!selectedContact || !user) return;
 
     setLoggingActivity(activityType);
@@ -862,10 +862,9 @@ export default function ProspectingWorkspace() {
           activity_type: activityType,
           activity_date: activityDate,
           notes: note || null,
-          email_subject: emailSubject || null,
           created_by: user.id
         })
-        .select('id, activity_type, notes, email_subject, created_at')
+        .select('id, activity_type, notes, created_at')
         .single();
 
       if (error) throw error;
@@ -876,7 +875,6 @@ export default function ProspectingWorkspace() {
           id: activityData.id,
           type: activityData.activity_type as ActivityFeedItem['type'],
           content: activityData.notes,
-          email_subject: activityData.email_subject,
           created_at: activityData.created_at
         }, ...prev]);
       }
@@ -1269,8 +1267,8 @@ export default function ProspectingWorkspace() {
 
       if (response.error) throw new Error(response.error.message);
 
-      // Log as email activity with subject for timeline display
-      await logActivity('email', null, emailSubject);
+      // Log as email activity
+      await logActivity('email', `Sent: "${emailSubject}"`);
 
       setShowEmailModal(false);
       setEmailSubject('');
