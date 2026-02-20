@@ -55,62 +55,134 @@ export default function ActivityBreakdownRow({
   const fetchActivities = async () => {
     setLoading(true);
     try {
-      // Simple query - just get activities with direct contact join
-      const query = supabase
-        .from('prospecting_activity')
-        .select(`
-          id,
-          activity_type,
-          notes,
-          email_subject,
-          created_at,
-          contact_id,
-          target_id,
-          contact:contact_id (
-            first_name,
-            last_name,
-            company
-          )
-        `)
-        .in('activity_type', activityTypes)
-        .gte('created_at', `${startDate}T00:00:00`)
-        .lte('created_at', `${endDate}T23:59:59`)
-        .order('created_at', { ascending: false })
-        .limit(50);
+      let transformed: ActivityDetail[] = [];
 
-      // Only filter by user if explicitly passed (scorecard view handles user filtering)
-      if (userId) {
-        query.eq('created_by', userId);
-      }
+      // Calls and meetings are stored in the 'activity' table with completed_call/meeting_held flags
+      // Other outreach (email, linkedin, sms, voicemail) is in 'prospecting_activity' table
+      const isCallOrMeeting = activityTypes.includes('call') || activityTypes.includes('meeting');
 
-      const { data, error } = await query;
+      if (isCallOrMeeting) {
+        // Query the activity table for calls/meetings
+        let query = supabase
+          .from('activity')
+          .select(`
+            id,
+            subject,
+            description,
+            created_at,
+            contact_id,
+            completed_call,
+            meeting_held,
+            is_prospecting_call,
+            contact:contact_id (
+              first_name,
+              last_name,
+              company
+            )
+          `)
+          .eq('is_prospecting_call', true)
+          .gte('created_at', `${startDate}T00:00:00`)
+          .lte('created_at', `${endDate}T23:59:59`)
+          .order('created_at', { ascending: false })
+          .limit(50);
 
-      if (error) {
-        console.error('Query error:', error);
-        throw error;
-      }
-
-      // Transform data to include contact name
-      const transformed: ActivityDetail[] = (data || []).map((item: any) => {
-        let contactName = 'Unknown';
-        let companyName = null;
-
-        if (item.contact) {
-          contactName = `${item.contact.first_name || ''} ${item.contact.last_name || ''}`.trim() || 'Unknown';
-          companyName = item.contact.company;
+        // Filter by call or meeting
+        if (activityTypes.includes('call') && !activityTypes.includes('meeting')) {
+          query = query.eq('completed_call', true);
+        } else if (activityTypes.includes('meeting') && !activityTypes.includes('call')) {
+          query = query.eq('meeting_held', true);
+        } else {
+          // Both - use or filter
+          query = query.or('completed_call.eq.true,meeting_held.eq.true');
         }
 
-        return {
-          id: item.id,
-          activity_type: item.activity_type,
-          notes: item.notes,
-          email_subject: item.email_subject,
-          created_at: item.created_at,
-          contact_id: item.contact_id,
-          contact_name: contactName,
-          company_name: companyName
-        };
-      });
+        if (userId) {
+          query = query.eq('created_by', userId);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+          console.error('Activity query error:', error);
+          throw error;
+        }
+
+        transformed = (data || []).map((item: any) => {
+          let contactName = 'Unknown';
+          let companyName = null;
+
+          if (item.contact) {
+            contactName = `${item.contact.first_name || ''} ${item.contact.last_name || ''}`.trim() || 'Unknown';
+            companyName = item.contact.company;
+          }
+
+          return {
+            id: item.id,
+            activity_type: item.completed_call ? 'call' : 'meeting',
+            notes: item.description,
+            email_subject: item.subject,
+            created_at: item.created_at,
+            contact_id: item.contact_id,
+            contact_name: contactName,
+            company_name: companyName
+          };
+        });
+      } else {
+        // Query prospecting_activity for other outreach types
+        const query = supabase
+          .from('prospecting_activity')
+          .select(`
+            id,
+            activity_type,
+            notes,
+            email_subject,
+            created_at,
+            contact_id,
+            target_id,
+            contact:contact_id (
+              first_name,
+              last_name,
+              company
+            )
+          `)
+          .in('activity_type', activityTypes)
+          .gte('created_at', `${startDate}T00:00:00`)
+          .lte('created_at', `${endDate}T23:59:59`)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (userId) {
+          query.eq('created_by', userId);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+          console.error('Prospecting activity query error:', error);
+          throw error;
+        }
+
+        transformed = (data || []).map((item: any) => {
+          let contactName = 'Unknown';
+          let companyName = null;
+
+          if (item.contact) {
+            contactName = `${item.contact.first_name || ''} ${item.contact.last_name || ''}`.trim() || 'Unknown';
+            companyName = item.contact.company;
+          }
+
+          return {
+            id: item.id,
+            activity_type: item.activity_type,
+            notes: item.notes,
+            email_subject: item.email_subject,
+            created_at: item.created_at,
+            contact_id: item.contact_id,
+            contact_name: contactName,
+            company_name: companyName
+          };
+        });
+      }
 
       setActivities(transformed);
       setLoaded(true);
