@@ -944,9 +944,15 @@ export default function PortalPipelinePage() {
                 >
                   <td className="px-4 py-3 whitespace-nowrap">
                     <div className="flex items-center space-x-2">
-                      {/* Unread indicator dot */}
+                      {/* Unread indicator - "New" badge on For Review tab, blue dot elsewhere */}
                       {isUnread && (
-                        <span className="flex-shrink-0 w-2 h-2 rounded-full bg-blue-500" title="New" />
+                        isViewingForReview ? (
+                          <span className="flex-shrink-0 px-1.5 py-0.5 text-xs font-semibold text-white bg-blue-500 rounded">
+                            New
+                          </span>
+                        ) : (
+                          <span className="flex-shrink-0 w-2 h-2 rounded-full bg-blue-500" title="New" />
+                        )
                       )}
                       <div className={`text-sm ${isUnread ? 'font-semibold text-gray-900' : 'font-medium text-gray-900'}`}>
                         {ss.property?.property_name || ss.site_submit_name || '-'}
