@@ -561,9 +561,9 @@ export default function PortalPipelinePage() {
     .filter(s => SIGNED_STAGE_NAMES.includes(s.name))
     .map(s => s.id);
 
-  // Compute "Other Stages" - stages NOT in main tabs, NOT in Signed group, and NOT hidden
-  // These are stages that only brokers see in a dropdown
-  const tabStageNames = [...STAGE_TAB_ORDER, ...SIGNED_STAGE_NAMES, ...HIDDEN_STAGE_NAMES];
+  // Compute "Other Stages" - stages NOT in main tabs and NOT in Signed group
+  // These are stages that only brokers see in a dropdown (includes hidden stages for brokers)
+  const tabStageNames = [...STAGE_TAB_ORDER, ...SIGNED_STAGE_NAMES];
   const otherStages = stages.filter(s => !tabStageNames.includes(s.name)).sort((a, b) => a.name.localeCompare(b.name));
 
   // Check if currently viewing an "other" stage (for button highlighting)
