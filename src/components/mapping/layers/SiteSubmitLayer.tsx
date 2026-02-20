@@ -960,14 +960,14 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
     }
   }, [map, loadingConfig, siteSubmitRefreshTrigger, localRefreshTrigger]);
 
-  // Create markers when site submits load or stage visibility changes or marker style changes
+  // Create markers when site submits load or stage visibility changes or marker style changes or selection changes
   useEffect(() => {
     // Always call createMarkers, even when siteSubmits is empty
     // This ensures markers are cleared when filtering results in 0 site submits
     if (map) {
       createMarkers();
     }
-  }, [siteSubmits, map, loadingConfig.visibleStages, verifyingSiteSubmitId, verifyingSiteSubmit, markerStyle.shape, markerStyle.useAdvancedMarkers]);
+  }, [siteSubmits, map, loadingConfig.visibleStages, verifyingSiteSubmitId, verifyingSiteSubmit, markerStyle.shape, markerStyle.useAdvancedMarkers, selectedSiteSubmitId]);
 
   // Set up clustering when markers change or cluster config changes (including when empty)
   useEffect(() => {
