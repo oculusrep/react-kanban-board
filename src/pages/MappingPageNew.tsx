@@ -2386,6 +2386,24 @@ const MappingPageContent: React.FC = () => {
               onCenterOnPin={handleCenterOnPin}
               onDeleteSiteSubmit={handleDeleteSiteSubmit}
               onDataUpdate={handleSiteSubmitDataUpdate}
+              onSiteSubmitCreated={(newSiteSubmit) => {
+                // Update the selected data with the newly created site submit
+                setSelectedSiteSubmitData(newSiteSubmit as any);
+                // Refresh the submits list
+                setSubmitsRefreshTrigger(prev => prev + 1);
+                // Refresh the site_submits layer on the map
+                safeRefreshLayer('site_submits');
+              }}
+              initialData={selectedSiteSubmitData?._isNew ? {
+                _isNew: true,
+                property_id: selectedSiteSubmitData.property_id,
+                property: selectedSiteSubmitData.property,
+                property_unit_id: selectedSiteSubmitData.property_unit_id,
+                submit_stage_id: selectedSiteSubmitData.submit_stage_id,
+                submit_stage: selectedSiteSubmitData.submit_stage,
+                site_submit_name: selectedSiteSubmitData.site_submit_name,
+                client_id: selectedSiteSubmitData.client_id,
+              } : undefined}
               rightOffset={0}
             />
 

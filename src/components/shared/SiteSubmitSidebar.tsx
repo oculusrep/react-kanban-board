@@ -13,6 +13,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import SiteSubmitDataTab from './SiteSubmitDataTab';
 import SiteSubmitContactsTab from './SiteSubmitContactsTab';
+import SiteSubmitCreateForm from './SiteSubmitCreateForm';
 import PortalChatTab from '../portal/PortalChatTab';
 import PortalFilesTab from '../portal/PortalFilesTab';
 import StatusBadgeDropdown from '../portal/StatusBadgeDropdown';
@@ -83,6 +84,22 @@ export interface SiteSubmitData {
 
 type TabType = 'data' | 'chat' | 'files' | 'contacts';
 
+// Initial data for creating new site submits
+interface InitialSiteSubmitData {
+  _isNew?: boolean;
+  property_id?: string;
+  property?: any;
+  property_unit_id?: string | null;
+  submit_stage_id?: string | null;
+  submit_stage?: any;
+  site_submit_name?: string;
+  client_id?: string | null;
+  year_1_rent?: number | null;
+  ti?: number | null;
+  notes?: string;
+  date_submitted?: string | null;
+}
+
 interface SiteSubmitSidebarProps {
   siteSubmitId: string | null;
   isOpen: boolean;
@@ -93,10 +110,13 @@ interface SiteSubmitSidebarProps {
   onCenterOnPin?: (lat: number, lng: number) => void; // Map only
   onDeleteSiteSubmit?: (siteSubmitId: string, siteSubmitName: string) => void; // Map only
   onDataUpdate?: (updatedData: SiteSubmitData) => void; // Callback when data is updated
+  onSiteSubmitCreated?: (newSiteSubmit: SiteSubmitData) => void; // Callback when new site submit is created
   rightOffset?: number; // Offset from right edge in pixels (for stacked sidebars)
   // Portal-specific props
   accessibleClients?: { id: string; client_name: string }[];
   siteSubmitRefreshTrigger?: number;
+  // For creating new site submits
+  initialData?: InitialSiteSubmitData;
 }
 
 // Client-visible stages (for filtering in client view)
@@ -128,9 +148,11 @@ export default function SiteSubmitSidebar({
   onCenterOnPin,
   onDeleteSiteSubmit,
   onDataUpdate,
+  onSiteSubmitCreated,
   rightOffset = 0,
   accessibleClients = [],
   siteSubmitRefreshTrigger,
+  initialData,
 }: SiteSubmitSidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -146,6 +168,9 @@ export default function SiteSubmitSidebar({
   const [linkCopied, setLinkCopied] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [preparingEmail, setPreparingEmail] = useState(false);
+
+  // Check if this is a new site submit creation
+  const isNewSiteSubmit = initialData?._isNew === true && !siteSubmitId;
 
   // Toast helper for email
   const showToast = (message: string, options?: { type?: 'success' | 'error' | 'info'; duration?: number }) => {
@@ -352,12 +377,37 @@ export default function SiteSubmitSidebar({
         return;
       }
       fetchSiteSubmit();
+    } else if (isOpen && initialData?._isNew && !siteSubmitId) {
+      // Creating a new site submit - use initialData
+      const newSiteSubmitData: SiteSubmitData = {
+        id: '', // Empty for new
+        site_submit_name: initialData.site_submit_name || null,
+        submit_stage_id: initialData.submit_stage_id || null,
+        date_submitted: initialData.date_submitted || null,
+        notes: initialData.notes || null,
+        delivery_timeframe: null,
+        ti: initialData.ti || null,
+        year_1_rent: initialData.year_1_rent || null,
+        competitor_data: null,
+        property_id: initialData.property_id || null,
+        property_unit_id: initialData.property_unit_id || null,
+        client_id: initialData.client_id || null,
+        assignment_id: null,
+        deal_id: null,
+        property: initialData.property || null,
+        property_unit: null,
+        submit_stage: initialData.submit_stage || null,
+        client: null,
+        assignment: null,
+      };
+      setSiteSubmit(newSiteSubmitData);
+      setLoading(false);
     }
 
     return () => {
       isMounted = false;
     };
-  }, [siteSubmitId, isOpen, siteSubmitRefreshTrigger, context, accessibleClientIds]);
+  }, [siteSubmitId, isOpen, siteSubmitRefreshTrigger, context, accessibleClientIds, initialData]);
 
   // Handle view toggle (portal context)
   const handleToggleView = () => {
@@ -708,6 +758,19 @@ export default function SiteSubmitSidebar({
           <div className="flex items-center justify-center h-full">
             <p className="text-gray-500">Select a site submit to view details</p>
           </div>
+        ) : isNewSiteSubmit ? (
+          <SiteSubmitCreateForm
+            initialData={siteSubmit}
+            stages={stages}
+            onSave={async (newSiteSubmit) => {
+              if (onSiteSubmitCreated) {
+                onSiteSubmitCreated(newSiteSubmit);
+              }
+              // Refresh and show the newly created record
+              setSiteSubmit(newSiteSubmit);
+            }}
+            onCancel={onClose}
+          />
         ) : (
           <>
             {activeTab === 'data' && (
