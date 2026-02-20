@@ -82,7 +82,7 @@ export default function ActivityTrendChart({
             )}
             {dataPoint.calls !== undefined && dataPoint.calls > 0 && (
               <div className="flex justify-between">
-                <span>Calls</span>
+                <span>Call Connects</span>
                 <span>{dataPoint.calls}</span>
               </div>
             )}

@@ -315,7 +315,7 @@ export default function ProspectingDashboard() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <PhoneIcon className="w-4 h-4 text-emerald-600" />
-                <span className="text-sm text-gray-600">Calls Completed</span>
+                <span className="text-sm text-gray-600">Call Connects</span>
               </div>
               <span className="font-medium text-gray-900">{metrics?.calls_completed || 0}</span>
             </div>

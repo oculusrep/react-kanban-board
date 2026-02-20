@@ -409,7 +409,7 @@ export default function TodaysPlan() {
           </div>
           <div className="text-center p-4 bg-green-50 rounded-lg">
             <p className="text-3xl font-bold text-green-600">{todayStats.calls}</p>
-            <p className="text-sm text-gray-600">Calls Made</p>
+            <p className="text-sm text-gray-600">Call Connects</p>
           </div>
           <div className="text-center p-4 bg-purple-50 rounded-lg">
             <p className="text-3xl font-bold text-purple-600">{todayStats.meetings}</p>
@@ -457,7 +457,7 @@ export default function TodaysPlan() {
               <PhoneIcon className="w-4 h-4 text-emerald-600" />
             </div>
             <p className="text-xl font-bold text-emerald-600">{metrics?.calls_completed || 0}</p>
-            <p className="text-xs text-gray-500">Calls</p>
+            <p className="text-xs text-gray-500">Call Connects</p>
           </div>
           <div className="text-center p-3 bg-purple-50 rounded-lg">
             <div className="flex items-center justify-center gap-1 mb-1">

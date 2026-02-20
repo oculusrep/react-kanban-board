@@ -16,6 +16,7 @@ export interface OutreachCounts {
   linkedin: number;
   sms: number;
   voicemail: number;
+  callConnects: number;  // Call connects count as both outreach AND connection
   total: number;
 }
 

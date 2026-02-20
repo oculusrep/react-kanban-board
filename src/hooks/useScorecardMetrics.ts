@@ -112,7 +112,7 @@ function getPeriodLabel(period: ScorecardPeriod): string {
 
 // Aggregate raw metrics into totals
 function aggregateMetrics(rows: DailyMetricsRow[]): { outreach: OutreachCounts; connections: ConnectionCounts; contactsReached: number } {
-  const outreach: OutreachCounts = { emails: 0, linkedin: 0, sms: 0, voicemail: 0, total: 0 };
+  const outreach: OutreachCounts = { emails: 0, linkedin: 0, sms: 0, voicemail: 0, callConnects: 0, total: 0 };
   const connections: ConnectionCounts = {
     calls: 0,
     meetings: 0,
@@ -129,6 +129,8 @@ function aggregateMetrics(rows: DailyMetricsRow[]): { outreach: OutreachCounts; 
     outreach.linkedin += row.linkedin || 0;
     outreach.sms += row.sms || 0;
     outreach.voicemail += row.voicemail || 0;
+    // Call connects count as both outreach AND connection
+    outreach.callConnects += row.calls || 0;
 
     connections.calls += row.calls || 0;
     connections.meetings += row.meetings || 0;
@@ -140,7 +142,8 @@ function aggregateMetrics(rows: DailyMetricsRow[]): { outreach: OutreachCounts; 
     contactsReached += row.total_outreach || 0; // Use total_outreach as proxy
   }
 
-  outreach.total = outreach.emails + outreach.linkedin + outreach.sms + outreach.voicemail;
+  // Call connects are included in outreach total (they count as outreach AND connection)
+  outreach.total = outreach.emails + outreach.linkedin + outreach.sms + outreach.voicemail + outreach.callConnects;
   connections.total = connections.calls + connections.meetings +
     connections.emailResponses + connections.linkedinResponses +
     connections.smsResponses + connections.returnCalls;

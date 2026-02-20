@@ -315,6 +315,10 @@ export default function MasterScorecard({
                     <span className="text-gray-600">Voicemails</span>
                     <span className="font-medium text-gray-900">{selectedData.outreach.voicemail}</span>
                   </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Call Connects</span>
+                    <span className="font-medium text-gray-900">{selectedData.outreach.callConnects}</span>
+                  </div>
                   <div className="flex justify-between text-sm pt-2 border-t border-gray-100">
                     <span className="font-medium text-gray-700">Total Outreach</span>
                     <span className="font-bold text-blue-600">{selectedData.outreach.total}</span>
@@ -329,7 +333,7 @@ export default function MasterScorecard({
                 </h4>
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Calls</span>
+                    <span className="text-gray-600">Call Connects</span>
                     <span className="font-medium text-gray-900">{selectedData.connections.calls}</span>
                   </div>
                   <div className="flex justify-between text-sm">
