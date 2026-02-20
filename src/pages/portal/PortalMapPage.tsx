@@ -6,7 +6,7 @@ import GoogleMapContainer from '../../components/mapping/GoogleMapContainer';
 import SiteSubmitLayer, { SiteSubmitLoadingConfig } from '../../components/mapping/layers/SiteSubmitLayer';
 import SiteSubmitLegend from '../../components/mapping/SiteSubmitLegend';
 import AddressSearchBox from '../../components/mapping/AddressSearchBox';
-import PortalDetailSidebar from '../../components/portal/PortalDetailSidebar';
+import SiteSubmitSidebar from '../../components/shared/SiteSubmitSidebar';
 import { LayerManagerProvider, useLayerManager } from '../../components/mapping/layers/LayerManager';
 import { STAGE_CATEGORIES } from '../../components/mapping/SiteSubmitPin';
 import { geocodingService } from '../../services/geocodingService';
@@ -921,12 +921,16 @@ function PortalMapContent() {
           </div>
         )}
 
-        {/* Portal Detail Sidebar */}
-        <PortalDetailSidebar
+        {/* Site Submit Sidebar */}
+        <SiteSubmitSidebar
           siteSubmitId={selectedSiteSubmitId}
           isOpen={isSidebarOpen}
           onClose={handleCloseSidebar}
+          context="portal"
+          isEditable={showBrokerFeatures}
           onStatusChange={handleStatusChange}
+          accessibleClients={accessibleClients}
+          siteSubmitRefreshTrigger={siteSubmitRefreshTrigger}
         />
 
         {/* Save Shape Modal - After quick draw (brokers only) */}

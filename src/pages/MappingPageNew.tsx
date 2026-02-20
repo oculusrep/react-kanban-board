@@ -10,6 +10,7 @@ import CustomLayerLayer from '../components/mapping/layers/CustomLayerLayer';
 import PlaceInfoLayer from '../components/mapping/layers/PlaceInfoLayer';
 import PinDetailsSlideout from '../components/mapping/slideouts/PinDetailsSlideout';
 import RestaurantSlideout from '../components/mapping/slideouts/RestaurantSlideout';
+import SiteSubmitSidebar from '../components/shared/SiteSubmitSidebar';
 import MapContextMenu from '../components/mapping/MapContextMenu';
 import PropertyContextMenu from '../components/mapping/PropertyContextMenu';
 import SiteSubmitContextMenu from '../components/mapping/SiteSubmitContextMenu';
@@ -2290,8 +2291,8 @@ const MappingPageContent: React.FC = () => {
               />
             ))}
 
-            {/* Pin Details Slideout - for properties and site submits */}
-            {selectedPinType !== 'restaurant' && (
+            {/* Pin Details Slideout - for properties only */}
+            {selectedPinType === 'property' && (
               <PinDetailsSlideout
                 isOpen={isPinDetailsOpen}
                 onClose={handlePinDetailsClose}
@@ -2303,7 +2304,7 @@ const MappingPageContent: React.FC = () => {
                 onViewPropertyDetails={handleViewPropertyDetails}
                 onCenterOnPin={handleCenterOnPin}
                 onDataUpdate={handlePinDataUpdate}
-                rightOffset={isPropertyDetailsOpen ? 500 : isSiteSubmitDetailsOpen ? 500 : isContactFormOpen ? 450 : 0} // Shift left when property/site submit details or contact form is open
+                rightOffset={isPropertyDetailsOpen ? 500 : isSiteSubmitDetailsOpen ? 500 : isContactFormOpen ? 450 : 0}
                 onEditContact={handleEditContact}
                 onDeleteProperty={handleDeleteProperty}
                 onDeleteSiteSubmit={handleDeleteSiteSubmit}
@@ -2311,6 +2312,31 @@ const MappingPageContent: React.FC = () => {
                 onCreateSiteSubmit={handleCreateSiteSubmitForProperty}
                 submitsRefreshTrigger={submitsRefreshTrigger}
                 initialTab={pinDetailsInitialTab}
+              />
+            )}
+
+            {/* Site Submit Sidebar - for site submits */}
+            {selectedPinType === 'site_submit' && (
+              <SiteSubmitSidebar
+                siteSubmitId={selectedPinData?.id || null}
+                isOpen={isPinDetailsOpen}
+                onClose={handlePinDetailsClose}
+                context="map"
+                isEditable={true}
+                onStatusChange={(siteSubmitId, newStageId, newStageName) => {
+                  // Update selected data with new stage
+                  if (selectedPinData) {
+                    handlePinDataUpdate({
+                      ...selectedPinData,
+                      submit_stage_id: newStageId,
+                      submit_stage: { id: newStageId, name: newStageName },
+                    });
+                  }
+                }}
+                onCenterOnPin={handleCenterOnPin}
+                onDeleteSiteSubmit={handleDeleteSiteSubmit}
+                onDataUpdate={handlePinDataUpdate}
+                rightOffset={isPropertyDetailsOpen ? 500 : isSiteSubmitDetailsOpen ? 500 : isContactFormOpen ? 450 : 0}
               />
             )}
 
@@ -2341,18 +2367,26 @@ const MappingPageContent: React.FC = () => {
               submitsRefreshTrigger={submitsRefreshTrigger}
             />
 
-            {/* Site Submit Details Slideout (for viewing site submit from property) */}
-            <PinDetailsSlideout
+            {/* Site Submit Details Sidebar (for viewing site submit from property) */}
+            <SiteSubmitSidebar
+              siteSubmitId={selectedSiteSubmitData?.id || null}
               isOpen={isSiteSubmitDetailsOpen}
               onClose={handleSiteSubmitDetailsClose}
-              onOpen={() => setIsSiteSubmitDetailsOpen(true)}
-              data={selectedSiteSubmitData}
-              type="site_submit"
-              onViewPropertyDetails={handleViewPropertyDetails}
+              context="map"
+              isEditable={true}
+              onStatusChange={(siteSubmitId, newStageId, newStageName) => {
+                if (selectedSiteSubmitData) {
+                  handleSiteSubmitDataUpdate({
+                    ...selectedSiteSubmitData,
+                    submit_stage_id: newStageId,
+                    submit_stage: { id: newStageId, name: newStageName },
+                  });
+                }
+              }}
               onCenterOnPin={handleCenterOnPin}
-              onDataUpdate={handleSiteSubmitDataUpdate}
               onDeleteSiteSubmit={handleDeleteSiteSubmit}
-              rightOffset={0} // Always at the far right edge
+              onDataUpdate={handleSiteSubmitDataUpdate}
+              rightOffset={0}
             />
 
             {/* Contact Form Slideout (for editing contacts from property slideout) */}

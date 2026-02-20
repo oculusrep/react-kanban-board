@@ -3,7 +3,7 @@ import { usePortal } from '../../contexts/PortalContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
-import PortalDetailSidebar from '../../components/portal/PortalDetailSidebar';
+import SiteSubmitSidebar from '../../components/shared/SiteSubmitSidebar';
 import StatusBadgeDropdown from '../../components/portal/StatusBadgeDropdown';
 import { usePortalActivityTracker } from '../../hooks/usePortalActivityTracker';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
@@ -1016,12 +1016,16 @@ export default function PortalPipelinePage() {
         )}
       </div>
 
-      {/* Detail Sidebar */}
-      <PortalDetailSidebar
+      {/* Site Submit Sidebar */}
+      <SiteSubmitSidebar
         siteSubmitId={selectedSiteSubmitId}
         isOpen={sidebarOpen}
         onClose={handleCloseSidebar}
+        context="portal"
+        isEditable={showBrokerFeatures}
         onStatusChange={handleStatusChange}
+        accessibleClients={accessibleClients}
+        siteSubmitRefreshTrigger={siteSubmitRefreshTrigger}
       />
     </div>
   );
