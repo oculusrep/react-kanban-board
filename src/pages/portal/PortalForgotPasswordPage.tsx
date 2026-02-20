@@ -62,8 +62,11 @@ export default function PortalForgotPasswordPage() {
             />
           </svg>
           <h2 className="text-xl font-semibold text-gray-900 mb-2">Check Your Email</h2>
-          <p className="text-gray-600 mb-6">
+          <p className="text-gray-600 mb-4">
             If an account exists for {email}, you will receive a password reset link shortly.
+          </p>
+          <p className="text-sm text-gray-500 mb-6 bg-gray-50 p-3 rounded-lg">
+            <strong>Don't see it?</strong> Check your spam or junk folder for an email from "Oculus Client Portal".
           </p>
           <Link
             to="/portal/login"

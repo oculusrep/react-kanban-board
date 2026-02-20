@@ -341,6 +341,18 @@ export default function PortalInviteAcceptPage() {
             )}
           </button>
         </form>
+
+        {/* Login link for existing accounts */}
+        <div className="mt-6 pt-6 border-t border-gray-200 text-center">
+          <p className="text-sm text-gray-600 mb-2">Already have an account?</p>
+          <a
+            href="/portal/login"
+            className="text-sm font-medium hover:underline"
+            style={{ color: '#104073' }}
+          >
+            Sign in instead
+          </a>
+        </div>
       </div>
     </div>
   );
