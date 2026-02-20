@@ -65,6 +65,7 @@ export default function ActivityBreakdownRow({
         // Query the activity table for calls/meetings
         // Calls are marked with completed_call=true, meetings with meeting_held=true
         // Use the proper foreign key reference for the contact join
+        // Filter by activity_date (DATE field) not created_at (TIMESTAMP)
         let query = supabase
           .from('activity')
           .select(`
@@ -72,6 +73,7 @@ export default function ActivityBreakdownRow({
             subject,
             description,
             created_at,
+            activity_date,
             contact_id,
             completed_call,
             meeting_held,
@@ -81,9 +83,9 @@ export default function ActivityBreakdownRow({
               company
             )
           `)
-          .gte('created_at', `${startDate}T00:00:00`)
-          .lte('created_at', `${endDate}T23:59:59`)
-          .order('created_at', { ascending: false })
+          .gte('activity_date', startDate)
+          .lte('activity_date', endDate)
+          .order('activity_date', { ascending: false })
           .limit(50);
 
         // Filter by call or meeting based on the flags
