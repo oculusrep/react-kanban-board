@@ -177,6 +177,7 @@ export default function PortalPipelinePage() {
   // Fetch stages - brokers see all stages, clients see filtered list
   useEffect(() => {
     async function fetchStages() {
+      console.log('🎭 Pipeline: Fetching stages, showBrokerFeatures:', showBrokerFeatures);
       let query = supabase
         .from('submit_stage')
         .select('id, name');
@@ -191,6 +192,7 @@ export default function PortalPipelinePage() {
       if (error) {
         console.error('Error fetching stages:', error);
       } else {
+        console.log('🎭 Pipeline: Loaded', data?.length, 'stages:', data?.map(s => s.name));
         setStages(data || []);
       }
     }
@@ -565,6 +567,16 @@ export default function PortalPipelinePage() {
   // These are stages that only brokers see in a dropdown (includes hidden stages for brokers)
   const tabStageNames = [...STAGE_TAB_ORDER, ...SIGNED_STAGE_NAMES];
   const otherStages = stages.filter(s => !tabStageNames.includes(s.name)).sort((a, b) => a.name.localeCompare(b.name));
+
+  // Debug logging
+  if (showBrokerFeatures && stages.length > 0) {
+    console.log('🎭 Pipeline Other Stages:', {
+      totalStages: stages.length,
+      tabStageNames,
+      otherStagesCount: otherStages.length,
+      otherStageNames: otherStages.map(s => s.name)
+    });
+  }
 
   // Check if currently viewing an "other" stage (for button highlighting)
   const isViewingOtherStage = selectedStageId && otherStages.some(s => s.id === selectedStageId);
