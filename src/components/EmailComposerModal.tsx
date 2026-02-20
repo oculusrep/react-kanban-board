@@ -534,17 +534,35 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
               )}
             </div>
 
-            {/* Broker Commentary (optional) */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Broker Commentary <span className="text-gray-400 font-normal">(optional - appears after greeting)</span>
+            {/* Broker Commentary - styled prominently to encourage use */}
+            <div className={`mb-4 p-3 rounded-lg border-2 ${customNote.trim() ? 'border-green-300 bg-green-50' : 'border-amber-300 bg-amber-50'}`}>
+              <label className="flex items-center gap-2 text-sm font-medium mb-2">
+                {customNote.trim() ? (
+                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                )}
+                <span className={customNote.trim() ? 'text-green-800' : 'text-amber-800'}>
+                  Broker Commentary
+                </span>
+                <span className={`font-normal ${customNote.trim() ? 'text-green-600' : 'text-amber-600'}`}>
+                  {customNote.trim() ? '(will appear after greeting)' : '(recommended - add your insights!)'}
+                </span>
               </label>
               <textarea
                 value={customNote}
                 onChange={(e) => setCustomNote(e.target.value)}
                 rows={3}
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                placeholder="Add your commentary about this property..."
+                className={`block w-full rounded-md shadow-sm text-sm ${
+                  customNote.trim()
+                    ? 'border-green-300 bg-white focus:border-green-500 focus:ring-green-500'
+                    : 'border-amber-300 bg-white focus:border-amber-500 focus:ring-amber-500'
+                }`}
+                placeholder="Add your commentary about this property - what makes it special, key selling points, why this is a good fit for the client..."
               />
             </div>
 
