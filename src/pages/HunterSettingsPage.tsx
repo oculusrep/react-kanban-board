@@ -1,7 +1,7 @@
 // Hunter Settings Page - Email Templates and Signatures
 // /hunter/settings
 
-import React, { useState, useEffect, useCallback, lazy, Suspense, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense, useMemo, Component, ReactNode, ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
@@ -17,6 +17,35 @@ import {
   PhotoIcon,
   ArrowLeftIcon
 } from '@heroicons/react/24/outline';
+
+// Error boundary to handle chunk loading failures (e.g., after deployments)
+class EditorErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('Editor loading error:', error, info);
+    if (error.message?.includes('Failed to fetch dynamically imported module') ||
+        error.message?.includes('Loading chunk') ||
+        error.message?.includes('Loading CSS chunk')) {
+      const lastReload = sessionStorage.getItem('settings_chunk_reload');
+      if (!lastReload || parseInt(lastReload) < Date.now() - 10000) {
+        sessionStorage.setItem('settings_chunk_reload', Date.now().toString());
+        window.location.reload();
+      }
+    }
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-64 flex flex-col items-center justify-center text-gray-500 border border-gray-200 rounded-lg bg-gray-50">
+          <p className="text-sm">Editor failed to load</p>
+          <button onClick={() => window.location.reload()} className="mt-2 text-xs text-blue-600 hover:underline">Reload page</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Lazy load ReactQuill
 const ReactQuill = lazy(() => import('react-quill').then(module => {
@@ -530,16 +559,18 @@ export default function HunterSettingsPage() {
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Email Body</label>
                         <div className="border border-gray-300 rounded-lg overflow-hidden">
-                          <Suspense fallback={<div className="h-64 flex items-center justify-center text-gray-400">Loading editor...</div>}>
-                            <ReactQuill
-                              theme="snow"
-                              value={editingTemplate.body || ''}
-                              onChange={(value) => setEditingTemplate({ ...editingTemplate, body: value })}
-                              modules={quillModules}
-                              formats={quillFormats}
-                              style={{ height: '300px' }}
-                            />
-                          </Suspense>
+                          <EditorErrorBoundary>
+                            <Suspense fallback={<div className="h-64 flex items-center justify-center text-gray-400">Loading editor...</div>}>
+                              <ReactQuill
+                                theme="snow"
+                                value={editingTemplate.body || ''}
+                                onChange={(value) => setEditingTemplate({ ...editingTemplate, body: value })}
+                                modules={quillModules}
+                                formats={quillFormats}
+                                style={{ height: '300px' }}
+                              />
+                            </Suspense>
+                          </EditorErrorBoundary>
                         </div>
                       </div>
 
@@ -720,16 +751,18 @@ export default function HunterSettingsPage() {
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Signature Content</label>
                         <div className="border border-gray-300 rounded-lg overflow-hidden">
-                          <Suspense fallback={<div className="h-64 flex items-center justify-center text-gray-400">Loading editor...</div>}>
-                            <ReactQuill
-                              theme="snow"
-                              value={editingSignature.signature_html || ''}
-                              onChange={(value) => setEditingSignature({ ...editingSignature, signature_html: value })}
-                              modules={quillModules}
-                              formats={quillFormats}
-                              style={{ height: '250px' }}
-                            />
-                          </Suspense>
+                          <EditorErrorBoundary>
+                            <Suspense fallback={<div className="h-64 flex items-center justify-center text-gray-400">Loading editor...</div>}>
+                              <ReactQuill
+                                theme="snow"
+                                value={editingSignature.signature_html || ''}
+                                onChange={(value) => setEditingSignature({ ...editingSignature, signature_html: value })}
+                                modules={quillModules}
+                                formats={quillFormats}
+                                style={{ height: '250px' }}
+                              />
+                            </Suspense>
+                          </EditorErrorBoundary>
                         </div>
                       </div>
 

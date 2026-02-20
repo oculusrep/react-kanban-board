@@ -46,23 +46,36 @@ import {
 // Import Quill CSS at top level to avoid race conditions
 import 'react-quill/dist/quill.snow.css';
 
-// Simple error boundary to catch lazy loading failures
+// Simple error boundary to catch lazy loading failures (e.g., after deployment when chunks change)
 class EditorErrorBoundary extends Component<{ children: ReactNode; fallback?: ReactNode }, { hasError: boolean }> {
   state = { hasError: false };
   static getDerivedStateFromError() { return { hasError: true }; }
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('Editor loading error:', error, info);
+    // Check if this is a chunk loading error (common after deployments)
+    if (error.message?.includes('Failed to fetch dynamically imported module') ||
+        error.message?.includes('Loading chunk') ||
+        error.message?.includes('Loading CSS chunk')) {
+      // Store a flag to prevent infinite reload loops
+      const reloadKey = 'editor_chunk_reload_' + Date.now().toString().slice(0, -4); // ~10 second window
+      const lastReload = sessionStorage.getItem('editor_chunk_reload');
+      if (!lastReload || parseInt(lastReload) < Date.now() - 10000) {
+        sessionStorage.setItem('editor_chunk_reload', Date.now().toString());
+        window.location.reload();
+      }
+    }
   }
   render() {
     if (this.state.hasError) {
       return this.props.fallback || (
         <div className="h-48 flex flex-col items-center justify-center text-gray-500 border border-gray-200 rounded-lg bg-gray-50">
           <p className="text-sm">Editor failed to load</p>
+          <p className="text-xs text-gray-400 mt-1">This may happen after an update</p>
           <button
-            onClick={() => this.setState({ hasError: false })}
+            onClick={() => window.location.reload()}
             className="mt-2 text-xs text-blue-600 hover:underline"
           >
-            Try again
+            Reload page
           </button>
         </div>
       );
