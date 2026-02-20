@@ -16,6 +16,7 @@ import { MasterScorecardProps, ScorecardPeriod } from '../../types/scorecard';
 import ScorecardSummaryCards from './ScorecardSummaryCards';
 import OutreachConnectionsChart from './OutreachConnectionsChart';
 import ActivityTrendChart from './ActivityTrendChart';
+import ActivityBreakdownRow from './ActivityBreakdownRow';
 import TimeHistoryModal from '../prospecting/TimeHistoryModal';
 
 export default function MasterScorecard({
@@ -298,28 +299,48 @@ export default function MasterScorecard({
                 <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3">
                   Outreach Breakdown
                 </h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Emails</span>
-                    <span className="font-medium text-gray-900">{selectedData.outreach.emails}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">LinkedIn</span>
-                    <span className="font-medium text-gray-900">{selectedData.outreach.linkedin}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">SMS</span>
-                    <span className="font-medium text-gray-900">{selectedData.outreach.sms}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Voicemails</span>
-                    <span className="font-medium text-gray-900">{selectedData.outreach.voicemail}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Call Connects</span>
-                    <span className="font-medium text-gray-900">{selectedData.outreach.callConnects}</span>
-                  </div>
-                  <div className="flex justify-between text-sm pt-2 border-t border-gray-100">
+                <div className="space-y-0">
+                  <ActivityBreakdownRow
+                    label="Emails"
+                    count={selectedData.outreach.emails}
+                    activityTypes={['email']}
+                    startDate={selectedData.startDate}
+                    endDate={selectedData.endDate}
+                    userId={userId}
+                  />
+                  <ActivityBreakdownRow
+                    label="LinkedIn"
+                    count={selectedData.outreach.linkedin}
+                    activityTypes={['linkedin']}
+                    startDate={selectedData.startDate}
+                    endDate={selectedData.endDate}
+                    userId={userId}
+                  />
+                  <ActivityBreakdownRow
+                    label="SMS"
+                    count={selectedData.outreach.sms}
+                    activityTypes={['sms']}
+                    startDate={selectedData.startDate}
+                    endDate={selectedData.endDate}
+                    userId={userId}
+                  />
+                  <ActivityBreakdownRow
+                    label="Voicemails"
+                    count={selectedData.outreach.voicemail}
+                    activityTypes={['voicemail']}
+                    startDate={selectedData.startDate}
+                    endDate={selectedData.endDate}
+                    userId={userId}
+                  />
+                  <ActivityBreakdownRow
+                    label="Call Connects"
+                    count={selectedData.outreach.callConnects}
+                    activityTypes={['call']}
+                    startDate={selectedData.startDate}
+                    endDate={selectedData.endDate}
+                    userId={userId}
+                  />
+                  <div className="flex justify-between text-sm pt-2 mt-1 border-t border-gray-100">
                     <span className="font-medium text-gray-700">Total Outreach</span>
                     <span className="font-bold text-blue-600">{selectedData.outreach.total}</span>
                   </div>
@@ -331,32 +352,56 @@ export default function MasterScorecard({
                 <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3">
                   Connections Breakdown
                 </h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Call Connects</span>
-                    <span className="font-medium text-gray-900">{selectedData.connections.calls}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Meetings</span>
-                    <span className="font-medium text-gray-900">{selectedData.connections.meetings}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Email Replies</span>
-                    <span className="font-medium text-gray-900">{selectedData.connections.emailResponses}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">LinkedIn Replies</span>
-                    <span className="font-medium text-gray-900">{selectedData.connections.linkedinResponses}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">SMS Replies</span>
-                    <span className="font-medium text-gray-900">{selectedData.connections.smsResponses}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Return Calls</span>
-                    <span className="font-medium text-gray-900">{selectedData.connections.returnCalls}</span>
-                  </div>
-                  <div className="flex justify-between text-sm pt-2 border-t border-gray-100">
+                <div className="space-y-0">
+                  <ActivityBreakdownRow
+                    label="Call Connects"
+                    count={selectedData.connections.calls}
+                    activityTypes={['call']}
+                    startDate={selectedData.startDate}
+                    endDate={selectedData.endDate}
+                    userId={userId}
+                  />
+                  <ActivityBreakdownRow
+                    label="Meetings"
+                    count={selectedData.connections.meetings}
+                    activityTypes={['meeting']}
+                    startDate={selectedData.startDate}
+                    endDate={selectedData.endDate}
+                    userId={userId}
+                  />
+                  <ActivityBreakdownRow
+                    label="Email Replies"
+                    count={selectedData.connections.emailResponses}
+                    activityTypes={['email_response']}
+                    startDate={selectedData.startDate}
+                    endDate={selectedData.endDate}
+                    userId={userId}
+                  />
+                  <ActivityBreakdownRow
+                    label="LinkedIn Replies"
+                    count={selectedData.connections.linkedinResponses}
+                    activityTypes={['linkedin_response']}
+                    startDate={selectedData.startDate}
+                    endDate={selectedData.endDate}
+                    userId={userId}
+                  />
+                  <ActivityBreakdownRow
+                    label="SMS Replies"
+                    count={selectedData.connections.smsResponses}
+                    activityTypes={['sms_response']}
+                    startDate={selectedData.startDate}
+                    endDate={selectedData.endDate}
+                    userId={userId}
+                  />
+                  <ActivityBreakdownRow
+                    label="Return Calls"
+                    count={selectedData.connections.returnCalls}
+                    activityTypes={['return_call']}
+                    startDate={selectedData.startDate}
+                    endDate={selectedData.endDate}
+                    userId={userId}
+                  />
+                  <div className="flex justify-between text-sm pt-2 mt-1 border-t border-gray-100">
                     <span className="font-medium text-gray-700">Total Connections</span>
                     <span className="font-bold text-green-600">{selectedData.connections.total}</span>
                   </div>
