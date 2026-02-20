@@ -57,15 +57,18 @@ export default function ActivityBreakdownRow({
     try {
       let transformed: ActivityDetail[] = [];
 
-      // Calls and meetings are stored in the 'activity' table with completed_call/meeting_held flags
-      // Other outreach (email, linkedin, sms, voicemail) is in 'prospecting_activity' table
+      // The v_prospecting_daily_metrics view pulls from TWO sources:
+      // 1. prospecting_activity table - for email, linkedin, sms, voicemail, and response types
+      // 2. activity table - for calls (completed_call=true) and meetings (by activity_type name)
+      //
+      // To match the view's counts, we need to query the same way it does.
       const isCallOrMeeting = activityTypes.includes('call') || activityTypes.includes('meeting');
 
       if (isCallOrMeeting) {
         // Query the activity table for calls/meetings
-        // Calls are marked with completed_call=true, meetings with meeting_held=true
-        // Use the proper foreign key reference for the contact join
-        // Filter by activity_date (DATE field) not created_at (TIMESTAMP)
+        // The view uses: JOIN activity_type ON a.activity_type_id = atype.id
+        // And filters: WHERE atype.name = 'Call' AND a.completed_call = true (for calls)
+        // Or: WHERE atype.name = 'Meeting' (for meetings)
         let query = supabase
           .from('activity')
           .select(`
@@ -77,6 +80,12 @@ export default function ActivityBreakdownRow({
             contact_id,
             completed_call,
             meeting_held,
+            user_id,
+            owner_id,
+            activity_type:activity_type_id (
+              id,
+              name
+            ),
             contact:contact!fk_activity_contact_id (
               first_name,
               last_name,
@@ -88,18 +97,9 @@ export default function ActivityBreakdownRow({
           .order('activity_date', { ascending: false })
           .limit(50);
 
-        // Filter by call or meeting based on the flags
-        if (activityTypes.includes('call') && !activityTypes.includes('meeting')) {
-          query = query.eq('completed_call', true);
-        } else if (activityTypes.includes('meeting') && !activityTypes.includes('call')) {
-          query = query.eq('meeting_held', true);
-        } else {
-          // Both - use or filter
-          query = query.or('completed_call.eq.true,meeting_held.eq.true');
-        }
-
         if (userId) {
-          query = query.eq('owner_id', userId);
+          // View uses COALESCE(a.user_id, a.owner_id)
+          query = query.or(`user_id.eq.${userId},owner_id.eq.${userId}`);
         }
 
         const { data, error } = await query;
@@ -109,7 +109,20 @@ export default function ActivityBreakdownRow({
           throw error;
         }
 
-        transformed = (data || []).map((item: any) => {
+        // Filter in JavaScript to match the view's logic exactly
+        const filtered = (data || []).filter((item: any) => {
+          const typeName = item.activity_type?.name;
+
+          if (activityTypes.includes('call') && typeName === 'Call' && item.completed_call === true) {
+            return true;
+          }
+          if (activityTypes.includes('meeting') && typeName === 'Meeting') {
+            return true;
+          }
+          return false;
+        });
+
+        transformed = filtered.map((item: any) => {
           let contactName = 'Unknown';
           let companyName = null;
 
@@ -118,12 +131,13 @@ export default function ActivityBreakdownRow({
             companyName = item.contact.company;
           }
 
+          const typeName = item.activity_type?.name;
           return {
             id: item.id,
-            activity_type: item.completed_call ? 'call' : 'meeting',
+            activity_type: typeName === 'Call' ? 'call' : 'meeting',
             notes: item.description,
             email_subject: item.subject,
-            created_at: item.created_at,
+            created_at: item.activity_date || item.created_at,
             contact_id: item.contact_id,
             contact_name: contactName,
             company_name: companyName
@@ -131,7 +145,9 @@ export default function ActivityBreakdownRow({
         });
       } else {
         // Query prospecting_activity for other outreach types
-        const query = supabase
+        // The view uses: COALESCE(pa.activity_date, DATE(pa.created_at AT TIME ZONE 'America/New_York'))
+        // We'll use activity_date if available, otherwise created_at
+        let query = supabase
           .from('prospecting_activity')
           .select(`
             id,
@@ -139,6 +155,7 @@ export default function ActivityBreakdownRow({
             notes,
             email_subject,
             created_at,
+            activity_date,
             contact_id,
             target_id,
             contact:contact_id (
@@ -148,13 +165,11 @@ export default function ActivityBreakdownRow({
             )
           `)
           .in('activity_type', activityTypes)
-          .gte('created_at', `${startDate}T00:00:00`)
-          .lte('created_at', `${endDate}T23:59:59`)
           .order('created_at', { ascending: false })
-          .limit(50);
+          .limit(100); // Fetch more to filter by date in JS
 
         if (userId) {
-          query.eq('created_by', userId);
+          query = query.eq('created_by', userId);
         }
 
         const { data, error } = await query;
@@ -164,7 +179,22 @@ export default function ActivityBreakdownRow({
           throw error;
         }
 
-        transformed = (data || []).map((item: any) => {
+        // Filter by date range using the same logic as the view
+        // The view uses: COALESCE(pa.activity_date, DATE(pa.created_at AT TIME ZONE 'America/New_York'))
+        const filtered = (data || []).filter((item: any) => {
+          // Use activity_date if available, otherwise extract date from created_at
+          let activityDate: string;
+          if (item.activity_date) {
+            activityDate = item.activity_date;
+          } else {
+            // Convert created_at to date string (the DB does Eastern timezone, we'll do local)
+            const date = new Date(item.created_at);
+            activityDate = date.toISOString().split('T')[0];
+          }
+          return activityDate >= startDate && activityDate <= endDate;
+        }).slice(0, 50); // Limit to 50 after filtering
+
+        transformed = filtered.map((item: any) => {
           let contactName = 'Unknown';
           let companyName = null;
 
@@ -178,7 +208,7 @@ export default function ActivityBreakdownRow({
             activity_type: item.activity_type,
             notes: item.notes,
             email_subject: item.email_subject,
-            created_at: item.created_at,
+            created_at: item.activity_date || item.created_at,
             contact_id: item.contact_id,
             contact_name: contactName,
             company_name: companyName
