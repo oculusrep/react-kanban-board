@@ -12,11 +12,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import SiteSubmitDataTab from './SiteSubmitDataTab';
-import SiteSubmitEmailTab from './SiteSubmitEmailTab';
 import SiteSubmitContactsTab from './SiteSubmitContactsTab';
 import PortalChatTab from '../portal/PortalChatTab';
 import PortalFilesTab from '../portal/PortalFilesTab';
 import StatusBadgeDropdown from '../portal/StatusBadgeDropdown';
+import { useSiteSubmitEmail } from '../../hooks/useSiteSubmitEmail';
+import EmailComposerModal from '../EmailComposerModal';
 
 export interface SiteSubmitData {
   id: string;
@@ -80,7 +81,7 @@ export interface SiteSubmitData {
   } | null;
 }
 
-type TabType = 'data' | 'email' | 'chat' | 'files' | 'contacts';
+type TabType = 'data' | 'chat' | 'files' | 'contacts';
 
 interface SiteSubmitSidebarProps {
   siteSubmitId: string | null;
@@ -143,6 +144,35 @@ export default function SiteSubmitSidebar({
   const [error, setError] = useState<string | null>(null);
   const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [preparingEmail, setPreparingEmail] = useState(false);
+
+  // Toast helper for email
+  const showToast = (message: string, options?: { type?: 'success' | 'error' | 'info'; duration?: number }) => {
+    setToast({ message, type: options?.type || 'info' });
+    setTimeout(() => setToast(null), options?.duration || 3000);
+  };
+
+  // Email functionality
+  const {
+    showEmailComposer,
+    setShowEmailComposer,
+    sendingEmail,
+    emailDefaultData,
+    prepareEmail,
+    sendEmail,
+  } = useSiteSubmitEmail({ showToast });
+
+  // Handle email button click
+  const handlePrepareEmail = async () => {
+    if (!siteSubmitId) return;
+    setPreparingEmail(true);
+    try {
+      await prepareEmail(siteSubmitId);
+    } finally {
+      setPreparingEmail(false);
+    }
+  };
 
   // Copy portal link to clipboard
   const handleCopyLink = () => {
@@ -375,7 +405,7 @@ export default function SiteSubmitSidebar({
     }
   };
 
-  // Build tabs based on context
+  // Build tabs based on context (no EMAIL tab - email is a header button)
   const tabs: { id: TabType; label: string; icon: JSX.Element }[] = [
     {
       id: 'data',
@@ -383,15 +413,6 @@ export default function SiteSubmitSidebar({
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-      ),
-    },
-    {
-      id: 'email',
-      label: 'EMAIL',
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
         </svg>
       ),
     },
@@ -441,46 +462,143 @@ export default function SiteSubmitSidebar({
         right: `${rightOffset}px`,
       }}
     >
+      {/* Toast notification */}
+      {toast && (
+        <div
+          className={`absolute top-2 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-sm shadow-lg ${
+            toast.type === 'success'
+              ? 'bg-green-500 text-white'
+              : toast.type === 'error'
+              ? 'bg-red-500 text-white'
+              : 'bg-blue-500 text-white'
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
+
       {/* Header */}
       <div
         className="flex-shrink-0 px-4 py-3 border-b border-gray-200"
         style={{ backgroundColor: '#011742' }}
       >
+        {/* Top row with title and action icons */}
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
             <h2 className="text-lg font-semibold text-white truncate">
               {siteSubmit?.property?.property_name || siteSubmit?.site_submit_name || 'Site Details'}
             </h2>
-            {siteSubmit?.property_unit && (
-              <p className="text-sm text-blue-200 truncate">
-                {siteSubmit.property_unit.property_unit_name || 'Unit'}
+            {siteSubmit?.property && (
+              <p className="text-sm text-gray-300 truncate">
+                Property: {siteSubmit.property.property_name}
               </p>
             )}
-            {siteSubmit?.property?.address && (
-              <div className="text-sm text-gray-300">
-                <p className="truncate">{siteSubmit.property.address}</p>
-                {siteSubmit.property.city && (
-                  <p className="truncate">
-                    {siteSubmit.property.city}, {siteSubmit.property.state}
-                    {siteSubmit.property.zip && ` ${siteSubmit.property.zip}`}
-                  </p>
-                )}
-              </div>
-            )}
           </div>
-          {/* Close button */}
-          <button
-            onClick={onClose}
-            className="ml-2 p-1.5 rounded hover:bg-white/10 transition-colors"
-            aria-label="Close sidebar"
-          >
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
+
+          {/* Action icon buttons - matching old PinDetailsSlideout design */}
+          <div className="flex items-center gap-1 ml-2">
+            {/* Email button (green) */}
+            {isEditable && siteSubmit && (
+              <button
+                onClick={handlePrepareEmail}
+                disabled={preparingEmail || !siteSubmit.client_id}
+                className={`p-2 rounded-lg transition-colors ${
+                  preparingEmail || !siteSubmit.client_id
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-green-500 hover:bg-green-600'
+                }`}
+                title={!siteSubmit.client_id ? 'A client must be assigned to send emails' : 'Send site submit email'}
+              >
+                {preparingEmail ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                )}
+              </button>
+            )}
+
+            {/* Delete button (red) - map context only */}
+            {context === 'map' && isEditable && siteSubmit && (
+              <button
+                onClick={handleDelete}
+                className="p-2 rounded-lg bg-red-500 hover:bg-red-600 transition-colors"
+                title="Delete site submit"
+              >
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            )}
+
+            {/* View toggle button (arrow) - portal context */}
+            {context === 'portal' && (
+              <button
+                onClick={handleToggleView}
+                className="p-2 rounded-lg bg-gray-600 hover:bg-gray-500 transition-colors"
+                title={isMapView ? 'View in Pipeline' : 'View on Map'}
+              >
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+              </button>
+            )}
+
+            {/* Center on pin button (icon only) - map context */}
+            {context === 'map' && siteSubmit?.property?.latitude && siteSubmit?.property?.longitude && (
+              <button
+                onClick={handleCenterOnPin}
+                className="p-2 rounded-lg bg-blue-500 hover:bg-blue-600 transition-colors"
+                title="Center map on this location"
+              >
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
+            )}
+
+            {/* Close button */}
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+              aria-label="Close sidebar"
+            >
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
-        {/* Status Badge and Action Buttons */}
+        {/* Property image placeholder and address */}
+        <div className="mt-3 flex items-center gap-3">
+          <div className="w-16 h-16 bg-gray-600 rounded-lg flex items-center justify-center flex-shrink-0">
+            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-white font-medium truncate">
+              {siteSubmit?.site_submit_name || `${siteSubmit?.property?.property_name || ''} - ${siteSubmit?.client?.client_name || ''}`}
+            </h3>
+            {siteSubmit?.property?.address && (
+              <p className="text-sm text-gray-300 truncate">
+                {siteSubmit.property.address}
+                {siteSubmit.property.city && `, ${siteSubmit.property.city}`}
+                {siteSubmit.property.state && `, ${siteSubmit.property.state}`}
+              </p>
+            )}
+            {siteSubmit?.property_unit && (
+              <p className="text-sm text-blue-300 truncate">
+                Unit: {siteSubmit.property_unit.property_unit_name}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Status Badge and portal buttons */}
         <div className="mt-3 flex items-center justify-between">
           {/* Status Badge - clickable dropdown when editable */}
           {siteSubmit ? (
@@ -509,53 +627,25 @@ export default function SiteSubmitSidebar({
             </span>
           )}
 
+          {/* Portal context: Copy Link and View Toggle text buttons */}
           <div className="flex items-center gap-2">
-            {/* Map context: Center on Pin and Delete */}
-            {context === 'map' && siteSubmit?.property?.latitude && siteSubmit?.property?.longitude && (
-              <button
-                onClick={handleCenterOnPin}
-                className="py-1.5 px-3 rounded-lg font-medium text-sm transition-colors flex items-center space-x-1.5 hover:opacity-90 bg-blue-500 text-white"
-                title="Center map on this location"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <span>Center</span>
-              </button>
-            )}
-
-            {context === 'map' && isEditable && siteSubmit && (
-              <button
-                onClick={handleDelete}
-                className="py-1.5 px-3 rounded-lg font-medium text-sm transition-colors flex items-center space-x-1.5 hover:opacity-90 bg-red-500 text-white"
-                title="Delete site submit"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                <span>Delete</span>
-              </button>
-            )}
-
-            {/* Portal context: Copy Link and View Toggle */}
             {context === 'portal' && isEditable && (
               <button
                 onClick={handleCopyLink}
-                className="py-1.5 px-3 rounded-lg font-medium text-sm transition-colors flex items-center space-x-1.5 hover:opacity-90"
+                className="py-1 px-2 rounded text-xs font-medium transition-colors flex items-center gap-1 hover:opacity-90"
                 style={{ backgroundColor: linkCopied ? '#059669' : '#3b82f6', color: '#ffffff' }}
                 title="Copy portal link to clipboard"
               >
                 {linkCopied ? (
                   <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
                     <span>Copied!</span>
                   </>
                 ) : (
                   <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
                     </svg>
                     <span>Copy Link</span>
@@ -567,22 +657,22 @@ export default function SiteSubmitSidebar({
             {context === 'portal' && (
               <button
                 onClick={handleToggleView}
-                className="py-1.5 px-3 rounded-lg font-medium text-sm transition-colors flex items-center space-x-2 hover:opacity-90"
+                className="py-1 px-2 rounded text-xs font-medium transition-colors flex items-center gap-1 hover:opacity-90"
                 style={{ backgroundColor: '#f97316', color: '#ffffff' }}
               >
                 {isMapView ? (
                   <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                     </svg>
-                    <span>View in Pipeline</span>
+                    <span>Pipeline</span>
                   </>
                 ) : (
                   <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
                     </svg>
-                    <span>View on Map</span>
+                    <span>Map</span>
                   </>
                 )}
               </button>
@@ -639,11 +729,6 @@ export default function SiteSubmitSidebar({
                 onUpdate={handleUpdate}
               />
             )}
-            {activeTab === 'email' && (
-              <SiteSubmitEmailTab
-                siteSubmit={siteSubmit}
-              />
-            )}
             {activeTab === 'chat' && (
               <PortalChatTab
                 siteSubmitId={siteSubmit.id}
@@ -670,6 +755,20 @@ export default function SiteSubmitSidebar({
           </>
         )}
       </div>
+
+      {/* Email Composer Modal */}
+      <EmailComposerModal
+        isOpen={showEmailComposer}
+        onClose={() => setShowEmailComposer(false)}
+        onSend={(emailData) => siteSubmit && sendEmail(siteSubmit.id, emailData)}
+        defaultSubject={emailDefaultData.subject}
+        defaultBody={emailDefaultData.body}
+        defaultRecipients={emailDefaultData.recipients}
+        templateData={emailDefaultData.templateData}
+        availableFiles={emailDefaultData.availableFiles}
+        sending={sendingEmail}
+        title={`Email: ${siteSubmit?.property?.property_name || 'Site Submit'}`}
+      />
     </div>
   );
 }
