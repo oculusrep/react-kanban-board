@@ -204,9 +204,19 @@ export default function PortalDetailSidebar({
 
         // Security check: Verify user has access to this client's site submits
         const siteSubmitClientId = (data as any).client_id;
-        const hasAccess = accessibleClients.some(client => client.id === siteSubmitClientId);
+        const accessibleClientIds = accessibleClients.map(c => c.id);
+        const hasAccess = siteSubmitClientId && accessibleClientIds.includes(siteSubmitClientId);
+
+        console.log('🔒 Portal access check:', {
+          siteSubmitId,
+          siteSubmitClientId,
+          accessibleClientIds,
+          hasAccess,
+          isInternalUser
+        });
 
         if (!hasAccess) {
+          console.warn('🚫 Access denied to site submit - client_id not in accessible clients');
           setError('You do not have access to this property');
           setSiteSubmit(null);
           setLoading(false);
