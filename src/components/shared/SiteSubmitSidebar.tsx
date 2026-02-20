@@ -488,11 +488,6 @@ export default function SiteSubmitSidebar({
             <h2 className="text-lg font-semibold text-white truncate">
               {siteSubmit?.property?.property_name || siteSubmit?.site_submit_name || 'Site Details'}
             </h2>
-            {siteSubmit?.property && (
-              <p className="text-sm text-gray-300 truncate">
-                Property: {siteSubmit.property.property_name}
-              </p>
-            )}
           </div>
 
           {/* Action icon buttons - matching old PinDetailsSlideout design */}
@@ -572,30 +567,23 @@ export default function SiteSubmitSidebar({
           </div>
         </div>
 
-        {/* Property image placeholder and address */}
-        <div className="mt-3 flex items-center gap-3">
-          <div className="w-16 h-16 bg-gray-600 rounded-lg flex items-center justify-center flex-shrink-0">
-            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-white font-medium truncate">
-              {siteSubmit?.site_submit_name || `${siteSubmit?.property?.property_name || ''} - ${siteSubmit?.client?.client_name || ''}`}
-            </h3>
-            {siteSubmit?.property?.address && (
-              <p className="text-sm text-gray-300 truncate">
-                {siteSubmit.property.address}
-                {siteSubmit.property.city && `, ${siteSubmit.property.city}`}
-                {siteSubmit.property.state && `, ${siteSubmit.property.state}`}
-              </p>
-            )}
-            {siteSubmit?.property_unit && (
-              <p className="text-sm text-blue-300 truncate">
-                Unit: {siteSubmit.property_unit.property_unit_name}
-              </p>
-            )}
-          </div>
+        {/* Address and unit info */}
+        <div className="mt-2">
+          <h3 className="text-white font-medium truncate">
+            {siteSubmit?.site_submit_name || `${siteSubmit?.property?.property_name || ''} - ${siteSubmit?.client?.client_name || ''}`}
+          </h3>
+          {siteSubmit?.property?.address && (
+            <p className="text-sm text-gray-300 truncate">
+              {siteSubmit.property.address}
+              {siteSubmit.property.city && `, ${siteSubmit.property.city}`}
+              {siteSubmit.property.state && `, ${siteSubmit.property.state}`}
+            </p>
+          )}
+          {siteSubmit?.property_unit && (
+            <p className="text-sm text-blue-300 truncate">
+              Unit: {siteSubmit.property_unit.property_unit_name}
+            </p>
+          )}
         </div>
 
         {/* Status Badge and portal buttons */}
