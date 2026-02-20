@@ -64,6 +64,7 @@ export default function ActivityBreakdownRow({
       if (isCallOrMeeting) {
         // Query the activity table for calls/meetings
         // Calls are marked with completed_call=true, meetings with meeting_held=true
+        // Use the proper foreign key reference for the contact join
         let query = supabase
           .from('activity')
           .select(`
@@ -74,7 +75,7 @@ export default function ActivityBreakdownRow({
             contact_id,
             completed_call,
             meeting_held,
-            contact:contact_id (
+            contact:contact!fk_activity_contact_id (
               first_name,
               last_name,
               company
@@ -96,7 +97,7 @@ export default function ActivityBreakdownRow({
         }
 
         if (userId) {
-          query = query.eq('created_by', userId);
+          query = query.eq('owner_id', userId);
         }
 
         const { data, error } = await query;
