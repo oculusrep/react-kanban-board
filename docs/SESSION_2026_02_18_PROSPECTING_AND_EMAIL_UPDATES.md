@@ -795,3 +795,81 @@ d6541c3e Fix email signature line spacing in Gmail
 0e13c1ae Fix email template layout for Broker Commentary and Property Header
 6409365a Add file selection UI for site submit email supporting documents
 ```
+
+---
+
+## 14. Portal Link Sharing & Security Fix (2026-02-20)
+
+### Portal Link Sharing Feature
+Added ability to copy shareable links to site submits and the "For Review" pipeline tab.
+
+#### Individual Site Submit Links
+Users can copy a direct link to any site submit from:
+1. **PortalDetailSidebar** - "Copy Link" button in the header (blue button next to "View in Pipeline/Map")
+2. **SiteSubmitDetailsPage** - "Copy Portal Link" button in the header for brokers
+
+Links format: `/portal/map?selected={siteSubmitId}`
+
+#### "For Review" Batch Link
+Brokers viewing the "For Review" tab in pipeline view can copy a link to share with clients:
+- Link format: `/portal/pipeline?stage=Submitted-Reviewing`
+- Only visible to internal users in broker mode when viewing the For Review tab
+- Useful for notifying clients about multiple new properties at once
+
+#### Files Modified
+- `src/components/portal/PortalDetailSidebar.tsx` - Added Copy Link button
+- `src/pages/SiteSubmitDetailsPage.tsx` - Added Copy Portal Link button
+- `src/pages/portal/PortalPipelinePage.tsx` - Added Copy For Review Link button
+
+### Security Fix: Portal Site Submit Access Control
+
+#### Problem
+Portal users could access site submits from clients they don't have access to via direct links. If a broker accidentally sent a link to the wrong client, that client could view private property information belonging to another client.
+
+#### Root Cause
+`PortalDetailSidebar.tsx` fetched site submits by ID only without validating that the current user has access to that client:
+```typescript
+// BEFORE (vulnerable)
+.eq('id', siteSubmitId)
+.single();
+```
+
+#### Solution
+Added client access validation after fetching the site submit:
+
+```typescript
+// Include client_id in the query
+.select(`
+  ...
+  client_id,
+  ...
+`)
+.eq('id', siteSubmitId)
+.single();
+
+// Security check: Verify user has access to this client's site submits
+const siteSubmitClientId = (data as any).client_id;
+const accessibleClientIds = accessibleClients.map(c => c.id);
+const hasAccess = siteSubmitClientId && accessibleClientIds.includes(siteSubmitClientId);
+
+if (!hasAccess) {
+  setError('You do not have access to this property');
+  setSiteSubmit(null);
+  return;
+}
+```
+
+#### How It Works
+1. Fetch site submit data including `client_id`
+2. Get list of `accessibleClients` from PortalContext (filtered by `portal_user_client_access` for portal users)
+3. Check if the site submit's `client_id` is in the user's accessible clients
+4. If not, show "You do not have access to this property" error instead of the data
+
+#### Files Modified
+- `src/components/portal/PortalDetailSidebar.tsx`
+
+### Commits
+```
+b38e7fac Fix security vulnerability: validate client access for site submit links
+04f23560 Add portal link sharing for site submits
+```
