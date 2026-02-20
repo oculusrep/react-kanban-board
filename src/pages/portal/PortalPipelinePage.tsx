@@ -793,46 +793,46 @@ export default function PortalPipelinePage() {
                 {siteSubmits.length}
               </span>
             </button>
-
-            {/* Other Stages Dropdown - Broker only */}
-            {showBrokerFeatures && otherStages.length > 0 && (
-              <div className="relative" ref={otherStagesDropdownRef}>
-                <button
-                  onClick={() => setOtherStagesDropdownOpen(!otherStagesDropdownOpen)}
-                  className={`px-3 py-2 text-sm font-medium rounded-md whitespace-nowrap transition-all border flex items-center gap-1.5 ${
-                    isViewingOtherStage
-                      ? 'bg-purple-50 text-purple-700 border-purple-200 shadow-sm'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300'
-                  }`}
-                >
-                  {isViewingOtherStage ? selectedOtherStageName : 'Other Stages'}
-                  <ChevronDownIcon className={`w-4 h-4 transition-transform ${otherStagesDropdownOpen ? 'rotate-180' : ''}`} />
-                </button>
-                {otherStagesDropdownOpen && (
-                  <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[180px] max-h-64 overflow-y-auto">
-                    {otherStages.map(stage => {
-                      const count = siteSubmits.filter(ss => ss.submit_stage_id === stage.id).length;
-                      return (
-                        <button
-                          key={stage.id}
-                          onClick={() => {
-                            handleStageChange(stage.id);
-                            setOtherStagesDropdownOpen(false);
-                          }}
-                          className={`w-full px-3 py-2 text-sm text-left hover:bg-gray-50 flex items-center justify-between ${
-                            selectedStageId === stage.id ? 'bg-purple-50 text-purple-700' : 'text-gray-700'
-                          }`}
-                        >
-                          <span>{stage.name}</span>
-                          <span className="text-xs text-gray-400">{count}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
+
+          {/* Other Stages Dropdown - Broker only - Outside overflow container */}
+          {showBrokerFeatures && otherStages.length > 0 && (
+            <div className="relative" ref={otherStagesDropdownRef}>
+              <button
+                onClick={() => setOtherStagesDropdownOpen(!otherStagesDropdownOpen)}
+                className={`px-3 py-2 text-sm font-medium rounded-md whitespace-nowrap transition-all border flex items-center gap-1.5 ${
+                  isViewingOtherStage
+                    ? 'bg-purple-50 text-purple-700 border-purple-200 shadow-sm'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300'
+                }`}
+              >
+                {isViewingOtherStage ? selectedOtherStageName : 'Other Stages'}
+                <ChevronDownIcon className={`w-4 h-4 transition-transform ${otherStagesDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {otherStagesDropdownOpen && (
+                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[180px] max-h-64 overflow-y-auto">
+                  {otherStages.map(stage => {
+                    const count = siteSubmits.filter(ss => ss.submit_stage_id === stage.id).length;
+                    return (
+                      <button
+                        key={stage.id}
+                        onClick={() => {
+                          handleStageChange(stage.id);
+                          setOtherStagesDropdownOpen(false);
+                        }}
+                        className={`w-full px-3 py-2 text-sm text-left hover:bg-gray-50 flex items-center justify-between ${
+                          selectedStageId === stage.id ? 'bg-purple-50 text-purple-700' : 'text-gray-700'
+                        }`}
+                      >
+                        <span>{stage.name}</span>
+                        <span className="text-xs text-gray-400">{count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Copy For Review Link Button - only for brokers viewing For Review tab */}
           {showBrokerFeatures && isViewingForReview && (
