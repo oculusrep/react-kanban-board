@@ -722,9 +722,9 @@ export default function PortalPipelinePage() {
     >
       {/* Filters Bar */}
       <div className="bg-white border-b border-gray-200 px-4 py-3">
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Stage Filter Tabs - Option C: Minimal Chips */}
-          <div className="flex items-center space-x-1.5 overflow-x-auto pb-1">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
             {/* Individual stage tabs in defined order, with Signed inserted after At Lease/PSA */}
             {STAGE_TAB_ORDER.map(stageName => {
               const stage = stages.find(s => s.name === stageName);
@@ -863,8 +863,11 @@ export default function PortalPipelinePage() {
             </button>
           )}
 
-          {/* Search - aligned to right */}
-          <div className="max-w-xs ml-auto">
+          {/* Spacer to push search to right */}
+          <div className="flex-1" />
+
+          {/* Search */}
+          <div className="max-w-xs">
             <div className="relative">
               <svg
                 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"

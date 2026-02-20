@@ -992,3 +992,125 @@ const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
 ```
 df7c7b31 Enhance email signature editor with font sizes, colors, and image upload; fix RLS policies
 ```
+
+---
+
+## 16. Broker Portal Stage Filtering & "Other Stages" Dropdown (2026-02-20)
+
+### Overview
+The Portal Pipeline page has two view modes: **Broker View** (internal users) and **Client View** (portal users). These views differ in which stages are visible and editable.
+
+### View Mode Differences
+
+#### Client View (Portal Users)
+- **Stage visibility:** Only sees a filtered subset of stages defined in `CLIENT_VISIBLE_STAGES`
+- **Editable:** No - status dropdown is read-only
+- **Stage tabs:** For Review, LOI, At Lease/PSA, Signed, Pass, Store Opened, All Sites
+
+```typescript
+const CLIENT_VISIBLE_STAGES = [
+  'Submitted-Reviewing', 'Pass', 'Use Declined', 'Use Conflict',
+  'Not Available', 'Lost / Killed', 'LOI', 'At Lease/PSA',
+  'Under Contract / Contingent', 'Store Opened', 'Unassigned Territory'
+];
+```
+
+#### Broker View (Internal Users)
+- **Stage visibility:** Sees ALL stages in the system
+- **Editable:** Yes - can change site submit stage via dropdown
+- **Stage tabs:** Same as client, plus "Other Stages" dropdown for hidden/additional stages
+- **Access control:** `showBrokerFeatures = isInternalUser && viewMode === 'broker'`
+
+### Stage Configuration
+
+#### Quick Filter Tab Order
+Stages shown as tabs, in order:
+```typescript
+const STAGE_TAB_ORDER = ['Submitted-Reviewing', 'LOI', 'At Lease/PSA', 'Pass', 'Store Opened'];
+```
+
+#### "Signed" Virtual Tab
+Groups multiple signed stages under one tab:
+```typescript
+const SIGNED_STAGE_NAMES = ['Under Contract / Contingent', 'Booked', 'Executed Payable'];
+```
+The "Signed" tab is inserted after "At Lease/PSA" in the UI.
+
+#### Hidden Stages (Client View)
+Stages filtered out for clients but visible to brokers:
+```typescript
+const HIDDEN_STAGE_NAMES = ['Use Conflict', 'Not Available', 'Use Declined', 'Lost / Killed'];
+```
+
+#### Display Name Mapping
+Custom display names for stage tabs:
+```typescript
+const STAGE_DISPLAY_NAMES: Record<string, string> = {
+  'Submitted-Reviewing': 'For Review',
+};
+```
+
+### "Other Stages" Dropdown (Broker Only)
+
+#### Purpose
+Allows brokers to filter the pipeline by stages that don't have dedicated quick filter tabs. This includes:
+- Pursuing Ownership
+- Pre-Prospecting
+- Prospecting
+- And any other stages not in `STAGE_TAB_ORDER` or `SIGNED_STAGE_NAMES`
+
+#### Implementation Details
+```typescript
+// Compute "other" stages (all stages not in tabs or Signed group)
+const tabStageNames = [...STAGE_TAB_ORDER, ...SIGNED_STAGE_NAMES];
+const otherStages = stages.filter(s => !tabStageNames.includes(s.name))
+  .sort((a, b) => a.name.localeCompare(b.name));
+
+// Track if viewing an "other" stage for button highlighting
+const isViewingOtherStage = selectedStageId && otherStages.some(s => s.id === selectedStageId);
+const selectedOtherStageName = isViewingOtherStage
+  ? otherStages.find(s => s.id === selectedStageId)?.name
+  : null;
+```
+
+#### UI Behavior
+- **Default state:** Button shows "Other Stages" with chevron icon
+- **Selected state:** Button shows the selected stage name, highlighted in purple
+- **Dropdown:** Click to open, shows all "other" stages with counts
+- **Click outside:** Closes dropdown automatically
+
+#### Positioning Fix
+The dropdown was initially positioned inside an `overflow-x-auto` container which clipped it. Solution: Move the dropdown outside the overflow container while keeping it in the same flex row.
+
+### "Copy For Review Link" Button (Broker Only)
+
+#### Purpose
+Allows brokers to copy a shareable link to the "For Review" tab to send to clients.
+
+#### When Visible
+Only shows when:
+- User is internal AND in broker view mode (`showBrokerFeatures`)
+- Currently viewing the "For Review" (Submitted-Reviewing) tab
+
+#### Link Format
+```
+{origin}/portal/pipeline?stage=Submitted-Reviewing
+```
+
+### Files Modified
+- `src/pages/portal/PortalPipelinePage.tsx` - Main implementation
+
+### Key Code Locations
+- **View mode check:** Line 121 - `const showBrokerFeatures = isInternalUser && viewMode === 'broker';`
+- **Stage constants:** Lines 57-78
+- **Other stages computation:** Lines 566-571
+- **Other stages dropdown UI:** Lines 798-835
+- **Copy For Review Link button:** Lines 837-864
+
+### Commits
+```
+a8095128 Add Other Stages dropdown to broker portal pipeline view
+8a2697c4 Fix Other Stages dropdown to show all non-tab stages for brokers
+1b549055 Remove debug logging for Other Stages dropdown
+75a8a02a Fix Other Stages dropdown being clipped by overflow container
+```
