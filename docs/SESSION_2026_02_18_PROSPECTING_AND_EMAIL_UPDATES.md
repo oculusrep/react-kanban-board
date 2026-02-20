@@ -873,3 +873,122 @@ if (!hasAccess) {
 b38e7fac Fix security vulnerability: validate client access for site submit links
 04f23560 Add portal link sharing for site submits
 ```
+
+---
+
+## 15. Email Signature Editor Enhancements & RLS Fix
+
+### Background
+The email signature editor was previously switched from ReactQuill to TipTap, but this change inadvertently removed several formatting features including color picker, font sizes, and image upload from local files. Additionally, a Row Level Security (RLS) policy issue was preventing users from saving signatures.
+
+### Changes Made
+
+#### A. Enhanced TipTap Signature Editor
+**File:** `src/pages/GmailSettingsPage.tsx`
+
+Restored and enhanced formatting capabilities:
+
+1. **Font Size Support** - Created custom TipTap `FontSize` extension:
+   - Sizes: Small (12px), Normal (14px), Medium (16px), Large (18px), XL (20px), XXL (24px)
+   - Dropdown selector in toolbar
+
+2. **Color Picker** - Added text color formatting:
+   - 10 preset colors (black, grays, navy, blue, green, red, purple, orange)
+   - Custom color input for any hex color
+   - Dropdown picker with visual swatches
+
+3. **Image Upload** - Restored local file upload:
+   - Upload from computer button (file picker)
+   - URL input option preserved
+   - Max file size: 500KB (appropriate for email signatures)
+   - Images converted to base64 for inline embedding
+
+4. **Additional Formatting Tools**:
+   - Strikethrough button
+   - Right-align button (left, center, right alignment)
+   - Clear formatting button
+   - Undo/Redo buttons
+
+#### B. RLS Policy Fix for user_email_signature Table
+**File:** `supabase/migrations/20260220_fix_email_signature_rls.sql`
+
+**Problem:** Users were getting 403 Forbidden errors when trying to save signatures. The original RLS policies used `user_id = auth.uid()`, but the `user_id` column references the `user` table's ID, not the Supabase auth user ID directly.
+
+**Solution:** Updated all RLS policies to properly lookup the user:
+
+```sql
+-- Before (incorrect):
+CREATE POLICY "Users can view own signatures"
+  ON user_email_signature FOR SELECT
+  USING (user_id = auth.uid());
+
+-- After (correct):
+CREATE POLICY "Users can view own signatures"
+  ON user_email_signature FOR SELECT
+  USING (
+    user_id IN (
+      SELECT id FROM "user" WHERE auth_user_id = auth.uid()
+    )
+  );
+```
+
+This pattern was applied to all four policies: SELECT, INSERT, UPDATE, and DELETE.
+
+### Technical Details
+
+#### Custom FontSize Extension
+```typescript
+const FontSize = Extension.create({
+  name: 'fontSize',
+  addGlobalAttributes() {
+    return [{
+      types: ['textStyle'],
+      attributes: {
+        fontSize: {
+          default: null,
+          parseHTML: element => element.style.fontSize?.replace(/['"]+/g, ''),
+          renderHTML: attributes => {
+            if (!attributes.fontSize) return {};
+            return { style: `font-size: ${attributes.fontSize}` };
+          },
+        },
+      },
+    }];
+  },
+  addCommands() {
+    return {
+      setFontSize: (fontSize: string) => ({ chain }) =>
+        chain().setMark('textStyle', { fontSize }).run(),
+      unsetFontSize: () => ({ chain }) =>
+        chain().setMark('textStyle', { fontSize: null }).removeEmptyTextStyle().run(),
+    };
+  },
+});
+```
+
+#### Image Upload Handler
+```typescript
+const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  if (file.size > 500 * 1024) {
+    alert('Image is too large. Please use an image under 500KB for email signatures.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target?.result as string;
+    editor.chain().focus().setImage({ src: dataUrl }).run();
+  };
+  reader.readAsDataURL(file);
+};
+```
+
+### Files Modified
+- `src/pages/GmailSettingsPage.tsx` - Enhanced signature editor toolbar
+- `supabase/migrations/20260220_fix_email_signature_rls.sql` - New migration for RLS fix
+
+### Commits
+```
+df7c7b31 Enhance email signature editor with font sizes, colors, and image upload; fix RLS policies
+```

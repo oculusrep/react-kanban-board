@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { trackPortalLogout } from '../../hooks/usePortalActivityTracker';
+import { useClientSearch, ClientSearchResult } from '../../hooks/useClientSearch';
 
 interface PortalNavbarProps {
   clientLogo?: string | null;
@@ -44,6 +45,13 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
   const menuRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const clientMenuRef = useRef<HTMLDivElement>(null);
+
+  // Client search state (for internal users)
+  const [clientSearchQuery, setClientSearchQuery] = useState('');
+  const [clientSearchResults, setClientSearchResults] = useState<ClientSearchResult[]>([]);
+  const [clientSearchIndex, setClientSearchIndex] = useState(-1);
+  const clientInputRef = useRef<HTMLInputElement>(null);
+  const { searchActiveClients, getAllActiveClients, loading: clientSearchLoading } = useClientSearch();
 
   // Determine current view from URL
   const currentView = location.pathname.includes('/portal/pipeline') ? 'Pipeline' : 'Map';
@@ -94,6 +102,7 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
       }
       if (clientMenuRef.current && !clientMenuRef.current.contains(event.target as Node)) {
         setClientMenuOpen(false);
+        setClientSearchIndex(-1);
       }
     }
 
@@ -101,10 +110,93 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Sync client search query with selected client
+  useEffect(() => {
+    if (selectedClientId) {
+      const selectedClient = accessibleClients.find(c => c.id === selectedClientId);
+      if (selectedClient) {
+        setClientSearchQuery(selectedClient.client_name);
+      }
+    } else {
+      setClientSearchQuery('');
+    }
+  }, [selectedClientId, accessibleClients]);
+
+  // Handle client search - debounced
+  useEffect(() => {
+    if (!clientMenuOpen) return;
+
+    if (!clientSearchQuery.trim()) {
+      // Show all active clients when no query
+      getAllActiveClients().then(setClientSearchResults);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      searchActiveClients(clientSearchQuery).then(setClientSearchResults);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [clientSearchQuery, clientMenuOpen, searchActiveClients, getAllActiveClients]);
+
   // Handle client selection
   const handleSelectClient = (clientId: string | null) => {
     setSelectedClientId(clientId);
     setClientMenuOpen(false);
+    setClientSearchIndex(-1);
+    if (!clientId) {
+      setClientSearchQuery('');
+    }
+  };
+
+  // Handle client search input change
+  const handleClientSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setClientSearchQuery(value);
+    setClientSearchIndex(-1);
+    if (!clientMenuOpen) {
+      setClientMenuOpen(true);
+    }
+  };
+
+  // Handle client search keyboard navigation
+  const handleClientSearchKeyDown = (e: React.KeyboardEvent) => {
+    // +1 for "All Clients" option at index 0
+    const totalOptions = clientSearchResults.length + 1;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setClientSearchIndex(prev => prev < totalOptions - 1 ? prev + 1 : prev);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setClientSearchIndex(prev => prev > -1 ? prev - 1 : -1);
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (clientSearchIndex === 0) {
+          // "All Clients" selected
+          handleSelectClient(null);
+        } else if (clientSearchIndex > 0 && clientSearchResults[clientSearchIndex - 1]) {
+          handleSelectClient(clientSearchResults[clientSearchIndex - 1].id);
+        }
+        break;
+      case 'Escape':
+        setClientMenuOpen(false);
+        setClientSearchIndex(-1);
+        clientInputRef.current?.blur();
+        break;
+    }
+  };
+
+  // Handle client search input focus
+  const handleClientSearchFocus = () => {
+    setClientMenuOpen(true);
+    clientInputRef.current?.select();
+    if (!clientSearchQuery.trim()) {
+      getAllActiveClients().then(setClientSearchResults);
+    }
   };
 
   const handleSignOut = async () => {
@@ -296,46 +388,49 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
 
         {/* Right side - Client logo and user menu */}
         <div className="flex items-center space-x-4">
-          {/* Client Logo/Switcher */}
+          {/* Client Search/Switcher */}
           {isInternalPortalUser ? (
-            // Internal users get a dropdown to switch clients
+            // Internal users get a searchable client selector
             <div className="relative" ref={clientMenuRef}>
-              <button
-                onClick={() => setClientMenuOpen(!clientMenuOpen)}
-                className="flex items-center space-x-2 px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
-              >
-                {clientLogo ? (
-                  <img
-                    src={clientLogo}
-                    alt={clientName || 'Client'}
-                    className="h-7 w-auto max-w-[100px] object-contain"
-                  />
-                ) : (
-                  <span
-                    className="text-sm font-medium"
-                    style={{ color: '#ffffff' }}
-                  >
-                    {clientName || 'All Clients'}
-                  </span>
-                )}
-                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              <div className="relative">
+                {/* Search icon */}
+                <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/60 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-              </button>
+                <input
+                  ref={clientInputRef}
+                  type="text"
+                  value={clientSearchQuery}
+                  onChange={handleClientSearchChange}
+                  onFocus={handleClientSearchFocus}
+                  onKeyDown={handleClientSearchKeyDown}
+                  placeholder="Search clients..."
+                  className="w-52 pl-8 pr-8 py-1.5 text-sm rounded-lg border-0 bg-white/20 text-white placeholder-white/60 focus:bg-white focus:text-gray-900 focus:placeholder-gray-400 focus:ring-2 focus:ring-white/50 transition-colors"
+                />
+                {/* Clear button */}
+                {(selectedClientId || clientSearchQuery) && (
+                  <button
+                    type="button"
+                    onClick={() => handleSelectClient(null)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-white/60 hover:text-white focus:outline-none"
+                    aria-label="Clear selection"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
 
-              {/* Client Dropdown */}
+              {/* Client Search Dropdown */}
               {clientMenuOpen && (
-                <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg py-1 z-[10010] max-h-80 overflow-y-auto">
-                  <div className="px-4 py-2 border-b border-gray-200">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Switch Client</p>
-                  </div>
-
+                <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-lg py-1 z-[10010] max-h-80 overflow-y-auto">
                   {/* All Clients option */}
                   <button
                     onClick={() => handleSelectClient(null)}
                     className={`w-full px-4 py-2 text-left flex items-center space-x-3 hover:bg-gray-100 ${
-                      !selectedClientId ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
-                    }`}
+                      clientSearchIndex === 0 ? 'bg-gray-100' : ''
+                    } ${!selectedClientId ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}`}
                   >
                     <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
                       <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -355,38 +450,39 @@ export default function PortalNavbar({ clientLogo, clientName }: PortalNavbarPro
 
                   <div className="border-t border-gray-200 my-1"></div>
 
-                  {/* Client list */}
-                  {accessibleClients.map((client) => (
-                    <button
-                      key={client.id}
-                      onClick={() => handleSelectClient(client.id)}
-                      className={`w-full px-4 py-2 text-left flex items-center space-x-3 hover:bg-gray-100 ${
-                        selectedClientId === client.id ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
-                      }`}
-                    >
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
-                        {client.logo_url ? (
-                          <img
-                            src={client.logo_url}
-                            alt={client.client_name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
+                  {/* Search Results */}
+                  {clientSearchLoading ? (
+                    <div className="px-4 py-2 text-sm text-gray-500">Loading...</div>
+                  ) : clientSearchResults.length > 0 ? (
+                    clientSearchResults.map((client, index) => (
+                      <button
+                        key={client.id}
+                        onClick={() => handleSelectClient(client.id)}
+                        className={`w-full px-4 py-2 text-left flex items-center space-x-3 hover:bg-gray-100 ${
+                          clientSearchIndex === index + 1 ? 'bg-gray-100' : ''
+                        } ${selectedClientId === client.id ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}`}
+                      >
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
                           <span className="text-xs font-medium text-gray-500">
                             {client.client_name.substring(0, 2).toUpperCase()}
                           </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{client.client_name}</p>
+                          {client.type && (
+                            <p className="text-xs text-gray-500">{client.type}</p>
+                          )}
+                        </div>
+                        {selectedClientId === client.id && (
+                          <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
                         )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{client.client_name}</p>
-                      </div>
-                      {selectedClientId === client.id && (
-                        <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                    </button>
-                  ))}
+                      </button>
+                    ))
+                  ) : clientSearchQuery.trim().length > 0 ? (
+                    <div className="px-4 py-2 text-sm text-gray-500">No active clients found</div>
+                  ) : null}
                 </div>
               )}
             </div>
