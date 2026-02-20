@@ -74,6 +74,79 @@ class EditorErrorBoundary extends Component<{ children: ReactNode; fallback?: Re
 // Lazy load ReactQuill for email compose
 const ReactQuill = lazy(() => import('react-quill'));
 
+// Email recipient input component for To/Cc/Bcc fields
+function EmailRecipientInput({
+  recipients,
+  onChange,
+  placeholder = 'Enter email...'
+}: {
+  recipients: string[];
+  onChange: (emails: string[]) => void;
+  placeholder?: string;
+}) {
+  const [inputValue, setInputValue] = useState('');
+
+  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  const addEmail = (email: string) => {
+    const trimmed = email.trim().toLowerCase();
+    if (trimmed && isValidEmail(trimmed) && !recipients.includes(trimmed)) {
+      onChange([...recipients, trimmed]);
+    }
+    setInputValue('');
+  };
+
+  const removeEmail = (email: string) => {
+    onChange(recipients.filter(e => e !== email));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',' || e.key === ' ' || e.key === 'Tab') {
+      if (inputValue.trim()) {
+        e.preventDefault();
+        addEmail(inputValue);
+      }
+    } else if (e.key === 'Backspace' && !inputValue && recipients.length > 0) {
+      removeEmail(recipients[recipients.length - 1]);
+    }
+  };
+
+  const handleBlur = () => {
+    if (inputValue.trim()) {
+      addEmail(inputValue);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap gap-1 min-h-[28px] p-1 border border-gray-300 rounded-lg bg-white focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500">
+      {recipients.map((email) => (
+        <span
+          key={email}
+          className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs"
+        >
+          {email}
+          <button
+            type="button"
+            onClick={() => removeEmail(email)}
+            className="text-blue-600 hover:text-blue-800"
+          >
+            <XMarkIcon className="w-3 h-3" />
+          </button>
+        </span>
+      ))}
+      <input
+        type="email"
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onBlur={handleBlur}
+        placeholder={recipients.length === 0 ? placeholder : ''}
+        className="flex-1 min-w-[120px] text-xs border-0 outline-none focus:ring-0 p-0.5"
+      />
+    </div>
+  );
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -321,6 +394,9 @@ export default function ProspectingWorkspace() {
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailSignature, setEmailSignature] = useState<EmailSignature | null>(null);
   const [emailAttachments, setEmailAttachments] = useState<EmailAttachment[]>([]);
+  const [emailAdditionalTo, setEmailAdditionalTo] = useState<string[]>([]);
+  const [emailCc, setEmailCc] = useState<string[]>([]);
+  const [emailBcc, setEmailBcc] = useState<string[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Follow-up modal
@@ -1381,12 +1457,17 @@ export default function ProspectingWorkspace() {
       // Wrap in a container div with base styling
       styledEmailBody = `<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.4; color: #333;">${styledEmailBody}</div>`;
 
+      // Build recipient lists
+      const toRecipients = [selectedContact.email, ...emailAdditionalTo].filter(Boolean);
+
       // Send via Gmail
       const response = await supabase.functions.invoke('hunter-send-outreach', {
         body: {
           outreach_id: outreach.id,
           user_email: user.email,
-          to: [selectedContact.email],
+          to: toRecipients,
+          cc: emailCc.length > 0 ? emailCc : undefined,
+          bcc: emailBcc.length > 0 ? emailBcc : undefined,
           subject: emailSubject,
           body_html: styledEmailBody,
           body_text: emailBody.replace(/<[^>]*>/g, ''),
@@ -1413,6 +1494,9 @@ export default function ProspectingWorkspace() {
       setEmailBody('');
       setSelectedTemplate('');
       setEmailAttachments([]);
+      setEmailAdditionalTo([]);
+      setEmailCc([]);
+      setEmailBcc([]);
     } catch (err) {
       console.error('Error sending email:', err);
       alert(`Failed to send email: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -3192,6 +3276,57 @@ export default function ProspectingWorkspace() {
 
             {/* Modal Body - More compact spacing */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {/* Recipients section - collapsible */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-3 py-2 bg-gray-50 text-xs font-medium text-gray-600 flex items-center justify-between">
+                  <span>Recipients</span>
+                  <span className="text-gray-400">
+                    {emailAdditionalTo.length + emailCc.length + emailBcc.length > 0 &&
+                      `+${emailAdditionalTo.length + emailCc.length + emailBcc.length} additional`}
+                  </span>
+                </div>
+                <div className="p-3 space-y-2 text-sm">
+                  {/* Primary To (readonly) */}
+                  <div className="flex items-center gap-2">
+                    <span className="w-12 text-gray-500 text-xs font-medium">To:</span>
+                    <span className="flex-1 text-gray-700">{selectedContact.email}</span>
+                  </div>
+                  {/* Additional To */}
+                  <div className="flex items-start gap-2">
+                    <span className="w-12 text-gray-500 text-xs font-medium pt-1.5">Add To:</span>
+                    <div className="flex-1">
+                      <EmailRecipientInput
+                        recipients={emailAdditionalTo}
+                        onChange={setEmailAdditionalTo}
+                        placeholder="Add more recipients..."
+                      />
+                    </div>
+                  </div>
+                  {/* CC */}
+                  <div className="flex items-start gap-2">
+                    <span className="w-12 text-gray-500 text-xs font-medium pt-1.5">Cc:</span>
+                    <div className="flex-1">
+                      <EmailRecipientInput
+                        recipients={emailCc}
+                        onChange={setEmailCc}
+                        placeholder="Cc recipients..."
+                      />
+                    </div>
+                  </div>
+                  {/* BCC */}
+                  <div className="flex items-start gap-2">
+                    <span className="w-12 text-gray-500 text-xs font-medium pt-1.5">Bcc:</span>
+                    <div className="flex-1">
+                      <EmailRecipientInput
+                        recipients={emailBcc}
+                        onChange={setEmailBcc}
+                        placeholder="Bcc recipients..."
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Template selector + Settings link */}
               <div className="flex gap-2">
                 {emailTemplates.length > 0 ? (

@@ -25,7 +25,8 @@ interface OutreachRequest {
   outreach_id: string;       // ID of the hunter_outreach record
   user_email: string;        // Email of the OVIS user whose Gmail to use
   to: string[];              // Recipient emails
-  cc?: string[];
+  cc?: string[];             // CC recipients
+  bcc?: string[];            // BCC recipients
   subject: string;
   body_html: string;
   body_text?: string;
@@ -139,6 +140,7 @@ serve(async (req) => {
     const emailOptions: SendEmailOptions = {
       to: request.to,
       cc: request.cc,
+      bcc: request.bcc,
       subject: request.subject,
       bodyHtml: request.body_html,
       bodyText: request.body_text,

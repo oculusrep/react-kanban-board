@@ -91,7 +91,11 @@ export function useDropboxFiles(
 
     try {
       // Query dropbox_mapping table to get the folder path
+      // First try direct query, then fall back to RPC function if RLS blocks it
       console.log('🔍 Querying dropbox_mapping for:', { entityType, entityId });
+      let path: string | null = null;
+
+      // Try direct query first
       const { data: mapping, error: mappingError } = await supabase
         .from('dropbox_mapping')
         .select('dropbox_folder_path')
@@ -101,22 +105,39 @@ export function useDropboxFiles(
 
       console.log('🔍 Mapping result:', { mapping, mappingError });
 
-      if (mappingError || !mapping) {
-        // Suppress 406 errors (RLS policy issues) and PGRST116 (not found) errors
-        if (mappingError) {
-          // Check if it's a 406 error by examining the error message or status
-          const is406Error = mappingError.message?.includes('406') ||
-                            mappingError.code === '406' ||
-                            mappingError.hint?.includes('Row-level security');
-          const is404Error = mappingError.code === 'PGRST116';
+      if (mapping?.dropbox_folder_path) {
+        path = mapping.dropbox_folder_path;
+      } else if (mappingError) {
+        // Check if it's an RLS issue - try the security definer function
+        const is406Error = mappingError.message?.includes('406') ||
+                          mappingError.code === '406' ||
+                          mappingError.hint?.includes('Row-level security');
 
-          if (!is406Error && !is404Error) {
-            console.log('🔍 Dropbox mapping error:', mappingError);
+        if (is406Error) {
+          console.log('🔍 RLS blocked direct query, trying RPC function...');
+          const { data: rpcPath, error: rpcError } = await supabase.rpc(
+            'get_dropbox_folder_path',
+            { p_entity_type: entityType, p_entity_id: entityId }
+          );
+
+          if (rpcPath && !rpcError) {
+            path = rpcPath;
+            console.log('🔍 Got path via RPC:', path);
           } else {
-            console.log('🔍 No mapping found or access denied (suppressing error)');
+            console.log('🔍 RPC also failed:', rpcError);
           }
         }
-        // Only update error state if not a silent refresh or if transitioning from no-error to error
+      }
+
+      if (!path) {
+        // No path found
+        const is404Error = mappingError?.code === 'PGRST116';
+        if (mappingError && !is404Error) {
+          console.log('🔍 Dropbox mapping error:', mappingError);
+        } else {
+          console.log('🔍 No mapping found');
+        }
+        // Only update error state if not a silent refresh
         if (!silent) {
           setError('No Dropbox folder linked to this record');
         }
@@ -126,7 +147,7 @@ export function useDropboxFiles(
         return;
       }
 
-      const path = mapping.dropbox_folder_path;
+      setFolderPath(path);
       setFolderPath(path);
       console.log('🔍 Fetching files from path:', path);
 
