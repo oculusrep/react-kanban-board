@@ -393,10 +393,12 @@ export default function PortalPipelinePage() {
     }
   }, [selectedSiteSubmitId, loading, siteSubmits]);
 
-  // Reset scroll tracking when selection changes via URL
+  // Sync selection state with URL params (handles navigation from map to pipeline)
   useEffect(() => {
     const selectedFromUrl = searchParams.get('selected');
-    if (selectedFromUrl && selectedFromUrl !== selectedSiteSubmitId) {
+    if (selectedFromUrl !== selectedSiteSubmitId) {
+      setSelectedSiteSubmitId(selectedFromUrl);
+      setSidebarOpen(!!selectedFromUrl);
       hasScrolledToSelected.current = false;
     }
   }, [searchParams]);
