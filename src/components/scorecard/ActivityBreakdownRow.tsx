@@ -65,84 +65,12 @@ export default function ActivityBreakdownRow({
       const isCallOrMeeting = activityTypes.includes('call') || activityTypes.includes('meeting');
 
       if (isCallOrMeeting) {
-        // Query the activity table for calls/meetings
-        // The view uses: JOIN activity_type ON a.activity_type_id = atype.id
-        // And filters: WHERE atype.name = 'Call' AND a.completed_call = true (for calls)
-        // Or: WHERE atype.name = 'Meeting' (for meetings)
-        let query = supabase
-          .from('activity')
-          .select(`
-            id,
-            subject,
-            description,
-            created_at,
-            activity_date,
-            contact_id,
-            completed_call,
-            meeting_held,
-            user_id,
-            owner_id,
-            activity_type:activity_type_id (
-              id,
-              name
-            ),
-            contact:contact!fk_activity_contact_id (
-              first_name,
-              last_name,
-              company
-            )
-          `)
-          .gte('activity_date', startDate)
-          .lte('activity_date', endDate)
-          .order('activity_date', { ascending: false })
-          .limit(50);
-
-        if (userId) {
-          // View uses COALESCE(a.user_id, a.owner_id)
-          query = query.or(`user_id.eq.${userId},owner_id.eq.${userId}`);
-        }
-
-        const { data, error } = await query;
-
-        if (error) {
-          console.error('Activity query error:', error);
-          throw error;
-        }
-
-        // Filter in JavaScript to match the view's logic exactly
-        const filtered = (data || []).filter((item: any) => {
-          const typeName = item.activity_type?.name;
-
-          if (activityTypes.includes('call') && typeName === 'Call' && item.completed_call === true) {
-            return true;
-          }
-          if (activityTypes.includes('meeting') && typeName === 'Meeting') {
-            return true;
-          }
-          return false;
-        });
-
-        transformed = filtered.map((item: any) => {
-          let contactName = 'Unknown';
-          let companyName = null;
-
-          if (item.contact) {
-            contactName = `${item.contact.first_name || ''} ${item.contact.last_name || ''}`.trim() || 'Unknown';
-            companyName = item.contact.company;
-          }
-
-          const typeName = item.activity_type?.name;
-          return {
-            id: item.id,
-            activity_type: typeName === 'Call' ? 'call' : 'meeting',
-            notes: item.description,
-            email_subject: item.subject,
-            created_at: item.activity_date || item.created_at,
-            contact_id: item.contact_id,
-            contact_name: contactName,
-            company_name: companyName
-          };
-        });
+        // TODO: Fix activity table query - currently failing with join errors
+        // The view uses activity_type join and completed_call/meeting_held flags
+        // For now, show message that this feature is under development
+        // See: supabase/migrations/20260217_create_daily_metrics_view.sql for view logic
+        console.log('Call/meeting activity expansion not yet implemented - needs activity_type join fix');
+        transformed = [];
       } else {
         // Query prospecting_activity for other outreach types
         // The view uses: COALESCE(pa.activity_date, DATE(pa.created_at AT TIME ZONE 'America/New_York'))
