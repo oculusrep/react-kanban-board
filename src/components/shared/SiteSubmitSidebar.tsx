@@ -178,8 +178,14 @@ export default function SiteSubmitSidebar({
     fetchStages();
   }, [context, isEditable]);
 
+  // Stable reference for accessibleClients IDs (to avoid infinite re-fetching)
+  const accessibleClientIds = accessibleClients.map(c => c.id).join(',');
+
   // Fetch site submit data
   useEffect(() => {
+    // Track if the effect is still active (to prevent state updates after unmount)
+    let isMounted = true;
+
     async function fetchSiteSubmit() {
       if (!siteSubmitId) {
         setSiteSubmit(null);
@@ -255,13 +261,14 @@ export default function SiteSubmitSidebar({
           .eq('id', siteSubmitId)
           .single();
 
+        if (!isMounted) return;
         if (fetchError) throw fetchError;
 
         // For portal context, verify access if accessibleClients is provided
         if (context === 'portal' && accessibleClients.length > 0) {
           const siteSubmitClientId = (data as any).client_id;
-          const accessibleClientIds = accessibleClients.map(c => c.id);
-          const hasAccess = siteSubmitClientId && accessibleClientIds.includes(siteSubmitClientId);
+          const clientIds = accessibleClients.map(c => c.id);
+          const hasAccess = siteSubmitClientId && clientIds.includes(siteSubmitClientId);
 
           if (!hasAccess) {
             setError('You do not have access to this property');
@@ -277,6 +284,8 @@ export default function SiteSubmitSidebar({
           .select('id')
           .eq('site_submit_id', siteSubmitId)
           .maybeSingle();
+
+        if (!isMounted) return;
 
         // Combine site submit data with deal_id
         const siteSubmitData = {
@@ -297,21 +306,28 @@ export default function SiteSubmitSidebar({
           }
         }
       } catch (err) {
+        if (!isMounted) return;
         console.error('Error fetching site submit:', err);
         setError('Failed to load site submit details');
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
 
     if (isOpen && siteSubmitId) {
       // For portal, wait for accessibleClients to be loaded
-      if (context === 'portal' && accessibleClients.length === 0) {
+      if (context === 'portal' && accessibleClientIds === '') {
         return;
       }
       fetchSiteSubmit();
     }
-  }, [siteSubmitId, isOpen, siteSubmitRefreshTrigger, context, accessibleClients]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [siteSubmitId, isOpen, siteSubmitRefreshTrigger, context, accessibleClientIds]);
 
   // Handle view toggle (portal context)
   const handleToggleView = () => {
