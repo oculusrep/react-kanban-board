@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
@@ -9,6 +9,7 @@ import {
   CheckIcon,
   XMarkIcon,
   PhotoIcon,
+  ArrowUpTrayIcon,
 } from '@heroicons/react/24/outline';
 import { useEditor, EditorContent, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -18,6 +19,44 @@ import { Color } from '@tiptap/extension-color';
 import { Underline } from '@tiptap/extension-underline';
 import { TextAlign } from '@tiptap/extension-text-align';
 import Image from '@tiptap/extension-image';
+import { Extension } from '@tiptap/core';
+
+// Custom FontSize extension for TipTap
+const FontSize = Extension.create({
+  name: 'fontSize',
+  addOptions() {
+    return {
+      types: ['textStyle'],
+    };
+  },
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: {
+          fontSize: {
+            default: null,
+            parseHTML: element => element.style.fontSize?.replace(/['"]+/g, ''),
+            renderHTML: attributes => {
+              if (!attributes.fontSize) return {};
+              return { style: `font-size: ${attributes.fontSize}` };
+            },
+          },
+        },
+      },
+    ];
+  },
+  addCommands() {
+    return {
+      setFontSize: (fontSize: string) => ({ chain }: any) => {
+        return chain().setMark('textStyle', { fontSize }).run();
+      },
+      unsetFontSize: () => ({ chain }: any) => {
+        return chain().setMark('textStyle', { fontSize: null }).removeEmptyTextStyle().run();
+      },
+    };
+  },
+});
 
 interface GmailConnection {
   id: string;
@@ -54,19 +93,113 @@ interface EmailSignature {
   updated_at: string;
 }
 
+// Font size options
+const FONT_SIZES = [
+  { label: 'Small', value: '12px' },
+  { label: 'Normal', value: '14px' },
+  { label: 'Medium', value: '16px' },
+  { label: 'Large', value: '18px' },
+  { label: 'X-Large', value: '24px' },
+];
+
+// Color presets for quick selection
+const COLOR_PRESETS = [
+  '#000000', // Black
+  '#374151', // Gray-700
+  '#1f2937', // Gray-800
+  '#002147', // Oculus Dark Blue
+  '#4A6B94', // Oculus Steel Blue
+  '#1d4ed8', // Blue-700
+  '#059669', // Green-600
+  '#dc2626', // Red-600
+  '#9333ea', // Purple-600
+  '#ea580c', // Orange-600
+];
+
 // TipTap Toolbar Component for Signature Editor
 const SignatureMenuBar = ({ editor }: { editor: Editor | null }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [customColor, setCustomColor] = useState('#000000');
+  const colorPickerRef = useRef<HTMLDivElement>(null);
+
+  // Close color picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (colorPickerRef.current && !colorPickerRef.current.contains(event.target as Node)) {
+        setShowColorPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   if (!editor) return null;
 
-  const addImage = () => {
+  const addImageFromUrl = () => {
     const url = window.prompt('Enter image URL:');
     if (url) {
       editor.chain().focus().setImage({ src: url }).run();
     }
   };
 
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Check file size (max 500KB for email signatures)
+    if (file.size > 500 * 1024) {
+      alert('Image is too large. Please use an image under 500KB for email signatures.');
+      return;
+    }
+
+    // Convert to base64 data URL
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      editor.chain().focus().setImage({ src: dataUrl }).run();
+    };
+    reader.readAsDataURL(file);
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const setColor = (color: string) => {
+    editor.chain().focus().setColor(color).run();
+    setShowColorPicker(false);
+  };
+
+  const currentColor = editor.getAttributes('textStyle').color || '#000000';
+
   return (
-    <div className="flex flex-wrap gap-1 p-2 border-b border-gray-200 bg-gray-50">
+    <div className="flex flex-wrap items-center gap-1 p-2 border-b border-gray-200 bg-gray-50">
+      {/* Font Size Dropdown */}
+      <select
+        onChange={(e) => {
+          if (e.target.value) {
+            (editor.commands as any).setFontSize(e.target.value);
+          } else {
+            (editor.commands as any).unsetFontSize();
+          }
+        }}
+        className="px-2 py-1 text-sm border border-gray-300 rounded bg-white hover:bg-gray-50 focus:ring-1 focus:ring-blue-500"
+        title="Font Size"
+        defaultValue=""
+      >
+        <option value="">Size</option>
+        {FONT_SIZES.map((size) => (
+          <option key={size.value} value={size.value}>
+            {size.label}
+          </option>
+        ))}
+      </select>
+
+      <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
+
+      {/* Text Formatting */}
       <button
         type="button"
         onClick={() => editor.chain().focus().toggleBold().run()}
@@ -91,9 +224,67 @@ const SignatureMenuBar = ({ editor }: { editor: Editor | null }) => {
       >
         <u>U</u>
       </button>
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleStrike().run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive('strike') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Strikethrough"
+      >
+        <s>S</s>
+      </button>
 
       <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
 
+      {/* Color Picker */}
+      <div className="relative" ref={colorPickerRef}>
+        <button
+          type="button"
+          onClick={() => setShowColorPicker(!showColorPicker)}
+          className="px-2 py-1 text-sm rounded hover:bg-gray-200 flex items-center gap-1"
+          title="Text Color"
+        >
+          <span className="font-bold">A</span>
+          <div
+            className="w-4 h-1 rounded"
+            style={{ backgroundColor: currentColor }}
+          />
+        </button>
+        {showColorPicker && (
+          <div className="absolute top-full left-0 mt-1 p-2 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[200px]">
+            <div className="grid grid-cols-5 gap-1 mb-2">
+              {COLOR_PRESETS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => setColor(color)}
+                  className={`w-6 h-6 rounded border ${currentColor === color ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-300'}`}
+                  style={{ backgroundColor: color }}
+                  title={color}
+                />
+              ))}
+            </div>
+            <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
+              <input
+                type="color"
+                value={customColor}
+                onChange={(e) => setCustomColor(e.target.value)}
+                className="w-8 h-8 p-0 border-0 rounded cursor-pointer"
+              />
+              <button
+                type="button"
+                onClick={() => setColor(customColor)}
+                className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
+
+      {/* Lists */}
       <button
         type="button"
         onClick={() => editor.chain().focus().toggleBulletList().run()}
@@ -113,13 +304,16 @@ const SignatureMenuBar = ({ editor }: { editor: Editor | null }) => {
 
       <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
 
+      {/* Alignment */}
       <button
         type="button"
         onClick={() => editor.chain().focus().setTextAlign('left').run()}
         className={`px-2 py-1 text-sm rounded ${editor.isActive({ textAlign: 'left' }) ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
         title="Align Left"
       >
-        ≡
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h8a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h8a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+        </svg>
       </button>
       <button
         type="button"
@@ -127,31 +321,74 @@ const SignatureMenuBar = ({ editor }: { editor: Editor | null }) => {
         className={`px-2 py-1 text-sm rounded ${editor.isActive({ textAlign: 'center' }) ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
         title="Align Center"
       >
-        ≡
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm2 4a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1zm-2 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm2 4a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clipRule="evenodd" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().setTextAlign('right').run()}
+        className={`px-2 py-1 text-sm rounded ${editor.isActive({ textAlign: 'right' }) ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
+        title="Align Right"
+      >
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm4 4a1 1 0 011-1h8a1 1 0 110 2H8a1 1 0 01-1-1zm-4 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm4 4a1 1 0 011-1h8a1 1 0 110 2H8a1 1 0 01-1-1z" clipRule="evenodd" />
+        </svg>
       </button>
 
       <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
 
+      {/* Link */}
       <button
         type="button"
         onClick={() => {
-          const url = window.prompt('Enter link URL:');
-          if (url) {
+          const previousUrl = editor.getAttributes('link').href;
+          const url = window.prompt('Enter link URL:', previousUrl || 'https://');
+          if (url === null) return; // Cancelled
+          if (url === '') {
+            editor.chain().focus().unsetLink().run();
+          } else {
             editor.chain().focus().setLink({ href: url }).run();
           }
         }}
         className={`px-2 py-1 text-sm rounded ${editor.isActive('link') ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-200'}`}
-        title="Add Link"
+        title="Add/Edit Link"
       >
         🔗
       </button>
+
+      {/* Image - URL */}
       <button
         type="button"
-        onClick={addImage}
+        onClick={addImageFromUrl}
         className="px-2 py-1 text-sm rounded hover:bg-gray-200"
-        title="Add Image"
+        title="Add Image from URL"
       >
         🖼️
+      </button>
+
+      {/* Image - Upload */}
+      <label className="px-2 py-1 text-sm rounded hover:bg-gray-200 cursor-pointer flex items-center" title="Upload Image">
+        <ArrowUpTrayIcon className="w-4 h-4" />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleImageUpload}
+          className="sr-only"
+        />
+      </label>
+
+      <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
+
+      {/* Clear Formatting */}
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}
+        className="px-2 py-1 text-sm rounded hover:bg-gray-200 text-gray-500"
+        title="Clear Formatting"
+      >
+        ✕
       </button>
     </div>
   );
@@ -170,9 +407,10 @@ const SignatureEditor: React.FC<SignatureEditorProps> = ({ value, onChange }) =>
       TipTapLink.configure({ openOnClick: false }),
       TextStyle,
       Color,
+      FontSize,
       Underline,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Image.configure({ inline: true }),
+      Image.configure({ inline: true, allowBase64: true }),
     ],
     content: value,
     onUpdate: ({ editor }) => {
@@ -1034,14 +1272,14 @@ const GmailSettingsPage: React.FC = () => {
                   />
                 </div>
 
-                {/* Info about images */}
+                {/* Info about formatting */}
                 <div className="bg-blue-50 rounded-lg p-3 flex items-start gap-3">
                   <PhotoIcon className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-blue-800">Adding Images</p>
+                    <p className="text-sm font-medium text-blue-800">Formatting Tips</p>
                     <p className="text-sm text-blue-600">
-                      Click the image icon in the toolbar to add logos or photos.
-                      You can paste image URLs or upload from your computer.
+                      Use the toolbar to format text, change colors, and adjust font sizes.
+                      For images: click 🖼️ to add via URL, or click the upload icon (↑) to upload from your computer (max 500KB).
                     </p>
                   </div>
                 </div>
