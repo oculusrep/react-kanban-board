@@ -2,7 +2,7 @@
 // Shows call list with contact slide-out drawer for quick action
 // src/components/hunter/ProspectingWorkspace.tsx
 
-import { useEffect, useState, useCallback, useMemo, lazy, Suspense } from 'react';
+import { useEffect, useState, useCallback, useMemo, lazy, Suspense, Component, ErrorInfo, ReactNode } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
@@ -43,11 +43,36 @@ import {
   FireIcon
 } from '@heroicons/react/24/outline';
 
+// Import Quill CSS at top level to avoid race conditions
+import 'react-quill/dist/quill.snow.css';
+
+// Simple error boundary to catch lazy loading failures
+class EditorErrorBoundary extends Component<{ children: ReactNode; fallback?: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('Editor loading error:', error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div className="h-48 flex flex-col items-center justify-center text-gray-500 border border-gray-200 rounded-lg bg-gray-50">
+          <p className="text-sm">Editor failed to load</p>
+          <button
+            onClick={() => this.setState({ hasError: false })}
+            className="mt-2 text-xs text-blue-600 hover:underline"
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // Lazy load ReactQuill for email compose
-const ReactQuill = lazy(() => import('react-quill').then(module => {
-  import('react-quill/dist/quill.snow.css');
-  return module;
-}));
+const ReactQuill = lazy(() => import('react-quill'));
 
 // ============================================================================
 // Types
@@ -3210,16 +3235,18 @@ export default function ProspectingWorkspace() {
 
               {/* Rich Text Editor - Smaller */}
               <div className="border border-gray-300 rounded-lg overflow-hidden bg-white flex-1" style={{ minHeight: '200px' }}>
-                <Suspense fallback={<div className="h-48 flex items-center justify-center text-gray-400">Loading editor...</div>}>
-                  <ReactQuill
-                    theme="snow"
-                    value={emailBody}
-                    onChange={setEmailBody}
-                    modules={quillModules}
-                    formats={quillFormats}
-                    style={{ height: '180px' }}
-                  />
-                </Suspense>
+                <EditorErrorBoundary>
+                  <Suspense fallback={<div className="h-48 flex items-center justify-center text-gray-400">Loading editor...</div>}>
+                    <ReactQuill
+                      theme="snow"
+                      value={emailBody}
+                      onChange={setEmailBody}
+                      modules={quillModules}
+                      formats={quillFormats}
+                      style={{ height: '180px' }}
+                    />
+                  </Suspense>
+                </EditorErrorBoundary>
               </div>
 
               {/* Attachments */}
