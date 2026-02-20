@@ -106,8 +106,8 @@ export default function PortalDetailSidebar({
   // Determine current view from URL
   const isMapView = location.pathname.includes('/portal/map');
 
-  // Client-visible stages
-  const VISIBLE_STAGES = [
+  // Client-visible stages (for filtering in client view)
+  const CLIENT_VISIBLE_STAGES = [
     'Submitted-Reviewing',
     'Pass',
     'Use Declined',
@@ -121,13 +121,19 @@ export default function PortalDetailSidebar({
     'Unassigned Territory'
   ];
 
-  // Fetch stages for the dropdown
+  // Fetch stages for the dropdown - brokers see all stages, clients see filtered list
   useEffect(() => {
     async function fetchStages() {
-      const { data, error } = await supabase
+      let query = supabase
         .from('submit_stage')
-        .select('id, name')
-        .in('name', VISIBLE_STAGES);
+        .select('id, name');
+
+      // Client view: filter to only visible stages
+      if (!showBrokerFeatures) {
+        query = query.in('name', CLIENT_VISIBLE_STAGES);
+      }
+
+      const { data, error } = await query;
 
       if (!error && data) {
         setStages(data);
@@ -135,7 +141,7 @@ export default function PortalDetailSidebar({
     }
 
     fetchStages();
-  }, []);
+  }, [showBrokerFeatures]);
 
   // Fetch site submit data
   useEffect(() => {

@@ -21,9 +21,9 @@ import BoundaryBuilderPanel from '../../components/mapping/BoundaryBuilderPanel'
 import { boundaryService, FetchedBoundary } from '../../services/boundaryService';
 import PlaceInfoLayer from '../../components/mapping/layers/PlaceInfoLayer';
 
-// Portal-visible stages (from spec)
+// Client-visible stages (filtered view for portal users)
 // Note: Stage names must match database format exactly (no spaces around dashes)
-const PORTAL_VISIBLE_STAGES = [
+const CLIENT_VISIBLE_STAGES = [
   'Submitted-Reviewing',
   'Pass',
   'Use Declined',
@@ -36,6 +36,11 @@ const PORTAL_VISIBLE_STAGES = [
   'Store Opened',
   'Unassigned Territory',
 ];
+
+// Helper to get all stages from STAGE_CATEGORIES (for broker view)
+const getAllStages = (): string[] => {
+  return Object.values(STAGE_CATEGORIES).flatMap(category => category.stages);
+};
 
 /**
  * PortalMapPage - Map view for the client portal
@@ -74,9 +79,10 @@ function PortalMapContent() {
   );
   const [isSidebarOpen, setIsSidebarOpen] = useState(!!searchParams.get('selected')); // Open if URL has selection
 
-  // Legend state - initialize with portal-visible stages
+  // Legend state - initialize with all stages (broker) or client-visible stages (client)
+  // Note: This gets updated by useEffect when showBrokerFeatures changes
   const [visibleStages, setVisibleStages] = useState<Set<string>>(() => {
-    return new Set(PORTAL_VISIBLE_STAGES);
+    return new Set(CLIENT_VISIBLE_STAGES);
   });
   const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
   const [isLegendExpanded, setIsLegendExpanded] = useState(true); // Expanded by default for portal users
@@ -139,6 +145,16 @@ function PortalMapContent() {
   useEffect(() => {
     document.title = 'Map | Client Portal';
   }, []);
+
+  // Update visible stages when view mode changes
+  // Brokers see all stages, clients see filtered list
+  useEffect(() => {
+    if (showBrokerFeatures) {
+      setVisibleStages(new Set(getAllStages()));
+    } else {
+      setVisibleStages(new Set(CLIENT_VISIBLE_STAGES));
+    }
+  }, [showBrokerFeatures]);
 
   // Refresh site submits layer when portal-wide refresh is triggered (e.g., from Pipeline page)
   useEffect(() => {
@@ -260,15 +276,19 @@ function PortalMapContent() {
 
   // Handle stage counts update from layer
   const handleStageCountsUpdate = useCallback((counts: Record<string, number>) => {
-    // Filter to only portal-visible stages
-    const filteredCounts: Record<string, number> = {};
-    PORTAL_VISIBLE_STAGES.forEach(stage => {
-      if (counts[stage] !== undefined) {
-        filteredCounts[stage] = counts[stage];
-      }
-    });
-    setStageCounts(filteredCounts);
-  }, []);
+    // Broker view: show all stage counts; Client view: filter to visible stages only
+    if (showBrokerFeatures) {
+      setStageCounts(counts);
+    } else {
+      const filteredCounts: Record<string, number> = {};
+      CLIENT_VISIBLE_STAGES.forEach(stage => {
+        if (counts[stage] !== undefined) {
+          filteredCounts[stage] = counts[stage];
+        }
+      });
+      setStageCounts(filteredCounts);
+    }
+  }, [showBrokerFeatures]);
 
   // Handle address search - address param is used when suggestion is selected (to avoid state timing issues)
   const handleSearch = async (address?: string) => {
@@ -328,26 +348,29 @@ function PortalMapContent() {
 
   // Handle category toggle
   const handleCategoryToggle = useCallback((categoryStages: string[]) => {
-    // Filter to only portal-visible stages in this category
-    const visibleCategoryStages = categoryStages.filter(s => PORTAL_VISIBLE_STAGES.includes(s));
+    // Broker view: use all category stages; Client view: filter to visible stages only
+    const stagesToToggle = showBrokerFeatures
+      ? categoryStages
+      : categoryStages.filter(s => CLIENT_VISIBLE_STAGES.includes(s));
 
     setVisibleStages(prev => {
       const newSet = new Set(prev);
-      const allVisible = visibleCategoryStages.every(s => newSet.has(s));
+      const allVisible = stagesToToggle.every(s => newSet.has(s));
 
       if (allVisible) {
-        visibleCategoryStages.forEach(s => newSet.delete(s));
+        stagesToToggle.forEach(s => newSet.delete(s));
       } else {
-        visibleCategoryStages.forEach(s => newSet.add(s));
+        stagesToToggle.forEach(s => newSet.add(s));
       }
       return newSet;
     });
-  }, []);
+  }, [showBrokerFeatures]);
 
   // Handle show all stages
   const handleShowAll = useCallback(() => {
-    setVisibleStages(new Set(PORTAL_VISIBLE_STAGES));
-  }, []);
+    // Broker view: show all stages; Client view: show only visible stages
+    setVisibleStages(new Set(showBrokerFeatures ? getAllStages() : CLIENT_VISIBLE_STAGES));
+  }, [showBrokerFeatures]);
 
   // Handle hide all stages
   const handleHideAll = useCallback(() => {
@@ -467,22 +490,36 @@ function PortalMapContent() {
     setCustomLayerRefreshTrigger(prev => prev + 1);
   };
 
-  // Filter stage categories to only show portal-visible stages
+  // Filter stage categories - brokers see all, clients see filtered list
   const filteredStageCategories = useMemo(() => {
-    const filtered: Record<string, { label: string; stages: string[] }> = {};
+    // Broker view: show all stage categories
+    if (showBrokerFeatures) {
+      const allCategories: Record<string, { label: string; stages: string[] }> = {};
+      Object.entries(STAGE_CATEGORIES).forEach(([key, category]) => {
+        allCategories[key] = {
+          ...category,
+          label: category.name,
+          stages: category.stages,
+        };
+      });
+      return allCategories;
+    }
 
+    // Client view: filter to only visible stages
+    const filtered: Record<string, { label: string; stages: string[] }> = {};
     Object.entries(STAGE_CATEGORIES).forEach(([key, category]) => {
-      const visibleCategoryStages = category.stages.filter(s => PORTAL_VISIBLE_STAGES.includes(s));
+      const visibleCategoryStages = category.stages.filter(s => CLIENT_VISIBLE_STAGES.includes(s));
       if (visibleCategoryStages.length > 0) {
         filtered[key] = {
           ...category,
+          label: category.name,
           stages: visibleCategoryStages,
         };
       }
     });
 
     return filtered;
-  }, []);
+  }, [showBrokerFeatures]);
 
   // Handle status change from sidebar - refresh the map layer and trigger portal-wide refresh
   const handleStatusChange = useCallback((_siteSubmitId: string, _newStageId: string, _newStageName: string) => {

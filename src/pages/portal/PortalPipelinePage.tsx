@@ -61,8 +61,8 @@ const STAGE_DISPLAY_NAMES: Record<string, string> = {
 // Define tab order: Signed comes after At Lease/PSA, Pass comes after Signed
 const STAGE_TAB_ORDER = ['Submitted-Reviewing', 'LOI', 'At Lease/PSA', 'Pass', 'Store Opened'];
 
-// Client-visible stages
-const VISIBLE_STAGES = [
+// Client-visible stages (filtered view for portal users)
+const CLIENT_VISIBLE_STAGES = [
   'Submitted-Reviewing',
   'Pass',
   'Use Declined',
@@ -158,13 +158,19 @@ export default function PortalPipelinePage() {
     document.title = `Pipeline - ${selectedClient?.client_name || 'Portal'} | OVIS`;
   }, [selectedClient]);
 
-  // Fetch stages
+  // Fetch stages - brokers see all stages, clients see filtered list
   useEffect(() => {
     async function fetchStages() {
-      const { data, error } = await supabase
+      let query = supabase
         .from('submit_stage')
-        .select('id, name')
-        .in('name', VISIBLE_STAGES);
+        .select('id, name');
+
+      // Broker view: fetch all stages; Client view: fetch only visible stages
+      if (!showBrokerFeatures) {
+        query = query.in('name', CLIENT_VISIBLE_STAGES);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error('Error fetching stages:', error);
@@ -174,7 +180,7 @@ export default function PortalPipelinePage() {
     }
 
     fetchStages();
-  }, []);
+  }, [showBrokerFeatures]);
 
   // Auto-select tab based on URL params or selected property's stage
   useEffect(() => {
@@ -252,12 +258,16 @@ export default function PortalPipelinePage() {
           return;
         }
 
-        // Get stage IDs for visible stages
-        const { data: stageData } = await supabase
+        // Get stage IDs - brokers see all stages, clients see filtered list
+        let stageQuery = supabase
           .from('submit_stage')
-          .select('id')
-          .in('name', VISIBLE_STAGES);
+          .select('id');
 
+        if (!showBrokerFeatures) {
+          stageQuery = stageQuery.in('name', CLIENT_VISIBLE_STAGES);
+        }
+
+        const { data: stageData } = await stageQuery;
         const visibleStageIds = stageData?.map(s => s.id) || [];
 
         if (visibleStageIds.length === 0) {
@@ -322,7 +332,7 @@ export default function PortalPipelinePage() {
     }
 
     fetchSiteSubmits();
-  }, [selectedClientId, accessibleClients, siteSubmitRefreshTrigger]);
+  }, [selectedClientId, accessibleClients, siteSubmitRefreshTrigger, showBrokerFeatures]);
 
   // Fetch viewed site submits for read/unread tracking
   useEffect(() => {
