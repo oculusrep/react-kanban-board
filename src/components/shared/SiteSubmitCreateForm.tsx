@@ -160,51 +160,28 @@ export default function SiteSubmitCreateForm({
 
         {/* Client Selector (required) */}
         <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Client *</label>
           <ClientSelector
-            value={selectedClient?.id || null}
-            onChange={(clientId) => {
-              if (clientId) {
-                // Fetch client details
-                supabase
-                  .from('client')
-                  .select('id, client_name')
-                  .eq('id', clientId)
-                  .single()
-                  .then(({ data }) => {
-                    if (data) {
-                      setSelectedClient(data);
-                    }
-                  });
+            selectedClient={selectedClient ? { id: selectedClient.id, client_name: selectedClient.client_name || '' } : null}
+            onClientSelect={(client) => {
+              if (client) {
+                setSelectedClient({ id: client.id, client_name: client.client_name });
               } else {
                 setSelectedClient(null);
               }
             }}
-            label="Client *"
+            placeholder="Search for a client..."
           />
         </div>
 
         {/* Assignment Selector */}
         <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Assignment</label>
           <AssignmentSelector
-            value={selectedAssignment?.id || null}
-            onChange={(assignmentId) => {
-              if (assignmentId) {
-                supabase
-                  .from('assignment')
-                  .select('id, assignment_name')
-                  .eq('id', assignmentId)
-                  .single()
-                  .then(({ data }) => {
-                    if (data) {
-                      setSelectedAssignment(data as AssignmentSearchResult);
-                    }
-                  });
-              } else {
-                setSelectedAssignment(null);
-              }
-            }}
+            selectedAssignment={selectedAssignment}
+            onAssignmentSelect={setSelectedAssignment}
             clientId={selectedClient?.id}
-            label="Assignment"
+            placeholder="Search for an assignment..."
           />
         </div>
 
