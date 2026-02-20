@@ -55,16 +55,8 @@ export default function ActivityBreakdownRow({
   const fetchActivities = async () => {
     setLoading(true);
     try {
-      // Get current user if no userId specified (scorecard shows current user's data by default)
-      let filterUserId = userId;
-      if (!filterUserId) {
-        const { data: { user } } = await supabase.auth.getUser();
-        filterUserId = user?.id;
-      }
-
-      // Query activities with contact info joined
-      // Also join to hunter_target to get contact info for activities logged via target_id
-      let query = supabase
+      // Simple query - just get activities with direct contact join
+      const query = supabase
         .from('prospecting_activity')
         .select(`
           id,
@@ -78,14 +70,6 @@ export default function ActivityBreakdownRow({
             first_name,
             last_name,
             company
-          ),
-          hunter_target:target_id (
-            contact_id,
-            contact:contact_id (
-              first_name,
-              last_name,
-              company
-            )
           )
         `)
         .in('activity_type', activityTypes)
@@ -94,31 +78,26 @@ export default function ActivityBreakdownRow({
         .order('created_at', { ascending: false })
         .limit(50);
 
-      if (filterUserId) {
-        query = query.eq('created_by', filterUserId);
+      // Only filter by user if explicitly passed (scorecard view handles user filtering)
+      if (userId) {
+        query.eq('created_by', userId);
       }
 
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        console.error('Query error:', error);
+        throw error;
+      }
 
       // Transform data to include contact name
-      // Try direct contact first, then fall back to contact via hunter_target
       const transformed: ActivityDetail[] = (data || []).map((item: any) => {
         let contactName = 'Unknown';
         let companyName = null;
-        let contactId = item.contact_id;
 
-        // First try direct contact relationship
         if (item.contact) {
           contactName = `${item.contact.first_name || ''} ${item.contact.last_name || ''}`.trim() || 'Unknown';
           companyName = item.contact.company;
-        }
-        // Fall back to contact via hunter_target
-        else if (item.hunter_target?.contact) {
-          contactName = `${item.hunter_target.contact.first_name || ''} ${item.hunter_target.contact.last_name || ''}`.trim() || 'Unknown';
-          companyName = item.hunter_target.contact.company;
-          contactId = item.hunter_target.contact_id;
         }
 
         return {
@@ -127,7 +106,7 @@ export default function ActivityBreakdownRow({
           notes: item.notes,
           email_subject: item.email_subject,
           created_at: item.created_at,
-          contact_id: contactId,
+          contact_id: item.contact_id,
           contact_name: contactName,
           company_name: companyName
         };
