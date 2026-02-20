@@ -63,6 +63,7 @@ export default function ActivityBreakdownRow({
 
       if (isCallOrMeeting) {
         // Query the activity table for calls/meetings
+        // Calls are marked with completed_call=true, meetings with meeting_held=true
         let query = supabase
           .from('activity')
           .select(`
@@ -73,20 +74,18 @@ export default function ActivityBreakdownRow({
             contact_id,
             completed_call,
             meeting_held,
-            is_prospecting_call,
             contact:contact_id (
               first_name,
               last_name,
               company
             )
           `)
-          .eq('is_prospecting_call', true)
           .gte('created_at', `${startDate}T00:00:00`)
           .lte('created_at', `${endDate}T23:59:59`)
           .order('created_at', { ascending: false })
           .limit(50);
 
-        // Filter by call or meeting
+        // Filter by call or meeting based on the flags
         if (activityTypes.includes('call') && !activityTypes.includes('meeting')) {
           query = query.eq('completed_call', true);
         } else if (activityTypes.includes('meeting') && !activityTypes.includes('call')) {
