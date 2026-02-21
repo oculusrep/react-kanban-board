@@ -942,10 +942,32 @@ const dateObj = new Date(data.critical_date);
 const dateValue = dateObj.toISOString().split('T')[0];
 ```
 
+### Getting Today's Date (Local Timezone)
+
+When recording "today's date" (e.g., payment dates, logged dates), **do NOT use `toISOString()`**:
+
+```typescript
+// ❌ WRONG - Uses UTC, will be tomorrow after 7 PM EST
+const today = new Date().toISOString().split('T')[0];
+
+// ✅ RIGHT - Uses local timezone
+const getLocalDateString = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+const today = getLocalDateString();
+```
+
+**Why this matters:** If a user marks a payment as paid at 8 PM EST, `toISOString()` returns the UTC date which is already tomorrow. The payment would incorrectly show as paid "tomorrow".
+
 ### Red Flags 🚩
 
 ❌ Using `new Date()` on date-only fields
 ❌ Using `.toISOString()` to format dates for date inputs
+❌ Using `.toISOString().split('T')[0]` to get today's date
 ❌ Date shows correctly in one timezone but wrong in another
 ❌ Date in form doesn't match date in table
 ❌ Off-by-one day errors with dates
