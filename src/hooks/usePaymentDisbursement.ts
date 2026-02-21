@@ -205,7 +205,14 @@ export const usePaymentDisbursement = () => {
     console.log('🔧 Updating payment split paid status:', { splitId, paid });
 
     try {
-      const paidDate = paid ? new Date().toISOString().split('T')[0] : null;
+      // Calculate paid date in YYYY-MM-DD format using local timezone (EST)
+      const paidDate = paid ? (() => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      })() : null;
       const updateData: { paid: boolean; paid_date?: string | null } = { paid, paid_date: paidDate };
 
       const { error, data } = await supabase

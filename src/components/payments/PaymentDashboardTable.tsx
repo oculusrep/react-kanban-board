@@ -153,11 +153,20 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
   };
 
   const handleMarkPaymentReceived = async (paymentId: string, received: boolean) => {
+    // Calculate date in local timezone (EST) to avoid UTC conversion issues
+    const getLocalDateString = () => {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
     const { error } = await supabase
       .from('payment')
       .update({
         payment_received: received,
-        payment_received_date: received ? new Date().toISOString().split('T')[0] : null,
+        payment_received_date: received ? getLocalDateString() : null,
       })
       .eq('id', paymentId);
 
