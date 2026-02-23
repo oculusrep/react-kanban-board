@@ -30,6 +30,7 @@ import EmailComposerModal from '../../EmailComposerModal';
 import { useSiteSubmitEmail } from '../../../hooks/useSiteSubmitEmail';
 import RecordMetadata from '../../RecordMetadata';
 import SalesTrendChart from '../../charts/SalesTrendChart';
+import PropertyActivityTab from '../../property/PropertyActivityTab';
 
 type PropertyRecordType = Database['public']['Tables']['property_record_type']['Row'];
 
@@ -145,7 +146,7 @@ interface PinDetailsSlideoutProps {
   onOpenFullSiteSubmit?: (siteSubmitId: string) => void; // Callback to open full site submit slideout
 }
 
-type TabType = 'property' | 'submit' | 'location' | 'files' | 'contacts' | 'submits' | 'units';
+type TabType = 'property' | 'activity' | 'submit' | 'location' | 'files' | 'contacts' | 'submits' | 'units';
 
 // Contacts Tab Component
 const ContactsTabContent: React.FC<{
@@ -623,6 +624,14 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   const [hasChanges, setHasChanges] = useState(false);
   const [lastSavedData, setLastSavedData] = useState<any>(null);
   const [isEditingPropertyType, setIsEditingPropertyType] = useState(false);
+  const [isEditingAddress, setIsEditingAddress] = useState(false);
+  const [editAddressValues, setEditAddressValues] = useState({
+    property_name: '',
+    address: '',
+    city: '',
+    state: '',
+    zip: ''
+  });
 
   // Local state for property data (so we can update it immediately)
   const [localPropertyData, setLocalPropertyData] = useState<Property | null>(null);
@@ -1313,9 +1322,13 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     }
 
     // Update local state immediately for instant UI feedback
-    const updatedProperty = { ...localPropertyData, [field]: value };
-    setLocalPropertyData(updatedProperty);
-    console.log('📝 Updated localPropertyData:', updatedProperty);
+    // Use functional update to ensure sequential calls build on each other
+    setLocalPropertyData(prev => {
+      if (!prev) return null;
+      const updatedProperty = { ...prev, [field]: value };
+      console.log('📝 Updated localPropertyData:', updatedProperty);
+      return updatedProperty;
+    });
 
     // Mark that there are unsaved changes
     setHasPropertyChanges(true);
@@ -1670,6 +1683,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     if (isProperty) {
       return [
         { id: 'property' as TabType, label: 'PROPERTY', icon: <Building2 size={16} /> },
+        { id: 'activity' as TabType, label: 'ACTIVITY', icon: <Activity size={16} /> },
         { id: 'units' as TabType, label: 'UNITS', icon: <Grid3x3 size={16} /> },
         { id: 'submits' as TabType, label: 'SUBMITS', icon: <FileText size={16} /> },
         { id: 'contacts' as TabType, label: 'CONTACTS', icon: <Users size={16} /> },
@@ -1905,177 +1919,156 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         const isLandType = propertyRecordTypeLabel.includes('land');
 
         return (
-          <div className="space-y-2 text-sm">
+          <div className="text-sm">
             {isProperty ? (
               <>
-                {/* Property Name */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Property Name</label>
-                  <input
-                    type="text"
-                    value={property?.property_name || ''}
-                    onChange={(e) => handlePropertyFieldUpdate('property_name', e.target.value)}
-                    placeholder="Enter property name..."
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                  {/* Show Dropbox sync error with retry button */}
-                  {dropboxSyncError && (
-                    <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
-                      <div className="flex items-start gap-2">
-                        <svg className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                        <div className="flex-1">
-                          <p className="text-xs text-yellow-800 font-medium">Dropbox Sync Warning</p>
-                          <p className="text-xs text-yellow-700 mt-1">{dropboxSyncError}</p>
-                          <button
-                            onClick={handleRetryDropboxSync}
-                            className="mt-2 text-xs font-medium text-yellow-800 hover:text-yellow-900 underline"
-                          >
-                            Retry Sync
-                          </button>
-                        </div>
+                {/* Show Dropbox sync error with retry button */}
+                {dropboxSyncError && (
+                  <div className="mb-4 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+                    <div className="flex items-start gap-2">
+                      <svg className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <div className="flex-1">
+                        <p className="text-xs text-yellow-800 font-medium">Dropbox Sync Warning</p>
+                        <p className="text-xs text-yellow-700 mt-1">{dropboxSyncError}</p>
+                        <button onClick={handleRetryDropboxSync} className="mt-2 text-xs font-medium text-yellow-800 hover:text-yellow-900 underline">
+                          Retry Sync
+                        </button>
                       </div>
                     </div>
-                  )}
-                </div>
-
-                {/* Address */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                  <input
-                    type="text"
-                    value={property?.address || ''}
-                    onChange={(e) => handlePropertyFieldUpdate('address', e.target.value)}
-                    placeholder="Enter address..."
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-
-                {/* City, State, ZIP on one line */}
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-                    <input
-                      type="text"
-                      value={property?.city || ''}
-                      onChange={(e) => handlePropertyFieldUpdate('city', e.target.value)}
-                      placeholder="City..."
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                    />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
-                    <input
-                      type="text"
-                      value={property?.state || ''}
-                      onChange={(e) => handlePropertyFieldUpdate('state', e.target.value)}
-                      placeholder="State..."
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">ZIP</label>
-                    <input
-                      type="text"
-                      value={property?.zip || ''}
-                      onChange={(e) => handlePropertyFieldUpdate('zip', e.target.value)}
-                      placeholder="ZIP..."
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-                </div>
+                )}
 
-                {/* Property Notes */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Property Notes</label>
-                  <textarea
-                    rows={3}
-                    value={property?.property_notes || ''}
-                    onChange={(e) => handlePropertyFieldUpdate('property_notes', e.target.value)}
-                    placeholder="Enter property notes..."
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                  />
+                {/* Notes Section - Now read-only with link to Activity tab */}
+                <div className="mb-4">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider mb-3 px-4 py-2 -mx-4" style={{ backgroundColor: '#f1f5f9', color: '#475569' }}>
+                    Notes
+                  </h3>
+                  <div className="py-2 px-2 -mx-2 bg-[#f0f3f7] rounded">
+                    {property?.property_notes ? (
+                      <>
+                        <span className="text-sm text-gray-500 block mb-1">Property Notes (Legacy)</span>
+                        <div className="w-full px-2 py-2 text-sm bg-gray-100 border border-gray-200 rounded text-gray-600 whitespace-pre-wrap">
+                          {property.property_notes}
+                        </div>
+                      </>
+                    ) : null}
+                    <button
+                      onClick={() => setActiveTab('activity')}
+                      className="mt-2 flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      <Activity size={14} />
+                      {property?.property_notes ? 'View all notes in Activity tab' : 'Add notes in Activity tab'}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Financial Fields - For Shopping Centers */}
                 {isShoppingCenterType && (
-                  <>
-                    {/* Available Sqft */}
-                    <div className="pt-2 border-t border-gray-200">
-                      <PropertySquareFootageField
-                        label="Available Sqft"
-                        value={property?.available_sqft || null}
-                        onChange={(value) => handlePropertyFieldUpdate('available_sqft', value)}
-                        compact={true}
-                      />
-                    </div>
-
-                    {/* Rent PSF and NNN PSF */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <PropertyPSFField
-                        label="Rent PSF"
-                        value={property?.rent_psf || null}
-                        onChange={(value) => handlePropertyFieldUpdate('rent_psf', value)}
-                        helpText="Base rent per square foot"
-                        compact={true}
-                      />
-                      <PropertyPSFField
-                        label="NNN PSF"
-                        value={property?.nnn_psf || null}
-                        onChange={(value) => handlePropertyFieldUpdate('nnn_psf', value)}
-                        helpText="Triple net charges per square foot"
-                        compact={true}
-                      />
-                    </div>
-
-                    {/* All-In Rent Calculation */}
-                    {property?.rent_psf && property?.nnn_psf && property?.available_sqft && (
-                      <div className="p-2 bg-blue-50 rounded text-xs">
-                        <div className="font-medium text-blue-900">All-In Rent</div>
-                        <div className="text-sm font-bold text-blue-700">
-                          ${(property.rent_psf + property.nnn_psf).toFixed(2)} / SF
-                        </div>
-                        <div className="text-xs text-blue-600">
-                          Total annual: ${((property.rent_psf + property.nnn_psf) * property.available_sqft).toLocaleString()}
-                        </div>
+                  <div className="mb-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider mb-3 px-4 py-2 -mx-4" style={{ backgroundColor: '#f1f5f9', color: '#475569' }}>
+                      Pricing Details
+                    </h3>
+                    <div className="space-y-1">
+                      {/* Available Sqft */}
+                      <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 bg-[#f0f3f7] rounded items-center">
+                        <span className="text-sm text-gray-500">Available Sqft</span>
+                        <PropertySquareFootageField
+                          label=""
+                          value={property?.available_sqft || null}
+                          onChange={(value) => handlePropertyFieldUpdate('available_sqft', value)}
+                          compact={true}
+                        />
                       </div>
-                    )}
-                  </>
+
+                      {/* Rent PSF */}
+                      <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 rounded items-center">
+                        <span className="text-sm text-gray-500">Rent PSF</span>
+                        <PropertyPSFField
+                          label=""
+                          value={property?.rent_psf || null}
+                          onChange={(value) => handlePropertyFieldUpdate('rent_psf', value)}
+                          compact={true}
+                        />
+                      </div>
+
+                      {/* NNN PSF */}
+                      <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 bg-[#f0f3f7] rounded items-center">
+                        <span className="text-sm text-gray-500">NNN PSF</span>
+                        <PropertyPSFField
+                          label=""
+                          value={property?.nnn_psf || null}
+                          onChange={(value) => handlePropertyFieldUpdate('nnn_psf', value)}
+                          compact={true}
+                        />
+                      </div>
+
+                      {/* All-In Rent Calculation */}
+                      {property?.rent_psf != null && property?.nnn_psf != null && (
+                        <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 rounded items-center">
+                          <span className="text-sm text-gray-500">All-In Rent</span>
+                          <div>
+                            <span className="text-sm font-medium text-gray-900">
+                              ${(property.rent_psf + property.nnn_psf).toFixed(2)}/sf
+                            </span>
+                            {property?.available_sqft && (
+                              <span className="text-xs text-gray-500 ml-2">
+                                (${((property.rent_psf + property.nnn_psf) * property.available_sqft).toLocaleString()}/yr)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 )}
 
                 {/* Land Fields */}
                 {isLandType && (
-                  <>
-                    <div className="pt-2 border-t border-gray-200">
-                      <h4 className="text-sm font-semibold text-gray-900 mb-2">Land Information</h4>
-
-                      {/* Row 1: Asking Purchase Price, Asking Ground Lease Price */}
-                      <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div className="mb-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider mb-3 px-4 py-2 -mx-4" style={{ backgroundColor: '#f1f5f9', color: '#475569' }}>
+                      Land Information
+                    </h3>
+                    <div className="space-y-1">
+                      {/* Asking Purchase Price */}
+                      <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 bg-[#f0f3f7] rounded items-center">
+                        <span className="text-sm text-gray-500">Purchase Price</span>
                         <FormattedField
-                          label="Asking Purchase Price"
+                          label=""
                           type="currency"
                           value={property?.asking_purchase_price ?? null}
                           onChange={(value) => handlePropertyFieldUpdate('asking_purchase_price', value)}
                         />
+                      </div>
+
+                      {/* Asking Ground Lease Price */}
+                      <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 rounded items-center">
+                        <span className="text-sm text-gray-500">Ground Lease</span>
                         <FormattedField
-                          label="Asking Ground Lease Price"
+                          label=""
                           type="currency"
                           value={property?.asking_lease_price ?? null}
                           onChange={(value) => handlePropertyFieldUpdate('asking_lease_price', value)}
                         />
                       </div>
 
-                      {/* Row 2: NNN, Acres */}
-                      <div className="grid grid-cols-2 gap-2 mb-2">
+                      {/* NNN */}
+                      <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 bg-[#f0f3f7] rounded items-center">
+                        <span className="text-sm text-gray-500">NNN</span>
                         <FormattedField
-                          label="NNN"
+                          label=""
                           type="currency"
                           value={property?.nnn_psf ?? null}
                           onChange={(value) => handlePropertyFieldUpdate('nnn_psf', value)}
                         />
+                      </div>
+
+                      {/* Acres */}
+                      <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 rounded items-center">
+                        <span className="text-sm text-gray-500">Acres</span>
                         <FormattedField
-                          label="Acres"
+                          label=""
                           type="number"
                           value={property?.acres ?? null}
                           onChange={(value) => handlePropertyFieldUpdate('acres', value)}
@@ -2083,31 +2076,31 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                         />
                       </div>
 
-                      {/* Row 3: Building Sqft, Lease Expiration Date */}
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Building Sqft</label>
-                          <input
-                            type="number"
-                            value={property?.building_sqft || ''}
-                            onChange={(e) => handlePropertyFieldUpdate('building_sqft', e.target.value ? parseFloat(e.target.value) : null)}
-                            placeholder="0"
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Lease Expiration Date</label>
-                          <input
-                            type="text"
-                            value={property?.lease_expiration_date || ''}
-                            onChange={(e) => handlePropertyFieldUpdate('lease_expiration_date', e.target.value)}
-                            placeholder="MM/DD/YYYY"
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        </div>
+                      {/* Building Sqft */}
+                      <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 bg-[#f0f3f7] rounded items-center">
+                        <span className="text-sm text-gray-500">Building Sqft</span>
+                        <input
+                          type="number"
+                          value={property?.building_sqft || ''}
+                          onChange={(e) => handlePropertyFieldUpdate('building_sqft', e.target.value ? parseFloat(e.target.value) : null)}
+                          placeholder="0"
+                          className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+
+                      {/* Lease Expiration Date */}
+                      <div className="grid grid-cols-[35%_1fr] gap-2 py-2 px-2 -mx-2 rounded items-center">
+                        <span className="text-sm text-gray-500">Lease Expiration</span>
+                        <input
+                          type="text"
+                          value={property?.lease_expiration_date || ''}
+                          onChange={(e) => handlePropertyFieldUpdate('lease_expiration_date', e.target.value)}
+                          placeholder="MM/DD/YYYY"
+                          className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                        />
                       </div>
                     </div>
-                  </>
+                  </div>
                 )}
 
                 {/* Metadata Section */}
@@ -2183,6 +2176,24 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+          </div>
+        );
+
+      case 'activity':
+        return (
+          <div className="h-full">
+            {localPropertyData?.id ? (
+              <PropertyActivityTab
+                propertyId={localPropertyData.id}
+                propertyContacts={[]} // TODO: Pass actual property contacts
+                onActivityLogged={() => {}}
+                onNoteAdded={() => {}}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-32 text-gray-500">
+                <p>No property selected</p>
               </div>
             )}
           </div>
@@ -2302,228 +2313,322 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           WebkitOverflowScrolling: 'touch' // Smooth scrolling on iOS
         }}
       >
-        {/* Hero Section */}
-        <div className="relative">
-          {/* Hero Image */}
-          <div className={`${isMinimized ? 'h-16' : 'h-48'} bg-gradient-to-br from-gray-400 via-gray-500 to-gray-600 relative overflow-hidden transition-all duration-300`}>
-            {/* Property Image Placeholder */}
-            <div className="absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center">
-              <div className="text-white text-center">
-                <div className="text-4xl mb-2">🏢</div>
-                <div className="text-sm opacity-90">Property Image</div>
+        {/* Header Section - Light blue for properties, matching SiteSubmitSidebar style */}
+        {isProperty ? (
+          <div
+            className="flex-shrink-0 px-4 py-3 border-b border-gray-200"
+            style={{ backgroundColor: '#60a5fa' }}
+          >
+            {/* Top row with title and action icons */}
+            <div className="flex items-start justify-between">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-lg font-semibold text-white truncate">
+                  {property?.property_name || 'Unnamed Property'}
+                </h2>
               </div>
-            </div>
 
-            {/* Header Controls */}
-            <div className="absolute top-4 right-4 flex space-x-2">
-              {/* Open in New Tab Button - For properties */}
-              {isProperty && localPropertyData?.id && (
-                <button
-                  onClick={() => window.open(`/property/${localPropertyData.id}`, '_blank')}
-                  className="p-2 bg-blue-500 bg-opacity-80 hover:bg-blue-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
-                  title="Open property in new tab"
-                >
-                  <ExternalLink size={16} className="text-white" />
-                </button>
-              )}
+              {/* Action icon buttons */}
+              <div className="flex items-center gap-1 ml-2">
+                {/* Open in New Tab Button */}
+                {localPropertyData?.id && (
+                  <button
+                    onClick={() => window.open(`/property/${localPropertyData.id}`, '_blank')}
+                    className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
+                    title="Open property in new tab"
+                  >
+                    <ExternalLink size={16} className="text-white" />
+                  </button>
+                )}
 
-              {/* Open Map View Button - For properties */}
-              {isProperty && localPropertyData?.id && (
-                <button
-                  onClick={() => window.open(`/mapping?property=${localPropertyData.id}`, '_blank')}
-                  className="p-2 bg-green-500 bg-opacity-80 hover:bg-green-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
-                  title="Open in map view"
-                >
-                  <Map size={16} className="text-white" />
-                </button>
-              )}
+                {/* Center on Pin Button */}
+                {onCenterOnPin && property && (
+                  <button
+                    onClick={() => {
+                      const coords = property.verified_latitude && property.verified_longitude
+                        ? { lat: property.verified_latitude, lng: property.verified_longitude }
+                        : { lat: property.latitude, lng: property.longitude };
+                      if (coords.lat && coords.lng) {
+                        onCenterOnPin(coords.lat, coords.lng);
+                      }
+                    }}
+                    className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
+                    title="Center map on this property"
+                  >
+                    <MapPin size={16} className="text-white" />
+                  </button>
+                )}
 
-              {/* Open Full Site Submit Button - For site submits */}
-              {!isProperty && siteSubmit?.id && !isNewSiteSubmit && onOpenFullSiteSubmit && (
-                <button
-                  onClick={() => onOpenFullSiteSubmit(siteSubmit.id)}
-                  className="p-2 bg-blue-500 bg-opacity-80 hover:bg-blue-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
-                  title="Open full site submit details"
-                >
-                  <ExternalLink size={16} className="text-white" />
-                </button>
-              )}
+                {/* Delete Button */}
+                {onDeleteProperty && localPropertyData?.id && (
+                  <button
+                    onClick={() => onDeleteProperty(localPropertyData.id)}
+                    className="p-2 rounded-lg bg-red-500 hover:bg-red-600 transition-colors"
+                    title="Delete property"
+                  >
+                    <Trash2 size={16} className="text-white" />
+                  </button>
+                )}
 
-              {/* Delete Button - For properties */}
-              {isProperty && onDeleteProperty && localPropertyData?.id && (
+                {/* Close Button */}
                 <button
-                  onClick={() => onDeleteProperty(localPropertyData.id)}
-                  className="p-2 bg-red-500 bg-opacity-80 hover:bg-red-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
-                  title="Delete property"
+                  onClick={onClose}
+                  className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+                  aria-label="Close sidebar"
                 >
-                  <Trash2 size={16} className="text-white" />
-                </button>
-              )}
-
-              {/* Submit Site Button - For site submits (opens email composer modal) */}
-              {!isProperty && siteSubmit?.id && !isNewSiteSubmit && (
-                <button
-                  onClick={handleSendEmail}
-                  disabled={sendingEmail}
-                  className="p-2 bg-green-500 bg-opacity-80 hover:bg-green-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Submit Site - Send email to Site Selector contacts"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-white" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
-                    <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
-              )}
-
-              {/* Delete Button - For site submits */}
-              {!isProperty && onDeleteSiteSubmit && siteSubmit?.id && (
-                <button
-                  onClick={() => {
-                    const siteName = siteSubmit.site_submit_name || siteSubmit.client?.client_name || 'this site submit';
-                    onDeleteSiteSubmit(siteSubmit.id, siteName);
-                  }}
-                  className="p-2 bg-red-500 bg-opacity-80 hover:bg-red-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
-                  title="Delete site submit"
-                >
-                  <Trash2 size={16} className="text-white" />
-                </button>
-              )}
-
-              {/* Minimize/Expand Button */}
-              <button
-                onClick={() => setIsMinimized(!isMinimized)}
-                className="p-2 bg-black bg-opacity-20 hover:bg-black hover:bg-opacity-40 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
-                title={isMinimized ? "Expand sidebar" : "Minimize sidebar"}
-              >
-                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  {isMinimized ? (
-                    // Expand icon
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7M4 12h16" />
-                  ) : (
-                    // Minimize icon
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M20 12H4" />
-                  )}
-                </svg>
-              </button>
-
-              {/* Close Button */}
-              <button
-                onClick={onClose}
-                className="p-2 bg-black bg-opacity-20 hover:bg-black hover:bg-opacity-40 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
-                title="Close details"
-              >
-                <svg
-                  className="w-5 h-5 text-white transition-transform duration-200 hover:rotate-90"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Entity Type Badge */}
-            <div className="absolute top-4 left-4">
-              <div className={`text-white px-3 py-1 rounded text-xs font-semibold ${
-                isProperty ? 'bg-blue-600' : 'bg-purple-600'
-              }`}>
-                {isProperty ? 'PROPERTY' : 'SITE SUBMIT'}
               </div>
             </div>
-          </div>
 
-          {/* Property Header Info */}
-          {!isMinimized && (
-          <div className="px-6 py-3 border-b border-gray-200">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center justify-between">
-                  <h1 className={`font-bold text-gray-900 mb-1 ${isProperty ? 'text-lg' : 'text-base'}`}>
-                    {isProperty
-                      ? (property?.property_name || property?.address || 'Unnamed Property')
-                      : (siteSubmitName || siteSubmit?.site_submit_name || siteSubmit?.property?.property_name || 'Site Submit')
-                    }
-                  </h1>
-
-                  {/* Pin icon to center map on property */}
-                  {onCenterOnPin && property && (
+            {/* Address section with inline edit */}
+            <div className="mt-2">
+              {!isEditingAddress ? (
+                <div className="flex items-start gap-2 group">
+                  <div className="flex-1">
+                    <p className="text-sm text-white/90 truncate">
+                      {property?.address || 'No address'}
+                      {property?.city && `, ${property.city}`}
+                      {property?.state && `, ${property.state}`}
+                      {property?.zip && ` ${property.zip}`}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setEditAddressValues({
+                        property_name: property?.property_name || '',
+                        address: property?.address || '',
+                        city: property?.city || '',
+                        state: property?.state || '',
+                        zip: property?.zip || ''
+                      });
+                      setIsEditingAddress(true);
+                    }}
+                    className="p-1 rounded text-white/60 hover:text-white hover:bg-white/10 transition-colors opacity-0 group-hover:opacity-100"
+                    title="Edit property name and address"
+                  >
+                    <Edit3 size={14} />
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2 bg-white/10 rounded-lg p-2">
+                  <input
+                    type="text"
+                    value={editAddressValues.property_name}
+                    onChange={(e) => setEditAddressValues(prev => ({ ...prev, property_name: e.target.value }))}
+                    placeholder="Property name..."
+                    className="w-full px-2 py-1 text-sm border border-white/30 rounded bg-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-1 focus:ring-white/50 font-medium"
+                    autoFocus
+                  />
+                  <input
+                    type="text"
+                    value={editAddressValues.address}
+                    onChange={(e) => setEditAddressValues(prev => ({ ...prev, address: e.target.value }))}
+                    placeholder="Address..."
+                    className="w-full px-2 py-1 text-sm border border-white/30 rounded bg-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-1 focus:ring-white/50"
+                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    <input
+                      type="text"
+                      value={editAddressValues.city}
+                      onChange={(e) => setEditAddressValues(prev => ({ ...prev, city: e.target.value }))}
+                      placeholder="City..."
+                      className="px-2 py-1 text-sm border border-white/30 rounded bg-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-1 focus:ring-white/50"
+                    />
+                    <input
+                      type="text"
+                      value={editAddressValues.state}
+                      onChange={(e) => setEditAddressValues(prev => ({ ...prev, state: e.target.value }))}
+                      placeholder="State..."
+                      className="px-2 py-1 text-sm border border-white/30 rounded bg-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-1 focus:ring-white/50"
+                    />
+                    <input
+                      type="text"
+                      value={editAddressValues.zip}
+                      onChange={(e) => setEditAddressValues(prev => ({ ...prev, zip: e.target.value }))}
+                      placeholder="ZIP..."
+                      className="px-2 py-1 text-sm border border-white/30 rounded bg-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-1 focus:ring-white/50"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => setIsEditingAddress(false)}
+                      className="px-2 py-1 text-xs text-white/70 hover:text-white"
+                    >
+                      Cancel
+                    </button>
                     <button
                       onClick={() => {
-                        const coords = property.verified_latitude && property.verified_longitude
-                          ? { lat: property.verified_latitude, lng: property.verified_longitude }
-                          : { lat: property.latitude, lng: property.longitude };
-                        onCenterOnPin(coords.lat, coords.lng);
+                        handlePropertyFieldUpdate('property_name', editAddressValues.property_name);
+                        handlePropertyFieldUpdate('address', editAddressValues.address);
+                        handlePropertyFieldUpdate('city', editAddressValues.city);
+                        handlePropertyFieldUpdate('state', editAddressValues.state);
+                        handlePropertyFieldUpdate('zip', editAddressValues.zip);
+                        setIsEditingAddress(false);
                       }}
-                      className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-all duration-200"
-                      title="Center map on this property"
+                      className="px-2 py-1 text-xs bg-white/20 hover:bg-white/30 text-white rounded"
                     >
-                      <MapPin size={16} />
+                      Save
                     </button>
-                  )}
+                  </div>
                 </div>
+              )}
+            </div>
 
-                {/* Property Record Type - Controls which fields are displayed */}
-                {isProperty && property && (
-                  <div className="flex items-center gap-2 mb-2">
-                    <Building2 size={14} className="text-gray-400 flex-shrink-0" />
-                    {!isEditingPropertyType ? (
-                      <div
-                        className="inline-flex items-center gap-2 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium cursor-pointer hover:bg-blue-200 transition-colors"
-                        onClick={() => setIsEditingPropertyType(true)}
-                      >
-                        <span>
-                          {property.property_record_type_id && propertyRecordTypes.length > 0
-                            ? propertyRecordTypes.find(type => type.id === property.property_record_type_id)?.label || 'Unknown Type'
-                            : 'Set Property Type (Land/Shopping Center)'
-                          }
-                        </span>
-                        <Edit3 size={12} className="text-blue-600" />
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={property.property_record_type_id || ''}
-                          onChange={(e) => {
-                            handlePropertyFieldUpdate('property_record_type_id', e.target.value);
-                            setIsEditingPropertyType(false);
-                          }}
-                          className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                          autoFocus
-                          onBlur={() => setIsEditingPropertyType(false)}
-                        >
-                          <option value="">Select property type...</option>
-                          {propertyRecordTypes.map(type => (
-                            <option key={type.id} value={type.id}>
-                              {type.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
+            {/* Property Record Type Badge */}
+            {property && (
+              <div className="mt-2 flex items-center gap-2">
+                <Building2 size={14} className="text-white/70 flex-shrink-0" />
+                {!isEditingPropertyType ? (
+                  <div
+                    className="inline-flex items-center gap-2 px-2 py-1 bg-white/20 text-white rounded text-xs font-medium cursor-pointer hover:bg-white/30 transition-colors"
+                    onClick={() => setIsEditingPropertyType(true)}
+                  >
+                    <span>
+                      {property.property_record_type_id && propertyRecordTypes.length > 0
+                        ? propertyRecordTypes.find(type => type.id === property.property_record_type_id)?.label || 'Unknown Type'
+                        : 'Set Property Type'
+                      }
+                    </span>
+                    <Edit3 size={12} className="text-white/70" />
                   </div>
+                ) : (
+                  <select
+                    value={property.property_record_type_id || ''}
+                    onChange={(e) => {
+                      handlePropertyFieldUpdate('property_record_type_id', e.target.value);
+                      setIsEditingPropertyType(false);
+                    }}
+                    className="px-2 py-1 text-xs border border-white/30 rounded bg-white/20 text-white focus:outline-none focus:ring-1 focus:ring-white/50"
+                    autoFocus
+                    onBlur={() => setIsEditingPropertyType(false)}
+                  >
+                    <option value="" className="text-gray-900">Select property type...</option>
+                    {propertyRecordTypes.map(type => (
+                      <option key={type.id} value={type.id} className="text-gray-900">
+                        {type.label}
+                      </option>
+                    ))}
+                  </select>
                 )}
-
-                {/* Property Information - For site submits only */}
-                {!isProperty && siteSubmit && (
-                  <div className="mb-2 space-y-0.5">
-                    <p className="text-sm text-gray-600">
-                      <span className="font-medium">Property:</span> {siteSubmit?.property?.property_name || 'Not specified'}
-                    </p>
-                    {siteSubmit?.property_unit?.property_unit_name && (
-                      <p className="text-sm text-gray-600">
-                        <span className="font-medium">Unit:</span> {siteSubmit?.property_unit?.property_unit_name}
-                      </p>
-                    )}
-                  </div>
-                )}
-
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Original Hero Section for Site Submits (kept for backwards compatibility) */
+          <div className="relative">
+            {/* Hero Image */}
+            <div className={`${isMinimized ? 'h-16' : 'h-48'} bg-gradient-to-br from-gray-400 via-gray-500 to-gray-600 relative overflow-hidden transition-all duration-300`}>
+              {/* Property Image Placeholder */}
+              <div className="absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center">
+                <div className="text-white text-center">
+                  <div className="text-4xl mb-2">🏢</div>
+                  <div className="text-sm opacity-90">Property Image</div>
+                </div>
               </div>
 
+              {/* Header Controls */}
+              <div className="absolute top-4 right-4 flex space-x-2">
+                {/* Open Full Site Submit Button - For site submits */}
+                {siteSubmit?.id && !isNewSiteSubmit && onOpenFullSiteSubmit && (
+                  <button
+                    onClick={() => onOpenFullSiteSubmit(siteSubmit.id)}
+                    className="p-2 bg-blue-500 bg-opacity-80 hover:bg-blue-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
+                    title="Open full site submit details"
+                  >
+                    <ExternalLink size={16} className="text-white" />
+                  </button>
+                )}
+
+                {/* Submit Site Button - For site submits (opens email composer modal) */}
+                {siteSubmit?.id && !isNewSiteSubmit && (
+                  <button
+                    onClick={handleSendEmail}
+                    disabled={sendingEmail}
+                    className="p-2 bg-green-500 bg-opacity-80 hover:bg-green-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Submit Site - Send email to Site Selector contacts"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-white" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+                      <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+                    </svg>
+                  </button>
+                )}
+
+                {/* Delete Button - For site submits */}
+                {onDeleteSiteSubmit && siteSubmit?.id && (
+                  <button
+                    onClick={() => {
+                      const siteName = siteSubmit.site_submit_name || siteSubmit.client?.client_name || 'this site submit';
+                      onDeleteSiteSubmit(siteSubmit.id, siteName);
+                    }}
+                    className="p-2 bg-red-500 bg-opacity-80 hover:bg-red-600 hover:bg-opacity-90 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
+                    title="Delete site submit"
+                  >
+                    <Trash2 size={16} className="text-white" />
+                  </button>
+                )}
+
+                {/* Minimize/Expand Button */}
+                <button
+                  onClick={() => setIsMinimized(!isMinimized)}
+                  className="p-2 bg-black bg-opacity-20 hover:bg-black hover:bg-opacity-40 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
+                  title={isMinimized ? "Expand sidebar" : "Minimize sidebar"}
+                >
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    {isMinimized ? (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7M4 12h16" />
+                    ) : (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M20 12H4" />
+                    )}
+                  </svg>
+                </button>
+
+                {/* Close Button */}
+                <button
+                  onClick={onClose}
+                  className="p-2 bg-black bg-opacity-20 hover:bg-black hover:bg-opacity-40 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95"
+                  title="Close details"
+                >
+                  <svg className="w-5 h-5 text-white transition-transform duration-200 hover:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Entity Type Badge */}
+              <div className="absolute top-4 left-4">
+                <div className="text-white px-3 py-1 rounded text-xs font-semibold bg-purple-600">
+                  SITE SUBMIT
+                </div>
+              </div>
             </div>
+
+            {/* Site Submit Header Info */}
+            {!isMinimized && (
+              <div className="px-6 py-3 border-b border-gray-200">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h1 className="font-bold text-gray-900 mb-1 text-base">
+                      {siteSubmitName || siteSubmit?.site_submit_name || siteSubmit?.property?.property_name || 'Site Submit'}
+                    </h1>
+                    <div className="mb-2 space-y-0.5">
+                      <p className="text-sm text-gray-600">
+                        <span className="font-medium">Property:</span> {siteSubmit?.property?.property_name || 'Not specified'}
+                      </p>
+                      {siteSubmit?.property_unit?.property_unit_name && (
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium">Unit:</span> {siteSubmit?.property_unit?.property_unit_name}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-          )}
-        </div>
+        )}
 
         {/* Tabs - Compact Design with Horizontal Scroll */}
         {!isMinimized && (

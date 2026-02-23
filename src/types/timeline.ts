@@ -10,6 +10,8 @@
 export type TimelineSource =
   | 'prospecting_activity'    // From prospecting_activity table
   | 'prospecting_note'        // From prospecting_note table
+  | 'property_activity'       // From property_activity table
+  | 'property_note'           // From property_note table
   | 'activity'                // From main activity table
   | 'email'                   // From emails table via email_object_link
   | 'hunter_outreach';        // From hunter_outreach_draft (sent emails)
@@ -24,6 +26,7 @@ export type TimelineActivityType =
   | 'sms'
   | 'voicemail'
   | 'call'
+  | 'phone_call'              // Phone call (used by property_activity)
   | 'meeting'
   | 'task'
   | 'status_change'
@@ -89,9 +92,15 @@ export interface UnifiedTimelineItem {
 
   // Related entities
   contact_id?: string | null;
+  contact_name?: string | null;         // For display when activity linked to contact
   target_id?: string | null;
   deal_id?: string | null;
   client_id?: string | null;
+  property_id?: string | null;
+
+  // Migration tracking (for migrated property notes)
+  is_migrated?: boolean;
+  migrated_from?: string | null;        // 'property_notes' or 'description'
 
   // Hunter-specific
   hunter_outreach_id?: string | null;
@@ -180,6 +189,7 @@ export const ACTIVITY_TYPE_CONFIG: Record<TimelineActivityType, ActivityTypeConf
   sms: { label: 'SMS', icon: 'ChatBubbleLeftIcon', color: 'text-purple-600', bgColor: 'bg-purple-100' },
   voicemail: { label: 'Voicemail', icon: 'PhoneIcon', color: 'text-orange-600', bgColor: 'bg-orange-100' },
   call: { label: 'Call', icon: 'PhoneIcon', color: 'text-green-600', bgColor: 'bg-green-100' },
+  phone_call: { label: 'Call', icon: 'PhoneIcon', color: 'text-green-600', bgColor: 'bg-green-100' },
   meeting: { label: 'Meeting', icon: 'CalendarDaysIcon', color: 'text-teal-600', bgColor: 'bg-teal-100' },
   task: { label: 'Task', icon: 'ClipboardDocumentListIcon', color: 'text-amber-600', bgColor: 'bg-amber-100' },
   status_change: { label: 'Status Change', icon: 'ArrowPathIcon', color: 'text-gray-500', bgColor: 'bg-gray-50' },

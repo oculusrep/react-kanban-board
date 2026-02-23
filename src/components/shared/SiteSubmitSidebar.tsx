@@ -12,6 +12,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import SiteSubmitDataTab from './SiteSubmitDataTab';
+import DealDataTab from './DealDataTab';
 import SiteSubmitContactsTab from './SiteSubmitContactsTab';
 import SiteSubmitCreateForm from './SiteSubmitCreateForm';
 import PortalChatTab from '../portal/PortalChatTab';
@@ -19,9 +20,11 @@ import PortalFilesTab from '../portal/PortalFilesTab';
 import StatusBadgeDropdown from '../portal/StatusBadgeDropdown';
 import { useSiteSubmitEmail } from '../../hooks/useSiteSubmitEmail';
 import EmailComposerModal from '../EmailComposerModal';
+import ConvertSiteSubmitToDealModal from '../ConvertSiteSubmitToDealModal';
 
 export interface SiteSubmitData {
   id: string;
+  code: string | null;
   site_submit_name: string | null;
   submit_stage_id: string | null;
   date_submitted: string | null;
@@ -109,6 +112,7 @@ interface SiteSubmitSidebarProps {
   onStatusChange?: (siteSubmitId: string, newStageId: string, newStageName: string) => void;
   onCenterOnPin?: (lat: number, lng: number) => void; // Map only
   onDeleteSiteSubmit?: (siteSubmitId: string, siteSubmitName: string) => void; // Map only
+  onViewProperty?: (propertyId: string) => void; // Callback to view full property details
   onDataUpdate?: (updatedData: SiteSubmitData) => void; // Callback when data is updated
   onSiteSubmitCreated?: (newSiteSubmit: SiteSubmitData) => void; // Callback when new site submit is created
   rightOffset?: number; // Offset from right edge in pixels (for stacked sidebars)
@@ -147,6 +151,7 @@ export default function SiteSubmitSidebar({
   onStatusChange,
   onCenterOnPin,
   onDeleteSiteSubmit,
+  onViewProperty,
   onDataUpdate,
   onSiteSubmitCreated,
   rightOffset = 0,
@@ -168,6 +173,9 @@ export default function SiteSubmitSidebar({
   const [linkCopied, setLinkCopied] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [preparingEmail, setPreparingEmail] = useState(false);
+  const [showConvertToDealModal, setShowConvertToDealModal] = useState(false);
+  const [pendingLoiStageChange, setPendingLoiStageChange] = useState<{ stageId: string; stageName: string } | null>(null);
+  const [showLoiConversionPrompt, setShowLoiConversionPrompt] = useState(false);
 
   // Check if this is a new site submit creation
   const isNewSiteSubmit = initialData?._isNew === true && !siteSubmitId;
@@ -255,6 +263,7 @@ export default function SiteSubmitSidebar({
           .from('site_submit')
           .select(`
             id,
+            code,
             site_submit_name,
             submit_stage_id,
             date_submitted,
@@ -381,6 +390,7 @@ export default function SiteSubmitSidebar({
       // Creating a new site submit - use initialData
       const newSiteSubmitData: SiteSubmitData = {
         id: '', // Empty for new
+        code: null, // Will be generated on save
         site_submit_name: initialData.site_submit_name || null,
         submit_stage_id: initialData.submit_stage_id || null,
         date_submitted: initialData.date_submitted || null,
@@ -455,6 +465,53 @@ export default function SiteSubmitSidebar({
     }
   };
 
+  // Handle status change with LOI detection
+  const handleStatusChange = (newStageId: string, newStageName: string) => {
+    // Check if changing to LOI and no deal exists yet
+    if (newStageName === 'LOI' && !siteSubmit?.deal_id) {
+      setPendingLoiStageChange({ stageId: newStageId, stageName: newStageName });
+      setShowLoiConversionPrompt(true);
+    } else {
+      // Normal status change
+      handleUpdate({
+        submit_stage_id: newStageId,
+        submit_stage: { id: newStageId, name: newStageName },
+      });
+      if (onStatusChange && siteSubmit) {
+        onStatusChange(siteSubmit.id, newStageId, newStageName);
+      }
+    }
+  };
+
+  // Handle LOI conversion prompt response
+  const handleLoiConversionResponse = (shouldConvert: boolean) => {
+    setShowLoiConversionPrompt(false);
+
+    if (pendingLoiStageChange) {
+      // Apply the stage change regardless
+      handleUpdate({
+        submit_stage_id: pendingLoiStageChange.stageId,
+        submit_stage: { id: pendingLoiStageChange.stageId, name: pendingLoiStageChange.stageName },
+      });
+      if (onStatusChange && siteSubmit) {
+        onStatusChange(siteSubmit.id, pendingLoiStageChange.stageId, pendingLoiStageChange.stageName);
+      }
+    }
+
+    if (shouldConvert) {
+      setShowConvertToDealModal(true);
+    }
+
+    setPendingLoiStageChange(null);
+  };
+
+  // Handle successful deal conversion
+  const handleDealConversionSuccess = (dealId: string) => {
+    showToast('Deal created successfully!', { type: 'success' });
+    // Update local state with the new deal_id
+    handleUpdate({ deal_id: dealId });
+  };
+
   // Build tabs based on context (no EMAIL tab - email is a header button)
   const tabs: { id: TabType; label: string; icon: JSX.Element }[] = [
     {
@@ -527,10 +584,10 @@ export default function SiteSubmitSidebar({
         </div>
       )}
 
-      {/* Header */}
+      {/* Header - green when deal exists, navy otherwise */}
       <div
         className="flex-shrink-0 px-4 py-3 border-b border-gray-200"
-        style={{ backgroundColor: '#011742' }}
+        style={{ backgroundColor: siteSubmit?.deal_id ? '#16a34a' : '#011742' }}
       >
         {/* Top row with title and action icons */}
         <div className="flex items-start justify-between">
@@ -561,6 +618,19 @@ export default function SiteSubmitSidebar({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
                 )}
+              </button>
+            )}
+
+            {/* Convert to Deal button (dollar sign) - only show when no deal exists */}
+            {isEditable && siteSubmit && !siteSubmit.deal_id && siteSubmit.client_id && (
+              <button
+                onClick={() => setShowConvertToDealModal(true)}
+                className="p-2 rounded-lg bg-indigo-500 hover:bg-indigo-600 transition-colors"
+                title="Convert to Deal"
+              >
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
               </button>
             )}
 
@@ -623,11 +693,25 @@ export default function SiteSubmitSidebar({
             {siteSubmit?.site_submit_name || `${siteSubmit?.property?.property_name || ''} - ${siteSubmit?.client?.client_name || ''}`}
           </h3>
           {siteSubmit?.property?.address && (
-            <p className="text-sm text-gray-300 truncate">
-              {siteSubmit.property.address}
-              {siteSubmit.property.city && `, ${siteSubmit.property.city}`}
-              {siteSubmit.property.state && `, ${siteSubmit.property.state}`}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm text-gray-300 truncate flex-1">
+                {siteSubmit.property.address}
+                {siteSubmit.property.city && `, ${siteSubmit.property.city}`}
+                {siteSubmit.property.state && `, ${siteSubmit.property.state}`}
+              </p>
+              {/* View Property button */}
+              {onViewProperty && siteSubmit.property.id && (
+                <button
+                  onClick={() => onViewProperty(siteSubmit.property!.id)}
+                  className="p-1 rounded text-gray-300 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+                  title="View property details"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                </button>
+              )}
+            </div>
           )}
           {siteSubmit?.property_unit && (
             <p className="text-sm text-blue-300 truncate">
@@ -646,15 +730,7 @@ export default function SiteSubmitSidebar({
               siteSubmitId={siteSubmit.id}
               stages={stages}
               canEdit={isEditable}
-              onStatusChange={(newStageId, newStageName) => {
-                handleUpdate({
-                  submit_stage_id: newStageId,
-                  submit_stage: { id: newStageId, name: newStageName },
-                });
-                if (onStatusChange) {
-                  onStatusChange(siteSubmit.id, newStageId, newStageName);
-                }
-              }}
+              onStatusChange={handleStatusChange}
             />
           ) : (
             <span
@@ -774,11 +850,20 @@ export default function SiteSubmitSidebar({
         ) : (
           <>
             {activeTab === 'data' && (
-              <SiteSubmitDataTab
-                siteSubmit={siteSubmit}
-                isEditable={isEditable}
-                onUpdate={handleUpdate}
-              />
+              siteSubmit.deal_id ? (
+                <DealDataTab
+                  siteSubmit={siteSubmit}
+                  dealId={siteSubmit.deal_id}
+                  isEditable={isEditable}
+                  onUpdate={handleUpdate}
+                />
+              ) : (
+                <SiteSubmitDataTab
+                  siteSubmit={siteSubmit}
+                  isEditable={isEditable}
+                  onUpdate={handleUpdate}
+                />
+              )
             )}
             {activeTab === 'chat' && (
               <PortalChatTab
@@ -820,6 +905,58 @@ export default function SiteSubmitSidebar({
         sending={sendingEmail}
         title={`Email: ${siteSubmit?.property?.property_name || 'Site Submit'}`}
       />
+
+      {/* LOI Conversion Prompt Modal */}
+      {showLoiConversionPrompt && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Create a New Deal?</h3>
+            </div>
+            <div className="px-6 py-4">
+              <p className="text-gray-600">
+                This site submit is being moved to the <strong>LOI</strong> stage. Would you like to create a new deal from this site submit?
+              </p>
+              <div className="mt-4 p-3 bg-blue-50 rounded-md">
+                <p className="text-sm text-blue-800">
+                  Creating a deal will link this site submit to a new deal record where you can track financials, contacts, and deal progress.
+                </p>
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 rounded-b-lg flex justify-end gap-3">
+              <button
+                onClick={() => handleLoiConversionResponse(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Not Now
+              </button>
+              <button
+                onClick={() => handleLoiConversionResponse(true)}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
+              >
+                Create Deal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Convert Site Submit to Deal Modal */}
+      {siteSubmit && (
+        <ConvertSiteSubmitToDealModal
+          isOpen={showConvertToDealModal}
+          onClose={() => setShowConvertToDealModal(false)}
+          siteSubmitId={siteSubmit.id}
+          siteSubmitCode={siteSubmit.code || ''}
+          siteSubmitName={siteSubmit.site_submit_name}
+          clientId={siteSubmit.client_id}
+          clientName={siteSubmit.client?.client_name || null}
+          propertyId={siteSubmit.property_id}
+          propertyName={siteSubmit.property?.property_name || null}
+          propertyUnitId={siteSubmit.property_unit_id}
+          onSuccess={handleDealConversionSuccess}
+        />
+      )}
     </div>
   );
 }

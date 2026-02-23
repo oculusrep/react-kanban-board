@@ -2335,6 +2335,7 @@ const MappingPageContent: React.FC = () => {
                 }}
                 onCenterOnPin={handleCenterOnPin}
                 onDeleteSiteSubmit={handleDeleteSiteSubmit}
+                onViewProperty={(propertyId) => handleViewPropertyDetails({ id: propertyId })}
                 onDataUpdate={handlePinDataUpdate}
                 rightOffset={isPropertyDetailsOpen ? 500 : isSiteSubmitDetailsOpen ? 500 : isContactFormOpen ? 450 : 0}
               />
@@ -2385,6 +2386,7 @@ const MappingPageContent: React.FC = () => {
               }}
               onCenterOnPin={handleCenterOnPin}
               onDeleteSiteSubmit={handleDeleteSiteSubmit}
+              onViewProperty={(propertyId) => handleViewPropertyDetails({ id: propertyId })}
               onDataUpdate={handleSiteSubmitDataUpdate}
               onSiteSubmitCreated={(newSiteSubmit) => {
                 // Update the selected data with the newly created site submit

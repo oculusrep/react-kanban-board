@@ -284,8 +284,49 @@ export default function ConvertSiteSubmitToDealModal({
       const currentUserId = user?.id || null;
       const now = new Date().toISOString();
 
-      // Step 4: Create the new deal
-      const dealPayload = {
+      // Step 4: Fetch property data to inherit fields
+      let propertyData: {
+        available_sqft?: number | null;
+        building_sqft?: number | null;
+        acres?: number | null;
+        asking_lease_price?: number | null;
+        asking_purchase_price?: number | null;
+        rent_psf?: number | null;
+        nnn_psf?: number | null;
+        nnn?: number | null;
+        all_in_rent?: number | null;
+        property_record_type?: { label?: string | null } | null;
+      } | null = null;
+
+      if (propertyId) {
+        const { data: fetchedProperty } = await supabase
+          .from('property')
+          .select(`
+            available_sqft,
+            building_sqft,
+            acres,
+            asking_lease_price,
+            asking_purchase_price,
+            rent_psf,
+            nnn_psf,
+            nnn,
+            all_in_rent,
+            property_record_type:property_record_type_id (
+              label
+            )
+          `)
+          .eq('id', propertyId)
+          .single();
+
+        propertyData = fetchedProperty;
+      }
+
+      // Determine property type for field mapping
+      const propertyTypeLabel = propertyData?.property_record_type?.label?.toLowerCase() || '';
+      const isLand = propertyTypeLabel.includes('land');
+
+      // Step 5: Create the new deal with inherited property fields
+      const dealPayload: Record<string, unknown> = {
         deal_name: dealName.trim(),
         deal_value: dealValue,
         client_id: clientId,
@@ -307,12 +348,33 @@ export default function ConvertSiteSubmitToDealModal({
         origination_percent: 50,
         site_percent: 25,
         deal_percent: 25,
+        // LOI written date defaults to today
+        loi_written_date: formatDateFn(new Date(), 'yyyy-MM-dd'),
         // Metadata fields
         created_at: now,
         created_by_id: currentUserId,
         updated_at: now,
         updated_by_id: currentUserId,
       };
+
+      // Add inherited property fields based on property type
+      if (propertyData) {
+        if (isLand) {
+          // Land-specific fields
+          dealPayload.deal_acres = propertyData.acres;
+          dealPayload.deal_asking_purchase_price = propertyData.asking_purchase_price;
+          dealPayload.deal_asking_ground_lease_price = propertyData.asking_lease_price;
+          dealPayload.deal_nnn = propertyData.nnn;
+        } else {
+          // Building types (Shopping Center, Office, Industrial, etc.)
+          dealPayload.deal_available_sqft = propertyData.available_sqft;
+          dealPayload.deal_building_sqft = propertyData.building_sqft;
+          dealPayload.deal_asking_lease_price = propertyData.asking_lease_price;
+          dealPayload.deal_rent_psf = propertyData.rent_psf;
+          dealPayload.deal_nnn_psf = propertyData.nnn_psf;
+          dealPayload.deal_all_in_rent = propertyData.all_in_rent;
+        }
+      }
 
       const { data: newDeal, error: dealError } = await supabase
         .from('deal')
@@ -327,7 +389,7 @@ export default function ConvertSiteSubmitToDealModal({
       }
       if (!newDeal) throw new Error('Failed to create deal');
 
-      // Step 5: Copy property contacts to deal_contact
+      // Step 6: Copy property contacts to deal_contact
       if (propertyId) {
         const { data: propertyContacts } = await supabase
           .from('property_contact')
@@ -356,7 +418,7 @@ export default function ConvertSiteSubmitToDealModal({
         }
       }
 
-      // Step 6: Update the assignment (if selected) to link to deal and set priority to "Converted"
+      // Step 7: Update the assignment (if selected) to link to deal and set priority to "Converted"
       if (selectedAssignmentId) {
         const { data: priorityData } = await supabase
           .from('assignment_priority')
@@ -382,7 +444,7 @@ export default function ConvertSiteSubmitToDealModal({
         }
       }
 
-      // Step 7: Look up the "LOI" submit stage_id and update the site submit
+      // Step 8: Look up the "LOI" submit stage_id and update the site submit
       const { data: submitStageData } = await supabase
         .from('submit_stage')
         .select('id')
@@ -406,6 +468,14 @@ export default function ConvertSiteSubmitToDealModal({
         console.error('Error updating site submit:', siteSubmitError);
         throw siteSubmitError;
       }
+
+      // Step 9: Log a comment for deal creation
+      await supabase.from('site_submit_comment').insert({
+        site_submit_id: siteSubmitId,
+        author_id: currentUserId,
+        content: `Deal created: ${dealName.trim()} (LOI written ${formatDateFn(new Date(), 'MM/dd/yyyy')})`,
+        visibility: 'client',
+      });
 
       // Success!
       onSuccess(newDeal.id);
