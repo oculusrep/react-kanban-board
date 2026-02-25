@@ -136,12 +136,17 @@ serve(async (req) => {
       user.first_name ||
       null;
 
+    // Sanitize subject to replace Unicode dashes with ASCII hyphens
+    // Unicode en-dash (U+2013), em-dash (U+2014), horizontal bar (U+2015), minus sign (U+2212)
+    // These cause encoding issues displaying as "Ã¢Â€Â"" in email clients
+    const sanitizeSubject = (str: string) => str.replace(/[\u2013\u2014\u2015\u2212]/g, '-');
+
     // Prepare email options
     const emailOptions: SendEmailOptions = {
       to: request.to,
       cc: request.cc,
       bcc: request.bcc,
-      subject: request.subject,
+      subject: sanitizeSubject(request.subject),
       bodyHtml: request.body_html,
       bodyText: request.body_text,
       fromName: senderName || undefined,

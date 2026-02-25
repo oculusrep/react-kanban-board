@@ -809,7 +809,10 @@ function buildMimeMessage(
     headers.push(`Bcc: ${options.bcc.join(', ')}`);
   }
 
-  headers.push(`Subject: ${encodeHeaderValue(options.subject)}`);
+  // Sanitize subject: replace Unicode dashes with ASCII hyphens to prevent encoding issues
+  // Unicode en-dash (U+2013), em-dash (U+2014), horizontal bar (U+2015), minus sign (U+2212)
+  const sanitizedSubject = options.subject.replace(/[\u2013\u2014\u2015\u2212]/g, '-');
+  headers.push(`Subject: ${encodeHeaderValue(sanitizedSubject)}`);
 
   if (options.replyTo) {
     headers.push(`Reply-To: ${options.replyTo}`);
