@@ -79,9 +79,15 @@ const BulkAddPropertiesModal: React.FC<BulkAddPropertiesModalProps> = ({
       const { data, error } = await supabase
         .from('property_type')
         .select('id, name')
-        .order('name');
+        .eq('active', true)
+        .order('sort_order');
 
-      if (!error && data) {
+      if (error) {
+        console.error('Failed to load property types:', error);
+        return;
+      }
+
+      if (data) {
         setPropertyTypes(data);
         const restaurant = data.find(t => t.name.toLowerCase().includes('restaurant'));
         if (restaurant) {

@@ -76,18 +76,29 @@ class DuplicateDetectionService {
    * Tier 1: Find property by exact Google Place ID
    */
   async findByPlaceId(placeId: string): Promise<Property | null> {
-    const { data, error } = await supabase
-      .from('property')
-      .select('*')
-      .eq('google_place_id', placeId)
-      .limit(1)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('property')
+        .select('*')
+        .eq('google_place_id', placeId)
+        .limit(1)
+        .single();
 
-    if (error && error.code !== 'PGRST116') {
-      console.error('Error finding property by place_id:', error);
+      // PGRST116 = no rows found (expected)
+      // 406 or other errors might mean column doesn't exist yet
+      if (error) {
+        if (error.code !== 'PGRST116') {
+          console.warn('Error finding property by place_id (column may not exist yet):', error.message);
+        }
+        return null;
+      }
+
+      return data || null;
+    } catch (err) {
+      // Gracefully handle if column doesn't exist
+      console.warn('google_place_id lookup failed:', err);
+      return null;
     }
-
-    return data || null;
   }
 
   /**
@@ -179,19 +190,27 @@ class DuplicateDetectionService {
   ): Promise<Map<string, DuplicateCheckResult>> {
     const results = new Map<string, DuplicateCheckResult>();
 
-    // Get all existing google_place_ids in one query
+    // Get all existing google_place_ids in one query (if column exists)
     const placeIds = places.map(p => p.place_id);
-    const { data: existingByPlaceId } = await supabase
-      .from('property')
-      .select('*')
-      .in('google_place_id', placeIds);
-
     const placeIdMap = new Map<string, Property>();
-    (existingByPlaceId || []).forEach(prop => {
-      if (prop.google_place_id) {
-        placeIdMap.set(prop.google_place_id, prop);
+
+    try {
+      const { data: existingByPlaceId, error } = await supabase
+        .from('property')
+        .select('*')
+        .in('google_place_id', placeIds);
+
+      if (!error && existingByPlaceId) {
+        existingByPlaceId.forEach(prop => {
+          if (prop.google_place_id) {
+            placeIdMap.set(prop.google_place_id, prop);
+          }
+        });
       }
-    });
+    } catch (err) {
+      // Column may not exist yet - continue with proximity/address checks
+      console.warn('Bulk google_place_id lookup failed:', err);
+    }
 
     // Check each place
     for (const place of places) {

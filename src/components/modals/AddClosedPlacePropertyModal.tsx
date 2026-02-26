@@ -23,7 +23,7 @@ function parseAddress(formattedAddress: string): {
   state: string;
   zip: string;
 } {
-  // Format is usually: "123 Main St, City, ST 12345, USA"
+  // Format is usually: "123 Main St, City, ST 12345, USA" or "123 Main St, City, ST 12345-1234, USA"
   const parts = formattedAddress.split(',').map(p => p.trim());
 
   let streetAddress = '';
@@ -35,22 +35,31 @@ function parseAddress(formattedAddress: string): {
     streetAddress = parts[0];
     city = parts[1];
 
-    // State and zip are usually together like "GA 30301"
-    const stateZipPart = parts[2];
-    const stateZipMatch = stateZipPart.match(/^([A-Z]{2})\s*(\d{5})?/);
+    // State and zip are usually together like "GA 30301" or " GA 30301"
+    // The part might have leading/trailing whitespace even after trim
+    const stateZipPart = parts[2].trim();
+
+    // Try to match state abbreviation with optional zip (handles "GA 30301" or "GA 30301-1234")
+    // Use \s+ to require at least one space between state and zip
+    const stateZipMatch = stateZipPart.match(/([A-Z]{2})\s+(\d{5}(?:-\d{4})?)/);
     if (stateZipMatch) {
       state = stateZipMatch[1];
-      zip = stateZipMatch[2] || '';
+      zip = stateZipMatch[2];
     } else {
-      // Try to extract just state
-      const stateMatch = stateZipPart.match(/^([A-Z]{2})/);
+      // Try to extract just state abbreviation anywhere in the string
+      const stateMatch = stateZipPart.match(/\b([A-Z]{2})\b/);
       if (stateMatch) {
         state = stateMatch[1];
+        // Try to find zip anywhere in the string
+        const zipMatch = stateZipPart.match(/(\d{5}(?:-\d{4})?)/);
+        if (zipMatch) {
+          zip = zipMatch[1];
+        }
       }
     }
   } else if (parts.length === 2) {
     streetAddress = parts[0];
-    const stateZipMatch = parts[1].match(/([A-Z]{2})\s*(\d{5})?/);
+    const stateZipMatch = parts[1].match(/([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?/);
     if (stateZipMatch) {
       state = stateZipMatch[1];
       zip = stateZipMatch[2] || '';
@@ -93,9 +102,15 @@ const AddClosedPlacePropertyModal: React.FC<AddClosedPlacePropertyModalProps> = 
       const { data, error } = await supabase
         .from('property_type')
         .select('id, name')
-        .order('name');
+        .eq('active', true)
+        .order('sort_order');
 
-      if (!error && data) {
+      if (error) {
+        console.error('Failed to load property types:', error);
+        return;
+      }
+
+      if (data) {
         setPropertyTypes(data);
         // Default to "Restaurant" if available
         const restaurant = data.find(t => t.name.toLowerCase().includes('restaurant'));
