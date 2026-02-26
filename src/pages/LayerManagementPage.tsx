@@ -1,10 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useMapLayers } from '../hooks/useMapLayers';
 import { MapLayer } from '../services/mapLayerService';
+import { supabase } from '../lib/supabaseClient';
 import CreateLayerModal from '../components/modals/CreateLayerModal';
 import EditLayerModal from '../components/modals/EditLayerModal';
 import ShareLayerModal from '../components/modals/ShareLayerModal';
 import ConfirmDialog from '../components/ConfirmDialog';
+
+// Type for tracking places count per layer
+interface PlacesCount {
+  [layerId: string]: number;
+}
 
 export default function LayerManagementPage() {
   const {
@@ -22,11 +28,65 @@ export default function LayerManagementPage() {
   const [selectedLayer, setSelectedLayer] = useState<MapLayer | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set());
+  const [placesCountByLayer, setPlacesCountByLayer] = useState<PlacesCount>({});
 
   // Update document title
   useEffect(() => {
     document.title = 'Map Layers | OVIS';
   }, []);
+
+  // Fetch places counts for layers that have Google Places results
+  useEffect(() => {
+    const fetchPlacesCounts = async () => {
+      if (layers.length === 0) return;
+
+      try {
+        // Get count of google_places_result per layer_id
+        const { data, error } = await supabase
+          .from('google_places_result')
+          .select('layer_id')
+          .not('layer_id', 'is', null);
+
+        if (error) {
+          console.error('Error fetching places counts:', error);
+          return;
+        }
+
+        // Count results per layer
+        const counts: PlacesCount = {};
+        (data || []).forEach(row => {
+          if (row.layer_id) {
+            counts[row.layer_id] = (counts[row.layer_id] || 0) + 1;
+          }
+        });
+
+        setPlacesCountByLayer(counts);
+      } catch (err) {
+        console.error('Error fetching places counts:', err);
+      }
+    };
+
+    fetchPlacesCounts();
+  }, [layers]);
+
+  // Helper to check if a layer is a closed business layer
+  const isClosedBusinessLayer = (layer: MapLayer): boolean => {
+    // Check if it has places in google_places_result OR description indicates it's a closed business layer
+    return (
+      placesCountByLayer[layer.id] > 0 ||
+      layer.description?.toLowerCase().includes('closed business') ||
+      false
+    );
+  };
+
+  // Get the item count for a layer (shapes or places)
+  const getLayerItemCount = (layer: MapLayer): { count: number; type: 'shapes' | 'places' } => {
+    const placesCount = placesCountByLayer[layer.id] || 0;
+    if (placesCount > 0) {
+      return { count: placesCount, type: 'places' };
+    }
+    return { count: layer.shapes?.length || 0, type: 'shapes' };
+  };
 
   // Filter layers based on search query
   const filteredLayers = layers.filter(layer => {
@@ -40,6 +100,7 @@ export default function LayerManagementPage() {
   // Stats
   const totalLayers = layers.length;
   const totalShapes = layers.reduce((sum, layer) => sum + (layer.shapes?.length || 0), 0);
+  const totalPlaces = Object.values(placesCountByLayer).reduce((sum, count) => sum + count, 0);
   const sharedLayers = layers.filter(layer => (layer.client_shares?.length || 0) > 0).length;
 
   const handleEdit = (layer: MapLayer) => {
@@ -107,7 +168,7 @@ export default function LayerManagementPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-white rounded-lg border p-4">
             <div className="text-2xl font-bold text-blue-600">{totalLayers}</div>
             <div className="text-sm text-gray-600">Total Layers</div>
@@ -115,6 +176,10 @@ export default function LayerManagementPage() {
           <div className="bg-white rounded-lg border p-4">
             <div className="text-2xl font-bold text-green-600">{totalShapes}</div>
             <div className="text-sm text-gray-600">Total Shapes</div>
+          </div>
+          <div className="bg-white rounded-lg border p-4">
+            <div className="text-2xl font-bold text-red-600">{totalPlaces}</div>
+            <div className="text-sm text-gray-600">Places (Closed Business)</div>
           </div>
           <div className="bg-white rounded-lg border p-4">
             <div className="text-2xl font-bold text-purple-600">{sharedLayers}</div>
@@ -150,7 +215,7 @@ export default function LayerManagementPage() {
                   Layer
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Shapes
+                  Items
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Shared With
@@ -183,7 +248,17 @@ export default function LayerManagementPage() {
                             {expandedLayers.has(layer.id) ? '▼' : '▶'}
                           </button>
                           <div>
-                            <div className="font-medium text-gray-900">{layer.name}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">{layer.name}</span>
+                              {isClosedBusinessLayer(layer) && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700" title="Closed Business Search Layer">
+                                  <svg className="w-3 h-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                  Closed
+                                </span>
+                              )}
+                            </div>
                             {layer.description && (
                               <div className="text-sm text-gray-500">{layer.description}</div>
                             )}
@@ -191,9 +266,19 @@ export default function LayerManagementPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {layer.shapes?.length || 0} shapes
-                        </span>
+                        {(() => {
+                          const { count, type } = getLayerItemCount(layer);
+                          const isPlaces = type === 'places';
+                          return (
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              isPlaces
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-blue-100 text-blue-800'
+                            }`}>
+                              {count} {isPlaces ? 'places' : 'shapes'}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-4">
                         {(layer.client_shares?.length || 0) > 0 ? (
