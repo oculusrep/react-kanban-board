@@ -8,6 +8,67 @@ Feature to search for closed businesses using Google Places API, display them on
 
 ---
 
+## Implementation Status
+
+| Phase | Status | Date Completed |
+|-------|--------|----------------|
+| Phase 1: Database & Core Services | ✅ Complete | 2026-02-26 |
+| Phase 2: Search UI & Map Display | ✅ Complete | 2026-02-26 |
+| Phase 3: Layer Persistence | 🔲 Not Started | - |
+| Phase 4: Property Integration | 🔲 Not Started | - |
+| Phase 5: Admin & Budget Controls | 🔲 Not Started | - |
+| Phase 6: Portal Integration | 🔲 Not Started | - |
+
+### Completed Work (Phases 1 & 2)
+
+**Database Migration** (`supabase/migrations/20260226_google_places_search.sql`):
+- ✅ `google_places_saved_query` table with RLS policies
+- ✅ `google_places_result` table with RLS policies
+- ✅ `google_places_api_log` table with RLS policies
+- ✅ `google_place_id` column added to property table
+- ✅ `google_places_api_budget` added to app_settings
+
+**Services**:
+- ✅ `src/services/googlePlacesSearchService.ts` - Places API search, state bounds, rate limiting
+- ✅ `src/services/closedPlacesLayerService.ts` - Layer management, saved queries
+
+**Components**:
+- ✅ `src/components/mapping/ClosedBusinessSearchPanel.tsx` - Search panel UI
+- ✅ `src/components/mapping/layers/ClosedPlacesLayer.tsx` - Map markers with clustering
+- ✅ `src/components/mapping/popups/ClosedPlacePopup.tsx` - Place info popup
+
+**Markers** (`src/components/mapping/utils/modernMarkers.ts`):
+- ✅ `createClosedBusinessPermanentIcon` - Red pin with X
+- ✅ `createClosedBusinessTemporaryIcon` - Yellow pin with pause
+- ✅ `createClosedBusinessSelectedIcon` - Larger selected variants
+
+**Integration**:
+- ✅ `src/pages/MappingPageNew.tsx` - Panel and layer integrated
+
+### Remaining Work
+
+**Phase 3: Layer Persistence**
+- Create `SavedQueriesPanel.tsx` component
+- Implement "Update existing or create new" prompt on query re-run
+- Update `LayerManagementPage.tsx` to display closed business layers with indicator
+
+**Phase 4: Property Integration**
+- Create `duplicateDetectionService.ts` (3-tier: place_id, proximity, fuzzy address)
+- Create `AddClosedPlacePropertyModal.tsx` (single place → property)
+- Create `BulkAddPropertiesModal.tsx` (batch add with duplicate handling)
+
+**Phase 5: Admin & Budget Controls**
+- Create `PlacesApiBudgetPage.tsx` admin page
+- Add route `/admin/places-api` to App.tsx
+- Implement budget enforcement (block searches when exceeded)
+
+**Phase 6: Portal Integration**
+- Verify layer sharing works for closed business layers
+- Confirm "Add to Properties" button hidden in portal view
+- Test full client portal map display
+
+---
+
 ## Database Schema
 
 ### Migration: `supabase/migrations/20260226_google_places_search.sql`
