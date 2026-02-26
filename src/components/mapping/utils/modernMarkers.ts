@@ -143,6 +143,84 @@ export const createDiamondMarkerIcon = (color: string, size: number = 20): googl
   };
 };
 
+// Closed business marker - pin with X icon for permanently closed
+export const createClosedBusinessPermanentIcon = (size: number = 28): google.maps.Icon => {
+  const color = '#DC2626'; // Red
+  const svg = `
+    <svg width="${size}" height="${Math.round(size * 1.25)}" viewBox="0 0 28 35" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Shadow -->
+      <ellipse cx="14" cy="33" rx="6" ry="2" fill="rgba(0,0,0,0.2)"/>
+      <!-- Main pin shape -->
+      <path d="M14 1C7.925 1 3 5.925 3 12C3 19.5 14 32 14 32S25 19.5 25 12C25 5.925 20.075 1 14 1Z"
+            fill="${color}" stroke="white" stroke-width="2"/>
+      <!-- White circle background -->
+      <circle cx="14" cy="12" r="7" fill="white"/>
+      <!-- X icon -->
+      <path d="M10 8L18 16M18 8L10 16" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+  `;
+
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(size, Math.round(size * 1.25)),
+    origin: new google.maps.Point(0, 0),
+    anchor: new google.maps.Point(size / 2, Math.round(size * 1.25))
+  };
+};
+
+// Closed business marker - pin with pause icon for temporarily closed
+export const createClosedBusinessTemporaryIcon = (size: number = 28): google.maps.Icon => {
+  const color = '#F59E0B'; // Amber/Yellow
+  const svg = `
+    <svg width="${size}" height="${Math.round(size * 1.25)}" viewBox="0 0 28 35" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Shadow -->
+      <ellipse cx="14" cy="33" rx="6" ry="2" fill="rgba(0,0,0,0.2)"/>
+      <!-- Main pin shape -->
+      <path d="M14 1C7.925 1 3 5.925 3 12C3 19.5 14 32 14 32S25 19.5 25 12C25 5.925 20.075 1 14 1Z"
+            fill="${color}" stroke="white" stroke-width="2"/>
+      <!-- White circle background -->
+      <circle cx="14" cy="12" r="7" fill="white"/>
+      <!-- Pause icon (two vertical bars) -->
+      <rect x="10" y="8" width="3" height="8" rx="1" fill="${color}"/>
+      <rect x="15" y="8" width="3" height="8" rx="1" fill="${color}"/>
+    </svg>
+  `;
+
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(size, Math.round(size * 1.25)),
+    origin: new google.maps.Point(0, 0),
+    anchor: new google.maps.Point(size / 2, Math.round(size * 1.25))
+  };
+};
+
+// Selected closed business marker (larger)
+export const createClosedBusinessSelectedIcon = (status: 'permanent' | 'temporary', size: number = 40): google.maps.Icon => {
+  const color = status === 'permanent' ? '#DC2626' : '#F59E0B';
+  const svg = `
+    <svg width="${size}" height="${Math.round(size * 1.25)}" viewBox="0 0 40 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Shadow -->
+      <ellipse cx="20" cy="47" rx="8" ry="3" fill="rgba(0,0,0,0.3)"/>
+      <!-- Main pin shape -->
+      <path d="M20 2C11.163 2 4 9.163 4 18C4 28 20 46 20 46S36 28 36 18C36 9.163 28.837 2 20 2Z"
+            fill="${color}" stroke="white" stroke-width="3"/>
+      <!-- White circle background -->
+      <circle cx="20" cy="17" r="10" fill="white"/>
+      ${status === 'permanent'
+        ? `<!-- X icon --><path d="M14 11L26 23M26 11L14 23" stroke="${color}" stroke-width="3" stroke-linecap="round"/>`
+        : `<!-- Pause icon --><rect x="14" y="11" width="4" height="12" rx="1" fill="${color}"/><rect x="22" y="11" width="4" height="12" rx="1" fill="${color}"/>`
+      }
+    </svg>
+  `;
+
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(size, Math.round(size * 1.25)),
+    origin: new google.maps.Point(0, 0),
+    anchor: new google.maps.Point(size / 2, Math.round(size * 1.25))
+  };
+};
+
 // Function to create muted Google Places marker styles (subtle, not hidden)
 export const createMutedPlacesStyle = () => {
   return [
@@ -360,6 +438,10 @@ export const MarkerColors = {
   // Restaurant markers
   RESTAURANT: '#DC2626',  // Red - for restaurant locations
 
+  // Closed business markers
+  CLOSED_PERMANENT: '#DC2626',  // Red - permanently closed
+  CLOSED_TEMPORARY: '#F59E0B',  // Amber - temporarily closed
+
   // Neutral
   DEFAULT: '#6B7280'      // Gray
 } as const;
@@ -398,6 +480,14 @@ export const ModernMarkerStyles = {
     verifying: () => createDiamondMarkerIcon('#F97316', 20), // Orange for verification
     verified: () => createDiamondMarkerIcon(MarkerColors.VERIFIED, 16), // Green for verified
     noData: () => createDiamondMarkerIcon('#4B5563', 16), // Dark gray for restaurants with no sales data
+  },
+
+  // For closed businesses - use pin markers with X or pause icons
+  closedBusiness: {
+    permanent: () => createClosedBusinessPermanentIcon(28),
+    temporary: () => createClosedBusinessTemporaryIcon(28),
+    permanentSelected: () => createClosedBusinessSelectedIcon('permanent', 40),
+    temporarySelected: () => createClosedBusinessSelectedIcon('temporary', 40),
   },
 
   // Alternative styles if you want to try different shapes
