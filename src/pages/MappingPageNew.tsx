@@ -247,6 +247,48 @@ const MappingPageContent: React.FC = () => {
   const [closedBusinessResults, setClosedBusinessResults] = useState<PlacesSearchResult[]>([]);
   const [selectedClosedPlace, setSelectedClosedPlace] = useState<PlacesSearchResult | null>(null);
 
+  // Closed business layers state (for saved layers loaded from database)
+  const [closedBusinessLayerResults, setClosedBusinessLayerResults] = useState<Map<string, PlacesSearchResult[]>>(new Map());
+  const [loadingClosedBusinessLayer, setLoadingClosedBusinessLayer] = useState<string | null>(null);
+
+  // Load closed business results when a closed business layer is toggled on
+  useEffect(() => {
+    const loadClosedBusinessLayerResults = async (layerId: string) => {
+      // Check if already loaded
+      if (closedBusinessLayerResults.has(layerId)) {
+        return;
+      }
+
+      setLoadingClosedBusinessLayer(layerId);
+      try {
+        const results = await closedPlacesLayerService.getResultsForLayer(layerId);
+        // Convert stored results to PlacesSearchResult format
+        const placesResults: PlacesSearchResult[] = results.map(r => closedPlacesLayerService.storedToSearchResult(r));
+
+        setClosedBusinessLayerResults(prev => {
+          const newMap = new Map(prev);
+          newMap.set(layerId, placesResults);
+          return newMap;
+        });
+        console.log(`📍 Loaded ${placesResults.length} places for closed business layer ${layerId}`);
+      } catch (error) {
+        console.error('Failed to load closed business layer results:', error);
+      } finally {
+        setLoadingClosedBusinessLayer(null);
+      }
+    };
+
+    // Check each visible custom layer to see if it's a closed business layer that needs loading
+    customLayers.forEach(layer => {
+      const isVisible = customLayerVisibility[layer.id] ?? false;
+      const isClosedBusinessLayer = layer.description?.toLowerCase().includes('closed business');
+
+      if (isVisible && isClosedBusinessLayer && !closedBusinessLayerResults.has(layer.id)) {
+        loadClosedBusinessLayerResults(layer.id);
+      }
+    });
+  }, [customLayers, customLayerVisibility, closedBusinessLayerResults]);
+
   // Handler for merging all shapes in a layer into one
   const handleMergeLayerShapes = async (layerId: string, layerName: string) => {
     if (!confirm(`Merge all shapes in "${layerName}" into a single polygon? This cannot be undone.`)) {
@@ -2273,7 +2315,7 @@ const MappingPageContent: React.FC = () => {
               }}
             />
 
-            {/* Closed Business Search Results Layer */}
+            {/* Closed Business Search Results Layer (live search) */}
             {closedBusinessResults.length > 0 && (
               <ClosedPlacesLayer
                 map={mapInstance}
@@ -2290,6 +2332,31 @@ const MappingPageContent: React.FC = () => {
                 clusterConfig={clusterConfig}
               />
             )}
+
+            {/* Closed Business Saved Layers (from database) */}
+            {customLayers
+              .filter(layer => layer.description?.toLowerCase().includes('closed business'))
+              .map(layer => {
+                const isVisible = customLayerVisibility[layer.id] ?? false;
+                const layerResults = closedBusinessLayerResults.get(layer.id) || [];
+                return (
+                  <ClosedPlacesLayer
+                    key={`closed-layer-${layer.id}`}
+                    map={mapInstance}
+                    isVisible={isVisible && layerResults.length > 0}
+                    results={layerResults}
+                    selectedPlaceId={selectedClosedPlace?.place_id || null}
+                    onPlaceClick={(place) => setSelectedClosedPlace(place)}
+                    onPlaceSelect={(place) => setSelectedClosedPlace(place)}
+                    onAddToProperties={(place) => {
+                      showToast(`Add "${place.name}" to properties - coming soon!`, { type: 'info' });
+                    }}
+                    showAddToProperties={true}
+                    clusterConfig={clusterConfig}
+                  />
+                );
+              })
+            }
 
             {/* Place Info Layer - Shows popup when clicking Google Places POIs */}
             <PlaceInfoLayer
@@ -2790,10 +2857,21 @@ const MappingPageContent: React.FC = () => {
         }}
         onSaveAsLayer={async (results, layerName) => {
           try {
-            await closedPlacesLayerService.saveResultsAsLayer(results, layerName);
+            const layer = await closedPlacesLayerService.saveResultsAsLayer(results, layerName);
             await refreshCustomLayers();
+
+            // Pre-load the results into our cache so they display immediately
+            setClosedBusinessLayerResults(prev => {
+              const newMap = new Map(prev);
+              newMap.set(layer.id, results);
+              return newMap;
+            });
+
+            // Auto-toggle the new layer on
+            toggleCustomLayer(layer.id);
+
             showToast(`Created layer "${layerName}" with ${results.length} places`, { type: 'success' });
-            // Clear results after saving to layer (they're now in the layer)
+            // Clear live search results (they're now in the saved layer)
             setClosedBusinessResults([]);
             setSelectedClosedPlace(null);
             setShowClosedBusinessSearch(false);
