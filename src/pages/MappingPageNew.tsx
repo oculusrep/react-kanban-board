@@ -26,7 +26,6 @@ import ShareLayerModal from '../components/modals/ShareLayerModal';
 import BoundaryBuilderPanel from '../components/mapping/BoundaryBuilderPanel';
 import ClosedBusinessSearchPanel from '../components/mapping/ClosedBusinessSearchPanel';
 import ClosedPlacesLayer from '../components/mapping/layers/ClosedPlacesLayer';
-import ClosedPlacePopup from '../components/mapping/popups/ClosedPlacePopup';
 import { boundaryService, FetchedBoundary } from '../services/boundaryService';
 import { closedPlacesLayerService } from '../services/closedPlacesLayerService';
 import type { PlacesSearchResult } from '../services/googlePlacesSearchService';
@@ -2283,6 +2282,11 @@ const MappingPageContent: React.FC = () => {
                 selectedPlaceId={selectedClosedPlace?.place_id || null}
                 onPlaceClick={(place) => setSelectedClosedPlace(place)}
                 onPlaceSelect={(place) => setSelectedClosedPlace(place)}
+                onAddToProperties={(place) => {
+                  // For now, just show a toast - full implementation in Phase 4
+                  showToast(`Add "${place.name}" to properties - coming soon!`, { type: 'info' });
+                }}
+                showAddToProperties={true}
                 clusterConfig={clusterConfig}
               />
             )}
@@ -2799,27 +2803,6 @@ const MappingPageContent: React.FC = () => {
           }
         }}
       />
-
-      {/* Closed Place Popup */}
-      {selectedClosedPlace && mapInstance && (
-        <div
-          style={{
-            position: 'absolute',
-            zIndex: 1000,
-            // Position will be calculated based on marker position
-          }}
-        >
-          <ClosedPlacePopup
-            place={selectedClosedPlace}
-            onClose={() => setSelectedClosedPlace(null)}
-            onAddToProperties={async (place) => {
-              // For now, just show a toast - full implementation in Phase 4
-              showToast(`Add "${place.name}" to properties - coming soon!`, { type: 'info' });
-            }}
-            showAddButton={true}
-          />
-        </div>
-      )}
 
       {/* Share Layer Modal */}
       {layerToShare && (

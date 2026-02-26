@@ -287,6 +287,7 @@ class GooglePlacesSearchService {
 
   /**
    * Search for closed businesses in a state using Text Search
+   * Uses multiple search strategies to find closed businesses
    */
   async searchClosedInState(
     searchTerm: string,
@@ -300,19 +301,38 @@ class GooglePlacesSearchService {
       throw new Error(`Unknown state: ${stateAbbr}`);
     }
 
-    // Construct query with state name for better results
     const stateName = US_STATES.find(s => s.abbr === stateAbbr)?.name || stateAbbr;
-    const query = `${searchTerm} ${stateName}`;
+    const allResults: PlacesSearchResult[] = [];
 
-    console.log(`🔍 Searching: "${query}" in ${stateAbbr}`);
+    // Strategy 1: Search with just the business name + state
+    // This finds currently operational locations that Google knows about
+    const query1 = `${searchTerm} ${stateName}`;
+    console.log(`🔍 Search 1: "${query1}"`);
+    const results1 = await this.textSearch(query1, bounds, queryId);
+    allResults.push(...results1);
 
-    // Perform text search
-    const results = await this.textSearch(query, bounds, queryId);
+    // Strategy 2: Search with "closed" keyword to find closed businesses
+    // Google sometimes shows closed locations when "closed" is in the query
+    const query2 = `${searchTerm} closed ${stateName}`;
+    console.log(`🔍 Search 2: "${query2}"`);
+    const results2 = await this.textSearch(query2, bounds, queryId);
+    allResults.push(...results2);
+
+    // Strategy 3: Search with "permanently closed" to specifically target those
+    if (statusFilter === 'permanently_closed' || statusFilter === 'both') {
+      const query3 = `${searchTerm} permanently closed ${stateName}`;
+      console.log(`🔍 Search 3: "${query3}"`);
+      const results3 = await this.textSearch(query3, bounds, queryId);
+      allResults.push(...results3);
+    }
+
+    // Deduplicate across all searches
+    const deduplicated = this.deduplicateResults(allResults);
 
     // Filter by status
-    const filtered = this.filterByStatus(results, statusFilter);
+    const filtered = this.filterByStatus(deduplicated, statusFilter);
 
-    console.log(`✅ Found ${results.length} places, ${filtered.length} match status filter`);
+    console.log(`✅ Found ${deduplicated.length} unique places, ${filtered.length} match status filter`);
 
     return filtered;
   }

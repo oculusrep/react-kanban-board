@@ -31,15 +31,19 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('both');
   const [selectedState, setSelectedState] = useState('GA');
+  const [useGridSearch, setUseGridSearch] = useState(false);
+  const [gridSizeKm, setGridSizeKm] = useState(50); // Default 50km grid
 
   // Results state
   const [results, setResults] = useState<PlacesSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchProgress, setSearchProgress] = useState<{ current: number; total: number } | null>(null);
 
   // Budget state
   const [usageStats, setUsageStats] = useState<ApiUsageStats | null>(null);
   const [estimatedCalls, setEstimatedCalls] = useState(0);
+  const [showCostWarning, setShowCostWarning] = useState(false);
 
   // Save state
   const [showSaveOptions, setShowSaveOptions] = useState(false);
@@ -76,15 +80,50 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
     }
   }, [isOpen]);
 
+  // Calculate grid cells for a state
+  const calculateGridCells = (stateAbbr: string, gridSizeMeters: number): number => {
+    // State bounds (approximate)
+    const STATE_BOUNDS: Record<string, { north: number; south: number; east: number; west: number }> = {
+      'GA': { north: 35.0, south: 30.35, east: -80.84, west: -85.61 },
+      'FL': { north: 31.0, south: 24.4, east: -80.03, west: -87.63 },
+      'AL': { north: 35.0, south: 30.14, east: -84.89, west: -88.47 },
+      'SC': { north: 35.21, south: 32.03, east: -78.54, west: -83.35 },
+      'NC': { north: 36.59, south: 33.84, east: -75.46, west: -84.32 },
+      'TN': { north: 36.68, south: 34.98, east: -81.65, west: -90.31 },
+    };
+
+    const bounds = STATE_BOUNDS[stateAbbr.toUpperCase()];
+    if (!bounds) return 100; // Default estimate for unknown states
+
+    // Convert grid size to degrees
+    const latDegrees = gridSizeMeters / 111000;
+    const midLat = (bounds.north + bounds.south) / 2;
+    const lngDegrees = gridSizeMeters / (111000 * Math.cos(midLat * Math.PI / 180));
+
+    const latRange = bounds.north - bounds.south;
+    const lngRange = bounds.east - bounds.west;
+
+    const cellsLat = Math.ceil(latRange / latDegrees);
+    const cellsLng = Math.ceil(Math.abs(lngRange) / lngDegrees);
+
+    return cellsLat * cellsLng;
+  };
+
   // Update estimated calls when search parameters change
   useEffect(() => {
-    if (searchType === 'chain') {
-      setEstimatedCalls(2); // Text search is typically 1-2 calls
+    if (useGridSearch) {
+      // Grid search: calculate actual grid cells needed
+      const gridSizeMeters = gridSizeKm * 1000;
+      const gridCells = calculateGridCells(selectedState, gridSizeMeters);
+      setEstimatedCalls(gridCells);
+    } else if (searchType === 'chain') {
+      // Chain search uses multiple text search strategies
+      setEstimatedCalls(6); // ~2 calls per strategy × 3 strategies
     } else {
-      // For category search, estimate based on state size
-      setEstimatedCalls(30); // Grid-based search
+      // Category search without grid
+      setEstimatedCalls(6);
     }
-  }, [searchType, selectedState]);
+  }, [searchType, selectedState, useGridSearch, gridSizeKm]);
 
   const loadUsageStats = async () => {
     try {
@@ -104,12 +143,21 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
     }
   };
 
-  const handleSearch = async () => {
+  const handleSearch = async (bypassWarning = false) => {
     if (!searchTerm.trim() || !selectedState) return;
 
+    // Show cost warning for expensive searches (> $5 estimated)
+    const estimatedCost = (estimatedCalls * 2) / 100;
+    if (!bypassWarning && estimatedCost > 5) {
+      setShowCostWarning(true);
+      return;
+    }
+
+    setShowCostWarning(false);
     setIsSearching(true);
     setSearchError(null);
     setResults([]);
+    setSearchProgress(null);
 
     try {
       // Check budget first
@@ -118,25 +166,45 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
 
       if (!available) {
         setSearchError(
-          `Insufficient budget. This search requires ~${estimatedCalls} API calls, ` +
-          `but only $${(stats.remainingCents / 100).toFixed(2)} remaining.`
+          `Insufficient budget. This search requires ~${estimatedCalls} API calls ` +
+          `($${estimatedCost.toFixed(2)}), but only $${(stats.remainingCents / 100).toFixed(2)} remaining.`
         );
         return;
       }
 
-      // Perform search
-      const searchResults = await googlePlacesSearchService.searchClosedInState(
-        searchTerm.trim(),
-        selectedState,
-        statusFilter
-      );
+      let searchResults: PlacesSearchResult[];
+
+      if (useGridSearch) {
+        // Grid-based search for more comprehensive coverage
+        const bounds = googlePlacesSearchService.getStateBounds(selectedState);
+        if (!bounds) {
+          throw new Error(`State bounds not available for ${selectedState}`);
+        }
+
+        searchResults = await googlePlacesSearchService.nearbySearchWithGrid(
+          searchTerm.trim(),
+          bounds,
+          gridSizeKm * 1000, // Convert km to meters
+          statusFilter,
+          undefined,
+          (current, total) => setSearchProgress({ current, total })
+        );
+      } else {
+        // Standard text-based search
+        searchResults = await googlePlacesSearchService.searchClosedInState(
+          searchTerm.trim(),
+          selectedState,
+          statusFilter
+        );
+      }
 
       setResults(searchResults);
       onSearchResults(searchResults);
 
       // Generate default layer name
       const stateName = googlePlacesSearchService.getStateName(selectedState);
-      setLayerName(`${searchTerm} - ${stateName} - ${new Date().toLocaleDateString()}`);
+      const searchMethod = useGridSearch ? `Grid ${gridSizeKm}km` : 'Text';
+      setLayerName(`${searchTerm} - ${stateName} (${searchMethod}) - ${new Date().toLocaleDateString()}`);
 
       // Refresh usage stats
       await loadUsageStats();
@@ -145,6 +213,7 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
       setSearchError(error instanceof Error ? error.message : 'Search failed');
     } finally {
       setIsSearching(false);
+      setSearchProgress(null);
     }
   };
 
@@ -379,33 +448,139 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
           </select>
         </div>
 
-        {/* Estimated API Calls */}
-        <div className="text-xs text-gray-500">
-          Estimated API calls: ~{estimatedCalls}
-          {usageStats && (
-            <span className="ml-1">
-              (${((estimatedCalls * 2) / 100).toFixed(2)} estimated cost)
-            </span>
+        {/* Grid Search Option */}
+        <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+          <div className="flex items-center justify-between mb-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useGridSearch}
+                onChange={(e) => setUseGridSearch(e.target.checked)}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <span className="text-sm font-medium text-gray-700">Grid Search</span>
+            </label>
+            <span className="text-xs text-gray-500">More thorough, higher cost</span>
+          </div>
+
+          {useGridSearch && (
+            <div className="mt-3">
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Grid Size: {gridSizeKm} km
+              </label>
+              <input
+                type="range"
+                min="10"
+                max="100"
+                step="10"
+                value={gridSizeKm}
+                onChange={(e) => setGridSizeKm(Number(e.target.value))}
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+              />
+              <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <span>10km (thorough)</span>
+                <span>100km (fast)</span>
+              </div>
+            </div>
           )}
         </div>
 
+        {/* Estimated API Calls & Cost */}
+        <div className={`p-3 rounded-lg ${
+          estimatedCalls > 500
+            ? 'bg-red-50 border border-red-200'
+            : estimatedCalls > 100
+            ? 'bg-yellow-50 border border-yellow-200'
+            : 'bg-gray-50 border border-gray-200'
+        }`}>
+          <div className="flex justify-between items-center">
+            <span className="text-sm font-medium text-gray-700">Estimated Cost</span>
+            <span className={`text-sm font-bold ${
+              estimatedCalls > 500 ? 'text-red-600' : estimatedCalls > 100 ? 'text-yellow-600' : 'text-gray-900'
+            }`}>
+              ${((estimatedCalls * 2) / 100).toFixed(2)}
+            </span>
+          </div>
+          <div className="flex justify-between items-center mt-1">
+            <span className="text-xs text-gray-500">API Calls</span>
+            <span className="text-xs text-gray-600">~{estimatedCalls.toLocaleString()} calls</span>
+          </div>
+          {useGridSearch && (
+            <div className="text-xs text-gray-500 mt-2">
+              Grid search covers the entire state in {gridSizeKm}km cells
+            </div>
+          )}
+        </div>
+
+        {/* Cost Warning */}
+        {showCostWarning && (
+          <div className="p-4 bg-yellow-50 border border-yellow-300 rounded-lg">
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div className="flex-1">
+                <h4 className="text-sm font-medium text-yellow-800">High Cost Search</h4>
+                <p className="text-sm text-yellow-700 mt-1">
+                  This search will cost approximately <strong>${((estimatedCalls * 2) / 100).toFixed(2)}</strong> ({estimatedCalls.toLocaleString()} API calls).
+                </p>
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={() => handleSearch(true)}
+                    className="px-3 py-1.5 bg-yellow-600 text-white text-sm rounded hover:bg-yellow-700"
+                  >
+                    Proceed Anyway
+                  </button>
+                  <button
+                    onClick={() => setShowCostWarning(false)}
+                    className="px-3 py-1.5 text-yellow-700 text-sm hover:bg-yellow-100 rounded"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Search Progress */}
+        {searchProgress && (
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+              <span className="text-sm text-blue-700">
+                Searching grid cell {searchProgress.current} of {searchProgress.total}...
+              </span>
+            </div>
+            <div className="w-full bg-blue-200 rounded-full h-2">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${(searchProgress.current / searchProgress.total) * 100}%` }}
+              ></div>
+            </div>
+            <div className="text-xs text-blue-600 mt-1 text-right">
+              {Math.round((searchProgress.current / searchProgress.total) * 100)}%
+            </div>
+          </div>
+        )}
+
         {/* Search Button */}
         <button
-          onClick={handleSearch}
-          disabled={isSearching || !searchTerm.trim() || usageStats?.isOverBudget}
+          onClick={() => handleSearch()}
+          disabled={isSearching || !searchTerm.trim() || usageStats?.isOverBudget || showCostWarning}
           className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {isSearching ? (
             <>
               <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-              Searching...
+              {searchProgress ? `Searching (${searchProgress.current}/${searchProgress.total})...` : 'Searching...'}
             </>
           ) : (
             <>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-              Search
+              {useGridSearch ? `Grid Search (~$${((estimatedCalls * 2) / 100).toFixed(2)})` : 'Search'}
             </>
           )}
         </button>
