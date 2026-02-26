@@ -18,6 +18,7 @@ Feature to search for closed businesses using Google Places API, display them on
 | Phase 4: Property Integration | 🔲 Not Started | - |
 | Phase 5: Admin & Budget Controls | 🔲 Not Started | - |
 | Phase 6: Portal Integration | 🔲 Not Started | - |
+| Phase 7: Permissions & Layer Visibility | 🔲 Not Started | - |
 
 ### Completed Work (Phases 1 & 2)
 
@@ -66,6 +67,19 @@ Feature to search for closed businesses using Google Places API, display them on
 - Verify layer sharing works for closed business layers
 - Confirm "Add to Properties" button hidden in portal view
 - Test full client portal map display
+
+**Phase 7: Permissions & Layer Visibility**
+- Add `can_access_closed_business_search` permission to user permissions matrix
+- Add feature toggle per role in User Management page
+- Implement layer visibility options:
+  - **Private** - Only visible to the user who created it
+  - **Company** - Visible to all internal users (admin, broker_full, broker_limited)
+  - **Client Portal** - Shareable to specific clients via existing sharing mechanism
+- Add `visibility` column to `map_layer` table (`private`, `company`, `portal`)
+- Add `owner_id` column to `map_layer` table for private layer ownership
+- Update RLS policies on `map_layer` to enforce visibility rules
+- Update LayerManagementPage to show visibility badges and allow changing visibility
+- Update LayerPanel to filter layers based on user permissions and visibility
 
 ---
 
@@ -295,6 +309,35 @@ Three-tier duplicate detection:
 2. Hide "Add to Properties" button in portal view
 3. Test client portal map display
 
+### Phase 7: Permissions & Layer Visibility
+1. **User Permission Control**
+   - Add `can_access_closed_business_search` to `user.permissions` JSONB
+   - Add to User Management page permissions matrix
+   - Default: enabled for `admin` and `broker_full`, disabled for others
+   - Hide "Search Closed Businesses" button when user lacks permission
+
+2. **Layer Visibility System**
+   - Migration to add `visibility` and `owner_id` columns to `map_layer` table:
+     ```sql
+     ALTER TABLE map_layer ADD COLUMN visibility VARCHAR(20) DEFAULT 'company'
+       CHECK (visibility IN ('private', 'company', 'portal'));
+     ALTER TABLE map_layer ADD COLUMN owner_id UUID REFERENCES auth.users(id);
+     ```
+   - Update RLS policies:
+     - `private`: Only `owner_id = auth.uid()` can view
+     - `company`: All internal users can view
+     - `portal`: Visible to internal users + shared clients
+
+3. **UI Updates**
+   - LayerManagementPage: Add visibility dropdown (Private/Company/Portal-Ready)
+   - LayerPanel: Filter layers by visibility + user permissions
+   - SaveLayerModal: Add visibility selector when saving new layer
+   - Show visibility badge on layer cards (🔒 Private, 🏢 Company, 🌐 Portal)
+
+4. **Saved Query Visibility**
+   - Add same visibility system to `google_places_saved_query` table
+   - Allow users to share saved queries company-wide or keep private
+
 ---
 
 ## Test Plan: Del Taco Georgia
@@ -364,6 +407,15 @@ Three-tier duplicate detection:
    - [ ] Client sees layer on portal map
    - [ ] Client sees markers and popups
    - [ ] Client does NOT see "Add to Properties"
+
+10. **Permissions & Visibility**
+    - [ ] User without `can_access_closed_business_search` cannot see search button
+    - [ ] User with permission can see and use search feature
+    - [ ] Private layer only visible to creator
+    - [ ] Company layer visible to all internal users
+    - [ ] Portal-ready layer can be shared to clients
+    - [ ] Visibility can be changed from LayerManagementPage
+    - [ ] Saved queries respect visibility settings
 
 ---
 

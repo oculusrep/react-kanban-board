@@ -280,21 +280,8 @@ class ClosedPlacesLayerService {
       });
     }
 
-    // Create map shapes for each result (as points/small circles)
-    for (const result of results) {
-      await mapLayerService.createShape({
-        layer_id: layer.id,
-        name: result.name,
-        shape_type: 'circle',
-        geometry: {
-          type: 'circle',
-          center: [result.latitude, result.longitude],
-          radius: 50, // 50 meter radius for visibility
-        },
-        color: result.business_status === 'CLOSED_PERMANENTLY' ? '#DC2626' : '#F59E0B',
-        description: `${result.formatted_address}\nStatus: ${result.business_status}`,
-      });
-    }
+    // Note: We don't create map_layer_shape records here because
+    // ClosedPlacesLayer renders markers directly from google_places_result
 
     return layer;
   }
@@ -313,13 +300,6 @@ class ClosedPlacesLayerService {
       throw new Error('Layer not found');
     }
 
-    // Delete existing shapes
-    if (layer.shapes) {
-      for (const shape of layer.shapes) {
-        await mapLayerService.deleteShape(shape.id);
-      }
-    }
-
     // Delete existing results for this layer
     await supabase
       .from('google_places_result')
@@ -328,22 +308,6 @@ class ClosedPlacesLayerService {
 
     // Store new results
     await this.storeResults(results, queryId, layerId);
-
-    // Create new shapes
-    for (const result of results) {
-      await mapLayerService.createShape({
-        layer_id: layerId,
-        name: result.name,
-        shape_type: 'circle',
-        geometry: {
-          type: 'circle',
-          center: [result.latitude, result.longitude],
-          radius: 50,
-        },
-        color: result.business_status === 'CLOSED_PERMANENTLY' ? '#DC2626' : '#F59E0B',
-        description: `${result.formatted_address}\nStatus: ${result.business_status}`,
-      });
-    }
 
     // Update layer description
     await mapLayerService.updateLayer(layerId, {
