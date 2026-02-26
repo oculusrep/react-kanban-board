@@ -29,6 +29,8 @@ import ClosedPlacesLayer from '../components/mapping/layers/ClosedPlacesLayer';
 import { boundaryService, FetchedBoundary } from '../services/boundaryService';
 import { closedPlacesLayerService } from '../services/closedPlacesLayerService';
 import type { PlacesSearchResult } from '../services/googlePlacesSearchService';
+import AddClosedPlacePropertyModal from '../components/modals/AddClosedPlacePropertyModal';
+import BulkAddPropertiesModal from '../components/modals/BulkAddPropertiesModal';
 import { geocodingService } from '../services/geocodingService';
 import SiteSubmitFormModal from '../components/SiteSubmitFormModal';
 import InlinePropertyCreationModal from '../components/mapping/InlinePropertyCreationModal';
@@ -250,6 +252,11 @@ const MappingPageContent: React.FC = () => {
   // Closed business layers state (for saved layers loaded from database)
   const [closedBusinessLayerResults, setClosedBusinessLayerResults] = useState<Map<string, PlacesSearchResult[]>>(new Map());
   const [loadingClosedBusinessLayer, setLoadingClosedBusinessLayer] = useState<string | null>(null);
+
+  // Add closed place to properties modals
+  const [showAddClosedPlaceModal, setShowAddClosedPlaceModal] = useState(false);
+  const [placeToAdd, setPlaceToAdd] = useState<PlacesSearchResult | null>(null);
+  const [showBulkAddModal, setShowBulkAddModal] = useState(false);
 
   // Load closed business results when a closed business layer is toggled on
   useEffect(() => {
@@ -2325,8 +2332,8 @@ const MappingPageContent: React.FC = () => {
                 onPlaceClick={(place) => setSelectedClosedPlace(place)}
                 onPlaceSelect={(place) => setSelectedClosedPlace(place)}
                 onAddToProperties={(place) => {
-                  // For now, just show a toast - full implementation in Phase 4
-                  showToast(`Add "${place.name}" to properties - coming soon!`, { type: 'info' });
+                  setPlaceToAdd(place);
+                  setShowAddClosedPlaceModal(true);
                 }}
                 showAddToProperties={true}
                 clusterConfig={clusterConfig}
@@ -2349,7 +2356,8 @@ const MappingPageContent: React.FC = () => {
                     onPlaceClick={(place) => setSelectedClosedPlace(place)}
                     onPlaceSelect={(place) => setSelectedClosedPlace(place)}
                     onAddToProperties={(place) => {
-                      showToast(`Add "${place.name}" to properties - coming soon!`, { type: 'info' });
+                      setPlaceToAdd(place);
+                      setShowAddClosedPlaceModal(true);
                     }}
                     showAddToProperties={true}
                     clusterConfig={clusterConfig}
@@ -2880,6 +2888,7 @@ const MappingPageContent: React.FC = () => {
             showToast(`Failed to save layer: ${error?.message || 'Unknown error'}`, { type: 'error' });
           }
         }}
+        onBulkAddToProperties={() => setShowBulkAddModal(true)}
       />
 
       {/* Share Layer Modal */}
@@ -2928,6 +2937,40 @@ const MappingPageContent: React.FC = () => {
           refreshCustomLayers();
           showToast('Layer defaults updated', { type: 'success' });
         } : undefined}
+      />
+
+      {/* Add Closed Place to Properties Modal */}
+      <AddClosedPlacePropertyModal
+        isOpen={showAddClosedPlaceModal}
+        place={placeToAdd}
+        onClose={() => {
+          setShowAddClosedPlaceModal(false);
+          setPlaceToAdd(null);
+        }}
+        onSuccess={(propertyId) => {
+          setShowAddClosedPlaceModal(false);
+          setPlaceToAdd(null);
+          showToast('Property created successfully!', { type: 'success' });
+          // Refresh properties layer
+          refreshLayer('properties');
+        }}
+      />
+
+      {/* Bulk Add Closed Places to Properties Modal */}
+      <BulkAddPropertiesModal
+        isOpen={showBulkAddModal}
+        places={closedBusinessResults}
+        onClose={() => setShowBulkAddModal(false)}
+        onSuccess={(addedCount, skippedCount, linkedCount) => {
+          setShowBulkAddModal(false);
+          const messages: string[] = [];
+          if (addedCount > 0) messages.push(`${addedCount} added`);
+          if (linkedCount > 0) messages.push(`${linkedCount} linked`);
+          if (skippedCount > 0) messages.push(`${skippedCount} skipped`);
+          showToast(`Properties: ${messages.join(', ')}`, { type: 'success' });
+          // Refresh properties layer
+          refreshLayer('properties');
+        }}
       />
     </div>
   );

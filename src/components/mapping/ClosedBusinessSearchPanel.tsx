@@ -17,6 +17,7 @@ interface ClosedBusinessSearchPanelProps {
   map: google.maps.Map | null;
   onSearchResults: (results: PlacesSearchResult[]) => void;
   onSaveAsLayer: (results: PlacesSearchResult[], layerName: string, queryId?: string) => Promise<void>;
+  onBulkAddToProperties?: () => void;
 }
 
 const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
@@ -25,6 +26,7 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
   map,
   onSearchResults,
   onSaveAsLayer,
+  onBulkAddToProperties,
 }) => {
   // Search form state
   const [searchType, setSearchType] = useState<'chain' | 'category'>('chain');
@@ -672,12 +674,25 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
       {results.length > 0 && (
         <div className="p-4 border-t border-gray-200 space-y-3">
           {!showSaveOptions ? (
-            <button
-              onClick={() => setShowSaveOptions(true)}
-              className="w-full px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
-            >
-              Save as Layer ({results.length} places)
-            </button>
+            <div className="space-y-2">
+              <button
+                onClick={() => setShowSaveOptions(true)}
+                className="w-full px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
+              >
+                Save as Layer ({results.length} places)
+              </button>
+              {onBulkAddToProperties && (
+                <button
+                  onClick={onBulkAddToProperties}
+                  className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Bulk Add to Properties ({results.length})
+                </button>
+              )}
+            </div>
           ) : (
             <>
               <div>
