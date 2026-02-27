@@ -6,7 +6,7 @@ import type { PlacesSearchResult } from '../../services/googlePlacesSearchServic
 
 interface PropertyType {
   id: string;
-  name: string;
+  label: string;
 }
 
 interface AddClosedPlacePropertyModalProps {
@@ -101,7 +101,7 @@ const AddClosedPlacePropertyModal: React.FC<AddClosedPlacePropertyModalProps> = 
     const loadPropertyTypes = async () => {
       const { data, error } = await supabase
         .from('property_type')
-        .select('id, name')
+        .select('id, label')
         .eq('active', true)
         .order('sort_order');
 
@@ -113,7 +113,7 @@ const AddClosedPlacePropertyModal: React.FC<AddClosedPlacePropertyModalProps> = 
       if (data) {
         setPropertyTypes(data);
         // Default to "Restaurant" if available
-        const restaurant = data.find(t => t.name.toLowerCase().includes('restaurant'));
+        const restaurant = data.find(t => t.label.toLowerCase().includes('restaurant'));
         if (restaurant) {
           setPropertyTypeId(restaurant.id);
         }
@@ -368,7 +368,7 @@ const AddClosedPlacePropertyModal: React.FC<AddClosedPlacePropertyModalProps> = 
               >
                 <option value="">Select type...</option>
                 {propertyTypes.map(type => (
-                  <option key={type.id} value={type.id}>{type.name}</option>
+                  <option key={type.id} value={type.id}>{type.label}</option>
                 ))}
               </select>
             </div>

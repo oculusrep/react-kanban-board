@@ -6,7 +6,7 @@ import type { PlacesSearchResult } from '../../services/googlePlacesSearchServic
 
 interface PropertyType {
   id: string;
-  name: string;
+  label: string;
 }
 
 interface PlaceWithDuplicateStatus extends PlacesSearchResult {
@@ -29,6 +29,7 @@ function parseAddress(formattedAddress: string): {
   state: string;
   zip: string;
 } {
+  // Format is usually: "123 Main St, City, ST 12345, USA" or "123 Main St, City, ST 12345-1234, USA"
   const parts = formattedAddress.split(',').map(p => p.trim());
 
   let streetAddress = '';
@@ -39,15 +40,32 @@ function parseAddress(formattedAddress: string): {
   if (parts.length >= 3) {
     streetAddress = parts[0];
     city = parts[1];
-    const stateZipPart = parts[2];
-    const stateZipMatch = stateZipPart.match(/^([A-Z]{2})\s*(\d{5})?/);
+
+    // State and zip are usually together like "GA 30301" or " GA 30301"
+    // The part might have leading/trailing whitespace even after trim
+    const stateZipPart = parts[2].trim();
+
+    // Try to match state abbreviation with optional zip (handles "GA 30301" or "GA 30301-1234")
+    // Use \s+ to require at least one space between state and zip
+    const stateZipMatch = stateZipPart.match(/([A-Z]{2})\s+(\d{5}(?:-\d{4})?)/);
     if (stateZipMatch) {
       state = stateZipMatch[1];
-      zip = stateZipMatch[2] || '';
+      zip = stateZipMatch[2];
+    } else {
+      // Try to extract just state abbreviation anywhere in the string
+      const stateMatch = stateZipPart.match(/\b([A-Z]{2})\b/);
+      if (stateMatch) {
+        state = stateMatch[1];
+        // Try to find zip anywhere in the string
+        const zipMatch = stateZipPart.match(/(\d{5}(?:-\d{4})?)/);
+        if (zipMatch) {
+          zip = zipMatch[1];
+        }
+      }
     }
   } else if (parts.length === 2) {
     streetAddress = parts[0];
-    const stateZipMatch = parts[1].match(/([A-Z]{2})\s*(\d{5})?/);
+    const stateZipMatch = parts[1].match(/([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?/);
     if (stateZipMatch) {
       state = stateZipMatch[1];
       zip = stateZipMatch[2] || '';
@@ -78,7 +96,7 @@ const BulkAddPropertiesModal: React.FC<BulkAddPropertiesModalProps> = ({
     const loadPropertyTypes = async () => {
       const { data, error } = await supabase
         .from('property_type')
-        .select('id, name')
+        .select('id, label')
         .eq('active', true)
         .order('sort_order');
 
@@ -89,7 +107,7 @@ const BulkAddPropertiesModal: React.FC<BulkAddPropertiesModalProps> = ({
 
       if (data) {
         setPropertyTypes(data);
-        const restaurant = data.find(t => t.name.toLowerCase().includes('restaurant'));
+        const restaurant = data.find(t => t.label.toLowerCase().includes('restaurant'));
         if (restaurant) {
           setSelectedPropertyTypeId(restaurant.id);
         }
@@ -344,7 +362,7 @@ const BulkAddPropertiesModal: React.FC<BulkAddPropertiesModalProps> = ({
             >
               <option value="">Select type...</option>
               {propertyTypes.map(type => (
-                <option key={type.id} value={type.id}>{type.name}</option>
+                <option key={type.id} value={type.id}>{type.label}</option>
               ))}
             </select>
           </div>
