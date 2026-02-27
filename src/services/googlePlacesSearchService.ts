@@ -37,6 +37,14 @@ export interface GeographyData {
   zip?: string;
 }
 
+// Plain bounds object (alternative to google.maps.LatLngBounds)
+export interface PlainBounds {
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+}
+
 export interface PlacesSearchConfig {
   queryType: 'text' | 'nearby';
   searchTerm: string;
@@ -361,26 +369,44 @@ class GooglePlacesSearchService {
   // --------------------------------------------------------------------------
 
   /**
+   * Helper to normalize bounds to plain object format
+   */
+  private normalizeBounds(bounds: google.maps.LatLngBounds | PlainBounds): PlainBounds {
+    if ('getNorthEast' in bounds && typeof bounds.getNorthEast === 'function') {
+      // It's a google.maps.LatLngBounds
+      const ne = bounds.getNorthEast();
+      const sw = bounds.getSouthWest();
+      return {
+        north: ne.lat(),
+        south: sw.lat(),
+        east: ne.lng(),
+        west: sw.lng(),
+      };
+    }
+    // It's already a plain bounds object
+    return bounds as PlainBounds;
+  }
+
+  /**
    * Calculate grid cell centers to cover a bounding box
    */
   calculateGridCells(
-    bounds: google.maps.LatLngBounds,
+    bounds: google.maps.LatLngBounds | PlainBounds,
     cellSizeMeters: number
   ): google.maps.LatLng[] {
-    const ne = bounds.getNorthEast();
-    const sw = bounds.getSouthWest();
+    const { north, south, east, west } = this.normalizeBounds(bounds);
 
     // Convert cell size to approximate degrees
     // 1 degree latitude ≈ 111km
     // 1 degree longitude varies with latitude
     const latDegrees = cellSizeMeters / 111000;
-    const midLat = (ne.lat() + sw.lat()) / 2;
+    const midLat = (north + south) / 2;
     const lngDegrees = cellSizeMeters / (111000 * Math.cos(midLat * Math.PI / 180));
 
     const cells: google.maps.LatLng[] = [];
 
-    for (let lat = sw.lat(); lat <= ne.lat(); lat += latDegrees) {
-      for (let lng = sw.lng(); lng <= ne.lng(); lng += lngDegrees) {
+    for (let lat = south; lat <= north; lat += latDegrees) {
+      for (let lng = west; lng <= east; lng += lngDegrees) {
         cells.push(new google.maps.LatLng(lat + latDegrees / 2, lng + lngDegrees / 2));
       }
     }
@@ -393,7 +419,7 @@ class GooglePlacesSearchService {
    */
   async nearbySearchWithGrid(
     keyword: string,
-    bounds: google.maps.LatLngBounds,
+    bounds: google.maps.LatLngBounds | PlainBounds,
     gridSizeMeters: number = 50000,
     statusFilter: StatusFilter,
     queryId?: string,
