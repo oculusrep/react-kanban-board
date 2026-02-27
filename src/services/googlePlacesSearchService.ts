@@ -206,14 +206,24 @@ class GooglePlacesSearchService {
   // --------------------------------------------------------------------------
 
   /**
-   * Perform a Text Search for a business name within bounds
+   * Perform a Text Search for a business name within bounds (optional)
    * Best for searching chain names like "Del Taco"
+   * Can also be called with statusFilter for closed business searches
    */
   async textSearch(
     query: string,
-    bounds: google.maps.LatLngBounds,
+    boundsOrStatusFilter?: google.maps.LatLngBounds | StatusFilter,
     queryId?: string
   ): Promise<PlacesSearchResult[]> {
+    // Handle overload - if second param is a string, it's statusFilter
+    let bounds: google.maps.LatLngBounds | undefined;
+    let statusFilter: StatusFilter | undefined;
+
+    if (typeof boundsOrStatusFilter === 'string') {
+      statusFilter = boundsOrStatusFilter as StatusFilter;
+    } else {
+      bounds = boundsOrStatusFilter;
+    }
     if (!this.placesService) {
       throw new Error('PlacesService not initialized. Call initPlacesService first.');
     }
@@ -232,8 +242,11 @@ class GooglePlacesSearchService {
       }>((resolve, reject) => {
         const request: google.maps.places.TextSearchRequest = {
           query: query,
-          bounds: bounds,
         };
+        // Only add bounds if provided
+        if (bounds) {
+          request.bounds = bounds;
+        }
 
         this.placesService!.textSearch(request, (results, status, pagination) => {
           if (status === google.maps.places.PlacesServiceStatus.OK && results) {
@@ -282,7 +295,13 @@ class GooglePlacesSearchService {
       queryId
     );
 
-    return this.deduplicateResults(allResults);
+    // Filter by status if provided
+    let filteredResults = this.deduplicateResults(allResults);
+    if (statusFilter) {
+      filteredResults = this.filterByStatus(filteredResults, statusFilter);
+    }
+
+    return filteredResults;
   }
 
   /**
@@ -565,6 +584,30 @@ class GooglePlacesSearchService {
    */
   getStateName(stateAbbr: string): string {
     return US_STATES.find(s => s.abbr === stateAbbr.toUpperCase())?.name || stateAbbr;
+  }
+
+  /**
+   * Calculate distance between two points in kilometers using Haversine formula
+   */
+  calculateDistanceKm(
+    lat1: number,
+    lng1: number,
+    lat2: number,
+    lng2: number
+  ): number {
+    const R = 6371; // Earth's radius in km
+    const dLat = this.toRadians(lat2 - lat1);
+    const dLng = this.toRadians(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(this.toRadians(lat1)) * Math.cos(this.toRadians(lat2)) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  private toRadians(degrees: number): number {
+    return degrees * (Math.PI / 180);
   }
 }
 

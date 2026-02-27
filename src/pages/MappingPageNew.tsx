@@ -258,6 +258,14 @@ const MappingPageContent: React.FC = () => {
   const [placeToAdd, setPlaceToAdd] = useState<PlacesSearchResult | null>(null);
   const [showBulkAddModal, setShowBulkAddModal] = useState(false);
 
+  // Closed business search polygon drawing state
+  const [closedSearchPolygon, setClosedSearchPolygon] = useState<[number, number][] | null>(null);
+  const [isDrawingClosedSearchArea, setIsDrawingClosedSearchArea] = useState(false);
+
+  // Bulk add from layer state
+  const [bulkAddLayerId, setBulkAddLayerId] = useState<string | null>(null);
+  const [bulkAddLayerPlaces, setBulkAddLayerPlaces] = useState<PlacesSearchResult[]>([]);
+
   // Load closed business results when a closed business layer is toggled on
   useEffect(() => {
     const loadClosedBusinessLayerResults = async (layerId: string) => {
@@ -317,6 +325,33 @@ const MappingPageContent: React.FC = () => {
       showToast(`Failed to merge: ${error?.message || 'Unknown error'}`, { type: 'error' });
     } finally {
       setMergingLayerId(null);
+    }
+  };
+
+  // Handler for bulk adding places from a saved closed business layer to properties
+  const handleBulkAddFromLayer = async (layerId: string, layerName: string) => {
+    try {
+      // Check if we already have the results cached
+      let places = closedBusinessLayerResults.get(layerId);
+
+      if (!places || places.length === 0) {
+        // Load the results from the database
+        const results = await closedPlacesLayerService.getResultsForLayer(layerId);
+        places = results.map(r => closedPlacesLayerService.storedToSearchResult(r));
+      }
+
+      if (places.length === 0) {
+        showToast(`No places found in layer "${layerName}"`, { type: 'info' });
+        return;
+      }
+
+      // Set the places for bulk add modal
+      setBulkAddLayerId(layerId);
+      setBulkAddLayerPlaces(places);
+      setShowBulkAddModal(true);
+    } catch (error: any) {
+      console.error('Failed to load places for bulk add:', error);
+      showToast(`Failed to load places: ${error?.message || 'Unknown error'}`, { type: 'error' });
     }
   };
 
@@ -2206,6 +2241,23 @@ const MappingPageContent: React.FC = () => {
                                 )}
                               </button>
                             )}
+                            {/* Bulk Add to Properties button - show for closed business layers */}
+                            {layer.description?.toLowerCase().includes('closed business') && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleBulkAddFromLayer(layer.id, layer.name);
+                                  setShowCustomLayersMenu(false);
+                                }}
+                                className="mt-1 w-full text-xs px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 flex items-center justify-center space-x-1"
+                                title="Add all closed businesses in this layer to properties"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                </svg>
+                                <span>Bulk Add to Properties</span>
+                              </button>
+                            )}
                           </div>
                         ))
                       )}
@@ -2620,14 +2672,25 @@ const MappingPageContent: React.FC = () => {
               />
             )}
 
-            {/* Drawing Toolbar - Show when editing a custom layer OR in quick draw mode */}
+            {/* Drawing Toolbar - Show when editing a custom layer OR in quick draw mode OR drawing closed search area */}
             {/* Hidden when Street View is active */}
             <DrawingToolbar
               map={mapInstance}
-              isActive={(!!editingLayerId || isQuickDrawMode) && !isStreetViewActive}
+              isActive={(!!editingLayerId || isQuickDrawMode || isDrawingClosedSearchArea) && !isStreetViewActive}
               selectedLayerId={editingLayerId}
               onShapeComplete={async (drawnShape) => {
                 console.log('✏️ Shape drawn:', drawnShape);
+
+                // Closed business search polygon mode
+                if (isDrawingClosedSearchArea) {
+                  // Only accept polygons/rectangles for search area
+                  if (drawnShape.type === 'polygon' || drawnShape.type === 'rectangle') {
+                    const geom = drawnShape.geometry as { type: string; coordinates: [number, number][] };
+                    setClosedSearchPolygon(geom.coordinates);
+                  }
+                  setIsDrawingClosedSearchArea(false);
+                  return;
+                }
 
                 // Quick draw mode: show the save modal
                 if (isQuickDrawMode) {
@@ -2660,6 +2723,12 @@ const MappingPageContent: React.FC = () => {
                 }
               }}
               onDone={() => {
+                // Closed search area mode - just exit
+                if (isDrawingClosedSearchArea) {
+                  setIsDrawingClosedSearchArea(false);
+                  return;
+                }
+
                 // Done - keep all shapes, just exit edit mode
                 setEditingLayerId(null);
                 setIsQuickDrawMode(false);
@@ -2671,6 +2740,12 @@ const MappingPageContent: React.FC = () => {
                 showToast('Changes saved', { type: 'success' });
               }}
               onCancel={async () => {
+                // Closed search area mode - just exit
+                if (isDrawingClosedSearchArea) {
+                  setIsDrawingClosedSearchArea(false);
+                  return;
+                }
+
                 // Cancel - delete shapes created in this session
                 if (sessionShapeIds.length > 0) {
                   try {
@@ -2889,6 +2964,11 @@ const MappingPageContent: React.FC = () => {
           }
         }}
         onBulkAddToProperties={() => setShowBulkAddModal(true)}
+        onStartDrawing={() => {
+          setIsDrawingClosedSearchArea(true);
+        }}
+        drawnPolygon={closedSearchPolygon}
+        onClearDrawnPolygon={() => setClosedSearchPolygon(null)}
       />
 
       {/* Share Layer Modal */}
@@ -2959,10 +3039,16 @@ const MappingPageContent: React.FC = () => {
       {/* Bulk Add Closed Places to Properties Modal */}
       <BulkAddPropertiesModal
         isOpen={showBulkAddModal}
-        places={closedBusinessResults}
-        onClose={() => setShowBulkAddModal(false)}
+        places={bulkAddLayerPlaces.length > 0 ? bulkAddLayerPlaces : closedBusinessResults}
+        onClose={() => {
+          setShowBulkAddModal(false);
+          setBulkAddLayerId(null);
+          setBulkAddLayerPlaces([]);
+        }}
         onSuccess={(addedCount, skippedCount, linkedCount) => {
           setShowBulkAddModal(false);
+          setBulkAddLayerId(null);
+          setBulkAddLayerPlaces([]);
           const messages: string[] = [];
           if (addedCount > 0) messages.push(`${addedCount} added`);
           if (linkedCount > 0) messages.push(`${linkedCount} linked`);

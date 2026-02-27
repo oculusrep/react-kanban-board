@@ -4,12 +4,15 @@ import {
   type PlacesSearchResult,
   type StatusFilter,
   type ApiUsageStats,
+  type GeographyType,
 } from '../../services/googlePlacesSearchService';
 import {
   closedPlacesLayerService,
   type SavedQuery,
 } from '../../services/closedPlacesLayerService';
+import { mapLayerService, type MapLayer, type MapLayerShape } from '../../services/mapLayerService';
 import { US_STATES, SOUTHEASTERN_STATES } from '../../services/boundaryService';
+import * as turf from '@turf/turf';
 
 interface ClosedBusinessSearchPanelProps {
   isOpen: boolean;
@@ -18,6 +21,9 @@ interface ClosedBusinessSearchPanelProps {
   onSearchResults: (results: PlacesSearchResult[]) => void;
   onSaveAsLayer: (results: PlacesSearchResult[], layerName: string, queryId?: string) => Promise<void>;
   onBulkAddToProperties?: () => void;
+  onStartDrawing?: () => void;
+  drawnPolygon?: [number, number][] | null;
+  onClearDrawnPolygon?: () => void;
 }
 
 const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
@@ -27,6 +33,9 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
   onSearchResults,
   onSaveAsLayer,
   onBulkAddToProperties,
+  onStartDrawing,
+  drawnPolygon,
+  onClearDrawnPolygon,
 }) => {
   // Search form state
   const [searchType, setSearchType] = useState<'chain' | 'category'>('chain');
@@ -35,6 +44,18 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
   const [selectedState, setSelectedState] = useState('GA');
   const [useGridSearch, setUseGridSearch] = useState(false);
   const [gridSizeKm, setGridSizeKm] = useState(50); // Default 50km grid
+
+  // Geography type state
+  const [geographyType, setGeographyType] = useState<GeographyType>('state');
+  const [city, setCity] = useState('');
+  const [radiusKm, setRadiusKm] = useState(25);
+  const [radiusCenter, setRadiusCenter] = useState<{ lat: number; lng: number } | null>(null);
+  const [isSettingCenter, setIsSettingCenter] = useState(false);
+
+  // Custom area state
+  const [availableLayers, setAvailableLayers] = useState<MapLayer[]>([]);
+  const [selectedLayerId, setSelectedLayerId] = useState<string>('');
+  const [selectedLayerPolygons, setSelectedLayerPolygons] = useState<[number, number][][]>([]);
 
   // Results state
   const [results, setResults] = useState<PlacesSearchResult[]>([]);
@@ -79,8 +100,73 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
     if (isOpen) {
       loadUsageStats();
       loadSavedQueries();
+      loadAvailableLayers();
     }
   }, [isOpen]);
+
+  // Load available layers for custom area selection
+  const loadAvailableLayers = async () => {
+    try {
+      const layers = await mapLayerService.getLayers({ includeShapes: true, activeOnly: true });
+      // Filter to layers that have polygon/rectangle shapes
+      const layersWithPolygons = layers.filter(layer =>
+        layer.shapes?.some(shape => shape.shape_type === 'polygon' || shape.shape_type === 'rectangle')
+      );
+      setAvailableLayers(layersWithPolygons);
+    } catch (error) {
+      console.error('Failed to load layers:', error);
+    }
+  };
+
+  // Load shapes when a layer is selected
+  useEffect(() => {
+    const loadLayerShapes = async () => {
+      if (!selectedLayerId) {
+        setSelectedLayerPolygons([]);
+        return;
+      }
+
+      try {
+        const shapes = await mapLayerService.getShapesForLayer(selectedLayerId);
+        const polygons: [number, number][][] = [];
+
+        shapes.forEach(shape => {
+          if (shape.shape_type === 'polygon' || shape.shape_type === 'rectangle') {
+            const geom = shape.geometry as { type: string; coordinates: [number, number][] };
+            if (geom.coordinates && geom.coordinates.length > 0) {
+              polygons.push(geom.coordinates);
+            }
+          }
+        });
+
+        setSelectedLayerPolygons(polygons);
+      } catch (error) {
+        console.error('Failed to load layer shapes:', error);
+      }
+    };
+
+    loadLayerShapes();
+  }, [selectedLayerId]);
+
+  // Handle map click for setting radius center
+  useEffect(() => {
+    if (!map || !isSettingCenter) return;
+
+    const clickListener = map.addListener('click', (e: google.maps.MapMouseEvent) => {
+      if (e.latLng) {
+        setRadiusCenter({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+        setIsSettingCenter(false);
+      }
+    });
+
+    // Change cursor to crosshair when setting center
+    map.setOptions({ draggableCursor: 'crosshair' });
+
+    return () => {
+      google.maps.event.removeListener(clickListener);
+      map.setOptions({ draggableCursor: null });
+    };
+  }, [map, isSettingCenter]);
 
   // Calculate grid cells for a state
   const calculateGridCells = (stateAbbr: string, gridSizeMeters: number): number => {
@@ -111,21 +197,56 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
     return cellsLat * cellsLng;
   };
 
+  // Calculate estimated API calls based on geography and bounds
+  const calculateEstimatedCalls = useCallback(() => {
+    if (geographyType === 'city') {
+      // City search: simple text search with city name
+      return 3;
+    }
+
+    if (geographyType === 'radius' && radiusCenter) {
+      // Radius search: depends on radius size
+      const radiusMeters = radiusKm * 1000;
+      if (radiusMeters <= 25000) return 1;
+      if (radiusMeters <= 50000) return 4;
+      return Math.ceil(Math.pow(radiusKm / 25, 2)); // Grid cells for larger radii
+    }
+
+    if (geographyType === 'polygon') {
+      // Polygon/layer search: estimate based on bounding box
+      const polygons = drawnPolygon ? [drawnPolygon] : selectedLayerPolygons;
+      if (polygons.length === 0) return 6;
+
+      // Calculate bounding box area and estimate grid cells
+      let totalCells = 0;
+      polygons.forEach(polygon => {
+        if (polygon.length < 3) return;
+        const lats = polygon.map(p => p[0]);
+        const lngs = polygon.map(p => p[1]);
+        const latRange = Math.max(...lats) - Math.min(...lats);
+        const lngRange = Math.max(...lngs) - Math.min(...lngs);
+        const areaDegrees = latRange * lngRange;
+        // Roughly 0.0001 degree² per grid cell for 10km grid
+        totalCells += Math.max(1, Math.ceil(areaDegrees / 0.01));
+      });
+      return Math.max(1, totalCells);
+    }
+
+    // State search
+    if (useGridSearch) {
+      const gridSizeMeters = gridSizeKm * 1000;
+      return calculateGridCells(selectedState, gridSizeMeters);
+    } else if (searchType === 'chain') {
+      return 6;
+    } else {
+      return 6;
+    }
+  }, [geographyType, radiusCenter, radiusKm, drawnPolygon, selectedLayerPolygons, useGridSearch, gridSizeKm, selectedState, searchType]);
+
   // Update estimated calls when search parameters change
   useEffect(() => {
-    if (useGridSearch) {
-      // Grid search: calculate actual grid cells needed
-      const gridSizeMeters = gridSizeKm * 1000;
-      const gridCells = calculateGridCells(selectedState, gridSizeMeters);
-      setEstimatedCalls(gridCells);
-    } else if (searchType === 'chain') {
-      // Chain search uses multiple text search strategies
-      setEstimatedCalls(6); // ~2 calls per strategy × 3 strategies
-    } else {
-      // Category search without grid
-      setEstimatedCalls(6);
-    }
-  }, [searchType, selectedState, useGridSearch, gridSizeKm]);
+    setEstimatedCalls(calculateEstimatedCalls());
+  }, [calculateEstimatedCalls]);
 
   const loadUsageStats = async () => {
     try {
@@ -145,8 +266,63 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
     }
   };
 
+  // Check if a point is inside any of the polygons
+  const isPointInPolygons = useCallback((lat: number, lng: number, polygons: [number, number][][]): boolean => {
+    for (const polygon of polygons) {
+      if (polygon.length < 3) continue;
+      // Convert to GeoJSON format for turf (lng, lat order)
+      const coords = polygon.map(p => [p[1], p[0]] as [number, number]);
+      // Close the polygon if not already closed
+      if (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1]) {
+        coords.push(coords[0]);
+      }
+      const turfPolygon = turf.polygon([coords]);
+      const point = turf.point([lng, lat]);
+      if (turf.booleanPointInPolygon(point, turfPolygon)) {
+        return true;
+      }
+    }
+    return false;
+  }, []);
+
+  // Validate search can proceed based on geography type
+  const canSearch = useCallback((): { valid: boolean; error?: string } => {
+    if (!searchTerm.trim()) {
+      return { valid: false, error: 'Please enter a search term' };
+    }
+
+    switch (geographyType) {
+      case 'state':
+        if (!selectedState) {
+          return { valid: false, error: 'Please select a state' };
+        }
+        break;
+      case 'city':
+        if (!city.trim() || !selectedState) {
+          return { valid: false, error: 'Please enter a city and select a state' };
+        }
+        break;
+      case 'radius':
+        if (!radiusCenter) {
+          return { valid: false, error: 'Please click on the map to set the search center' };
+        }
+        break;
+      case 'polygon':
+        if (!drawnPolygon && selectedLayerPolygons.length === 0) {
+          return { valid: false, error: 'Please select a layer or draw an area' };
+        }
+        break;
+    }
+
+    return { valid: true };
+  }, [searchTerm, geographyType, selectedState, city, radiusCenter, drawnPolygon, selectedLayerPolygons]);
+
   const handleSearch = async (bypassWarning = false) => {
-    if (!searchTerm.trim() || !selectedState) return;
+    const validation = canSearch();
+    if (!validation.valid) {
+      setSearchError(validation.error || 'Invalid search parameters');
+      return;
+    }
 
     // Show cost warning for expensive searches (> $5 estimated)
     const estimatedCost = (estimatedCalls * 2) / 100;
@@ -175,38 +351,128 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
       }
 
       let searchResults: PlacesSearchResult[];
+      let geographyLabel = '';
 
-      if (useGridSearch) {
-        // Grid-based search for more comprehensive coverage
-        const bounds = googlePlacesSearchService.getStateBounds(selectedState);
-        if (!bounds) {
-          throw new Error(`State bounds not available for ${selectedState}`);
+      switch (geographyType) {
+        case 'city': {
+          // City search: append city, state to search term
+          const cityQuery = `${searchTerm.trim()} in ${city.trim()}, ${selectedState}`;
+          searchResults = await googlePlacesSearchService.textSearch(
+            cityQuery,
+            statusFilter
+          );
+          geographyLabel = `${city}, ${selectedState}`;
+          break;
         }
 
-        searchResults = await googlePlacesSearchService.nearbySearchWithGrid(
-          searchTerm.trim(),
-          bounds,
-          gridSizeKm * 1000, // Convert km to meters
-          statusFilter,
-          undefined,
-          (current, total) => setSearchProgress({ current, total })
-        );
-      } else {
-        // Standard text-based search
-        searchResults = await googlePlacesSearchService.searchClosedInState(
-          searchTerm.trim(),
-          selectedState,
-          statusFilter
-        );
+        case 'radius': {
+          // Radius search: nearby search from center point
+          if (!radiusCenter) throw new Error('No center point set');
+          const bounds = {
+            north: radiusCenter.lat + (radiusKm / 111),
+            south: radiusCenter.lat - (radiusKm / 111),
+            east: radiusCenter.lng + (radiusKm / (111 * Math.cos(radiusCenter.lat * Math.PI / 180))),
+            west: radiusCenter.lng - (radiusKm / (111 * Math.cos(radiusCenter.lat * Math.PI / 180))),
+          };
+
+          searchResults = await googlePlacesSearchService.nearbySearchWithGrid(
+            searchTerm.trim(),
+            bounds,
+            radiusKm * 1000, // Grid size = radius for single cell
+            statusFilter,
+            undefined,
+            (current, total) => setSearchProgress({ current, total })
+          );
+
+          // Filter results to only those within the radius
+          searchResults = searchResults.filter(result => {
+            const distance = googlePlacesSearchService.calculateDistanceKm(
+              radiusCenter.lat, radiusCenter.lng,
+              result.latitude, result.longitude
+            );
+            return distance <= radiusKm;
+          });
+          geographyLabel = `${radiusKm}km radius`;
+          break;
+        }
+
+        case 'polygon': {
+          // Polygon search: use bounding box then filter by polygon containment
+          const polygons = drawnPolygon ? [drawnPolygon] : selectedLayerPolygons;
+          if (polygons.length === 0) throw new Error('No polygon defined');
+
+          // Calculate bounding box of all polygons
+          let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+          polygons.forEach(polygon => {
+            polygon.forEach(([lat, lng]) => {
+              minLat = Math.min(minLat, lat);
+              maxLat = Math.max(maxLat, lat);
+              minLng = Math.min(minLng, lng);
+              maxLng = Math.max(maxLng, lng);
+            });
+          });
+
+          const bounds = { north: maxLat, south: minLat, east: maxLng, west: minLng };
+
+          // Calculate appropriate grid size based on polygon size
+          const latRange = maxLat - minLat;
+          const lngRange = maxLng - minLng;
+          const avgDimension = ((latRange + lngRange) / 2) * 111; // km
+          const gridSize = Math.min(50, Math.max(10, avgDimension / 3)) * 1000; // meters
+
+          searchResults = await googlePlacesSearchService.nearbySearchWithGrid(
+            searchTerm.trim(),
+            bounds,
+            gridSize,
+            statusFilter,
+            undefined,
+            (current, total) => setSearchProgress({ current, total })
+          );
+
+          // Filter results to only those within the polygon(s)
+          searchResults = searchResults.filter(result =>
+            isPointInPolygons(result.latitude, result.longitude, polygons)
+          );
+
+          const selectedLayer = availableLayers.find(l => l.id === selectedLayerId);
+          geographyLabel = selectedLayer ? selectedLayer.name : 'Custom Area';
+          break;
+        }
+
+        default: {
+          // State search (existing logic)
+          if (useGridSearch) {
+            const bounds = googlePlacesSearchService.getStateBounds(selectedState);
+            if (!bounds) {
+              throw new Error(`State bounds not available for ${selectedState}`);
+            }
+
+            searchResults = await googlePlacesSearchService.nearbySearchWithGrid(
+              searchTerm.trim(),
+              bounds,
+              gridSizeKm * 1000,
+              statusFilter,
+              undefined,
+              (current, total) => setSearchProgress({ current, total })
+            );
+          } else {
+            searchResults = await googlePlacesSearchService.searchClosedInState(
+              searchTerm.trim(),
+              selectedState,
+              statusFilter
+            );
+          }
+          geographyLabel = googlePlacesSearchService.getStateName(selectedState);
+          break;
+        }
       }
 
       setResults(searchResults);
       onSearchResults(searchResults);
 
       // Generate default layer name
-      const stateName = googlePlacesSearchService.getStateName(selectedState);
-      const searchMethod = useGridSearch ? `Grid ${gridSizeKm}km` : 'Text';
-      setLayerName(`${searchTerm} - ${stateName} (${searchMethod}) - ${new Date().toLocaleDateString()}`);
+      const searchMethod = useGridSearch ? `Grid ${gridSizeKm}km` : '';
+      setLayerName(`${searchTerm} - ${geographyLabel}${searchMethod ? ` (${searchMethod})` : ''} - ${new Date().toLocaleDateString()}`);
 
       // Refresh usage stats
       await loadUsageStats();
@@ -434,58 +700,251 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
           </select>
         </div>
 
-        {/* State Selection */}
+        {/* Geography Type Selection */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">State</label>
-          <select
-            value={selectedState}
-            onChange={(e) => setSelectedState(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            {sortedStates.map(state => (
-              <option key={state.fips} value={state.abbr}>
-                {state.name} {SOUTHEASTERN_STATES.includes(state.abbr) ? '★' : ''}
-              </option>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Search Area</label>
+          <div className="grid grid-cols-4 gap-1 p-1 bg-gray-100 rounded-lg">
+            {[
+              { type: 'state' as GeographyType, label: 'State' },
+              { type: 'city' as GeographyType, label: 'City' },
+              { type: 'radius' as GeographyType, label: 'Radius' },
+              { type: 'polygon' as GeographyType, label: 'Area' },
+            ].map(({ type, label }) => (
+              <button
+                key={type}
+                onClick={() => setGeographyType(type)}
+                className={`px-2 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  geographyType === type
+                    ? 'bg-white text-blue-700 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                {label}
+              </button>
             ))}
-          </select>
+          </div>
         </div>
 
-        {/* Grid Search Option */}
-        <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-          <div className="flex items-center justify-between mb-2">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={useGridSearch}
-                onChange={(e) => setUseGridSearch(e.target.checked)}
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-              />
-              <span className="text-sm font-medium text-gray-700">Grid Search</span>
-            </label>
-            <span className="text-xs text-gray-500">More thorough, higher cost</span>
+        {/* Geography-specific inputs */}
+        {geographyType === 'state' && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">State</label>
+            <select
+              value={selectedState}
+              onChange={(e) => setSelectedState(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              {sortedStates.map(state => (
+                <option key={state.fips} value={state.abbr}>
+                  {state.name} {SOUTHEASTERN_STATES.includes(state.abbr) ? '★' : ''}
+                </option>
+              ))}
+            </select>
           </div>
+        )}
 
-          {useGridSearch && (
-            <div className="mt-3">
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Grid Size: {gridSizeKm} km
+        {geographyType === 'city' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
+              <input
+                type="text"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="e.g., Atlanta"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">State</label>
+              <select
+                value={selectedState}
+                onChange={(e) => setSelectedState(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                {sortedStates.map(state => (
+                  <option key={state.fips} value={state.abbr}>
+                    {state.name} {SOUTHEASTERN_STATES.includes(state.abbr) ? '★' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {geographyType === 'radius' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Center Point</label>
+              {radiusCenter ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
+                    {radiusCenter.lat.toFixed(4)}, {radiusCenter.lng.toFixed(4)}
+                  </div>
+                  <button
+                    onClick={() => setRadiusCenter(null)}
+                    className="px-2 py-2 text-gray-400 hover:text-red-600"
+                    title="Clear center"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setIsSettingCenter(true)}
+                  className={`w-full px-3 py-2 border rounded-lg text-sm flex items-center justify-center gap-2 ${
+                    isSettingCenter
+                      ? 'border-blue-300 bg-blue-50 text-blue-700'
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  {isSettingCenter ? 'Click on the map...' : 'Click to set center point'}
+                </button>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Radius: {radiusKm} km ({Math.round(radiusKm * 0.621)} mi)
               </label>
               <input
                 type="range"
-                min="10"
+                min="5"
                 max="100"
-                step="10"
-                value={gridSizeKm}
-                onChange={(e) => setGridSizeKm(Number(e.target.value))}
+                step="5"
+                value={radiusKm}
+                onChange={(e) => setRadiusKm(Number(e.target.value))}
                 className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
               />
               <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>10km (thorough)</span>
-                <span>100km (fast)</span>
+                <span>5km</span>
+                <span>100km</span>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {geographyType === 'polygon' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Use Existing Layer</label>
+              <select
+                value={selectedLayerId}
+                onChange={(e) => {
+                  setSelectedLayerId(e.target.value);
+                  if (e.target.value && onClearDrawnPolygon) {
+                    onClearDrawnPolygon();
+                  }
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Select a layer...</option>
+                {availableLayers.map(layer => (
+                  <option key={layer.id} value={layer.id}>
+                    {layer.name} ({layer.shapes?.filter(s => s.shape_type === 'polygon' || s.shape_type === 'rectangle').length || 0} shapes)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {availableLayers.length > 0 && (
+              <div className="flex items-center gap-3">
+                <div className="flex-1 border-t border-gray-200"></div>
+                <span className="text-xs text-gray-400">OR</span>
+                <div className="flex-1 border-t border-gray-200"></div>
+              </div>
+            )}
+
+            <div>
+              {drawnPolygon ? (
+                <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-green-700">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="text-sm font-medium">Custom area drawn ({drawnPolygon.length} points)</span>
+                  </div>
+                  {onClearDrawnPolygon && (
+                    <button
+                      onClick={() => {
+                        onClearDrawnPolygon();
+                      }}
+                      className="text-green-600 hover:text-green-800 text-sm"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    setSelectedLayerId('');
+                    if (onStartDrawing) {
+                      onStartDrawing();
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-blue-400 hover:text-blue-600 flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                  Draw custom area on map
+                </button>
+              )}
+            </div>
+
+            {selectedLayerId && selectedLayerPolygons.length > 0 && (
+              <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                Using {selectedLayerPolygons.length} polygon{selectedLayerPolygons.length !== 1 ? 's' : ''} from selected layer
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Grid Search Option - only for state search */}
+        {geographyType === 'state' && (
+          <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+            <div className="flex items-center justify-between mb-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={useGridSearch}
+                  onChange={(e) => setUseGridSearch(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700">Grid Search</span>
+              </label>
+              <span className="text-xs text-gray-500">More thorough, higher cost</span>
+            </div>
+
+            {useGridSearch && (
+              <div className="mt-3">
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Grid Size: {gridSizeKm} km
+                </label>
+                <input
+                  type="range"
+                  min="10"
+                  max="100"
+                  step="10"
+                  value={gridSizeKm}
+                  onChange={(e) => setGridSizeKm(Number(e.target.value))}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                />
+                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <span>10km (thorough)</span>
+                  <span>100km (fast)</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Estimated API Calls & Cost */}
         <div className={`p-3 rounded-lg ${

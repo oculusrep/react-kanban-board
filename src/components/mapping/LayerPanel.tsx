@@ -177,9 +177,10 @@ const LayerGroup: React.FC<LayerGroupProps> = ({
 // Custom Layers Section Component
 interface CustomLayersSectionProps {
   onBuildTerritory?: () => void;
+  onBulkAddFromLayer?: (layerId: string, layerName: string) => void;
 }
 
-const CustomLayersSection: React.FC<CustomLayersSectionProps> = ({ onBuildTerritory }) => {
+const CustomLayersSection: React.FC<CustomLayersSectionProps> = ({ onBuildTerritory, onBulkAddFromLayer }) => {
   const {
     customLayers,
     customLayerVisibility,
@@ -190,6 +191,29 @@ const CustomLayersSection: React.FC<CustomLayersSectionProps> = ({ onBuildTerrit
 
   const [mergingLayerId, setMergingLayerId] = React.useState<string | null>(null);
   const [shapeCounts, setShapeCounts] = React.useState<Record<string, number>>({});
+  const [closedBusinessLayers, setClosedBusinessLayers] = React.useState<Set<string>>(new Set());
+
+  // Check which layers have closed business results
+  React.useEffect(() => {
+    const checkClosedBusinessLayers = async () => {
+      if (customLayers.length === 0) return;
+
+      const { supabase } = await import('../../lib/supabaseClient');
+      const layerIds = customLayers.map(l => l.id);
+
+      const { data, error } = await supabase
+        .from('google_places_result')
+        .select('layer_id')
+        .in('layer_id', layerIds);
+
+      if (!error && data) {
+        const closedLayerIds = new Set(data.map(r => r.layer_id).filter(Boolean) as string[]);
+        setClosedBusinessLayers(closedLayerIds);
+      }
+    };
+
+    checkClosedBusinessLayers();
+  }, [customLayers]);
 
   // Fetch shape counts for layers that don't have shapes loaded
   React.useEffect(() => {
@@ -352,6 +376,19 @@ const CustomLayersSection: React.FC<CustomLayersSectionProps> = ({ onBuildTerrit
                     )}
                   </button>
                 )}
+
+                {/* Bulk Add to Properties button for closed business layers */}
+                {closedBusinessLayers.has(layer.id) && onBulkAddFromLayer && (
+                  <button
+                    onClick={() => onBulkAddFromLayer(layer.id, layer.name)}
+                    className="mt-2 w-full text-xs px-2 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 flex items-center justify-center space-x-1"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span>Bulk Add to Properties</span>
+                  </button>
+                )}
               </div>
             );
           })}
@@ -363,9 +400,10 @@ const CustomLayersSection: React.FC<CustomLayersSectionProps> = ({ onBuildTerrit
 
 interface LayerPanelProps {
   onBuildTerritory?: () => void;
+  onBulkAddFromLayer?: (layerId: string, layerName: string) => void;
 }
 
-const LayerPanel: React.FC<LayerPanelProps> = ({ onBuildTerritory }) => {
+const LayerPanel: React.FC<LayerPanelProps> = ({ onBuildTerritory, onBulkAddFromLayer }) => {
   const {
     layers,
     layerState,
@@ -446,7 +484,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ onBuildTerritory }) => {
           </div>
 
           {/* Custom Layers Section */}
-          <CustomLayersSection onBuildTerritory={onBuildTerritory} />
+          <CustomLayersSection onBuildTerritory={onBuildTerritory} onBulkAddFromLayer={onBulkAddFromLayer} />
         </div>
 
         {/* Create Mode Status */}
