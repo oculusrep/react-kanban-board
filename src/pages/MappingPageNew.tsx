@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import GoogleMapContainer from '../components/mapping/GoogleMapContainer';
 import BatchGeocodingPanel from '../components/mapping/BatchGeocodingPanel';
 import BatchReverseGeocodingPanel from '../components/mapping/BatchReverseGeocodingPanel';
@@ -261,6 +261,40 @@ const MappingPageContent: React.FC = () => {
   // Closed business search polygon drawing state
   const [closedSearchPolygon, setClosedSearchPolygon] = useState<[number, number][] | null>(null);
   const [isDrawingClosedSearchArea, setIsDrawingClosedSearchArea] = useState(false);
+  const closedSearchPolygonRef = useRef<google.maps.Polygon | null>(null);
+
+  // Render the closed search polygon on the map
+  useEffect(() => {
+    if (!mapInstance) return;
+
+    // Clear existing polygon
+    if (closedSearchPolygonRef.current) {
+      closedSearchPolygonRef.current.setMap(null);
+      closedSearchPolygonRef.current = null;
+    }
+
+    // Draw new polygon if coordinates exist
+    if (closedSearchPolygon && closedSearchPolygon.length >= 3) {
+      const paths = closedSearchPolygon.map(([lat, lng]) => ({ lat, lng }));
+
+      closedSearchPolygonRef.current = new google.maps.Polygon({
+        paths,
+        strokeColor: '#3b82f6',
+        strokeOpacity: 0.8,
+        strokeWeight: 2,
+        fillColor: '#3b82f6',
+        fillOpacity: 0.2,
+        map: mapInstance,
+      });
+    }
+
+    return () => {
+      if (closedSearchPolygonRef.current) {
+        closedSearchPolygonRef.current.setMap(null);
+        closedSearchPolygonRef.current = null;
+      }
+    };
+  }, [mapInstance, closedSearchPolygon]);
 
   // Bulk add from layer state
   const [bulkAddLayerId, setBulkAddLayerId] = useState<string | null>(null);
