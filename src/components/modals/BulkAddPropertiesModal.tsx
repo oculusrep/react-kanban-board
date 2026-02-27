@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { prepareInsert } from '../../lib/supabaseHelpers';
 import { duplicateDetectionService, DuplicateCheckResult } from '../../services/duplicateDetectionService';
+import { geocodingService } from '../../services/geocodingService';
 import type { PlacesSearchResult } from '../../services/googlePlacesSearchService';
 
 interface PropertyType {
@@ -245,14 +246,32 @@ const BulkAddPropertiesModal: React.FC<BulkAddPropertiesModalProps> = ({
         // Add as new property
         const parsed = parseAddress(place.formatted_address);
 
+        // If city, state, or zip are missing, try reverse geocoding
+        let city = parsed.city;
+        let state = parsed.state;
+        let zip = parsed.zip;
+
+        if (!city || !state || !zip) {
+          try {
+            const geoResult = await geocodingService.reverseGeocode(place.latitude, place.longitude);
+            if ('latitude' in geoResult) {
+              if (!city && geoResult.city) city = geoResult.city;
+              if (!state && geoResult.state) state = geoResult.state;
+              if (!zip && geoResult.zip) zip = geoResult.zip;
+            }
+          } catch (err) {
+            console.warn('Reverse geocoding failed for', place.name, err);
+          }
+        }
+
         const { data: newProperty, error: insertError } = await supabase
           .from('property')
           .insert(prepareInsert({
             property_name: place.name,
             address: parsed.streetAddress,
-            city: parsed.city,
-            state: parsed.state,
-            zip_code: parsed.zip || null,
+            city: city,
+            state: state,
+            zip_code: zip || null,
             latitude: place.latitude,
             longitude: place.longitude,
             google_place_id: place.place_id,

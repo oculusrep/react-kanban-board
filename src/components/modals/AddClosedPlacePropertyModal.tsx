@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { prepareInsert } from '../../lib/supabaseHelpers';
 import { duplicateDetectionService, DuplicateMatch } from '../../services/duplicateDetectionService';
+import { geocodingService } from '../../services/geocodingService';
 import type { PlacesSearchResult } from '../../services/googlePlacesSearchService';
 
 interface PropertyType {
@@ -138,13 +139,26 @@ const AddClosedPlacePropertyModal: React.FC<AddClosedPlacePropertyModalProps> = 
       setPropertyName(place.name);
 
       // Parse the formatted address
-      console.log('Parsing address:', place.formatted_address);
       const parsed = parseAddress(place.formatted_address);
-      console.log('Parsed result:', parsed);
       setStreetAddress(parsed.streetAddress);
       setCity(parsed.city);
       setState(parsed.state);
       setZip(parsed.zip);
+
+      // If city, state, or zip are missing, use reverse geocoding to fill them in
+      if (!parsed.city || !parsed.state || !parsed.zip) {
+        geocodingService.reverseGeocode(place.latitude, place.longitude)
+          .then((result) => {
+            if ('latitude' in result) {
+              if (!parsed.city && result.city) setCity(result.city);
+              if (!parsed.state && result.state) setState(result.state);
+              if (!parsed.zip && result.zip) setZip(result.zip);
+            }
+          })
+          .catch(() => {
+            // Reverse geocoding failed, user will need to fill in manually
+          });
+      }
 
       // Check for duplicates
       checkDuplicates();
