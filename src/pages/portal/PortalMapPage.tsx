@@ -12,7 +12,7 @@ import { STAGE_CATEGORIES } from '../../components/mapping/SiteSubmitPin';
 import { geocodingService } from '../../services/geocodingService';
 import CustomLayerLayer from '../../components/mapping/layers/CustomLayerLayer';
 import { useClientMapLayers, useMapLayers } from '../../hooks/useMapLayers';
-import DrawingToolbar from '../../components/mapping/DrawingToolbar';
+import DrawingToolbar from '../../components/mapping/DrawingToolbarV2';
 import SaveShapeModal from '../../components/modals/SaveShapeModal';
 import ShareLayerModal from '../../components/modals/ShareLayerModal';
 import { mapLayerService, MapLayer, MapLayerShape, UpdateShapeInput } from '../../services/mapLayerService';

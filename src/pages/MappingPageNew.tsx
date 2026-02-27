@@ -19,7 +19,7 @@ import ClientSelector from '../components/mapping/ClientSelector';
 import { ClientSearchResult } from '../hooks/useClientSearch';
 import AddressSearchBox from '../components/mapping/AddressSearchBox';
 import { LayerManagerProvider, useLayerManager } from '../components/mapping/layers/LayerManager';
-import DrawingToolbar from '../components/mapping/DrawingToolbar';
+import DrawingToolbar from '../components/mapping/DrawingToolbarV2';
 import ShapeEditorPanel from '../components/mapping/ShapeEditorPanel';
 import SaveShapeModal from '../components/modals/SaveShapeModal';
 import ShareLayerModal from '../components/modals/ShareLayerModal';
