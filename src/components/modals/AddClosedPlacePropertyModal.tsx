@@ -131,7 +131,9 @@ const AddClosedPlacePropertyModal: React.FC<AddClosedPlacePropertyModalProps> = 
       setPropertyName(place.name);
 
       // Parse the formatted address
+      console.log('Parsing address:', place.formatted_address);
       const parsed = parseAddress(place.formatted_address);
+      console.log('Parsed result:', parsed);
       setStreetAddress(parsed.streetAddress);
       setCity(parsed.city);
       setState(parsed.state);
