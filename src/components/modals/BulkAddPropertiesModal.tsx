@@ -22,14 +22,16 @@ interface BulkAddPropertiesModalProps {
   onSuccess: (addedCount: number, skippedCount: number, linkedCount: number) => void;
 }
 
-// Parse address components from Google Places formatted_address
+// Parse address components from Google Places formatted_address or vicinity
 function parseAddress(formattedAddress: string): {
   streetAddress: string;
   city: string;
   state: string;
   zip: string;
 } {
-  // Format is usually: "123 Main St, City, ST 12345, USA" or "123 Main St, City, ST 12345-1234, USA"
+  // Format can be:
+  // - Full: "123 Main St, City, ST 12345, USA"
+  // - Vicinity only: "123 Main St, City" (from Nearby Search)
   const parts = formattedAddress.split(',').map(p => p.trim());
 
   let streetAddress = '';
@@ -37,39 +39,44 @@ function parseAddress(formattedAddress: string): {
   let state = '';
   let zip = '';
 
-  if (parts.length >= 3) {
+  if (parts.length >= 4) {
+    // Full format: "123 Main St, City, ST 12345, USA"
     streetAddress = parts[0];
     city = parts[1];
-
-    // State and zip are usually together like "GA 30301" or " GA 30301"
-    // The part might have leading/trailing whitespace even after trim
     const stateZipPart = parts[2].trim();
 
-    // Try to match state abbreviation with optional zip (handles "GA 30301" or "GA 30301-1234")
-    // Use \s+ to require at least one space between state and zip
     const stateZipMatch = stateZipPart.match(/([A-Z]{2})\s+(\d{5}(?:-\d{4})?)/);
     if (stateZipMatch) {
       state = stateZipMatch[1];
       zip = stateZipMatch[2];
     } else {
-      // Try to extract just state abbreviation anywhere in the string
       const stateMatch = stateZipPart.match(/\b([A-Z]{2})\b/);
       if (stateMatch) {
         state = stateMatch[1];
-        // Try to find zip anywhere in the string
         const zipMatch = stateZipPart.match(/(\d{5}(?:-\d{4})?)/);
         if (zipMatch) {
           zip = zipMatch[1];
         }
       }
     }
-  } else if (parts.length === 2) {
+  } else if (parts.length === 3) {
+    // Could be "123 Main St, City, ST 12345" or "123 Main St, City, USA"
     streetAddress = parts[0];
-    const stateZipMatch = parts[1].match(/([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?/);
+    city = parts[1];
+    const thirdPart = parts[2].trim();
+
+    // Check if third part has state abbreviation
+    const stateZipMatch = thirdPart.match(/([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?/);
     if (stateZipMatch) {
       state = stateZipMatch[1];
       zip = stateZipMatch[2] || '';
     }
+    // If third part is just "USA" or similar, state/zip stay empty
+  } else if (parts.length === 2) {
+    // Vicinity format: "123 Main St, City" - common from Nearby Search
+    streetAddress = parts[0];
+    city = parts[1];
+    // State and zip will need to be filled manually or inferred from search context
   } else {
     streetAddress = formattedAddress;
   }
