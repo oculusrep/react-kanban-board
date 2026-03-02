@@ -296,6 +296,15 @@ export default function BrokerForecastDashboard() {
         .filter(s => excludedStages.includes(s.label))
         .map(s => s.id);
 
+      // Get ALL deals with active payments (including received payments)
+      // This is separate from pipeline payments since we need to know if a deal has ANY payments
+      const { data: allPaymentsData } = await supabase
+        .from('payment')
+        .select('deal_id')
+        .eq('is_active', true);
+
+      const dealsWithAnyPayments = new Set((allPaymentsData || []).map(p => p.deal_id));
+
       // Only query if we have stage IDs to exclude
       let dealsWithoutPayments: any[] = [];
       if (excludedStageIds.length > 0) {
@@ -313,7 +322,8 @@ export default function BrokerForecastDashboard() {
       }
 
       for (const deal of dealsWithoutPayments) {
-        if (!dealsWithPayments.has(deal.id)) {
+        // Use dealsWithAnyPayments instead of dealsWithPayments (which only has unreceived pipeline payments)
+        if (!dealsWithAnyPayments.has(deal.id)) {
           const stageLabel = (deal.stage as any)?.label || '';
           if (!excludedStages.includes(stageLabel)) {
             issues.push({
