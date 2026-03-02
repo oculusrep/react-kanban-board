@@ -834,7 +834,7 @@ export default function BrokerForecastDashboard() {
                         <tr key={payment.paymentId} className={`hover:bg-gray-50 ${hasIssues ? 'bg-amber-50' : ''}`}>
                           <td className="px-3 py-2 text-sm">
                             <a
-                              href={`/deals/${payment.dealId}`}
+                              href={`/deal/${payment.dealId}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
@@ -902,7 +902,7 @@ export default function BrokerForecastDashboard() {
                           </td>
                           <td className="px-3 py-2 text-center">
                             <a
-                              href={`/deals/${payment.dealId}`}
+                              href={`/deal/${payment.dealId}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-xs text-blue-600 hover:underline"
@@ -969,7 +969,7 @@ export default function BrokerForecastDashboard() {
                                 )}
                               </div>
                               <a
-                                href={`/deals/${issue.dealId}`}
+                                href={`/deal/${issue.dealId}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-sm text-blue-600 hover:underline flex items-center gap-1"
