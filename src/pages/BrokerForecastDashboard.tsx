@@ -764,7 +764,7 @@ export default function BrokerForecastDashboard() {
             <p className={`text-xl font-bold ${(houseYtdProfit + housePipelineTotals.weighted - blendedExpenses) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
               {formatCurrency(houseYtdProfit + housePipelineTotals.weighted - blendedExpenses)}
             </p>
-            <p className="text-xs text-gray-500">Gross + Pipeline − Expenses</p>
+            <p className="text-xs text-gray-500">({formatCurrency(houseYtdProfit + housePipelineTotals.unweighted - blendedExpenses)} unweighted)</p>
           </div>
 
           {/* Audit Issues */}
