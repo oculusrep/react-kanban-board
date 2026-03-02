@@ -68,6 +68,7 @@ import FinanceHubPage from "./pages/FinanceHubPage";
 import PortalUserManagementPage from "./pages/PortalUserManagementPage";
 import PortalEmailSettingsPage from "./pages/PortalEmailSettingsPage";
 import PortalAnalyticsPage from "./pages/admin/PortalAnalyticsPage";
+import FinanceSettingsPage from "./pages/admin/FinanceSettingsPage";
 import LayerManagementPage from "./pages/LayerManagementPage";
 import ArtyDrawReportPage from "./pages/ArtyDrawReportPage";
 import MikeIsOwedReportPage from "./pages/MikeIsOwedReportPage";
@@ -181,6 +182,7 @@ function App() {
           <Route path="admin/cfo" element={<AdminRoute><CFODashboardPage /></AdminRoute>} />
           <Route path="admin/bookkeeper" element={<AdminRoute><BookkeeperPage /></AdminRoute>} />
           <Route path="admin/finance" element={<AdminRoute><FinanceHubPage /></AdminRoute>} />
+          <Route path="admin/finance/settings" element={<AdminRoute><FinanceSettingsPage /></AdminRoute>} />
           <Route path="admin/portal-users" element={<AdminRoute><PortalUserManagementPage /></AdminRoute>} />
           <Route path="admin/portal-email-settings" element={<AdminRoute><PortalEmailSettingsPage /></AdminRoute>} />
           <Route path="admin/portal-analytics" element={<AdminRoute><PortalAnalyticsPage /></AdminRoute>} />

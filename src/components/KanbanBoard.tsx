@@ -535,8 +535,12 @@ export default function KanbanBoard() {
                               ref={provided.innerRef}
                               {...provided.draggableProps}
                               {...provided.dragHandleProps}
-                              className={`bg-white p-2 rounded shadow mb-2 border text-sm relative ${
-                                snapshot.isDragging ? "bg-yellow-100" : ""
+                              className={`p-2 rounded shadow mb-2 border text-sm relative ${
+                                snapshot.isDragging
+                                  ? "bg-yellow-100"
+                                  : card.is_behind_schedule
+                                    ? "bg-pink-50 border-pink-200"
+                                    : "bg-white"
                               }`}
                             >
                               {/* AI Synopsis Status Indicator */}
@@ -615,6 +619,15 @@ export default function KanbanBoard() {
                               <div className="text-gray-800">
                                 {formatCurrency(card.deal_value)}
                               </div>
+                              {/* Behind Schedule Badge */}
+                              {card.is_behind_schedule && card.weeks_behind && card.weeks_behind > 0 && (
+                                <div
+                                  className="mt-1 text-xs px-2 py-0.5 rounded-full inline-block bg-pink-200 text-pink-800 font-medium mr-1"
+                                  title={`${card.weeks_behind} week${card.weeks_behind > 1 ? 's' : ''} behind schedule`}
+                                >
+                                  {card.weeks_behind}w behind
+                                </div>
+                              )}
                               {/* Days in Stage Badge */}
                               {(() => {
                                 const daysInStage = getDaysInStage(card.last_stage_change_at);

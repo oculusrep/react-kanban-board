@@ -23,6 +23,7 @@ import AutosaveIndicator from "./AutosaveIndicator";
 import { useToast } from "../hooks/useToast";
 import Toast from "./Toast";
 import RecordMetadata from "./RecordMetadata";
+import ForecastingSection from "./deals/ForecastingSection";
 
 // 🔹 Stage → Default Probability map (integer percent 0..100)
 const STAGE_PROBABILITY: Record<string, number> = {
@@ -74,6 +75,15 @@ interface Deal {
   created_by_id?: string | null;
   updated_by_id?: string | null;
   updated_at?: string | null;
+  // Forecasting fields
+  loi_date?: string | null;
+  contingency_period_days?: number | null;
+  rent_commencement_days?: number | null;
+  due_diligence_days?: number | null;
+  closing_deadline_days?: number | null;
+  estimated_execution_date?: string | null;
+  is_behind_schedule?: boolean;
+  weeks_behind?: number;
 }
 
 interface Props {
@@ -585,6 +595,13 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       site_percent: form.site_percent,
       deal_percent: form.deal_percent,
       number_of_payments: form.number_of_payments,
+      // Forecasting fields
+      loi_date: form.loi_date,
+      contingency_period_days: form.contingency_period_days,
+      rent_commencement_days: form.rent_commencement_days,
+      due_diligence_days: form.due_diligence_days,
+      closing_deadline_days: form.closing_deadline_days,
+      estimated_execution_date: form.estimated_execution_date,
       // updated_at is handled by database trigger
     };
 
@@ -726,13 +743,20 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       site_percent: updatedForm.site_percent,
       deal_percent: updatedForm.deal_percent,
       number_of_payments: updatedForm.number_of_payments,
+      // Forecasting fields
+      loi_date: updatedForm.loi_date,
+      contingency_period_days: updatedForm.contingency_period_days,
+      rent_commencement_days: updatedForm.rent_commencement_days,
+      due_diligence_days: updatedForm.due_diligence_days,
+      closing_deadline_days: updatedForm.closing_deadline_days,
+      estimated_execution_date: updatedForm.estimated_execution_date,
       updated_at: now,
     };
 
     let data, error;
 
     if (updatedForm.id) {
-      // Update existing deal
+      // Update existing deal - handleLossReasonSave
       const result = await supabase
         .from("deal")
         .update(prepareUpdate(dealPayload))
@@ -818,13 +842,20 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       site_percent: updatedForm.site_percent,
       deal_percent: updatedForm.deal_percent,
       number_of_payments: updatedForm.number_of_payments,
+      // Forecasting fields
+      loi_date: updatedForm.loi_date,
+      contingency_period_days: updatedForm.contingency_period_days,
+      rent_commencement_days: updatedForm.rent_commencement_days,
+      due_diligence_days: updatedForm.due_diligence_days,
+      closing_deadline_days: updatedForm.closing_deadline_days,
+      estimated_execution_date: updatedForm.estimated_execution_date,
       updated_at: now,
     };
 
     let data, error;
 
     if (updatedForm.id) {
-      // Update existing deal
+      // Update existing deal - handleClosedDateSave
       const result = await supabase
         .from("deal")
         .update(prepareUpdate(dealPayload))
@@ -912,13 +943,20 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
       site_percent: updatedForm.site_percent,
       deal_percent: updatedForm.deal_percent,
       number_of_payments: updatedForm.number_of_payments,
+      // Forecasting fields
+      loi_date: updatedForm.loi_date,
+      contingency_period_days: updatedForm.contingency_period_days,
+      rent_commencement_days: updatedForm.rent_commencement_days,
+      due_diligence_days: updatedForm.due_diligence_days,
+      closing_deadline_days: updatedForm.closing_deadline_days,
+      estimated_execution_date: updatedForm.estimated_execution_date,
       updated_at: now,
     };
 
     let data, error;
 
     if (updatedForm.id) {
-      // Update existing deal
+      // Update existing deal - handleBookedDateSave
       const result = await supabase
         .from("deal")
         .update(prepareUpdate(dealPayload))
@@ -1198,6 +1236,29 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
           />
         </div>
       </Section>
+
+      {/* SECTION: Forecasting */}
+      <ForecastingSection
+        dealId={form.id}
+        isNewDeal={isNewDeal}
+        transactionTypeLabel={transactionTypeOptions.find(t => t.id === form.transaction_type_id)?.label}
+        clientId={form.client_id}
+        stageLabel={stageLabel}
+        loiDate={form.loi_date ?? null}
+        loiSignedDate={form.loi_signed_date}
+        contractSignedDate={form.contract_signed_date}
+        lastStageChangeAt={form.last_stage_change_at}
+        createdAt={form.created_at ?? null}
+        contingencyPeriodDays={form.contingency_period_days ?? null}
+        rentCommencementDays={form.rent_commencement_days ?? null}
+        dueDiligenceDays={form.due_diligence_days ?? null}
+        closingDeadlineDays={form.closing_deadline_days ?? null}
+        estimatedExecutionDate={form.estimated_execution_date ?? null}
+        isBehindSchedule={form.is_behind_schedule ?? false}
+        weeksBehind={form.weeks_behind ?? 0}
+        onChange={(field, value) => updateField(field, value)}
+        defaultCollapsed={!isNewDeal}
+      />
 
       {/* Record Metadata - only show for existing deals */}
       {!isNewDeal && deal.id && (

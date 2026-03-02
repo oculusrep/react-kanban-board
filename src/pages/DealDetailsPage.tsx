@@ -39,6 +39,8 @@ export default function DealDetailsPage() {
   const [propertySlideoutOpen, setPropertySlideoutOpen] = useState(false);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [propertyData, setPropertyData] = useState<any>(null);
+  const [criticalDatesMissing, setCriticalDatesMissing] = useState(false);
+  const [stageLabel, setStageLabel] = useState<string | null>(null);
   const { toast, showToast } = useToast();
   const { trackView } = useTrackPageView();
   const { removeRecentItem } = useRecentlyViewed();
@@ -160,6 +162,32 @@ export default function DealDetailsPage() {
           data.deal_name || 'Unnamed Deal',
           data.sf_address || data.client?.client_name || undefined
         );
+
+        // Fetch stage label and check critical dates for contract stages
+        if (data.stage_id) {
+          const { data: stageData } = await supabase
+            .from('deal_stage')
+            .select('label')
+            .eq('id', data.stage_id)
+            .single();
+
+          if (stageData) {
+            setStageLabel(stageData.label);
+
+            // Check if critical dates are missing for contract stages
+            const contractStages = ['Under Contract / Contingent', 'Booked', 'Executed Payable'];
+            if (contractStages.includes(stageData.label)) {
+              const { data: criticalDates } = await supabase
+                .from('critical_date')
+                .select('id')
+                .eq('deal_id', data.id);
+
+              setCriticalDatesMissing(!criticalDates || criticalDates.length === 0);
+            } else {
+              setCriticalDatesMissing(false);
+            }
+          }
+        }
       } else {
         // No data and no error means the deal doesn't exist
         console.log('Deal not found - removing from recently viewed');
@@ -488,10 +516,17 @@ export default function DealDetailsPage() {
                   className={`py-2 px-1 border-b-2 font-medium text-sm ${
                     activeTab === 'critical-dates'
                       ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      : criticalDatesMissing
+                        ? 'border-transparent text-red-500 hover:text-red-700 hover:border-red-300'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  Critical Dates
+                  <span className="flex items-center gap-1">
+                    Critical Dates
+                    {criticalDatesMissing && (
+                      <span className="inline-flex items-center justify-center w-2 h-2 bg-red-500 rounded-full" title="Critical dates missing"></span>
+                    )}
+                  </span>
                 </button>
                 <button
                   onClick={() => handleTabChange('activity')}

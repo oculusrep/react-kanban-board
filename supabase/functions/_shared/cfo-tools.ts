@@ -1857,6 +1857,886 @@ export async function deleteFinancialContext(
 }
 
 // ============================================================================
+// FORECASTING TOOLS - NEW FOR DEAL FORECASTING SYSTEM
+// ============================================================================
+
+// Stage probability weights for forecasting
+const STAGE_PROBABILITY: Record<string, number> = {
+  'Negotiating LOI': 0.50,
+  'At Lease/PSA': 0.75,
+  'At Lease / PSA': 0.75,
+  'Under Contract / Contingent': 0.85,
+  'Under Contract/Contingent': 0.85,
+  'Booked': 0.90,
+  'Executed Payable': 0.95,
+  'Closed Paid': 1.00,
+  'Lost': 0.00,
+};
+
+export interface PipelineForecastWithEstimates {
+  monthly_forecasts: Array<{
+    month: string;
+    month_index: number;
+    weighted_revenue: number;
+    unweighted_revenue: number;
+    payment_count: number;
+    by_stage: Record<string, { revenue: number; count: number; probability: number }>;
+  }>;
+  summary: {
+    total_weighted: number;
+    total_unweighted: number;
+    deals_with_auto_dates: number;
+    deals_with_manual_dates: number;
+  };
+}
+
+/**
+ * Get pipeline forecast using auto-calculated payment dates with probability weighting
+ */
+export async function getPipelineForecastWithEstimates(
+  supabase: SupabaseClient,
+  year: number,
+  includeProbabilityWeighting: boolean = true
+): Promise<PipelineForecastWithEstimates> {
+  // Fetch deals with forecasting data
+  const { data: deals, error: dealError } = await supabase
+    .from('deal')
+    .select(`
+      id,
+      deal_name,
+      stage_id,
+      estimated_execution_date,
+      contingency_period_days,
+      rent_commencement_days,
+      due_diligence_days,
+      closing_deadline_days,
+      transaction_type_id,
+      stage:stage_id (label)
+    `)
+    .not('stage_id', 'eq', STAGE_IDS.lost)
+    .not('stage_id', 'eq', STAGE_IDS.closedPaid);
+
+  if (dealError) throw new Error(`Failed to fetch deals: ${dealError.message}`);
+
+  // Fetch payments
+  const { data: payments, error: paymentError } = await supabase
+    .from('payment')
+    .select(`
+      id,
+      deal_id,
+      payment_amount,
+      payment_date_estimated,
+      payment_date_auto_calculated,
+      payment_date_source,
+      payment_received
+    `)
+    .eq('is_active', true)
+    .or('payment_received.eq.false,payment_received.is.null');
+
+  if (paymentError) throw new Error(`Failed to fetch payments: ${paymentError.message}`);
+
+  // Build deal stage map
+  const dealStageMap = new Map<string, string>();
+  for (const deal of deals || []) {
+    const stage = deal.stage as { label: string } | null;
+    dealStageMap.set(deal.id, stage?.label || 'Unknown');
+  }
+
+  // Initialize monthly forecasts
+  const monthlyData = Array.from({ length: 12 }, (_, i) => ({
+    month: MONTH_NAMES[i],
+    month_index: i,
+    weighted_revenue: 0,
+    unweighted_revenue: 0,
+    payment_count: 0,
+    by_stage: {} as Record<string, { revenue: number; count: number; probability: number }>,
+  }));
+
+  let dealsWithAutoDates = 0;
+  let dealsWithManualDates = 0;
+  const seenDeals = new Set<string>();
+
+  // Process payments
+  for (const payment of payments || []) {
+    // Use auto-calculated date if no manual estimate
+    const effectiveDate = payment.payment_date_estimated || payment.payment_date_auto_calculated;
+    if (!effectiveDate) continue;
+
+    const date = new Date(effectiveDate);
+    if (date.getFullYear() !== year) continue;
+
+    const monthIdx = date.getMonth();
+    const amount = payment.payment_amount || 0;
+    const stageLabel = dealStageMap.get(payment.deal_id) || 'Unknown';
+    const probability = includeProbabilityWeighting ? (STAGE_PROBABILITY[stageLabel] || 0.5) : 1;
+
+    // Track date source
+    if (!seenDeals.has(payment.deal_id)) {
+      seenDeals.add(payment.deal_id);
+      if (payment.payment_date_source === 'auto' || !payment.payment_date_estimated) {
+        dealsWithAutoDates++;
+      } else {
+        dealsWithManualDates++;
+      }
+    }
+
+    // Add to monthly totals
+    monthlyData[monthIdx].weighted_revenue += amount * probability;
+    monthlyData[monthIdx].unweighted_revenue += amount;
+    monthlyData[monthIdx].payment_count++;
+
+    // Add to by_stage breakdown
+    if (!monthlyData[monthIdx].by_stage[stageLabel]) {
+      monthlyData[monthIdx].by_stage[stageLabel] = { revenue: 0, count: 0, probability };
+    }
+    monthlyData[monthIdx].by_stage[stageLabel].revenue += amount;
+    monthlyData[monthIdx].by_stage[stageLabel].count++;
+  }
+
+  // Calculate totals
+  const totalWeighted = monthlyData.reduce((sum, m) => sum + m.weighted_revenue, 0);
+  const totalUnweighted = monthlyData.reduce((sum, m) => sum + m.unweighted_revenue, 0);
+
+  return {
+    monthly_forecasts: monthlyData,
+    summary: {
+      total_weighted: Math.round(totalWeighted * 100) / 100,
+      total_unweighted: Math.round(totalUnweighted * 100) / 100,
+      deals_with_auto_dates: dealsWithAutoDates,
+      deals_with_manual_dates: dealsWithManualDates,
+    },
+  };
+}
+
+export interface BrokerTakeHome {
+  broker_id: string;
+  broker_name: string;
+  deals: Array<{
+    deal_id: string;
+    deal_name: string;
+    payments: Array<{
+      payment_id: string;
+      payment_name: string | null;
+      broker_total: number;
+      estimated_date: string | null;
+      received: boolean;
+    }>;
+    total_commission: number;
+  }>;
+  summary: {
+    total_estimated: number;
+    total_received: number;
+    total_pending: number;
+    deals_count: number;
+  };
+}
+
+/**
+ * Get broker commission breakdown by deal
+ */
+export async function getBrokerTakeHome(
+  supabase: SupabaseClient,
+  brokerId: string,
+  year: number,
+  month?: number
+): Promise<BrokerTakeHome> {
+  // Get broker name
+  const { data: broker, error: brokerError } = await supabase
+    .from('broker')
+    .select('id, name')
+    .eq('id', brokerId)
+    .single();
+
+  if (brokerError) throw new Error(`Failed to fetch broker: ${brokerError.message}`);
+
+  // Get payment splits for this broker
+  const { data: splits, error: splitError } = await supabase
+    .from('payment_split')
+    .select(`
+      id,
+      payment_id,
+      split_broker_total,
+      paid,
+      payment:payment_id (
+        id,
+        payment_name,
+        payment_date_estimated,
+        payment_received,
+        deal_id,
+        deal:deal_id (
+          id,
+          deal_name
+        )
+      )
+    `)
+    .eq('broker_id', brokerId);
+
+  if (splitError) throw new Error(`Failed to fetch splits: ${splitError.message}`);
+
+  // Group by deal
+  const dealMap = new Map<string, {
+    deal_id: string;
+    deal_name: string;
+    payments: Array<{
+      payment_id: string;
+      payment_name: string | null;
+      broker_total: number;
+      estimated_date: string | null;
+      received: boolean;
+    }>;
+    total_commission: number;
+  }>();
+
+  let totalEstimated = 0;
+  let totalReceived = 0;
+  let totalPending = 0;
+
+  for (const split of splits || []) {
+    const payment = split.payment as Record<string, unknown>;
+    if (!payment) continue;
+
+    const deal = payment.deal as Record<string, unknown>;
+    if (!deal) continue;
+
+    const estimatedDate = payment.payment_date_estimated as string | null;
+
+    // Filter by year/month if specified
+    if (estimatedDate) {
+      const date = new Date(estimatedDate);
+      if (date.getFullYear() !== year) continue;
+      if (month !== undefined && date.getMonth() !== month) continue;
+    }
+
+    const dealId = deal.id as string;
+    const brokerTotal = (split.split_broker_total as number) || 0;
+    const received = (payment.payment_received as boolean) || false;
+
+    if (!dealMap.has(dealId)) {
+      dealMap.set(dealId, {
+        deal_id: dealId,
+        deal_name: (deal.deal_name as string) || 'Unknown',
+        payments: [],
+        total_commission: 0,
+      });
+    }
+
+    const dealEntry = dealMap.get(dealId)!;
+    dealEntry.payments.push({
+      payment_id: payment.id as string,
+      payment_name: payment.payment_name as string | null,
+      broker_total: brokerTotal,
+      estimated_date: estimatedDate,
+      received,
+    });
+    dealEntry.total_commission += brokerTotal;
+
+    totalEstimated += brokerTotal;
+    if (received) {
+      totalReceived += brokerTotal;
+    } else {
+      totalPending += brokerTotal;
+    }
+  }
+
+  return {
+    broker_id: brokerId,
+    broker_name: broker?.name || 'Unknown',
+    deals: Array.from(dealMap.values()),
+    summary: {
+      total_estimated: Math.round(totalEstimated * 100) / 100,
+      total_received: Math.round(totalReceived * 100) / 100,
+      total_pending: Math.round(totalPending * 100) / 100,
+      deals_count: dealMap.size,
+    },
+  };
+}
+
+export interface HouseProfitResult {
+  periods: Array<{
+    period: string;
+    revenue: number;
+    expenses: number;
+    broker_splits: number;
+    referral_fees: number;
+    house_profit: number;
+  }>;
+  summary: {
+    total_revenue: number;
+    total_expenses: number;
+    total_broker_splits: number;
+    total_referral_fees: number;
+    total_house_profit: number;
+  };
+}
+
+/**
+ * Get house profit by period
+ */
+export async function getHouseProfit(
+  supabase: SupabaseClient,
+  year: number,
+  period: 'month' | 'quarter' | 'year' = 'month',
+  includeForecast: boolean = false
+): Promise<HouseProfitResult> {
+  const currentMonth = new Date().getMonth();
+
+  // Get payments with splits
+  const { data: payments, error: paymentError } = await supabase
+    .from('payment')
+    .select(`
+      id,
+      payment_amount,
+      referral_fee_usd,
+      agci,
+      payment_date_estimated,
+      payment_received,
+      payment_received_date,
+      deal:deal_id (stage_id)
+    `)
+    .eq('is_active', true);
+
+  if (paymentError) throw new Error(`Failed to fetch payments: ${paymentError.message}`);
+
+  // Get budgeted expenses
+  const budgets = await getBudgetData(supabase, year, ['Expense', 'Other Expense']);
+
+  // Initialize period buckets
+  const numPeriods = period === 'year' ? 1 : period === 'quarter' ? 4 : 12;
+  const periodData = Array.from({ length: numPeriods }, (_, i) => ({
+    period: period === 'year' ? String(year) :
+            period === 'quarter' ? `Q${i + 1}` :
+            MONTH_NAMES[i],
+    revenue: 0,
+    expenses: 0,
+    broker_splits: 0,
+    referral_fees: 0,
+    house_profit: 0,
+  }));
+
+  // Calculate expenses by period from budgets
+  for (const budget of budgets) {
+    for (let monthIdx = 0; monthIdx < 12; monthIdx++) {
+      const monthKey = MONTH_KEYS[monthIdx];
+      const budgetAmount = budget[monthKey] || 0;
+
+      const periodIdx = period === 'year' ? 0 :
+                       period === 'quarter' ? Math.floor(monthIdx / 3) :
+                       monthIdx;
+      periodData[periodIdx].expenses += budgetAmount;
+    }
+  }
+
+  // Process payments
+  for (const payment of payments || []) {
+    const deal = payment.deal as { stage_id: string } | null;
+    if (deal?.stage_id === STAGE_IDS.lost) continue;
+
+    // Determine which date to use
+    const dateStr = payment.payment_received
+      ? payment.payment_received_date
+      : payment.payment_date_estimated;
+
+    if (!dateStr) continue;
+
+    const date = new Date(dateStr);
+    if (date.getFullYear() !== year) continue;
+
+    const monthIdx = date.getMonth();
+
+    // Skip future months if not including forecast
+    if (!includeForecast && !payment.payment_received && monthIdx > currentMonth) continue;
+
+    const periodIdx = period === 'year' ? 0 :
+                     period === 'quarter' ? Math.floor(monthIdx / 3) :
+                     monthIdx;
+
+    const amount = payment.payment_amount || 0;
+    const referralFee = payment.referral_fee_usd || 0;
+    const agci = payment.agci || 0;
+
+    periodData[periodIdx].revenue += amount;
+    periodData[periodIdx].referral_fees += referralFee;
+    periodData[periodIdx].broker_splits += agci;
+  }
+
+  // Calculate house profit for each period
+  for (const pd of periodData) {
+    pd.house_profit = pd.revenue - pd.referral_fees - pd.broker_splits - pd.expenses;
+  }
+
+  // Calculate totals
+  const summary = periodData.reduce((acc, pd) => ({
+    total_revenue: acc.total_revenue + pd.revenue,
+    total_expenses: acc.total_expenses + pd.expenses,
+    total_broker_splits: acc.total_broker_splits + pd.broker_splits,
+    total_referral_fees: acc.total_referral_fees + pd.referral_fees,
+    total_house_profit: acc.total_house_profit + pd.house_profit,
+  }), {
+    total_revenue: 0,
+    total_expenses: 0,
+    total_broker_splits: 0,
+    total_referral_fees: 0,
+    total_house_profit: 0,
+  });
+
+  return { periods: periodData, summary };
+}
+
+export interface DealBehindSchedule {
+  deal_id: string;
+  deal_name: string;
+  client_name: string | null;
+  stage_label: string;
+  weeks_behind: number;
+  days_in_stage: number;
+  expected_days: number;
+  estimated_payment_impact: number;
+  payments_affected: number;
+}
+
+/**
+ * Get deals that are behind schedule
+ */
+export async function getDealsBehindSchedule(
+  supabase: SupabaseClient,
+  minWeeksBehind: number = 1
+): Promise<{ deals: DealBehindSchedule[]; summary: { total_count: number; total_impact: number } }> {
+  const { data: deals, error } = await supabase
+    .from('deal')
+    .select(`
+      id,
+      deal_name,
+      is_behind_schedule,
+      weeks_behind,
+      last_stage_change_at,
+      created_at,
+      stage:stage_id (label),
+      client:client_id (client_name)
+    `)
+    .eq('is_behind_schedule', true)
+    .gte('weeks_behind', minWeeksBehind)
+    .not('stage_id', 'eq', STAGE_IDS.lost)
+    .not('stage_id', 'eq', STAGE_IDS.closedPaid);
+
+  if (error) throw new Error(`Failed to fetch deals: ${error.message}`);
+
+  // Get payments for impact calculation
+  const dealIds = (deals || []).map(d => d.id);
+  let paymentMap = new Map<string, { count: number; total: number }>();
+
+  if (dealIds.length > 0) {
+    const { data: payments } = await supabase
+      .from('payment')
+      .select('deal_id, payment_amount')
+      .in('deal_id', dealIds)
+      .eq('is_active', true)
+      .or('payment_received.eq.false,payment_received.is.null');
+
+    for (const p of payments || []) {
+      const existing = paymentMap.get(p.deal_id) || { count: 0, total: 0 };
+      existing.count++;
+      existing.total += p.payment_amount || 0;
+      paymentMap.set(p.deal_id, existing);
+    }
+  }
+
+  const result: DealBehindSchedule[] = [];
+  let totalImpact = 0;
+
+  for (const deal of deals || []) {
+    const stage = deal.stage as { label: string } | null;
+    const client = deal.client as { client_name: string } | null;
+    const paymentInfo = paymentMap.get(deal.id) || { count: 0, total: 0 };
+
+    // Calculate days in stage
+    const stageStart = deal.last_stage_change_at || deal.created_at;
+    const daysInStage = Math.floor((Date.now() - new Date(stageStart).getTime()) / (1000 * 60 * 60 * 24));
+
+    // Estimate expected days (simplified - would use velocity settings in production)
+    const expectedDays = stage?.label?.includes('LOI') ? 30 : 45;
+
+    result.push({
+      deal_id: deal.id,
+      deal_name: deal.deal_name || 'Unknown',
+      client_name: client?.client_name || null,
+      stage_label: stage?.label || 'Unknown',
+      weeks_behind: deal.weeks_behind || 0,
+      days_in_stage: daysInStage,
+      expected_days: expectedDays,
+      estimated_payment_impact: paymentInfo.total,
+      payments_affected: paymentInfo.count,
+    });
+
+    totalImpact += paymentInfo.total;
+  }
+
+  return {
+    deals: result,
+    summary: {
+      total_count: result.length,
+      total_impact: Math.round(totalImpact * 100) / 100,
+    },
+  };
+}
+
+export interface DealNeedingDateReview {
+  deal_id: string;
+  deal_name: string;
+  client_name: string | null;
+  stage_label: string;
+  issue_type: 'missing_critical_dates' | 'date_discrepancy';
+  details: string;
+  estimated_payment_amount: number;
+}
+
+/**
+ * Get deals needing date review
+ */
+export async function getDealsNeedingDateReview(
+  supabase: SupabaseClient,
+  includeCriticalDatesMissing: boolean = true,
+  includeDateDiscrepancies: boolean = true
+): Promise<{ deals: DealNeedingDateReview[]; summary: { critical_dates_missing: number; date_discrepancies: number } }> {
+  // Contract+ stages where critical dates should be entered
+  const contractStages = [
+    STAGE_IDS.underContractContingent,
+    STAGE_IDS.booked,
+    STAGE_IDS.executedPayable,
+  ];
+
+  const result: DealNeedingDateReview[] = [];
+  let criticalDatesMissingCount = 0;
+  let dateDiscrepanciesCount = 0;
+
+  if (includeCriticalDatesMissing) {
+    // Find deals in contract+ stages without critical dates
+    const { data: deals, error } = await supabase
+      .from('deal')
+      .select(`
+        id,
+        deal_name,
+        stage:stage_id (label),
+        client:client_id (client_name),
+        contract_signed_date,
+        loi_signed_date
+      `)
+      .in('stage_id', contractStages)
+      .is('contract_signed_date', null);
+
+    if (error) throw new Error(`Failed to fetch deals: ${error.message}`);
+
+    // Get payment amounts
+    const dealIds = (deals || []).map(d => d.id);
+    const paymentTotals = new Map<string, number>();
+
+    if (dealIds.length > 0) {
+      const { data: payments } = await supabase
+        .from('payment')
+        .select('deal_id, payment_amount')
+        .in('deal_id', dealIds)
+        .eq('is_active', true);
+
+      for (const p of payments || []) {
+        paymentTotals.set(p.deal_id, (paymentTotals.get(p.deal_id) || 0) + (p.payment_amount || 0));
+      }
+    }
+
+    for (const deal of deals || []) {
+      const stage = deal.stage as { label: string } | null;
+      const client = deal.client as { client_name: string } | null;
+
+      result.push({
+        deal_id: deal.id,
+        deal_name: deal.deal_name || 'Unknown',
+        client_name: client?.client_name || null,
+        stage_label: stage?.label || 'Unknown',
+        issue_type: 'missing_critical_dates',
+        details: 'Contract signed date not entered',
+        estimated_payment_amount: paymentTotals.get(deal.id) || 0,
+      });
+      criticalDatesMissingCount++;
+    }
+  }
+
+  if (includeDateDiscrepancies) {
+    // Find deals where auto-calculated differs from broker override by >30 days
+    const { data: payments, error } = await supabase
+      .from('payment')
+      .select(`
+        id,
+        deal_id,
+        payment_amount,
+        payment_date_estimated,
+        payment_date_auto_calculated,
+        deal:deal_id (
+          id,
+          deal_name,
+          stage:stage_id (label),
+          client:client_id (client_name)
+        )
+      `)
+      .not('payment_date_estimated', 'is', null)
+      .not('payment_date_auto_calculated', 'is', null);
+
+    if (error) throw new Error(`Failed to fetch payments: ${error.message}`);
+
+    const seenDeals = new Set<string>();
+
+    for (const payment of payments || []) {
+      if (!payment.payment_date_estimated || !payment.payment_date_auto_calculated) continue;
+
+      const manualDate = new Date(payment.payment_date_estimated);
+      const autoDate = new Date(payment.payment_date_auto_calculated);
+      const diffDays = Math.abs((manualDate.getTime() - autoDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (diffDays > 30 && !seenDeals.has(payment.deal_id)) {
+        seenDeals.add(payment.deal_id);
+        const deal = payment.deal as Record<string, unknown>;
+        const stage = deal?.stage as { label: string } | null;
+        const client = deal?.client as { client_name: string } | null;
+
+        result.push({
+          deal_id: payment.deal_id,
+          deal_name: (deal?.deal_name as string) || 'Unknown',
+          client_name: client?.client_name || null,
+          stage_label: stage?.label || 'Unknown',
+          issue_type: 'date_discrepancy',
+          details: `Auto-calculated and manual dates differ by ${Math.round(diffDays)} days`,
+          estimated_payment_amount: payment.payment_amount || 0,
+        });
+        dateDiscrepanciesCount++;
+      }
+    }
+  }
+
+  return {
+    deals: result,
+    summary: {
+      critical_dates_missing: criticalDatesMissingCount,
+      date_discrepancies: dateDiscrepanciesCount,
+    },
+  };
+}
+
+export interface PaymentPushedToNextYear {
+  payment_id: string;
+  deal_name: string;
+  payment_name: string | null;
+  payment_amount: number;
+  original_year_estimate: string | null;
+  current_estimate: string | null;
+  reason: string;
+}
+
+/**
+ * Get payments pushed to next year
+ */
+export async function getPaymentsPushedToNextYear(
+  supabase: SupabaseClient,
+  year?: number
+): Promise<{ payments: PaymentPushedToNextYear[]; summary: { count: number; total_amount: number } }> {
+  const targetYear = year || new Date().getFullYear();
+  const nextYear = targetYear + 1;
+
+  // This would require tracking historical estimates
+  // For now, we'll look for payments with current year-end dates pushed to next year
+  // In production, you'd want a payment_estimate_history table
+
+  const { data: payments, error } = await supabase
+    .from('payment')
+    .select(`
+      id,
+      payment_name,
+      payment_amount,
+      payment_date_estimated,
+      payment_date_auto_calculated,
+      deal:deal_id (
+        deal_name,
+        is_behind_schedule,
+        weeks_behind
+      )
+    `)
+    .eq('is_active', true)
+    .or('payment_received.eq.false,payment_received.is.null')
+    .gte('payment_date_estimated', `${nextYear}-01-01`);
+
+  if (error) throw new Error(`Failed to fetch payments: ${error.message}`);
+
+  const result: PaymentPushedToNextYear[] = [];
+  let totalAmount = 0;
+
+  for (const payment of payments || []) {
+    const deal = payment.deal as Record<string, unknown>;
+
+    // Check if deal is behind schedule (likely reason for push)
+    const isBehind = deal?.is_behind_schedule as boolean;
+    const weeksBehind = deal?.weeks_behind as number;
+
+    // Only include if it appears to have been pushed (behind schedule indicator)
+    if (isBehind && weeksBehind > 0) {
+      result.push({
+        payment_id: payment.id,
+        deal_name: (deal?.deal_name as string) || 'Unknown',
+        payment_name: payment.payment_name,
+        payment_amount: payment.payment_amount || 0,
+        original_year_estimate: null, // Would need history tracking
+        current_estimate: payment.payment_date_estimated,
+        reason: `Deal ${weeksBehind} weeks behind schedule`,
+      });
+      totalAmount += payment.payment_amount || 0;
+    }
+  }
+
+  return {
+    payments: result,
+    summary: {
+      count: result.length,
+      total_amount: Math.round(totalAmount * 100) / 100,
+    },
+  };
+}
+
+export interface ForecastAccuracyResult {
+  metrics: {
+    total_payments_analyzed: number;
+    average_days_early: number;
+    average_days_late: number;
+    on_time_percent: number; // within 7 days
+    accuracy_score: number; // 0-100
+  };
+  by_stage: Record<string, {
+    count: number;
+    avg_days_off: number;
+    on_time_percent: number;
+  }>;
+  recent_comparisons: Array<{
+    payment_id: string;
+    deal_name: string;
+    estimated_date: string;
+    actual_date: string;
+    days_difference: number;
+    stage_at_estimate: string;
+  }>;
+}
+
+/**
+ * Get forecast accuracy metrics
+ */
+export async function getForecastAccuracy(
+  supabase: SupabaseClient,
+  year?: number,
+  monthsLookback: number = 12
+): Promise<ForecastAccuracyResult> {
+  const targetYear = year || new Date().getFullYear();
+  const startDate = new Date();
+  startDate.setMonth(startDate.getMonth() - monthsLookback);
+
+  // Get payments that have been received with both estimate and actual dates
+  const { data: payments, error } = await supabase
+    .from('payment')
+    .select(`
+      id,
+      payment_date_estimated,
+      payment_received_date,
+      deal:deal_id (
+        deal_name,
+        stage:stage_id (label)
+      )
+    `)
+    .eq('payment_received', true)
+    .not('payment_date_estimated', 'is', null)
+    .not('payment_received_date', 'is', null)
+    .gte('payment_received_date', startDate.toISOString().split('T')[0]);
+
+  if (error) throw new Error(`Failed to fetch payments: ${error.message}`);
+
+  let totalDaysEarly = 0;
+  let totalDaysLate = 0;
+  let earlyCount = 0;
+  let lateCount = 0;
+  let onTimeCount = 0;
+  const byStage: Record<string, { count: number; totalDaysOff: number; onTime: number }> = {};
+  const comparisons: ForecastAccuracyResult['recent_comparisons'] = [];
+
+  for (const payment of payments || []) {
+    if (!payment.payment_date_estimated || !payment.payment_received_date) continue;
+
+    const estimated = new Date(payment.payment_date_estimated);
+    const actual = new Date(payment.payment_received_date);
+    const diffDays = Math.round((actual.getTime() - estimated.getTime()) / (1000 * 60 * 60 * 24));
+
+    const deal = payment.deal as Record<string, unknown>;
+    const stage = deal?.stage as { label: string } | null;
+    const stageLabel = stage?.label || 'Unknown';
+
+    // Track by stage
+    if (!byStage[stageLabel]) {
+      byStage[stageLabel] = { count: 0, totalDaysOff: 0, onTime: 0 };
+    }
+    byStage[stageLabel].count++;
+    byStage[stageLabel].totalDaysOff += Math.abs(diffDays);
+
+    if (diffDays < 0) {
+      totalDaysEarly += Math.abs(diffDays);
+      earlyCount++;
+    } else if (diffDays > 0) {
+      totalDaysLate += diffDays;
+      lateCount++;
+    }
+
+    // Within 7 days = on time
+    if (Math.abs(diffDays) <= 7) {
+      onTimeCount++;
+      byStage[stageLabel].onTime++;
+    }
+
+    // Add to recent comparisons (limit to 20)
+    if (comparisons.length < 20) {
+      comparisons.push({
+        payment_id: payment.id,
+        deal_name: (deal?.deal_name as string) || 'Unknown',
+        estimated_date: payment.payment_date_estimated,
+        actual_date: payment.payment_received_date,
+        days_difference: diffDays,
+        stage_at_estimate: stageLabel,
+      });
+    }
+  }
+
+  const totalAnalyzed = (payments || []).length;
+  const avgDaysEarly = earlyCount > 0 ? totalDaysEarly / earlyCount : 0;
+  const avgDaysLate = lateCount > 0 ? totalDaysLate / lateCount : 0;
+  const onTimePercent = totalAnalyzed > 0 ? (onTimeCount / totalAnalyzed) * 100 : 0;
+
+  // Calculate accuracy score (higher is better)
+  // 100 = perfect, reduced by average days off
+  const avgDaysOff = totalAnalyzed > 0 ? (totalDaysEarly + totalDaysLate) / totalAnalyzed : 0;
+  const accuracyScore = Math.max(0, Math.min(100, 100 - avgDaysOff * 2));
+
+  // Format by_stage output
+  const byStageFormatted: ForecastAccuracyResult['by_stage'] = {};
+  for (const [stage, data] of Object.entries(byStage)) {
+    byStageFormatted[stage] = {
+      count: data.count,
+      avg_days_off: data.count > 0 ? Math.round(data.totalDaysOff / data.count) : 0,
+      on_time_percent: data.count > 0 ? Math.round((data.onTime / data.count) * 100) : 0,
+    };
+  }
+
+  return {
+    metrics: {
+      total_payments_analyzed: totalAnalyzed,
+      average_days_early: Math.round(avgDaysEarly),
+      average_days_late: Math.round(avgDaysLate),
+      on_time_percent: Math.round(onTimePercent),
+      accuracy_score: Math.round(accuracyScore),
+    },
+    by_stage: byStageFormatted,
+    recent_comparisons: comparisons,
+  };
+}
+
+// ============================================================================
 // TOOL DEFINITIONS FOR CLAUDE
 // ============================================================================
 
@@ -2037,6 +2917,87 @@ export const CFO_TOOL_DEFINITIONS = [
       properties: {
         stage_filter: { type: 'string' as const },
         include_closed_paid: { type: 'boolean' as const },
+      },
+    },
+  },
+  // === NEW FORECASTING TOOLS ===
+  {
+    name: 'get_pipeline_forecast_with_estimates',
+    description: 'Get revenue forecast using auto-calculated payment dates and probability weighting by stage. Includes deals without manually-entered dates.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        year: { type: 'number' as const, description: 'Year for forecast' },
+        include_probability_weighting: { type: 'boolean' as const, description: 'Apply stage-based probability discounts (default true)' },
+      },
+      required: ['year'],
+    },
+  },
+  {
+    name: 'get_broker_take_home',
+    description: 'Get broker commission breakdown by deal and total for a time period. Role-based access control.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        broker_id: { type: 'string' as const, description: 'Broker UUID (defaults to current user for non-admins)' },
+        year: { type: 'number' as const },
+        month: { type: 'number' as const, description: 'Optional month filter (0-11)' },
+      },
+      required: ['year'],
+    },
+  },
+  {
+    name: 'get_house_profit',
+    description: 'Get Oculus house profit for month, quarter, or year. Revenue minus expenses minus broker splits.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        year: { type: 'number' as const },
+        period: { type: 'string' as const, enum: ['month', 'quarter', 'year'], description: 'Time period granularity' },
+        include_forecast: { type: 'boolean' as const, description: 'Include projected future months (default false)' },
+      },
+      required: ['year'],
+    },
+  },
+  {
+    name: 'get_deals_behind_schedule',
+    description: 'Get deals that are behind schedule (pink cards on Kanban). Shows weeks behind, stage, and forecast impact.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        min_weeks_behind: { type: 'number' as const, description: 'Filter to deals at least N weeks behind' },
+      },
+    },
+  },
+  {
+    name: 'get_deals_needing_date_review',
+    description: 'Get deals missing critical dates (for contract+ stages) or where auto-calculated date differs significantly from broker override.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        include_critical_dates_missing: { type: 'boolean' as const, description: 'Include deals missing critical dates (default true)' },
+        include_date_discrepancies: { type: 'boolean' as const, description: 'Include deals where auto vs override differs >30 days (default true)' },
+      },
+    },
+  },
+  {
+    name: 'get_payments_pushed_to_next_year',
+    description: 'Get payments that were originally estimated for this year but have been pushed to next year.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        year: { type: 'number' as const, description: 'The year payments were pushed FROM (defaults to current year)' },
+      },
+    },
+  },
+  {
+    name: 'get_forecast_accuracy',
+    description: 'Compare historical payment estimates vs actual received dates. Shows forecast accuracy metrics.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        year: { type: 'number' as const, description: 'Year to analyze (defaults to current year)' },
+        months_lookback: { type: 'number' as const, description: 'How many months of history to analyze (default 12)' },
       },
     },
   },

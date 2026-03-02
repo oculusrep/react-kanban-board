@@ -5,6 +5,7 @@ import { prepareInsert, prepareUpdate } from '../lib/supabaseHelpers';
 import ParentAccountSelector from './ParentAccountSelector';
 import RecordMetadata from './RecordMetadata';
 import ClientPortalUsersSection from './portal/ClientPortalUsersSection';
+import ClientForecastingSection from './clients/ClientForecastingSection';
 
 type Client = Database['public']['Tables']['client']['Row'];
 type ClientInsert = Database['public']['Tables']['client']['Insert'];
@@ -765,6 +766,12 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
 
       {/* Portal Users Section */}
       <ClientPortalUsersSection
+        clientId={client?.id || null}
+        isNewClient={isNewClient}
+      />
+
+      {/* Forecasting Section */}
+      <ClientForecastingSection
         clientId={client?.id || null}
         isNewClient={isNewClient}
       />

@@ -97,6 +97,9 @@ export interface DealCard {
   closed_date?: string | null;
   created_at?: string | null;
   last_stage_change_at?: string | null;
+  // Forecasting: behind schedule indicator
+  is_behind_schedule?: boolean;
+  weeks_behind?: number;
 }
 
 export interface Client {
