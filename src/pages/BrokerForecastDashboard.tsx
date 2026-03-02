@@ -155,6 +155,8 @@ export default function BrokerForecastDashboard() {
       setClients(clientData || []);
 
       // Fetch pipeline payments with all needed data
+      // Note: owner_id doesn't have a direct FK relationship we can join on,
+      // so we fetch owner_id and look up the name from brokers separately
       const { data: paymentData, error: paymentError } = await supabase
         .from('payment')
         .select(`
@@ -178,8 +180,7 @@ export default function BrokerForecastDashboard() {
             origination_usd,
             house_usd,
             stage:stage_id (id, label),
-            client:client_id (client_name),
-            owner:owner_id (name)
+            client:client_id (client_name)
           ),
           payment_split (
             id,
@@ -192,6 +193,9 @@ export default function BrokerForecastDashboard() {
         `)
         .eq('is_active', true)
         .or('payment_received.eq.false,payment_received.is.null');
+
+      // Create a broker lookup map for owner names
+      const brokerNameMap = new Map((brokerData || []).map(b => [b.id, b.name]));
 
       if (paymentError) throw paymentError;
 
@@ -260,7 +264,7 @@ export default function BrokerForecastDashboard() {
           hasSplits,
           hasEstimatedDate,
           ownerId: deal.owner_id,
-          ownerName: (deal.owner as any)?.name || null,
+          ownerName: deal.owner_id ? brokerNameMap.get(deal.owner_id) || null : null,
         });
 
         // Track audit issues
