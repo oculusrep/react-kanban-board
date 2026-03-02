@@ -44,6 +44,14 @@ interface PaymentEstimate {
   notes: string;
 }
 
+interface PaymentRecord {
+  id: string;
+  payment_sequence: number;
+  payment_date_estimated: string | null;
+  payment_date_auto_calculated: string | null;
+  payment_date_source: string | null;
+}
+
 export default function ForecastingSection({
   dealId,
   isNewDeal,
@@ -78,6 +86,8 @@ export default function ForecastingSection({
     loi_deal_count: number;
     psa_deal_count: number;
   } | null>(null);
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [savingPaymentId, setSavingPaymentId] = useState<string | null>(null);
 
   // Determine if this is a lease or purchase deal
   const isPurchase = transactionTypeLabel?.toLowerCase().includes('purchase') ||
@@ -138,6 +148,81 @@ export default function ForecastingSection({
 
     fetchClientVelocity();
   }, [clientId]);
+
+  // Fetch payments for this deal
+  useEffect(() => {
+    if (!dealId || isNewDeal) {
+      setPayments([]);
+      return;
+    }
+
+    const fetchPayments = async () => {
+      const { data } = await supabase
+        .from('payment')
+        .select('id, payment_sequence, payment_date_estimated, payment_date_auto_calculated, payment_date_source')
+        .eq('deal_id', dealId)
+        .eq('is_active', true)
+        .order('payment_sequence');
+
+      if (data) {
+        setPayments(data);
+      }
+    };
+
+    fetchPayments();
+  }, [dealId, isNewDeal]);
+
+  // Handle payment date override
+  const handlePaymentDateOverride = async (paymentId: string, newDate: Date | null) => {
+    setSavingPaymentId(paymentId);
+
+    const updateData: any = {
+      payment_date_estimated: newDate ? formatDateFn(newDate, 'yyyy-MM-dd') : null,
+      payment_date_source: newDate ? 'broker_override' : 'auto',
+    };
+
+    const { error } = await supabase
+      .from('payment')
+      .update(updateData)
+      .eq('id', paymentId);
+
+    if (!error) {
+      // Update local state
+      setPayments(prev => prev.map(p =>
+        p.id === paymentId
+          ? { ...p, payment_date_estimated: updateData.payment_date_estimated, payment_date_source: updateData.payment_date_source }
+          : p
+      ));
+    }
+
+    setSavingPaymentId(null);
+  };
+
+  // Reset a payment date to auto-calculated
+  const handleResetToAuto = async (paymentId: string) => {
+    const payment = payments.find(p => p.id === paymentId);
+    if (!payment) return;
+
+    setSavingPaymentId(paymentId);
+
+    const { error } = await supabase
+      .from('payment')
+      .update({
+        payment_date_estimated: payment.payment_date_auto_calculated,
+        payment_date_source: 'auto',
+      })
+      .eq('id', paymentId);
+
+    if (!error) {
+      setPayments(prev => prev.map(p =>
+        p.id === paymentId
+          ? { ...p, payment_date_estimated: payment.payment_date_auto_calculated, payment_date_source: 'auto' }
+          : p
+      ));
+    }
+
+    setSavingPaymentId(null);
+  };
 
   // Get effective velocity for a stage (uses priority: historical > client override > global default)
   const getEffectiveVelocity = (stage: 'loi' | 'psa'): number => {
@@ -438,15 +523,19 @@ export default function ForecastingSection({
             </div>
           </div>
 
-          {/* Payment Estimates Display */}
+          {/* Payment Estimates Display - Editable */}
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-2">
               Estimated Payment Dates
             </label>
             <div className="bg-gray-50 rounded-md border">
-              {paymentEstimates.length === 0 ? (
+              {!dealId || isNewDeal ? (
                 <p className="p-3 text-xs text-gray-500 italic">
-                  Enter timeline data to see payment estimates
+                  Save the deal to see and edit payment estimates
+                </p>
+              ) : payments.length === 0 ? (
+                <p className="p-3 text-xs text-gray-500 italic">
+                  No payments found for this deal
                 </p>
               ) : (
                 <table className="min-w-full divide-y divide-gray-200">
@@ -454,29 +543,82 @@ export default function ForecastingSection({
                     <tr className="text-xs text-gray-500">
                       <th className="px-3 py-2 text-left font-medium">Payment</th>
                       <th className="px-3 py-2 text-left font-medium">Estimated Date</th>
-                      <th className="px-3 py-2 text-left font-medium">Calculation</th>
+                      <th className="px-3 py-2 text-left font-medium">Source</th>
+                      <th className="px-3 py-2 text-left font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {paymentEstimates.map((est) => (
-                      <tr key={est.sequence} className="text-xs">
-                        <td className="px-3 py-2 text-gray-900 font-medium">
-                          Payment {est.sequence}
-                        </td>
-                        <td className="px-3 py-2 text-gray-700">
-                          {formatDate(est.estimatedDate)}
-                        </td>
-                        <td className="px-3 py-2 text-gray-500">
-                          {est.notes}
-                        </td>
-                      </tr>
-                    ))}
+                    {payments.map((payment) => {
+                      const isOverridden = payment.payment_date_source === 'broker_override';
+                      const autoDate = payment.payment_date_auto_calculated
+                        ? parseISO(payment.payment_date_auto_calculated)
+                        : null;
+                      const currentDate = payment.payment_date_estimated
+                        ? parseISO(payment.payment_date_estimated)
+                        : null;
+
+                      return (
+                        <tr
+                          key={payment.id}
+                          className={`text-xs ${isOverridden ? 'bg-amber-50' : ''}`}
+                        >
+                          <td className="px-3 py-2 text-gray-900 font-medium">
+                            Payment {payment.payment_sequence}
+                          </td>
+                          <td className="px-3 py-2">
+                            <DatePicker
+                              selected={currentDate}
+                              onChange={(date) => handlePaymentDateOverride(payment.id, date)}
+                              dateFormat="MMM d, yyyy"
+                              placeholderText="Select date"
+                              className={`w-32 rounded border text-xs px-2 py-1 ${
+                                isOverridden
+                                  ? 'border-amber-400 bg-amber-50 text-amber-900'
+                                  : 'border-gray-300 text-gray-700'
+                              }`}
+                              disabled={savingPaymentId === payment.id}
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            {isOverridden ? (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-amber-100 text-amber-800">
+                                Override
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-600">
+                                Auto
+                              </span>
+                            )}
+                            {autoDate && isOverridden && (
+                              <span className="ml-2 text-gray-400" title="Auto-calculated date">
+                                (Auto: {formatDate(autoDate)})
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {isOverridden && (
+                              <button
+                                type="button"
+                                onClick={() => handleResetToAuto(payment.id)}
+                                disabled={savingPaymentId === payment.id}
+                                className="text-xs text-blue-600 hover:text-blue-800 hover:underline disabled:opacity-50"
+                              >
+                                Reset to Auto
+                              </button>
+                            )}
+                            {savingPaymentId === payment.id && (
+                              <span className="text-xs text-gray-400 ml-2">Saving...</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
             </div>
             <p className="mt-2 text-xs text-gray-500">
-              These estimates update automatically. Brokers can override on the Payments tab.
+              Click a date to override. Overridden dates are highlighted in amber and won't be auto-updated.
             </p>
           </div>
         </div>

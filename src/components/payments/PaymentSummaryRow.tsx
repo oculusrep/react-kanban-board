@@ -122,7 +122,11 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
 
   // Handle date change with QB sync
   const handleDateChange = async (newDate: string) => {
-    await onUpdatePayment({ payment_date_estimated: newDate });
+    // Set source to broker_override when manually changing the date
+    await onUpdatePayment({
+      payment_date_estimated: newDate || null,
+      payment_date_source: newDate ? 'broker_override' : 'auto'
+    } as any);
     // Sync to QB after updating OVIS
     if (newDate) {
       syncDueDateToQuickBooks(newDate);
@@ -260,21 +264,47 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
         ) : (
           // Show editable estimated date when payment is pending
           <div>
-            {payment.payment_date_estimated && (
-              <div className="text-xs text-gray-400 mb-1">
+            <div className="flex items-center gap-1 mb-1">
+              <span className="text-xs text-gray-400">
                 Estimated Pmt Date
-              </div>
-            )}
-            <input
-              type="date"
-              value={payment.payment_date_estimated || ''}
-              onChange={(e) => handleDateChange(e.target.value)}
-              className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm"
-              placeholder="Estimated payment date"
-            />
-            {!payment.payment_date_estimated && (
+              </span>
+              {(payment as any).payment_date_source === 'broker_override' && (
+                <span className="inline-flex items-center px-1 py-0.5 rounded text-xs bg-amber-100 text-amber-700">
+                  Override
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <input
+                type="date"
+                value={payment.payment_date_estimated || ''}
+                onChange={(e) => handleDateChange(e.target.value)}
+                className={`flex-1 border rounded-md px-2 py-1 text-sm ${
+                  (payment as any).payment_date_source === 'broker_override'
+                    ? 'border-amber-400 bg-amber-50'
+                    : 'border-gray-300'
+                }`}
+                placeholder="Estimated payment date"
+              />
+              {(payment as any).payment_date_source === 'broker_override' && (payment as any).payment_date_auto_calculated && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await onUpdatePayment({
+                      payment_date_estimated: (payment as any).payment_date_auto_calculated,
+                      payment_date_source: 'auto'
+                    } as any);
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap"
+                  title={`Reset to auto-calculated: ${formatDateString((payment as any).payment_date_auto_calculated)}`}
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+            {(payment as any).payment_date_source === 'broker_override' && (payment as any).payment_date_auto_calculated && (
               <div className="text-xs text-gray-400 mt-1">
-                Set estimated payment date
+                Auto: {formatDateString((payment as any).payment_date_auto_calculated)}
               </div>
             )}
           </div>
