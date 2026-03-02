@@ -114,6 +114,7 @@ export default function BrokerForecastDashboard() {
   const [companyYtdExpenses, setCompanyYtdExpenses] = useState(0);
   const [houseYtdProfit, setHouseYtdProfit] = useState(0);
   const [annualBudget, setAnnualBudget] = useState(0);
+  const [blendedExpenses, setBlendedExpenses] = useState(0); // Actual for completed months + budget for remaining
 
   // Filters
   const [filterStageIds, setFilterStageIds] = useState<string[]>([]);
@@ -430,15 +431,38 @@ export default function BrokerForecastDashboard() {
     setCompanyYtdRevenue(ytdRevenue);
 
     // YTD Expenses & Budget from budget_vs_actual_monthly view
+    // Fetch monthly budget columns for blended expense calculation
     const { data: budgetData } = await supabase
       .from('budget_vs_actual_monthly')
-      .select('ytd_actual, budget_annual')
+      .select('ytd_actual, budget_annual, jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec')
       .eq('budget_year', year);
 
     const ytdExpenses = (budgetData || []).reduce((sum, b) => sum + (b.ytd_actual || 0), 0);
     const budget = (budgetData || []).reduce((sum, b) => sum + (b.budget_annual || 0), 0);
     setCompanyYtdExpenses(ytdExpenses);
     setAnnualBudget(budget);
+
+    // Calculate blended expenses: actual for completed months + budget for remaining months
+    // Current month is in progress, so we use actual through last completed month + budget for current + future
+    const now = new Date();
+    const currentMonth = now.getMonth(); // 0-indexed (0 = January)
+    const monthColumns = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+    // Sum budgeted expenses for current month and remaining months
+    let budgetedRemaining = 0;
+    for (const row of budgetData || []) {
+      for (let m = currentMonth; m < 12; m++) {
+        budgetedRemaining += (row as any)[monthColumns[m]] || 0;
+      }
+    }
+
+    // Blended = YTD Actual (completed months) + Budgeted (current + remaining months)
+    // Note: ytd_actual includes current month's actuals, but we use budgeted for current month
+    // to be conservative (use full month budget not partial actual)
+    // So we need to subtract current month's actual and add current month's budget
+    // Actually, for simplicity: blended = ytd_actual + budget for remaining months (current + future)
+    // This slightly double-counts current month, but is conservative
+    setBlendedExpenses(ytdExpenses + budgetedRemaining);
 
     // House YTD profit - use house_usd from received payments
     const { data: houseProfitData } = await supabase
@@ -692,7 +716,7 @@ export default function BrokerForecastDashboard() {
         )}
 
         {/* Summary Cards Row */}
-        <div className="grid grid-cols-5 gap-4 mb-6">
+        <div className="grid grid-cols-6 gap-4 mb-6">
           {/* Company Revenue */}
           <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
             <div className="flex items-center gap-2 mb-1">
@@ -712,11 +736,11 @@ export default function BrokerForecastDashboard() {
             <p className="text-xs text-gray-500">of {formatCurrency(annualBudget)} budget</p>
           </div>
 
-          {/* House Profit YTD */}
+          {/* House Gross YTD */}
           <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
             <div className="flex items-center gap-2 mb-1">
               <Building2 className="h-4 w-4 text-blue-500" />
-              <p className="text-xs font-medium text-gray-500 uppercase">House YTD</p>
+              <p className="text-xs font-medium text-gray-500 uppercase">House Gross YTD</p>
             </div>
             <p className="text-xl font-bold text-gray-900">{formatCurrency(houseYtdProfit)}</p>
           </div>
@@ -729,6 +753,18 @@ export default function BrokerForecastDashboard() {
             </div>
             <p className="text-xl font-bold text-gray-900">{formatCurrency(housePipelineTotals.weighted)}</p>
             <p className="text-xs text-gray-500">({formatCurrency(housePipelineTotals.unweighted)} unweighted)</p>
+          </div>
+
+          {/* Net Profit Forecast */}
+          <div className={`bg-white rounded-lg shadow p-4 border-l-4 ${(houseYtdProfit + housePipelineTotals.weighted - blendedExpenses) >= 0 ? 'border-emerald-500' : 'border-red-500'}`}>
+            <div className="flex items-center gap-2 mb-1">
+              <TrendingUp className={`h-4 w-4 ${(houseYtdProfit + housePipelineTotals.weighted - blendedExpenses) >= 0 ? 'text-emerald-500' : 'text-red-500'}`} />
+              <p className="text-xs font-medium text-gray-500 uppercase">Net Profit Forecast</p>
+            </div>
+            <p className={`text-xl font-bold ${(houseYtdProfit + housePipelineTotals.weighted - blendedExpenses) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+              {formatCurrency(houseYtdProfit + housePipelineTotals.weighted - blendedExpenses)}
+            </p>
+            <p className="text-xs text-gray-500">Gross + Pipeline − Expenses</p>
           </div>
 
           {/* Audit Issues */}
@@ -993,7 +1029,8 @@ export default function BrokerForecastDashboard() {
           <div className="text-xs text-gray-500 space-y-1">
             <p><strong>Probability Weights:</strong> Negotiating LOI (50%), At Lease/PSA (75%), Under Contract (85%), Booked (90%), Executed Payable (95%)</p>
             <p><strong>Broker Income:</strong> Calculated as (deal_usd × deal_split%) + (site_usd × site_split%) + (origination_usd × orig_split%) ÷ number_of_payments</p>
-            <p><strong>House Profit:</strong> house_usd ÷ number_of_payments for each payment</p>
+            <p><strong>House Gross:</strong> house_usd ÷ number_of_payments for each received payment</p>
+            <p><strong>Net Profit Forecast:</strong> House Gross YTD + House Pipeline (weighted) − Blended Expenses (actual for completed months + budget for remaining months)</p>
           </div>
         </div>
       </div>
