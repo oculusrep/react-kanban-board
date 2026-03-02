@@ -133,11 +133,10 @@ export default function BrokerForecastDashboard() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch brokers
+      // Fetch brokers (no active column on broker table)
       const { data: brokerData } = await supabase
         .from('broker')
         .select('id, name')
-        .eq('active', true)
         .order('name');
       setBrokers(brokerData || []);
 
@@ -145,7 +144,6 @@ export default function BrokerForecastDashboard() {
       const { data: stageData } = await supabase
         .from('deal_stage')
         .select('id, label, sort_order')
-        .eq('active', true)
         .order('sort_order');
       setStages(stageData || []);
 
@@ -288,14 +286,28 @@ export default function BrokerForecastDashboard() {
         }
       }
 
-      // Find deals without payments
-      const { data: dealsWithoutPayments } = await supabase
-        .from('deal')
-        .select('id, deal_name, stage_id, stage:stage_id (label)')
-        .not('stage_id', 'in', `(${stages.filter(s => excludedStages.includes(s.label)).map(s => s.id).join(',')})`)
-        .eq('is_active', true);
+      // Find deals without payments - use stageData (not state) since we just fetched it
+      const excludedStageIds = (stageData || [])
+        .filter(s => excludedStages.includes(s.label))
+        .map(s => s.id);
 
-      for (const deal of dealsWithoutPayments || []) {
+      // Only query if we have stage IDs to exclude
+      let dealsWithoutPayments: any[] = [];
+      if (excludedStageIds.length > 0) {
+        const { data } = await supabase
+          .from('deal')
+          .select('id, deal_name, stage_id, stage:stage_id (label)')
+          .not('stage_id', 'in', `(${excludedStageIds.join(',')})`);
+        dealsWithoutPayments = data || [];
+      } else {
+        // If no excluded stages, just get all deals
+        const { data } = await supabase
+          .from('deal')
+          .select('id, deal_name, stage_id, stage:stage_id (label)');
+        dealsWithoutPayments = data || [];
+      }
+
+      for (const deal of dealsWithoutPayments) {
         if (!dealsWithPayments.has(deal.id)) {
           const stageLabel = (deal.stage as any)?.label || '';
           if (!excludedStages.includes(stageLabel)) {
