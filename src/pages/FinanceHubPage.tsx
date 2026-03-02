@@ -77,6 +77,15 @@ export default function FinanceHubPage() {
       borderColor: 'border-cyan-200',
     },
     {
+      title: 'Broker Forecast',
+      description: 'Broker income projections, pipeline audit, inline date editing, and missing data detection.',
+      icon: <TrendingUp className="h-8 w-8" />,
+      path: '/admin/broker-forecast',
+      color: 'text-violet-600',
+      bgColor: 'bg-violet-50',
+      borderColor: 'border-violet-200',
+    },
+    {
       title: 'QuickBooks',
       description: 'Manage QuickBooks connection, sync accounts, expenses, and configure commission mappings.',
       icon: <Calculator className="h-8 w-8" />,
