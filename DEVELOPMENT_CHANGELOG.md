@@ -1,5 +1,75 @@
 # Development Changelog
 
+## March 2, 2026
+
+### 🗺️ **Terra Draw Migration - Replace Deprecated Google Maps Drawing Library**
+
+#### **Background**
+Google's Drawing Library was deprecated in August 2025 and will be removed in May 2026. Migrated to Terra Draw, the officially recommended replacement. Terra Draw is MIT licensed with no API costs.
+
+#### **Changes Made**
+
+**1. New Packages Installed**
+- `terra-draw` - Core drawing library
+- `terra-draw-google-maps-adapter` - Google Maps integration
+
+**2. New Files Created**
+
+**`src/utils/coordinateConversion.ts`** - Coordinate system conversion utilities
+- `terraDrawToAppCoords()` - Convert Terra Draw [lng, lat] to app [lat, lng]
+- `appToTerraDrawCoords()` - Convert app [lat, lng] to Terra Draw [lng, lat]
+- `convertTerraDrawFeature()` - Convert Terra Draw GeoJSON features to app DrawnShape format
+- `extractCircleFromPolygon()` - Calculate center/radius from polygon (Terra Draw stores circles as polygons)
+
+**`src/components/mapping/DrawingToolbarV2.tsx`** - New Terra Draw implementation
+- Same external interface as original DrawingToolbar
+- Uses `TerraDrawGoogleMapsAdapter` for Google Maps integration
+- Supports all 4 shape types: polygon, rectangle, circle, polyline
+- Listens for `'finish'` event with `action: 'draw'` to capture completed shapes
+
+**3. Files Modified**
+- `src/pages/MappingPageNew.tsx` - Updated import to use DrawingToolbarV2
+- `src/pages/portal/PortalMapPage.tsx` - Updated import to use DrawingToolbarV2
+
+**4. Files Renamed**
+- `DrawingToolbar.tsx` → `DrawingToolbarLegacy.tsx` (kept for rollback capability)
+
+#### **Technical Details**
+
+**Coordinate System Conversion:**
+- Terra Draw uses GeoJSON standard: `[lng, lat]` (longitude first)
+- App storage uses Google Maps convention: `[lat, lng]` (latitude first)
+- Conversion happens automatically in `convertTerraDrawFeature()`
+
+**Terra Draw Mode Mapping:**
+| App Type | Terra Draw Mode |
+|----------|-----------------|
+| polygon | `TerraDrawPolygonMode` |
+| rectangle | `TerraDrawRectangleMode` |
+| circle | `TerraDrawCircleMode` |
+| polyline | `TerraDrawLineStringMode` |
+
+**Circle Handling:**
+- Terra Draw outputs circles as polygon approximations
+- `extractCircleFromPolygon()` calculates centroid and average radius
+- Stored in app format as `{ center: [lat, lng], radius: meters }`
+
+#### **Rollback Plan**
+If issues arise:
+1. Change import from `DrawingToolbarV2` back to `DrawingToolbarLegacy`
+2. No database changes needed - coordinate format unchanged
+
+#### **Files Reference**
+```
+src/components/mapping/DrawingToolbarV2.tsx      # New Terra Draw implementation
+src/components/mapping/DrawingToolbarLegacy.tsx  # Legacy Google Drawing (rollback)
+src/utils/coordinateConversion.ts                # Coordinate conversion utilities
+```
+
+**Commit:** `5153ad33` - Migrate from Google Maps Drawing library to Terra Draw
+
+---
+
 ## February 1, 2026
 
 ### 📤 **Portal File Sharing Notifications**
