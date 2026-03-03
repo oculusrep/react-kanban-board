@@ -232,7 +232,10 @@ export default function PortalFilesTab({
       // For portal users, only show visible files
       const filteredFiles = isInternalUser
         ? currentFiles
-        : currentFiles.filter((file: any) => isFileVisible(file.path, entityType, visibilityMap));
+        : currentFiles.filter((file: any) => {
+            const visible = isFileVisible(file.path, entityType, visibilityMap);
+            return visible;
+          });
 
       return {
         folders: filteredFiles.filter((f: any) => f.type === 'folder'),
@@ -513,7 +516,8 @@ export default function PortalFilesTab({
             {icon}
             <span className="font-medium text-gray-900">{title}</span>
             <span className="text-sm text-gray-500">
-              ({folders.length + regularFiles.length} items)
+              {/* Only show count if not loading and no error */}
+              ({filesHook.loading ? '...' : filesHook.error ? 0 : folders.length + regularFiles.length} items)
             </span>
             {isInternalUser && (
               <span
@@ -563,14 +567,24 @@ export default function PortalFilesTab({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </button>
-            <svg
-              className={`w-5 h-5 text-gray-500 transition-transform ${collapsed ? '' : 'rotate-180'}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+            {/* Chevron toggle - wrapped in button for better click target */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setCollapsed(!collapsed);
+              }}
+              className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-white rounded transition-colors"
+              title={collapsed ? 'Expand' : 'Collapse'}
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
+              <svg
+                className={`w-5 h-5 transition-transform ${collapsed ? '' : 'rotate-180'}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
           </div>
         </div>
 
