@@ -452,6 +452,19 @@ export default function PortalFilesTab({
       visibilityMap
     );
 
+    // Debug logging for portal file visibility issue
+    console.log(`📁 [${entityType}] renderFileSection:`, {
+      collapsed,
+      loading: filesHook.loading,
+      error: filesHook.error,
+      folderPath: filesHook.folderPath,
+      totalFiles: filesHook.files.length,
+      foldersCount: folders.length,
+      filesCount: regularFiles.length,
+      isInternalUser,
+      canUpload,
+    });
+
     const navigateToFolder = (file: any) => {
       setCurrentPath(file.path.replace(filesHook.folderPath || '', ''));
     };
@@ -591,6 +604,12 @@ export default function PortalFilesTab({
         {/* Section Content */}
         {!collapsed && (
           <div className="bg-white">
+            {/* DEBUG BANNER - REMOVE AFTER FIXING */}
+            <div className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-mono">
+              DEBUG: collapsed={String(collapsed)}, loading={String(filesHook.loading)},
+              error={filesHook.error || 'none'}, files={filesHook.files.length},
+              folders={folders.length}, regularFiles={regularFiles.length}
+            </div>
             {/* Loading */}
             {filesHook.loading ? (
               <div className="flex items-center justify-center py-8">
