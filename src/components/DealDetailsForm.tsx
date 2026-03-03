@@ -1190,6 +1190,12 @@ export default function DealDetailsForm({ deal, isNewDeal = false, onSave, onVie
             onChange={(v) => updateField("target_close_date", v)}
           />
           <DateInput
+            label="LOI Written Date"
+            value={form.loi_date}
+            onChange={(v) => updateField("loi_date", v)}
+            tooltip="Date LOI was written/sent. Syncs with Site Submit."
+          />
+          <DateInput
             label="LOI Signed Date"
             value={form.loi_signed_date}
             onChange={(v) => updateField("loi_signed_date", v)}

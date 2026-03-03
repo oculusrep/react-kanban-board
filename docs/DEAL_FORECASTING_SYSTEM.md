@@ -19,9 +19,11 @@ This system provides intelligent payment date estimation for pipeline deals, ena
 
 | Stage | Clock Start | Anchor Date Field |
 |-------|-------------|-------------------|
-| Negotiating LOI | `loi_date` (from site submit) or `created_at` | - |
-| At Lease/PSA | `loi_signed_date` | Resets estimates from this date |
+| Negotiating LOI | `deal.loi_date` → `site_submit.loi_date` → `deal.created_at` → `CURRENT_DATE` | - |
+| At Lease/PSA | `loi_signed_date` → `last_stage_change_at` → `created_at` → `CURRENT_DATE` | Resets estimates from this date |
 | Under Contract/Contingent | `contract_signed_date` | Resets estimates from this date |
+
+**Note:** The system uses a fallback chain for anchor dates. If earlier dates are missing, it falls back to the next available date, ultimately using `CURRENT_DATE` if no historical dates exist. The function now checks both `deal.loi_date` and `site_submit.loi_date` for the LOI stage anchor.
 
 ### Velocity Defaults (Overrideable)
 
@@ -95,6 +97,24 @@ ALTER TABLE deal ADD COLUMN loi_date DATE;
 | `is_behind_schedule` | boolean | True when over expected stage duration |
 | `weeks_behind` | integer | Number of weeks behind schedule |
 | `loi_date` | date | From site submit, clock start for deal |
+
+### LOI Date Sync
+
+The `loi_date` field is bidirectionally synced between `deal` and `site_submit` tables:
+
+| Direction | Trigger | Behavior |
+|-----------|---------|----------|
+| site_submit → deal | `trigger_sync_loi_date_from_site_submit` | When site_submit.loi_date updates, deal.loi_date updates |
+| deal → site_submit | `trigger_sync_loi_date_from_deal` | When deal.loi_date updates, all linked site_submits update |
+| New site_submit | `trigger_sync_loi_date_on_site_submit_insert` | If new site_submit has loi_date and deal has none, sync to deal |
+
+**Source of Truth:** Site Submit LOI Written Date is the primary entry point. When entered there, it automatically populates the Deal Timeline LOI Date.
+
+**UI Location:**
+- Site Submit: "LOI Written Date" field (with "LOI Written" checkbox)
+- Deal: "LOI Date" field in Timeline section (synced from site_submit)
+
+**Migration:** `20260303_sync_loi_date_between_deal_and_site_submit.sql`
 
 ### Payment Table - New Fields
 
@@ -299,6 +319,8 @@ Deals in Under Contract/Contingent or later missing critical dates:
 - Client table new fields
 - App Settings new keys
 - Migration: `20260302_deal_forecasting_system.sql`
+- Fix migration: `20260302_fix_payment_estimates.sql` (JSONB extraction fix)
+- Deal table `created_at` column now has DEFAULT NOW() and NOT NULL constraint
 
 ### Phase 2: UI Components ✅
 - Deal page Forecasting section (`ForecastingSection.tsx`)
@@ -328,8 +350,11 @@ Deals in Under Contract/Contingent or later missing critical dates:
 
 ```
 # Database
-supabase/migrations/20260302_deal_forecasting_system.sql    # Schema changes
-supabase/migrations/20260302100000_friday_cfo_email_cron.sql # Cron job setup
+supabase/migrations/20260302_deal_forecasting_system.sql      # Schema changes
+supabase/migrations/20260302_fix_payment_estimates.sql        # JSONB extraction fix + CURRENT_DATE fallback
+supabase/migrations/20260302_auto_calculate_payment_dates.sql # Auto-calc trigger on payment insert
+supabase/migrations/20260302100000_friday_cfo_email_cron.sql  # Cron job setup
+supabase/migrations/20260303_sync_loi_date_between_deal_and_site_submit.sql # Bidirectional LOI date sync
 
 # UI Components
 src/components/deals/ForecastingSection.tsx                 # Deal forecasting UI
@@ -373,6 +398,46 @@ SELECT jobid, jobname, schedule, active FROM cron.job WHERE jobname LIKE 'friday
 curl -X POST "https://rqbvcvwbziilnycqtmnc.supabase.co/functions/v1/friday-cfo-email?force=true" \
   -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY"
 ```
+
+---
+
+## Troubleshooting
+
+### Payments Missing Estimated Dates
+
+If payments don't have estimated dates, use the diagnostic function:
+
+```sql
+-- Check a specific deal
+SELECT * FROM debug_payment_estimates('deal-uuid-here');
+
+-- Or check the first LOI deal automatically
+SELECT * FROM debug_payment_estimates();
+```
+
+Common issues:
+1. **No active payments** - Generate payments first via the deal's Payment tab
+2. **LOI Velocity = 0** - Check `app_settings` has `velocity_loi_days_default`
+3. **Deal has no anchor date** - Ensure `loi_date` or `created_at` is populated
+
+### Recalculating Payment Dates
+
+To recalculate dates for existing payments:
+
+```sql
+-- Single deal
+SELECT recalculate_payment_dates_for_deal('deal-uuid-here');
+
+-- All pipeline deals
+SELECT recalculate_payment_dates_for_deal(d.id)
+FROM deal d
+JOIN deal_stage ds ON ds.id = d.stage_id
+WHERE ds.label NOT IN ('Lost', 'Closed Paid');
+```
+
+### Auto-Calculation Trigger
+
+New payments automatically get estimated dates via the `trigger_auto_calculate_payment_dates` trigger (AFTER INSERT on payment table).
 
 ---
 
