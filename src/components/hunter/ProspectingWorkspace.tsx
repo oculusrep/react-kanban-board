@@ -565,10 +565,13 @@ export default function ProspectingWorkspace() {
       // 2. activity table where is_prospecting=true (Contact page activities)
 
       // Query 1: prospecting_activity table
+      // Use activity_date for filtering since that's when the activity actually happened
+      // (created_at can differ when backdating responses)
       const { data: rawActivityData } = await supabase
         .from('prospecting_activity')
-        .select('contact_id, activity_type, created_at, hidden_from_timeline')
-        .gte('created_at', todayStart)
+        .select('contact_id, activity_type, activity_date, created_at, hidden_from_timeline')
+        .gte('activity_date', today)
+        .lte('activity_date', today)
         .order('created_at', { ascending: false })
         .limit(500);
 
@@ -591,14 +594,8 @@ export default function ProspectingWorkspace() {
         .order('created_at', { ascending: false })
         .limit(500);
 
-      // Filter to today only and exclude hidden activities
-      const todayEndDate = new Date(`${today}T23:59:59`);
-      const todayActivities = (rawActivityData || []).filter(item => {
-        const itemDate = new Date(item.created_at);
-        const isToday = itemDate <= todayEndDate;
-        const isVisible = !item.hidden_from_timeline;
-        return isToday && isVisible;
-      });
+      // Filter out hidden activities (date filtering is done in the query)
+      const todayActivities = (rawActivityData || []).filter(item => !item.hidden_from_timeline);
 
       // Map main activity table records to prospecting format
       // Mapping rules:
@@ -609,10 +606,7 @@ export default function ProspectingWorkspace() {
       // - LinkedIn → 'linkedin'
       // - SMS → 'sms'
       // - Voicemail → 'voicemail'
-      const mainActivitiesToday = (mainActivityData || []).filter(item => {
-        const itemDate = new Date(item.created_at);
-        return itemDate <= todayEndDate;
-      }).map(item => {
+      const mainActivitiesToday = (mainActivityData || []).map(item => {
         const actTypeName = ((item.activity_type as { name?: string })?.name || '').toLowerCase();
         let activity_type = 'task';
 
