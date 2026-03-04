@@ -49,13 +49,7 @@ CREATE POLICY "Allow all authenticated users to delete contact_tag_type"
 -- =====================================================
 
 INSERT INTO contact_tag_type (tag_name, description, color, sort_order) VALUES
-  ('Nurture Campaign', 'Long-term relationship building - periodic check-ins', '#8b5cf6', 1),
-  ('Holiday Mailer', 'Receives holiday greeting cards and seasonal mailers', '#ec4899', 2),
-  ('Quarterly Newsletter', 'Subscribed to quarterly market updates', '#06b6d4', 3),
-  ('Re-engagement', 'Previously active contact to reconnect with', '#f59e0b', 4),
-  ('VIP', 'High-value relationship requiring special attention', '#10b981', 5),
-  ('Event Invite', 'Include in event and networking invitations', '#6366f1', 6),
-  ('Market Updates', 'Interested in receiving market data and trends', '#0ea5e9', 7)
+  ('Nurture Campaign', 'Long-term relationship building - periodic check-ins', '#8b5cf6', 1)
 ON CONFLICT (tag_name) DO NOTHING;
 
 -- =====================================================

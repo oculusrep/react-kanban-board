@@ -22,22 +22,35 @@ export default function ContactTagsSection({
   inline = false,
   className = '',
 }: ContactTagsSectionProps) {
-  const { tags, availableTagTypes, loading, addTag, removeTag } = useContactTags(contactId);
+  const { tags, availableTagTypes, loading, addTag, removeTag, createTagType } = useContactTags(contactId);
   const [showDropdown, setShowDropdown] = useState(false);
   const [addingTag, setAddingTag] = useState(false);
   const [removingTagId, setRemovingTagId] = useState<string | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
+  const [creatingTag, setCreatingTag] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowDropdown(false);
+        setShowCreateForm(false);
+        setNewTagName('');
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Focus input when create form opens
+  useEffect(() => {
+    if (showCreateForm && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [showCreateForm]);
 
   // Get tag types that aren't already assigned
   const availableToAdd = availableTagTypes.filter(
@@ -64,6 +77,26 @@ export default function ContactTagsSection({
       // Error is handled in hook
     } finally {
       setRemovingTagId(null);
+    }
+  };
+
+  const handleCreateAndAssignTag = async () => {
+    if (!newTagName.trim()) return;
+
+    setCreatingTag(true);
+    try {
+      // Create the new tag type
+      const newTagId = await createTagType(newTagName.trim());
+      // Assign it to this contact
+      await addTag(contactId, newTagId);
+      // Reset form
+      setNewTagName('');
+      setShowCreateForm(false);
+      setShowDropdown(false);
+    } catch (err) {
+      // Error is handled in hook
+    } finally {
+      setCreatingTag(false);
     }
   };
 
@@ -107,7 +140,7 @@ export default function ContactTagsSection({
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setShowDropdown(!showDropdown)}
-            disabled={availableToAdd.length === 0 || addingTag}
+            disabled={addingTag || creatingTag}
             className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <PlusIcon className="w-3.5 h-3.5" />
@@ -116,9 +149,10 @@ export default function ContactTagsSection({
           </button>
 
           {/* Dropdown */}
-          {showDropdown && availableToAdd.length > 0 && (
-            <div className="absolute right-0 z-10 mt-1 w-48 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5">
+          {showDropdown && (
+            <div className="absolute right-0 z-10 mt-1 w-56 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5">
               <div className="py-1 max-h-60 overflow-y-auto">
+                {/* Existing tags to add */}
                 {availableToAdd.map((tagType) => (
                   <button
                     key={tagType.id}
@@ -133,6 +167,58 @@ export default function ContactTagsSection({
                     <span className="truncate">{tagType.tag_name}</span>
                   </button>
                 ))}
+
+                {/* Divider */}
+                {availableToAdd.length > 0 && <div className="border-t border-gray-100 my-1" />}
+
+                {/* Create new tag */}
+                {showCreateForm ? (
+                  <div className="px-3 py-2">
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={newTagName}
+                      onChange={(e) => setNewTagName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleCreateAndAssignTag();
+                        } else if (e.key === 'Escape') {
+                          setShowCreateForm(false);
+                          setNewTagName('');
+                        }
+                      }}
+                      placeholder="New tag name..."
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      disabled={creatingTag}
+                    />
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={handleCreateAndAssignTag}
+                        disabled={!newTagName.trim() || creatingTag}
+                        className="flex-1 px-2 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {creatingTag ? 'Creating...' : 'Create & Add'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowCreateForm(false);
+                          setNewTagName('');
+                        }}
+                        className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowCreateForm(true)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+                  >
+                    <PlusIcon className="w-4 h-4" />
+                    <span>Create new tag...</span>
+                  </button>
+                )}
               </div>
             </div>
           )}

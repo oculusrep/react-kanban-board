@@ -9,6 +9,20 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { ContactTagType, ContactTagDisplay } from '../types/contact-tags';
 
+// Random color generator for new tags
+const TAG_COLORS = [
+  '#8b5cf6', // violet
+  '#ec4899', // pink
+  '#06b6d4', // cyan
+  '#f59e0b', // amber
+  '#10b981', // emerald
+  '#6366f1', // indigo
+  '#0ea5e9', // sky
+  '#ef4444', // red
+  '#84cc16', // lime
+  '#f97316', // orange
+];
+
 interface UseContactTagsReturn {
   // Data
   tags: ContactTagDisplay[];
@@ -18,8 +32,10 @@ interface UseContactTagsReturn {
 
   // Methods
   refreshTags: () => Promise<void>;
+  refreshTagTypes: () => Promise<void>;
   addTag: (contactId: string, tagId: string, notes?: string) => Promise<void>;
   removeTag: (tagAssignmentId: string) => Promise<void>;
+  createTagType: (tagName: string, description?: string) => Promise<string>; // Returns new tag ID
 }
 
 /**
@@ -170,14 +186,63 @@ export function useContactTags(contactId?: string | null): UseContactTagsReturn 
     }
   };
 
+  const createTagType = async (tagName: string, description?: string): Promise<string> => {
+    try {
+      setError(null);
+
+      // Pick a random color
+      const color = TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
+
+      // Get max sort_order
+      const { data: maxOrderData } = await supabase
+        .from('contact_tag_type')
+        .select('sort_order')
+        .order('sort_order', { ascending: false })
+        .limit(1)
+        .single();
+
+      const nextSortOrder = (maxOrderData?.sort_order || 0) + 1;
+
+      const { data, error: err } = await supabase
+        .from('contact_tag_type')
+        .insert({
+          tag_name: tagName.trim(),
+          description: description?.trim() || null,
+          color,
+          is_active: true,
+          sort_order: nextSortOrder,
+        })
+        .select()
+        .single();
+
+      if (err) {
+        if (err.code === '23505') {
+          throw new Error('A tag with this name already exists');
+        }
+        throw err;
+      }
+
+      // Refresh tag types list
+      await loadTagTypes();
+
+      return data.id;
+    } catch (err) {
+      console.error('Error creating tag type:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create tag');
+      throw err;
+    }
+  };
+
   return {
     tags,
     availableTagTypes,
     loading,
     error,
     refreshTags,
+    refreshTagTypes: loadTagTypes,
     addTag,
     removeTag,
+    createTagType,
   };
 }
 
