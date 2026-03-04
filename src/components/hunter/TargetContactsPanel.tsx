@@ -13,6 +13,7 @@ import {
   ChevronRightIcon
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
+import ContactTagsSection from '../contact/ContactTagsSection';
 
 interface TargetContact {
   id: string;
@@ -290,6 +291,8 @@ export default function TargetContactsPanel({ targetId, companyName, onContactAd
                 {contact.title && (
                   <p className="text-xs text-gray-500 truncate">{contact.title}</p>
                 )}
+                {/* Tags (compact view) */}
+                <ContactTagsSection contactId={contact.id} compact className="mt-1" />
               </div>
 
               {/* Quick Actions */}

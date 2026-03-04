@@ -40,6 +40,7 @@ import {
   isResponseType,
 } from './types';
 import LogResponseModal from '../../hunter/LogResponseModal';
+import ContactTagsSection from '../ContactTagsSection';
 
 // Activity icon component
 function ActivityIcon({ type, className = 'w-4 h-4' }: { type: string; className?: string }) {
@@ -548,6 +549,11 @@ export default function ContactDetailDrawer({
             )}
           </div>
 
+          {/* Tags Section */}
+          {!editingContact && contact?.id && (
+            <ContactTagsSection contactId={contact.id} />
+          )}
+
           {!editingContact && (
             <>
               {/* Quick Actions */}
@@ -595,11 +601,11 @@ export default function ContactDetailDrawer({
                   {features.canLogActivity && (
                     <div className="border-t border-gray-200 pt-3">
                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                        Quick Log Activity
+                        Log Outreach
                       </p>
-                      <div className="grid grid-cols-5 gap-2">
-                        {/* Outreach activities (except email - that's handled above) */}
-                        {OUTREACH_TYPES.filter(t => t !== 'email').map((type) => (
+                      <div className="grid grid-cols-6 gap-2">
+                        {/* Outreach activities (including email for logging external emails) */}
+                        {OUTREACH_TYPES.map((type) => (
                           <button
                             key={type}
                             onClick={() => handleActivityClick(type)}
