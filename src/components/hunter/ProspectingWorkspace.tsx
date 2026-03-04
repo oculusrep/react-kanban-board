@@ -1918,48 +1918,6 @@ export default function ProspectingWorkspace() {
     return () => clearTimeout(timer);
   }, [contactSearch, searchContacts]);
 
-  // Fuzzy string matching helper - returns similarity score (0-1)
-  const fuzzyMatch = (str: string, pattern: string): number => {
-    if (!str || !pattern) return 0;
-    str = str.toLowerCase();
-    pattern = pattern.toLowerCase();
-
-    // Exact match
-    if (str.includes(pattern)) return 1;
-
-    // Check if pattern is a prefix
-    if (str.startsWith(pattern)) return 0.95;
-
-    // Simple Levenshtein-based similarity for short strings
-    if (pattern.length <= 4 && str.length <= 20) {
-      // For short patterns, check if most characters match
-      let matches = 0;
-      for (const char of pattern) {
-        if (str.includes(char)) matches++;
-      }
-      const charSimilarity = matches / pattern.length;
-      if (charSimilarity >= 0.75) return charSimilarity * 0.8;
-    }
-
-    // Check for transposed/missing characters (e.g., "jeff" vs "jeff", "russle" vs "russell")
-    if (pattern.length >= 3) {
-      // Remove one char at a time and check for match
-      for (let i = 0; i < pattern.length; i++) {
-        const withoutChar = pattern.slice(0, i) + pattern.slice(i + 1);
-        if (str.includes(withoutChar)) return 0.85;
-      }
-      // Add one char at a time and check
-      for (let i = 0; i <= pattern.length; i++) {
-        for (const char of 'aeiourstnlc') { // Common letters
-          const withChar = pattern.slice(0, i) + char + pattern.slice(i);
-          if (str.includes(withChar)) return 0.8;
-        }
-      }
-    }
-
-    return 0;
-  };
-
   // Search contacts for Find Contact modal
   const searchFindContacts = useCallback(async (query: string) => {
     if (query.length < 2) {
@@ -1970,11 +1928,10 @@ export default function ProspectingWorkspace() {
     setSearchingFindContact(true);
     try {
       // Normalize query: remove punctuation, collapse whitespace
-      const normalizedQuery = query.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
-      const searchTerms = normalizedQuery.toLowerCase().split(' ').filter(t => t.length > 0);
+      const normalizedQuery = query.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const searchTerms = normalizedQuery.split(' ').filter(t => t.length > 0);
 
-      // Build OR filters for ALL terms to cast a wider net
-      // Each term could match first_name, last_name, company, or email
+      // Build OR filters for ALL terms - any term matching any field
       const orFilters = searchTerms.flatMap(term => [
         `first_name.ilike.%${term}%`,
         `last_name.ilike.%${term}%`,
@@ -1989,7 +1946,7 @@ export default function ProspectingWorkspace() {
           target_id, linked_in_profile_link, mailing_city, mailing_state
         `)
         .or(orFilters.join(','))
-        .limit(100); // Fetch more to allow for fuzzy filtering
+        .limit(100);
 
       if (error) {
         console.error('Find Contact search error:', error);
@@ -1997,60 +1954,79 @@ export default function ProspectingWorkspace() {
         return;
       }
 
-      // Score and filter contacts based on fuzzy matching
+      // Score contacts - prioritize name matches, handle name in any order
       const scoredContacts = (contacts || []).map(contact => {
         const firstName = (contact.first_name || '').toLowerCase();
         const lastName = (contact.last_name || '').toLowerCase();
-        const fullName = `${firstName} ${lastName}`;
-        const reverseName = `${lastName} ${firstName}`;
         const company = (contact.company || '').toLowerCase();
         const email = (contact.email || '').toLowerCase();
-        const title = (contact.title || '').toLowerCase();
-        const allText = `${fullName} ${company} ${email} ${title}`;
 
         let score = 0;
         let matchedTerms = 0;
 
+        // Check each search term - each term can match any field independently
         for (const term of searchTerms) {
-          // Check full name (handles "jeff russell" or "russell jeff")
-          const fullNameScore = Math.max(
-            fuzzyMatch(fullName, term),
-            fuzzyMatch(reverseName, term),
-            fuzzyMatch(firstName, term),
-            fuzzyMatch(lastName, term)
-          );
+          let termMatched = false;
+          let termScore = 0;
 
-          // Check other fields
-          const otherScore = Math.max(
-            fuzzyMatch(company, term),
-            fuzzyMatch(email, term),
-            fuzzyMatch(title, term)
-          );
-
-          const termScore = Math.max(fullNameScore, otherScore * 0.9);
-          if (termScore > 0.5) {
-            matchedTerms++;
-            score += termScore;
+          // Check first name (highest priority for names)
+          if (firstName === term) {
+            termScore = Math.max(termScore, 100);
+            termMatched = true;
+          } else if (firstName.startsWith(term)) {
+            termScore = Math.max(termScore, 80);
+            termMatched = true;
+          } else if (firstName.includes(term)) {
+            termScore = Math.max(termScore, 50);
+            termMatched = true;
           }
+
+          // Check last name (also high priority)
+          if (lastName === term) {
+            termScore = Math.max(termScore, 100);
+            termMatched = true;
+          } else if (lastName.startsWith(term)) {
+            termScore = Math.max(termScore, 80);
+            termMatched = true;
+          } else if (lastName.includes(term)) {
+            termScore = Math.max(termScore, 50);
+            termMatched = true;
+          }
+
+          // Check company (lower priority)
+          if (company.includes(term)) {
+            termScore = Math.max(termScore, 30);
+            termMatched = true;
+          }
+
+          // Check email (lowest priority)
+          if (email.includes(term)) {
+            termScore = Math.max(termScore, 20);
+            termMatched = true;
+          }
+
+          score += termScore;
+          if (termMatched) matchedTerms++;
         }
 
-        // Bonus for matching all terms
-        if (matchedTerms === searchTerms.length) {
-          score *= 1.5;
+        // Bonus for matching ALL search terms (e.g., both "jeff" and "russell")
+        if (searchTerms.length > 1 && matchedTerms === searchTerms.length) {
+          score *= 3; // Triple score when all terms match
         }
 
-        // Bonus for exact full query match
-        if (allText.includes(normalizedQuery.toLowerCase())) {
-          score *= 2;
+        // Extra bonus for exact full name match in either order
+        const fullNameForward = `${firstName} ${lastName}`;
+        const fullNameReverse = `${lastName} ${firstName}`;
+        if (normalizedQuery === fullNameForward || normalizedQuery === fullNameReverse) {
+          score += 500;
         }
 
         return { ...contact, _score: score, _matchedTerms: matchedTerms };
       });
 
-      // Filter to contacts that matched at least half the terms with decent score
-      const minTermsToMatch = Math.ceil(searchTerms.length / 2);
+      // Sort by score descending, then filter to top results
       let filteredContacts = scoredContacts
-        .filter(c => c._matchedTerms >= minTermsToMatch && c._score > 0.5)
+        .filter(c => c._score > 0)
         .sort((a, b) => b._score - a._score)
         .slice(0, 15);
 
