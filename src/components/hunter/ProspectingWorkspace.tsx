@@ -1917,6 +1917,48 @@ export default function ProspectingWorkspace() {
     return () => clearTimeout(timer);
   }, [contactSearch, searchContacts]);
 
+  // Fuzzy string matching helper - returns similarity score (0-1)
+  const fuzzyMatch = (str: string, pattern: string): number => {
+    if (!str || !pattern) return 0;
+    str = str.toLowerCase();
+    pattern = pattern.toLowerCase();
+
+    // Exact match
+    if (str.includes(pattern)) return 1;
+
+    // Check if pattern is a prefix
+    if (str.startsWith(pattern)) return 0.95;
+
+    // Simple Levenshtein-based similarity for short strings
+    if (pattern.length <= 4 && str.length <= 20) {
+      // For short patterns, check if most characters match
+      let matches = 0;
+      for (const char of pattern) {
+        if (str.includes(char)) matches++;
+      }
+      const charSimilarity = matches / pattern.length;
+      if (charSimilarity >= 0.75) return charSimilarity * 0.8;
+    }
+
+    // Check for transposed/missing characters (e.g., "jeff" vs "jeff", "russle" vs "russell")
+    if (pattern.length >= 3) {
+      // Remove one char at a time and check for match
+      for (let i = 0; i < pattern.length; i++) {
+        const withoutChar = pattern.slice(0, i) + pattern.slice(i + 1);
+        if (str.includes(withoutChar)) return 0.85;
+      }
+      // Add one char at a time and check
+      for (let i = 0; i <= pattern.length; i++) {
+        for (const char of 'aeiourstnlc') { // Common letters
+          const withChar = pattern.slice(0, i) + char + pattern.slice(i);
+          if (str.includes(withChar)) return 0.8;
+        }
+      }
+    }
+
+    return 0;
+  };
+
   // Search contacts for Find Contact modal
   const searchFindContacts = useCallback(async (query: string) => {
     if (query.length < 2) {
@@ -1926,19 +1968,27 @@ export default function ProspectingWorkspace() {
 
     setSearchingFindContact(true);
     try {
-      // Split query into terms for fuzzy multi-word matching
-      const searchTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 0);
-      const firstTerm = searchTerms[0];
+      // Normalize query: remove punctuation, collapse whitespace
+      const normalizedQuery = query.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+      const searchTerms = normalizedQuery.toLowerCase().split(' ').filter(t => t.length > 0);
 
-      // Build OR filter for first term across all searchable fields
+      // Build OR filters for ALL terms to cast a wider net
+      // Each term could match first_name, last_name, company, or email
+      const orFilters = searchTerms.flatMap(term => [
+        `first_name.ilike.%${term}%`,
+        `last_name.ilike.%${term}%`,
+        `company.ilike.%${term}%`,
+        `email.ilike.%${term}%`
+      ]);
+
       const { data: contacts, error } = await supabase
         .from('contact')
         .select(`
           id, first_name, last_name, company, email, phone, mobile_phone, title,
           target_id, linked_in_profile_link, mailing_city, mailing_state
         `)
-        .or(`first_name.ilike.%${firstTerm}%,last_name.ilike.%${firstTerm}%,company.ilike.%${firstTerm}%,email.ilike.%${firstTerm}%`)
-        .limit(50);
+        .or(orFilters.join(','))
+        .limit(100); // Fetch more to allow for fuzzy filtering
 
       if (error) {
         console.error('Find Contact search error:', error);
@@ -1946,24 +1996,62 @@ export default function ProspectingWorkspace() {
         return;
       }
 
-      // Client-side filtering for multi-term queries (e.g., "john smith" or "smith acme")
-      let filteredContacts = contacts || [];
-      if (searchTerms.length > 1) {
-        filteredContacts = filteredContacts.filter(contact => {
-          const searchableText = [
-            contact.first_name,
-            contact.last_name,
-            contact.company,
-            contact.email,
-            contact.title
-          ].filter(Boolean).join(' ').toLowerCase();
+      // Score and filter contacts based on fuzzy matching
+      const scoredContacts = (contacts || []).map(contact => {
+        const firstName = (contact.first_name || '').toLowerCase();
+        const lastName = (contact.last_name || '').toLowerCase();
+        const fullName = `${firstName} ${lastName}`;
+        const reverseName = `${lastName} ${firstName}`;
+        const company = (contact.company || '').toLowerCase();
+        const email = (contact.email || '').toLowerCase();
+        const title = (contact.title || '').toLowerCase();
+        const allText = `${fullName} ${company} ${email} ${title}`;
 
-          return searchTerms.every(term => searchableText.includes(term));
-        });
-      }
+        let score = 0;
+        let matchedTerms = 0;
 
-      // Limit to 10 results
-      filteredContacts = filteredContacts.slice(0, 10);
+        for (const term of searchTerms) {
+          // Check full name (handles "jeff russell" or "russell jeff")
+          const fullNameScore = Math.max(
+            fuzzyMatch(fullName, term),
+            fuzzyMatch(reverseName, term),
+            fuzzyMatch(firstName, term),
+            fuzzyMatch(lastName, term)
+          );
+
+          // Check other fields
+          const otherScore = Math.max(
+            fuzzyMatch(company, term),
+            fuzzyMatch(email, term),
+            fuzzyMatch(title, term)
+          );
+
+          const termScore = Math.max(fullNameScore, otherScore * 0.9);
+          if (termScore > 0.5) {
+            matchedTerms++;
+            score += termScore;
+          }
+        }
+
+        // Bonus for matching all terms
+        if (matchedTerms === searchTerms.length) {
+          score *= 1.5;
+        }
+
+        // Bonus for exact full query match
+        if (allText.includes(normalizedQuery.toLowerCase())) {
+          score *= 2;
+        }
+
+        return { ...contact, _score: score, _matchedTerms: matchedTerms };
+      });
+
+      // Filter to contacts that matched at least half the terms with decent score
+      const minTermsToMatch = Math.ceil(searchTerms.length / 2);
+      let filteredContacts = scoredContacts
+        .filter(c => c._matchedTerms >= minTermsToMatch && c._score > 0.5)
+        .sort((a, b) => b._score - a._score)
+        .slice(0, 15);
 
       const targetIds = filteredContacts.filter(c => c.target_id).map(c => c.target_id) || [];
       let targets: Record<string, any> = {};
