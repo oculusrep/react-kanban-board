@@ -46,3 +46,17 @@ The `activity` table has both `user_id` and `owner_id` columns:
 - Prefer named exports for components
 - Use TypeScript strict mode
 - Follow existing patterns in the codebase for consistency
+
+## Documentation
+
+**All documentation must be saved to git.** When asked to document something, create a status summary, or write notes about an issue:
+
+1. Find the appropriate existing file in `docs/` and update it, OR
+2. Create a new markdown file in `docs/` with a descriptive name
+
+Never just output documentation to the chat - always write it to a file and commit it. This applies to:
+- Feature documentation
+- Debug/troubleshooting notes
+- Status summaries for issues in progress
+- Implementation plans
+- Any other documentation the user requests
