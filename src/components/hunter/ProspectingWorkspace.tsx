@@ -9,6 +9,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useProspectingTime } from '../../hooks/useProspectingTime';
 import FollowUpModal from '../FollowUpModal';
 import LogResponseModal from './LogResponseModal';
+import ContactTagsSection from '../contact/ContactTagsSection';
 import AddLeadModal from '../prospecting/AddLeadModal';
 import TimeHistoryModal from '../prospecting/TimeHistoryModal';
 import { ProspectingResponseType } from '../../lib/types';
@@ -2901,6 +2902,9 @@ export default function ProspectingWorkspace() {
                     )}
                   </div>
 
+                  {/* Tags Section */}
+                  <ContactTagsSection contactId={selectedContact.id} inline className="mt-3 pt-3 border-t border-gray-100" />
+
                   {/* ZoomInfo Enrich Button */}
                   <button
                     onClick={searchZoomInfo}
@@ -2999,10 +3003,9 @@ export default function ProspectingWorkspace() {
                   {/* Compact Activity Log Bar */}
                   <div className="border-t border-gray-200 pt-3">
                     <div className="flex items-center gap-3">
-                      {/* Outreach section */}
+                      {/* Outreach section (including email for logging external emails) */}
                       <div className="flex items-center gap-1">
-                        <span className="text-xs text-gray-400 mr-1">Log:</span>
-                        {OUTREACH_TYPES.filter(t => t !== 'email').map((type) => (
+                        {OUTREACH_TYPES.map((type) => (
                           <button
                             key={type}
                             onClick={() => handleActivityClick(type)}
