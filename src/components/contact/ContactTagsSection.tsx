@@ -12,12 +12,14 @@ import { useContactTags } from '../../hooks/useContactTags';
 interface ContactTagsSectionProps {
   contactId: string;
   compact?: boolean; // For smaller display in cards
+  inline?: boolean;  // For inline display in headers (no border-b, less padding)
   className?: string;
 }
 
 export default function ContactTagsSection({
   contactId,
   compact = false,
+  inline = false,
   className = '',
 }: ContactTagsSectionProps) {
   const { tags, availableTagTypes, loading, addTag, removeTag } = useContactTags(contactId);
@@ -89,8 +91,12 @@ export default function ContactTagsSection({
   }
 
   // Full section view with add/remove capability
+  const baseStyles = inline
+    ? '' // No padding/border for inline mode - let parent control
+    : 'p-4 border-b border-gray-200';
+
   return (
-    <div className={`p-4 border-b border-gray-200 ${className}`}>
+    <div className={`${baseStyles} ${className}`}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
           <TagIcon className="w-4 h-4" />

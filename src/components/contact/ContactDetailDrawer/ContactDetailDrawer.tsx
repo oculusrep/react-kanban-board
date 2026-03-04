@@ -534,6 +534,11 @@ export default function ContactDetailDrawer({
                   )}
                 </div>
 
+                {/* Tags Section - inline in header */}
+                {contact?.id && (
+                  <ContactTagsSection contactId={contact.id} inline className="mt-3 pt-3 border-t border-gray-100" />
+                )}
+
                 {/* ZoomInfo Enrich */}
                 {features.showZoomInfoEnrich && onZoomInfoEnrich && (
                   <button
@@ -548,11 +553,6 @@ export default function ContactDetailDrawer({
               </>
             )}
           </div>
-
-          {/* Tags Section */}
-          {!editingContact && contact?.id && (
-            <ContactTagsSection contactId={contact.id} />
-          )}
 
           {!editingContact && (
             <>
