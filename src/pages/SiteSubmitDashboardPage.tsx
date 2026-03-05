@@ -379,6 +379,14 @@ export default function SiteSubmitDashboardPage() {
 
       setData(transformedData);
 
+      // Debug: Log how many records have client_id set
+      const withClient = transformedData.filter(r => r.client_id);
+      const withoutClient = transformedData.filter(r => !r.client_id);
+      console.log(`📊 Client assignment: ${withClient.length} with client, ${withoutClient.length} without client`);
+      if (withoutClient.length > 0 && withoutClient.length <= 5) {
+        console.log('Records without client:', withoutClient.map(r => r.site_submit_name));
+      }
+
       // Transform data for Client Submit Report tab
       const clientSubmitRows: ClientSubmitReportRow[] = siteSubmitData.map(submit => {
         const property = submit.property as any;
