@@ -1299,9 +1299,11 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
         // Could show error notification here
       } else {
         console.log('✅ Stage updated successfully in database:', updatedData);
+        console.log('🔄 New stage name:', updatedData.submit_stage?.name);
         // Update local state immediately to show new stage in dropdown
         setCurrentStageId(newStageId);
         // Trigger refresh of site submit layer to show changes immediately
+        console.log('🔄 Calling safeRefreshLayer for site_submits, refreshLayer available:', !!refreshLayer);
         safeRefreshLayer('site_submits');
       }
     } catch (err) {

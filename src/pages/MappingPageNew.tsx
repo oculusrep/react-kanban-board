@@ -2533,6 +2533,8 @@ const MappingPageContent: React.FC = () => {
                       submit_stage: { id: newStageId, name: newStageName },
                     });
                   }
+                  // Refresh the site submit layer to update marker icon
+                  refreshLayer('site_submits');
                 }}
                 onCenterOnPin={handleCenterOnPin}
                 onDeleteSiteSubmit={handleDeleteSiteSubmit}
@@ -2584,6 +2586,8 @@ const MappingPageContent: React.FC = () => {
                     submit_stage: { id: newStageId, name: newStageName },
                   });
                 }
+                // Refresh the site submit layer to update marker icon
+                refreshLayer('site_submits');
               }}
               onCenterOnPin={handleCenterOnPin}
               onDeleteSiteSubmit={handleDeleteSiteSubmit}

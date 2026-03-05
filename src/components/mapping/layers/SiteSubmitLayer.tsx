@@ -115,6 +115,9 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [markerLibraryLoaded, setMarkerLibraryLoaded] = useState(false);
 
+  // Use ref to track markers for reliable cleanup (avoids stale closure issues)
+  const markersRef = useRef<MarkerType[]>([]);
+
   // Track which selection we've already reported position for (to avoid re-centering on re-render)
   const lastReportedSelectionRef = useRef<string | null>(null);
 
@@ -458,6 +461,14 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
         stageCounts[stageName] = (stageCounts[stageName] || 0) + 1;
       });
 
+      // Debug: Log if selected site submit's stage has changed
+      if (selectedSiteSubmitId) {
+        const selectedSubmit = validSiteSubmits.find(ss => ss.id === selectedSiteSubmitId);
+        if (selectedSubmit) {
+          console.log(`📊 Fetched data for selected site submit ${selectedSiteSubmitId}: stage="${selectedSubmit.submit_stage?.name}", submit_stage_id=${selectedSubmit.submit_stage_id}`);
+        }
+      }
+
       setSiteSubmits(validSiteSubmits);
       onSiteSubmitsLoaded?.(validSiteSubmits.length);
       onStageCountsUpdate?.(stageCounts);
@@ -506,8 +517,10 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
     console.log('🎯 Verifying site submit ID:', verifyingSiteSubmitId);
     console.log('🎨 Marker style:', markerStyle.useAdvancedMarkers ? `Advanced (${markerStyle.shape})` : 'Legacy');
 
-    // Clear existing markers (always, even if there are no new markers to create)
-    markers.forEach(marker => marker.setMap(null));
+    // Clear existing markers using ref (avoids stale closure issues)
+    console.log(`🧹 Clearing ${markersRef.current.length} existing markers`);
+    markersRef.current.forEach(marker => marker.setMap(null));
+    markersRef.current = [];
 
     // If no site submits to render, set empty markers array and return
     if (!siteSubmitsToRender.length) {
@@ -526,6 +539,11 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
       const isBeingVerified = verifyingSiteSubmitId === siteSubmit.id;
       const isSelected = selectedSiteSubmitId === siteSubmit.id;
       const stageName = siteSubmit.submit_stage?.name || 'Monitor';
+
+      // Debug: Log stage for selected marker to trace icon updates
+      if (isSelected) {
+        console.log(`🎯 Creating marker for SELECTED site submit: ${siteSubmit.id}, stage: "${stageName}", submit_stage_id: ${siteSubmit.submit_stage_id}`);
+      }
 
       // Report selected site submit position for map centering (only once per selection)
       if (isSelected && onSelectedSiteSubmitPosition && lastReportedSelectionRef.current !== siteSubmit.id) {
@@ -804,6 +822,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
     }).filter(marker => marker !== null) as MarkerType[];
 
     console.log(`✅ Created ${newMarkers.length} site submit markers (total site submits: ${siteSubmits.length})`);
+    markersRef.current = newMarkers;
     setMarkers(newMarkers);
   };
 
@@ -956,6 +975,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
   // Load site submits when component mounts or map/config changes or refresh is triggered
   useEffect(() => {
     if (map) {
+      console.log(`🔄 fetchSiteSubmits triggered (siteSubmitRefreshTrigger=${siteSubmitRefreshTrigger}, localRefreshTrigger=${localRefreshTrigger})`);
       fetchSiteSubmits();
     }
   }, [map, loadingConfig, siteSubmitRefreshTrigger, localRefreshTrigger]);
@@ -965,6 +985,7 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
     // Always call createMarkers, even when siteSubmits is empty
     // This ensures markers are cleared when filtering results in 0 site submits
     if (map) {
+      console.log(`🎨 createMarkers triggered (siteSubmits.length=${siteSubmits.length}, selectedSiteSubmitId=${selectedSiteSubmitId})`);
       createMarkers();
     }
   }, [siteSubmits, map, loadingConfig.visibleStages, verifyingSiteSubmitId, verifyingSiteSubmit, markerStyle.shape, markerStyle.useAdvancedMarkers, selectedSiteSubmitId]);
@@ -989,7 +1010,8 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
         clusterer.clearMarkers();
         clusterer.setMap(null);
       }
-      markers.forEach(marker => marker.setMap(null));
+      // Use ref for cleanup to avoid stale closure
+      markersRef.current.forEach(marker => marker.setMap(null));
     };
   }, []);
 

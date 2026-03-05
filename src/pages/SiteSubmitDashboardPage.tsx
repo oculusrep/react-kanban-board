@@ -23,6 +23,8 @@ interface SiteSubmitReportRow {
   // Computed fields
   display_sqft: number | null;
   display_nnn: number | null;
+  // Rent PSF (Year 1 Rent from site submit)
+  year_1_rent: number | null;
   // Status/stage
   submit_stage_id: string | null;
   submit_stage_name: string | null;
@@ -65,7 +67,7 @@ interface ClientSubmitReportRow {
 
 type ActiveTab = "dashboard" | "client-submit-report";
 
-type SortField = "site_submit_name" | "property_name" | "display_sqft" | "display_nnn" | "submit_stage_name" | "client_name" | "created_at";
+type SortField = "site_submit_name" | "property_name" | "display_sqft" | "year_1_rent" | "display_nnn" | "submit_stage_name" | "client_name" | "created_at";
 type ClientSubmitSortField = "property_name" | "city" | "submit_stage_name" | "date_submitted" | "loi_date";
 type SortDirection = "asc" | "desc";
 
@@ -369,6 +371,7 @@ export default function SiteSubmitDashboardPage() {
           unit_nnn: unit?.nnn ?? null,
           display_sqft,
           display_nnn,
+          year_1_rent: submit.year_1_rent ?? null,
           submit_stage_id: submit.submit_stage_id,
           submit_stage_name: stage?.name ?? null,
           client_id: submit.client_id,
@@ -735,6 +738,7 @@ export default function SiteSubmitDashboardPage() {
       "Property Name",
       "Unit",
       "SQFT",
+      "Rent ($/SF)",
       "NNN ($/SF)",
       "Stage",
       "Client",
@@ -747,6 +751,7 @@ export default function SiteSubmitDashboardPage() {
       row.property_name || "",
       row.property_unit_name || "",
       row.display_sqft?.toLocaleString() || "",
+      row.year_1_rent?.toFixed(2) || "",
       row.display_nnn?.toFixed(2) || "",
       row.submit_stage_name || "",
       row.client_name || "",
@@ -1777,6 +1782,17 @@ export default function SiteSubmitDashboardPage() {
                     </div>
                   </th>
                   <th
+                    onClick={() => handleSort("year_1_rent")}
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  >
+                    <div className="flex items-center space-x-1">
+                      <span>Rent ($/SF)</span>
+                      {sortField === "year_1_rent" && (
+                        sortDirection === "asc" ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                      )}
+                    </div>
+                  </th>
+                  <th
                     onClick={() => handleSort("display_nnn")}
                     className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                   >
@@ -1860,6 +1876,9 @@ export default function SiteSubmitDashboardPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {row.display_sqft ? row.display_sqft.toLocaleString() : <span className="text-red-500">Missing</span>}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {row.year_1_rent ? `$${row.year_1_rent.toFixed(2)}` : <span className="text-gray-400">—</span>}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {row.display_nnn ? `$${row.display_nnn.toFixed(2)}` : <span className="text-red-500">Missing</span>}
