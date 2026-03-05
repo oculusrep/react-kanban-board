@@ -614,7 +614,6 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   initialTab,
   onOpenFullSiteSubmit
 }) => {
-  console.log('PinDetailsSlideout rendering with:', { isOpen, data, type, rightOffset });
   const [activeTab, setActiveTab] = useState<TabType>(
     initialTab || (type === 'site_submit' ? 'submit' : 'property')
   );
@@ -772,7 +771,6 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     refreshLayer = layerManager?.refreshLayer;
   } catch (e) {
     // LayerManager not provided - that's ok for non-map pages
-    console.log('📝 LayerManager not available (not on map page)');
   }
 
   // Safe wrapper that only calls refreshLayer if it exists

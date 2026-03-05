@@ -143,21 +143,6 @@ export default function SiteSubmitDashboardPage() {
   const [isFullSiteSubmitOpen, setIsFullSiteSubmitOpen] = useState(false);
   const [fullSiteSubmitId, setFullSiteSubmitId] = useState<string>("");
 
-  // Debug: Log slideout state changes
-  useEffect(() => {
-    console.log('🔄 Slideout states changed:', {
-      isPinDetailsOpen,
-      selectedPinType,
-      selectedPinDataId: selectedPinData?.id,
-      isPropertyDetailsOpen,
-      selectedPropertyDataId: selectedPropertyData?.id,
-      isSiteSubmitDetailsOpen,
-      selectedSiteSubmitDataId: selectedSiteSubmitData?.id,
-      isFullSiteSubmitOpen,
-      fullSiteSubmitId
-    });
-  }, [isPinDetailsOpen, selectedPinData, selectedPinType, isPropertyDetailsOpen, selectedPropertyData, isSiteSubmitDetailsOpen, selectedSiteSubmitData, isFullSiteSubmitOpen, fullSiteSubmitId]);
-
   // Bulk selection state
   const [selectedSiteSubmitIds, setSelectedSiteSubmitIds] = useState<Set<string>>(new Set());
   const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
@@ -345,17 +330,10 @@ export default function SiteSubmitDashboardPage() {
         const BATCH_SIZE = 20; // Keep batches small to avoid URL length issues (UUIDs are 36 chars each)
         for (let i = 0; i < assignmentIds.length; i += BATCH_SIZE) {
           const batch = assignmentIds.slice(i, i + BATCH_SIZE);
+          // Fetch assignments without the client join (schema cache issue with fkey name)
           const { data: assignmentData, error: assignmentError } = await supabase
             .from('assignment')
-            .select(`
-              id,
-              assignment_name,
-              client_id,
-              client!assignment_client_id_fkey (
-                id,
-                client_name
-              )
-            `)
+            .select('id, assignment_name, client_id')
             .in('id', batch);
 
           if (assignmentError) {
@@ -363,7 +341,6 @@ export default function SiteSubmitDashboardPage() {
           }
           assignmentData?.forEach(a => assignmentsMap.set(a.id, a));
         }
-        console.log(`✅ Fetched ${assignmentsMap.size} assignments with client info`);
       }
 
       // Transform data with computed fields
