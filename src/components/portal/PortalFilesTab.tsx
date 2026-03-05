@@ -58,6 +58,10 @@ export default function PortalFilesTab({
   const [propertyCollapsed, setPropertyCollapsed] = useState(false);
   const [dealCollapsed, setDealCollapsed] = useState(false);
 
+  // Delete confirmation state
+  const [deleteConfirmPath, setDeleteConfirmPath] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   // File input refs for upload buttons
   const propertyFileInputRef = useRef<HTMLInputElement>(null);
   const dealFileInputRef = useRef<HTMLInputElement>(null);
@@ -494,6 +498,18 @@ export default function PortalFilesTab({
       }
     };
 
+    const handleDelete = async (path: string) => {
+      setDeleting(true);
+      try {
+        await filesHook.deleteItem(path);
+        setDeleteConfirmPath(null);
+      } catch (err) {
+        console.error('Delete error:', err);
+      } finally {
+        setDeleting(false);
+      }
+    };
+
     // Don't show section if no entity ID
     if (!entityId) {
       return (
@@ -679,51 +695,89 @@ export default function PortalFilesTab({
                       const isVisible = isFileVisible(folder.path, entityType, visibilityMap);
 
                       return (
-                        <div
-                          key={folder.id}
-                          className={`px-4 py-2 flex items-center space-x-3 hover:bg-gray-50 ${
-                            !isVisible && isInternalUser ? 'opacity-50' : ''
-                          }`}
-                        >
-                          <button
-                            onClick={() => navigateToFolder(folder)}
-                            className="flex-1 flex items-center space-x-3 text-left"
+                        <div key={folder.id}>
+                          <div
+                            className={`px-4 py-2 flex items-center space-x-3 hover:bg-gray-50 ${
+                              !isVisible && isInternalUser ? 'opacity-50' : ''
+                            }`}
                           >
-                            <svg className="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
-                            </svg>
-                            <span className="text-sm font-medium text-gray-900 truncate">
-                              {folder.name}
-                            </span>
-                          </button>
-
-                          {/* Visibility toggle for brokers */}
-                          {isInternalUser && (
                             <button
-                              onClick={() => toggleVisibility(folder.path, entityType, entityId!, isVisible)}
-                              className={`p-1.5 rounded transition-colors ${
-                                isVisible
-                                  ? 'text-green-600 hover:bg-green-50'
-                                  : 'text-gray-400 hover:bg-gray-100'
-                              }`}
-                              title={isVisible ? 'Visible to client (click to hide)' : 'Hidden from client (click to show)'}
+                              onClick={() => navigateToFolder(folder)}
+                              className="flex-1 flex items-center space-x-3 text-left"
                             >
-                              {isVisible ? (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                </svg>
-                              ) : (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                                </svg>
-                              )}
+                              <svg className="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
+                              </svg>
+                              <span className="text-sm font-medium text-gray-900 truncate">
+                                {folder.name}
+                              </span>
                             </button>
-                          )}
 
-                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
+                            {/* Visibility toggle for brokers */}
+                            {isInternalUser && (
+                              <button
+                                onClick={() => toggleVisibility(folder.path, entityType, entityId!, isVisible)}
+                                className={`p-1.5 rounded transition-colors ${
+                                  isVisible
+                                    ? 'text-green-600 hover:bg-green-50'
+                                    : 'text-gray-400 hover:bg-gray-100'
+                                }`}
+                                title={isVisible ? 'Visible to client (click to hide)' : 'Hidden from client (click to show)'}
+                              >
+                                {isVisible ? (
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                  </svg>
+                                ) : (
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                  </svg>
+                                )}
+                              </button>
+                            )}
+
+                            {/* Delete button for brokers */}
+                            {isInternalUser && (
+                              <button
+                                onClick={() => setDeleteConfirmPath(folder.path)}
+                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                title="Delete folder"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            )}
+
+                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </div>
+
+                          {/* Delete confirmation inline */}
+                          {deleteConfirmPath === folder.path && (
+                            <div className="px-4 py-2 bg-red-50 border-t border-red-100 flex items-center justify-between">
+                              <span className="text-sm text-red-700">
+                                Delete "{folder.name}"? This will delete all contents.
+                              </span>
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={() => handleDelete(folder.path)}
+                                  disabled={deleting}
+                                  className="px-2 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700 disabled:opacity-50"
+                                >
+                                  {deleting ? 'Deleting...' : 'Delete'}
+                                </button>
+                                <button
+                                  onClick={() => setDeleteConfirmPath(null)}
+                                  className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -733,60 +787,98 @@ export default function PortalFilesTab({
                       const isVisible = isFileVisible(file.path, entityType, visibilityMap);
 
                       return (
-                        <div
-                          key={file.id}
-                          className={`px-4 py-2 flex items-center space-x-3 hover:bg-gray-50 ${
-                            !isVisible && isInternalUser ? 'opacity-50' : ''
-                          }`}
-                        >
-                          <button
-                            onClick={() => handleFileView(file)}
-                            className="flex-1 flex items-center space-x-3 text-left"
+                        <div key={file.id}>
+                          <div
+                            className={`px-4 py-2 flex items-center space-x-3 hover:bg-gray-50 ${
+                              !isVisible && isInternalUser ? 'opacity-50' : ''
+                            }`}
                           >
-                            {getFileIcon(file.name || '')}
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">
-                                {file.name}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                {formatFileSize(file.size)} • {formatDate(file.modified)}
-                              </p>
-                            </div>
-                          </button>
-
-                          {/* Visibility toggle for brokers */}
-                          {isInternalUser && (
                             <button
-                              onClick={() => toggleVisibility(file.path, entityType, entityId!, isVisible)}
-                              className={`p-1.5 rounded transition-colors ${
-                                isVisible
-                                  ? 'text-green-600 hover:bg-green-50'
-                                  : 'text-gray-400 hover:bg-gray-100'
-                              }`}
-                              title={isVisible ? 'Visible to client (click to hide)' : 'Hidden from client (click to show)'}
+                              onClick={() => handleFileView(file)}
+                              className="flex-1 flex items-center space-x-3 text-left"
                             >
-                              {isVisible ? (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                </svg>
-                              ) : (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                                </svg>
-                              )}
+                              {getFileIcon(file.name || '')}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">
+                                  {file.name}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  {formatFileSize(file.size)} • {formatDate(file.modified)}
+                                </p>
+                              </div>
                             </button>
-                          )}
 
-                          <button
-                            onClick={() => handleDownload(file)}
-                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                            title="Download"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                            </svg>
-                          </button>
+                            {/* Visibility toggle for brokers */}
+                            {isInternalUser && (
+                              <button
+                                onClick={() => toggleVisibility(file.path, entityType, entityId!, isVisible)}
+                                className={`p-1.5 rounded transition-colors ${
+                                  isVisible
+                                    ? 'text-green-600 hover:bg-green-50'
+                                    : 'text-gray-400 hover:bg-gray-100'
+                                }`}
+                                title={isVisible ? 'Visible to client (click to hide)' : 'Hidden from client (click to show)'}
+                              >
+                                {isVisible ? (
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                  </svg>
+                                ) : (
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                  </svg>
+                                )}
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => handleDownload(file)}
+                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                              title="Download"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                              </svg>
+                            </button>
+
+                            {/* Delete button for brokers */}
+                            {isInternalUser && (
+                              <button
+                                onClick={() => setDeleteConfirmPath(file.path)}
+                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                title="Delete file"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Delete confirmation inline */}
+                          {deleteConfirmPath === file.path && (
+                            <div className="px-4 py-2 bg-red-50 border-t border-red-100 flex items-center justify-between">
+                              <span className="text-sm text-red-700">
+                                Delete "{file.name}"?
+                              </span>
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={() => handleDelete(file.path)}
+                                  disabled={deleting}
+                                  className="px-2 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700 disabled:opacity-50"
+                                >
+                                  {deleting ? 'Deleting...' : 'Delete'}
+                                </button>
+                                <button
+                                  onClick={() => setDeleteConfirmPath(null)}
+                                  className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
