@@ -180,12 +180,21 @@ export default function SiteSubmitDashboardPage() {
   useEffect(() => {
     fetchReportData();
     fetchAssignments();
+    // Also fetch all clients from the database directly (not limited by site submits fetched)
+    fetchAllClients();
   }, []);
+
+  // Re-fetch with server-side client filter when selectedClientId changes
+  useEffect(() => {
+    // Only re-fetch if a client is selected (server-side filter)
+    // When clearing the filter, also re-fetch to get all data
+    fetchReportData(selectedClientId || undefined);
+  }, [selectedClientId]);
 
   // Apply filters and sorting when data or filters change
   useEffect(() => {
     applyFiltersAndSort();
-  }, [data, selectedStageIds, selectedClientId, sortField, sortDirection, quickFilter]);
+  }, [data, selectedStageIds, sortField, sortDirection, quickFilter]);
 
   // Apply filters for Client Submit Report tab
   useEffect(() => {
@@ -221,13 +230,13 @@ export default function SiteSubmitDashboardPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const fetchReportData = async () => {
+  const fetchReportData = async (filterClientId?: string) => {
     setLoading(true);
     setError(null);
 
     try {
-      // Fetch all site submits with related data
-      const { data: siteSubmitData, error: queryError } = await supabase
+      // Build the query with optional server-side client filter
+      let query = supabase
         .from("site_submit")
         .select(`
           id,
@@ -287,6 +296,13 @@ export default function SiteSubmitDashboardPage() {
           )
         `)
         .order("created_at", { ascending: false });
+
+      // Apply server-side client filter if provided
+      if (filterClientId) {
+        query = query.eq('client_id', filterClientId);
+      }
+
+      const { data: siteSubmitData, error: queryError } = await query;
 
       if (queryError) {
         console.error('❌ Error fetching site submits:', queryError);
@@ -421,22 +437,8 @@ export default function SiteSubmitDashboardPage() {
           .sort((a, b) => a.name.localeCompare(b.name))
       );
 
-      // Fetch clients directly from client table based on client_ids in site_submit data
-      const uniqueClientIds = [...new Set(siteSubmitData.map(s => s.client_id).filter(Boolean))];
-      if (uniqueClientIds.length > 0) {
-        const { data: clientData } = await supabase
-          .from('client')
-          .select('id, client_name')
-          .in('id', uniqueClientIds);
-
-        if (clientData) {
-          setClients(
-            clientData
-              .map(c => ({ id: c.id, name: c.client_name }))
-              .sort((a, b) => a.name.localeCompare(b.name))
-          );
-        }
-      }
+      // Note: Clients are now fetched by fetchAllClients() to get ALL clients
+      // (not limited by the default query limit)
 
       // Extract unique cities for filters
       const uniqueCities = new Set<string>();
@@ -455,10 +457,53 @@ export default function SiteSubmitDashboardPage() {
     }
   };
 
+  // Fetch all clients that have site submits (paginated to avoid 1000 row limit)
+  const fetchAllClients = async () => {
+    try {
+      const clientMap = new Map<string, string>();
+      const PAGE_SIZE = 1000;
+      let offset = 0;
+      let hasMore = true;
+
+      // Paginate through all site_submit records to get all unique client_ids
+      while (hasMore) {
+        const { data: siteSubmitClients, error: clientError } = await supabase
+          .from('site_submit')
+          .select('client_id, client:client_id(id, client_name)')
+          .not('client_id', 'is', null)
+          .range(offset, offset + PAGE_SIZE - 1);
+
+        if (clientError) {
+          console.error('Error fetching clients:', clientError);
+          return;
+        }
+
+        // Extract unique clients from this batch
+        siteSubmitClients?.forEach((row: any) => {
+          if (row.client_id && row.client?.client_name) {
+            clientMap.set(row.client_id, row.client.client_name);
+          }
+        });
+
+        // Check if we need to fetch more
+        hasMore = siteSubmitClients?.length === PAGE_SIZE;
+        offset += PAGE_SIZE;
+      }
+
+      setClients(
+        Array.from(clientMap.entries())
+          .map(([id, name]) => ({ id, name }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
+    } catch (err) {
+      console.error('Error in fetchAllClients:', err);
+    }
+  };
+
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await fetchReportData();
+      await fetchReportData(selectedClientId || undefined);
       await fetchAssignments();
     } finally {
       setRefreshing(false);
@@ -487,10 +532,8 @@ export default function SiteSubmitDashboardPage() {
       result = result.filter(row => row.submit_stage_id && selectedStageIds.includes(row.submit_stage_id));
     }
 
-    if (selectedClientId) {
-      console.log('🔍 Filtering by client:', selectedClientId, 'Total rows:', result.length, 'Matching:', result.filter(row => row.client_id === selectedClientId).length);
-      result = result.filter(row => row.client_id === selectedClientId);
-    }
+    // Note: client filtering is now done server-side in fetchReportData()
+    // No need for client-side filtering here
 
     // Apply sorting
     result.sort((a, b) => {
@@ -513,7 +556,7 @@ export default function SiteSubmitDashboardPage() {
 
     setFilteredData(result);
     setCurrentPage(1); // Reset to first page when filters change
-  }, [data, selectedStageIds, selectedClientId, sortField, sortDirection, quickFilter, clients]);
+  }, [data, selectedStageIds, sortField, sortDirection, quickFilter]);
 
   const applyClientSubmitFilters = useCallback(() => {
     let result = [...clientSubmitData];
