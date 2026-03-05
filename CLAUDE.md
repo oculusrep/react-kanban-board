@@ -47,6 +47,56 @@ The `activity` table has both `user_id` and `owner_id` columns:
 - Use TypeScript strict mode
 - Follow existing patterns in the codebase for consistency
 
+## Supabase Query Pagination
+
+**Always paginate Supabase queries that may return more than 1000 rows.**
+
+Supabase has a default limit of 1000 rows per query. For tables with more records (site_submit, contact, property, activity, etc.), you MUST either:
+
+1. **Use server-side filtering** - Apply `.eq()`, `.in()`, or other filters to limit results before fetching
+2. **Paginate with `.range()`** - Loop through results in batches
+
+### Example - Fetching all records with pagination:
+```typescript
+const PAGE_SIZE = 1000;
+let offset = 0;
+let hasMore = true;
+const allResults: MyType[] = [];
+
+while (hasMore) {
+  const { data, error } = await supabase
+    .from('my_table')
+    .select('*')
+    .range(offset, offset + PAGE_SIZE - 1);
+
+  if (error) throw error;
+
+  allResults.push(...(data || []));
+  hasMore = data?.length === PAGE_SIZE;
+  offset += PAGE_SIZE;
+}
+```
+
+### Example - Server-side filtering (preferred when applicable):
+```typescript
+// Instead of fetching all and filtering client-side:
+const { data } = await supabase.from('site_submit').select('*');
+const filtered = data.filter(row => row.client_id === selectedClientId); // BAD
+
+// Use server-side filtering:
+const { data } = await supabase
+  .from('site_submit')
+  .select('*')
+  .eq('client_id', selectedClientId); // GOOD - gets ALL matching records
+```
+
+### Tables that commonly exceed 1000 rows:
+- `site_submit` - Use server-side client_id filter or paginate
+- `contact` - Use server-side filters or paginate
+- `property` - Use server-side filters or paginate
+- `activity` - Use date range filters or paginate
+- `email_log` - Use date range or contact_id filters
+
 ## Documentation
 
 **All documentation must be saved to git.** When asked to document something, create a status summary, or write notes about an issue:
