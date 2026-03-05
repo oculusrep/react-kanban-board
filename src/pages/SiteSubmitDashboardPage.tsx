@@ -303,14 +303,22 @@ export default function SiteSubmitDashboardPage() {
 
       console.log(`✅ Fetched ${siteSubmitData.length} site submits`);
 
-      // Fetch assignments separately if needed
+      // Fetch assignments separately if needed (include client info for filtering)
       const assignmentIds = [...new Set(siteSubmitData.map(s => s.assignment_id).filter(Boolean))];
       const assignmentsMap = new Map();
 
       if (assignmentIds.length > 0) {
         const { data: assignmentData } = await supabase
           .from('assignment')
-          .select('id, assignment_name')
+          .select(`
+            id,
+            assignment_name,
+            client_id,
+            client!assignment_client_id_fkey (
+              id,
+              client_name
+            )
+          `)
           .in('id', assignmentIds);
 
         assignmentData?.forEach(a => assignmentsMap.set(a.id, a));
@@ -323,10 +331,15 @@ export default function SiteSubmitDashboardPage() {
         const stage = submit.submit_stage as any;
         const client = submit.client as any;
         const assignment = submit.assignment_id ? assignmentsMap.get(submit.assignment_id) : null;
+        const assignmentClient = assignment?.client as any;
 
         // Logic: Use unit data if available, otherwise use property data
         const display_sqft = unit?.sqft ?? property?.building_sqft ?? null;
         const display_nnn = unit?.nnn ?? property?.nnn_psf ?? null;
+
+        // Use direct client_id, or fall back to assignment's client_id
+        const effectiveClientId = submit.client_id ?? assignment?.client_id ?? null;
+        const effectiveClientName = client?.client_name ?? assignmentClient?.client_name ?? null;
 
         return {
           id: submit.id,
@@ -344,8 +357,8 @@ export default function SiteSubmitDashboardPage() {
           display_nnn,
           submit_stage_id: submit.submit_stage_id,
           submit_stage_name: stage?.name ?? null,
-          client_id: submit.client_id,
-          client_name: client?.client_name ?? null,
+          client_id: effectiveClientId,
+          client_name: effectiveClientName,
           assignment_id: submit.assignment_id,
           assignment_name: assignment?.assignment_name ?? null,
           created_at: submit.created_at,
@@ -362,6 +375,8 @@ export default function SiteSubmitDashboardPage() {
         const property = submit.property as any;
         const stage = submit.submit_stage as any;
         const client = submit.client as any;
+        const assignment = submit.assignment_id ? assignmentsMap.get(submit.assignment_id) : null;
+        const assignmentClient = assignment?.client as any;
 
         // Use verified coordinates if available, otherwise use regular lat/long
         const lat = property?.verified_latitude ?? property?.latitude ?? null;
@@ -369,6 +384,10 @@ export default function SiteSubmitDashboardPage() {
 
         // Generate Google Maps link if we have coordinates
         const mapLink = lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : null;
+
+        // Use direct client_id, or fall back to assignment's client_id
+        const effectiveClientId = submit.client_id ?? assignment?.client_id ?? null;
+        const effectiveClientName = client?.client_name ?? assignmentClient?.client_name ?? null;
 
         return {
           id: submit.id,
@@ -383,8 +402,8 @@ export default function SiteSubmitDashboardPage() {
           loi_date: submit.loi_date,
           notes: submit.notes,
           submit_stage_id: submit.submit_stage_id,
-          client_id: submit.client_id,
-          client_name: client?.client_name ?? null,
+          client_id: effectiveClientId,
+          client_name: effectiveClientName,
           property: property,
           _fullSiteSubmit: submit,
         };
