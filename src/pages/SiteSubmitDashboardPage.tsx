@@ -168,8 +168,28 @@ export default function SiteSubmitDashboardPage() {
   const [showAssignmentDropdown, setShowAssignmentDropdown] = useState(false);
   const [bulkAssigning, setBulkAssigning] = useState(false);
 
+  // Bulk change stage state
+  const [showBulkStageModal, setShowBulkStageModal] = useState(false);
+  const [bulkStageId, setBulkStageId] = useState<string>("");
+  const [bulkStageName, setBulkStageName] = useState<string>("");
+  const [bulkChangingStage, setBulkChangingStage] = useState(false);
+
+  // Bulk change client state
+  const [showBulkClientModal, setShowBulkClientModal] = useState(false);
+  const [bulkClientId, setBulkClientId] = useState<string>("");
+  const [bulkClientName, setBulkClientName] = useState<string>("");
+  const [bulkClientQuery, setBulkClientQuery] = useState("");
+  const [showBulkClientDropdown, setShowBulkClientDropdown] = useState(false);
+  const [bulkChangingClient, setBulkChangingClient] = useState(false);
+
+  // Bulk delete state
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
   const assignmentInputRef = useRef<HTMLInputElement>(null);
   const assignmentDropdownRef = useRef<HTMLDivElement>(null);
+  const bulkClientInputRef = useRef<HTMLInputElement>(null);
+  const bulkClientDropdownRef = useRef<HTMLDivElement>(null);
 
   // Set page title
   useEffect(() => {
@@ -1226,6 +1246,130 @@ export default function SiteSubmitDashboardPage() {
     setShowAssignmentDropdown(false);
   };
 
+  // Bulk change stage handler
+  const handleBulkChangeStage = async () => {
+    if (!bulkStageId || selectedSiteSubmitIds.size === 0) {
+      alert('Please select a stage and at least one site submit');
+      return;
+    }
+
+    setBulkChangingStage(true);
+    try {
+      const updates = Array.from(selectedSiteSubmitIds).map(siteSubmitId => ({
+        id: siteSubmitId,
+        submit_stage_id: bulkStageId
+      }));
+
+      const { error } = await supabase
+        .from('site_submit')
+        .upsert(updates, { onConflict: 'id' });
+
+      if (error) throw error;
+
+      // Refresh data
+      await fetchReportData(selectedClientId || undefined);
+
+      // Clear selection and close modal
+      setSelectedSiteSubmitIds(new Set());
+      setShowBulkStageModal(false);
+      setBulkStageId("");
+      setBulkStageName("");
+
+      alert(`Successfully changed stage to "${bulkStageName}" for ${updates.length} site submit(s)`);
+    } catch (err) {
+      console.error('Error bulk changing stage:', err);
+      alert('Error changing stage. Please try again.');
+    } finally {
+      setBulkChangingStage(false);
+    }
+  };
+
+  // Bulk change client handler
+  const handleBulkChangeClient = async () => {
+    if (!bulkClientId || selectedSiteSubmitIds.size === 0) {
+      alert('Please select a client and at least one site submit');
+      return;
+    }
+
+    setBulkChangingClient(true);
+    try {
+      const updates = Array.from(selectedSiteSubmitIds).map(siteSubmitId => ({
+        id: siteSubmitId,
+        client_id: bulkClientId
+      }));
+
+      const { error } = await supabase
+        .from('site_submit')
+        .upsert(updates, { onConflict: 'id' });
+
+      if (error) throw error;
+
+      // Refresh data
+      await fetchReportData(selectedClientId || undefined);
+
+      // Clear selection and close modal
+      setSelectedSiteSubmitIds(new Set());
+      setShowBulkClientModal(false);
+      setBulkClientId("");
+      setBulkClientName("");
+      setBulkClientQuery("");
+
+      alert(`Successfully changed client to "${bulkClientName}" for ${updates.length} site submit(s)`);
+    } catch (err) {
+      console.error('Error bulk changing client:', err);
+      alert('Error changing client. Please try again.');
+    } finally {
+      setBulkChangingClient(false);
+    }
+  };
+
+  // Bulk delete handler
+  const handleBulkDelete = async () => {
+    if (selectedSiteSubmitIds.size === 0) {
+      alert('Please select at least one site submit to delete');
+      return;
+    }
+
+    setBulkDeleting(true);
+    try {
+      const idsToDelete = Array.from(selectedSiteSubmitIds);
+
+      const { error } = await supabase
+        .from('site_submit')
+        .delete()
+        .in('id', idsToDelete);
+
+      if (error) throw error;
+
+      // Refresh data
+      await fetchReportData(selectedClientId || undefined);
+
+      // Clear selection and close modal
+      const deletedCount = idsToDelete.length;
+      setSelectedSiteSubmitIds(new Set());
+      setShowBulkDeleteConfirm(false);
+
+      alert(`Successfully deleted ${deletedCount} site submit(s)`);
+    } catch (err) {
+      console.error('Error bulk deleting:', err);
+      alert('Error deleting site submits. Please try again.');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  // Filtered clients for bulk client modal
+  const filteredBulkClients = clients.filter(client =>
+    client.name.toLowerCase().includes(bulkClientQuery.toLowerCase())
+  );
+
+  const handleSelectBulkClient = (client: { id: string; name: string }) => {
+    setBulkClientId(client.id);
+    setBulkClientName(client.name);
+    setBulkClientQuery(client.name);
+    setShowBulkClientDropdown(false);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -1536,7 +1680,7 @@ export default function SiteSubmitDashboardPage() {
             {/* Bulk Actions Bar */}
             {selectedSiteSubmitIds.size > 0 && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center flex-wrap gap-3">
                   <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
                       <Check className="h-5 w-5 text-blue-600" />
@@ -1551,12 +1695,32 @@ export default function SiteSubmitDashboardPage() {
                       Clear selection
                     </button>
                   </div>
-                  <button
-                    onClick={() => setShowBulkAssignModal(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                  >
-                    Assign to Assignment
-                  </button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={() => setShowBulkStageModal(true)}
+                      className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
+                    >
+                      Change Stage
+                    </button>
+                    <button
+                      onClick={() => setShowBulkClientModal(true)}
+                      className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                    >
+                      Change Client
+                    </button>
+                    <button
+                      onClick={() => setShowBulkAssignModal(true)}
+                      className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                    >
+                      Assign to Assignment
+                    </button>
+                    <button
+                      onClick={() => setShowBulkDeleteConfirm(true)}
+                      className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -2203,6 +2367,282 @@ export default function SiteSubmitDashboardPage() {
                       </>
                     ) : (
                       <>Assign {selectedSiteSubmitIds.size} Site Submit{selectedSiteSubmitIds.size > 1 ? 's' : ''}</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Bulk Change Stage Modal */}
+      {showBulkStageModal && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-50"
+            onClick={() => setShowBulkStageModal(false)}
+          />
+
+          {/* Modal */}
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4">
+              <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+                {/* Header */}
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Change Stage
+                  </h3>
+                  <button
+                    onClick={() => setShowBulkStageModal(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                {/* Content */}
+                <div className="mb-6">
+                  <p className="text-sm text-gray-600 mb-4">
+                    Change stage for {selectedSiteSubmitIds.size} selected site submit{selectedSiteSubmitIds.size > 1 ? 's' : ''}:
+                  </p>
+
+                  {/* Stage Select */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Select Stage
+                    </label>
+                    <select
+                      value={bulkStageId}
+                      onChange={(e) => {
+                        setBulkStageId(e.target.value);
+                        const stage = stages.find(s => s.id === e.target.value);
+                        setBulkStageName(stage?.name || "");
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
+                    >
+                      <option value="">Select a stage...</option>
+                      {stages.map((stage) => (
+                        <option key={stage.id} value={stage.id}>
+                          {stage.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowBulkStageModal(false)}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
+                    disabled={bulkChangingStage}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleBulkChangeStage}
+                    disabled={!bulkStageId || bulkChangingStage}
+                    className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {bulkChangingStage ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Changing...
+                      </>
+                    ) : (
+                      <>Change Stage</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Bulk Change Client Modal */}
+      {showBulkClientModal && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-50"
+            onClick={() => setShowBulkClientModal(false)}
+          />
+
+          {/* Modal */}
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4">
+              <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+                {/* Header */}
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Change Client
+                  </h3>
+                  <button
+                    onClick={() => setShowBulkClientModal(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                {/* Content */}
+                <div className="mb-6">
+                  <p className="text-sm text-gray-600 mb-4">
+                    Change client for {selectedSiteSubmitIds.size} selected site submit{selectedSiteSubmitIds.size > 1 ? 's' : ''}:
+                  </p>
+
+                  {/* Client Autocomplete */}
+                  <div className="relative">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Select Client
+                    </label>
+                    <div className="relative">
+                      <input
+                        ref={bulkClientInputRef}
+                        type="text"
+                        value={bulkClientQuery}
+                        onChange={(e) => {
+                          setBulkClientQuery(e.target.value);
+                          setShowBulkClientDropdown(true);
+                          if (!e.target.value) {
+                            setBulkClientId("");
+                            setBulkClientName("");
+                          }
+                        }}
+                        onFocus={() => setShowBulkClientDropdown(true)}
+                        placeholder="Search clients..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500"
+                      />
+                      {bulkClientId && (
+                        <button
+                          onClick={() => {
+                            setBulkClientId("");
+                            setBulkClientName("");
+                            setBulkClientQuery("");
+                            bulkClientInputRef.current?.focus();
+                          }}
+                          className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Client Dropdown */}
+                    {showBulkClientDropdown && filteredBulkClients.length > 0 && (
+                      <div
+                        ref={bulkClientDropdownRef}
+                        className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto"
+                      >
+                        {filteredBulkClients.slice(0, 50).map((client) => (
+                          <div
+                            key={client.id}
+                            onClick={() => handleSelectBulkClient(client)}
+                            className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                          >
+                            {client.name}
+                          </div>
+                        ))}
+                        {filteredBulkClients.length > 50 && (
+                          <div className="px-3 py-2 text-xs text-gray-500 italic">
+                            Type to filter... ({filteredBulkClients.length} total)
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowBulkClientModal(false)}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
+                    disabled={bulkChangingClient}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleBulkChangeClient}
+                    disabled={!bulkClientId || bulkChangingClient}
+                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {bulkChangingClient ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Changing...
+                      </>
+                    ) : (
+                      <>Change Client</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteConfirm && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-50"
+            onClick={() => setShowBulkDeleteConfirm(false)}
+          />
+
+          {/* Modal */}
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4">
+              <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+                {/* Header */}
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold text-red-600">
+                    Delete Site Submits
+                  </h3>
+                  <button
+                    onClick={() => setShowBulkDeleteConfirm(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                {/* Content */}
+                <div className="mb-6">
+                  <p className="text-sm text-gray-600 mb-2">
+                    Are you sure you want to delete {selectedSiteSubmitIds.size} site submit{selectedSiteSubmitIds.size > 1 ? 's' : ''}?
+                  </p>
+                  <p className="text-sm text-red-600 font-medium">
+                    This action cannot be undone.
+                  </p>
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowBulkDeleteConfirm(false)}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
+                    disabled={bulkDeleting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleBulkDelete}
+                    disabled={bulkDeleting}
+                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {bulkDeleting ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Deleting...
+                      </>
+                    ) : (
+                      <>Delete {selectedSiteSubmitIds.size} Site Submit{selectedSiteSubmitIds.size > 1 ? 's' : ''}</>
                     )}
                   </button>
                 </div>
