@@ -309,7 +309,7 @@ export default function SiteSubmitDashboardPage() {
       const assignmentsMap = new Map();
 
       if (assignmentIds.length > 0) {
-        const BATCH_SIZE = 30; // Keep batches small to avoid URL length issues
+        const BATCH_SIZE = 20; // Keep batches small to avoid URL length issues (UUIDs are 36 chars each)
         for (let i = 0; i < assignmentIds.length; i += BATCH_SIZE) {
           const batch = assignmentIds.slice(i, i + BATCH_SIZE);
           const { data: assignmentData, error: assignmentError } = await supabase
