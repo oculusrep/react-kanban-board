@@ -304,24 +304,33 @@ export default function SiteSubmitDashboardPage() {
       console.log(`✅ Fetched ${siteSubmitData.length} site submits`);
 
       // Fetch assignments separately if needed (include client info for filtering)
+      // Batch the query to avoid URL length limits with many IDs
       const assignmentIds = [...new Set(siteSubmitData.map(s => s.assignment_id).filter(Boolean))];
       const assignmentsMap = new Map();
 
       if (assignmentIds.length > 0) {
-        const { data: assignmentData } = await supabase
-          .from('assignment')
-          .select(`
-            id,
-            assignment_name,
-            client_id,
-            client!assignment_client_id_fkey (
+        const BATCH_SIZE = 30; // Keep batches small to avoid URL length issues
+        for (let i = 0; i < assignmentIds.length; i += BATCH_SIZE) {
+          const batch = assignmentIds.slice(i, i + BATCH_SIZE);
+          const { data: assignmentData, error: assignmentError } = await supabase
+            .from('assignment')
+            .select(`
               id,
-              client_name
-            )
-          `)
-          .in('id', assignmentIds);
+              assignment_name,
+              client_id,
+              client!assignment_client_id_fkey (
+                id,
+                client_name
+              )
+            `)
+            .in('id', batch);
 
-        assignmentData?.forEach(a => assignmentsMap.set(a.id, a));
+          if (assignmentError) {
+            console.error('Error fetching assignments batch:', assignmentError);
+          }
+          assignmentData?.forEach(a => assignmentsMap.set(a.id, a));
+        }
+        console.log(`✅ Fetched ${assignmentsMap.size} assignments with client info`);
       }
 
       // Transform data with computed fields
