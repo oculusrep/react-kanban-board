@@ -28,6 +28,9 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+// Cache version - increment this to invalidate all user caches on deploy
+const USER_CACHE_VERSION = 2;
+
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -35,6 +38,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userTableId, setUserTableId] = useState<string | null>(null);
   const [isPortalUser, setIsPortalUser] = useState(false);
+
+  // Clear old cache versions on mount
+  useEffect(() => {
+    const storedVersion = localStorage.getItem('user_cache_version');
+    if (storedVersion !== String(USER_CACHE_VERSION)) {
+      // Clear all user_data_ keys
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith('user_data_')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      localStorage.setItem('user_cache_version', String(USER_CACHE_VERSION));
+      console.log('🔄 Cleared stale user cache (version update)');
+    }
+  }, []);
 
   // Check if user is a portal-only user (contact with portal_access_enabled)
   const checkIfPortalUser = async (email: string) => {
