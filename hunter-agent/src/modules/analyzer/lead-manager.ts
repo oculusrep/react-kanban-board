@@ -3,7 +3,6 @@ import { createLogger } from '../../utils/logger';
 import { normalizeCompanyName } from '../../utils/text-utils';
 import {
   HunterLead,
-  HunterLeadSignal,
   HunterSignal,
   LeadExtraction,
   ScoringResult,
@@ -30,7 +29,7 @@ export class LeadManager {
 
     // Check for existing lead by normalized name
     const { data: existingLead, error: findError } = await supabase
-      .from('hunter_lead')
+      .from('target')
       .select('*')
       .eq('normalized_name', normalizedName)
       .limit(1)
@@ -81,7 +80,7 @@ export class LeadManager {
     };
 
     const { data: lead, error } = await supabase
-      .from('hunter_lead')
+      .from('target')
       .insert(leadData)
       .select()
       .single();
@@ -133,7 +132,7 @@ export class LeadManager {
     }
 
     const { data: updatedLead, error } = await supabase
-      .from('hunter_lead')
+      .from('target')
       .update(updates)
       .eq('id', existingLead.id)
       .select()
@@ -156,15 +155,15 @@ export class LeadManager {
     signal: HunterSignal,
     extraction: LeadExtraction
   ): Promise<void> {
-    const linkData: Omit<HunterLeadSignal, 'id' | 'created_at'> = {
-      lead_id: leadId,
+    const linkData = {
+      target_id: leadId,
       signal_id: signal.id!,
       extracted_summary: extraction.signal_summary,
       mentioned_geography: extraction.mentioned_geography,
       mentioned_person: extraction.key_person_name || null,
     };
 
-    const { error } = await supabase.from('hunter_lead_signal').insert(linkData);
+    const { error } = await supabase.from('target_signal').insert(linkData);
 
     if (error) {
       // Ignore duplicate key errors (signal already linked)

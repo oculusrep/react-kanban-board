@@ -28,7 +28,7 @@ export class Enricher {
     try {
       // Get leads that need enrichment (new or enriching status, no existing contact)
       const { data: leads, error: fetchError } = await supabase
-        .from('hunter_lead')
+        .from('target')
         .select('*')
         .in('status', ['new', 'enriching'])
         .is('existing_contact_id', null)
@@ -60,7 +60,7 @@ export class Enricher {
         try {
           // Mark as enriching
           await supabase
-            .from('hunter_lead')
+            .from('target')
             .update({ status: 'enriching' })
             .eq('id', lead.id);
 
@@ -70,7 +70,7 @@ export class Enricher {
           // Update status based on enrichment result
           const newStatus = enrichedCount > 0 ? 'ready' : 'new';
           await supabase
-            .from('hunter_lead')
+            .from('target')
             .update({ status: newStatus })
             .eq('id', lead.id);
 
@@ -86,7 +86,7 @@ export class Enricher {
 
           // Reset to new status on failure
           await supabase
-            .from('hunter_lead')
+            .from('target')
             .update({ status: 'new' })
             .eq('id', lead.id);
         }
@@ -211,11 +211,11 @@ export class Enricher {
   /**
    * Check if we already have enrichment for this person
    */
-  private async checkExistingEnrichment(leadId: string, personName: string): Promise<boolean> {
+  private async checkExistingEnrichment(targetId: string, personName: string): Promise<boolean> {
     const { data } = await supabase
       .from('hunter_contact_enrichment')
       .select('id')
-      .eq('lead_id', leadId)
+      .eq('target_id', targetId)
       .ilike('person_name', `%${personName}%`)
       .limit(1);
 
@@ -226,11 +226,11 @@ export class Enricher {
    * Add a contact enrichment record
    */
   private async addEnrichment(
-    leadId: string,
-    enrichment: Omit<HunterContactEnrichment, 'id' | 'lead_id' | 'created_at' | 'updated_at'>
+    targetId: string,
+    enrichment: Omit<HunterContactEnrichment, 'id' | 'target_id' | 'created_at' | 'updated_at'>
   ): Promise<void> {
     const { error } = await supabase.from('hunter_contact_enrichment').insert({
-      lead_id: leadId,
+      target_id: targetId,
       ...enrichment,
     });
 

@@ -72,7 +72,7 @@ export interface HunterLead {
 
 export interface HunterLeadSignal {
   id?: string;
-  lead_id: string;
+  target_id: string;  // Renamed from lead_id
   signal_id: string;
   extracted_summary: string | null;
   mentioned_geography: string[] | null;
@@ -88,7 +88,7 @@ export type EnrichmentSource = 'icsc' | 'article' | 'company_website' | 'manual'
 
 export interface HunterContactEnrichment {
   id?: string;
-  lead_id: string;
+  target_id: string;  // Renamed from lead_id
   person_name: string;
   title: string | null;
   email: string | null;
@@ -112,7 +112,7 @@ export type OutreachStatus = 'draft' | 'approved' | 'sent' | 'rejected' | 'faile
 
 export interface HunterOutreachDraft {
   id?: string;
-  lead_id: string;
+  target_id: string;  // Renamed from lead_id
   enrichment_id: string | null;
   outreach_type: OutreachType;
   contact_name: string;
@@ -155,7 +155,7 @@ export type FeedbackType =
 
 export interface HunterFeedback {
   id?: string;
-  lead_id: string | null;
+  target_id: string | null;  // Renamed from lead_id
   outreach_draft_id: string | null;
   signal_id: string | null;
   feedback_type: FeedbackType;

@@ -302,9 +302,9 @@ export class ICSCScraper {
   /**
    * Convert ICSC contacts to Hunter enrichment format
    */
-  toEnrichments(leadId: string, contacts: ICSCContact[]): Omit<HunterContactEnrichment, 'id'>[] {
+  toEnrichments(targetId: string, contacts: ICSCContact[]): Omit<HunterContactEnrichment, 'id'>[] {
     return contacts.map((contact, index) => ({
-      lead_id: leadId,
+      target_id: targetId,
       person_name: contact.name,
       title: contact.title,
       email: contact.email,

@@ -25,7 +25,7 @@ export class OutreachDrafter {
     try {
       // Get leads ready for outreach (ready status, HOT or WARM+, with contacts)
       const { data: leads, error: fetchError } = await supabase
-        .from('hunter_lead')
+        .from('target')
         .select(`
           *,
           hunter_contact_enrichment!inner(*)
@@ -60,7 +60,7 @@ export class OutreachDrafter {
           const { data: existingDraft } = await supabase
             .from('hunter_outreach_draft')
             .select('id')
-            .eq('lead_id', lead.id)
+            .eq('target_id', lead.id)
             .eq('enrichment_id', primaryContact.id)
             .eq('status', 'draft')
             .limit(1);
@@ -85,7 +85,7 @@ export class OutreachDrafter {
 
           // Update lead status
           await supabase
-            .from('hunter_lead')
+            .from('target')
             .update({ status: 'outreach_drafted' })
             .eq('id', lead.id);
 
@@ -123,11 +123,11 @@ export class OutreachDrafter {
   /**
    * Get the latest signal summary for a lead
    */
-  private async getLatestSignalSummary(leadId: string): Promise<string> {
+  private async getLatestSignalSummary(targetId: string): Promise<string> {
     const { data } = await supabase
-      .from('hunter_lead_signal')
+      .from('target_signal')
       .select('extracted_summary')
-      .eq('lead_id', leadId)
+      .eq('target_id', targetId)
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
@@ -148,9 +148,9 @@ export class OutreachDrafter {
 
       // Get source URL from latest signal
       const { data: latestSignal } = await supabase
-        .from('hunter_lead_signal')
+        .from('target_signal')
         .select('signal_id, hunter_signal!inner(source_url)')
-        .eq('lead_id', lead.id)
+        .eq('target_id', lead.id)
         .order('created_at', { ascending: false })
         .limit(1)
         .single();
@@ -158,7 +158,7 @@ export class OutreachDrafter {
       const sourceUrl = (latestSignal as any)?.hunter_signal?.source_url || null;
 
       const draft: Omit<HunterOutreachDraft, 'id' | 'created_at' | 'updated_at'> = {
-        lead_id: lead.id!,
+        target_id: lead.id!,
         enrichment_id: contact.id || null,
         outreach_type: 'email',
         contact_name: contact.person_name,
@@ -207,7 +207,7 @@ export class OutreachDrafter {
       const voicemail = await this.emailDrafter.draftVoicemail(lead, contact, signalSummary);
 
       const draft: Omit<HunterOutreachDraft, 'id' | 'created_at' | 'updated_at'> = {
-        lead_id: lead.id!,
+        target_id: lead.id!,
         enrichment_id: contact.id || null,
         outreach_type: 'voicemail_script',
         contact_name: contact.person_name,
