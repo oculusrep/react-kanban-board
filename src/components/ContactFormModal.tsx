@@ -294,13 +294,13 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
 
       {/* Modal */}
       <div
-        className={`fixed bottom-0 left-0 lg:left-auto w-full lg:w-[450px] bg-white shadow-xl transform transition-transform duration-300 z-[60] ${
+        className={`fixed left-0 lg:left-auto w-full lg:w-[450px] bg-white shadow-xl transform transition-transform duration-300 z-[60] ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         } flex flex-col`}
         style={{
           right: `${rightOffset}px`,
-          top: '67px', // Align with navbar height, same as property slideout
-          height: 'calc(100vh - 67px)' // Full height minus navbar
+          top: '64px', // Align with navbar height
+          bottom: 0, // Extend to bottom of viewport
         }}
       >
         
