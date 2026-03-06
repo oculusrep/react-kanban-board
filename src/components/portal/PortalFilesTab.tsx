@@ -898,12 +898,6 @@ export default function PortalFilesTab({
     );
   };
 
-  // Debug panel state - show when there's a loading issue
-  const showDebugPanel = !isInternalUser && (
-    propertyFiles.error || dealFiles.error ||
-    (!propertyFiles.loading && !dealFiles.loading && propertyFiles.files.length === 0 && dealFiles.files.length === 0)
-  );
-
   if (!propertyId && !dealId) {
     return (
       <div className="p-4 text-center text-gray-500">
@@ -914,25 +908,6 @@ export default function PortalFilesTab({
 
   return (
     <div className="flex flex-col h-full overflow-y-auto p-4">
-      {/* Debug panel for portal users when files aren't loading */}
-      {showDebugPanel && (
-        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs">
-          <div className="font-medium text-yellow-800 mb-2">Debug Info (Contact Support)</div>
-          <div className="space-y-1 text-yellow-700">
-            <div><strong>Property ID:</strong> {propertyId || 'none'}</div>
-            <div><strong>Deal ID:</strong> {dealId || 'none'}</div>
-            <div><strong>Site Submit ID:</strong> {siteSubmitId || 'none'}</div>
-            <div><strong>Property Folder:</strong> {propertyFiles.folderPath || 'not found'}</div>
-            <div><strong>Property Error:</strong> {propertyFiles.error || 'none'}</div>
-            <div><strong>Property Files Count:</strong> {propertyFiles.files.length}</div>
-            <div><strong>Deal Folder:</strong> {dealFiles.folderPath || 'not found'}</div>
-            <div><strong>Deal Error:</strong> {dealFiles.error || 'none'}</div>
-            <div><strong>Deal Files Count:</strong> {dealFiles.files.length}</div>
-            <div><strong>Is Internal User:</strong> {isInternalUser ? 'yes' : 'no'}</div>
-            <div><strong>Can Upload:</strong> {canUpload ? 'yes' : 'no'}</div>
-          </div>
-        </div>
-      )}
       {/* Property Files Section */}
       {renderFileSection(
         'Property Files',
