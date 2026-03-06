@@ -223,14 +223,36 @@ export default function PortalFilesTab({
       entityType: 'property' | 'deal',
       visibilityMap: Map<string, boolean>
     ) => {
-      if (!folderPath) return { folders: [], files: [] };
+      console.log(`🔍 [${entityType}] getVisibleFiles:`, {
+        totalFiles: files.length,
+        folderPath,
+        currentPath,
+        isInternalUser,
+        visibilityMapSize: visibilityMap.size,
+      });
+
+      if (!folderPath) {
+        console.log(`🔍 [${entityType}] No folder path, returning empty`);
+        return { folders: [], files: [] };
+      }
 
       const targetPath = folderPath + currentPath;
+      console.log(`🔍 [${entityType}] Target path:`, targetPath);
 
       const currentFiles = files.filter((file: any) => {
         const parentPath = file.path?.substring(0, file.path.lastIndexOf('/')) || '';
-        return parentPath === targetPath;
+        const matches = parentPath === targetPath;
+        console.log(`🔍 [${entityType}] File path check:`, {
+          fileName: file.name,
+          filePath: file.path,
+          parentPath,
+          targetPath,
+          matches,
+        });
+        return matches;
       });
+
+      console.log(`🔍 [${entityType}] Files matching path:`, currentFiles.length);
 
       // For internal users, show all files with visibility indicators
       // For portal users, only show visible files
@@ -238,13 +260,19 @@ export default function PortalFilesTab({
         ? currentFiles
         : currentFiles.filter((file: any) => {
             const visible = isFileVisible(file.path, entityType, visibilityMap);
+            console.log(`🔍 [${entityType}] Visibility check:`, { fileName: file.name, path: file.path, visible });
             return visible;
           });
 
-      return {
+      console.log(`🔍 [${entityType}] After visibility filter:`, filteredFiles.length);
+
+      const result = {
         folders: filteredFiles.filter((f: any) => f.type === 'folder'),
         files: filteredFiles.filter((f: any) => f.type === 'file'),
       };
+
+      console.log(`🔍 [${entityType}] Final result:`, { folders: result.folders.length, files: result.files.length });
+      return result;
     },
     [isInternalUser, isFileVisible]
   );
@@ -683,9 +711,23 @@ export default function PortalFilesTab({
                     )}
                   </div>
                 ) : (
-                  <div className="divide-y divide-gray-100 max-h-64 overflow-y-auto">
+                  <div className="divide-y divide-gray-100 max-h-64 overflow-y-auto" style={{ minHeight: '40px' }}>
+                    {/* Debug: Log file rendering */}
+                    {console.log(`📁 [${entityType}] Rendering ${folders.length} folders and ${regularFiles.length} files:`, { folders, regularFiles })}
+                    {/* Debug marker to verify this section is rendering */}
+                    {(folders.length > 0 || regularFiles.length > 0) && (
+                      <div className="sr-only" data-debug-files={`${folders.length} folders, ${regularFiles.length} files`} />
+                    )}
                     {/* Folders */}
-                    {folders.map((folder: any) => {
+                    {folders.map((folder: any, index: number) => {
+                      console.log(`📁 [${entityType}] Rendering folder ${index}:`, folder?.name, folder?.path);
+
+                      // Defensive check for malformed folder objects
+                      if (!folder || !folder.id || !folder.path) {
+                        console.error(`❌ [${entityType}] Malformed folder at index ${index}:`, folder);
+                        return null;
+                      }
+
                       const isVisible = isFileVisible(folder.path, entityType, visibilityMap);
 
                       return (
@@ -777,7 +819,15 @@ export default function PortalFilesTab({
                     })}
 
                     {/* Files */}
-                    {regularFiles.map((file: any) => {
+                    {regularFiles.map((file: any, index: number) => {
+                      console.log(`📄 [${entityType}] Rendering file ${index}:`, file?.name, file?.path);
+
+                      // Defensive check for malformed file objects
+                      if (!file || !file.id || !file.path) {
+                        console.error(`❌ [${entityType}] Malformed file at index ${index}:`, file);
+                        return null;
+                      }
+
                       const isVisible = isFileVisible(file.path, entityType, visibilityMap);
 
                       return (
