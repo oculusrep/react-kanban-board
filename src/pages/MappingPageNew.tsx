@@ -2599,7 +2599,7 @@ const MappingPageContent: React.FC = () => {
                 // Refresh the submits list
                 setSubmitsRefreshTrigger(prev => prev + 1);
                 // Refresh the site_submits layer on the map
-                safeRefreshLayer('site_submits');
+                refreshLayer('site_submits');
               }}
               initialData={selectedSiteSubmitData?._isNew ? {
                 _isNew: true,
