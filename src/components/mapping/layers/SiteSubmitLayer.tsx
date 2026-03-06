@@ -947,11 +947,24 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
   // Local refresh trigger for real-time updates
   const [localRefreshTrigger, setLocalRefreshTrigger] = useState(0);
 
-  // Real-time subscription for site_submit updates (status changes)
+  // Real-time subscription for site_submit changes (INSERT, UPDATE, DELETE)
   useEffect(() => {
     const channel = supabase.channel('site-submit-layer-changes');
 
     channel
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'site_submit',
+        },
+        (payload) => {
+          console.log('📍 Site submit inserted (real-time):', payload.new.id);
+          // Trigger local refresh
+          setLocalRefreshTrigger(prev => prev + 1);
+        }
+      )
       .on(
         'postgres_changes',
         {
@@ -961,6 +974,19 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
         },
         (payload) => {
           console.log('📍 Site submit updated (real-time):', payload.new.id);
+          // Trigger local refresh
+          setLocalRefreshTrigger(prev => prev + 1);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'site_submit',
+        },
+        (payload) => {
+          console.log('📍 Site submit deleted (real-time):', payload.old.id);
           // Trigger local refresh
           setLocalRefreshTrigger(prev => prev + 1);
         }
