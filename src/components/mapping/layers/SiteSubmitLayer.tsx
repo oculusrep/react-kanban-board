@@ -517,6 +517,12 @@ const SiteSubmitLayer: React.FC<SiteSubmitLayerProps> = ({
     console.log('🎯 Verifying site submit ID:', verifyingSiteSubmitId);
     console.log('🎨 Marker style:', markerStyle.useAdvancedMarkers ? `Advanced (${markerStyle.shape})` : 'Legacy');
 
+    // Clear clusterer first (must happen before removing markers from map)
+    if (clusterer) {
+      console.log('🧹 Clearing clusterer markers');
+      clusterer.clearMarkers();
+    }
+
     // Clear existing markers using ref (avoids stale closure issues)
     console.log(`🧹 Clearing ${markersRef.current.length} existing markers`);
     markersRef.current.forEach(marker => marker.setMap(null));
