@@ -41,6 +41,17 @@ export default function SiteSubmitCreateForm({
   const [dateSubmitted, setDateSubmitted] = useState(initialData.date_submitted || '');
   const [notes, setNotes] = useState(initialData.notes || '');
 
+  // Reset form when property changes (new site submit for different property)
+  useEffect(() => {
+    setSelectedClient(null);
+    setSelectedAssignment(null);
+    setSelectedPropertyUnitId(initialData.property_unit_id || null);
+    setSiteSubmitName(initialData.site_submit_name || '');
+    setSelectedStageId(initialData.submit_stage_id || '');
+    setDateSubmitted(initialData.date_submitted || '');
+    setNotes(initialData.notes || '');
+  }, [initialData.property_id]);
+
   // Auto-generate site submit name when client is selected
   useEffect(() => {
     if (selectedClient && initialData.property?.property_name) {
