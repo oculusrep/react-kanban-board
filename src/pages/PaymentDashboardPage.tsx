@@ -351,6 +351,12 @@ const PaymentDashboardPage: React.FC = () => {
       const stageIds = stagesData?.map(s => s.id) || [];
       const stageMap = new Map(stagesData?.map(s => [s.id, s.label]) || []);
 
+      // If no stages found, nothing to check
+      if (stageIds.length === 0) {
+        setDealsWithoutPayments([]);
+        return;
+      }
+
       // Get all deals in these stages with number_of_payments > 0
       const { data: dealsData, error: dealsError } = await supabase
         .from('deal')
