@@ -131,7 +131,7 @@ export default function SiteSubmitCallList({
           .from('property_contact')
           .select(`
             property_id,
-            contact:contact_id!property_contact_contact_id_fkey (
+            contact!property_contact_contact_id_fkey (
               id,
               first_name,
               last_name,
