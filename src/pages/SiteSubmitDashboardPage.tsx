@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, Download, X, Filter, Check, RefreshCw } from "l
 import PinDetailsSlideout from "../components/mapping/slideouts/PinDetailsSlideout";
 import SiteSubmitSlideOut from "../components/SiteSubmitSlideOut";
 import { exportClientSubmitReport } from "../lib/excelExport";
+import SiteSubmitCallList from "../components/sitesubmit/SiteSubmitCallList";
 
 interface SiteSubmitReportRow {
   id: string;
@@ -65,7 +66,7 @@ interface ClientSubmitReportRow {
   _fullSiteSubmit?: any;
 }
 
-type ActiveTab = "dashboard" | "client-submit-report";
+type ActiveTab = "dashboard" | "client-submit-report" | "call-list";
 
 type SortField = "site_submit_name" | "property_name" | "display_sqft" | "year_1_rent" | "display_nnn" | "submit_stage_name" | "client_name" | "created_at";
 type ClientSubmitSortField = "property_name" | "city" | "submit_stage_name" | "date_submitted" | "loi_date";
@@ -1422,6 +1423,16 @@ export default function SiteSubmitDashboardPage() {
             >
               Client Submit Report
             </button>
+            <button
+              onClick={() => setActiveTab("call-list")}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === "call-list"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              Call List
+            </button>
           </nav>
         </div>
 
@@ -1511,7 +1522,7 @@ export default function SiteSubmitDashboardPage() {
             )}
           </div>
 
-          <div className={`grid grid-cols-1 gap-4 ${activeTab === "client-submit-report" ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
+          <div className={`grid grid-cols-1 gap-4 ${activeTab === "client-submit-report" ? "md:grid-cols-3" : (activeTab === "call-list" ? "md:grid-cols-2" : "md:grid-cols-2")}`}>
             {/* Stage Multi-Select Filter */}
             <div className="relative">
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2203,6 +2214,28 @@ export default function SiteSubmitDashboardPage() {
               </div>
             </div>
           </>
+        )}
+
+        {/* Call List Tab Content */}
+        {activeTab === "call-list" && (
+          <SiteSubmitCallList
+            selectedClientId={selectedClientId || undefined}
+            selectedStageIds={selectedStageIds.length > 0 ? selectedStageIds : undefined}
+            onPropertyClick={(propertyId) => {
+              // Find the property data and open the pin details slideout
+              const siteSubmit = data.find(d => d.property_id === propertyId);
+              if (siteSubmit?.property) {
+                setSelectedPinData(siteSubmit.property);
+                setSelectedPinType('property');
+                setIsPinDetailsOpen(true);
+              }
+            }}
+            onSiteSubmitClick={(siteSubmitId) => {
+              // Open the full site submit slideout
+              setFullSiteSubmitId(siteSubmitId);
+              setIsFullSiteSubmitOpen(true);
+            }}
+          />
         )}
       </div>
 
