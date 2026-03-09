@@ -18,9 +18,10 @@ import SplitValidationTab from '../components/payments/SplitValidationTab';
 import ReconciliationReport from '../components/payments/ReconciliationReport';
 import PaymentReconciliationReport from '../components/payments/PaymentReconciliationReport';
 import DisbursementReportTab from '../components/payments/DisbursementReportTab';
+import AgedUpcomingPaymentsTab from '../components/payments/AgedUpcomingPaymentsTab';
 import { usePermissions } from '../hooks/usePermissions';
 
-type TabType = 'dashboard' | 'comparison' | 'discrepancies' | 'validation' | 'deal-reconciliation' | 'payment-reconciliation' | 'disbursements';
+type TabType = 'dashboard' | 'aged-upcoming' | 'comparison' | 'discrepancies' | 'validation' | 'deal-reconciliation' | 'payment-reconciliation' | 'disbursements';
 
 const PaymentDashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -663,8 +664,18 @@ const PaymentDashboardPage: React.FC = () => {
               >
                 Payment Tracking
               </button>
+              <button
+                onClick={() => setActiveTab('aged-upcoming')}
+                className={`${
+                  activeTab === 'aged-upcoming'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+              >
+                Aged & Upcoming
+              </button>
               {/* Show active utility tab name if one is selected */}
-              {activeTab !== 'dashboard' && (
+              {activeTab !== 'dashboard' && activeTab !== 'aged-upcoming' && (
                 <span className="whitespace-nowrap py-4 px-1 border-b-2 border-blue-500 text-blue-600 font-medium text-sm">
                   {activeTab === 'comparison' && 'SF vs OVIS Comparison'}
                   {activeTab === 'discrepancies' && 'Fix Discrepancies'}
@@ -867,6 +878,8 @@ const PaymentDashboardPage: React.FC = () => {
                 </>
               )}
             </>
+          ) : activeTab === 'aged-upcoming' ? (
+            <AgedUpcomingPaymentsTab onPaymentUpdate={handlePaymentUpdate} />
           ) : activeTab === 'comparison' ? (
             <ComparisonReportTab />
           ) : activeTab === 'discrepancies' ? (
