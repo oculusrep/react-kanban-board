@@ -205,6 +205,9 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
       return;
     }
 
+    // Refresh parent data to ensure consistency
+    onPaymentUpdate();
+
     // If updating estimated date and payment is linked to QB, sync the due date
     if (field === 'payment_date_estimated' && payment?.qb_invoice_id && value) {
       syncDueDateToQuickBooks(paymentId, value);
