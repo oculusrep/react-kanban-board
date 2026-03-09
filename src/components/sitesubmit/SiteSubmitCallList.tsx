@@ -120,36 +120,42 @@ export default function SiteSubmitCallList({
       // Get unique property IDs
       const propertyIds = [...new Set(siteSubmitData.map(s => s.property_id).filter(Boolean))];
 
-      // Fetch property contacts for all these properties
-      const { data: propertyContactsData, error: contactsError } = await supabase
-        .from('property_contact')
-        .select(`
-          property_id,
-          contact:contact_id (
-            id,
-            first_name,
-            last_name,
-            email,
-            phone,
-            mobile_phone,
-            company,
-            title
-          )
-        `)
-        .in('property_id', propertyIds);
-
-      if (contactsError) throw contactsError;
-
-      // Build a map of property_id -> contacts
+      // Fetch property contacts for all these properties in batches to avoid URL length limits
       const propertyContactsMap = new Map<string, BrokerContact[]>();
-      propertyContactsData?.forEach(pc => {
-        const contact = pc.contact as unknown as BrokerContact;
-        if (!contact) return;
+      const BATCH_SIZE = 50; // Keep batches small to avoid URL length issues
 
-        const existing = propertyContactsMap.get(pc.property_id) || [];
-        existing.push(contact);
-        propertyContactsMap.set(pc.property_id, existing);
-      });
+      for (let i = 0; i < propertyIds.length; i += BATCH_SIZE) {
+        const batch = propertyIds.slice(i, i + BATCH_SIZE);
+
+        const { data: propertyContactsData, error: contactsError } = await supabase
+          .from('property_contact')
+          .select(`
+            property_id,
+            contact:contact_id!property_contact_contact_id_fkey (
+              id,
+              first_name,
+              last_name,
+              email,
+              phone,
+              mobile_phone,
+              company,
+              title
+            )
+          `)
+          .in('property_id', batch);
+
+        if (contactsError) throw contactsError;
+
+        // Build a map of property_id -> contacts
+        propertyContactsData?.forEach(pc => {
+          const contact = pc.contact as unknown as BrokerContact;
+          if (!contact) return;
+
+          const existing = propertyContactsMap.get(pc.property_id) || [];
+          existing.push(contact);
+          propertyContactsMap.set(pc.property_id, existing);
+        });
+      }
 
       // Group site submits by broker
       const brokerMap = new Map<string, BrokerGroup>();
