@@ -41,7 +41,8 @@ export default function SiteSubmitCreateForm({
   const [dateSubmitted, setDateSubmitted] = useState(initialData.date_submitted || '');
   const [notes, setNotes] = useState(initialData.notes || '');
 
-  // Reset form when property changes (new site submit for different property)
+  // Reset form when initialData changes (new site submit creation)
+  // Using a stable key based on property_id and submit_stage_id to detect when we're creating a fresh form
   useEffect(() => {
     setSelectedClient(null);
     setSelectedAssignment(null);
@@ -50,7 +51,7 @@ export default function SiteSubmitCreateForm({
     setSelectedStageId(initialData.submit_stage_id || '');
     setDateSubmitted(initialData.date_submitted || '');
     setNotes(initialData.notes || '');
-  }, [initialData.property_id]);
+  }, [initialData.property_id, initialData.submit_stage_id]);
 
   // Auto-generate site submit name when client is selected
   useEffect(() => {

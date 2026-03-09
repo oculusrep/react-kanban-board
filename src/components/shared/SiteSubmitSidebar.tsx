@@ -176,9 +176,17 @@ export default function SiteSubmitSidebar({
   const [showConvertToDealModal, setShowConvertToDealModal] = useState(false);
   const [pendingLoiStageChange, setPendingLoiStageChange] = useState<{ stageId: string; stageName: string } | null>(null);
   const [showLoiConversionPrompt, setShowLoiConversionPrompt] = useState(false);
+  const [createFormKey, setCreateFormKey] = useState(0);
 
   // Check if this is a new site submit creation
   const isNewSiteSubmit = initialData?._isNew === true && !siteSubmitId;
+
+  // Increment create form key when entering create mode to force form reset
+  useEffect(() => {
+    if (isNewSiteSubmit && isOpen) {
+      setCreateFormKey(prev => prev + 1);
+    }
+  }, [isNewSiteSubmit, isOpen]);
 
   // Toast helper for email
   const showToast = (message: string, options?: { type?: 'success' | 'error' | 'info'; duration?: number }) => {
@@ -836,6 +844,7 @@ export default function SiteSubmitSidebar({
           </div>
         ) : isNewSiteSubmit ? (
           <SiteSubmitCreateForm
+            key={`create-${siteSubmit.property_id}-${createFormKey}`}
             initialData={siteSubmit}
             stages={stages}
             onSave={async (newSiteSubmit) => {
