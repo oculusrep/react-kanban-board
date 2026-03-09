@@ -1,13 +1,14 @@
 /**
- * SiteSubmitCallList - Groups site submits by broker contact for efficient calling
+ * SiteSubmitCallList - Groups site submits by broker contact(s) for efficient calling
  *
- * Allows users to see all properties for the same broker together so they can
- * discuss multiple properties in one phone call.
+ * Allows users to see all properties for the same broker(s) together so they can
+ * discuss multiple properties in one phone call. Properties with the same set of
+ * brokers are grouped together.
  */
 
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { Phone, Mail, ChevronDown, ChevronRight, Building2, MapPin, RefreshCw, ExternalLink } from 'lucide-react';
+import { Phone, Mail, ChevronDown, ChevronRight, Building2, MapPin, RefreshCw } from 'lucide-react';
 
 interface BrokerContact {
   id: string;
@@ -34,8 +35,10 @@ interface SiteSubmitWithProperty {
   property_state: string | null;
 }
 
+// Changed to support multiple brokers per group
 interface BrokerGroup {
-  broker: BrokerContact;
+  brokers: BrokerContact[];  // Array of brokers (can be 1 or more)
+  groupKey: string;          // Composite key for identification
   siteSubmits: SiteSubmitWithProperty[];
 }
 
@@ -50,13 +53,12 @@ export default function SiteSubmitCallList({
   selectedClientId,
   selectedStageIds,
   onPropertyClick,
-  onSiteSubmitClick,
 }: SiteSubmitCallListProps) {
   const [brokerGroups, setBrokerGroups] = useState<BrokerGroup[]>([]);
   const [unassignedSubmits, setUnassignedSubmits] = useState<SiteSubmitWithProperty[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedBrokers, setExpandedBrokers] = useState<Set<string>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
@@ -157,8 +159,8 @@ export default function SiteSubmitCallList({
         });
       }
 
-      // Group site submits by broker
-      const brokerMap = new Map<string, BrokerGroup>();
+      // Group site submits by broker SET (composite key of all broker IDs)
+      const groupMap = new Map<string, BrokerGroup>();
       const unassigned: SiteSubmitWithProperty[] = [];
 
       siteSubmitData.forEach(submit => {
@@ -185,40 +187,41 @@ export default function SiteSubmitCallList({
         if (!contacts || contacts.length === 0) {
           unassigned.push(siteSubmitWithProp);
         } else {
-          // Add to each broker's group (property might have multiple brokers)
-          contacts.forEach(contact => {
-            const existing = brokerMap.get(contact.id);
-            if (existing) {
-              // Check if this site submit is already in the group
-              if (!existing.siteSubmits.find(s => s.id === submit.id)) {
-                existing.siteSubmits.push(siteSubmitWithProp);
-              }
-            } else {
-              brokerMap.set(contact.id, {
-                broker: contact,
-                siteSubmits: [siteSubmitWithProp],
-              });
+          // Create composite key from sorted broker IDs
+          const sortedBrokerIds = contacts.map(c => c.id).sort().join('|');
+
+          const existingGroup = groupMap.get(sortedBrokerIds);
+          if (existingGroup) {
+            // Check if this site submit is already in the group
+            if (!existingGroup.siteSubmits.find(s => s.id === submit.id)) {
+              existingGroup.siteSubmits.push(siteSubmitWithProp);
             }
-          });
+          } else {
+            groupMap.set(sortedBrokerIds, {
+              brokers: contacts,
+              groupKey: sortedBrokerIds,
+              siteSubmits: [siteSubmitWithProp],
+            });
+          }
         }
       });
 
       // Convert to array and sort by number of properties (most first)
-      const groups = Array.from(brokerMap.values()).sort(
+      const groups = Array.from(groupMap.values()).sort(
         (a, b) => b.siteSubmits.length - a.siteSubmits.length
       );
 
       setBrokerGroups(groups);
       setUnassignedSubmits(unassigned);
 
-      // Auto-expand brokers with multiple properties
+      // Auto-expand groups with multiple properties
       const toExpand = new Set<string>();
       groups.forEach(g => {
         if (g.siteSubmits.length >= 2) {
-          toExpand.add(g.broker.id);
+          toExpand.add(g.groupKey);
         }
       });
-      setExpandedBrokers(toExpand);
+      setExpandedGroups(toExpand);
 
     } catch (err) {
       console.error('Error fetching call list:', err);
@@ -234,13 +237,13 @@ export default function SiteSubmitCallList({
     setRefreshing(false);
   };
 
-  const toggleBrokerExpanded = (brokerId: string) => {
-    setExpandedBrokers(prev => {
+  const toggleGroupExpanded = (groupKey: string) => {
+    setExpandedGroups(prev => {
       const next = new Set(prev);
-      if (next.has(brokerId)) {
-        next.delete(brokerId);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
       } else {
-        next.add(brokerId);
+        next.add(groupKey);
       }
       return next;
     });
@@ -267,6 +270,21 @@ export default function SiteSubmitCallList({
     return phone;
   };
 
+  // Generate Gmail compose URL
+  const getGmailComposeUrl = (email: string, brokerName: string, propertyNames: string[]): string => {
+    const subject = encodeURIComponent(`Following up - ${propertyNames.slice(0, 2).join(', ')}${propertyNames.length > 2 ? ` and ${propertyNames.length - 2} more` : ''}`);
+    const body = encodeURIComponent(`Hi ${brokerName.split(' ')[0]},\n\nI wanted to follow up with you regarding the following properties:\n\n${propertyNames.map(p => `• ${p}`).join('\n')}\n\nPlease let me know if you have any updates.\n\nBest regards`);
+    return `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${subject}&body=${body}`;
+  };
+
+  // Get group display name (combines broker names)
+  const getGroupDisplayName = (brokers: BrokerContact[]): string => {
+    if (brokers.length === 1) {
+      return getBrokerDisplayName(brokers[0]);
+    }
+    return brokers.map(b => getBrokerDisplayName(b)).join(' & ');
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -290,7 +308,7 @@ export default function SiteSubmitCallList({
     );
   }
 
-  const totalBrokers = brokerGroups.length;
+  const totalGroups = brokerGroups.length;
   const totalProperties = brokerGroups.reduce((sum, g) => sum + g.siteSubmits.length, 0);
 
   return (
@@ -301,7 +319,7 @@ export default function SiteSubmitCallList({
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Call List by Broker</h2>
             <p className="text-sm text-gray-500 mt-1">
-              {totalBrokers} broker{totalBrokers !== 1 ? 's' : ''} with {totalProperties} site submit{totalProperties !== 1 ? 's' : ''}
+              {totalGroups} broker group{totalGroups !== 1 ? 's' : ''} with {totalProperties} site submit{totalProperties !== 1 ? 's' : ''}
               {unassignedSubmits.length > 0 && (
                 <span className="text-amber-600 ml-2">
                   ({unassignedSubmits.length} without broker contact)
@@ -328,15 +346,15 @@ export default function SiteSubmitCallList({
       ) : (
         <div className="space-y-3">
           {brokerGroups.map(group => {
-            const isExpanded = expandedBrokers.has(group.broker.id);
-            const brokerPhone = getBrokerPhone(group.broker);
+            const isExpanded = expandedGroups.has(group.groupKey);
+            const propertyNames = group.siteSubmits.map(s => s.property_name || 'Unknown').filter(Boolean);
 
             return (
-              <div key={group.broker.id} className="bg-white rounded-lg shadow overflow-hidden">
-                {/* Broker Header */}
+              <div key={group.groupKey} className="bg-white rounded-lg shadow overflow-hidden">
+                {/* Group Header */}
                 <div
                   className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50"
-                  onClick={() => toggleBrokerExpanded(group.broker.id)}
+                  onClick={() => toggleGroupExpanded(group.groupKey)}
                 >
                   <div className="flex items-center gap-3">
                     <button className="text-gray-400 hover:text-gray-600">
@@ -345,39 +363,63 @@ export default function SiteSubmitCallList({
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-gray-900">
-                          {getBrokerDisplayName(group.broker)}
+                          {getGroupDisplayName(group.brokers)}
                         </span>
                         <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full">
                           {group.siteSubmits.length} propert{group.siteSubmits.length !== 1 ? 'ies' : 'y'}
                         </span>
+                        {group.brokers.length > 1 && (
+                          <span className="px-2 py-0.5 bg-purple-100 text-purple-800 text-xs rounded-full">
+                            {group.brokers.length} brokers
+                          </span>
+                        )}
                       </div>
                       <div className="text-sm text-gray-500 flex items-center gap-3 mt-0.5">
-                        {group.broker.company && <span>{group.broker.company}</span>}
-                        {group.broker.title && <span className="text-gray-400">• {group.broker.title}</span>}
+                        {group.brokers[0].company && <span>{group.brokers[0].company}</span>}
+                        {group.brokers.length > 1 && group.brokers[1].company && group.brokers[1].company !== group.brokers[0].company && (
+                          <span className="text-gray-400">& {group.brokers[1].company}</span>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Contact Actions */}
-                  <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                    {brokerPhone && (
-                      <a
-                        href={`tel:${brokerPhone}`}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-green-100 text-green-700 rounded-md hover:bg-green-200 text-sm"
-                      >
-                        <Phone size={14} />
-                        {formatPhone(brokerPhone)}
-                      </a>
-                    )}
-                    {group.broker.email && (
-                      <a
-                        href={`mailto:${group.broker.email}`}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 text-sm"
-                      >
-                        <Mail size={14} />
-                        Email
-                      </a>
-                    )}
+                  {/* Contact Actions - show for each broker */}
+                  <div className="flex items-center gap-2 flex-wrap justify-end" onClick={e => e.stopPropagation()}>
+                    {group.brokers.map(broker => {
+                      const brokerPhone = getBrokerPhone(broker);
+                      const brokerName = getBrokerDisplayName(broker);
+                      const isMultipleBrokers = group.brokers.length > 1;
+
+                      return (
+                        <div key={broker.id} className="flex items-center gap-1">
+                          {isMultipleBrokers && (
+                            <span className="text-xs text-gray-400 mr-1">{broker.first_name}:</span>
+                          )}
+                          {brokerPhone && (
+                            <a
+                              href={`tel:${brokerPhone}`}
+                              className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 text-xs"
+                              title={`Call ${brokerName}`}
+                            >
+                              <Phone size={12} />
+                              {formatPhone(brokerPhone)}
+                            </a>
+                          )}
+                          {broker.email && (
+                            <a
+                              href={getGmailComposeUrl(broker.email, brokerName, propertyNames)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 text-xs"
+                              title={`Email ${brokerName} via Gmail`}
+                            >
+                              <Mail size={12} />
+                              Gmail
+                            </a>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
