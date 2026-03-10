@@ -9,6 +9,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Phone, Mail, ChevronDown, ChevronRight, Building2, MapPin, RefreshCw } from 'lucide-react';
+import BrokerEmailModal from './BrokerEmailModal';
 
 interface BrokerContact {
   id: string;
@@ -60,6 +61,10 @@ export default function SiteSubmitCallList({
   const [error, setError] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
+  // Email modal state
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailBrokers, setEmailBrokers] = useState<BrokerContact[]>([]);
+  const [emailProperties, setEmailProperties] = useState<{ name: string; address?: string; city?: string; state?: string }[]>([]);
 
   useEffect(() => {
     fetchCallList();
@@ -270,11 +275,16 @@ export default function SiteSubmitCallList({
     return phone;
   };
 
-  // Generate Gmail compose URL
-  const getGmailComposeUrl = (email: string, brokerName: string, propertyNames: string[]): string => {
-    const subject = encodeURIComponent(`Following up - ${propertyNames.slice(0, 2).join(', ')}${propertyNames.length > 2 ? ` and ${propertyNames.length - 2} more` : ''}`);
-    const body = encodeURIComponent(`Hi ${brokerName.split(' ')[0]},\n\nI wanted to follow up with you regarding the following properties:\n\n${propertyNames.map(p => `• ${p}`).join('\n')}\n\nPlease let me know if you have any updates.\n\nBest regards`);
-    return `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${subject}&body=${body}`;
+  // Open email modal for a broker group
+  const handleEmailBrokers = (brokers: BrokerContact[], siteSubmits: SiteSubmitWithProperty[]) => {
+    setEmailBrokers(brokers);
+    setEmailProperties(siteSubmits.map(s => ({
+      name: s.property_name || 'Unknown',
+      address: s.property_address || undefined,
+      city: s.property_city || undefined,
+      state: s.property_state || undefined,
+    })));
+    setShowEmailModal(true);
   };
 
   // Get group display name (combines broker names)
@@ -347,7 +357,6 @@ export default function SiteSubmitCallList({
         <div className="space-y-3">
           {brokerGroups.map(group => {
             const isExpanded = expandedGroups.has(group.groupKey);
-            const propertyNames = group.siteSubmits.map(s => s.property_name || 'Unknown').filter(Boolean);
 
             return (
               <div key={group.groupKey} className="bg-white rounded-lg shadow overflow-hidden">
@@ -383,43 +392,41 @@ export default function SiteSubmitCallList({
                     </div>
                   </div>
 
-                  {/* Contact Actions - show for each broker */}
+                  {/* Contact Actions */}
                   <div className="flex items-center gap-2 flex-wrap justify-end" onClick={e => e.stopPropagation()}>
+                    {/* Phone numbers for each broker */}
                     {group.brokers.map(broker => {
                       const brokerPhone = getBrokerPhone(broker);
                       const brokerName = getBrokerDisplayName(broker);
                       const isMultipleBrokers = group.brokers.length > 1;
 
-                      return (
+                      return brokerPhone ? (
                         <div key={broker.id} className="flex items-center gap-1">
                           {isMultipleBrokers && (
                             <span className="text-xs text-gray-400 mr-1">{broker.first_name}:</span>
                           )}
-                          {brokerPhone && (
-                            <a
-                              href={`tel:${brokerPhone}`}
-                              className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 text-xs"
-                              title={`Call ${brokerName}`}
-                            >
-                              <Phone size={12} />
-                              {formatPhone(brokerPhone)}
-                            </a>
-                          )}
-                          {broker.email && (
-                            <a
-                              href={getGmailComposeUrl(broker.email, brokerName, propertyNames)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 text-xs"
-                              title={`Email ${brokerName} via Gmail`}
-                            >
-                              <Mail size={12} />
-                              Gmail
-                            </a>
-                          )}
+                          <a
+                            href={`tel:${brokerPhone}`}
+                            className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 text-xs"
+                            title={`Call ${brokerName}`}
+                          >
+                            <Phone size={12} />
+                            {formatPhone(brokerPhone)}
+                          </a>
                         </div>
-                      );
+                      ) : null;
                     })}
+                    {/* Single email button for all brokers in the group */}
+                    {group.brokers.some(b => b.email) && (
+                      <button
+                        onClick={() => handleEmailBrokers(group.brokers, group.siteSubmits)}
+                        className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 text-xs"
+                        title={`Email ${group.brokers.length > 1 ? 'brokers' : 'broker'} via Gmail`}
+                      >
+                        <Mail size={12} />
+                        Email
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -547,6 +554,17 @@ export default function SiteSubmitCallList({
           )}
         </div>
       )}
+
+      {/* Email Modal */}
+      <BrokerEmailModal
+        isOpen={showEmailModal}
+        onClose={() => setShowEmailModal(false)}
+        brokers={emailBrokers}
+        properties={emailProperties}
+        onSuccess={() => {
+          // Optionally refresh or show success message
+        }}
+      />
     </div>
   );
 }
