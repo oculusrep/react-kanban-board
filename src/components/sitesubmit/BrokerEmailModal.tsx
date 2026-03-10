@@ -54,6 +54,37 @@ export default function BrokerEmailModal({
   const [sending, setSending] = useState(false);
   const [newRecipient, setNewRecipient] = useState('');
   const [recipientType, setRecipientType] = useState<'to' | 'cc' | 'bcc'>('to');
+  const [signatureHtml, setSignatureHtml] = useState<string | null>(null);
+
+  // Fetch user's email signature when modal opens
+  useEffect(() => {
+    const fetchSignature = async () => {
+      if (!isOpen) return;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Get user ID from user table
+      const { data: userData } = await supabase
+        .from('user')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      if (userData?.id) {
+        const { data: signature } = await supabase
+          .from('user_email_signature')
+          .select('signature_html')
+          .eq('user_id', userData.id)
+          .eq('is_default', true)
+          .single();
+
+        setSignatureHtml(signature?.signature_html || null);
+      }
+    };
+
+    fetchSignature();
+  }, [isOpen]);
 
   // Generate default email content when modal opens
   useEffect(() => {
@@ -67,22 +98,37 @@ export default function BrokerEmailModal({
       const suffix = properties.length > 2 ? ` and ${properties.length - 2} more` : '';
       setSubject(`Following up - ${propertyList}${suffix}`);
 
+      // Generate greeting with all broker first names
+      const brokerFirstNames = brokers
+        .map(b => b.first_name)
+        .filter(Boolean) as string[];
+
+      let greeting: string;
+      if (brokerFirstNames.length === 0) {
+        greeting = 'Hi there';
+      } else if (brokerFirstNames.length === 1) {
+        greeting = `Hi ${brokerFirstNames[0]}`;
+      } else if (brokerFirstNames.length === 2) {
+        greeting = `Hi ${brokerFirstNames[0]} and ${brokerFirstNames[1]}`;
+      } else {
+        // 3+ names: "Hi Ed, Mindy, and John"
+        const lastIndex = brokerFirstNames.length - 1;
+        greeting = `Hi ${brokerFirstNames.slice(0, lastIndex).join(', ')}, and ${brokerFirstNames[lastIndex]}`;
+      }
+
       // Generate default body
-      const brokerFirstName = brokers[0]?.first_name || 'there';
       const propertyBullets = properties.map(p => {
         const location = [p.city, p.state].filter(Boolean).join(', ');
         return `• ${p.name}${location ? ` (${location})` : ''}`;
       }).join('\n');
 
-      setBody(`Hi ${brokerFirstName},
+      setBody(`${greeting},
 
-I wanted to follow up with you regarding the following properties:
+I wanted to touch base with you regarding the following properties:
 
 ${propertyBullets}
 
-Please let me know if you have any updates or availability for a quick call.
-
-Best regards`);
+Please let me know if you have any updates or availability for a quick call.`);
     }
   }, [isOpen, brokers, properties]);
 
@@ -96,6 +142,7 @@ Best regards`);
       setBody('');
       setAttachments([]);
       setNewRecipient('');
+      setSignatureHtml(null);
     }
   }, [isOpen]);
 
@@ -194,10 +241,15 @@ Best regards`);
         .eq('auth_user_id', user.id)
         .single();
 
-      // Convert plain text body to HTML
-      const htmlBody = `<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333;">
+      // Convert plain text body to HTML and append signature
+      let htmlBody = `<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333;">
         ${body.split('\n').map(line => `<p style="margin: 0 0 8px 0;">${line || '&nbsp;'}</p>`).join('')}
       </div>`;
+
+      // Append user's email signature if available
+      if (signatureHtml) {
+        htmlBody += `<br><br>${signatureHtml}`;
+      }
 
       // Send via Gmail API
       const response = await supabase.functions.invoke('hunter-send-outreach', {
