@@ -122,7 +122,7 @@ export default function HandoffBadge({
       `}
       title={showTurns && turnsCount > 0 ? `${turnsCount} turns` : undefined}
     >
-      {/* Us segment */}
+      {/* TT (Tenant) segment */}
       <button
         onClick={(e) => handleToggle('us', e)}
         disabled={isUpdating}
@@ -130,12 +130,12 @@ export default function HandoffBadge({
           flex items-center gap-0.5 font-medium transition-all
           ${segmentClasses}
           ${isUs
-            ? 'bg-cyan-500 text-white'
-            : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 cursor-pointer'
+            ? 'bg-slate-700 text-white'
+            : 'bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600 cursor-pointer'
           }
         `}
       >
-        <span>Us</span>
+        <span>TT</span>
         {isUs && <span className="opacity-80">•</span>}
         {isUs && <span>{daysHeld}d</span>}
       </button>
@@ -148,8 +148,8 @@ export default function HandoffBadge({
           flex items-center gap-0.5 font-medium transition-all
           ${segmentClasses}
           ${!isUs
-            ? 'bg-amber-500 text-white'
-            : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 cursor-pointer'
+            ? 'bg-amber-600 text-white'
+            : 'bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600 cursor-pointer'
           }
         `}
       >

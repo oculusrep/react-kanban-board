@@ -780,7 +780,7 @@ export default function KanbanBoard() {
                                     )}
                                     {weeksBehind > 0 && (
                                       <div
-                                        className="text-xs px-2 py-0.5 rounded-full inline-block bg-pink-200 text-pink-800 font-medium"
+                                        className="text-xs px-2 py-0.5 rounded-full inline-block bg-red-100 text-red-700 font-medium"
                                         title={`${weeksBehind} week${weeksBehind > 1 ? 's' : ''} behind schedule`}
                                       >
                                         {weeksBehind}w behind
