@@ -14,14 +14,12 @@ interface HandoffBadgeProps {
 }
 
 /**
- * HandoffBadge - Clickable pill showing document handoff status
+ * HandoffBadge - Segmented control showing document handoff status
  *
- * Displays:
- * - "Us • 5d" (teal) when document is with us
- * - "LL • 3d" (amber) when document is with landlord
- * - Nothing when no status set yet
- *
- * Clicking toggles the holder and sets date to today.
+ * Displays a toggle switch with two slots: [ Us ] [ LL ]
+ * - Active side highlights and shows days count
+ * - Inactive side is grayed out
+ * - Clicking inactive side toggles the holder
  */
 export default function HandoffBadge({
   dealId,
@@ -59,18 +57,16 @@ export default function HandoffBadge({
   const daysHeld = getDaysHeld();
 
   // Handle click to toggle holder
-  const handleClick = async (e: React.MouseEvent) => {
+  const handleToggle = async (newHolder: 'us' | 'll', e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent card click
     e.preventDefault();
 
-    if (isUpdating) return;
+    // If clicking the already-active side, do nothing
+    if (holder === newHolder || isUpdating) return;
 
     setIsUpdating(true);
 
     try {
-      // Determine new holder (toggle, or set to 'us' if no current holder)
-      const newHolder: 'us' | 'll' = holder === 'us' ? 'll' : 'us';
-
       // Get today's date in local timezone (Eastern Time per CLAUDE.md)
       const now = new Date();
       const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -106,40 +102,61 @@ export default function HandoffBadge({
     return null;
   }
 
-  // Styles based on holder
   const isUs = holder === 'us';
-  const bgColor = isUs ? 'bg-cyan-100' : 'bg-amber-100';
-  const textColor = isUs ? 'text-cyan-800' : 'text-amber-800';
-  const hoverBg = isUs ? 'hover:bg-cyan-200' : 'hover:bg-amber-200';
-  const label = isUs ? 'Us' : 'LL';
 
   // Size classes
-  const sizeClasses = size === 'sm'
-    ? 'text-xs px-2 py-0.5'
-    : 'text-sm px-3 py-1';
+  const containerClasses = size === 'sm'
+    ? 'text-[10px] h-5'
+    : 'text-xs h-6';
+
+  const segmentClasses = size === 'sm'
+    ? 'px-1.5'
+    : 'px-2';
 
   return (
-    <button
-      onClick={handleClick}
-      disabled={isUpdating}
+    <div
       className={`
-        inline-flex items-center gap-1 rounded-full font-medium
-        ${bgColor} ${textColor} ${hoverBg}
-        ${sizeClasses}
-        transition-colors cursor-pointer
-        ${isUpdating ? 'opacity-50 cursor-wait' : ''}
+        inline-flex rounded overflow-hidden border border-gray-300
+        ${containerClasses}
+        ${isUpdating ? 'opacity-50' : ''}
       `}
-      title={`Click to toggle to ${isUs ? 'LL' : 'Us'}`}
+      title={showTurns && turnsCount > 0 ? `${turnsCount} turns` : undefined}
     >
-      <span>{label}</span>
-      <span className="opacity-75">•</span>
-      <span>{daysHeld}d</span>
-      {showTurns && turnsCount > 0 && (
-        <>
-          <span className="opacity-50">|</span>
-          <span className="opacity-75">{turnsCount} turns</span>
-        </>
-      )}
-    </button>
+      {/* Us segment */}
+      <button
+        onClick={(e) => handleToggle('us', e)}
+        disabled={isUpdating}
+        className={`
+          flex items-center gap-0.5 font-medium transition-all
+          ${segmentClasses}
+          ${isUs
+            ? 'bg-cyan-500 text-white'
+            : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 cursor-pointer'
+          }
+        `}
+      >
+        <span>Us</span>
+        {isUs && <span className="opacity-80">•</span>}
+        {isUs && <span>{daysHeld}d</span>}
+      </button>
+
+      {/* LL segment */}
+      <button
+        onClick={(e) => handleToggle('ll', e)}
+        disabled={isUpdating}
+        className={`
+          flex items-center gap-0.5 font-medium transition-all
+          ${segmentClasses}
+          ${!isUs
+            ? 'bg-amber-500 text-white'
+            : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 cursor-pointer'
+          }
+        `}
+      >
+        <span>LL</span>
+        {!isUs && <span className="opacity-80">•</span>}
+        {!isUs && <span>{daysHeld}d</span>}
+      </button>
+    </div>
   );
 }
