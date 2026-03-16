@@ -752,40 +752,44 @@ export default function KanbanBoard() {
                               <div className="text-gray-700">
                                 {formatCurrency(card.fee)}
                               </div>
-                              <div className="text-gray-500 text-xs flex items-center gap-1.5">
-                                <span>{card.client_name || 'No Client'}</span>
-                                {/* Document Handoff Badge (LOI/Lease stages only) - inline with client */}
-                                <HandoffBadge
-                                  dealId={card.id}
-                                  holder={card.current_handoff_holder || null}
-                                  changedAt={card.current_handoff_date || null}
-                                  documentType={card.current_handoff_document || null}
-                                  stageLabel={column.label}
-                                  onUpdate={refresh}
-                                  size="sm"
-                                />
+                              <div className="text-gray-500 text-xs">
+                                {card.client_name || 'No Client'}
                               </div>
                               <div className="text-gray-800">
                                 {formatCurrency(card.deal_value)}
                               </div>
-                              {/* Behind Schedule Badge + Days in Stage Badge */}
+                              {/* Handoff Toggle + Behind Schedule Badge */}
                               {(() => {
                                 const daysInStage = getDaysInStage(card.last_stage_change_at, card.created_at);
                                 const weeksBehind = calculateWeeksBehind(daysInStage, column.label);
                                 const isStale = daysInStage > 30 && staleStages.includes(column.label);
+                                const hasHandoffTracking = card.current_handoff_holder && staleStages.includes(column.label);
                                 return (
-                                  <>
+                                  <div className="mt-1 flex items-center gap-1 flex-wrap">
+                                    {/* Handoff toggle (own row, replaces days in stage when active) */}
+                                    {staleStages.includes(column.label) && card.current_handoff_holder && (
+                                      <HandoffBadge
+                                        dealId={card.id}
+                                        holder={card.current_handoff_holder || null}
+                                        changedAt={card.current_handoff_date || null}
+                                        documentType={card.current_handoff_document || null}
+                                        stageLabel={column.label}
+                                        onUpdate={refresh}
+                                        size="sm"
+                                      />
+                                    )}
                                     {weeksBehind > 0 && (
                                       <div
-                                        className="mt-1 text-xs px-2 py-0.5 rounded-full inline-block bg-pink-200 text-pink-800 font-medium mr-1"
+                                        className="text-xs px-2 py-0.5 rounded-full inline-block bg-pink-200 text-pink-800 font-medium"
                                         title={`${weeksBehind} week${weeksBehind > 1 ? 's' : ''} behind schedule`}
                                       >
                                         {weeksBehind}w behind
                                       </div>
                                     )}
-                                    {daysInStage > 0 && (
+                                    {/* Only show days in stage if no handoff tracking active */}
+                                    {!hasHandoffTracking && daysInStage > 0 && (
                                       <div
-                                        className={`mt-1 text-xs px-2 py-0.5 rounded-full inline-block ${
+                                        className={`text-xs px-2 py-0.5 rounded-full inline-block ${
                                           isStale
                                             ? 'bg-red-100 text-red-700 font-medium'
                                             : 'bg-gray-100 text-gray-500'
@@ -795,7 +799,7 @@ export default function KanbanBoard() {
                                         {daysInStage}d in stage
                                       </div>
                                     )}
-                                  </>
+                                  </div>
                                 );
                               })()}
                             </div>
