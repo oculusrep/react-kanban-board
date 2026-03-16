@@ -489,6 +489,42 @@ export default function KanbanBoard() {
     setHandoffPickerDealId(null);
   };
 
+  // Start handoff tracking for a deal (first toggle)
+  const startHandoffTracking = async (card: DealCard, stageLabel: string, holder: 'us' | 'll') => {
+    setOpenDropdownId(null);
+
+    // Determine document type based on stage
+    const documentType: 'LOI' | 'Lease' = stageLabel === 'Negotiating LOI' ? 'LOI' : 'Lease';
+
+    // Get today's date in local timezone
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    try {
+      const { error } = await supabase
+        .from('document_handoff')
+        .insert({
+          deal_id: card.id,
+          document_type: documentType,
+          holder: holder,
+          changed_at: today,
+        });
+
+      if (error) {
+        console.error('Error starting handoff:', error);
+        showToast('Failed to start handoff tracking', { type: 'error' });
+        return;
+      }
+
+      // Refresh to show the new badge
+      refresh();
+      showToast(`Started tracking - ${documentType} with ${holder === 'us' ? 'Us' : 'LL'}`, { type: 'success' });
+    } catch (err) {
+      console.error('Error starting handoff:', err);
+      showToast('Failed to start handoff tracking', { type: 'error' });
+    }
+  };
+
   if (loading) return <div className="p-4">Loading...</div>;
 
   return (
@@ -668,6 +704,23 @@ export default function KanbanBoard() {
                                       >
                                         Edit
                                       </Link>
+                                      {/* Start Handoff - only show if no handoff exists and in tracked stage */}
+                                      {!card.current_handoff_holder && staleStages.includes(column.label) && (
+                                        <>
+                                          <button
+                                            onClick={() => startHandoffTracking(card, column.label, 'us')}
+                                            className="w-full text-left px-4 py-2 text-sm text-cyan-700 hover:bg-cyan-50"
+                                          >
+                                            Start with Us
+                                          </button>
+                                          <button
+                                            onClick={() => startHandoffTracking(card, column.label, 'll')}
+                                            className="w-full text-left px-4 py-2 text-sm text-amber-700 hover:bg-amber-50"
+                                          >
+                                            Start with LL
+                                          </button>
+                                        </>
+                                      )}
                                       {/* Edit Handoff Date - only show if handoff exists and in tracked stage */}
                                       {card.current_handoff_holder && staleStages.includes(column.label) && (
                                         <button
