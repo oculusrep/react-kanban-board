@@ -116,13 +116,13 @@ export default function HandoffBadge({
   return (
     <div
       className={`
-        inline-flex rounded overflow-hidden border border-gray-300
+        inline-flex rounded overflow-hidden border border-gray-200
         ${containerClasses}
         ${isUpdating ? 'opacity-50' : ''}
       `}
       title={showTurns && turnsCount > 0 ? `${turnsCount} turns` : undefined}
     >
-      {/* TT (Tenant) segment */}
+      {/* TT (Tenant) segment - Indigo/Navy for "Action" */}
       <button
         onClick={(e) => handleToggle('us', e)}
         disabled={isUpdating}
@@ -130,17 +130,17 @@ export default function HandoffBadge({
           flex items-center gap-0.5 font-medium transition-all
           ${segmentClasses}
           ${isUs
-            ? 'bg-blue-600 text-white'
-            : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 cursor-pointer'
+            ? 'bg-indigo-100 text-indigo-800'
+            : 'bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-500 cursor-pointer'
           }
         `}
       >
         <span>TT</span>
-        {isUs && <span className="opacity-80">•</span>}
+        {isUs && <span className="opacity-70">•</span>}
         {isUs && <span>{daysHeld}d</span>}
       </button>
 
-      {/* LL segment */}
+      {/* LL segment - Amber/Sage for "Waiting" */}
       <button
         onClick={(e) => handleToggle('ll', e)}
         disabled={isUpdating}
@@ -148,13 +148,13 @@ export default function HandoffBadge({
           flex items-center gap-0.5 font-medium transition-all
           ${segmentClasses}
           ${!isUs
-            ? 'bg-orange-500 text-white'
-            : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 cursor-pointer'
+            ? 'bg-amber-100 text-amber-800'
+            : 'bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-500 cursor-pointer'
           }
         `}
       >
         <span>LL</span>
-        {!isUs && <span className="opacity-80">•</span>}
+        {!isUs && <span className="opacity-70">•</span>}
         {!isUs && <span>{daysHeld}d</span>}
       </button>
     </div>

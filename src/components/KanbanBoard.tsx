@@ -631,7 +631,7 @@ export default function KanbanBoard() {
                       </div>
                     </div>
                     <div className="bg-white text-center py-2 border-b">
-                      <div className="text-green-600 text-lg font-bold">
+                      <div className="text-emerald-700 text-lg font-bold">
                         {formatCurrency(totalFee)}
                       </div>
                     </div>
@@ -648,12 +648,12 @@ export default function KanbanBoard() {
                               ref={provided.innerRef}
                               {...provided.draggableProps}
                               {...provided.dragHandleProps}
-                              className={`p-2 rounded shadow mb-2 border text-sm relative ${
+                              className={`p-2 rounded shadow-sm mb-2 border text-sm relative ${
                                 snapshot.isDragging
-                                  ? "bg-yellow-100"
+                                  ? "bg-yellow-50"
                                   : isBehindSchedule
-                                    ? "bg-pink-50 border-pink-200"
-                                    : "bg-white"
+                                    ? "bg-white border-gray-200"
+                                    : "bg-white border-gray-100"
                               }`}
                             >
                               {/* AI Synopsis Status Indicator */}
@@ -744,7 +744,7 @@ export default function KanbanBoard() {
                               <div className={`font-semibold pr-6 ${card.synopsis_alert_level ? 'pl-4' : ''}`}>
                                 <Link
                                   to={`/deal/${card.id}`}
-                                  className="text-blue-600 hover:underline"
+                                  className="text-slate-800 hover:text-slate-600 hover:underline"
                                 >
                                   {card.deal_name || 'Untitled Deal'}
                                 </Link>
@@ -780,7 +780,7 @@ export default function KanbanBoard() {
                                     )}
                                     {weeksBehind > 0 && (
                                       <div
-                                        className="text-xs px-2 py-0.5 rounded-full inline-block bg-red-100 text-red-700 font-medium"
+                                        className="text-xs px-2 py-0.5 rounded-full inline-block bg-gray-100 text-red-700 font-medium"
                                         title={`${weeksBehind} week${weeksBehind > 1 ? 's' : ''} behind schedule`}
                                       >
                                         {weeksBehind}w behind
@@ -791,7 +791,7 @@ export default function KanbanBoard() {
                                       <div
                                         className={`text-xs px-2 py-0.5 rounded-full inline-block ${
                                           isStale
-                                            ? 'bg-red-100 text-red-700 font-medium'
+                                            ? 'bg-gray-100 text-red-700 font-medium'
                                             : 'bg-gray-100 text-gray-500'
                                         }`}
                                         title={`${daysInStage} days in ${column.label}`}
