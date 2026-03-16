@@ -203,6 +203,16 @@ The kanban now calculates `weeks_behind` in real-time based on the current stage
 
 Formula: `weeks_behind = floor((days_in_stage - expected_days) / 7)`
 
+**Days in Stage Calculation:**
+- Primary: Uses `last_stage_change_at` field
+- Fallback: Uses `created_at` if `last_stage_change_at` is not set
+- This ensures all deals show the "Xd in stage" badge
+
+**Stage Label Compatibility:**
+The system supports both label formats used in the database:
+- `At Lease / PSA` (with spaces around slash)
+- `At Lease/PSA` (without spaces)
+
 **Stage Change Reset:**
 When a deal moves out of a tracked stage (LOI or At Lease/PSA), the `is_behind_schedule` and `weeks_behind` fields are automatically reset to `false`/`0` both in the UI and database.
 
