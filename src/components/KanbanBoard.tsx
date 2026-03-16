@@ -47,13 +47,15 @@ export default function KanbanBoard() {
     return Math.floor(diffTime / (1000 * 60 * 60 * 24));
   };
 
-  // Stages where >30 days is considered stale
-  const staleStages = ['Negotiating LOI', 'At Lease / PSA'];
+  // Stages where >30 days is considered stale (support both label formats)
+  const staleStages = ['Negotiating LOI', 'At Lease / PSA', 'At Lease/PSA'];
 
   // Expected velocity defaults (days) per stage - matches app_settings values
+  // Support both label formats (with and without spaces around slash)
   const stageVelocityDefaults: Record<string, number> = {
     'Negotiating LOI': 30,
     'At Lease / PSA': 45,
+    'At Lease/PSA': 45,  // alternate format
   };
   const behindScheduleThreshold = 7; // days grace before marking behind
 
