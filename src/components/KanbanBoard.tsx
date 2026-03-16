@@ -752,8 +752,18 @@ export default function KanbanBoard() {
                               <div className="text-gray-700">
                                 {formatCurrency(card.fee)}
                               </div>
-                              <div className="text-gray-500 text-xs">
-                                {card.client_name || 'No Client'}
+                              <div className="text-gray-500 text-xs flex items-center gap-1.5">
+                                <span>{card.client_name || 'No Client'}</span>
+                                {/* Document Handoff Badge (LOI/Lease stages only) - inline with client */}
+                                <HandoffBadge
+                                  dealId={card.id}
+                                  holder={card.current_handoff_holder || null}
+                                  changedAt={card.current_handoff_date || null}
+                                  documentType={card.current_handoff_document || null}
+                                  stageLabel={column.label}
+                                  onUpdate={refresh}
+                                  size="sm"
+                                />
                               </div>
                               <div className="text-gray-800">
                                 {formatCurrency(card.deal_value)}
@@ -788,18 +798,6 @@ export default function KanbanBoard() {
                                   </>
                                 );
                               })()}
-                              {/* Document Handoff Badge (LOI/Lease stages only) */}
-                              <div className="mt-1">
-                                <HandoffBadge
-                                  dealId={card.id}
-                                  holder={card.current_handoff_holder || null}
-                                  changedAt={card.current_handoff_date || null}
-                                  documentType={card.current_handoff_document || null}
-                                  stageLabel={column.label}
-                                  onUpdate={refresh}
-                                  size="sm"
-                                />
-                              </div>
                             </div>
                           );}}
                         </Draggable>
