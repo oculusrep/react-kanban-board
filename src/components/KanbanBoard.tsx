@@ -50,6 +50,25 @@ export default function KanbanBoard() {
   // Stages where >30 days is considered stale
   const staleStages = ['Negotiating LOI', 'At Lease / PSA'];
 
+  // Expected velocity defaults (days) per stage - matches app_settings values
+  const stageVelocityDefaults: Record<string, number> = {
+    'Negotiating LOI': 30,
+    'At Lease / PSA': 45,
+  };
+  const behindScheduleThreshold = 7; // days grace before marking behind
+
+  // Calculate weeks behind in real-time based on current stage
+  const calculateWeeksBehind = (daysInStage: number, stageLabel: string): number => {
+    const expectedDays = stageVelocityDefaults[stageLabel];
+    if (!expectedDays) return 0; // Not a tracked stage
+
+    const threshold = expectedDays + behindScheduleThreshold;
+    if (daysInStage <= threshold) return 0;
+
+    const daysBehind = daysInStage - expectedDays;
+    return Math.max(1, Math.floor(daysBehind / 7));
+  };
+
   useEffect(() => {
     setLocalCards(cards);
   }, [cards]);
@@ -182,6 +201,12 @@ export default function KanbanBoard() {
     const isMovingToClosedPaid = destStage?.label === "Closed Paid" && stageChanged;
     const isMovingToBooked = destStage?.label === "Booked" && stageChanged;
 
+    // Reset behind-schedule status when moving out of tracked stages (for immediate UI update)
+    if (stageChanged && !staleStages.includes(destStage?.label || '')) {
+      draggedCard.is_behind_schedule = false;
+      draggedCard.weeks_behind = 0;
+    }
+
     const cardsInDest = updatedCards
       .filter((card) => card.stage_id === destColId && card.id !== draggableId)
       .sort((a, b) => (a.kanban_position ?? 0) - (b.kanban_position ?? 0));
@@ -209,6 +234,13 @@ export default function KanbanBoard() {
       // Only update last_stage_change_at for the dragged card if stage changed
       if (card.id === draggableId && stageChanged) {
         updateData.last_stage_change_at = now;
+
+        // Reset behind-schedule status when moving out of tracked stages
+        // (behind schedule only applies to 'Negotiating LOI' and 'At Lease / PSA')
+        if (!staleStages.includes(destStage?.label || '')) {
+          updateData.is_behind_schedule = false;
+          updateData.weeks_behind = 0;
+        }
       }
 
       return supabase
@@ -530,7 +562,11 @@ export default function KanbanBoard() {
                     <div className="p-2 flex-1">
                       {cardsInColumn.map((card, index) => (
                         <Draggable key={card.id} draggableId={card.id} index={index}>
-                          {(provided, snapshot) => (
+                          {(provided, snapshot) => {
+                            const cardDaysInStage = getDaysInStage(card.last_stage_change_at);
+                            const cardWeeksBehind = calculateWeeksBehind(cardDaysInStage, column.label);
+                            const isBehindSchedule = cardWeeksBehind > 0;
+                            return (
                             <div
                               ref={provided.innerRef}
                               {...provided.draggableProps}
@@ -538,7 +574,7 @@ export default function KanbanBoard() {
                               className={`p-2 rounded shadow mb-2 border text-sm relative ${
                                 snapshot.isDragging
                                   ? "bg-yellow-100"
-                                  : card.is_behind_schedule
+                                  : isBehindSchedule
                                     ? "bg-pink-50 border-pink-200"
                                     : "bg-white"
                               }`}
@@ -619,37 +655,38 @@ export default function KanbanBoard() {
                               <div className="text-gray-800">
                                 {formatCurrency(card.deal_value)}
                               </div>
-                              {/* Behind Schedule Badge */}
-                              {card.is_behind_schedule && card.weeks_behind && card.weeks_behind > 0 && (
-                                <div
-                                  className="mt-1 text-xs px-2 py-0.5 rounded-full inline-block bg-pink-200 text-pink-800 font-medium mr-1"
-                                  title={`${card.weeks_behind} week${card.weeks_behind > 1 ? 's' : ''} behind schedule`}
-                                >
-                                  {card.weeks_behind}w behind
-                                </div>
-                              )}
-                              {/* Days in Stage Badge */}
+                              {/* Behind Schedule Badge + Days in Stage Badge */}
                               {(() => {
                                 const daysInStage = getDaysInStage(card.last_stage_change_at);
+                                const weeksBehind = calculateWeeksBehind(daysInStage, column.label);
                                 const isStale = daysInStage > 30 && staleStages.includes(column.label);
-                                if (daysInStage > 0) {
-                                  return (
-                                    <div
-                                      className={`mt-1 text-xs px-2 py-0.5 rounded-full inline-block ${
-                                        isStale
-                                          ? 'bg-red-100 text-red-700 font-medium'
-                                          : 'bg-gray-100 text-gray-500'
-                                      }`}
-                                      title={`${daysInStage} days in ${column.label}`}
-                                    >
-                                      {daysInStage}d in stage
-                                    </div>
-                                  );
-                                }
-                                return null;
+                                return (
+                                  <>
+                                    {weeksBehind > 0 && (
+                                      <div
+                                        className="mt-1 text-xs px-2 py-0.5 rounded-full inline-block bg-pink-200 text-pink-800 font-medium mr-1"
+                                        title={`${weeksBehind} week${weeksBehind > 1 ? 's' : ''} behind schedule`}
+                                      >
+                                        {weeksBehind}w behind
+                                      </div>
+                                    )}
+                                    {daysInStage > 0 && (
+                                      <div
+                                        className={`mt-1 text-xs px-2 py-0.5 rounded-full inline-block ${
+                                          isStale
+                                            ? 'bg-red-100 text-red-700 font-medium'
+                                            : 'bg-gray-100 text-gray-500'
+                                        }`}
+                                        title={`${daysInStage} days in ${column.label}`}
+                                      >
+                                        {daysInStage}d in stage
+                                      </div>
+                                    )}
+                                  </>
+                                );
                               })()}
                             </div>
-                          )}
+                          );}}
                         </Draggable>
                       ))}
                       {provided.placeholder}
