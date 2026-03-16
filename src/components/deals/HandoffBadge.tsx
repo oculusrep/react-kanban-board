@@ -130,8 +130,8 @@ export default function HandoffBadge({
           flex items-center gap-0.5 font-medium transition-all
           ${segmentClasses}
           ${isUs
-            ? 'bg-slate-700 text-white'
-            : 'bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600 cursor-pointer'
+            ? 'bg-blue-600 text-white'
+            : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 cursor-pointer'
           }
         `}
       >
@@ -148,8 +148,8 @@ export default function HandoffBadge({
           flex items-center gap-0.5 font-medium transition-all
           ${segmentClasses}
           ${!isUs
-            ? 'bg-amber-600 text-white'
-            : 'bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600 cursor-pointer'
+            ? 'bg-orange-500 text-white'
+            : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 cursor-pointer'
           }
         `}
       >
