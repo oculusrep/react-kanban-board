@@ -189,9 +189,22 @@ When deal is in Under Contract/Contingent or later stage AND critical dates are 
 
 ### 4. Master Pipeline Kanban - Behind Schedule
 
-When `is_behind_schedule` = true:
+Cards display behind-schedule status with:
 - Card background turns pink
 - Badge shows "Xw behind" (e.g., "2w behind")
+
+**Real-Time Calculation (March 2026 Update):**
+The kanban now calculates `weeks_behind` in real-time based on the current stage duration, rather than using stored database values. This ensures the badge always matches the "days in stage" display.
+
+| Stage | Expected Days | Behind After |
+|-------|---------------|--------------|
+| Negotiating LOI | 30 | 37 days (30 + 7 threshold) |
+| At Lease / PSA | 45 | 52 days (45 + 7 threshold) |
+
+Formula: `weeks_behind = floor((days_in_stage - expected_days) / 7)`
+
+**Stage Change Reset:**
+When a deal moves out of a tracked stage (LOI or At Lease/PSA), the `is_behind_schedule` and `weeks_behind` fields are automatically reset to `false`/`0` both in the UI and database.
 
 ### 5. Client Page - Forecasting Section
 

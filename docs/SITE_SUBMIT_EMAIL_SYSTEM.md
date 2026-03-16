@@ -452,8 +452,11 @@ For issues or questions:
 - Navbar integration
 - Search functionality
 
+**v1.1** - March 2026
+- **Broker Commentary field fix:** Fixed issue where `$` characters in commentary (e.g., "$100,000") were being interpreted as special regex replacement patterns and causing text to be cut off or mangled. Now uses function-based string replacement to handle all characters safely.
+
 **Status:** TEST MODE - Ready for production after domain verification
 
 ---
 
-*Last updated: 2025-01-09*
+*Last updated: 2026-03-16*
