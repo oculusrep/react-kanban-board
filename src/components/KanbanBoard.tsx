@@ -39,9 +39,11 @@ export default function KanbanBoard() {
   const [currentBookedDate, setCurrentBookedDate] = useState<string | null>(null);
 
   // Helper function to calculate days in current stage
-  const getDaysInStage = (lastStageChangeAt: string | null | undefined): number => {
-    if (!lastStageChangeAt) return 0;
-    const changeDate = new Date(lastStageChangeAt);
+  // Falls back to created_at if last_stage_change_at is not set
+  const getDaysInStage = (lastStageChangeAt: string | null | undefined, createdAt?: string | null): number => {
+    const dateStr = lastStageChangeAt || createdAt;
+    if (!dateStr) return 0;
+    const changeDate = new Date(dateStr);
     const now = new Date();
     const diffTime = now.getTime() - changeDate.getTime();
     return Math.floor(diffTime / (1000 * 60 * 60 * 24));
@@ -565,7 +567,7 @@ export default function KanbanBoard() {
                       {cardsInColumn.map((card, index) => (
                         <Draggable key={card.id} draggableId={card.id} index={index}>
                           {(provided, snapshot) => {
-                            const cardDaysInStage = getDaysInStage(card.last_stage_change_at);
+                            const cardDaysInStage = getDaysInStage(card.last_stage_change_at, card.created_at);
                             const cardWeeksBehind = calculateWeeksBehind(cardDaysInStage, column.label);
                             const isBehindSchedule = cardWeeksBehind > 0;
                             return (
@@ -659,7 +661,7 @@ export default function KanbanBoard() {
                               </div>
                               {/* Behind Schedule Badge + Days in Stage Badge */}
                               {(() => {
-                                const daysInStage = getDaysInStage(card.last_stage_change_at);
+                                const daysInStage = getDaysInStage(card.last_stage_change_at, card.created_at);
                                 const weeksBehind = calculateWeeksBehind(daysInStage, column.label);
                                 const isStale = daysInStage > 30 && staleStages.includes(column.label);
                                 return (
