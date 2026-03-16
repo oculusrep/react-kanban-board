@@ -1,6 +1,7 @@
 // src/components/DealHeaderBar.tsx
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import HandoffBadge from './deals/HandoffBadge';
 
 interface DealHeaderBarProps {
   deal: {
@@ -12,8 +13,13 @@ interface DealHeaderBarProps {
     probability: number | null;
     target_close_date: string | null;
     client_id: string | null;
+    // Document handoff tracking
+    current_handoff_holder?: 'us' | 'll' | null;
+    current_handoff_date?: string | null;
+    current_handoff_document?: 'LOI' | 'Lease' | null;
   };
   onDelete?: () => void;
+  onRefresh?: () => void; // Called after handoff toggle
 }
 
 interface Client {
@@ -26,7 +32,7 @@ interface DealStage {
   label: string;
 }
 
-const DealHeaderBar: React.FC<DealHeaderBarProps> = ({ deal, onDelete }) => {
+const DealHeaderBar: React.FC<DealHeaderBarProps> = ({ deal, onDelete, onRefresh }) => {
   const [client, setClient] = useState<Client | null>(null);
   const [stage, setStage] = useState<DealStage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -167,8 +173,20 @@ const DealHeaderBar: React.FC<DealHeaderBarProps> = ({ deal, onDelete }) => {
 
           <div>
             <div className="text-slate-300 font-medium mb-1">Stage</div>
-            <div className="text-white font-semibold">
+            <div className="text-white font-semibold flex items-center gap-2">
               {stage?.label || 'No Stage'}
+              {/* Handoff Badge - only for LOI/Lease stages */}
+              {stage?.label && (
+                <HandoffBadge
+                  dealId={deal.id}
+                  holder={deal.current_handoff_holder || null}
+                  changedAt={deal.current_handoff_date || null}
+                  documentType={deal.current_handoff_document || null}
+                  stageLabel={stage.label}
+                  onUpdate={onRefresh}
+                  size="sm"
+                />
+              )}
             </div>
           </div>
 

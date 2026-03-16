@@ -451,7 +451,21 @@ export default function DealDetailsPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Deal Header Bar - Full Width */}
-      <DealHeaderBar deal={deal} onDelete={handleDelete} />
+      <DealHeaderBar
+        deal={deal}
+        onDelete={handleDelete}
+        onRefresh={async () => {
+          // Refetch deal data to pick up handoff changes
+          if (actualDealId && actualDealId !== 'new') {
+            const { data } = await supabase
+              .from('deal')
+              .select('*')
+              .eq('id', actualDealId)
+              .single();
+            if (data) setDeal(data);
+          }
+        }}
+      />
 
       {/* Main Content Area with Static Sidebar */}
       <div className="flex flex-1 overflow-hidden">

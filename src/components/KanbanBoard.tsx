@@ -15,9 +15,11 @@ import { useToast } from "../hooks/useToast";
 import LossReasonModal from "./LossReasonModal";
 import ClosedDateModal from "./ClosedDateModal";
 import BookedDateModal from "./BookedDateModal";
+import HandoffBadge from "./deals/HandoffBadge";
+import HandoffDatePicker from "./deals/HandoffDatePicker";
 
 export default function KanbanBoard() {
-  const { columns, cards, loading } = useKanbanData();
+  const { columns, cards, loading, refresh } = useKanbanData();
   const [localCards, setLocalCards] = useState<DealCard[]>([]);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [dealToDelete, setDealToDelete] = useState<string | null>(null);
@@ -37,6 +39,13 @@ export default function KanbanBoard() {
   // Booked date modal state
   const [showBookedDateModal, setShowBookedDateModal] = useState(false);
   const [currentBookedDate, setCurrentBookedDate] = useState<string | null>(null);
+
+  // Handoff date picker state
+  const [showHandoffDatePicker, setShowHandoffDatePicker] = useState(false);
+  const [handoffPickerDealId, setHandoffPickerDealId] = useState<string | null>(null);
+  const [handoffPickerDate, setHandoffPickerDate] = useState<string | null>(null);
+  const [handoffPickerDocType, setHandoffPickerDocType] = useState<'LOI' | 'Lease' | null>(null);
+  const [handoffPickerHolder, setHandoffPickerHolder] = useState<'us' | 'll' | null>(null);
 
   // Helper function to calculate days in current stage
   // Falls back to created_at if last_stage_change_at is not set
@@ -465,6 +474,21 @@ export default function KanbanBoard() {
     setOpenDropdownId(openDropdownId === cardId ? null : cardId);
   };
 
+  // Open handoff date picker for a card
+  const openHandoffDatePicker = (card: DealCard, stageLabel: string) => {
+    setHandoffPickerDealId(card.id);
+    setHandoffPickerDate(card.current_handoff_date || null);
+    setHandoffPickerDocType(card.current_handoff_document || (stageLabel === 'Negotiating LOI' ? 'LOI' : 'Lease'));
+    setHandoffPickerHolder(card.current_handoff_holder || null);
+    setShowHandoffDatePicker(true);
+    setOpenDropdownId(null);
+  };
+
+  const closeHandoffDatePicker = () => {
+    setShowHandoffDatePicker(false);
+    setHandoffPickerDealId(null);
+  };
+
   if (loading) return <div className="p-4">Loading...</div>;
 
   return (
@@ -516,6 +540,19 @@ export default function KanbanBoard() {
         dealName={dealNameForModal}
         currentBookedDate={currentBookedDate}
       />
+
+      {/* Handoff Date Picker */}
+      {handoffPickerDealId && (
+        <HandoffDatePicker
+          isOpen={showHandoffDatePicker}
+          onClose={closeHandoffDatePicker}
+          dealId={handoffPickerDealId}
+          currentDate={handoffPickerDate}
+          documentType={handoffPickerDocType}
+          holder={handoffPickerHolder}
+          onUpdate={refresh}
+        />
+      )}
 
       <div className="flex min-w-max gap-[2px]">
         <DragDropContext onDragEnd={handleDragEnd}>
@@ -620,7 +657,7 @@ export default function KanbanBoard() {
                                 {openDropdownId === card.id && (
                                   <div
                                     ref={dropdownRef}
-                                    className="absolute right-0 mt-1 w-32 bg-white rounded-md shadow-lg z-50 border border-gray-200"
+                                    className="absolute right-0 mt-1 w-40 bg-white rounded-md shadow-lg z-50 border border-gray-200"
                                     onClick={(e) => e.stopPropagation()}
                                   >
                                     <div className="py-1">
@@ -631,6 +668,15 @@ export default function KanbanBoard() {
                                       >
                                         Edit
                                       </Link>
+                                      {/* Edit Handoff Date - only show if handoff exists and in tracked stage */}
+                                      {card.current_handoff_holder && staleStages.includes(column.label) && (
+                                        <button
+                                          onClick={() => openHandoffDatePicker(card, column.label)}
+                                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                        >
+                                          Edit Handoff Date
+                                        </button>
+                                      )}
                                       <button
                                         onClick={() => handleDeleteClick(card.id)}
                                         className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
@@ -689,6 +735,18 @@ export default function KanbanBoard() {
                                   </>
                                 );
                               })()}
+                              {/* Document Handoff Badge (LOI/Lease stages only) */}
+                              <div className="mt-1">
+                                <HandoffBadge
+                                  dealId={card.id}
+                                  holder={card.current_handoff_holder || null}
+                                  changedAt={card.current_handoff_date || null}
+                                  documentType={card.current_handoff_document || null}
+                                  stageLabel={column.label}
+                                  onUpdate={refresh}
+                                  size="sm"
+                                />
+                              </div>
                             </div>
                           );}}
                         </Draggable>

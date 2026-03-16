@@ -3,7 +3,7 @@
 Track LOI and Lease documents as they pass between "Us" (tenant/broker) and "LL" (landlord) during negotiations.
 
 **Created:** March 16, 2026
-**Status:** 📋 Planning
+**Status:** ✅ Implemented (Phases 1-3 Complete)
 
 ---
 
@@ -172,26 +172,40 @@ CREATE TRIGGER trigger_sync_current_handoff
 
 ## Implementation Plan
 
-### Phase 1: Database Migration
+### Phase 1: Database Migration ✅
 1. Create `document_handoff` table
 2. Add denormalized columns to `deal` table
 3. Create sync trigger
 4. Add RLS policies
 
-### Phase 2: Kanban Integration
+**Migration:** `supabase/migrations/20260316_document_handoff_tracking.sql`
+
+### Phase 2: Kanban Integration ✅
 1. Update `useKanbanData` hook to fetch handoff fields
 2. Create `HandoffBadge` component (clickable pill)
 3. Add badge to kanban card (LOI/Lease columns only)
 4. Implement toggle click handler with optimistic update
 5. Add "Edit Handoff Date" to three-dot menu
-6. Create date picker popover component
+6. Create `HandoffDatePicker` modal component
 
-### Phase 3: Deal Page Integration
+**Files:**
+- `src/hooks/useKanbanData.ts` - Added handoff fields to query
+- `src/components/deals/HandoffBadge.tsx` - Clickable pill component
+- `src/components/deals/HandoffDatePicker.tsx` - Date picker modal
+- `src/components/KanbanBoard.tsx` - Badge and menu integration
+
+### Phase 3: Deal Page Integration ✅
 1. Add handoff status to deal page header
 2. Make header badge clickable with same toggle behavior
 3. Add discrete date edit access (calendar icon)
 4. Create `HandoffHistory` collapsible section component
 5. Add to deal sidebar
+
+**Files:**
+- `src/components/DealHeaderBar.tsx` - Badge in header next to stage
+- `src/components/deals/HandoffHistory.tsx` - Collapsible history section
+- `src/components/DealSidebar.tsx` - Added HandoffHistory section
+- `src/lib/types.ts` - Added handoff fields to DealCard interface
 
 ### Phase 4: Analytics Prep (Future)
 1. Create view for handoff statistics by client
@@ -272,6 +286,41 @@ src/lib/types.ts                             # Add handoff types to DealCard
 - [ ] Landlord tracking (if landlord contacts are linked)
 - [ ] Notifications when document has been with LL > X days
 - [ ] Bulk update from kanban (select multiple, toggle all)
+
+---
+
+---
+
+## Deployment Notes
+
+### Run Database Migration
+
+After deploying, run the migration to create the database schema:
+
+```bash
+supabase db push
+```
+
+Or apply the migration directly:
+
+```sql
+-- Run contents of supabase/migrations/20260316_document_handoff_tracking.sql
+```
+
+### Testing
+
+1. Navigate to Master Pipeline (kanban board)
+2. Find a deal in "Negotiating LOI" or "At Lease/PSA" column
+3. Click the deal card - no badge should appear initially
+4. Insert a test handoff record manually:
+   ```sql
+   INSERT INTO document_handoff (deal_id, document_type, holder, changed_at)
+   VALUES ('your-deal-id', 'LOI', 'us', CURRENT_DATE);
+   ```
+5. Refresh the page - the "Us • 0d" badge should appear
+6. Click the badge to toggle to "LL"
+7. Use three-dot menu "Edit Handoff Date" to backdate
+8. Check deal page header and sidebar for history
 
 ---
 

@@ -100,6 +100,10 @@ export interface DealCard {
   // Forecasting: behind schedule indicator
   is_behind_schedule?: boolean;
   weeks_behind?: number;
+  // Document handoff tracking
+  current_handoff_holder?: 'us' | 'll' | null;
+  current_handoff_date?: string | null;
+  current_handoff_document?: 'LOI' | 'Lease' | null;
 }
 
 export interface Client {

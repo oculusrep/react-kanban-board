@@ -6,6 +6,7 @@ import SidebarModule from './sidebar/SidebarModule';
 import FileManagerModule from './sidebar/FileManagerModule';
 import ContactFormModal from './ContactFormModal';
 import ContactDealRolesManager from './ContactDealRolesManager';
+import HandoffHistory from './deals/HandoffHistory';
 
 type Note = Database['public']['Tables']['note']['Row'];
 type Contact = Database['public']['Tables']['contact']['Row'];
@@ -1137,6 +1138,11 @@ const DealSidebar: React.FC<DealSidebarProps> = ({
                   ))}
                 </div>
               </SidebarModule>
+
+              {/* Document Handoffs Module */}
+              <div className="mt-3">
+                <HandoffHistory dealId={dealId} defaultCollapsed={true} />
+              </div>
             </>
           )}
         </div>
