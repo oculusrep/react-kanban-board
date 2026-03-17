@@ -650,9 +650,9 @@ export default function KanbanBoard() {
                               {...provided.dragHandleProps}
                               className={`p-2 rounded shadow-sm mb-2 border text-sm relative ${
                                 snapshot.isDragging
-                                  ? "bg-yellow-50"
+                                  ? "bg-yellow-50 border-yellow-200"
                                   : isBehindSchedule
-                                    ? "bg-white border-gray-200"
+                                    ? "bg-white border-red-400"
                                     : "bg-white border-gray-100"
                               }`}
                             >
