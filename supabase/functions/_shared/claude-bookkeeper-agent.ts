@@ -16,8 +16,13 @@ import {
   draftJournalEntry,
   getAccountingContext,
   saveAccountingContext,
+  getBrokerDrawBalance,
+  calculateNetCommissionPayment,
+  createJournalEntryInQBO,
+  createBillInQBO,
   JournalEntryDraft,
   AccountSuggestion,
+  CreateQBOEntryResult,
 } from './bookkeeper-tools.ts';
 
 // ============================================================================
@@ -33,6 +38,7 @@ interface BookkeeperAgentResult {
   answer: string;
   journal_entry_draft?: JournalEntryDraft;
   account_suggestions?: AccountSuggestion[];
+  qbo_entry_created?: CreateQBOEntryResult;
   tool_calls_made: string[];
 }
 
@@ -116,7 +122,23 @@ When drafting entries, use the draft_journal_entry tool. Present results as a ta
 | Account | Debit | Credit |
 Include totals and a checkmark if balanced.
 
-TOOLS: get_chart_of_accounts, search_recent_transactions, explain_accounting_treatment, draft_journal_entry, get_accounting_context, save_accounting_context.
+TOOLS:
+- get_chart_of_accounts: Search QBO accounts by type or name
+- search_recent_transactions: Find recent transactions in QBO
+- explain_accounting_treatment: Get educational explanations for common scenarios
+- draft_journal_entry: Create a JE draft for review (does NOT post to QBO)
+- get_accounting_context / save_accounting_context: Manage saved rules
+- get_broker_draw_balance: Get a broker's current draw balance from QBO
+- calculate_net_commission_payment: Calculate net payment after applying draw balance
+- create_journal_entry_in_qbo: Create and post a journal entry to QBO (use with care!)
+- create_bill_in_qbo: Create a bill in QBO for payment via check/direct deposit
+
+ARTY'S DRAW WORKFLOW:
+When Arty earns a commission but has a draw balance:
+1. Use get_broker_draw_balance to check his current balance
+2. Use calculate_net_commission_payment to determine net amount owed
+3. If net payment > 0: Create a Bill for the net amount (so Mike can pay via direct deposit)
+4. Record the commission via journal entry: Debit Commission Expense, Credit Draw Account
 
 CONTEXT: Use save_accounting_context when asked to "remember" an accounting rule. Check get_accounting_context for relevant saved rules.
 
@@ -213,6 +235,56 @@ async function executeTool(
       };
     }
 
+    case 'get_broker_draw_balance': {
+      const balance = await getBrokerDrawBalance(
+        supabase,
+        toolInput.broker_name as string
+      );
+      return balance;
+    }
+
+    case 'calculate_net_commission_payment': {
+      const result = await calculateNetCommissionPayment(
+        supabase,
+        toolInput.broker_name as string,
+        toolInput.commission_amount as number
+      );
+      return result;
+    }
+
+    case 'create_journal_entry_in_qbo': {
+      const result = await createJournalEntryInQBO(
+        supabase,
+        toolInput.description as string,
+        toolInput.transaction_date as string,
+        toolInput.lines as Array<{
+          account_id: string;
+          account_name: string;
+          debit?: number;
+          credit?: number;
+          description?: string;
+          vendor_id?: string;
+          vendor_name?: string;
+        }>,
+        toolInput.memo as string | undefined
+      );
+      return result;
+    }
+
+    case 'create_bill_in_qbo': {
+      const result = await createBillInQBO(
+        supabase,
+        toolInput.vendor_name as string,
+        toolInput.amount as number,
+        toolInput.expense_account_id as string,
+        toolInput.expense_account_name as string,
+        toolInput.transaction_date as string,
+        toolInput.description as string,
+        toolInput.memo as string | undefined
+      );
+      return result;
+    }
+
     default:
       throw new Error(`Unknown tool: ${toolName}`);
   }
@@ -260,6 +332,7 @@ export async function runBookkeeperAgent(
   const toolCallsMade: string[] = [];
   let journalEntryDraft: JournalEntryDraft | undefined;
   let accountSuggestions: AccountSuggestion[] | undefined;
+  let qboEntryCreated: CreateQBOEntryResult | undefined;
 
   // Agent loop
   let maxIterations = 10;
@@ -291,6 +364,7 @@ export async function runBookkeeperAgent(
         answer,
         journal_entry_draft: journalEntryDraft,
         account_suggestions: accountSuggestions,
+        qbo_entry_created: qboEntryCreated,
         tool_calls_made: toolCallsMade,
       };
     }
@@ -331,6 +405,11 @@ export async function runBookkeeperAgent(
               }
             }
 
+            // Capture QBO entry creation results
+            if (toolUse.name === 'create_journal_entry_in_qbo' || toolUse.name === 'create_bill_in_qbo') {
+              qboEntryCreated = result as CreateQBOEntryResult;
+            }
+
             toolResults.push({
               type: 'tool_result',
               tool_use_id: toolUse.id,
@@ -358,6 +437,7 @@ export async function runBookkeeperAgent(
     answer: 'I was unable to complete the analysis within the allowed iterations. Please try a simpler question.',
     journal_entry_draft: journalEntryDraft,
     account_suggestions: accountSuggestions,
+    qbo_entry_created: qboEntryCreated,
     tool_calls_made: toolCallsMade,
   };
 }

@@ -7,6 +7,19 @@
  */
 
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
+import {
+  getQBConnection,
+  refreshTokenIfNeeded,
+  createJournalEntry,
+  createBill,
+  findOrCreateVendor,
+  qbApiRequest,
+  QBConnection,
+  QBJournalEntry,
+  QBJournalEntryLine,
+  QBBill,
+  QBBillLine,
+} from './quickbooks.ts';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -59,6 +72,26 @@ export interface AccountingContext {
   entity_type: string | null;
   entity_id: string | null;
   created_at: string;
+}
+
+export interface BrokerDrawBalance {
+  broker_id: string;
+  broker_name: string;
+  qb_account_id: string;
+  qb_account_name: string;
+  current_balance: number;
+  total_draws: number;
+  total_commissions: number;
+  as_of_date: string;
+}
+
+export interface CreateQBOEntryResult {
+  success: boolean;
+  qb_entity_id: string;
+  qb_entity_type: 'JournalEntry' | 'Bill';
+  qb_doc_number?: string;
+  amount: number;
+  message: string;
 }
 
 // ============================================================================
@@ -404,6 +437,360 @@ This is a Balance Sheet-neutral entry that just moves the expense between P&L ca
 }
 
 // ============================================================================
+// TOOL: GET BROKER DRAW BALANCE
+// ============================================================================
+
+export async function getBrokerDrawBalance(
+  supabase: SupabaseClient,
+  brokerName: string
+): Promise<BrokerDrawBalance> {
+  // First, find the broker by name
+  const { data: brokers, error: brokerError } = await supabase
+    .from('broker')
+    .select('id, name')
+    .ilike('name', `%${brokerName}%`);
+
+  if (brokerError) throw new Error(`Failed to find broker: ${brokerError.message}`);
+  if (!brokers || brokers.length === 0) {
+    throw new Error(`No broker found matching "${brokerName}"`);
+  }
+
+  const broker = brokers[0];
+
+  // Get the commission mapping to find the draw account
+  const { data: mapping, error: mappingError } = await supabase
+    .from('qb_commission_mapping')
+    .select(`
+      id,
+      broker_id,
+      qb_credit_account_id,
+      qb_credit_account_name,
+      qb_vendor_id,
+      qb_vendor_name
+    `)
+    .eq('broker_id', broker.id)
+    .eq('payment_method', 'journal_entry')
+    .eq('is_active', true)
+    .single();
+
+  if (mappingError || !mapping) {
+    throw new Error(`No commission mapping found for ${broker.name}. Configure it in Settings > QuickBooks.`);
+  }
+
+  if (!mapping.qb_credit_account_id) {
+    throw new Error(`${broker.name}'s commission mapping has no credit (draw) account configured.`);
+  }
+
+  // Get QBO connection
+  let connection = await getQBConnection(supabase);
+  if (!connection) {
+    throw new Error('QuickBooks is not connected. Please connect in Settings.');
+  }
+
+  connection = await refreshTokenIfNeeded(supabase, connection);
+
+  // Get account balance directly from QBO
+  const accountResult = await qbApiRequest<{ Account: { CurrentBalance?: number; Name: string } }>(
+    connection,
+    'GET',
+    `account/${mapping.qb_credit_account_id}`
+  );
+
+  const currentBalance = accountResult.Account.CurrentBalance || 0;
+
+  // Get transaction summary from the GL report for the current year
+  const today = new Date();
+  const startDate = `${today.getFullYear()}-01-01`;
+  const endDate = today.toISOString().split('T')[0];
+
+  const reportQuery = new URLSearchParams({
+    account: mapping.qb_credit_account_id,
+    start_date: startDate,
+    end_date: endDate,
+    summarize_column_by: 'Total',
+    columns: 'subt_nat_amount'
+  });
+
+  let totalDraws = 0;
+  let totalCommissions = 0;
+
+  try {
+    const reportResult = await qbApiRequest<any>(
+      connection,
+      'GET',
+      `reports/GeneralLedger?${reportQuery.toString()}`
+    );
+
+    // Parse the summary - look for totals
+    if (reportResult?.Rows?.Row) {
+      const rows = reportResult.Rows.Row;
+      for (const row of rows) {
+        if (row.Summary?.ColData) {
+          for (const col of row.Summary.ColData) {
+            if (col.value && typeof col.value === 'string') {
+              const amount = parseFloat(col.value.replace(/[,$]/g, '')) || 0;
+              // For draw accounts: negative = draws, positive = commissions
+              if (amount > 0) {
+                totalCommissions += amount;
+              } else {
+                totalDraws += Math.abs(amount);
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Could not fetch GL summary:', err);
+    // Continue with zeros - we still have the balance
+  }
+
+  return {
+    broker_id: broker.id,
+    broker_name: broker.name,
+    qb_account_id: mapping.qb_credit_account_id,
+    qb_account_name: mapping.qb_credit_account_name || accountResult.Account.Name,
+    current_balance: currentBalance,
+    total_draws: totalDraws,
+    total_commissions: totalCommissions,
+    as_of_date: endDate,
+  };
+}
+
+// ============================================================================
+// TOOL: CREATE JOURNAL ENTRY IN QBO
+// ============================================================================
+
+export async function createJournalEntryInQBO(
+  supabase: SupabaseClient,
+  description: string,
+  transactionDate: string,
+  lines: Array<{
+    account_id: string;
+    account_name: string;
+    debit?: number;
+    credit?: number;
+    description?: string;
+    vendor_id?: string;
+    vendor_name?: string;
+  }>,
+  memo?: string
+): Promise<CreateQBOEntryResult> {
+  // Validate the entry balances
+  let totalDebits = 0;
+  let totalCredits = 0;
+
+  for (const line of lines) {
+    totalDebits += line.debit || 0;
+    totalCredits += line.credit || 0;
+  }
+
+  totalDebits = Math.round(totalDebits * 100) / 100;
+  totalCredits = Math.round(totalCredits * 100) / 100;
+
+  if (Math.abs(totalDebits - totalCredits) > 0.01) {
+    throw new Error(`Journal entry is not balanced. Debits: $${totalDebits.toFixed(2)}, Credits: $${totalCredits.toFixed(2)}`);
+  }
+
+  // Get QBO connection
+  let connection = await getQBConnection(supabase);
+  if (!connection) {
+    throw new Error('QuickBooks is not connected. Please connect in Settings.');
+  }
+
+  connection = await refreshTokenIfNeeded(supabase, connection);
+
+  // Build the journal entry lines
+  const jeLines: QBJournalEntryLine[] = [];
+
+  for (const line of lines) {
+    if (line.debit && line.debit > 0) {
+      const jeLine: QBJournalEntryLine = {
+        Amount: line.debit,
+        DetailType: 'JournalEntryLineDetail',
+        JournalEntryLineDetail: {
+          PostingType: 'Debit',
+          AccountRef: { value: line.account_id, name: line.account_name },
+        },
+        Description: line.description || description,
+      };
+
+      // Add vendor entity reference if provided
+      if (line.vendor_id) {
+        jeLine.JournalEntryLineDetail.Entity = {
+          Type: 'Vendor',
+          EntityRef: { value: line.vendor_id, name: line.vendor_name },
+        };
+      }
+
+      jeLines.push(jeLine);
+    }
+
+    if (line.credit && line.credit > 0) {
+      const jeLine: QBJournalEntryLine = {
+        Amount: line.credit,
+        DetailType: 'JournalEntryLineDetail',
+        JournalEntryLineDetail: {
+          PostingType: 'Credit',
+          AccountRef: { value: line.account_id, name: line.account_name },
+        },
+        Description: line.description || description,
+      };
+
+      // Add vendor entity reference if provided
+      if (line.vendor_id) {
+        jeLine.JournalEntryLineDetail.Entity = {
+          Type: 'Vendor',
+          EntityRef: { value: line.vendor_id, name: line.vendor_name },
+        };
+      }
+
+      jeLines.push(jeLine);
+    }
+  }
+
+  // Generate doc number (OVIS-XXX series)
+  const { data: maxEntry } = await supabase
+    .from('qb_commission_entry')
+    .select('qb_doc_number')
+    .like('qb_doc_number', 'OVIS-%')
+    .order('qb_doc_number', { ascending: false })
+    .limit(1)
+    .single();
+
+  let nextNumber = 100;
+  if (maxEntry?.qb_doc_number) {
+    const match = maxEntry.qb_doc_number.match(/OVIS-(\d+)/);
+    if (match) {
+      nextNumber = parseInt(match[1], 10) + 1;
+    }
+  }
+
+  const docNumber = `OVIS-${nextNumber}`;
+
+  // Create the journal entry
+  const journalEntry: QBJournalEntry = {
+    DocNumber: docNumber,
+    TxnDate: transactionDate,
+    Line: jeLines,
+    PrivateNote: memo || `Created by OVIS Bookkeeper: ${description}`,
+  };
+
+  const result = await createJournalEntry(connection, journalEntry);
+
+  return {
+    success: true,
+    qb_entity_id: result.Id,
+    qb_entity_type: 'JournalEntry',
+    qb_doc_number: result.DocNumber || docNumber,
+    amount: totalDebits,
+    message: `Created Journal Entry ${result.DocNumber || docNumber} for $${totalDebits.toFixed(2)}`,
+  };
+}
+
+// ============================================================================
+// TOOL: CREATE BILL IN QBO
+// ============================================================================
+
+export async function createBillInQBO(
+  supabase: SupabaseClient,
+  vendorName: string,
+  amount: number,
+  expenseAccountId: string,
+  expenseAccountName: string,
+  transactionDate: string,
+  description: string,
+  memo?: string
+): Promise<CreateQBOEntryResult> {
+  if (amount <= 0) {
+    throw new Error('Bill amount must be greater than 0');
+  }
+
+  // Get QBO connection
+  let connection = await getQBConnection(supabase);
+  if (!connection) {
+    throw new Error('QuickBooks is not connected. Please connect in Settings.');
+  }
+
+  connection = await refreshTokenIfNeeded(supabase, connection);
+
+  // Find or create the vendor
+  const vendor = await findOrCreateVendor(connection, vendorName);
+
+  // Build the bill
+  const billLine: QBBillLine = {
+    Amount: amount,
+    DetailType: 'AccountBasedExpenseLineDetail',
+    AccountBasedExpenseLineDetail: {
+      AccountRef: { value: expenseAccountId, name: expenseAccountName },
+    },
+    Description: description,
+  };
+
+  const bill: QBBill = {
+    VendorRef: { value: vendor.Id, name: vendor.DisplayName },
+    Line: [billLine],
+    TxnDate: transactionDate,
+    PrivateNote: memo || `Created by OVIS Bookkeeper: ${description}`,
+  };
+
+  const result = await createBill(connection, bill);
+
+  return {
+    success: true,
+    qb_entity_id: result.Id,
+    qb_entity_type: 'Bill',
+    qb_doc_number: result.DocNumber,
+    amount: amount,
+    message: `Created Bill ${result.DocNumber || result.Id} for $${amount.toFixed(2)} to ${vendor.DisplayName}`,
+  };
+}
+
+// ============================================================================
+// TOOL: CALCULATE NET COMMISSION PAYMENT
+// ============================================================================
+
+export async function calculateNetCommissionPayment(
+  supabase: SupabaseClient,
+  brokerName: string,
+  commissionAmount: number
+): Promise<{
+  broker_name: string;
+  commission_amount: number;
+  current_draw_balance: number;
+  net_payment_amount: number;
+  balance_after_payment: number;
+  explanation: string;
+}> {
+  // Get the broker's current draw balance
+  const balance = await getBrokerDrawBalance(supabase, brokerName);
+
+  const currentDrawBalance = balance.current_balance;
+  const netPaymentAmount = commissionAmount - currentDrawBalance;
+  const balanceAfterPayment = netPaymentAmount < 0 ? Math.abs(netPaymentAmount) : 0;
+
+  let explanation: string;
+  if (currentDrawBalance <= 0) {
+    explanation = `${balance.broker_name} has no outstanding draw balance. The full commission of $${commissionAmount.toFixed(2)} is payable.`;
+  } else if (netPaymentAmount > 0) {
+    explanation = `${balance.broker_name} has a draw balance of $${currentDrawBalance.toFixed(2)}. After applying the commission of $${commissionAmount.toFixed(2)}, the net payment is $${netPaymentAmount.toFixed(2)}.`;
+  } else if (netPaymentAmount === 0) {
+    explanation = `${balance.broker_name} has a draw balance of $${currentDrawBalance.toFixed(2)} which exactly equals the commission. No payment is needed, but the draw is cleared.`;
+  } else {
+    explanation = `${balance.broker_name} has a draw balance of $${currentDrawBalance.toFixed(2)} which exceeds the commission of $${commissionAmount.toFixed(2)}. No payment is owed; ${balance.broker_name} will still have a remaining draw balance of $${balanceAfterPayment.toFixed(2)}.`;
+  }
+
+  return {
+    broker_name: balance.broker_name,
+    commission_amount: commissionAmount,
+    current_draw_balance: currentDrawBalance,
+    net_payment_amount: Math.max(0, netPaymentAmount),
+    balance_after_payment: balanceAfterPayment,
+    explanation,
+  };
+}
+
+// ============================================================================
 // TOOL DEFINITIONS FOR CLAUDE
 // ============================================================================
 
@@ -493,6 +880,115 @@ export const BOOKKEEPER_TOOL_DEFINITIONS = [
         entity_id: { type: 'string' as const },
       },
       required: ['context_type', 'context_text'],
+    },
+  },
+  {
+    name: 'get_broker_draw_balance',
+    description: 'Get a broker\'s current draw balance from QuickBooks. Returns the balance on their draw account (positive = owes company, negative = company owes them).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        broker_name: {
+          type: 'string' as const,
+          description: 'The broker\'s name (partial match is OK, e.g., "Arty" for "Arty Santos")',
+        },
+      },
+      required: ['broker_name'],
+    },
+  },
+  {
+    name: 'calculate_net_commission_payment',
+    description: 'Calculate the net payment owed to a broker after applying their commission against any outstanding draw balance.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        broker_name: {
+          type: 'string' as const,
+          description: 'The broker\'s name',
+        },
+        commission_amount: {
+          type: 'number' as const,
+          description: 'The gross commission amount earned',
+        },
+      },
+      required: ['broker_name', 'commission_amount'],
+    },
+  },
+  {
+    name: 'create_journal_entry_in_qbo',
+    description: 'Create a journal entry directly in QuickBooks Online. Debits and credits must balance. Returns the created JE ID and doc number.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        description: {
+          type: 'string' as const,
+          description: 'Description for the journal entry (will appear on each line)',
+        },
+        transaction_date: {
+          type: 'string' as const,
+          description: 'Date in YYYY-MM-DD format',
+        },
+        lines: {
+          type: 'array' as const,
+          description: 'Array of line items. Each line should have account_id, account_name, and either debit or credit amount.',
+          items: {
+            type: 'object' as const,
+            properties: {
+              account_id: { type: 'string' as const, description: 'QBO account ID' },
+              account_name: { type: 'string' as const, description: 'Account name for display' },
+              debit: { type: 'number' as const, description: 'Debit amount (leave undefined if credit)' },
+              credit: { type: 'number' as const, description: 'Credit amount (leave undefined if debit)' },
+              description: { type: 'string' as const, description: 'Line-specific description (optional)' },
+              vendor_id: { type: 'string' as const, description: 'Optional vendor ID for tracking' },
+              vendor_name: { type: 'string' as const, description: 'Optional vendor name' },
+            },
+            required: ['account_id', 'account_name'],
+          },
+        },
+        memo: {
+          type: 'string' as const,
+          description: 'Private note for the journal entry (optional)',
+        },
+      },
+      required: ['description', 'transaction_date', 'lines'],
+    },
+  },
+  {
+    name: 'create_bill_in_qbo',
+    description: 'Create a bill (Accounts Payable) in QuickBooks Online. Use this when you need to pay someone via check or direct deposit.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        vendor_name: {
+          type: 'string' as const,
+          description: 'Name of the vendor/payee. Will be found or created in QBO.',
+        },
+        amount: {
+          type: 'number' as const,
+          description: 'Bill amount',
+        },
+        expense_account_id: {
+          type: 'string' as const,
+          description: 'QBO account ID for the expense',
+        },
+        expense_account_name: {
+          type: 'string' as const,
+          description: 'Name of the expense account',
+        },
+        transaction_date: {
+          type: 'string' as const,
+          description: 'Date in YYYY-MM-DD format',
+        },
+        description: {
+          type: 'string' as const,
+          description: 'Description for the bill line item',
+        },
+        memo: {
+          type: 'string' as const,
+          description: 'Private note for the bill (optional)',
+        },
+      },
+      required: ['vendor_name', 'amount', 'expense_account_id', 'expense_account_name', 'transaction_date', 'description'],
     },
   },
 ];

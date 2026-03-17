@@ -42,6 +42,15 @@ export interface AccountSuggestion {
   reason: string;
 }
 
+export interface QBOEntryCreated {
+  success: boolean;
+  qb_entity_id: string;
+  qb_entity_type: 'JournalEntry' | 'Bill';
+  qb_doc_number?: string;
+  amount: number;
+  message: string;
+}
+
 export interface QBAccount {
   id: string;
   qb_account_id: string;
@@ -63,6 +72,7 @@ export interface BookkeeperMessage {
   content: string;
   journal_entry_draft?: JournalEntryDraft;
   account_suggestions?: AccountSuggestion[];
+  qbo_entry_created?: QBOEntryCreated;
   timestamp: Date;
 }
 
@@ -83,6 +93,7 @@ export interface BookkeeperQueryResponse {
   answer: string;
   journal_entry_draft?: JournalEntryDraft;
   account_suggestions?: AccountSuggestion[];
+  qbo_entry_created?: QBOEntryCreated;
   tools_used?: string[];
   error?: string;
 }

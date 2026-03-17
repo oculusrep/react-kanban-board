@@ -110,6 +110,12 @@ serve(async (req) => {
           tools_used: result.tool_calls_made,
           duration_ms: duration,
           has_journal_entry: !!result.journal_entry_draft,
+          qbo_entry_created: result.qbo_entry_created ? {
+            type: result.qbo_entry_created.qb_entity_type,
+            id: result.qbo_entry_created.qb_entity_id,
+            doc_number: result.qbo_entry_created.qb_doc_number,
+            amount: result.qbo_entry_created.amount,
+          } : null,
         },
         response_text: result.answer,
         user_id: user.id,
@@ -121,6 +127,7 @@ serve(async (req) => {
         answer: result.answer,
         journal_entry_draft: result.journal_entry_draft,
         account_suggestions: result.account_suggestions,
+        qbo_entry_created: result.qbo_entry_created,
         tools_used: result.tool_calls_made,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

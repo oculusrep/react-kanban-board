@@ -345,20 +345,82 @@ As more financial tools are built, consider a Finance Hub page (`/admin/finance`
 
 ---
 
-## Resume Point
+## Implementation Status
 
-**Status:** Specification complete (February 14, 2026)
+**Status:** Fully Implemented (March 17, 2026)
 
-**Dependencies Ready:**
-- ✅ `qb_account` table with COA
-- ✅ `createJournalEntry()` in quickbooks.ts
-- ✅ `ai_financial_context` table for shared context
-- ✅ QBO connection infrastructure
+**Completed:**
+- ✅ `bookkeeper-query` edge function
+- ✅ `claude-bookkeeper-agent.ts` with system prompt
+- ✅ `bookkeeper-tools.ts` with all tool implementations
+- ✅ `BookkeeperPage.tsx` with chat UI
+- ✅ `JournalEntryPreview.tsx` component
+- ✅ Route registered at `/admin/bookkeeper`
+- ✅ Navigation in Finance Hub
 
-**Next Steps:**
-1. Create `bookkeeper-query` edge function
-2. Create `claude-bookkeeper-agent.ts` with system prompt
-3. Create `bookkeeper-tools.ts` with tool implementations
-4. Create `BookkeeperPage.tsx` with chat UI
-5. Create `JournalEntryPreview.tsx` component
-6. Register route and add to navigation
+### Additional Tools Implemented (March 2026)
+
+In addition to the original tools, the following were added:
+
+**7. get_broker_draw_balance**
+Get a broker's current draw balance from QuickBooks.
+```typescript
+interface GetBrokerDrawBalanceParams {
+  broker_name: string;  // Partial match OK (e.g., "Arty" finds "Arty Santos")
+}
+// Returns: broker_name, qb_account_id, current_balance, total_draws, total_commissions
+```
+
+**8. calculate_net_commission_payment**
+Calculate net payment owed after applying commission against draw balance.
+```typescript
+interface CalculateNetCommissionPaymentParams {
+  broker_name: string;
+  commission_amount: number;
+}
+// Returns: net_payment_amount, balance_after_payment, explanation
+```
+
+**9. create_journal_entry_in_qbo**
+Create a journal entry directly in QuickBooks Online.
+```typescript
+interface CreateJournalEntryInQBOParams {
+  description: string;
+  transaction_date: string;  // YYYY-MM-DD
+  lines: Array<{
+    account_id: string;
+    account_name: string;
+    debit?: number;
+    credit?: number;
+    description?: string;
+    vendor_id?: string;
+    vendor_name?: string;
+  }>;
+  memo?: string;
+}
+// Returns: qb_entity_id, qb_doc_number, amount, success message
+```
+
+**10. create_bill_in_qbo**
+Create a bill in QuickBooks Online (for payment via check/direct deposit).
+```typescript
+interface CreateBillInQBOParams {
+  vendor_name: string;
+  amount: number;
+  expense_account_id: string;
+  expense_account_name: string;
+  transaction_date: string;
+  description: string;
+  memo?: string;
+}
+// Returns: qb_entity_id, qb_doc_number, amount, success message
+```
+
+### Arty's Commission Draw Workflow
+
+The Bookkeeper Agent now supports the full workflow for Arty's commission draws:
+
+1. **Check balance:** Use `get_broker_draw_balance` to see current draw owed
+2. **Calculate net payment:** Use `calculate_net_commission_payment` when commission comes in
+3. **Create entries:** If net payment > 0, create a Bill for direct deposit
+4. **Record commission:** Create journal entry (Debit Commission Expense, Credit Draw Account)

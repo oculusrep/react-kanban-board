@@ -87,13 +87,20 @@ export default function BookkeeperPage() {
         content: data.answer,
         journal_entry_draft: data.journal_entry_draft,
         account_suggestions: data.account_suggestions,
+        qbo_entry_created: data.qbo_entry_created,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, assistantMessage]);
 
-      // If there's a journal entry, show it in the preview panel
+      // If there's a journal entry draft, show it in the preview panel
       if (data.journal_entry_draft) {
         setActiveJournalEntry(data.journal_entry_draft);
+      }
+
+      // If a QBO entry was created directly by the agent, clear any active draft
+      // since it's already been posted
+      if (data.qbo_entry_created?.success) {
+        setActiveJournalEntry(null);
       }
     } catch (err) {
       console.error('Bookkeeper Query error:', err);
@@ -129,18 +136,75 @@ export default function BookkeeperPage() {
         throw new Error('Not authenticated');
       }
 
-      // TODO: Implement actual QBO journal entry creation
-      // For now, just show a placeholder message
+      // Ask the Bookkeeper to create the journal entry
+      // This way we leverage the agent's tool to create it properly
+      const createQuery = `Please create the following journal entry in QuickBooks:
+Date: ${activeJournalEntry.transaction_date}
+Description: ${activeJournalEntry.description}
+Lines:
+${activeJournalEntry.lines.map((line) =>
+  `- ${line.account_name}: ${line.posting_type} $${line.amount.toFixed(2)}`
+).join('\n')}
+${activeJournalEntry.memo ? `Memo: ${activeJournalEntry.memo}` : ''}
+
+Please use the create_journal_entry_in_qbo tool to post this entry.`;
+
+      // Call the Bookkeeper query edge function
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bookkeeper-query`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            query: createQuery,
+            conversation_history: messages.slice(-5).map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Request failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to create journal entry');
+      }
+
+      // Add the response message
       const confirmMessage: BookkeeperMessage = {
-        id: `system-${Date.now()}`,
+        id: `assistant-${Date.now()}`,
         role: 'assistant',
-        content: '📝 **Journal Entry Creation**\n\nThis feature will create the journal entry directly in QuickBooks. Coming soon!',
+        content: data.answer,
+        qbo_entry_created: data.qbo_entry_created,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, confirmMessage]);
+
+      // Clear the active journal entry since it's been created
+      if (data.qbo_entry_created?.success) {
+        setActiveJournalEntry(null);
+      }
     } catch (err) {
       console.error('QBO Creation error:', err);
       setError((err as Error).message);
+
+      // Add error message to chat
+      const errorMessage: BookkeeperMessage = {
+        id: `error-${Date.now()}`,
+        role: 'assistant',
+        content: `Failed to create journal entry in QuickBooks: ${(err as Error).message}`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsCreatingInQBO(false);
     }
