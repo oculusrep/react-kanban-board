@@ -813,11 +813,28 @@ export async function getBrokerPaymentSplitForDeal(
   brokerName: string,
   paymentIdentifier?: string // e.g., "Payment 1", "second half", "2", etc.
 ): Promise<BrokerPaymentSplitResult[]> {
+  console.log(`[Bookkeeper] Searching for deal: "${dealSearch}", broker: "${brokerName}"`);
+
   // First, find deals matching the search
-  const { data: deals, error: dealError } = await supabase
+  // Try searching by deal_name first
+  let { data: deals, error: dealError } = await supabase
     .from('deal')
     .select('id, deal_name')
-    .or(`deal_name.ilike.%${dealSearch}%,sf_deal_id.ilike.%${dealSearch}%`);
+    .ilike('deal_name', `%${dealSearch}%`);
+
+  // If no results, try sf_deal_id
+  if (!dealError && (!deals || deals.length === 0)) {
+    const sfResult = await supabase
+      .from('deal')
+      .select('id, deal_name')
+      .ilike('sf_deal_id', `%${dealSearch}%`);
+
+    if (!sfResult.error && sfResult.data && sfResult.data.length > 0) {
+      deals = sfResult.data;
+    }
+  }
+
+  console.log(`[Bookkeeper] Found ${deals?.length || 0} deals matching "${dealSearch}"`);
 
   if (dealError) throw new Error(`Failed to search deals: ${dealError.message}`);
   if (!deals || deals.length === 0) {
