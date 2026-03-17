@@ -31,6 +31,44 @@ The `activity` table has both `user_id` and `owner_id` columns:
 - `LogCallModal` sets `owner_id` (the person who owns/created the activity)
 - Views should use `COALESCE(user_id, owner_id)` to handle both cases
 
+## Brand Color Palette
+
+**Always use the OVIS brand colors for UI design, styling decisions, and color schemes.**
+
+| Color Name | Hex Code | Usage |
+|------------|----------|-------|
+| Deep Midnight Blue | `#002147` | Primary text, headings, active states, darkest accent |
+| Steel Blue | `#4A6B94` | Secondary elements, mid-tone accents, prices/values |
+| Light Slate Blue | `#8FA9C8` | Borders, inactive states, subtle backgrounds, lightest accent |
+| Pure White | `#FFFFFF` | Backgrounds, card surfaces, contrast elements |
+
+### Usage Guidelines
+
+- **Primary Actions**: Use Deep Midnight Blue (`#002147`) for primary buttons, active toggles, main headings
+- **Secondary Elements**: Use Steel Blue (`#4A6B94`) for secondary buttons, currency displays, links
+- **Borders & Inactive**: Use Light Slate Blue (`#8FA9C8`) for borders, inactive toggle states, dividers
+- **Backgrounds**: Use Pure White (`#FFFFFF`) for cards and content areas; use off-white (`#F8FAFC`) for page backgrounds to create contrast
+- **Warnings/Alerts**: Use Terracotta (`#A27B5C`) for warning indicators (border style preferred over solid fills)
+
+### Examples
+
+```tsx
+// Primary heading
+<h1 style={{ color: '#002147' }}>Title</h1>
+
+// Currency display
+<span style={{ color: '#4A6B94' }}>{formatCurrency(amount)}</span>
+
+// Subtle border
+<div style={{ border: '1px solid #8FA9C8' }}>...</div>
+
+// Active toggle button
+<button style={{ backgroundColor: '#002147', color: '#FFFFFF' }}>Active</button>
+
+// Inactive toggle button
+<button style={{ backgroundColor: 'transparent', color: '#8FA9C8' }}>Inactive</button>
+```
+
 ## Tech Stack
 
 - React 18 with TypeScript
