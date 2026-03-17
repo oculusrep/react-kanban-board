@@ -528,8 +528,8 @@ export default function KanbanBoard() {
   if (loading) return <div className="p-4">Loading...</div>;
 
   return (
-    <div className="p-4 overflow-x-auto bg-gray-100 min-h-screen">
-      <h1 className="text-2xl font-bold mb-4">Master Pipeline</h1>
+    <div className="p-4 overflow-x-auto min-h-screen" style={{ backgroundColor: '#F8FAFC' }}>
+      <h1 className="text-2xl font-bold mb-4" style={{ color: '#002147' }}>Master Pipeline</h1>
 
       {/* Confirm Dialog */}
       <ConfirmDialog
@@ -631,7 +631,7 @@ export default function KanbanBoard() {
                       </div>
                     </div>
                     <div className="bg-white text-center py-2 border-b">
-                      <div className="text-emerald-700 text-lg font-bold">
+                      <div className="text-lg font-bold" style={{ color: '#002147' }}>
                         {formatCurrency(totalFee)}
                       </div>
                     </div>
@@ -744,18 +744,19 @@ export default function KanbanBoard() {
                               <div className={`font-semibold pr-6 ${card.synopsis_alert_level ? 'pl-4' : ''}`}>
                                 <Link
                                   to={`/deal/${card.id}`}
-                                  className="text-slate-800 hover:text-slate-600 hover:underline"
+                                  className="hover:underline"
+                                  style={{ color: '#002147', fontWeight: 600 }}
                                 >
                                   {card.deal_name || 'Untitled Deal'}
                                 </Link>
                               </div>
-                              <div className="text-gray-700">
+                              <div style={{ color: '#4A6B94' }}>
                                 {formatCurrency(card.fee)}
                               </div>
                               <div className="text-gray-500 text-xs">
                                 {card.client_name || 'No Client'}
                               </div>
-                              <div className="text-gray-800">
+                              <div style={{ color: '#4A6B94' }}>
                                 {formatCurrency(card.deal_value)}
                               </div>
                               {/* Handoff Toggle + Behind Schedule Badge */}
@@ -780,7 +781,8 @@ export default function KanbanBoard() {
                                     )}
                                     {weeksBehind > 0 && (
                                       <div
-                                        className="text-xs px-2 py-0.5 rounded-full inline-block bg-gray-100 text-red-700 font-medium"
+                                        className="text-xs px-2 py-0.5 rounded-full inline-block bg-transparent font-medium"
+                                        style={{ border: '1px solid #A27B5C', color: '#A27B5C' }}
                                         title={`${weeksBehind} week${weeksBehind > 1 ? 's' : ''} behind schedule`}
                                       >
                                         {weeksBehind}w behind
@@ -789,11 +791,11 @@ export default function KanbanBoard() {
                                     {/* Only show days in stage if no handoff tracking active */}
                                     {!hasHandoffTracking && daysInStage > 0 && (
                                       <div
-                                        className={`text-xs px-2 py-0.5 rounded-full inline-block ${
-                                          isStale
-                                            ? 'bg-gray-100 text-red-700 font-medium'
-                                            : 'bg-gray-100 text-gray-500'
-                                        }`}
+                                        className="text-xs px-2 py-0.5 rounded-full inline-block"
+                                        style={isStale
+                                          ? { border: '1px solid #A27B5C', color: '#A27B5C', fontWeight: 500 }
+                                          : { backgroundColor: '#F1F5F9', color: '#64748B' }
+                                        }
                                         title={`${daysInStage} days in ${column.label}`}
                                       >
                                         {daysInStage}d in stage

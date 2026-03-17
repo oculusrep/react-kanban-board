@@ -26,9 +26,10 @@ input[type="number"] {
 }
 
 /* Chevron shape for column headers */
+/* Brand gradient: Light Slate Blue -> Steel Blue -> Midnight Blue */
 .chevron-header {
   position: relative;
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  background: linear-gradient(to right, #8FA9C8, #4A6B94, #002147);
   color: white;
   padding: 12px 24px;
   margin-right: -15px;

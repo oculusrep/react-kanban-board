@@ -113,45 +113,54 @@ export default function HandoffBadge({
     ? 'px-1.5'
     : 'px-2';
 
+  // Brand colors
+  // Active Us: #002147 (Midnight Blue)
+  // Active LL: #4A6B94 (Steel Blue)
+  // Inactive: transparent bg, #8FA9C8 (Light Slate Blue) text
+  // Border: #8FA9C8
+
   return (
     <div
       className={`
-        inline-flex rounded overflow-hidden border border-gray-200
+        inline-flex rounded-full overflow-hidden
         ${containerClasses}
         ${isUpdating ? 'opacity-50' : ''}
       `}
+      style={{ border: '1px solid #8FA9C8' }}
       title={showTurns && turnsCount > 0 ? `${turnsCount} turns` : undefined}
     >
-      {/* TT (Tenant) segment - Indigo/Navy for "Action" */}
+      {/* TT (Tenant) segment - Midnight Blue when active */}
       <button
         onClick={(e) => handleToggle('us', e)}
         disabled={isUpdating}
         className={`
           flex items-center gap-0.5 font-medium transition-all
           ${segmentClasses}
-          ${isUs
-            ? 'bg-indigo-100 text-indigo-800'
-            : 'bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-500 cursor-pointer'
-          }
+          ${isUs ? 'cursor-default' : 'cursor-pointer hover:bg-slate-50'}
         `}
+        style={isUs
+          ? { backgroundColor: '#002147', color: '#FFFFFF' }
+          : { backgroundColor: 'transparent', color: '#8FA9C8' }
+        }
       >
         <span>TT</span>
         {isUs && <span className="opacity-70">•</span>}
         {isUs && <span>{daysHeld}d</span>}
       </button>
 
-      {/* LL segment - Amber/Sage for "Waiting" */}
+      {/* LL segment - Steel Blue when active */}
       <button
         onClick={(e) => handleToggle('ll', e)}
         disabled={isUpdating}
         className={`
           flex items-center gap-0.5 font-medium transition-all
           ${segmentClasses}
-          ${!isUs
-            ? 'bg-amber-100 text-amber-800'
-            : 'bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-500 cursor-pointer'
-          }
+          ${!isUs ? 'cursor-default' : 'cursor-pointer hover:bg-slate-50'}
         `}
+        style={!isUs
+          ? { backgroundColor: '#4A6B94', color: '#FFFFFF' }
+          : { backgroundColor: 'transparent', color: '#8FA9C8' }
+        }
       >
         <span>LL</span>
         {!isUs && <span className="opacity-70">•</span>}
