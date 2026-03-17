@@ -791,6 +791,151 @@ export async function calculateNetCommissionPayment(
 }
 
 // ============================================================================
+// TOOL: GET BROKER PAYMENT SPLIT FOR DEAL
+// ============================================================================
+
+export interface BrokerPaymentSplitResult {
+  deal_id: string;
+  deal_name: string;
+  payment_id: string;
+  payment_name: string;
+  payment_split_id: string;
+  broker_id: string;
+  broker_name: string;
+  split_amount: number;
+  is_paid: boolean;
+  paid_date: string | null;
+}
+
+export async function getBrokerPaymentSplitForDeal(
+  supabase: SupabaseClient,
+  dealSearch: string,
+  brokerName: string,
+  paymentIdentifier?: string // e.g., "Payment 1", "second half", "2", etc.
+): Promise<BrokerPaymentSplitResult[]> {
+  // First, find deals matching the search
+  const { data: deals, error: dealError } = await supabase
+    .from('deal')
+    .select('id, deal_name')
+    .or(`deal_name.ilike.%${dealSearch}%,sf_deal_id.ilike.%${dealSearch}%`);
+
+  if (dealError) throw new Error(`Failed to search deals: ${dealError.message}`);
+  if (!deals || deals.length === 0) {
+    throw new Error(`No deals found matching "${dealSearch}"`);
+  }
+
+  // Find the broker
+  const { data: brokers, error: brokerError } = await supabase
+    .from('broker')
+    .select('id, name')
+    .ilike('name', `%${brokerName}%`);
+
+  if (brokerError) throw new Error(`Failed to find broker: ${brokerError.message}`);
+  if (!brokers || brokers.length === 0) {
+    throw new Error(`No broker found matching "${brokerName}"`);
+  }
+
+  const broker = brokers[0];
+  const dealIds = deals.map(d => d.id);
+
+  // Get payments for these deals
+  const { data: payments, error: paymentError } = await supabase
+    .from('payment')
+    .select(`
+      id,
+      payment_name,
+      deal_id,
+      deal:deal_id (
+        id,
+        deal_name
+      )
+    `)
+    .in('deal_id', dealIds)
+    .order('payment_name');
+
+  if (paymentError) throw new Error(`Failed to fetch payments: ${paymentError.message}`);
+  if (!payments || payments.length === 0) {
+    throw new Error(`No payments found for deals matching "${dealSearch}"`);
+  }
+
+  // Filter payments by identifier if provided
+  let filteredPayments = payments;
+  if (paymentIdentifier) {
+    const identifier = paymentIdentifier.toLowerCase();
+    filteredPayments = payments.filter(p => {
+      const name = (p.payment_name || '').toLowerCase();
+      // Match various patterns: "Payment 1", "1", "first", "second half", etc.
+      if (identifier.includes('1') || identifier.includes('first') || identifier.includes('initial')) {
+        return name.includes('1') || name.includes('first') || name.includes('initial');
+      }
+      if (identifier.includes('2') || identifier.includes('second')) {
+        return name.includes('2') || name.includes('second');
+      }
+      if (identifier.includes('3') || identifier.includes('third')) {
+        return name.includes('3') || name.includes('third');
+      }
+      if (identifier.includes('final') || identifier.includes('last')) {
+        return name.includes('final') || name.includes('last');
+      }
+      // Generic match
+      return name.includes(identifier);
+    });
+
+    if (filteredPayments.length === 0) {
+      // If no match with filter, return all and let the agent figure it out
+      filteredPayments = payments;
+    }
+  }
+
+  const paymentIds = filteredPayments.map(p => p.id);
+
+  // Get the broker's payment splits for these payments
+  const { data: splits, error: splitError } = await supabase
+    .from('payment_split')
+    .select(`
+      id,
+      broker_id,
+      split_broker_total,
+      paid,
+      paid_date,
+      payment_id
+    `)
+    .in('payment_id', paymentIds)
+    .eq('broker_id', broker.id);
+
+  if (splitError) throw new Error(`Failed to fetch payment splits: ${splitError.message}`);
+  if (!splits || splits.length === 0) {
+    throw new Error(`No payment splits found for ${broker.name} on deals matching "${dealSearch}"`);
+  }
+
+  // Build the results
+  const results: BrokerPaymentSplitResult[] = [];
+  for (const split of splits) {
+    const payment = filteredPayments.find(p => p.id === split.payment_id);
+    if (!payment) continue;
+
+    const deal = payment.deal as any;
+    results.push({
+      deal_id: deal?.id || payment.deal_id,
+      deal_name: deal?.deal_name || 'Unknown Deal',
+      payment_id: payment.id,
+      payment_name: payment.payment_name || 'Payment',
+      payment_split_id: split.id,
+      broker_id: broker.id,
+      broker_name: broker.name,
+      split_amount: Number(split.split_broker_total) || 0,
+      is_paid: split.paid || false,
+      paid_date: split.paid_date,
+    });
+  }
+
+  // Sort by payment name
+  results.sort((a, b) => a.payment_name.localeCompare(b.payment_name));
+
+  return results;
+}
+
+// ============================================================================
 // TOOL DEFINITIONS FOR CLAUDE
 // ============================================================================
 
@@ -989,6 +1134,28 @@ export const BOOKKEEPER_TOOL_DEFINITIONS = [
         },
       },
       required: ['vendor_name', 'amount', 'expense_account_id', 'expense_account_name', 'transaction_date', 'description'],
+    },
+  },
+  {
+    name: 'get_broker_payment_split_for_deal',
+    description: 'Look up a broker\'s payment split for a specific deal. Use this to find commission amounts from OVIS deals. Can search by deal name or SF ID, and optionally filter by payment number (e.g., "second half", "Payment 2").',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        deal_search: {
+          type: 'string' as const,
+          description: 'Deal name or SF ID to search for (partial match OK, e.g., "FS8", "East Cobb")',
+        },
+        broker_name: {
+          type: 'string' as const,
+          description: 'The broker\'s name (partial match OK)',
+        },
+        payment_identifier: {
+          type: 'string' as const,
+          description: 'Optional: Which payment to look for (e.g., "1", "first", "second half", "Payment 2", "final")',
+        },
+      },
+      required: ['deal_search', 'broker_name'],
     },
   },
 ];

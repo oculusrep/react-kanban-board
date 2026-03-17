@@ -20,6 +20,7 @@ import {
   calculateNetCommissionPayment,
   createJournalEntryInQBO,
   createBillInQBO,
+  getBrokerPaymentSplitForDeal,
   JournalEntryDraft,
   AccountSuggestion,
   CreateQBOEntryResult,
@@ -132,6 +133,10 @@ TOOLS:
 - calculate_net_commission_payment: Calculate net payment after applying draw balance
 - create_journal_entry_in_qbo: Create and post a journal entry to QBO (use with care!)
 - create_bill_in_qbo: Create a bill in QBO for payment via check/direct deposit
+- get_broker_payment_split_for_deal: Look up a broker's commission split from OVIS deals
+
+COMMISSION FROM DEAL WORKFLOW:
+When Mike says "we received payment for deal X", use get_broker_payment_split_for_deal to look up the broker's split amount, then use calculate_net_commission_payment with that amount.
 
 ARTY'S DRAW WORKFLOW:
 When Arty earns a commission but has a draw balance:
@@ -283,6 +288,22 @@ async function executeTool(
         toolInput.memo as string | undefined
       );
       return result;
+    }
+
+    case 'get_broker_payment_split_for_deal': {
+      const splits = await getBrokerPaymentSplitForDeal(
+        supabase,
+        toolInput.deal_search as string,
+        toolInput.broker_name as string,
+        toolInput.payment_identifier as string | undefined
+      );
+      return {
+        splits,
+        count: splits.length,
+        message: splits.length === 1
+          ? `Found ${splits[0].broker_name}'s split for ${splits[0].deal_name} - ${splits[0].payment_name}: $${splits[0].split_amount.toFixed(2)}`
+          : `Found ${splits.length} payment splits for ${splits[0]?.broker_name || 'broker'}`,
+      };
     }
 
     default:
