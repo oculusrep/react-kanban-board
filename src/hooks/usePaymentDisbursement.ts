@@ -198,11 +198,17 @@ export const usePaymentDisbursement = () => {
   }, []);
 
   // Update payment split paid status
-  const updatePaymentSplitPaid = useCallback(async (splitId: string, paid: boolean): Promise<void> => {
+  // skipQboEntry: if true, skip creating QBO commission entry (e.g., when already handled via Bookkeeper)
+  const updatePaymentSplitPaid = useCallback(async (
+    splitId: string,
+    paid: boolean,
+    options?: { skipQboEntry?: boolean }
+  ): Promise<void> => {
     setLoading(true);
     setError(null);
 
-    console.log('🔧 Updating payment split paid status:', { splitId, paid });
+    const { skipQboEntry = false } = options || {};
+    console.log('🔧 Updating payment split paid status:', { splitId, paid, skipQboEntry });
 
     try {
       // Calculate paid date in YYYY-MM-DD format using local timezone (EST)
@@ -228,8 +234,8 @@ export const usePaymentDisbursement = () => {
 
       console.log('✅ Payment split updated successfully:', data);
 
-      // If marking as paid, create QBO commission entry (Bill or Journal Entry)
-      if (paid && paidDate) {
+      // If marking as paid and not skipping QBO, create QBO commission entry (Bill or Journal Entry)
+      if (paid && paidDate && !skipQboEntry) {
         const result = await createQBCommissionEntry(splitId, paidDate);
         if (result.success) {
           if (result.alreadyExists) {
@@ -247,6 +253,8 @@ export const usePaymentDisbursement = () => {
           // Other error - log but don't block the paid status update
           console.error('⚠️ Failed to create QBO commission entry:', result.error);
         }
+      } else if (paid && skipQboEntry) {
+        console.log('ℹ️ Skipping QBO commission entry creation (handled externally, e.g., via Bookkeeper)');
       }
 
       // If unmarking as paid, delete the QBO commission entry

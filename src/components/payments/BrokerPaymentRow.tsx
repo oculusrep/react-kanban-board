@@ -23,6 +23,9 @@ interface QBCommissionResult {
 }
 
 const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, onUpdate, onOptimisticUpdate }) => {
+  const [showQboConfirmDialog, setShowQboConfirmDialog] = useState(false);
+  const [pendingPaidState, setPendingPaidState] = useState<boolean | null>(null);
+
   const formatCurrency = (amount: number | null) => {
     if (amount === null) return '-';
     return new Intl.NumberFormat('en-US', {
@@ -108,7 +111,28 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, o
     }
   };
 
-  const handleTogglePaid = async (paid: boolean) => {
+  // When user clicks the checkbox to mark as paid
+  const handleCheckboxChange = (paid: boolean) => {
+    if (paid) {
+      // Show confirmation dialog asking about QBO entry
+      setPendingPaidState(true);
+      setShowQboConfirmDialog(true);
+    } else {
+      // Unmarking as paid - proceed directly (will attempt to delete QBO entry)
+      handleTogglePaid(false, false);
+    }
+  };
+
+  // Handle the confirmation dialog response
+  const handleQboConfirmResponse = (createQboEntry: boolean) => {
+    setShowQboConfirmDialog(false);
+    if (pendingPaidState !== null) {
+      handleTogglePaid(pendingPaidState, !createQboEntry);
+    }
+    setPendingPaidState(null);
+  };
+
+  const handleTogglePaid = async (paid: boolean, skipQboEntry: boolean = false) => {
     const newDate = paid ? getLocalDateString() : null;
 
     // Optimistic update locally
@@ -140,8 +164,8 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, o
       return;
     }
 
-    // If marking as paid, create QBO commission entry (Bill or Journal Entry)
-    if (paid && newDate) {
+    // If marking as paid and NOT skipping QBO, create QBO commission entry (Bill or Journal Entry)
+    if (paid && newDate && !skipQboEntry) {
       setIsCreatingQBEntry(true);
       const result = await createQBCommissionEntry(newDate);
       setIsCreatingQBEntry(false);
@@ -165,6 +189,8 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, o
         // Other error - log but don't block the paid status update
         console.error('Failed to create QBO commission entry:', result.error);
       }
+    } else if (paid && skipQboEntry) {
+      console.log(`Skipping QBO commission entry for ${split.broker_name} (handled externally, e.g., via Bookkeeper)`);
     }
 
     // If unmarking as paid, delete the QBO commission entry (Bill or Journal Entry)
@@ -215,53 +241,95 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, o
   };
 
   return (
-    <tr className="hover:bg-gray-50">
-      <td className="px-2 py-2 text-sm text-gray-900">{split.broker_name}</td>
-      <td className="px-2 py-2 text-sm text-center">
-        <div className="flex flex-col items-center">
-          <span className="text-gray-900">{formatCurrency(split.split_origination_usd)}</span>
-          <span className="text-xs text-gray-500">{formatPercent(split.split_origination_percent)}</span>
-        </div>
-      </td>
-      <td className="px-2 py-2 text-sm text-center">
-        <div className="flex flex-col items-center">
-          <span className="text-gray-900">{formatCurrency(split.split_site_usd)}</span>
-          <span className="text-xs text-gray-500">{formatPercent(split.split_site_percent)}</span>
-        </div>
-      </td>
-      <td className="px-2 py-2 text-sm text-center">
-        <div className="flex flex-col items-center">
-          <span className="text-gray-900">{formatCurrency(split.split_deal_usd)}</span>
-          <span className="text-xs text-gray-500">{formatPercent(split.split_deal_percent)}</span>
-        </div>
-      </td>
-      <td className="px-2 py-2 text-sm text-center font-medium text-gray-900">
-        {formatCurrency(split.split_broker_total)}
-      </td>
-      <td className="px-2 py-2 text-sm">
-        <div className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            checked={localPaid}
-            onChange={(e) => handleTogglePaid(e.target.checked)}
-            disabled={isCreatingQBEntry}
-            className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded disabled:opacity-50"
-          />
-          {isCreatingQBEntry && (
-            <span className="text-xs text-blue-600 animate-pulse">Syncing to QBO...</span>
-          )}
-          {localPaid && localPaidDate && !isCreatingQBEntry && (
+    <>
+      {/* QBO Entry Confirmation Dialog */}
+      {showQboConfirmDialog && (
+        <tr>
+          <td colSpan={6} className="px-2 py-3 bg-blue-50 border-y border-blue-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="text-sm font-medium text-blue-900">
+                  Create QuickBooks entry for {split.broker_name}'s commission?
+                </span>
+                <span className="text-xs text-blue-600">
+                  (Select "No" if already handled via Bookkeeper)
+                </span>
+              </div>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => handleQboConfirmResponse(true)}
+                  className="px-3 py-1 text-sm font-medium text-white bg-green-600 rounded hover:bg-green-700"
+                >
+                  Yes, create entry
+                </button>
+                <button
+                  onClick={() => handleQboConfirmResponse(false)}
+                  className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                >
+                  No, skip QBO
+                </button>
+                <button
+                  onClick={() => {
+                    setShowQboConfirmDialog(false);
+                    setPendingPaidState(null);
+                  }}
+                  className="px-3 py-1 text-sm font-medium text-gray-500 hover:text-gray-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+      <tr className="hover:bg-gray-50">
+        <td className="px-2 py-2 text-sm text-gray-900">{split.broker_name}</td>
+        <td className="px-2 py-2 text-sm text-center">
+          <div className="flex flex-col items-center">
+            <span className="text-gray-900">{formatCurrency(split.split_origination_usd)}</span>
+            <span className="text-xs text-gray-500">{formatPercent(split.split_origination_percent)}</span>
+          </div>
+        </td>
+        <td className="px-2 py-2 text-sm text-center">
+          <div className="flex flex-col items-center">
+            <span className="text-gray-900">{formatCurrency(split.split_site_usd)}</span>
+            <span className="text-xs text-gray-500">{formatPercent(split.split_site_percent)}</span>
+          </div>
+        </td>
+        <td className="px-2 py-2 text-sm text-center">
+          <div className="flex flex-col items-center">
+            <span className="text-gray-900">{formatCurrency(split.split_deal_usd)}</span>
+            <span className="text-xs text-gray-500">{formatPercent(split.split_deal_percent)}</span>
+          </div>
+        </td>
+        <td className="px-2 py-2 text-sm text-center font-medium text-gray-900">
+          {formatCurrency(split.split_broker_total)}
+        </td>
+        <td className="px-2 py-2 text-sm">
+          <div className="flex items-center space-x-2">
             <input
-              type="date"
-              value={localPaidDate}
-              onChange={(e) => handleUpdatePaidDate(e.target.value)}
-              className="text-gray-500 text-xs border-0 p-0 focus:ring-0 cursor-pointer hover:text-gray-700"
-              style={{ width: '90px' }}
+              type="checkbox"
+              checked={localPaid}
+              onChange={(e) => handleCheckboxChange(e.target.checked)}
+              disabled={isCreatingQBEntry || showQboConfirmDialog}
+              className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded disabled:opacity-50"
             />
-          )}
-        </div>
-      </td>
-    </tr>
+            {isCreatingQBEntry && (
+              <span className="text-xs text-blue-600 animate-pulse">Syncing to QBO...</span>
+            )}
+            {localPaid && localPaidDate && !isCreatingQBEntry && (
+              <input
+                type="date"
+                value={localPaidDate}
+                onChange={(e) => handleUpdatePaidDate(e.target.value)}
+                className="text-gray-500 text-xs border-0 p-0 focus:ring-0 cursor-pointer hover:text-gray-700"
+                style={{ width: '90px' }}
+              />
+            )}
+          </div>
+        </td>
+      </tr>
+    </>
   );
 };
 
