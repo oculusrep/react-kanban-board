@@ -20,6 +20,12 @@ import {
   QBBill,
   QBBillLine,
 } from './quickbooks.ts';
+import {
+  sendEmail,
+  refreshAccessToken,
+  isTokenExpired,
+  type GmailConnection,
+} from './gmail.ts';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -77,6 +83,7 @@ export interface AccountingContext {
 export interface BrokerDrawBalance {
   broker_id: string;
   broker_name: string;
+  broker_email: string | null;
   qb_account_id: string;
   qb_account_name: string;
   current_balance: number;
@@ -447,7 +454,7 @@ export async function getBrokerDrawBalance(
   // First, find the broker by name
   const { data: brokers, error: brokerError } = await supabase
     .from('broker')
-    .select('id, name')
+    .select('id, name, email')
     .ilike('name', `%${brokerName}%`);
 
   if (brokerError) throw new Error(`Failed to find broker: ${brokerError.message}`);
@@ -455,7 +462,7 @@ export async function getBrokerDrawBalance(
     throw new Error(`No broker found matching "${brokerName}"`);
   }
 
-  const broker = brokers[0];
+  const broker = brokers[0] as { id: string; name: string; email: string | null };
 
   // Get the commission mapping to find the draw account
   const { data: mapping, error: mappingError } = await supabase
@@ -545,9 +552,25 @@ export async function getBrokerDrawBalance(
     // Continue with zeros - we still have the balance
   }
 
+  // Try to get broker email - first from broker table, then from user table by name
+  let brokerEmail = broker.email;
+  if (!brokerEmail) {
+    // Try to find a matching user by name
+    const { data: userData } = await supabase
+      .from('user')
+      .select('email')
+      .ilike('name', `%${broker.name}%`)
+      .single();
+
+    if (userData?.email) {
+      brokerEmail = userData.email;
+    }
+  }
+
   return {
     broker_id: broker.id,
     broker_name: broker.name,
+    broker_email: brokerEmail || null,
     qb_account_id: mapping.qb_credit_account_id,
     qb_account_name: mapping.qb_credit_account_name || accountResult.Account.Name,
     current_balance: currentBalance,
@@ -953,6 +976,183 @@ export async function getBrokerPaymentSplitForDeal(
 }
 
 // ============================================================================
+// TOOL: SEND COMMISSION PAYMENT EMAIL
+// ============================================================================
+
+export interface CommissionEmailResult {
+  success: boolean;
+  message_id?: string;
+  error?: string;
+}
+
+export async function sendCommissionPaymentEmail(
+  supabase: SupabaseClient,
+  userId: string, // The authenticated user's internal ID (not auth_user_id)
+  brokerEmail: string,
+  brokerName: string,
+  dealName: string,
+  grossCommission: number,
+  drawBalanceApplied: number,
+  netPayment: number,
+  ccEmails?: string[]
+): Promise<CommissionEmailResult> {
+  // Get Gmail connection for the user
+  const { data: connection, error: connError } = await supabase
+    .from('gmail_connection')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .single();
+
+  if (connError || !connection) {
+    return {
+      success: false,
+      error: 'Gmail not connected. Please connect your Gmail account in Settings.',
+    };
+  }
+
+  const gmailConnection = connection as GmailConnection;
+
+  // Check if token needs refresh
+  let accessToken = gmailConnection.access_token;
+
+  if (isTokenExpired(gmailConnection.token_expires_at)) {
+    console.log(`[Bookkeeper] Refreshing Gmail token for ${gmailConnection.google_email}`);
+
+    const clientId = Deno.env.get('GOOGLE_CLIENT_ID')!;
+    const clientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
+
+    const refreshResult = await refreshAccessToken(
+      gmailConnection.refresh_token,
+      clientId,
+      clientSecret
+    );
+
+    accessToken = refreshResult.access_token;
+
+    // Update stored token
+    const newExpiresAt = new Date(Date.now() + refreshResult.expires_in * 1000).toISOString();
+    await supabase
+      .from('gmail_connection')
+      .update({
+        access_token: accessToken,
+        token_expires_at: newExpiresAt,
+      })
+      .eq('id', gmailConnection.id);
+  }
+
+  // Get sender's name
+  const { data: senderData } = await supabase
+    .from('user')
+    .select('name, first_name, last_name')
+    .eq('id', userId)
+    .single();
+
+  let senderName = 'OVIS';
+  if (senderData?.first_name && senderData?.last_name) {
+    senderName = `${senderData.first_name} ${senderData.last_name}`;
+  } else if (senderData?.name) {
+    senderName = senderData.name;
+  }
+
+  // Format currency helper
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+    }).format(amount);
+
+  // Build the email subject
+  const subject = `Commission Payment - ${dealName}`;
+
+  // Build the email body
+  const bodyText = `Hi ${brokerName.split(' ')[0]},
+
+A commission payment for ${dealName} has been processed.
+
+COMMISSION BREAKDOWN:
+-----------------------------------------
+Gross Commission:        ${formatCurrency(grossCommission)}
+Less Draw Balance:       (${formatCurrency(drawBalanceApplied)})
+-----------------------------------------
+Net Payment:             ${formatCurrency(netPayment)}
+
+${netPayment > 0
+    ? 'This amount will be deposited via direct deposit.'
+    : 'This commission has been applied to your outstanding draw balance.'}
+
+If you have any questions about this payment, please let me know.
+
+Best,
+${senderName}
+OVIS Commercial Real Estate`;
+
+  const bodyHtml = `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <p>Hi ${brokerName.split(' ')[0]},</p>
+
+  <p>A commission payment for <strong>${dealName}</strong> has been processed.</p>
+
+  <table style="border-collapse: collapse; margin: 20px 0; width: 100%; max-width: 400px;">
+    <tr style="background-color: #f5f5f5;">
+      <th colspan="2" style="padding: 12px; text-align: left; border-bottom: 2px solid #ddd;">COMMISSION BREAKDOWN</th>
+    </tr>
+    <tr>
+      <td style="padding: 8px 12px;">Gross Commission:</td>
+      <td style="padding: 8px 12px; text-align: right;">${formatCurrency(grossCommission)}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px 12px;">Less Draw Balance:</td>
+      <td style="padding: 8px 12px; text-align: right; color: #c00;">(${formatCurrency(drawBalanceApplied)})</td>
+    </tr>
+    <tr style="background-color: #e8f5e9; font-weight: bold;">
+      <td style="padding: 12px; border-top: 2px solid #4caf50;">Net Payment:</td>
+      <td style="padding: 12px; text-align: right; border-top: 2px solid #4caf50;">${formatCurrency(netPayment)}</td>
+    </tr>
+  </table>
+
+  <p>${netPayment > 0
+    ? '<strong>This amount will be deposited via direct deposit.</strong>'
+    : '<em>This commission has been applied to your outstanding draw balance.</em>'}</p>
+
+  <p>If you have any questions about this payment, please let me know.</p>
+
+  <p>Best,<br>
+  ${senderName}<br>
+  <span style="color: #666;">OVIS Commercial Real Estate</span></p>
+</div>`;
+
+  // Send the email
+  const sendResult = await sendEmail(
+    accessToken,
+    gmailConnection.google_email,
+    {
+      to: [brokerEmail],
+      cc: ccEmails,
+      subject,
+      bodyText,
+      bodyHtml,
+      fromName: senderName,
+    }
+  );
+
+  if (!sendResult.success) {
+    return {
+      success: false,
+      error: sendResult.error || 'Failed to send email',
+    };
+  }
+
+  console.log(`[Bookkeeper] Sent commission email to ${brokerEmail} (Message ID: ${sendResult.messageId})`);
+
+  return {
+    success: true,
+    message_id: sendResult.messageId,
+  };
+}
+
+// ============================================================================
 // TOOL DEFINITIONS FOR CLAUDE
 // ============================================================================
 
@@ -1046,7 +1246,7 @@ export const BOOKKEEPER_TOOL_DEFINITIONS = [
   },
   {
     name: 'get_broker_draw_balance',
-    description: 'Get a broker\'s current draw balance from QuickBooks. Returns the balance on their draw account (positive = owes company, negative = company owes them).',
+    description: 'Get a broker\'s current draw balance from QuickBooks. Returns the balance on their draw account (positive = owes company, negative = company owes them). Also returns the broker\'s email address for communication.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -1173,6 +1373,45 @@ export const BOOKKEEPER_TOOL_DEFINITIONS = [
         },
       },
       required: ['deal_search', 'broker_name'],
+    },
+  },
+  {
+    name: 'send_commission_payment_email',
+    description: 'Send an email to a broker notifying them of their commission payment. Shows the gross commission, any draw balance applied, and the net payment amount. CC\'s the sender (usually Mike) on the email.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        broker_email: {
+          type: 'string' as const,
+          description: 'The broker\'s email address',
+        },
+        broker_name: {
+          type: 'string' as const,
+          description: 'The broker\'s full name',
+        },
+        deal_name: {
+          type: 'string' as const,
+          description: 'The name of the deal this commission is for',
+        },
+        gross_commission: {
+          type: 'number' as const,
+          description: 'The gross commission amount before any draw deductions',
+        },
+        draw_balance_applied: {
+          type: 'number' as const,
+          description: 'Amount of draw balance deducted from the commission (can be 0)',
+        },
+        net_payment: {
+          type: 'number' as const,
+          description: 'The net payment amount after draw deductions',
+        },
+        cc_emails: {
+          type: 'array' as const,
+          items: { type: 'string' as const },
+          description: 'Additional email addresses to CC (optional)',
+        },
+      },
+      required: ['broker_email', 'broker_name', 'deal_name', 'gross_commission', 'draw_balance_applied', 'net_payment'],
     },
   },
 ];

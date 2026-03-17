@@ -62,10 +62,10 @@ serve(async (req) => {
       );
     }
 
-    // Check user role (admin only)
+    // Check user role (admin only) and get internal user ID
     const { data: userData, error: roleError } = await supabase
       .from('user')
-      .select('ovis_role')
+      .select('id, ovis_role')
       .eq('auth_user_id', user.id)
       .single();
 
@@ -75,6 +75,8 @@ serve(async (req) => {
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    const internalUserId = userData.id;  // Internal user ID for Gmail connection
 
     // Parse request
     const request: BookkeeperQueryRequest = await req.json();
@@ -93,7 +95,8 @@ serve(async (req) => {
     const result = await runBookkeeperAgent(
       supabase,
       request.query,
-      request.conversation_history || []
+      request.conversation_history || [],
+      internalUserId  // Pass internal user ID for Gmail access
     );
     const duration = Date.now() - startTime;
 
@@ -116,6 +119,9 @@ serve(async (req) => {
             doc_number: result.qbo_entry_created.qb_doc_number,
             amount: result.qbo_entry_created.amount,
           } : null,
+          email_sent: result.email_sent?.success ? {
+            message_id: result.email_sent.message_id,
+          } : null,
         },
         response_text: result.answer,
         user_id: user.id,
@@ -128,6 +134,7 @@ serve(async (req) => {
         journal_entry_draft: result.journal_entry_draft,
         account_suggestions: result.account_suggestions,
         qbo_entry_created: result.qbo_entry_created,
+        email_sent: result.email_sent,
         tools_used: result.tool_calls_made,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

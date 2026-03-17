@@ -21,9 +21,11 @@ import {
   createJournalEntryInQBO,
   createBillInQBO,
   getBrokerPaymentSplitForDeal,
+  sendCommissionPaymentEmail,
   JournalEntryDraft,
   AccountSuggestion,
   CreateQBOEntryResult,
+  CommissionEmailResult,
 } from './bookkeeper-tools.ts';
 
 // ============================================================================
@@ -40,6 +42,7 @@ interface BookkeeperAgentResult {
   journal_entry_draft?: JournalEntryDraft;
   account_suggestions?: AccountSuggestion[];
   qbo_entry_created?: CreateQBOEntryResult;
+  email_sent?: CommissionEmailResult;
   tool_calls_made: string[];
 }
 
@@ -134,6 +137,7 @@ TOOLS:
 - create_journal_entry_in_qbo: Create and post a journal entry to QBO (use with care!)
 - create_bill_in_qbo: Create a bill in QBO for payment via check/direct deposit
 - get_broker_payment_split_for_deal: Look up a broker's commission split from OVIS deals
+- send_commission_payment_email: Send email to broker explaining commission payment breakdown
 
 COMMISSION FROM DEAL WORKFLOW:
 When Mike says "we received payment for deal X", use get_broker_payment_split_for_deal to look up the broker's split amount, then use calculate_net_commission_payment with that amount.
@@ -144,6 +148,7 @@ When Arty earns a commission but has a draw balance:
 2. Use calculate_net_commission_payment to determine net amount owed
 3. If net payment > 0: Create a Bill for the net amount (so Mike can pay via direct deposit)
 4. Record the commission via journal entry: Debit Commission Expense, Credit Draw Account
+5. IMPORTANT: After creating the Bill, send Arty an email explaining the commission breakdown using send_commission_payment_email. The email should show gross commission, draw balance applied, and net payment. Mike will be CC'd automatically.
 
 CONTEXT: Use save_accounting_context when asked to "remember" an accounting rule. Check get_accounting_context for relevant saved rules.
 
@@ -163,7 +168,8 @@ Today: ${new Date().toISOString().split('T')[0]}.`;
 async function executeTool(
   toolName: string,
   toolInput: Record<string, unknown>,
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  userId?: string  // Internal user ID for Gmail access
 ): Promise<unknown> {
   console.log(`[Bookkeeper] Executing tool: ${toolName}`);
 
@@ -306,6 +312,24 @@ async function executeTool(
       };
     }
 
+    case 'send_commission_payment_email': {
+      if (!userId) {
+        throw new Error('User authentication required to send emails. Please ensure you are logged in.');
+      }
+      const result = await sendCommissionPaymentEmail(
+        supabase,
+        userId,
+        toolInput.broker_email as string,
+        toolInput.broker_name as string,
+        toolInput.deal_name as string,
+        toolInput.gross_commission as number,
+        toolInput.draw_balance_applied as number,
+        toolInput.net_payment as number,
+        toolInput.cc_emails as string[] | undefined
+      );
+      return result;
+    }
+
     default:
       throw new Error(`Unknown tool: ${toolName}`);
   }
@@ -318,7 +342,8 @@ async function executeTool(
 export async function runBookkeeperAgent(
   supabase: SupabaseClient,
   query: string,
-  conversationHistory: ConversationMessage[] = []
+  conversationHistory: ConversationMessage[] = [],
+  userId?: string  // Internal user ID for Gmail access (for sending emails)
 ): Promise<BookkeeperAgentResult> {
   const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!anthropicKey) {
@@ -354,6 +379,7 @@ export async function runBookkeeperAgent(
   let journalEntryDraft: JournalEntryDraft | undefined;
   let accountSuggestions: AccountSuggestion[] | undefined;
   let qboEntryCreated: CreateQBOEntryResult | undefined;
+  let emailSent: CommissionEmailResult | undefined;
 
   // Agent loop
   let maxIterations = 10;
@@ -386,6 +412,7 @@ export async function runBookkeeperAgent(
         journal_entry_draft: journalEntryDraft,
         account_suggestions: accountSuggestions,
         qbo_entry_created: qboEntryCreated,
+        email_sent: emailSent,
         tool_calls_made: toolCallsMade,
       };
     }
@@ -405,7 +432,8 @@ export async function runBookkeeperAgent(
             const result = await executeTool(
               toolUse.name,
               toolUse.input as Record<string, unknown>,
-              supabase
+              supabase,
+              userId
             );
 
             // Capture journal entry drafts
@@ -429,6 +457,11 @@ export async function runBookkeeperAgent(
             // Capture QBO entry creation results
             if (toolUse.name === 'create_journal_entry_in_qbo' || toolUse.name === 'create_bill_in_qbo') {
               qboEntryCreated = result as CreateQBOEntryResult;
+            }
+
+            // Capture email send results
+            if (toolUse.name === 'send_commission_payment_email') {
+              emailSent = result as CommissionEmailResult;
             }
 
             toolResults.push({
@@ -459,6 +492,7 @@ export async function runBookkeeperAgent(
     journal_entry_draft: journalEntryDraft,
     account_suggestions: accountSuggestions,
     qbo_entry_created: qboEntryCreated,
+    email_sent: emailSent,
     tool_calls_made: toolCallsMade,
   };
 }
