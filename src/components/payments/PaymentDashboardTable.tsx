@@ -854,6 +854,8 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                                         key={split.payment_split_id}
                                         split={split}
                                         paymentId={payment.payment_id}
+                                        dealName={payment.deal_name}
+                                        paymentName={`Payment ${payment.payment_sequence}`}
                                         onUpdate={onPaymentUpdate}
                                         onOptimisticUpdate={(splitId, updates) => handleUpdateBrokerSplit(payment.payment_id, splitId, updates)}
                                       />

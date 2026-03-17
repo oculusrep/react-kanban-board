@@ -49,6 +49,10 @@ export interface BrokerPaymentSplit {
   broker_id: string;
   broker_name: string;
 
+  // Context (denormalized for convenience)
+  deal_name?: string;
+  payment_name?: string;
+
   // Split amounts
   split_origination_usd: number | null;
   split_site_usd: number | null;

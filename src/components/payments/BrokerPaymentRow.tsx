@@ -8,6 +8,8 @@ import { BrokerPaymentSplit } from '../../types/payment-dashboard';
 interface BrokerPaymentRowProps {
   split: BrokerPaymentSplit;
   paymentId: string;
+  dealName?: string;
+  paymentName?: string;
   onUpdate: () => void;
   onOptimisticUpdate?: (splitId: string, updates: { paid?: boolean; paid_date?: string | null }) => void;
 }
@@ -22,9 +24,46 @@ interface QBCommissionResult {
   error?: string;
 }
 
-const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, onUpdate, onOptimisticUpdate }) => {
+interface ArtyCommissionResult {
+  success: boolean;
+  broker_name: string;
+  deal_name: string;
+  gross_commission: number;
+  draw_balance: number;
+  net_payment: number;
+  journal_entry?: {
+    id: string;
+    doc_number: string;
+  };
+  bill?: {
+    id: string;
+    doc_number: string;
+  };
+  email_sent?: boolean;
+  error?: string;
+}
+
+interface ArtyCommissionPreview {
+  broker_name: string;
+  deal_name: string;
+  payment_name: string;
+  gross_commission: number;
+  draw_balance: number;
+  net_payment: number;
+}
+
+const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, dealName, paymentName, onUpdate, onOptimisticUpdate }) => {
   const [showQboConfirmDialog, setShowQboConfirmDialog] = useState(false);
   const [pendingPaidState, setPendingPaidState] = useState<boolean | null>(null);
+
+  // Arty commission processing state
+  const [showArtyCommissionModal, setShowArtyCommissionModal] = useState(false);
+  const [artyPreview, setArtyPreview] = useState<ArtyCommissionPreview | null>(null);
+  const [isLoadingArtyPreview, setIsLoadingArtyPreview] = useState(false);
+  const [isProcessingArty, setIsProcessingArty] = useState(false);
+  const [artyResult, setArtyResult] = useState<ArtyCommissionResult | null>(null);
+
+  const isArty = split.broker_name?.toLowerCase().includes('arty');
 
   const formatCurrency = (amount: number | null) => {
     if (amount === null) return '-';
@@ -67,6 +106,96 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, o
     setLocalPaid(split.paid);
     setLocalPaidDate(split.paid_date);
   }, [split.paid, split.paid_date]);
+
+  // Fetch Arty commission preview (without processing)
+  const fetchArtyPreview = async () => {
+    setIsLoadingArtyPreview(true);
+    try {
+      // Use the process-arty-commission function in preview_only mode
+      const { data, error } = await supabase.functions.invoke('process-arty-commission', {
+        body: {
+          payment_split_id: split.payment_split_id,
+          preview_only: true,
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      setArtyPreview({
+        broker_name: data.broker_name,
+        deal_name: data.deal_name,
+        payment_name: paymentName || 'Payment',
+        gross_commission: data.gross_commission,
+        draw_balance: data.draw_balance,
+        net_payment: data.net_payment,
+      });
+    } catch (err) {
+      console.error('Error fetching Arty preview:', err);
+      // Fallback to just showing gross commission
+      setArtyPreview({
+        broker_name: split.broker_name,
+        deal_name: dealName || 'Unknown Deal',
+        payment_name: paymentName || 'Payment',
+        gross_commission: Number(split.split_broker_total) || 0,
+        draw_balance: 0,
+        net_payment: Number(split.split_broker_total) || 0,
+      });
+    } finally {
+      setIsLoadingArtyPreview(false);
+    }
+  };
+
+  // Process Arty commission using the pre-baked function
+  const processArtyCommission = async () => {
+    setIsProcessingArty(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('process-arty-commission', {
+        body: {
+          payment_split_id: split.payment_split_id,
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      setArtyResult(data as ArtyCommissionResult);
+
+      // If successful, update the local paid state
+      if (data.success) {
+        setLocalPaid(true);
+        setLocalPaidDate(new Date().toISOString().split('T')[0]);
+        if (onOptimisticUpdate) {
+          const today = new Date();
+          const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+          onOptimisticUpdate(split.payment_split_id, { paid: true, paid_date: dateStr });
+        }
+        onUpdate();
+      }
+    } catch (err) {
+      console.error('Error processing Arty commission:', err);
+      setArtyResult({
+        success: false,
+        broker_name: split.broker_name,
+        deal_name: split.deal_name || 'Unknown Deal',
+        gross_commission: Number(split.split_broker_total) || 0,
+        draw_balance: 0,
+        net_payment: 0,
+        error: err instanceof Error ? err.message : 'Unknown error',
+      });
+    } finally {
+      setIsProcessingArty(false);
+    }
+  };
+
+  // Open Arty commission modal
+  const handleOpenArtyModal = async () => {
+    setShowArtyCommissionModal(true);
+    setArtyResult(null);
+    await fetchArtyPreview();
+  };
 
   // Create QBO commission entry (Bill or Journal Entry) when marking as paid
   const createQBCommissionEntry = async (paidDate: string): Promise<QBCommissionResult> => {
@@ -242,10 +371,131 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, o
 
   return (
     <>
+      {/* Arty Commission Modal */}
+      {showArtyCommissionModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => !isProcessingArty && setShowArtyCommissionModal(false)} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  Process Arty's Commission
+                </h3>
+
+                {isLoadingArtyPreview ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+                    <span className="ml-3 text-gray-600">Loading breakdown...</span>
+                  </div>
+                ) : artyResult ? (
+                  // Show result
+                  <div className={`rounded-lg p-4 ${artyResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                    {artyResult.success ? (
+                      <>
+                        <p className="text-green-800 font-medium mb-3">Commission processed successfully!</p>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-green-700">Journal Entry:</span>
+                            <span className="font-mono text-green-900">#{artyResult.journal_entry?.doc_number}</span>
+                          </div>
+                          {artyResult.bill && (
+                            <div className="flex justify-between">
+                              <span className="text-green-700">Bill Created:</span>
+                              <span className="font-mono text-green-900">#{artyResult.bill.doc_number}</span>
+                            </div>
+                          )}
+                          {artyResult.email_sent && (
+                            <div className="flex justify-between">
+                              <span className="text-green-700">Email:</span>
+                              <span className="text-green-900">Sent to Arty</span>
+                            </div>
+                          )}
+                          <div className="pt-2 border-t border-green-200 mt-2">
+                            <div className="flex justify-between font-medium">
+                              <span className="text-green-700">Net Payment:</span>
+                              <span className="text-green-900">{formatCurrency(artyResult.net_payment)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-red-800">Error: {artyResult.error}</p>
+                    )}
+                    <button
+                      onClick={() => setShowArtyCommissionModal(false)}
+                      className="mt-4 w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                    >
+                      Close
+                    </button>
+                  </div>
+                ) : artyPreview ? (
+                  // Show preview
+                  <>
+                    <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                      <div className="text-sm text-gray-600 mb-2">{artyPreview.deal_name}</div>
+                      <div className="space-y-3">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Gross Commission:</span>
+                          <span className="font-medium text-gray-900">{formatCurrency(artyPreview.gross_commission)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Less Draw Balance:</span>
+                          <span className="font-medium text-red-600">({formatCurrency(artyPreview.draw_balance)})</span>
+                        </div>
+                        <div className="border-t pt-2">
+                          <div className="flex justify-between text-base font-semibold">
+                            <span className="text-gray-900">Net Payment:</span>
+                            <span className="text-emerald-600">{formatCurrency(artyPreview.net_payment)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-blue-50 rounded-lg p-3 mb-4 text-sm text-blue-800">
+                      <strong>This will:</strong>
+                      <ul className="list-disc ml-5 mt-1 space-y-1">
+                        <li>Create journal entry (Commission Expense → Draw Account)</li>
+                        {artyPreview.net_payment > 0 && <li>Create bill to Santos Real Estate Partners for {formatCurrency(artyPreview.net_payment)}</li>}
+                        <li>Send breakdown email to Arty</li>
+                        <li>Mark this payment split as paid</li>
+                      </ul>
+                    </div>
+
+                    <div className="flex space-x-3">
+                      <button
+                        onClick={() => setShowArtyCommissionModal(false)}
+                        disabled={isProcessingArty}
+                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={processArtyCommission}
+                        disabled={isProcessingArty}
+                        className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center"
+                      >
+                        {isProcessingArty ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                            Processing...
+                          </>
+                        ) : (
+                          'Process Commission'
+                        )}
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* QBO Entry Confirmation Dialog */}
       {showQboConfirmDialog && (
         <tr>
-          <td colSpan={6} className="px-2 py-3 bg-blue-50 border-y border-blue-200">
+          <td colSpan={7} className="px-2 py-3 bg-blue-50 border-y border-blue-200">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <span className="text-sm font-medium text-blue-900">
@@ -283,7 +533,20 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, o
         </tr>
       )}
       <tr className="hover:bg-gray-50">
-        <td className="px-2 py-2 text-sm text-gray-900">{split.broker_name}</td>
+        <td className="px-2 py-2 text-sm text-gray-900">
+          <div className="flex items-center gap-2">
+            {split.broker_name}
+            {isArty && !localPaid && (
+              <button
+                onClick={handleOpenArtyModal}
+                className="px-2 py-0.5 text-xs bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 font-medium"
+                title="Calculate net pay with draw balance"
+              >
+                Net Pay
+              </button>
+            )}
+          </div>
+        </td>
         <td className="px-2 py-2 text-sm text-center">
           <div className="flex flex-col items-center">
             <span className="text-gray-900">{formatCurrency(split.split_origination_usd)}</span>

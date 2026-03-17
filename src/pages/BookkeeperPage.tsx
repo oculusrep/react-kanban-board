@@ -8,7 +8,7 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, BookOpen, RefreshCw, Table2 } from 'lucide-react';
+import { ArrowLeft, BookOpen, RefreshCw, Table2, Calculator, DollarSign } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import BookkeeperChatPanel from '../components/bookkeeper/BookkeeperChatPanel';
 import JournalEntryPreview from '../components/bookkeeper/JournalEntryPreview';
@@ -289,6 +289,25 @@ Please use the create_journal_entry_in_qbo tool to post this entry.`;
                 <p className="text-sm text-center max-w-xs">
                   Ask the bookkeeper to help you draft a journal entry, and it will appear here for review
                 </p>
+
+                {/* Quick Actions */}
+                <div className="mt-6 w-full max-w-sm">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide mb-3 text-center">Quick Actions</p>
+                  <button
+                    onClick={() => handleSendMessage("I need to process a commission payment for Arty. Please ask me which deal and payment this is for, then calculate his net payment after applying his draw balance, create the journal entry, create the bill to Santos Real Estate Partners, and send him the breakdown email.")}
+                    className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white rounded-lg p-4 text-left transition-all shadow-sm hover:shadow-md"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="bg-white/20 rounded-lg p-2">
+                        <Calculator className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <p className="font-medium">Arty Commission Calculator</p>
+                        <p className="text-xs text-emerald-100 mt-0.5">Process commission with draw balance</p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
 
                 {/* Quick topics */}
                 <div className="mt-8 grid grid-cols-2 gap-4 w-full max-w-sm">
