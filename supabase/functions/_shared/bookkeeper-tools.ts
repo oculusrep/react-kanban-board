@@ -28,6 +28,42 @@ import {
 } from './gmail.ts';
 
 // ============================================================================
+// IN-MEMORY CACHE FOR BROKER DATA
+// ============================================================================
+
+// Cache broker commission mappings to avoid repeated DB lookups
+// Key: broker_id, Value: mapping data + timestamp
+interface CachedBrokerMapping {
+  broker_id: string;
+  broker_name: string;
+  broker_email: string | null;
+  qb_credit_account_id: string;
+  qb_credit_account_name: string;
+  qb_vendor_id: string | null;
+  qb_vendor_name: string | null;
+  cached_at: number;
+}
+
+const BROKER_MAPPING_CACHE = new Map<string, CachedBrokerMapping>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function getCachedBrokerMapping(brokerId: string): CachedBrokerMapping | null {
+  const cached = BROKER_MAPPING_CACHE.get(brokerId);
+  if (cached && Date.now() - cached.cached_at < CACHE_TTL_MS) {
+    console.log(`[Bookkeeper] Using cached broker mapping for ${cached.broker_name}`);
+    return cached;
+  }
+  return null;
+}
+
+function cacheBrokerMapping(mapping: CachedBrokerMapping): void {
+  BROKER_MAPPING_CACHE.set(mapping.broker_id, {
+    ...mapping,
+    cached_at: Date.now(),
+  });
+}
+
+// ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
 
@@ -449,7 +485,8 @@ This is a Balance Sheet-neutral entry that just moves the expense between P&L ca
 
 export async function getBrokerDrawBalance(
   supabase: SupabaseClient,
-  brokerName: string
+  brokerName: string,
+  skipGLReport: boolean = false  // Skip the slow GL report for faster results
 ): Promise<BrokerDrawBalance> {
   // First, find the broker by name
   const { data: brokers, error: brokerError } = await supabase
@@ -464,28 +501,76 @@ export async function getBrokerDrawBalance(
 
   const broker = brokers[0] as { id: string; name: string; email: string | null };
 
-  // Get the commission mapping to find the draw account
-  const { data: mapping, error: mappingError } = await supabase
-    .from('qb_commission_mapping')
-    .select(`
-      id,
-      broker_id,
-      qb_credit_account_id,
-      qb_credit_account_name,
-      qb_vendor_id,
-      qb_vendor_name
-    `)
-    .eq('broker_id', broker.id)
-    .eq('payment_method', 'journal_entry')
-    .eq('is_active', true)
-    .single();
+  // Check cache first for broker mapping
+  let cachedMapping = getCachedBrokerMapping(broker.id);
+  let mapping: {
+    qb_credit_account_id: string;
+    qb_credit_account_name: string | null;
+    qb_vendor_id: string | null;
+    qb_vendor_name: string | null;
+  };
+  let brokerEmail: string | null;
 
-  if (mappingError || !mapping) {
-    throw new Error(`No commission mapping found for ${broker.name}. Configure it in Settings > QuickBooks.`);
-  }
+  if (cachedMapping) {
+    mapping = {
+      qb_credit_account_id: cachedMapping.qb_credit_account_id,
+      qb_credit_account_name: cachedMapping.qb_credit_account_name,
+      qb_vendor_id: cachedMapping.qb_vendor_id,
+      qb_vendor_name: cachedMapping.qb_vendor_name,
+    };
+    brokerEmail = cachedMapping.broker_email;
+  } else {
+    // Get the commission mapping from DB
+    const { data: mappingData, error: mappingError } = await supabase
+      .from('qb_commission_mapping')
+      .select(`
+        id,
+        broker_id,
+        qb_credit_account_id,
+        qb_credit_account_name,
+        qb_vendor_id,
+        qb_vendor_name
+      `)
+      .eq('broker_id', broker.id)
+      .eq('payment_method', 'journal_entry')
+      .eq('is_active', true)
+      .single();
 
-  if (!mapping.qb_credit_account_id) {
-    throw new Error(`${broker.name}'s commission mapping has no credit (draw) account configured.`);
+    if (mappingError || !mappingData) {
+      throw new Error(`No commission mapping found for ${broker.name}. Configure it in Settings > QuickBooks.`);
+    }
+
+    if (!mappingData.qb_credit_account_id) {
+      throw new Error(`${broker.name}'s commission mapping has no credit (draw) account configured.`);
+    }
+
+    mapping = mappingData;
+
+    // Try to get broker email - first from broker table, then from user table by name
+    brokerEmail = broker.email;
+    if (!brokerEmail) {
+      const { data: userData } = await supabase
+        .from('user')
+        .select('email')
+        .ilike('name', `%${broker.name}%`)
+        .single();
+
+      if (userData?.email) {
+        brokerEmail = userData.email;
+      }
+    }
+
+    // Cache the mapping for future calls
+    cacheBrokerMapping({
+      broker_id: broker.id,
+      broker_name: broker.name,
+      broker_email: brokerEmail,
+      qb_credit_account_id: mapping.qb_credit_account_id,
+      qb_credit_account_name: mapping.qb_credit_account_name || '',
+      qb_vendor_id: mapping.qb_vendor_id,
+      qb_vendor_name: mapping.qb_vendor_name,
+      cached_at: Date.now(),
+    });
   }
 
   // Get QBO connection
@@ -506,64 +591,53 @@ export async function getBrokerDrawBalance(
   const currentBalance = accountResult.Account.CurrentBalance || 0;
 
   // Get transaction summary from the GL report for the current year
+  // Skip this if requested (for faster calculations)
   const today = new Date();
-  const startDate = `${today.getFullYear()}-01-01`;
   const endDate = today.toISOString().split('T')[0];
-
-  const reportQuery = new URLSearchParams({
-    account: mapping.qb_credit_account_id,
-    start_date: startDate,
-    end_date: endDate,
-    summarize_column_by: 'Total',
-    columns: 'subt_nat_amount'
-  });
 
   let totalDraws = 0;
   let totalCommissions = 0;
 
-  try {
-    const reportResult = await qbApiRequest<any>(
-      connection,
-      'GET',
-      `reports/GeneralLedger?${reportQuery.toString()}`
-    );
+  if (!skipGLReport) {
+    const startDate = `${today.getFullYear()}-01-01`;
 
-    // Parse the summary - look for totals
-    if (reportResult?.Rows?.Row) {
-      const rows = reportResult.Rows.Row;
-      for (const row of rows) {
-        if (row.Summary?.ColData) {
-          for (const col of row.Summary.ColData) {
-            if (col.value && typeof col.value === 'string') {
-              const amount = parseFloat(col.value.replace(/[,$]/g, '')) || 0;
-              // For draw accounts: negative = draws, positive = commissions
-              if (amount > 0) {
-                totalCommissions += amount;
-              } else {
-                totalDraws += Math.abs(amount);
+    const reportQuery = new URLSearchParams({
+      account: mapping.qb_credit_account_id,
+      start_date: startDate,
+      end_date: endDate,
+      summarize_column_by: 'Total',
+      columns: 'subt_nat_amount'
+    });
+
+    try {
+      const reportResult = await qbApiRequest<any>(
+        connection,
+        'GET',
+        `reports/GeneralLedger?${reportQuery.toString()}`
+      );
+
+      // Parse the summary - look for totals
+      if (reportResult?.Rows?.Row) {
+        const rows = reportResult.Rows.Row;
+        for (const row of rows) {
+          if (row.Summary?.ColData) {
+            for (const col of row.Summary.ColData) {
+              if (col.value && typeof col.value === 'string') {
+                const amount = parseFloat(col.value.replace(/[,$]/g, '')) || 0;
+                // For draw accounts: negative = draws, positive = commissions
+                if (amount > 0) {
+                  totalCommissions += amount;
+                } else {
+                  totalDraws += Math.abs(amount);
+                }
               }
             }
           }
         }
       }
-    }
-  } catch (err) {
-    console.warn('Could not fetch GL summary:', err);
-    // Continue with zeros - we still have the balance
-  }
-
-  // Try to get broker email - first from broker table, then from user table by name
-  let brokerEmail = broker.email;
-  if (!brokerEmail) {
-    // Try to find a matching user by name
-    const { data: userData } = await supabase
-      .from('user')
-      .select('email')
-      .ilike('name', `%${broker.name}%`)
-      .single();
-
-    if (userData?.email) {
-      brokerEmail = userData.email;
+    } catch (err) {
+      console.warn('Could not fetch GL summary:', err);
+      // Continue with zeros - we still have the balance
     }
   }
 
@@ -779,14 +853,17 @@ export async function calculateNetCommissionPayment(
   commissionAmount: number
 ): Promise<{
   broker_name: string;
+  broker_email: string | null;
   commission_amount: number;
   current_draw_balance: number;
   net_payment_amount: number;
   balance_after_payment: number;
   explanation: string;
+  qb_account_id: string;
+  qb_account_name: string;
 }> {
-  // Get the broker's current draw balance
-  const balance = await getBrokerDrawBalance(supabase, brokerName);
+  // Get the broker's current draw balance (skip GL report for speed - we only need the balance)
+  const balance = await getBrokerDrawBalance(supabase, brokerName, true);
 
   const currentDrawBalance = balance.current_balance;
   const netPaymentAmount = commissionAmount - currentDrawBalance;
@@ -805,11 +882,14 @@ export async function calculateNetCommissionPayment(
 
   return {
     broker_name: balance.broker_name,
+    broker_email: balance.broker_email,
     commission_amount: commissionAmount,
     current_draw_balance: currentDrawBalance,
     net_payment_amount: Math.max(0, netPaymentAmount),
     balance_after_payment: balanceAfterPayment,
     explanation,
+    qb_account_id: balance.qb_account_id,
+    qb_account_name: balance.qb_account_name,
   };
 }
 
@@ -1260,7 +1340,7 @@ export const BOOKKEEPER_TOOL_DEFINITIONS = [
   },
   {
     name: 'calculate_net_commission_payment',
-    description: 'Calculate the net payment owed to a broker after applying their commission against any outstanding draw balance.',
+    description: 'Calculate the net payment owed to a broker after applying their commission against any outstanding draw balance. This is the MAIN tool for commission processing - it returns everything you need in one call: draw balance, net payment, broker email, and QBO account IDs. Use this INSTEAD of calling get_broker_draw_balance first.',
     input_schema: {
       type: 'object' as const,
       properties: {
