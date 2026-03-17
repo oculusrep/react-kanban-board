@@ -390,7 +390,7 @@ export default function ArtyDrawReport() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Current Balance */}
         <div className="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500">
           <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Current Balance</p>
@@ -416,15 +416,6 @@ export default function ArtyDrawReport() {
             {formatCurrency(data?.summary?.totalDebits || 0)}
           </p>
           <p className="text-xs text-gray-500 mt-1">Commissions credited to draw account</p>
-        </div>
-
-        {/* Net Change */}
-        <div className="bg-gray-800 rounded-lg shadow p-6 text-white">
-          <p className="text-sm font-medium text-gray-300 uppercase tracking-wide">Net Change</p>
-          <p className="text-3xl font-bold mt-2">
-            {formatCurrency(data?.summary?.netChange || 0)}
-          </p>
-          <p className="text-xs text-gray-400 mt-1">Commissions - Draws (period)</p>
         </div>
       </div>
 
