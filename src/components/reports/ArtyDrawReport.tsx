@@ -203,7 +203,7 @@ export default function ArtyDrawReport() {
   const exportToCSV = () => {
     if (!data?.transactions) return;
 
-    const headers = ['Date', 'Type', 'Doc #', 'Name', 'Memo', 'Draws (Debit)', 'Credits', 'Balance'];
+    const headers = ['Date', 'Type', 'Doc #', 'Name', 'Memo', 'Commissions Earned', 'Draws', 'Balance'];
     const rows = sortedTransactions.map(t => [
       t.date,
       t.type,
@@ -397,25 +397,25 @@ export default function ArtyDrawReport() {
           <p className={`text-3xl font-bold mt-2 ${(data?.currentBalance || 0) >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
             {formatCurrency(data?.currentBalance || 0)}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Amount owed to Arty</p>
+          <p className="text-xs text-gray-500 mt-1">Amount Arty owes the company</p>
         </div>
 
-        {/* Total Draws */}
-        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
+        {/* Total Draws - Money paid OUT to Arty (Credits in QBO) */}
+        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
           <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Total Draws</p>
-          <p className="text-3xl font-bold text-green-600 mt-2">
-            {formatCurrency(data?.summary?.totalDebits || 0)}
+          <p className="text-3xl font-bold text-purple-600 mt-2">
+            {formatCurrency(data?.summary?.totalCredits || 0)}
           </p>
           <p className="text-xs text-gray-500 mt-1">Money paid to Arty</p>
         </div>
 
-        {/* Total Credits */}
-        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
-          <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Total Credits</p>
-          <p className="text-3xl font-bold text-purple-600 mt-2">
-            {formatCurrency(data?.summary?.totalCredits || 0)}
+        {/* Total Commissions Earned - Debits in QBO */}
+        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
+          <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Commissions Earned</p>
+          <p className="text-3xl font-bold text-green-600 mt-2">
+            {formatCurrency(data?.summary?.totalDebits || 0)}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Commissions earned</p>
+          <p className="text-xs text-gray-500 mt-1">Commissions credited to draw account</p>
         </div>
 
         {/* Net Change */}
@@ -424,7 +424,7 @@ export default function ArtyDrawReport() {
           <p className="text-3xl font-bold mt-2">
             {formatCurrency(data?.summary?.netChange || 0)}
           </p>
-          <p className="text-xs text-gray-400 mt-1">Draws - Credits (period)</p>
+          <p className="text-xs text-gray-400 mt-1">Commissions - Draws (period)</p>
         </div>
       </div>
 
@@ -471,8 +471,8 @@ export default function ArtyDrawReport() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Doc #</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name/Memo</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-green-600 uppercase bg-green-50">Draws (Debit)</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-purple-600 uppercase bg-purple-50">Credits</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-green-600 uppercase bg-green-50">Commissions Earned</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-purple-600 uppercase bg-purple-50">Draws</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Balance</th>
                 <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase w-16"></th>
               </tr>
@@ -575,9 +575,9 @@ export default function ArtyDrawReport() {
       {/* Legend */}
       <div className="bg-white rounded-lg shadow px-6 py-3">
         <div className="text-xs text-gray-500 space-y-1">
-          <p><strong>Draws (Debit):</strong> Money paid to Arty from the draw account (reduces the balance)</p>
-          <p><strong>Credits:</strong> Commissions earned by Arty (increases the balance owed)</p>
-          <p><strong>Balance:</strong> Current amount in the draw account (positive = owed to Arty)</p>
+          <p><strong>Commissions Earned:</strong> Commissions credited to Arty's draw account (increases what he can draw)</p>
+          <p><strong>Draws:</strong> Money paid out to Arty from the draw account (reduces available balance)</p>
+          <p><strong>Balance:</strong> Positive = Arty owes the company (draws exceed commissions). Negative = Company owes Arty.</p>
           <p><strong>Source:</strong> QuickBooks Online General Ledger Report for {mapping?.qb_credit_account_name || 'Draw Account'}</p>
         </div>
       </div>
