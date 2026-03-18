@@ -124,6 +124,7 @@ serve(async (req) => {
     // ========================================================================
     // STEP 1: Get the payment split details from OVIS
     // ========================================================================
+    console.log(`[ProcessArtyCommission] Step 1: Fetching payment split...`);
     const { data: splitData, error: splitError } = await supabase
       .from('payment_split')
       .select(`
@@ -150,6 +151,7 @@ serve(async (req) => {
       .single();
 
     if (splitError || !splitData) {
+      console.error(`[ProcessArtyCommission] Step 1 FAILED:`, splitError);
       throw new Error(`Payment split not found: ${splitError?.message || 'Unknown error'}`);
     }
 
@@ -165,11 +167,12 @@ serve(async (req) => {
     const dealName = deal?.deal_name || 'Unknown Deal';
     const paymentName = payment?.payment_name || 'Payment';
 
-    console.log(`[ProcessArtyCommission] Deal: ${dealName}, Payment: ${paymentName}, Amount: $${grossCommission}`);
+    console.log(`[ProcessArtyCommission] Step 1 SUCCESS: Deal: ${dealName}, Payment: ${paymentName}, Amount: $${grossCommission}`);
 
     // ========================================================================
     // STEP 2: Get Arty's commission mapping and draw balance
     // ========================================================================
+    console.log(`[ProcessArtyCommission] Step 2: Fetching commission mapping for broker ${broker.id}...`);
     const { data: mapping, error: mappingError } = await supabase
       .from('qb_commission_mapping')
       .select('qb_credit_account_id, qb_credit_account_name, qb_vendor_id, qb_vendor_name')
@@ -179,24 +182,31 @@ serve(async (req) => {
       .single();
 
     if (mappingError || !mapping?.qb_credit_account_id) {
+      console.error(`[ProcessArtyCommission] Step 2 FAILED:`, mappingError);
       throw new Error('No QBO commission mapping configured for Arty. Configure in Settings > QuickBooks.');
     }
+    console.log(`[ProcessArtyCommission] Step 2 SUCCESS: Account ${mapping.qb_credit_account_id}`);
 
     // Get QBO connection
+    console.log(`[ProcessArtyCommission] Step 3: Getting QBO connection...`);
     let connection = await getQBConnection(supabase);
     if (!connection) {
+      console.error(`[ProcessArtyCommission] Step 3 FAILED: No QBO connection`);
       throw new Error('QuickBooks is not connected');
     }
+    console.log(`[ProcessArtyCommission] Step 3 SUCCESS: QBO connected, refreshing token...`);
     connection = await refreshTokenIfNeeded(supabase, connection);
+    console.log(`[ProcessArtyCommission] Step 3 SUCCESS: Token refreshed`);
 
     // Get current balance directly from QBO account
+    console.log(`[ProcessArtyCommission] Step 4: Fetching QBO account ${mapping.qb_credit_account_id}...`);
     const accountResult = await qbApiRequest<{ Account: { CurrentBalance?: number; CurrentBalanceWithSubAccounts?: number; Name: string } }>(
       connection,
       'GET',
       `account/${mapping.qb_credit_account_id}`
     );
 
-    console.log(`[ProcessArtyCommission] QBO Account response:`, JSON.stringify(accountResult));
+    console.log(`[ProcessArtyCommission] Step 4 SUCCESS: QBO Account response:`, JSON.stringify(accountResult));
 
     // QBO may return CurrentBalance or CurrentBalanceWithSubAccounts depending on account type
     const drawBalance = accountResult.Account.CurrentBalance ?? accountResult.Account.CurrentBalanceWithSubAccounts ?? 0;
