@@ -148,3 +148,22 @@ supabase/migrations/20260226_google_places_search.sql # Database schema
 - **MappingPageNew.tsx** - "Search Closed Businesses" button in toolbar
 - **LayerPanel.tsx** - "Bulk Add to Properties" button for closed business layers
 - **Layer Management page** - Closed business layers appear with sharing support
+
+---
+
+## Bug Fixes
+
+### March 2026 - Property Insert Fixes
+
+**Issue 1: Wrong column name for ZIP code**
+- **Problem:** Modal was using `zip_code` but property table uses `zip`
+- **Fix:** Changed to `zip` in both `AddClosedPlacePropertyModal.tsx` and `BulkAddPropertiesModal.tsx`
+- **Commit:** `7c7cc67c`
+
+**Issue 2: Wrong table for property type**
+- **Problem:** Modals were using `property_type` table (saving to `property_type_id`) but the PinDetailsSlideout uses `property_record_type` table (reading from `property_record_type_id`) for conditional field display (Land, Shopping Center, etc.)
+- **Fix:** Changed both modals to:
+  - Load from `property_record_type` table instead of `property_type`
+  - Save to `property_record_type_id` instead of `property_type_id`
+- **Result:** Property type selected in modal now properly recognized when viewing property on map
+- **Commit:** `4e434cb6`
