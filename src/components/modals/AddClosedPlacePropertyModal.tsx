@@ -231,7 +231,7 @@ const AddClosedPlacePropertyModal: React.FC<AddClosedPlacePropertyModalProps> = 
           address: streetAddress.trim(),
           city: city.trim(),
           state: state.trim(),
-          zip_code: zip.trim() || null,
+          zip: zip.trim() || null,
           latitude: place.latitude,
           longitude: place.longitude,
           google_place_id: place.place_id,

@@ -271,7 +271,7 @@ const BulkAddPropertiesModal: React.FC<BulkAddPropertiesModalProps> = ({
             address: parsed.streetAddress,
             city: city,
             state: state,
-            zip_code: zip || null,
+            zip: zip || null,
             latitude: place.latitude,
             longitude: place.longitude,
             google_place_id: place.place_id,
