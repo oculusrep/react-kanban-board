@@ -119,8 +119,15 @@ const BrokerPaymentRow: React.FC<BrokerPaymentRowProps> = ({ split, paymentId, d
         },
       });
 
+      console.log('[ArtyPreview] Response:', { data, error });
+
       if (error) {
         throw new Error(error.message);
+      }
+
+      // Check if the response indicates an error (status 500 case)
+      if (data?.success === false && data?.error) {
+        throw new Error(data.error);
       }
 
       setArtyPreview({

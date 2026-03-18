@@ -190,13 +190,16 @@ serve(async (req) => {
     connection = await refreshTokenIfNeeded(supabase, connection);
 
     // Get current balance directly from QBO account
-    const accountResult = await qbApiRequest<{ Account: { CurrentBalance?: number; Name: string } }>(
+    const accountResult = await qbApiRequest<{ Account: { CurrentBalance?: number; CurrentBalanceWithSubAccounts?: number; Name: string } }>(
       connection,
       'GET',
       `account/${mapping.qb_credit_account_id}`
     );
 
-    const drawBalance = accountResult.Account.CurrentBalance || 0;
+    console.log(`[ProcessArtyCommission] QBO Account response:`, JSON.stringify(accountResult));
+
+    // QBO may return CurrentBalance or CurrentBalanceWithSubAccounts depending on account type
+    const drawBalance = accountResult.Account.CurrentBalance ?? accountResult.Account.CurrentBalanceWithSubAccounts ?? 0;
     const netPayment = Math.max(0, grossCommission - drawBalance);
 
     console.log(`[ProcessArtyCommission] Draw balance: $${drawBalance}, Net payment: $${netPayment}`);
