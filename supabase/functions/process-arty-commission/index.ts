@@ -143,8 +143,7 @@ serve(async (req) => {
         ),
         broker:broker_id (
           id,
-          name,
-          email
+          name
         )
       `)
       .eq('id', request.payment_split_id)
@@ -336,16 +335,13 @@ serve(async (req) => {
 
     if (!request.skip_email) {
       try {
-        // Get broker email
-        let brokerEmail = broker.email;
-        if (!brokerEmail) {
-          const { data: userData } = await supabase
-            .from('user')
-            .select('email')
-            .ilike('name', `%${broker.name}%`)
-            .single();
-          brokerEmail = userData?.email;
-        }
+        // Get broker email from user table (broker table doesn't have email)
+        const { data: userData } = await supabase
+          .from('user')
+          .select('email')
+          .ilike('name', `%${broker.name}%`)
+          .single();
+        const brokerEmail = userData?.email;
 
         if (brokerEmail) {
           // Get Gmail connection
