@@ -99,17 +99,17 @@ const BulkAddPropertiesModal: React.FC<BulkAddPropertiesModalProps> = ({
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load property types
+  // Load property record types (used for conditional fields in slideout)
   useEffect(() => {
     const loadPropertyTypes = async () => {
       const { data, error } = await supabase
-        .from('property_type')
+        .from('property_record_type')
         .select('id, label')
         .eq('active', true)
         .order('sort_order');
 
       if (error) {
-        console.error('Failed to load property types:', error);
+        console.error('Failed to load property record types:', error);
         return;
       }
 
@@ -275,7 +275,7 @@ const BulkAddPropertiesModal: React.FC<BulkAddPropertiesModalProps> = ({
             latitude: place.latitude,
             longitude: place.longitude,
             google_place_id: place.place_id,
-            property_type_id: selectedPropertyTypeId || null,
+            property_record_type_id: selectedPropertyTypeId || null,
             property_notes: `Source: Google Places Closed Business Search (Bulk Add)\nStatus: ${place.business_status}\nOriginal Address: ${place.formatted_address}`,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),

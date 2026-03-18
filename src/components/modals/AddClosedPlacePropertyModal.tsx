@@ -5,7 +5,7 @@ import { duplicateDetectionService, DuplicateMatch } from '../../services/duplic
 import { geocodingService } from '../../services/geocodingService';
 import type { PlacesSearchResult } from '../../services/googlePlacesSearchService';
 
-interface PropertyType {
+interface PropertyRecordType {
   id: string;
   label: string;
 }
@@ -94,7 +94,7 @@ const AddClosedPlacePropertyModal: React.FC<AddClosedPlacePropertyModalProps> = 
   const [propertyTypeId, setPropertyTypeId] = useState<string>('');
 
   // UI state
-  const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
+  const [propertyTypes, setPropertyTypes] = useState<PropertyRecordType[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,17 +104,17 @@ const AddClosedPlacePropertyModal: React.FC<AddClosedPlacePropertyModalProps> = 
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [duplicateAction, setDuplicateAction] = useState<'skip' | 'add' | 'link'>('add');
 
-  // Load property types
+  // Load property record types (used for conditional fields in slideout)
   useEffect(() => {
     const loadPropertyTypes = async () => {
       const { data, error } = await supabase
-        .from('property_type')
+        .from('property_record_type')
         .select('id, label')
         .eq('active', true)
         .order('sort_order');
 
       if (error) {
-        console.error('Failed to load property types:', error);
+        console.error('Failed to load property record types:', error);
         return;
       }
 
@@ -235,7 +235,7 @@ const AddClosedPlacePropertyModal: React.FC<AddClosedPlacePropertyModalProps> = 
           latitude: place.latitude,
           longitude: place.longitude,
           google_place_id: place.place_id,
-          property_type_id: propertyTypeId || null,
+          property_record_type_id: propertyTypeId || null,
           property_notes: `Source: Google Places Closed Business Search\nStatus: ${place.business_status}\nOriginal Address: ${place.formatted_address}`,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
