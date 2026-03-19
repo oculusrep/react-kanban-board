@@ -158,7 +158,7 @@ export default function FinanceHubPage() {
       title: 'Unpaid Referral Fees',
       description: 'Track referral fees that have not yet been paid out.',
       icon: <PiggyBank className="h-8 w-8" />,
-      path: '/reports/unpaid-referrals',
+      path: '/reports/unpaid-referral-fees',
       color: 'text-rose-600',
       bgColor: 'bg-rose-50',
       borderColor: 'border-rose-200',
