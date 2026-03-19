@@ -35,7 +35,7 @@ Only created if net payment > $0.
 
 | Vendor | Amount | Account | Description |
 |--------|--------|---------|-------------|
-| Santos Real Estate Partners | $1,169.62 | Commissions Paid Out: Santos Real Estate Partners LLC | Net commission payment |
+| Santos Real Estate Partners LLC | $1,169.62 | Commissions Paid Out: Santos Real Estate Partners LLC | Net commission payment |
 
 **Result**: Creates an Accounts Payable entry for the net payment
 
