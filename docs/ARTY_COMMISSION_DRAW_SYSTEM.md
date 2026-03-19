@@ -108,7 +108,7 @@ Both the JE and Bill use the same expense account:
 In Settings > QuickBooks, Arty's commission mapping should have:
 - **Payment Method**: Journal Entry
 - **Credit Account**: Santos Real Estate Commission Draw
-- **Vendor**: Santos Real Estate Partners
+- **Vendor**: Santos Real Estate Partners LLC
 
 ## Workflow
 

@@ -340,7 +340,7 @@ serve(async (req) => {
 
     if (netPayment > 0) {
       // Find or create Santos Real Estate Partners vendor
-      const vendor = await findOrCreateVendor(connection, 'Santos Real Estate Partners');
+      const vendor = await findOrCreateVendor(connection, 'Santos Real Estate Partners LLC');
 
       // Bill posts to "Commissions Paid Out: Santos Real Estate Partners LLC" expense account
       console.log(`[ProcessArtyCommission] Creating bill charged to: ${commissionsPaidOutAccountName} (${commissionsPaidOutAccountId})`);
