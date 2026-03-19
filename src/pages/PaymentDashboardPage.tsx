@@ -40,6 +40,9 @@ const PaymentDashboardPage: React.FC = () => {
   const [selectedPaymentIds, setSelectedPaymentIds] = useState<Set<string>>(new Set());
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
 
+  // Pinned payments - these stay visible regardless of filters (for completing broker/referral payments)
+  const [pinnedPaymentIds, setPinnedPaymentIds] = useState<Set<string>>(new Set());
+
   // Get initial dataQuality filter from URL if present
   const urlDataQuality = searchParams.get('dataQuality') as PaymentDashboardFilters['dataQuality'] | null;
   const initialDataQuality = urlDataQuality && ['all', 'missing_dates', 'overdue', 'no_payments'].includes(urlDataQuality)
@@ -146,10 +149,10 @@ const PaymentDashboardPage: React.FC = () => {
     };
   }, []);
 
-  // Apply filters whenever payments or filters change
+  // Apply filters whenever payments, filters, or pinned payments change
   useEffect(() => {
     applyFilters();
-  }, [payments, filters]);
+  }, [payments, filters, pinnedPaymentIds]);
 
   // Click outside to close tools menu
   useEffect(() => {
@@ -490,6 +493,12 @@ const PaymentDashboardPage: React.FC = () => {
     }
     // 'no_payments' filter shows a different view entirely, handled in render
 
+    // Always include pinned payments (regardless of filters) so users can complete broker/referral payments
+    if (pinnedPaymentIds.size > 0) {
+      const pinnedPayments = payments.filter(p => pinnedPaymentIds.has(p.payment_id) && !filtered.some(f => f.payment_id === p.payment_id));
+      filtered = [...filtered, ...pinnedPayments];
+    }
+
     setFilteredPayments(filtered);
   };
 
@@ -507,9 +516,21 @@ const PaymentDashboardPage: React.FC = () => {
     }
   };
 
-  const handlePaymentUpdate = () => {
+  const handlePaymentUpdate = (paymentIdToPin?: string) => {
+    // Pin the payment so it stays visible after refresh (for completing broker/referral payments)
+    if (paymentIdToPin) {
+      setPinnedPaymentIds(prev => new Set(prev).add(paymentIdToPin));
+    }
     // Refresh data after any updates
     fetchPaymentData();
+  };
+
+  const handleUnpinPayment = (paymentId: string) => {
+    setPinnedPaymentIds(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(paymentId);
+      return newSet;
+    });
   };
 
   // Clear selection when filter changes
@@ -888,6 +909,8 @@ const PaymentDashboardPage: React.FC = () => {
                     selectedIds={selectedPaymentIds}
                     onToggleSelect={handleToggleSelect}
                     onSelectAll={handleSelectAll}
+                    pinnedIds={pinnedPaymentIds}
+                    onUnpin={handleUnpinPayment}
                   />
                 </>
               )}

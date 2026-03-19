@@ -7,17 +7,20 @@ import ReferralFeeRow from './ReferralFeeRow';
 import PaymentDetailSidebar from './PaymentDetailSidebar';
 import PaymentCheckProcessing from './PaymentCheckProcessing';
 import PaymentAmountOverrideModal from './PaymentAmountOverrideModal';
-import { CheckCircleIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface PaymentDashboardTableProps {
   payments: PaymentDashboardRow[];
   loading: boolean;
-  onPaymentUpdate: () => void;
+  onPaymentUpdate: (paymentIdToPin?: string) => void;
   // Selection props for bulk actions
   showSelection?: boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (paymentId: string) => void;
   onSelectAll?: () => void;
+  // Pinned payments - stay visible regardless of filters
+  pinnedIds?: Set<string>;
+  onUnpin?: (paymentId: string) => void;
 }
 
 type SortField = 'deal_name' | 'payment_date_estimated' | 'payment_received' | 'disbursement' | 'orep_invoice';
@@ -31,6 +34,8 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
   selectedIds = new Set(),
   onToggleSelect,
   onSelectAll,
+  pinnedIds = new Set(),
+  onUnpin,
 }) => {
   const navigate = useNavigate();
   const [localPayments, setLocalPayments] = useState<PaymentDashboardRow[]>(payments);
@@ -65,6 +70,17 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
       }
     }
   }, [payments, sortField, sortDirection]);
+
+  // Auto-expand pinned payments so user can immediately see broker/referral payment options
+  useEffect(() => {
+    if (pinnedIds.size > 0) {
+      setExpandedRows(prev => {
+        const newExpanded = new Set(prev);
+        pinnedIds.forEach(id => newExpanded.add(id));
+        return newExpanded;
+      });
+    }
+  }, [pinnedIds]);
 
   const sortPayments = (
     paymentsToSort: PaymentDashboardRow[],
@@ -174,7 +190,8 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
       console.error('Error updating payment:', error);
       alert('Failed to update payment status');
     } else {
-      onPaymentUpdate();
+      // Pin the payment so it stays visible for completing broker/referral payments
+      onPaymentUpdate(received ? paymentId : undefined);
     }
   };
 
@@ -583,10 +600,11 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
           <tbody className="bg-white divide-y divide-gray-200">
             {localPayments.map((payment) => {
               const isExpanded = expandedRows.has(payment.payment_id);
+              const isPinned = pinnedIds.has(payment.payment_id);
               return (
                 <React.Fragment key={payment.payment_id}>
                   {/* Main Payment Row */}
-                  <tr className={`hover:bg-gray-50 cursor-pointer ${selectedIds.has(payment.payment_id) ? 'bg-amber-50' : ''}`}>
+                  <tr className={`hover:bg-gray-50 cursor-pointer ${selectedIds.has(payment.payment_id) ? 'bg-amber-50' : ''} ${isPinned ? 'bg-blue-50 border-l-4 border-l-blue-400' : ''}`}>
                     {/* Checkbox cell for selection */}
                     {showSelection && (
                       <td className="px-2 py-3" onClick={(e) => e.stopPropagation()}>
@@ -599,24 +617,38 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                       </td>
                     )}
                     <td className="px-2 py-3">
-                      <button
-                        onClick={() => toggleRow(payment.payment_id)}
-                        className="text-gray-400 hover:text-gray-600"
-                      >
-                        <svg
-                          className={`h-5 w-5 transform transition-transform ${
-                            isExpanded ? 'rotate-90' : ''
-                          }`}
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
+                      <div className="flex items-center gap-1">
+                        {isPinned && onUnpin && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onUnpin(payment.payment_id);
+                            }}
+                            className="text-blue-400 hover:text-blue-600 p-0.5 rounded hover:bg-blue-100"
+                            title="Unpin payment (remove from view)"
+                          >
+                            <XMarkIcon className="h-4 w-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => toggleRow(payment.payment_id)}
+                          className="text-gray-400 hover:text-gray-600"
                         >
-                          <path
-                            fillRule="evenodd"
-                            d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </button>
+                          <svg
+                            className={`h-5 w-5 transform transition-transform ${
+                              isExpanded ? 'rotate-90' : ''
+                            }`}
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                     <td
                       className="px-3 py-3"
