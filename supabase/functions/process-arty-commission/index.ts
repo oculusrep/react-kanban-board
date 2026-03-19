@@ -264,39 +264,46 @@ serve(async (req) => {
     const today = new Date();
     const transactionDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-    // OPTION B: Full commission credited to draw account for complete deal attribution
-    // Journal Entry: Full gross commission (Commission Expense → Draw Account)
-    // Bill: Net payment debits the draw account to pull out the excess
-    // This gives a complete audit trail on the draw report showing the full commission earned
+    // OPTION A: JE only credits the draw balance amount to zero out the draw account
+    // Journal Entry: Draw balance amount only (Commission Expense → Draw Account) - clears the draw
+    // Bill: Net payment goes to Commissions Paid Out expense account
+    // The draw account will be zeroed out after the JE
 
-    const journalEntry: QBJournalEntry = {
-      DocNumber: docNumber,
-      TxnDate: transactionDate,
-      Line: [
-        {
-          Amount: grossCommission,
-          DetailType: 'JournalEntryLineDetail',
-          JournalEntryLineDetail: {
-            PostingType: 'Debit',
-            AccountRef: { value: commissionExpenseAccountId, name: commissionExpenseAccountName },
-          },
-          Description: `Commission - ${dealName} - ${paymentName}`,
-        },
-        {
-          Amount: grossCommission,
-          DetailType: 'JournalEntryLineDetail',
-          JournalEntryLineDetail: {
-            PostingType: 'Credit',
-            AccountRef: { value: mapping.qb_credit_account_id, name: mapping.qb_credit_account_name || '' },
-          },
-          Description: `Commission - ${dealName} - ${paymentName}`,
-        },
-      ],
-      PrivateNote: `OVIS Commission: ${dealName} - ${paymentName} for ${broker.name}. Gross: $${grossCommission.toFixed(2)}, Draw balance was: $${drawBalance.toFixed(2)}, Net payment: $${netPayment.toFixed(2)}`,
-    };
+    // Only create JE if there's a draw balance to clear
+    let jeResult: { Id: string; DocNumber?: string } | null = null;
 
-    const jeResult = await createJournalEntry(connection, journalEntry);
-    console.log(`[ProcessArtyCommission] Created JE: ${jeResult.DocNumber} for full commission of $${grossCommission}`);
+    if (drawBalance > 0) {
+      const journalEntry: QBJournalEntry = {
+        DocNumber: docNumber,
+        TxnDate: transactionDate,
+        Line: [
+          {
+            Amount: drawBalance,
+            DetailType: 'JournalEntryLineDetail',
+            JournalEntryLineDetail: {
+              PostingType: 'Debit',
+              AccountRef: { value: commissionExpenseAccountId, name: commissionExpenseAccountName },
+            },
+            Description: `Commission (draw offset) - ${dealName} - ${paymentName}`,
+          },
+          {
+            Amount: drawBalance,
+            DetailType: 'JournalEntryLineDetail',
+            JournalEntryLineDetail: {
+              PostingType: 'Credit',
+              AccountRef: { value: mapping.qb_credit_account_id, name: mapping.qb_credit_account_name || '' },
+            },
+            Description: `Commission (draw offset) - ${dealName} - ${paymentName}`,
+          },
+        ],
+        PrivateNote: `OVIS Commission: ${dealName} - ${paymentName} for ${broker.name}. This JE clears draw balance of $${drawBalance.toFixed(2)}. Gross commission: $${grossCommission.toFixed(2)}, Net payment: $${netPayment.toFixed(2)}`,
+      };
+
+      jeResult = await createJournalEntry(connection, journalEntry);
+      console.log(`[ProcessArtyCommission] Created JE: ${jeResult.DocNumber} to clear draw balance of $${drawBalance}`);
+    } else {
+      console.log(`[ProcessArtyCommission] No draw balance to clear, skipping JE`);
+    }
 
     // ========================================================================
     // STEP 4: Create Bill for net payment (if > 0)
@@ -485,10 +492,10 @@ OVIS Commercial Real Estate`;
       gross_commission: grossCommission,
       draw_balance: drawBalance,
       net_payment: netPayment,
-      journal_entry: {
+      journal_entry: jeResult ? {
         id: jeResult.Id,
         doc_number: jeResult.DocNumber || docNumber,
-      },
+      } : undefined,
       bill: billResult ? {
         id: billResult.Id,
         doc_number: billResult.DocNumber || billResult.Id,
