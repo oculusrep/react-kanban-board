@@ -366,7 +366,7 @@ const PaymentDashboardPage: React.FC = () => {
           deal_name,
           stage_id,
           number_of_payments,
-          total_fee,
+          fee,
           created_at
         `)
         .in('stage_id', stageIds)
@@ -391,7 +391,7 @@ const PaymentDashboardPage: React.FC = () => {
           deal_name: deal.deal_name || 'Unknown Deal',
           deal_stage: stageMap.get(deal.stage_id) || null,
           number_of_payments: deal.number_of_payments || 0,
-          total_fee: deal.total_fee,
+          total_fee: deal.fee,  // Map fee to total_fee for the interface
           created_at: deal.created_at,
         }));
 
