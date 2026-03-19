@@ -309,9 +309,48 @@ serve(async (req) => {
       // Find or create Santos Real Estate Partners vendor
       const vendor = await findOrCreateVendor(connection, 'Santos Real Estate Partners');
 
-      // Bill posts to the DRAW ACCOUNT (debit) to pull out the net payment
-      // This brings the draw account back to zero
-      console.log(`[ProcessArtyCommission] Creating bill to debit draw account: ${mapping.qb_credit_account_name} (${mapping.qb_credit_account_id})`);
+      // Look up "Commissions Paid Out: Santos Real Estate Partners LLC" account for the bill
+      // The bill should go to the expense account, NOT the draw account
+      const commissionsPaidOutQuery = encodeURIComponent("SELECT * FROM Account WHERE FullyQualifiedName LIKE '%Commissions Paid Out%Santos Real Estate%' AND Active = true");
+      const accountSearchResult = await qbApiRequest<{ QueryResponse: { Account?: Array<{ Id: string; Name: string; FullyQualifiedName: string }> } }>(
+        connection,
+        'GET',
+        `query?query=${commissionsPaidOutQuery}`
+      );
+
+      let commissionsPaidOutAccountId: string;
+      let commissionsPaidOutAccountName: string;
+
+      if (accountSearchResult.QueryResponse.Account && accountSearchResult.QueryResponse.Account.length > 0) {
+        const account = accountSearchResult.QueryResponse.Account[0];
+        commissionsPaidOutAccountId = account.Id;
+        commissionsPaidOutAccountName = account.FullyQualifiedName || account.Name;
+        console.log(`[ProcessArtyCommission] Found Commissions Paid Out account: ${commissionsPaidOutAccountName} (${commissionsPaidOutAccountId})`);
+      } else {
+        // Fallback: try searching for just "Commissions Paid Out"
+        const fallbackQuery = encodeURIComponent("SELECT * FROM Account WHERE Name LIKE '%Commissions Paid Out%' AND Active = true");
+        const fallbackResult = await qbApiRequest<{ QueryResponse: { Account?: Array<{ Id: string; Name: string; FullyQualifiedName: string }> } }>(
+          connection,
+          'GET',
+          `query?query=${fallbackQuery}`
+        );
+
+        if (fallbackResult.QueryResponse.Account && fallbackResult.QueryResponse.Account.length > 0) {
+          // Look for one that has Santos in the name
+          const santosAccount = fallbackResult.QueryResponse.Account.find(a =>
+            a.FullyQualifiedName?.toLowerCase().includes('santos') || a.Name?.toLowerCase().includes('santos')
+          );
+          const account = santosAccount || fallbackResult.QueryResponse.Account[0];
+          commissionsPaidOutAccountId = account.Id;
+          commissionsPaidOutAccountName = account.FullyQualifiedName || account.Name;
+          console.log(`[ProcessArtyCommission] Found Commissions Paid Out account (fallback): ${commissionsPaidOutAccountName} (${commissionsPaidOutAccountId})`);
+        } else {
+          throw new Error('Could not find "Commissions Paid Out: Santos Real Estate Partners LLC" account in QuickBooks. Please create this expense account first.');
+        }
+      }
+
+      // Bill posts to "Commissions Paid Out: Santos Real Estate Partners LLC" expense account
+      console.log(`[ProcessArtyCommission] Creating bill charged to: ${commissionsPaidOutAccountName} (${commissionsPaidOutAccountId})`);
 
       const bill: QBBill = {
         VendorRef: { value: vendor.Id, name: vendor.DisplayName },
@@ -319,7 +358,7 @@ serve(async (req) => {
           Amount: netPayment,
           DetailType: 'AccountBasedExpenseLineDetail',
           AccountBasedExpenseLineDetail: {
-            AccountRef: { value: mapping.qb_credit_account_id, name: mapping.qb_credit_account_name || '' },
+            AccountRef: { value: commissionsPaidOutAccountId, name: commissionsPaidOutAccountName },
           },
           Description: `Net commission payment - ${dealName} - ${paymentName}`,
         }],
