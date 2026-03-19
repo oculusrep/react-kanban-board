@@ -264,34 +264,45 @@ serve(async (req) => {
     const today = new Date();
     const transactionDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-    const journalEntry: QBJournalEntry = {
-      DocNumber: docNumber,
-      TxnDate: transactionDate,
-      Line: [
-        {
-          Amount: grossCommission,
-          DetailType: 'JournalEntryLineDetail',
-          JournalEntryLineDetail: {
-            PostingType: 'Debit',
-            AccountRef: { value: commissionExpenseAccountId, name: commissionExpenseAccountName },
-          },
-          Description: `Commission - ${dealName} - ${paymentName}`,
-        },
-        {
-          Amount: grossCommission,
-          DetailType: 'JournalEntryLineDetail',
-          JournalEntryLineDetail: {
-            PostingType: 'Credit',
-            AccountRef: { value: mapping.qb_credit_account_id, name: mapping.qb_credit_account_name || '' },
-          },
-          Description: `Commission - ${dealName} - ${paymentName}`,
-        },
-      ],
-      PrivateNote: `OVIS Commission: ${dealName} - ${paymentName} for ${broker.name}`,
-    };
+    // Journal Entry only offsets the draw balance (if any)
+    // The net payment is handled separately via the Bill
+    // This zeros out the draw account, not creates a credit balance
+    const drawOffsetAmount = Math.min(drawBalance, grossCommission);
 
-    const jeResult = await createJournalEntry(connection, journalEntry);
-    console.log(`[ProcessArtyCommission] Created JE: ${jeResult.DocNumber}`);
+    let jeResult: { Id: string; DocNumber?: string } | null = null;
+
+    if (drawOffsetAmount > 0) {
+      const journalEntry: QBJournalEntry = {
+        DocNumber: docNumber,
+        TxnDate: transactionDate,
+        Line: [
+          {
+            Amount: drawOffsetAmount,
+            DetailType: 'JournalEntryLineDetail',
+            JournalEntryLineDetail: {
+              PostingType: 'Debit',
+              AccountRef: { value: commissionExpenseAccountId, name: commissionExpenseAccountName },
+            },
+            Description: `Commission offset for draw balance - ${dealName} - ${paymentName}`,
+          },
+          {
+            Amount: drawOffsetAmount,
+            DetailType: 'JournalEntryLineDetail',
+            JournalEntryLineDetail: {
+              PostingType: 'Credit',
+              AccountRef: { value: mapping.qb_credit_account_id, name: mapping.qb_credit_account_name || '' },
+            },
+            Description: `Commission offset for draw balance - ${dealName} - ${paymentName}`,
+          },
+        ],
+        PrivateNote: `OVIS: Draw offset from commission - ${dealName} - ${paymentName} for ${broker.name}. Draw balance: $${drawBalance.toFixed(2)}, Offset: $${drawOffsetAmount.toFixed(2)}`,
+      };
+
+      jeResult = await createJournalEntry(connection, journalEntry);
+      console.log(`[ProcessArtyCommission] Created JE: ${jeResult.DocNumber} for draw offset of $${drawOffsetAmount}`);
+    } else {
+      console.log(`[ProcessArtyCommission] No draw balance to offset, skipping Journal Entry`);
+    }
 
     // ========================================================================
     // STEP 4: Create Bill for net payment (if > 0)
@@ -302,13 +313,46 @@ serve(async (req) => {
       // Find or create Santos Real Estate Partners vendor
       const vendor = await findOrCreateVendor(connection, 'Santos Real Estate Partners');
 
+      // Get the Commissions Paid Out account for Santos Real Estate Partners LLC
+      // This is a COGS expense account, NOT the draw account
+      const { data: commissionsPaidOutAccount } = await supabase
+        .from('qb_account')
+        .select('qb_account_id, name')
+        .or('name.ilike.%Commissions Paid Out%Santos%,name.ilike.%Santos Real Estate Partners%')
+        .eq('active', true)
+        .limit(1)
+        .single();
+
+      // Fall back to a general Commissions Paid Out account if specific one not found
+      let billAccountId = commissionsPaidOutAccount?.qb_account_id;
+      let billAccountName = commissionsPaidOutAccount?.name;
+
+      if (!billAccountId) {
+        const { data: generalCommissionAccount } = await supabase
+          .from('qb_account')
+          .select('qb_account_id, name')
+          .ilike('name', '%Commissions Paid Out%')
+          .eq('active', true)
+          .limit(1)
+          .single();
+
+        billAccountId = generalCommissionAccount?.qb_account_id;
+        billAccountName = generalCommissionAccount?.name;
+      }
+
+      if (!billAccountId) {
+        throw new Error('Could not find Commissions Paid Out account in QuickBooks. Please ensure the account exists.');
+      }
+
+      console.log(`[ProcessArtyCommission] Using expense account for bill: ${billAccountName} (${billAccountId})`);
+
       const bill: QBBill = {
         VendorRef: { value: vendor.Id, name: vendor.DisplayName },
         Line: [{
           Amount: netPayment,
           DetailType: 'AccountBasedExpenseLineDetail',
           AccountBasedExpenseLineDetail: {
-            AccountRef: { value: mapping.qb_credit_account_id, name: mapping.qb_credit_account_name || '' },
+            AccountRef: { value: billAccountId, name: billAccountName || '' },
           },
           Description: `Net commission payment - ${dealName} - ${paymentName}`,
         }],
@@ -435,10 +479,10 @@ OVIS Commercial Real Estate`;
       gross_commission: grossCommission,
       draw_balance: drawBalance,
       net_payment: netPayment,
-      journal_entry: {
+      journal_entry: jeResult ? {
         id: jeResult.Id,
         doc_number: jeResult.DocNumber || docNumber,
-      },
+      } : undefined,
       bill: billResult ? {
         id: billResult.Id,
         doc_number: billResult.DocNumber || billResult.Id,

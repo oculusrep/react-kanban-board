@@ -400,22 +400,22 @@ export default function ArtyDrawReport() {
           <p className="text-xs text-gray-500 mt-1">Amount Arty owes the company</p>
         </div>
 
-        {/* Total Draws - Money paid OUT to Arty (Debits decrease the liability) */}
+        {/* Total Draws - Money paid OUT to Arty (Credits in QBO) */}
         <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
           <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Total Draws</p>
           <p className="text-3xl font-bold text-purple-600 mt-2">
-            {formatCurrency(data?.summary?.totalDebits || 0)}
+            {formatCurrency(data?.summary?.totalCredits || 0)}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Advance payments to Arty</p>
+          <p className="text-xs text-gray-500 mt-1">Money paid to Arty</p>
         </div>
 
-        {/* Total Commissions Earned - Credits increase the liability (what company owes) */}
+        {/* Total Commissions Earned - Debits in QBO */}
         <div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
           <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Commissions Earned</p>
           <p className="text-3xl font-bold text-green-600 mt-2">
-            {formatCurrency(data?.summary?.totalCredits || 0)}
+            {formatCurrency(data?.summary?.totalDebits || 0)}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Commissions applied to draw account</p>
+          <p className="text-xs text-gray-500 mt-1">Commissions credited to draw account</p>
         </div>
       </div>
 
@@ -506,15 +506,15 @@ export default function ArtyDrawReport() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-right bg-green-50">
-                      {txn.credit > 0 ? (
-                        <span className="text-green-600 font-medium">{formatCurrency(txn.credit)}</span>
+                      {txn.debit > 0 ? (
+                        <span className="text-green-600 font-medium">{formatCurrency(txn.debit)}</span>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm text-right bg-purple-50">
-                      {txn.debit > 0 ? (
-                        <span className="text-purple-600 font-medium">{formatCurrency(txn.debit)}</span>
+                      {txn.credit > 0 ? (
+                        <span className="text-purple-600 font-medium">{formatCurrency(txn.credit)}</span>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
@@ -547,10 +547,10 @@ export default function ArtyDrawReport() {
                 <tr>
                   <td colSpan={4} className="px-4 py-3 text-sm font-semibold">TOTALS</td>
                   <td className="px-4 py-3 text-sm text-right font-semibold bg-green-900">
-                    {formatCurrency(data?.summary?.totalCredits || 0)}
+                    {formatCurrency(data?.summary?.totalDebits || 0)}
                   </td>
                   <td className="px-4 py-3 text-sm text-right font-semibold bg-purple-900">
-                    {formatCurrency(data?.summary?.totalDebits || 0)}
+                    {formatCurrency(data?.summary?.totalCredits || 0)}
                   </td>
                   <td className="px-4 py-3 text-sm text-right font-semibold">
                     {formatCurrency(data?.currentBalance || 0)}
