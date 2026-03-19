@@ -19,9 +19,10 @@ import ReconciliationReport from '../components/payments/ReconciliationReport';
 import PaymentReconciliationReport from '../components/payments/PaymentReconciliationReport';
 import DisbursementReportTab from '../components/payments/DisbursementReportTab';
 import AgedUpcomingPaymentsTab from '../components/payments/AgedUpcomingPaymentsTab';
+import MissingBillToReport from '../components/payments/MissingBillToReport';
 import { usePermissions } from '../hooks/usePermissions';
 
-type TabType = 'dashboard' | 'aged-upcoming' | 'comparison' | 'discrepancies' | 'validation' | 'deal-reconciliation' | 'payment-reconciliation' | 'disbursements';
+type TabType = 'dashboard' | 'aged-upcoming' | 'comparison' | 'discrepancies' | 'validation' | 'deal-reconciliation' | 'payment-reconciliation' | 'disbursements' | 'missing-billto';
 
 const PaymentDashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -683,6 +684,7 @@ const PaymentDashboardPage: React.FC = () => {
                   {activeTab === 'deal-reconciliation' && 'Deal Reconciliation'}
                   {activeTab === 'payment-reconciliation' && 'Payment Reconciliation'}
                   {activeTab === 'disbursements' && 'Disbursement Report'}
+                  {activeTab === 'missing-billto' && 'Invoices Missing Bill-To'}
                 </span>
               )}
             </div>
@@ -764,6 +766,18 @@ const PaymentDashboardPage: React.FC = () => {
                       }`}
                     >
                       Disbursement Report
+                    </button>
+                    <div className="border-t border-gray-100 my-1"></div>
+                    <button
+                      onClick={() => {
+                        setActiveTab('missing-billto');
+                        setShowToolsMenu(false);
+                      }}
+                      className={`block w-full text-left px-4 py-2 text-sm ${
+                        activeTab === 'missing-billto' ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      Invoices Missing Bill-To
                     </button>
                   </div>
                 </div>
@@ -888,6 +902,8 @@ const PaymentDashboardPage: React.FC = () => {
             <SplitValidationTab />
           ) : activeTab === 'disbursements' ? (
             <DisbursementReportTab />
+          ) : activeTab === 'missing-billto' ? (
+            <MissingBillToReport />
           ) : null}
         </div>
       )}
