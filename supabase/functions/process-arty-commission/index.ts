@@ -231,19 +231,46 @@ serve(async (req) => {
     }
 
     // ========================================================================
-    // STEP 3: Create Journal Entry (Commission Expense → Draw Account)
+    // STEP 3: Look up "Commissions Paid Out: Santos Real Estate Partners LLC" account
+    // This account is used for BOTH the JE debit and the Bill
     // ========================================================================
-    // Get Commission Expense account (usually ID 100 or search for it)
-    const { data: commissionAccount } = await supabase
-      .from('qb_account')
-      .select('qb_account_id, name')
-      .ilike('name', '%commission%expense%')
-      .eq('active', true)
-      .limit(1)
-      .single();
+    const commissionsPaidOutQuery = encodeURIComponent("SELECT * FROM Account WHERE FullyQualifiedName LIKE '%Commissions Paid Out%Santos Real Estate%' AND Active = true");
+    const accountSearchResult = await qbApiRequest<{ QueryResponse: { Account?: Array<{ Id: string; Name: string; FullyQualifiedName: string }> } }>(
+      connection,
+      'GET',
+      `query?query=${commissionsPaidOutQuery}`
+    );
 
-    const commissionExpenseAccountId = commissionAccount?.qb_account_id || '100';
-    const commissionExpenseAccountName = commissionAccount?.name || 'Commission Expense';
+    let commissionsPaidOutAccountId: string;
+    let commissionsPaidOutAccountName: string;
+
+    if (accountSearchResult.QueryResponse.Account && accountSearchResult.QueryResponse.Account.length > 0) {
+      const account = accountSearchResult.QueryResponse.Account[0];
+      commissionsPaidOutAccountId = account.Id;
+      commissionsPaidOutAccountName = account.FullyQualifiedName || account.Name;
+      console.log(`[ProcessArtyCommission] Found Commissions Paid Out account: ${commissionsPaidOutAccountName} (${commissionsPaidOutAccountId})`);
+    } else {
+      // Fallback: try searching for just "Commissions Paid Out"
+      const fallbackQuery = encodeURIComponent("SELECT * FROM Account WHERE Name LIKE '%Commissions Paid Out%' AND Active = true");
+      const fallbackResult = await qbApiRequest<{ QueryResponse: { Account?: Array<{ Id: string; Name: string; FullyQualifiedName: string }> } }>(
+        connection,
+        'GET',
+        `query?query=${fallbackQuery}`
+      );
+
+      if (fallbackResult.QueryResponse.Account && fallbackResult.QueryResponse.Account.length > 0) {
+        // Look for one that has Santos in the name
+        const santosAccount = fallbackResult.QueryResponse.Account.find(a =>
+          a.FullyQualifiedName?.toLowerCase().includes('santos') || a.Name?.toLowerCase().includes('santos')
+        );
+        const account = santosAccount || fallbackResult.QueryResponse.Account[0];
+        commissionsPaidOutAccountId = account.Id;
+        commissionsPaidOutAccountName = account.FullyQualifiedName || account.Name;
+        console.log(`[ProcessArtyCommission] Found Commissions Paid Out account (fallback): ${commissionsPaidOutAccountName} (${commissionsPaidOutAccountId})`);
+      } else {
+        throw new Error('Could not find "Commissions Paid Out: Santos Real Estate Partners LLC" account in QuickBooks. Please create this expense account first.');
+      }
+    }
 
     // Generate doc number
     const { data: maxEntry } = await supabase
@@ -265,9 +292,9 @@ serve(async (req) => {
     const transactionDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
     // OPTION A: JE only credits the draw balance amount to zero out the draw account
-    // Journal Entry: Draw balance amount only (Commission Expense → Draw Account) - clears the draw
+    // Journal Entry: Draw balance amount (Commissions Paid Out → Draw Account) - clears the draw
     // Bill: Net payment goes to Commissions Paid Out expense account
-    // The draw account will be zeroed out after the JE
+    // Both use the same "Commissions Paid Out: Santos Real Estate Partners LLC" account
 
     // Only create JE if there's a draw balance to clear
     let jeResult: { Id: string; DocNumber?: string } | null = null;
@@ -282,7 +309,7 @@ serve(async (req) => {
             DetailType: 'JournalEntryLineDetail',
             JournalEntryLineDetail: {
               PostingType: 'Debit',
-              AccountRef: { value: commissionExpenseAccountId, name: commissionExpenseAccountName },
+              AccountRef: { value: commissionsPaidOutAccountId, name: commissionsPaidOutAccountName },
             },
             Description: `Commission (draw offset) - ${dealName} - ${paymentName}`,
           },
@@ -307,54 +334,13 @@ serve(async (req) => {
 
     // ========================================================================
     // STEP 4: Create Bill for net payment (if > 0)
-    // The bill DEBITS the draw account to pull out the net payment amount
-    // This zeros out the draw account balance
+    // Uses the same Commissions Paid Out account looked up in Step 3
     // ========================================================================
     let billResult: { Id: string; DocNumber?: string } | null = null;
 
     if (netPayment > 0) {
       // Find or create Santos Real Estate Partners vendor
       const vendor = await findOrCreateVendor(connection, 'Santos Real Estate Partners');
-
-      // Look up "Commissions Paid Out: Santos Real Estate Partners LLC" account for the bill
-      // The bill should go to the expense account, NOT the draw account
-      const commissionsPaidOutQuery = encodeURIComponent("SELECT * FROM Account WHERE FullyQualifiedName LIKE '%Commissions Paid Out%Santos Real Estate%' AND Active = true");
-      const accountSearchResult = await qbApiRequest<{ QueryResponse: { Account?: Array<{ Id: string; Name: string; FullyQualifiedName: string }> } }>(
-        connection,
-        'GET',
-        `query?query=${commissionsPaidOutQuery}`
-      );
-
-      let commissionsPaidOutAccountId: string;
-      let commissionsPaidOutAccountName: string;
-
-      if (accountSearchResult.QueryResponse.Account && accountSearchResult.QueryResponse.Account.length > 0) {
-        const account = accountSearchResult.QueryResponse.Account[0];
-        commissionsPaidOutAccountId = account.Id;
-        commissionsPaidOutAccountName = account.FullyQualifiedName || account.Name;
-        console.log(`[ProcessArtyCommission] Found Commissions Paid Out account: ${commissionsPaidOutAccountName} (${commissionsPaidOutAccountId})`);
-      } else {
-        // Fallback: try searching for just "Commissions Paid Out"
-        const fallbackQuery = encodeURIComponent("SELECT * FROM Account WHERE Name LIKE '%Commissions Paid Out%' AND Active = true");
-        const fallbackResult = await qbApiRequest<{ QueryResponse: { Account?: Array<{ Id: string; Name: string; FullyQualifiedName: string }> } }>(
-          connection,
-          'GET',
-          `query?query=${fallbackQuery}`
-        );
-
-        if (fallbackResult.QueryResponse.Account && fallbackResult.QueryResponse.Account.length > 0) {
-          // Look for one that has Santos in the name
-          const santosAccount = fallbackResult.QueryResponse.Account.find(a =>
-            a.FullyQualifiedName?.toLowerCase().includes('santos') || a.Name?.toLowerCase().includes('santos')
-          );
-          const account = santosAccount || fallbackResult.QueryResponse.Account[0];
-          commissionsPaidOutAccountId = account.Id;
-          commissionsPaidOutAccountName = account.FullyQualifiedName || account.Name;
-          console.log(`[ProcessArtyCommission] Found Commissions Paid Out account (fallback): ${commissionsPaidOutAccountName} (${commissionsPaidOutAccountId})`);
-        } else {
-          throw new Error('Could not find "Commissions Paid Out: Santos Real Estate Partners LLC" account in QuickBooks. Please create this expense account first.');
-        }
-      }
 
       // Bill posts to "Commissions Paid Out: Santos Real Estate Partners LLC" expense account
       console.log(`[ProcessArtyCommission] Creating bill charged to: ${commissionsPaidOutAccountName} (${commissionsPaidOutAccountId})`);
