@@ -5,13 +5,11 @@ import { Bars3Icon } from '@heroicons/react/24/outline';
 import {
   PaymentDashboardRow,
   PaymentDashboardFilters,
-  PaymentSummaryStats,
   DealWithoutPayments
 } from '../types/payment-dashboard';
 import PaymentDashboardTable from '../components/payments/PaymentDashboardTable';
 import PaymentDashboardFiltersBar from '../components/payments/PaymentDashboardFiltersBar';
 import DealsWithoutPaymentsTable from '../components/payments/DealsWithoutPaymentsTable';
-import PaymentSummaryCards from '../components/payments/PaymentSummaryCards';
 import ComparisonReportTab from '../components/payments/ComparisonReportTab';
 import PaymentDiscrepancyReport from '../components/payments/PaymentDiscrepancyReport';
 import SplitValidationTab from '../components/payments/SplitValidationTab';
@@ -32,7 +30,6 @@ const PaymentDashboardPage: React.FC = () => {
   const [payments, setPayments] = useState<PaymentDashboardRow[]>([]);
   const [filteredPayments, setFilteredPayments] = useState<PaymentDashboardRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<PaymentSummaryStats | null>(null);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
   const toolsMenuRef = useRef<HTMLDivElement>(null);
 
@@ -305,40 +302,15 @@ const PaymentDashboardPage: React.FC = () => {
         };
       });
 
-      setPayments(transformedPayments);
-      calculateStats(transformedPayments);
+      // Filter out Lost stage deals - they shouldn't appear in payment tracking
+      const filteredPayments = transformedPayments.filter(p => p.deal_stage !== 'Lost');
+
+      setPayments(filteredPayments);
     } catch (error) {
       console.error('Error fetching payment data:', error);
     } finally {
       setLoading(false);
     }
-  };
-
-  const calculateStats = (paymentsData: PaymentDashboardRow[]) => {
-    const stats: PaymentSummaryStats = {
-      total_payments: paymentsData.length,
-      total_payment_amount: paymentsData.reduce((sum, p) => sum + p.payment_amount, 0),
-      payments_received: paymentsData.filter(p => p.payment_received).length,
-      payments_received_amount: paymentsData
-        .filter(p => p.payment_received)
-        .reduce((sum, p) => sum + p.payment_amount, 0),
-      total_broker_payouts: paymentsData.reduce((sum, p) => sum + p.broker_splits.length, 0),
-      broker_payouts_paid: paymentsData.reduce(
-        (sum, p) => sum + p.broker_splits.filter(b => b.paid).length,
-        0
-      ),
-      broker_payouts_paid_amount: paymentsData.reduce(
-        (sum, p) => sum + p.broker_splits.filter(b => b.paid).reduce((s, b) => s + (b.split_broker_total || 0), 0),
-        0
-      ),
-      total_referral_fees: paymentsData.filter(p => p.referral_fee_usd).length,
-      referral_fees_paid: paymentsData.filter(p => p.referral_fee_paid).length,
-      referral_fees_paid_amount: paymentsData
-        .filter(p => p.referral_fee_paid)
-        .reduce((sum, p) => sum + (p.referral_fee_usd || 0), 0),
-    };
-
-    setStats(stats);
   };
 
   const fetchDealsWithoutPayments = async () => {
@@ -823,11 +795,6 @@ const PaymentDashboardPage: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {activeTab === 'dashboard' ? (
             <>
-              {/* Summary Stats - hide when viewing deals without payments */}
-              {stats && filters.dataQuality !== 'no_payments' && (
-                <PaymentSummaryCards stats={stats} />
-              )}
-
               {/* Filters */}
               <PaymentDashboardFiltersBar
                 filters={filters}
