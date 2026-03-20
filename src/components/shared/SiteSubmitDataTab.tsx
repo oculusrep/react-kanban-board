@@ -13,6 +13,7 @@ import AssignmentSelector from '../mapping/AssignmentSelector';
 import PropertyUnitSelector from '../PropertyUnitSelector';
 import { AssignmentSearchResult } from '../../hooks/useAssignmentSearch';
 import { SiteSubmitData } from './SiteSubmitSidebar';
+import { usePropertyGeoenrichment } from '../../hooks/usePropertyGeoenrichment';
 
 interface SiteSubmitDataTabProps {
   siteSubmit: SiteSubmitData;
@@ -29,6 +30,25 @@ const formatCurrency = (value: number | null | undefined) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+};
+
+const formatCompactCurrency = (value: number | null | undefined) => {
+  if (value === null || value === undefined) return '-';
+  if (value >= 1000) {
+    return `$${(value / 1000).toFixed(0)}K`;
+  }
+  return `$${value.toLocaleString()}`;
+};
+
+const formatCompactNumber = (value: number | null | undefined) => {
+  if (value === null || value === undefined) return '-';
+  if (value >= 1000000) {
+    return `${(value / 1000000).toFixed(1)}M`;
+  }
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1)}K`;
+  }
+  return value.toLocaleString();
 };
 
 const formatNumber = (value: number | null | undefined) => {
@@ -55,6 +75,256 @@ function FieldGroup({ title, children }: { title: string; children: React.ReactN
         {children}
       </div>
     </div>
+  );
+}
+
+// Compact stat card for demographics
+interface StatCardProps {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  subValue?: string;
+  tooltip?: string;
+}
+
+function StatCard({ icon, label, value, subValue, tooltip }: StatCardProps) {
+  return (
+    <div
+      className="flex items-center gap-2 p-2 bg-white border border-gray-100 rounded-lg hover:border-gray-200 transition-colors"
+      title={tooltip}
+    >
+      <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-600">
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-xs text-gray-500 truncate">{label}</div>
+        <div className="text-sm font-semibold text-gray-900">{value}</div>
+        {subValue && <div className="text-xs text-gray-400">{subValue}</div>}
+      </div>
+    </div>
+  );
+}
+
+// Icons for demographics
+const PopulationIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+  </svg>
+);
+
+const HouseholdsIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+  </svg>
+);
+
+const IncomeIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+const EmployeesIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+  </svg>
+);
+
+const TrafficIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+  </svg>
+);
+
+const TapestryIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+  </svg>
+);
+
+// Refresh/spinner icon for enrich button
+const RefreshIcon = ({ spinning = false }: { spinning?: boolean }) => (
+  <svg
+    className={`w-3.5 h-3.5 ${spinning ? 'animate-spin' : ''}`}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+  </svg>
+);
+
+// Demographics section component
+interface DemographicsSectionProps {
+  property: SiteSubmitData['property'];
+  propertyId: string | null;
+  onPropertyUpdate: (updatedProperty: Partial<NonNullable<SiteSubmitData['property']>>) => void;
+}
+
+function DemographicsSection({ property, propertyId, onPropertyUpdate }: DemographicsSectionProps) {
+  const { isEnriching, enrichError, enrichProperty, saveEnrichmentToProperty, clearError } = usePropertyGeoenrichment();
+
+  const handleEnrich = async () => {
+    if (!propertyId || !property?.latitude || !property?.longitude) return;
+
+    clearError();
+    const result = await enrichProperty(
+      propertyId,
+      property.latitude,
+      property.longitude,
+      true // force refresh
+    );
+
+    if (result) {
+      // Save to database
+      const saved = await saveEnrichmentToProperty(propertyId, result);
+      if (saved) {
+        // Update local state with new data
+        onPropertyUpdate({
+          esri_enriched_at: new Date().toISOString(),
+          pop_3_mile: result.demographics.pop_3_mile,
+          pop_5_mile: result.demographics.pop_5_mile,
+          pop_10min_drive: result.demographics.pop_10min_drive,
+          households_3_mile: result.demographics.households_3_mile,
+          households_5_mile: result.demographics.households_5_mile,
+          households_10min_drive: result.demographics.households_10min_drive,
+          hh_income_median_3_mile: result.demographics.hh_income_median_3_mile,
+          hh_income_median_5_mile: result.demographics.hh_income_median_5_mile,
+          hh_income_median_10min_drive: result.demographics.hh_income_median_10min_drive,
+          employees_3_mile: result.demographics.employees_3_mile,
+          employees_5_mile: result.demographics.employees_5_mile,
+          employees_10min_drive: result.demographics.employees_10min_drive,
+          tapestry_segment_name: result.tapestry.name,
+          tapestry_lifemodes: result.tapestry.lifemodes,
+        });
+      }
+    }
+  };
+
+  const hasCoordinates = property?.latitude && property?.longitude;
+  const hasData = property?.esri_enriched_at || property?.traffic_count;
+
+  // No property data at all
+  if (!property) return null;
+
+  // No data state - show enrich button
+  if (!hasData) {
+    return (
+      <FieldGroup title="Demographics">
+        <div className="text-center py-4">
+          <p className="text-sm text-gray-500 mb-3">No demographic data available</p>
+          {hasCoordinates ? (
+            <button
+              onClick={handleEnrich}
+              disabled={isEnriching}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50"
+              style={{ backgroundColor: '#002147' }}
+            >
+              <RefreshIcon spinning={isEnriching} />
+              {isEnriching ? 'Enriching...' : 'Enrich with Demographics'}
+            </button>
+          ) : (
+            <p className="text-xs text-gray-400 italic">Property coordinates required</p>
+          )}
+          {enrichError && (
+            <p className="mt-2 text-xs text-red-500">{enrichError}</p>
+          )}
+        </div>
+      </FieldGroup>
+    );
+  }
+
+  return (
+    <FieldGroup title="Demographics">
+      {/* Primary stats grid - 2 columns */}
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <StatCard
+          icon={<PopulationIcon />}
+          label="Population (3 mi)"
+          value={formatCompactNumber(property.pop_3_mile)}
+          subValue={property.pop_10min_drive ? `${formatCompactNumber(property.pop_10min_drive)} 10-min` : undefined}
+          tooltip={property.pop_3_mile ? `3 mi: ${formatNumber(property.pop_3_mile)} | 5 mi: ${formatNumber(property.pop_5_mile)} | 10-min: ${formatNumber(property.pop_10min_drive)}` : undefined}
+        />
+        <StatCard
+          icon={<HouseholdsIcon />}
+          label="Households (3 mi)"
+          value={formatCompactNumber(property.households_3_mile)}
+          subValue={property.households_10min_drive ? `${formatCompactNumber(property.households_10min_drive)} 10-min` : undefined}
+          tooltip={property.households_3_mile ? `3 mi: ${formatNumber(property.households_3_mile)} | 5 mi: ${formatNumber(property.households_5_mile)} | 10-min: ${formatNumber(property.households_10min_drive)}` : undefined}
+        />
+        <StatCard
+          icon={<IncomeIcon />}
+          label="Median HH Income"
+          value={formatCompactCurrency(property.hh_income_median_3_mile)}
+          subValue="3 mile radius"
+          tooltip={property.hh_income_median_3_mile ? `3 mi: ${formatCurrency(property.hh_income_median_3_mile)} | 5 mi: ${formatCurrency(property.hh_income_median_5_mile)} | 10-min: ${formatCurrency(property.hh_income_median_10min_drive)}` : undefined}
+        />
+        <StatCard
+          icon={<EmployeesIcon />}
+          label="Employees (3 mi)"
+          value={formatCompactNumber(property.employees_3_mile)}
+          subValue={property.employees_10min_drive ? `${formatCompactNumber(property.employees_10min_drive)} 10-min` : undefined}
+          tooltip={property.employees_3_mile ? `Daytime workers: 3 mi: ${formatNumber(property.employees_3_mile)} | 5 mi: ${formatNumber(property.employees_5_mile)} | 10-min: ${formatNumber(property.employees_10min_drive)}` : undefined}
+        />
+      </div>
+
+      {/* Traffic count if available */}
+      {property.traffic_count && (
+        <div className="mb-3">
+          <StatCard
+            icon={<TrafficIcon />}
+            label="Traffic Count"
+            value={formatCompactNumber(property.traffic_count)}
+            subValue="vehicles/day"
+          />
+        </div>
+      )}
+
+      {/* Tapestry segment if available */}
+      {property.tapestry_segment_name && (
+        <div className="p-2 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 rounded-lg">
+          <div className="flex items-center gap-2">
+            <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
+              <TapestryIcon />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs text-indigo-600 font-medium">Tapestry Segment</div>
+              <div className="text-sm font-semibold text-gray-900 truncate" title={property.tapestry_segment_name}>
+                {property.tapestry_segment_name}
+              </div>
+              {property.tapestry_lifemodes && (
+                <div className="text-xs text-gray-500 truncate" title={property.tapestry_lifemodes}>
+                  {property.tapestry_lifemodes}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Last enriched timestamp with refresh button */}
+      <div className="mt-2 flex items-center justify-end gap-2">
+        {enrichError && (
+          <span className="text-xs text-red-500">{enrichError}</span>
+        )}
+        {property.esri_enriched_at && (
+          <span className="text-xs text-gray-400">
+            Updated {new Date(property.esri_enriched_at).toLocaleDateString()}
+          </span>
+        )}
+        {hasCoordinates && (
+          <button
+            onClick={handleEnrich}
+            disabled={isEnriching}
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors disabled:opacity-50"
+            title="Refresh demographics"
+          >
+            <RefreshIcon spinning={isEnriching} />
+            {isEnriching ? 'Refreshing...' : 'Refresh'}
+          </button>
+        )}
+      </div>
+    </FieldGroup>
   );
 }
 
@@ -603,38 +873,18 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
           table="site_submit"
           field="ti"
         />
-
-        {/* Year 1 Rent */}
-        <Field
-          {...fieldProps}
-          label="Year 1 Rent"
-          value={siteSubmit.year_1_rent}
-          type="number"
-          isCurrency
-          table="site_submit"
-          field="year_1_rent"
-        />
       </FieldGroup>
 
-      {/* Notes Section */}
-      <FieldGroup title="Notes">
-        <Field
-          {...fieldProps}
-          label="Notes"
-          value={siteSubmit.notes}
-          type="textarea"
-          table="site_submit"
-          field="notes"
-        />
-        <Field
-          {...fieldProps}
-          label="Competitor Data"
-          value={siteSubmit.competitor_data}
-          type="textarea"
-          table="site_submit"
-          field="competitor_data"
-        />
-      </FieldGroup>
+      {/* Demographics Section */}
+      <DemographicsSection
+        property={siteSubmit.property}
+        propertyId={siteSubmit.property_id}
+        onPropertyUpdate={(updatedProperty) => {
+          onUpdate({
+            property: siteSubmit.property ? { ...siteSubmit.property, ...updatedProperty } : null,
+          });
+        }}
+      />
     </div>
   );
 }

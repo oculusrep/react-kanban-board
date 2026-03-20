@@ -63,6 +63,23 @@ export interface SiteSubmitData {
       id: string;
       label: string | null;
     } | null;
+    // Demographics from ESRI GeoEnrichment
+    esri_enriched_at: string | null;
+    pop_3_mile: number | null;
+    pop_5_mile: number | null;
+    pop_10min_drive: number | null;
+    households_3_mile: number | null;
+    households_5_mile: number | null;
+    households_10min_drive: number | null;
+    hh_income_median_3_mile: number | null;
+    hh_income_median_5_mile: number | null;
+    hh_income_median_10min_drive: number | null;
+    employees_3_mile: number | null;
+    employees_5_mile: number | null;
+    employees_10min_drive: number | null;
+    traffic_count: number | null;
+    tapestry_segment_name: string | null;
+    tapestry_lifemodes: string | null;
   } | null;
   property_unit: {
     id: string;
@@ -308,7 +325,23 @@ export default function SiteSubmitSidebar({
               property_record_type:property_record_type_id (
                 id,
                 label
-              )
+              ),
+              esri_enriched_at,
+              pop_3_mile,
+              pop_5_mile,
+              pop_10min_drive,
+              households_3_mile,
+              households_5_mile,
+              households_10min_drive,
+              hh_income_median_3_mile,
+              hh_income_median_5_mile,
+              hh_income_median_10min_drive,
+              employees_3_mile,
+              employees_5_mile,
+              employees_10min_drive,
+              traffic_count,
+              tapestry_segment_name,
+              tapestry_lifemodes
             ),
             property_unit:property_unit_id (
               id,
