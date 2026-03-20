@@ -34,6 +34,9 @@ export interface DemographicData {
   median_age_1_mile: number | null;
   median_age_3_mile: number | null;
   median_age_5_mile: number | null;
+  daytime_pop_1_mile: number | null;
+  daytime_pop_3_mile: number | null;
+  daytime_pop_5_mile: number | null;
   // 10-minute drive time demographics
   pop_10min_drive: number | null;
   households_10min_drive: number | null;
@@ -41,6 +44,7 @@ export interface DemographicData {
   hh_income_avg_10min_drive: number | null;
   employees_10min_drive: number | null;
   median_age_10min_drive: number | null;
+  daytime_pop_10min_drive: number | null;
 }
 
 /**
@@ -179,6 +183,9 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
             median_age_1_mile: result.demographics.median_age_1_mile,
             median_age_3_mile: result.demographics.median_age_3_mile,
             median_age_5_mile: result.demographics.median_age_5_mile,
+            daytime_pop_1_mile: result.demographics.daytime_pop_1_mile,
+            daytime_pop_3_mile: result.demographics.daytime_pop_3_mile,
+            daytime_pop_5_mile: result.demographics.daytime_pop_5_mile,
 
             // Demographics - 10-minute drive time
             pop_10min_drive: result.demographics.pop_10min_drive,
@@ -187,6 +194,7 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
             hh_income_avg_10min_drive: result.demographics.hh_income_avg_10min_drive,
             employees_10min_drive: result.demographics.employees_10min_drive,
             median_age_10min_drive: result.demographics.median_age_10min_drive,
+            daytime_pop_10min_drive: result.demographics.daytime_pop_10min_drive,
           })
           .eq('id', propertyId);
 

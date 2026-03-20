@@ -57,8 +57,12 @@ const DEMOGRAPHIC_VARIABLES = [
   // Median Household Income - Current Year
   'MEDHINC_CY',
 
-  // Total Employees/Daytime Population
-  'DPOPWRK_CY', // Daytime population: workers
+  // Daytime Population - Workers (people who work in the area)
+  'DPOPWRK_CY',
+
+  // Total Daytime Population (workers + residents at home)
+  // More useful for retail as it captures everyone present during business hours
+  'DPOP_CY',
 ];
 
 // Tapestry variables - MUST be requested separately from demographics for US data
@@ -95,13 +99,17 @@ interface EsriEnrichmentResult {
     median_age_1_mile: number | null;
     median_age_3_mile: number | null;
     median_age_5_mile: number | null;
-    // 15-minute drive time demographics
+    daytime_pop_1_mile: number | null;
+    daytime_pop_3_mile: number | null;
+    daytime_pop_5_mile: number | null;
+    // 10-minute drive time demographics
     pop_10min_drive: number | null;
     households_10min_drive: number | null;
     hh_income_median_10min_drive: number | null;
     hh_income_avg_10min_drive: number | null;
     employees_10min_drive: number | null;
     median_age_10min_drive: number | null;
+    daytime_pop_10min_drive: number | null;
   };
   raw_response: unknown;
 }
@@ -388,6 +396,7 @@ function parseAndStoreDemographics(
     AVGHINC_CY: attrs.AVGHINC_CY,
     MEDHINC_CY: attrs.MEDHINC_CY,
     DPOPWRK_CY: attrs.DPOPWRK_CY,
+    DPOP_CY: attrs.DPOP_CY,
   });
 
   // Population - Current Year
@@ -424,6 +433,12 @@ function parseAndStoreDemographics(
   const medAge = extractValue(attrs, 'MEDAGE_CY', 'MEDAGE');
   if (medAge !== null) {
     (result.demographics as Record<string, number | null>)[`median_age_${radius}`] = medAge;
+  }
+
+  // Total Daytime Population - Workers + Residents at home
+  const daytimePop = extractValue(attrs, 'DPOP_CY', 'DPOP');
+  if (daytimePop !== null) {
+    (result.demographics as Record<string, number | null>)[`daytime_pop_${radius}`] = daytimePop;
   }
 }
 
@@ -663,6 +678,10 @@ function parseDriveTimeResponse(data: unknown, result: EsriEnrichmentResult): vo
     const medAge = extractValue(attrs, 'MEDAGE_CY', 'MEDAGE');
     if (medAge !== null) result.demographics.median_age_10min_drive = medAge;
 
+    // Total Daytime Population - Workers + Residents at home
+    const daytimePop = extractValue(attrs, 'DPOP_CY', 'DPOP');
+    if (daytimePop !== null) result.demographics.daytime_pop_10min_drive = daytimePop;
+
   } catch (err) {
     console.error('[ESRI] Error parsing drive time response:', err);
   }
@@ -705,12 +724,16 @@ async function enrichLocation(
       median_age_1_mile: null,
       median_age_3_mile: null,
       median_age_5_mile: null,
+      daytime_pop_1_mile: null,
+      daytime_pop_3_mile: null,
+      daytime_pop_5_mile: null,
       pop_10min_drive: null,
       households_10min_drive: null,
       hh_income_median_10min_drive: null,
       hh_income_avg_10min_drive: null,
       employees_10min_drive: null,
       median_age_10min_drive: null,
+      daytime_pop_10min_drive: null,
     },
     raw_response: {},
   };

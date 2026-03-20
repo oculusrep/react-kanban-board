@@ -17,6 +17,7 @@ The integration is complete and tested. All three API calls (ring buffers, Tapes
 **Migration files:**
 - `supabase/migrations/20260320_esri_geoenrichment.sql` - Original columns
 - `supabase/migrations/20260320_esri_geoenrichment_v2.sql` - Added employees, median age, 10-min drive time
+- `supabase/migrations/20260320_esri_geoenrichment_v3.sql` - Added daytime population (DPOP_CY)
 
 **New columns on `property` table:**
 
@@ -44,14 +45,23 @@ The integration is complete and tested. All three API calls (ring buffers, Tapes
 | `hh_income_avg_3_mile` | NUMERIC | Average household income (3 mi) |
 | `hh_income_avg_5_mile` | NUMERIC | Average household income (5 mi) |
 | `hh_income_avg_10min_drive` | NUMERIC | Average household income (10-min drive) |
-| `employees_1_mile` | INTEGER | Employees/daytime workers (1 mi) |
-| `employees_3_mile` | INTEGER | Employees/daytime workers (3 mi) |
-| `employees_5_mile` | INTEGER | Employees/daytime workers (5 mi) |
-| `employees_10min_drive` | INTEGER | Employees/daytime workers (10-min drive) |
+| `employees_1_mile` | INTEGER | Daytime workers only (1 mi) - DPOPWRK_CY |
+| `employees_3_mile` | INTEGER | Daytime workers only (3 mi) - DPOPWRK_CY |
+| `employees_5_mile` | INTEGER | Daytime workers only (5 mi) - DPOPWRK_CY |
+| `employees_10min_drive` | INTEGER | Daytime workers only (10-min drive) - DPOPWRK_CY |
+| `daytime_pop_1_mile` | INTEGER | Total daytime population (1 mi) - DPOP_CY |
+| `daytime_pop_3_mile` | INTEGER | Total daytime population (3 mi) - DPOP_CY |
+| `daytime_pop_5_mile` | INTEGER | Total daytime population (5 mi) - DPOP_CY |
+| `daytime_pop_10min_drive` | INTEGER | Total daytime population (10-min drive) - DPOP_CY |
 | `median_age_1_mile` | NUMERIC | Median age (1 mi) |
 | `median_age_3_mile` | NUMERIC | Median age (3 mi) |
 | `median_age_5_mile` | NUMERIC | Median age (5 mi) |
 | `median_age_10min_drive` | NUMERIC | Median age (10-min drive) |
+
+**Note on Daytime Population vs Employees:**
+- `employees_*` (DPOPWRK_CY) = Workers only - people who work in the area, including commuters
+- `daytime_pop_*` (DPOP_CY) = Total daytime population = workers + residents at home (retirees, stay-at-home parents, unemployed, students, children)
+- **For retail site selection, `daytime_pop_*` is more useful** as it captures everyone present during business hours
 
 ### 2. Edge Function
 
@@ -208,7 +218,8 @@ const DEMOGRAPHIC_VARIABLES = [
   'MEDAGE_CY',    // Median Age - Current Year
   'AVGHINC_CY',   // Average Household Income - Current Year
   'MEDHINC_CY',   // Median Household Income - Current Year
-  'DPOPWRK_CY',   // Daytime Population: Workers
+  'DPOPWRK_CY',   // Daytime Population: Workers only
+  'DPOP_CY',      // Total Daytime Population (workers + residents at home)
 ];
 
 // Tapestry variables - MUST be requested separately from demographics
