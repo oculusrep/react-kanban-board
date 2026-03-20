@@ -42,16 +42,30 @@ const formatDate = (value: string | null | undefined) => {
 };
 
 // FieldGroup component
-function FieldGroup({ title, children }: { title: string; children: React.ReactNode }) {
+function FieldGroup({
+  title,
+  children,
+  action
+}: {
+  title: string;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
   return (
     <div className="mb-6">
-      <h3
-        className="text-xs font-semibold uppercase tracking-wider mb-3 px-4 py-2 -mx-4"
-        style={{ backgroundColor: '#f1f5f9', color: '#475569' }}
+      <div
+        className="flex items-center justify-between px-4 py-2 -mx-4"
+        style={{ backgroundColor: '#f1f5f9' }}
       >
-        {title}
-      </h3>
-      <div className="space-y-1">
+        <h3
+          className="text-xs font-semibold uppercase tracking-wider"
+          style={{ color: '#475569' }}
+        >
+          {title}
+        </h3>
+        {action}
+      </div>
+      <div className="space-y-1 mt-3">
         {children}
       </div>
     </div>
@@ -220,10 +234,156 @@ function Field({
   );
 }
 
+// Demographics Modal Component
+function DemographicsModal({
+  property,
+  onClose,
+}: {
+  property: SiteSubmitData['property'];
+  onClose: () => void;
+}) {
+  if (!property) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white">
+          <h2 className="text-lg font-semibold" style={{ color: '#002147' }}>
+            Demographics
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6">
+          {/* Tapestry Segment Card */}
+          {property.tapestry_segment_code && (
+            <div className="mb-6 p-4 rounded-lg" style={{ backgroundColor: '#f8fafc', border: '1px solid #8FA9C8' }}>
+              <div className="flex items-start gap-3">
+                <div
+                  className="flex-shrink-0 w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-lg"
+                  style={{ backgroundColor: '#002147' }}
+                >
+                  {property.tapestry_segment_code}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-gray-900">{property.tapestry_segment_name}</div>
+                  {property.tapestry_lifemodes && (
+                    <div className="text-sm" style={{ color: '#4A6B94' }}>{property.tapestry_lifemodes}</div>
+                  )}
+                  {property.tapestry_segment_description && (
+                    <p className="text-sm text-gray-600 mt-2">{property.tapestry_segment_description}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Demographics Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="py-3 pr-4 text-left font-semibold text-gray-700">Metric</th>
+                  <th className="py-3 px-3 text-right font-semibold text-gray-700">1 Mile</th>
+                  <th className="py-3 px-3 text-right font-semibold text-gray-700">3 Mile</th>
+                  <th className="py-3 px-3 text-right font-semibold text-gray-700">5 Mile</th>
+                  <th className="py-3 pl-3 text-right font-semibold text-gray-700">10-Min Drive</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                <tr className="hover:bg-gray-50">
+                  <td className="py-2 pr-4 text-gray-600">Population</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatNumber(property.pop_1_mile)}</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatNumber(property.pop_3_mile)}</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatNumber(property.pop_5_mile)}</td>
+                  <td className="py-2 pl-3 text-right font-medium">{formatNumber(property.pop_10min_drive)}</td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="py-2 pr-4 text-gray-600">Households</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatNumber(property.households_1_mile)}</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatNumber(property.households_3_mile)}</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatNumber(property.households_5_mile)}</td>
+                  <td className="py-2 pl-3 text-right font-medium">{formatNumber(property.households_10min_drive)}</td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="py-2 pr-4 text-gray-600">Daytime Pop</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatNumber(property.daytime_pop_1_mile)}</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatNumber(property.daytime_pop_3_mile)}</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatNumber(property.daytime_pop_5_mile)}</td>
+                  <td className="py-2 pl-3 text-right font-medium">{formatNumber(property.daytime_pop_10min_drive)}</td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="py-2 pr-4 text-gray-600">Employees</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatNumber(property.employees_1_mile)}</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatNumber(property.employees_3_mile)}</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatNumber(property.employees_5_mile)}</td>
+                  <td className="py-2 pl-3 text-right font-medium">{formatNumber(property.employees_10min_drive)}</td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="py-2 pr-4 text-gray-600">Avg HH Income</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatCurrency(property.hh_income_avg_1_mile)}</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatCurrency(property.hh_income_avg_3_mile)}</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatCurrency(property.hh_income_avg_5_mile)}</td>
+                  <td className="py-2 pl-3 text-right font-medium">{formatCurrency(property.hh_income_avg_10min_drive)}</td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="py-2 pr-4 text-gray-600">Median HH Income</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatCurrency(property.hh_income_median_1_mile)}</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatCurrency(property.hh_income_median_3_mile)}</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatCurrency(property.hh_income_median_5_mile)}</td>
+                  <td className="py-2 pl-3 text-right font-medium">{formatCurrency(property.hh_income_median_10min_drive)}</td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="py-2 pr-4 text-gray-600">Median Age</td>
+                  <td className="py-2 px-3 text-right font-medium">
+                    {property.median_age_1_mile != null ? property.median_age_1_mile.toFixed(1) : '-'}
+                  </td>
+                  <td className="py-2 px-3 text-right font-medium">
+                    {property.median_age_3_mile != null ? property.median_age_3_mile.toFixed(1) : '-'}
+                  </td>
+                  <td className="py-2 px-3 text-right font-medium">
+                    {property.median_age_5_mile != null ? property.median_age_5_mile.toFixed(1) : '-'}
+                  </td>
+                  <td className="py-2 pl-3 text-right font-medium">
+                    {property.median_age_10min_drive != null ? property.median_age_10min_drive.toFixed(1) : '-'}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Last Enriched */}
+          {property.esri_enriched_at && (
+            <div className="mt-4 text-xs text-gray-400 text-right">
+              Data as of {formatDate(property.esri_enriched_at)}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: SiteSubmitDataTabProps) {
   const [saving, setSaving] = useState(false);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<any>(null);
+  const [showDemographicsModal, setShowDemographicsModal] = useState(false);
 
   const handleStartEditing = useCallback((table: string, field: string, currentValue: any) => {
     setEditingField(`${table}.${field}`);
@@ -638,7 +798,20 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
 
       {/* Demographics Section - from ESRI GeoEnrichment */}
       {siteSubmit.property && (
-        <FieldGroup title="Demographics">
+        <FieldGroup
+          title="Demographics"
+          action={
+            siteSubmit.property.esri_enriched_at ? (
+              <button
+                onClick={() => setShowDemographicsModal(true)}
+                className="text-xs font-medium hover:underline transition-colors"
+                style={{ color: '#4A6B94' }}
+              >
+                View All →
+              </button>
+            ) : null
+          }
+        >
           {/* Tapestry Segment */}
           {siteSubmit.property.tapestry_segment_code && (
             <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
@@ -723,6 +896,14 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
             </div>
           )}
         </FieldGroup>
+      )}
+
+      {/* Demographics Modal */}
+      {showDemographicsModal && siteSubmit.property && (
+        <DemographicsModal
+          property={siteSubmit.property}
+          onClose={() => setShowDemographicsModal(false)}
+        />
       )}
     </div>
   );
