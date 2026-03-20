@@ -366,3 +366,59 @@ Potential future enhancements could include:
 ---
 
 **Status:** ✅ Complete and ready for review/merge
+
+---
+
+## 🔄 March 2026 Updates
+
+### Filter Simplification
+**Date:** March 20, 2026
+
+Simplified the Payment Dashboard filtering system for a cleaner, faster workflow.
+
+#### Changes Made
+
+1. **Quick Filter Chips** (replaced complex dropdowns)
+   - `All` - Show all payments
+   - `Pending` - Payments not yet received
+   - `Received` - Payments already received
+   - `Unpaid Disbursements` - Payments received but broker/referral fees not paid
+   - `Overdue` - Past due payments not yet received
+
+2. **Compact Search Bar**
+   - Moved to the right side of the filter row
+   - Search across deal names and broker names
+   - Clear button (X) to reset search
+
+3. **Removed Summary Cards**
+   - Eliminated the 4 stat cards at the top (Total Payments, Payments Received, Broker Payouts, Referral Fees)
+   - Provides more vertical space for the actual payment table
+
+4. **Lost Stage Exclusion**
+   - Payments from deals in "Lost" stage are automatically excluded
+   - No need to filter them out manually
+
+#### Files Modified
+- `src/components/payments/PaymentDashboardFiltersBar.tsx` - Complete rewrite with chip-based filters
+- `src/pages/PaymentDashboardPage.tsx` - Removed stats, added Lost stage filter
+
+### Payment Pinning Feature
+**Date:** March 20, 2026
+
+When marking a payment as received, it now stays "pinned" in the view so you can complete broker and referral fee payments without the payment disappearing.
+
+#### How It Works
+1. Mark payment as received (checkbox)
+2. Payment gets a blue highlight and left border
+3. Row auto-expands to show broker splits and referral fees
+4. Complete the disbursements
+5. Click the X button to unpin and remove from view
+
+#### Visual Indicators
+- **Blue background** (`bg-blue-50`) on pinned rows
+- **Blue left border** (`border-l-4 border-l-blue-400`)
+- **X button** next to the expand arrow to unpin
+
+#### Files Modified
+- `src/pages/PaymentDashboardPage.tsx` - Added `pinnedPaymentIds` state and handlers
+- `src/components/payments/PaymentDashboardTable.tsx` - Added pin styling and auto-expand
