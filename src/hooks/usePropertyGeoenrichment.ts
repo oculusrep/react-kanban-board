@@ -70,7 +70,9 @@ interface UsePropertyGeoenrichmentReturn {
   ) => Promise<GeoenrichmentResult | null>;
   saveEnrichmentToProperty: (
     propertyId: string,
-    result: GeoenrichmentResult
+    result: GeoenrichmentResult,
+    latitude: number,
+    longitude: number
   ) => Promise<boolean>;
   clearError: () => void;
 }
@@ -145,7 +147,12 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
    * Save enrichment results to the property table
    */
   const saveEnrichmentToProperty = useCallback(
-    async (propertyId: string, result: GeoenrichmentResult): Promise<boolean> => {
+    async (
+      propertyId: string,
+      result: GeoenrichmentResult,
+      latitude: number,
+      longitude: number
+    ): Promise<boolean> => {
       try {
         console.log('[Geoenrichment] Saving to property:', propertyId);
 
@@ -157,6 +164,8 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
             // Metadata
             esri_enriched_at: now,
             esri_enrichment_data: result.raw_response,
+            esri_enriched_latitude: latitude,
+            esri_enriched_longitude: longitude,
 
             // Tapestry
             tapestry_segment_code: result.tapestry.code,
@@ -251,4 +260,33 @@ export function formatEnrichmentDate(esriEnrichedAt: string | null): string {
     day: 'numeric',
     year: 'numeric',
   });
+}
+
+/**
+ * Check if property coordinates have changed since last enrichment
+ * Uses a threshold of ~50 meters (0.0005 degrees) to account for minor geocoding variations
+ */
+export function haveCoordinatesChanged(
+  currentLatitude: number | null,
+  currentLongitude: number | null,
+  enrichedLatitude: number | null,
+  enrichedLongitude: number | null
+): boolean {
+  // If no enrichment has been done yet, coordinates haven't "changed"
+  if (enrichedLatitude === null || enrichedLongitude === null) {
+    return false;
+  }
+
+  // If current coordinates are missing, can't determine change
+  if (currentLatitude === null || currentLongitude === null) {
+    return false;
+  }
+
+  // ~50 meters threshold (0.0005 degrees ≈ 55 meters at equator)
+  const THRESHOLD = 0.0005;
+
+  const latDiff = Math.abs(currentLatitude - enrichedLatitude);
+  const lngDiff = Math.abs(currentLongitude - enrichedLongitude);
+
+  return latDiff > THRESHOLD || lngDiff > THRESHOLD;
 }

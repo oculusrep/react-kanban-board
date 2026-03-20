@@ -13,7 +13,7 @@ import PropertyUnitSelector from '../PropertyUnitSelector';
 import { AssignmentSearchResult } from '../../hooks/useAssignmentSearch';
 import { SiteSubmitData } from './SiteSubmitSidebar';
 import { prepareInsert } from '../../lib/supabaseHelpers';
-import { usePropertyGeoenrichment, isEnrichmentStale } from '../../hooks/usePropertyGeoenrichment';
+import { usePropertyGeoenrichment, isEnrichmentStale, haveCoordinatesChanged } from '../../hooks/usePropertyGeoenrichment';
 
 interface Client {
   id: string;
@@ -36,6 +36,7 @@ export default function SiteSubmitCreateForm({
   const [saving, setSaving] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [showStaleDataPrompt, setShowStaleDataPrompt] = useState(false);
+  const [showCoordinateChangePrompt, setShowCoordinateChangePrompt] = useState(false);
   const { enrichProperty, saveEnrichmentToProperty, isEnriching } = usePropertyGeoenrichment();
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentSearchResult | null>(null);
   const [selectedPropertyUnitId, setSelectedPropertyUnitId] = useState<string | null>(initialData.property_unit_id || null);
@@ -69,7 +70,7 @@ export default function SiteSubmitCreateForm({
     // Get current property data to check enrichment status
     const { data: propertyData } = await supabase
       .from('property')
-      .select('latitude, longitude, esri_enriched_at')
+      .select('latitude, longitude, esri_enriched_at, esri_enriched_latitude, esri_enriched_longitude')
       .eq('id', propertyId)
       .single();
 
@@ -80,6 +81,19 @@ export default function SiteSubmitCreateForm({
 
     const hasEnrichment = !!propertyData.esri_enriched_at;
     const isStale = isEnrichmentStale(propertyData.esri_enriched_at);
+    const coordinatesChanged = haveCoordinatesChanged(
+      propertyData.latitude,
+      propertyData.longitude,
+      propertyData.esri_enriched_latitude,
+      propertyData.esri_enriched_longitude
+    );
+
+    // If coordinates have changed since last enrichment, show prompt
+    if (hasEnrichment && coordinatesChanged && !forceRefresh) {
+      console.log('[SiteSubmit] Coordinates changed since last enrichment');
+      setShowCoordinateChangePrompt(true);
+      return;
+    }
 
     // If data is stale, show prompt and let user decide
     if (hasEnrichment && isStale && !forceRefresh) {
@@ -98,7 +112,7 @@ export default function SiteSubmitCreateForm({
       );
 
       if (result) {
-        await saveEnrichmentToProperty(propertyId, result);
+        await saveEnrichmentToProperty(propertyId, result, propertyData.latitude, propertyData.longitude);
         console.log('[SiteSubmit] Property enriched successfully');
       }
     }
@@ -110,8 +124,9 @@ export default function SiteSubmitCreateForm({
       return;
     }
 
-    // Close stale data prompt if it was showing
+    // Close prompts if they were showing
     setShowStaleDataPrompt(false);
+    setShowCoordinateChangePrompt(false);
 
     setSaving(true);
     try {
@@ -311,6 +326,38 @@ export default function SiteSubmitCreateForm({
         </div>
       </div>
 
+      {/* Coordinate Change Prompt */}
+      {showCoordinateChangePrompt && (
+        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-start gap-3">
+            <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-blue-800">Property location has changed</p>
+              <p className="text-sm text-blue-700 mt-1">The property coordinates have changed since the last demographic enrichment. Would you like to refresh the data for the new location?</p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => handleSave(true)}
+                  disabled={saving || isEnriching}
+                  className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {isEnriching ? 'Refreshing...' : 'Yes, Refresh'}
+                </button>
+                <button
+                  onClick={() => handleSave(false)}
+                  disabled={saving}
+                  className="px-3 py-1.5 text-sm font-medium text-blue-700 bg-white border border-blue-300 rounded hover:bg-blue-50 disabled:opacity-50"
+                >
+                  No, Use Existing
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stale Demographics Data Prompt */}
       {showStaleDataPrompt && (
         <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
@@ -352,7 +399,7 @@ export default function SiteSubmitCreateForm({
         </button>
         <button
           onClick={() => handleSave()}
-          disabled={saving || !selectedClient || showStaleDataPrompt}
+          disabled={saving || !selectedClient || showStaleDataPrompt || showCoordinateChangePrompt}
           className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {saving ? (

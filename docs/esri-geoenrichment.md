@@ -18,6 +18,7 @@ The integration is complete and tested. All three API calls (ring buffers, Tapes
 - `supabase/migrations/20260320_esri_geoenrichment.sql` - Original columns
 - `supabase/migrations/20260320_esri_geoenrichment_v2.sql` - Added employees, median age, 10-min drive time
 - `supabase/migrations/20260320_esri_geoenrichment_v3.sql` - Added daytime population (DPOP_CY)
+- `supabase/migrations/20260320_esri_geoenrichment_v4.sql` - Added enriched coordinates tracking
 
 **New columns on `property` table:**
 
@@ -57,6 +58,13 @@ The integration is complete and tested. All three API calls (ring buffers, Tapes
 | `median_age_3_mile` | NUMERIC | Median age (3 mi) |
 | `median_age_5_mile` | NUMERIC | Median age (5 mi) |
 | `median_age_10min_drive` | NUMERIC | Median age (10-min drive) |
+| `esri_enriched_latitude` | NUMERIC | Latitude used when property was last enriched |
+| `esri_enriched_longitude` | NUMERIC | Longitude used when property was last enriched |
+
+**Note on Coordinate Tracking:**
+- `esri_enriched_latitude` and `esri_enriched_longitude` store the coordinates that were used when the property was last enriched
+- When creating a site submit, if the current property coordinates differ from the enriched coordinates by more than ~50 meters, the user is prompted to re-enrich
+- This ensures demographics remain accurate when a property is re-geocoded
 
 **Note on Daytime Population vs Employees:**
 - `employees_*` (DPOPWRK_CY) = Workers only - people who work in the area, including commuters
@@ -301,12 +309,14 @@ Example segments:
 | File | Purpose |
 |------|---------|
 | `supabase/migrations/20260320_esri_geoenrichment.sql` | Initial schema |
-| `supabase/migrations/20260320_esri_geoenrichment_v2.sql` | Extended schema |
+| `supabase/migrations/20260320_esri_geoenrichment_v2.sql` | Extended schema (employees, median age, drive time) |
+| `supabase/migrations/20260320_esri_geoenrichment_v3.sql` | Daytime population (DPOP_CY) |
+| `supabase/migrations/20260320_esri_geoenrichment_v4.sql` | Enriched coordinates tracking |
 | `supabase/functions/esri-geoenrich/index.ts` | Edge function |
-| `src/hooks/usePropertyGeoenrichment.ts` | React hook |
+| `src/hooks/usePropertyGeoenrichment.ts` | React hook (includes coordinate change detection) |
 | `src/components/property/MarketAnalysisSection.tsx` | UI display |
 | `src/components/property/TapestrySegmentCard.tsx` | Tapestry card |
-| `src/components/shared/SiteSubmitCreateForm.tsx` | Auto-enrich on submit |
+| `src/components/shared/SiteSubmitCreateForm.tsx` | Auto-enrich on submit + coordinate change prompt |
 
 ## Deployment
 
@@ -349,3 +359,15 @@ Replace `YOUR_API_KEY` with the actual ESRI API key.
 | Multi-hierarchy error (10020078) | Mixing Tapestry + demographics | Use separate API calls (already implemented) |
 | Only 1-mile data populates | Wrong variable names | Use `_CY` suffix (e.g., `TOTPOP_CY`) |
 | 500 error from edge function | Check Supabase logs | Run `npx supabase functions logs esri-geoenrich` |
+
+## Future Features
+
+### PDF Reports
+
+ESRI's GeoEnrichment API also supports generating pre-designed PDF reports (infographics, market profiles, traffic counts, etc.) at approximately $1 per report. This could be implemented via a separate `createReport` endpoint:
+
+```
+https://geoenrich.arcgis.com/arcgis/rest/services/World/geoenrichmentserver/Geoenrichment/createReport
+```
+
+This feature is not currently implemented but could be added as a separate edge function if needed for generating client-ready market analysis documents.
