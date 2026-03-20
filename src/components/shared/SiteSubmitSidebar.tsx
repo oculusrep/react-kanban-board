@@ -59,6 +59,20 @@ export interface SiteSubmitData {
     all_in_rent: number | null;
     latitude: number | null;
     longitude: number | null;
+    // ESRI Demographics
+    esri_enriched_at: string | null;
+    tapestry_segment_code: string | null;
+    tapestry_segment_name: string | null;
+    tapestry_lifemodes: string | null;
+    pop_1_mile: number | null;
+    pop_3_mile: number | null;
+    pop_5_mile: number | null;
+    pop_10min_drive: number | null;
+    households_3_mile: number | null;
+    hh_income_median_3_mile: number | null;
+    hh_income_avg_3_mile: number | null;
+    daytime_pop_3_mile: number | null;
+    median_age_3_mile: number | null;
     property_record_type: {
       id: string;
       label: string | null;
@@ -305,6 +319,19 @@ export default function SiteSubmitSidebar({
               all_in_rent,
               latitude,
               longitude,
+              esri_enriched_at,
+              tapestry_segment_code,
+              tapestry_segment_name,
+              tapestry_lifemodes,
+              pop_1_mile,
+              pop_3_mile,
+              pop_5_mile,
+              pop_10min_drive,
+              households_3_mile,
+              hh_income_median_3_mile,
+              hh_income_avg_3_mile,
+              daytime_pop_3_mile,
+              median_age_3_mile,
               property_record_type:property_record_type_id (
                 id,
                 label

@@ -635,6 +635,95 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
           field="competitor_data"
         />
       </FieldGroup>
+
+      {/* Demographics Section - from ESRI GeoEnrichment */}
+      {siteSubmit.property && (
+        <FieldGroup title="Demographics">
+          {/* Tapestry Segment */}
+          {siteSubmit.property.tapestry_segment_code && (
+            <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+              <span className="text-gray-600">Tapestry Segment</span>
+              <span className="text-gray-900 font-medium">
+                {siteSubmit.property.tapestry_segment_code} - {siteSubmit.property.tapestry_segment_name}
+                {siteSubmit.property.tapestry_lifemodes && (
+                  <span className="text-gray-500 text-xs ml-1">({siteSubmit.property.tapestry_lifemodes})</span>
+                )}
+              </span>
+            </div>
+          )}
+
+          {/* Population */}
+          <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+            <span className="text-gray-600">Population (3 mi)</span>
+            <span className="text-gray-900 font-medium">
+              {siteSubmit.property.pop_3_mile != null ? formatNumber(siteSubmit.property.pop_3_mile) : '-'}
+            </span>
+          </div>
+
+          {/* Population - 10 min drive */}
+          <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+            <span className="text-gray-600">Population (10-min drive)</span>
+            <span className="text-gray-900 font-medium">
+              {siteSubmit.property.pop_10min_drive != null ? formatNumber(siteSubmit.property.pop_10min_drive) : '-'}
+            </span>
+          </div>
+
+          {/* Households */}
+          <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+            <span className="text-gray-600">Households (3 mi)</span>
+            <span className="text-gray-900 font-medium">
+              {siteSubmit.property.households_3_mile != null ? formatNumber(siteSubmit.property.households_3_mile) : '-'}
+            </span>
+          </div>
+
+          {/* Daytime Population */}
+          <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+            <span className="text-gray-600">Daytime Pop (3 mi)</span>
+            <span className="text-gray-900 font-medium">
+              {siteSubmit.property.daytime_pop_3_mile != null ? formatNumber(siteSubmit.property.daytime_pop_3_mile) : '-'}
+            </span>
+          </div>
+
+          {/* Median HH Income */}
+          <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+            <span className="text-gray-600">Median HH Income (3 mi)</span>
+            <span className="text-gray-900 font-medium">
+              {siteSubmit.property.hh_income_median_3_mile != null ? formatCurrency(siteSubmit.property.hh_income_median_3_mile) : '-'}
+            </span>
+          </div>
+
+          {/* Avg HH Income */}
+          <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+            <span className="text-gray-600">Avg HH Income (3 mi)</span>
+            <span className="text-gray-900 font-medium">
+              {siteSubmit.property.hh_income_avg_3_mile != null ? formatCurrency(siteSubmit.property.hh_income_avg_3_mile) : '-'}
+            </span>
+          </div>
+
+          {/* Median Age */}
+          <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+            <span className="text-gray-600">Median Age (3 mi)</span>
+            <span className="text-gray-900 font-medium">
+              {siteSubmit.property.median_age_3_mile != null ? siteSubmit.property.median_age_3_mile.toFixed(1) : '-'}
+            </span>
+          </div>
+
+          {/* Last Enriched */}
+          {siteSubmit.property.esri_enriched_at && (
+            <div className="flex justify-between py-1.5 text-sm text-gray-400 text-xs mt-2">
+              <span>Data as of</span>
+              <span>{formatDate(siteSubmit.property.esri_enriched_at)}</span>
+            </div>
+          )}
+
+          {/* No data message */}
+          {!siteSubmit.property.esri_enriched_at && (
+            <div className="py-2 text-sm text-gray-400 italic">
+              No demographic data available. Enrich property from the Property Detail page.
+            </div>
+          )}
+        </FieldGroup>
+      )}
     </div>
   );
 }
