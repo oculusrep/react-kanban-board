@@ -289,9 +289,11 @@ The response had data for all radii but only 1-mile was being parsed. This was d
 
 ESRI GeoEnrichment pricing: ~$1 per 1000 attributes
 
-With ~9 variables across 4 areas (1mi, 3mi, 5mi, 10min drive) = ~36 attributes per property
+**Current implementation:** 7 demographic variables × 4 areas + 3 Tapestry variables = **31 attributes per property**
 
-**Cost per property:** ~$0.04
+**Cost per property:** ~$0.031 (about 3 cents)
+
+**Bulk enrichment (4,228 properties):** ~$131
 
 **Monthly estimate (assuming 60-70 unique properties from 100 site submits):** ~$2.80/month
 
@@ -312,7 +314,9 @@ Example segments:
 | `supabase/migrations/20260320_esri_geoenrichment_v2.sql` | Extended schema (employees, median age, drive time) |
 | `supabase/migrations/20260320_esri_geoenrichment_v3.sql` | Daytime population (DPOP_CY) |
 | `supabase/migrations/20260320_esri_geoenrichment_v4.sql` | Enriched coordinates tracking |
-| `supabase/functions/esri-geoenrich/index.ts` | Edge function |
+| `supabase/migrations/20260320_esri_data_vintage.sql` | Data vintage tracking table |
+| `supabase/functions/esri-geoenrich/index.ts` | Main enrichment edge function |
+| `supabase/functions/esri-vintage-check/index.ts` | Annual data refresh detection |
 | `src/hooks/usePropertyGeoenrichment.ts` | React hook (includes coordinate change detection) |
 | `src/components/property/MarketAnalysisSection.tsx` | UI display |
 | `src/components/property/TapestrySegmentCard.tsx` | Tapestry card |
@@ -359,6 +363,72 @@ Replace `YOUR_API_KEY` with the actual ESRI API key.
 | Multi-hierarchy error (10020078) | Mixing Tapestry + demographics | Use separate API calls (already implemented) |
 | Only 1-mile data populates | Wrong variable names | Use `_CY` suffix (e.g., `TOTPOP_CY`) |
 | 500 error from edge function | Check Supabase logs | Run `npx supabase functions logs esri-geoenrich` |
+
+## Annual Data Refresh Detection
+
+ESRI updates their demographic data annually, typically in spring (March-April). The system includes automated detection for when new data becomes available.
+
+### How It Works
+
+The `esri-vintage-check` edge function:
+1. Calls the ESRI API with a sample location (Atlanta, GA)
+2. Compares the population value to the previous check
+3. If data has changed significantly, sends an email notification
+4. Stores check results in the `esri_data_vintage` table
+
+### Setup
+
+**Required Supabase Secrets:**
+```bash
+npx supabase secrets set RESEND_API_KEY=your_resend_api_key
+npx supabase secrets set ADMIN_EMAIL=your_email@example.com
+```
+
+**Deploy the function:**
+```bash
+npx supabase functions deploy esri-vintage-check --no-verify-jwt
+```
+
+### Scheduling
+
+Set up a monthly cron job to call the function. Options:
+
+1. **Supabase pg_cron** (if enabled):
+```sql
+SELECT cron.schedule(
+  'esri-vintage-check',
+  '0 9 1 * *', -- 9 AM on the 1st of each month
+  $$SELECT net.http_post(
+    url := 'https://your-project.supabase.co/functions/v1/esri-vintage-check',
+    headers := '{"Authorization": "Bearer YOUR_ANON_KEY"}'::jsonb
+  )$$
+);
+```
+
+2. **External scheduler** (e.g., GitHub Actions, cron job):
+```bash
+curl -X POST "https://your-project.supabase.co/functions/v1/esri-vintage-check" \
+  -H "Authorization: Bearer YOUR_ANON_KEY"
+```
+
+### Manual Check
+
+To manually check for new data:
+```bash
+curl -X POST "https://your-project.supabase.co/functions/v1/esri-vintage-check" \
+  -H "Authorization: Bearer YOUR_ANON_KEY"
+```
+
+Response:
+```json
+{
+  "success": true,
+  "data_vintage": "2026",
+  "sample_population": 12345,
+  "is_new_data": false,
+  "message": "No data changes detected."
+}
+```
 
 ## Future Features
 
