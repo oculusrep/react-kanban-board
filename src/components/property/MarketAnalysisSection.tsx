@@ -282,6 +282,13 @@ const MarketAnalysisSection: React.FC<MarketAnalysisSectionProps> = ({
                           <td className="py-2 pl-3 text-right font-medium text-[#4A6B94]">{formatCurrency(property.hh_income_median_10min_drive)}</td>
                         </tr>
                         <tr>
+                          <td className="py-2 pr-4 text-gray-600">Daytime Pop</td>
+                          <td className="py-2 px-3 text-right font-medium">{formatNumber(property.daytime_pop_1_mile)}</td>
+                          <td className="py-2 px-3 text-right font-medium">{formatNumber(property.daytime_pop_3_mile)}</td>
+                          <td className="py-2 px-3 text-right font-medium">{formatNumber(property.daytime_pop_5_mile)}</td>
+                          <td className="py-2 pl-3 text-right font-medium">{formatNumber(property.daytime_pop_10min_drive)}</td>
+                        </tr>
+                        <tr>
                           <td className="py-2 pr-4 text-gray-600">Employees</td>
                           <td className="py-2 px-3 text-right font-medium">{formatNumber(property.employees_1_mile)}</td>
                           <td className="py-2 px-3 text-right font-medium">{formatNumber(property.employees_3_mile)}</td>
