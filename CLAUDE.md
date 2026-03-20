@@ -135,6 +135,18 @@ const { data } = await supabase
 - `activity` - Use date range filters or paginate
 - `email_log` - Use date range or contact_id filters
 
+## External API Integration
+
+**Always check official API documentation before writing integration code.**
+
+When integrating with external APIs (ESRI, ZoomInfo, Google Maps, etc.):
+1. Look up the correct field names, endpoints, and request formats in the official documentation FIRST
+2. Never assume or guess variable naming conventions - verify them
+3. Test with a minimal API call to confirm the response structure before writing parsing code
+4. Document the API reference URL in code comments for future maintenance
+
+This prevents wasted iterations debugging parsing issues that are actually request format issues.
+
 ## Documentation
 
 **All documentation must be saved to git.** When asked to document something, create a status summary, or write notes about an issue:

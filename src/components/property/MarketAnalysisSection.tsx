@@ -207,48 +207,98 @@ const MarketAnalysisSection: React.FC<MarketAnalysisSectionProps> = ({
 
             {/* Demographics Grid */}
             {hasEnrichmentData && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mb-4">
-                {/* Population */}
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500 mb-1">1 Mile Population</p>
-                  <p className="text-lg font-semibold text-[#002147]">
-                    {formatNumber(property.pop_1_mile)}
-                  </p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500 mb-1">3 Mile Population</p>
-                  <p className="text-lg font-semibold text-[#002147]">
-                    {formatNumber(property.pop_3_mile)}
-                  </p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500 mb-1">5 Mile Population</p>
-                  <p className="text-lg font-semibold text-[#002147]">
-                    {formatNumber(property.pop_5_mile)}
-                  </p>
+              <div className="space-y-4 mb-4">
+                {/* Summary Row - Key Stats */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-[#002147]/5 rounded-lg p-3 border border-[#002147]/10">
+                    <p className="text-xs text-gray-500 mb-1">3 Mile Population</p>
+                    <p className="text-xl font-bold text-[#002147]">
+                      {formatNumber(property.pop_3_mile)}
+                    </p>
+                  </div>
+                  <div className="bg-[#002147]/5 rounded-lg p-3 border border-[#002147]/10">
+                    <p className="text-xs text-gray-500 mb-1">3 Mile Households</p>
+                    <p className="text-xl font-bold text-[#002147]">
+                      {formatNumber(property.households_3_mile)}
+                    </p>
+                  </div>
+                  <div className="bg-[#002147]/5 rounded-lg p-3 border border-[#002147]/10">
+                    <p className="text-xs text-gray-500 mb-1">Median HH Income (3 mi)</p>
+                    <p className="text-xl font-bold text-[#4A6B94]">
+                      {formatCurrency(property.hh_income_median_3_mile)}
+                    </p>
+                  </div>
+                  <div className="bg-[#002147]/5 rounded-lg p-3 border border-[#002147]/10">
+                    <p className="text-xs text-gray-500 mb-1">10 Min Drive Population</p>
+                    <p className="text-xl font-bold text-[#002147]">
+                      {formatNumber(property.pop_10min_drive)}
+                    </p>
+                  </div>
                 </div>
 
-                {/* Households */}
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500 mb-1">3 Mile Households</p>
-                  <p className="text-lg font-semibold text-[#002147]">
-                    {formatNumber(property.households_3_mile)}
-                  </p>
-                </div>
-
-                {/* Income */}
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500 mb-1">Median HH Income (3 mi)</p>
-                  <p className="text-lg font-semibold text-[#4A6B94]">
-                    {formatCurrency(property.hh_income_median_3_mile || property.hh_income_median_3_mile)}
-                  </p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500 mb-1">Avg HH Income (3 mi)</p>
-                  <p className="text-lg font-semibold text-[#4A6B94]">
-                    {formatCurrency(property.hh_income_avg_3_mile)}
-                  </p>
-                </div>
+                {/* Detailed Demographics Table */}
+                <details className="text-sm">
+                  <summary className="text-gray-600 cursor-pointer hover:text-gray-800 font-medium">
+                    View All Demographics
+                  </summary>
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-200">
+                          <th className="text-left py-2 pr-4 font-medium text-gray-700">Metric</th>
+                          <th className="text-right py-2 px-3 font-medium text-gray-700">1 Mile</th>
+                          <th className="text-right py-2 px-3 font-medium text-gray-700">3 Mile</th>
+                          <th className="text-right py-2 px-3 font-medium text-gray-700">5 Mile</th>
+                          <th className="text-right py-2 pl-3 font-medium text-gray-700">10 Min Drive</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        <tr>
+                          <td className="py-2 pr-4 text-gray-600">Population</td>
+                          <td className="py-2 px-3 text-right font-medium">{formatNumber(property.pop_1_mile)}</td>
+                          <td className="py-2 px-3 text-right font-medium">{formatNumber(property.pop_3_mile)}</td>
+                          <td className="py-2 px-3 text-right font-medium">{formatNumber(property.pop_5_mile)}</td>
+                          <td className="py-2 pl-3 text-right font-medium">{formatNumber(property.pop_10min_drive)}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 pr-4 text-gray-600">Households</td>
+                          <td className="py-2 px-3 text-right font-medium">{formatNumber(property.households_1_mile)}</td>
+                          <td className="py-2 px-3 text-right font-medium">{formatNumber(property.households_3_mile)}</td>
+                          <td className="py-2 px-3 text-right font-medium">{formatNumber(property.households_5_mile)}</td>
+                          <td className="py-2 pl-3 text-right font-medium">{formatNumber(property.households_10min_drive)}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 pr-4 text-gray-600">Avg HH Income</td>
+                          <td className="py-2 px-3 text-right font-medium text-[#4A6B94]">{formatCurrency(property.hh_income_avg_1_mile)}</td>
+                          <td className="py-2 px-3 text-right font-medium text-[#4A6B94]">{formatCurrency(property.hh_income_avg_3_mile)}</td>
+                          <td className="py-2 px-3 text-right font-medium text-[#4A6B94]">{formatCurrency(property.hh_income_avg_5_mile)}</td>
+                          <td className="py-2 pl-3 text-right font-medium text-[#4A6B94]">{formatCurrency(property.hh_income_avg_10min_drive)}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 pr-4 text-gray-600">Median HH Income</td>
+                          <td className="py-2 px-3 text-right font-medium text-[#4A6B94]">{formatCurrency(property.hh_income_median_1_mile)}</td>
+                          <td className="py-2 px-3 text-right font-medium text-[#4A6B94]">{formatCurrency(property.hh_income_median_3_mile)}</td>
+                          <td className="py-2 px-3 text-right font-medium text-[#4A6B94]">{formatCurrency(property.hh_income_median_5_mile)}</td>
+                          <td className="py-2 pl-3 text-right font-medium text-[#4A6B94]">{formatCurrency(property.hh_income_median_10min_drive)}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 pr-4 text-gray-600">Employees</td>
+                          <td className="py-2 px-3 text-right font-medium">{formatNumber(property.employees_1_mile)}</td>
+                          <td className="py-2 px-3 text-right font-medium">{formatNumber(property.employees_3_mile)}</td>
+                          <td className="py-2 px-3 text-right font-medium">{formatNumber(property.employees_5_mile)}</td>
+                          <td className="py-2 pl-3 text-right font-medium">{formatNumber(property.employees_10min_drive)}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 pr-4 text-gray-600">Median Age</td>
+                          <td className="py-2 px-3 text-right font-medium">{property.median_age_1_mile ? property.median_age_1_mile.toFixed(1) : '-'}</td>
+                          <td className="py-2 px-3 text-right font-medium">{property.median_age_3_mile ? property.median_age_3_mile.toFixed(1) : '-'}</td>
+                          <td className="py-2 px-3 text-right font-medium">{property.median_age_5_mile ? property.median_age_5_mile.toFixed(1) : '-'}</td>
+                          <td className="py-2 pl-3 text-right font-medium">{property.median_age_10min_drive ? property.median_age_10min_drive.toFixed(1) : '-'}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
               </div>
             )}
 

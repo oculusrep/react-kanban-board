@@ -15,6 +15,7 @@ export interface TapestrySegment {
  * Demographic data from ESRI GeoEnrichment
  */
 export interface DemographicData {
+  // Ring buffer demographics (1, 3, 5 mile)
   pop_1_mile: number | null;
   pop_3_mile: number | null;
   pop_5_mile: number | null;
@@ -27,6 +28,19 @@ export interface DemographicData {
   hh_income_avg_1_mile: number | null;
   hh_income_avg_3_mile: number | null;
   hh_income_avg_5_mile: number | null;
+  employees_1_mile: number | null;
+  employees_3_mile: number | null;
+  employees_5_mile: number | null;
+  median_age_1_mile: number | null;
+  median_age_3_mile: number | null;
+  median_age_5_mile: number | null;
+  // 10-minute drive time demographics
+  pop_10min_drive: number | null;
+  households_10min_drive: number | null;
+  hh_income_median_10min_drive: number | null;
+  hh_income_avg_10min_drive: number | null;
+  employees_10min_drive: number | null;
+  median_age_10min_drive: number | null;
 }
 
 /**
@@ -146,7 +160,7 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
             tapestry_segment_description: result.tapestry.description,
             tapestry_lifemodes: result.tapestry.lifemodes,
 
-            // Demographics
+            // Demographics - Ring buffers
             pop_1_mile: result.demographics.pop_1_mile,
             pop_3_mile: result.demographics.pop_3_mile,
             pop_5_mile: result.demographics.pop_5_mile,
@@ -159,6 +173,20 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
             hh_income_avg_1_mile: result.demographics.hh_income_avg_1_mile,
             hh_income_avg_3_mile: result.demographics.hh_income_avg_3_mile,
             hh_income_avg_5_mile: result.demographics.hh_income_avg_5_mile,
+            employees_1_mile: result.demographics.employees_1_mile,
+            employees_3_mile: result.demographics.employees_3_mile,
+            employees_5_mile: result.demographics.employees_5_mile,
+            median_age_1_mile: result.demographics.median_age_1_mile,
+            median_age_3_mile: result.demographics.median_age_3_mile,
+            median_age_5_mile: result.demographics.median_age_5_mile,
+
+            // Demographics - 10-minute drive time
+            pop_10min_drive: result.demographics.pop_10min_drive,
+            households_10min_drive: result.demographics.households_10min_drive,
+            hh_income_median_10min_drive: result.demographics.hh_income_median_10min_drive,
+            hh_income_avg_10min_drive: result.demographics.hh_income_avg_10min_drive,
+            employees_10min_drive: result.demographics.employees_10min_drive,
+            median_age_10min_drive: result.demographics.median_age_10min_drive,
           })
           .eq('id', propertyId);
 

@@ -359,6 +359,7 @@ const PropertyDetailScreenWithStaticSidebar: React.FC<PropertyDetailScreenWithSt
             <MarketAnalysisSection
               property={currentProperty}
               onFieldUpdate={handleFieldUpdate}
+              onPropertyRefresh={refreshProperty}
             />
 
             <LinksSection

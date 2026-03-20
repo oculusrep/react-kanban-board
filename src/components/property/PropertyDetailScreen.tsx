@@ -500,6 +500,7 @@ const PropertyDetailScreen: React.FC<PropertyDetailScreenProps> = ({
                 <MarketAnalysisSection
                   property={currentProperty}
                   onFieldUpdate={handleFieldUpdate}
+                  onPropertyRefresh={refreshProperty}
                 />
 
                 <LinksSection

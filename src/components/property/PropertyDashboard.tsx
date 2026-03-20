@@ -312,6 +312,7 @@ const PropertyDashboard: React.FC<PropertyDashboardProps> = ({
             <MarketAnalysisSection
               property={currentProperty}
               onFieldUpdate={handleFieldUpdate}
+              onPropertyRefresh={refreshProperty}
             />
 
             <LinksSection
