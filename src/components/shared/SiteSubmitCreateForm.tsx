@@ -13,6 +13,7 @@ import PropertyUnitSelector from '../PropertyUnitSelector';
 import { AssignmentSearchResult } from '../../hooks/useAssignmentSearch';
 import { SiteSubmitData } from './SiteSubmitSidebar';
 import { prepareInsert } from '../../lib/supabaseHelpers';
+import { usePropertyGeoenrichment, isEnrichmentStale } from '../../hooks/usePropertyGeoenrichment';
 
 interface Client {
   id: string;
@@ -34,6 +35,8 @@ export default function SiteSubmitCreateForm({
 }: SiteSubmitCreateFormProps) {
   const [saving, setSaving] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [showStaleDataPrompt, setShowStaleDataPrompt] = useState(false);
+  const { enrichProperty, saveEnrichmentToProperty, isEnriching } = usePropertyGeoenrichment();
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentSearchResult | null>(null);
   const [selectedPropertyUnitId, setSelectedPropertyUnitId] = useState<string | null>(initialData.property_unit_id || null);
   const [siteSubmitName, setSiteSubmitName] = useState(initialData.site_submit_name || '');
@@ -61,11 +64,54 @@ export default function SiteSubmitCreateForm({
     }
   }, [selectedClient, initialData.property?.property_name]);
 
-  const handleSave = async () => {
+  // Check if property needs demographic enrichment
+  const checkAndEnrichProperty = async (propertyId: string, forceRefresh = false) => {
+    // Get current property data to check enrichment status
+    const { data: propertyData } = await supabase
+      .from('property')
+      .select('latitude, longitude, esri_enriched_at')
+      .eq('id', propertyId)
+      .single();
+
+    if (!propertyData?.latitude || !propertyData?.longitude) {
+      console.log('[SiteSubmit] Property has no coordinates, skipping enrichment');
+      return;
+    }
+
+    const hasEnrichment = !!propertyData.esri_enriched_at;
+    const isStale = isEnrichmentStale(propertyData.esri_enriched_at);
+
+    // If data is stale, show prompt and let user decide
+    if (hasEnrichment && isStale && !forceRefresh) {
+      setShowStaleDataPrompt(true);
+      return;
+    }
+
+    // If no enrichment data exists, or force refresh requested, enrich now
+    if (!hasEnrichment || forceRefresh) {
+      console.log('[SiteSubmit] Auto-enriching property with demographics');
+      const result = await enrichProperty(
+        propertyId,
+        propertyData.latitude,
+        propertyData.longitude,
+        forceRefresh
+      );
+
+      if (result) {
+        await saveEnrichmentToProperty(propertyId, result);
+        console.log('[SiteSubmit] Property enriched successfully');
+      }
+    }
+  };
+
+  const handleSave = async (refreshStaleData = false) => {
     if (!selectedClient) {
       alert('Please select a client');
       return;
     }
+
+    // Close stale data prompt if it was showing
+    setShowStaleDataPrompt(false);
 
     setSaving(true);
     try {
@@ -147,6 +193,11 @@ export default function SiteSubmitCreateForm({
         .single();
 
       if (error) throw error;
+
+      // Auto-enrich property demographics (silent fail - doesn't block site submit)
+      checkAndEnrichProperty(initialData.property_id, refreshStaleData).catch((err) => {
+        console.error('[SiteSubmit] Enrichment failed (non-blocking):', err);
+      });
 
       onSave(data as unknown as SiteSubmitData);
     } catch (err) {
@@ -260,6 +311,37 @@ export default function SiteSubmitCreateForm({
         </div>
       </div>
 
+      {/* Stale Demographics Data Prompt */}
+      {showStaleDataPrompt && (
+        <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+          <div className="flex items-start gap-3">
+            <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-800">Demographics data is over 1 year old</p>
+              <p className="text-sm text-amber-700 mt-1">Would you like to refresh the demographic data for this property?</p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => handleSave(true)}
+                  disabled={saving || isEnriching}
+                  className="px-3 py-1.5 text-sm font-medium text-white bg-amber-600 rounded hover:bg-amber-700 disabled:opacity-50"
+                >
+                  {isEnriching ? 'Refreshing...' : 'Yes, Refresh'}
+                </button>
+                <button
+                  onClick={() => handleSave(false)}
+                  disabled={saving}
+                  className="px-3 py-1.5 text-sm font-medium text-amber-700 bg-white border border-amber-300 rounded hover:bg-amber-50 disabled:opacity-50"
+                >
+                  No, Use Existing
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Action Buttons */}
       <div className="mt-6 flex gap-3">
         <button
@@ -269,8 +351,8 @@ export default function SiteSubmitCreateForm({
           Cancel
         </button>
         <button
-          onClick={handleSave}
-          disabled={saving || !selectedClient}
+          onClick={() => handleSave()}
+          disabled={saving || !selectedClient || showStaleDataPrompt}
           className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {saving ? (

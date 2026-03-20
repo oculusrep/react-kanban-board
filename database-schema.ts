@@ -5465,7 +5465,17 @@ export type Database = {
           deal_type_id: string | null
           demographics: string | null
           description: string | null
+          esri_enriched_at: string | null
+          esri_enrichment_data: Record<string, unknown> | null
+          hh_income_avg_1_mile: number | null
+          hh_income_avg_3_mile: number | null
+          hh_income_avg_5_mile: number | null
+          hh_income_median_1_mile: number | null
           hh_income_median_3_mile: number | null
+          hh_income_median_5_mile: number | null
+          households_1_mile: number | null
+          households_3_mile: number | null
+          households_5_mile: number | null
           id: string
           landlord: string | null
           latitude: number | null
@@ -5478,6 +5488,9 @@ export type Database = {
           nnn_psf: number | null
           owner_id: string | null
           parcel_id: string | null
+          pop_1_mile: number | null
+          pop_3_mile: number | null
+          pop_5_mile: number | null
           property_name: string | null
           property_notes: string | null
           property_record_type_id: string | null
@@ -5488,6 +5501,10 @@ export type Database = {
           sf_id: string | null
           site_plan: string | null
           state: string | null
+          tapestry_lifemodes: string | null
+          tapestry_segment_code: string | null
+          tapestry_segment_description: string | null
+          tapestry_segment_name: string | null
           tax_url: string | null
           total_traffic: number | null
           trade_area: string | null
@@ -5522,7 +5539,17 @@ export type Database = {
           deal_type_id?: string | null
           demographics?: string | null
           description?: string | null
+          esri_enriched_at?: string | null
+          esri_enrichment_data?: Record<string, unknown> | null
+          hh_income_avg_1_mile?: number | null
+          hh_income_avg_3_mile?: number | null
+          hh_income_avg_5_mile?: number | null
+          hh_income_median_1_mile?: number | null
           hh_income_median_3_mile?: number | null
+          hh_income_median_5_mile?: number | null
+          households_1_mile?: number | null
+          households_3_mile?: number | null
+          households_5_mile?: number | null
           id?: string
           landlord?: string | null
           latitude?: number | null
@@ -5535,6 +5562,9 @@ export type Database = {
           nnn_psf?: number | null
           owner_id?: string | null
           parcel_id?: string | null
+          pop_1_mile?: number | null
+          pop_3_mile?: number | null
+          pop_5_mile?: number | null
           property_name?: string | null
           property_notes?: string | null
           property_record_type_id?: string | null
@@ -5545,6 +5575,10 @@ export type Database = {
           sf_id?: string | null
           site_plan?: string | null
           state?: string | null
+          tapestry_lifemodes?: string | null
+          tapestry_segment_code?: string | null
+          tapestry_segment_description?: string | null
+          tapestry_segment_name?: string | null
           tax_url?: string | null
           total_traffic?: number | null
           trade_area?: string | null
@@ -5579,7 +5613,17 @@ export type Database = {
           deal_type_id?: string | null
           demographics?: string | null
           description?: string | null
+          esri_enriched_at?: string | null
+          esri_enrichment_data?: Record<string, unknown> | null
+          hh_income_avg_1_mile?: number | null
+          hh_income_avg_3_mile?: number | null
+          hh_income_avg_5_mile?: number | null
+          hh_income_median_1_mile?: number | null
           hh_income_median_3_mile?: number | null
+          hh_income_median_5_mile?: number | null
+          households_1_mile?: number | null
+          households_3_mile?: number | null
+          households_5_mile?: number | null
           id?: string
           landlord?: string | null
           latitude?: number | null
@@ -5592,6 +5636,9 @@ export type Database = {
           nnn_psf?: number | null
           owner_id?: string | null
           parcel_id?: string | null
+          pop_1_mile?: number | null
+          pop_3_mile?: number | null
+          pop_5_mile?: number | null
           property_name?: string | null
           property_notes?: string | null
           property_record_type_id?: string | null
@@ -5602,6 +5649,10 @@ export type Database = {
           sf_id?: string | null
           site_plan?: string | null
           state?: string | null
+          tapestry_lifemodes?: string | null
+          tapestry_segment_code?: string | null
+          tapestry_segment_description?: string | null
+          tapestry_segment_name?: string | null
           tax_url?: string | null
           total_traffic?: number | null
           trade_area?: string | null
