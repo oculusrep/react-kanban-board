@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { PaymentDashboardRow } from '../../types/payment-dashboard';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 
 interface AgedUpcomingPaymentsTabProps {
   onPaymentUpdate: () => void;
@@ -9,6 +10,7 @@ interface AgedUpcomingPaymentsTabProps {
 const AgedUpcomingPaymentsTab: React.FC<AgedUpcomingPaymentsTabProps> = ({ onPaymentUpdate }) => {
   const [payments, setPayments] = useState<PaymentDashboardRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pinnedPaymentIds, setPinnedPaymentIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchPayments();
@@ -129,12 +131,16 @@ const AgedUpcomingPaymentsTab: React.FC<AgedUpcomingPaymentsTabProps> = ({ onPay
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   })();
 
-  // Split into overdue and upcoming (next 30 days)
-  const overduePayments = payments.filter(p => p.payment_date_estimated && p.payment_date_estimated < today);
+  // Split into overdue and upcoming (next 30 days), but always include pinned payments
+  const overduePayments = payments.filter(p =>
+    pinnedPaymentIds.has(p.payment_id) || (p.payment_date_estimated && p.payment_date_estimated < today)
+  );
   const upcomingPayments = payments.filter(p =>
-    p.payment_date_estimated &&
-    p.payment_date_estimated >= today &&
-    p.payment_date_estimated <= thirtyDaysFromNow
+    pinnedPaymentIds.has(p.payment_id) || (
+      p.payment_date_estimated &&
+      p.payment_date_estimated >= today &&
+      p.payment_date_estimated <= thirtyDaysFromNow
+    )
   );
 
   // Calculate totals
@@ -198,6 +204,18 @@ const AgedUpcomingPaymentsTab: React.FC<AgedUpcomingPaymentsTabProps> = ({ onPay
     );
   }
 
+  const handlePinPayment = (paymentId: string) => {
+    setPinnedPaymentIds(prev => new Set(prev).add(paymentId));
+  };
+
+  const handleUnpinPayment = (paymentId: string) => {
+    setPinnedPaymentIds(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(paymentId);
+      return newSet;
+    });
+  };
+
   const renderPaymentTable = (paymentList: PaymentDashboardRow[], isOverdue: boolean) => {
     if (paymentList.length === 0) {
       return (
@@ -211,6 +229,7 @@ const AgedUpcomingPaymentsTab: React.FC<AgedUpcomingPaymentsTabProps> = ({ onPay
       <table className="min-w-full divide-y divide-gray-200">
         <thead className="bg-gray-50">
           <tr>
+            <th className="w-8 px-2 py-3"></th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deal</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment</th>
             <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
@@ -227,9 +246,21 @@ const AgedUpcomingPaymentsTab: React.FC<AgedUpcomingPaymentsTabProps> = ({ onPay
             const days = isOverdue
               ? getDaysOverdue(payment.payment_date_estimated!)
               : getDaysUntil(payment.payment_date_estimated!);
+            const isPinned = pinnedPaymentIds.has(payment.payment_id);
 
             return (
-              <tr key={payment.payment_id} className="hover:bg-gray-50">
+              <tr key={payment.payment_id} className={`hover:bg-gray-50 ${isPinned ? 'bg-blue-50 border-l-4 border-l-blue-400' : ''}`}>
+                <td className="px-2 py-3">
+                  {isPinned && (
+                    <button
+                      onClick={() => handleUnpinPayment(payment.payment_id)}
+                      className="text-blue-400 hover:text-blue-600 p-0.5 rounded hover:bg-blue-100"
+                      title="Unpin payment (remove from view)"
+                    >
+                      <XMarkIcon className="h-4 w-4" />
+                    </button>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <a
                     href={`/deal/${payment.deal_id}`}
@@ -253,6 +284,12 @@ const AgedUpcomingPaymentsTab: React.FC<AgedUpcomingPaymentsTabProps> = ({ onPay
                   <input
                     type="date"
                     value={payment.payment_date_estimated || ''}
+                    onFocus={() => {
+                      // Pin the payment when date picker is opened so it stays visible during editing
+                      if (!isPinned) {
+                        handlePinPayment(payment.payment_id);
+                      }
+                    }}
                     onChange={(e) => handleUpdateEstimatedDate(payment.payment_id, e.target.value)}
                     className="border-0 bg-transparent px-0 py-0 text-sm text-gray-900 focus:outline-none focus:ring-0 cursor-text"
                   />
