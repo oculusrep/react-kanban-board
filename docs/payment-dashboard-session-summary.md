@@ -465,3 +465,28 @@ When the date picker is focused (opened), the payment is automatically pinned so
 #### Files Modified
 - `src/components/payments/PaymentDashboardTable.tsx` - Added `onPinPayment` prop and `onFocus` handler
 - `src/pages/PaymentDashboardPage.tsx` - Added `onPinPayment` callback to table component
+
+### Traffic Count Layer (On Hold)
+**Date:** March 23, 2026
+
+Investigated adding AADT (Annual Average Daily Traffic) data as a map layer for evaluating retail sites.
+
+#### Research Summary
+- **GA DOT Free Data**: Only 232 records (permanent monitoring stations on major highways) - insufficient coverage
+- **GeoTRAQS**: Better data but blocks external API connections
+- **TADA Portal**: Web interface only, no public API
+- **Road Inventory**: Static 469MB download with no clear update schedule
+
+#### Commercial Options Explored
+1. **Replica** (replicahq.com) - Web platform with AADT Explorer tool, API access, and download capabilities
+2. **StreetLight Data** - Usage-based pricing, pay-per-query options
+3. **INRIX** - Enterprise traffic data provider
+
+#### Current Status
+**Awaiting response from Replica** on pricing for GA and AL state-level AADT data. If Replica pricing doesn't work for our scale, will explore INRIX or StreetLight as alternatives.
+
+#### Requirements for Implementation
+- AADT data for GA and AL (initially), with expansion to other southeastern states
+- API or data licensing that allows caching for internal broker use
+- Annual refresh when new counts are published
+- Cost-effective pricing for small brokerage scale
