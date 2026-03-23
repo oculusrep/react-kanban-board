@@ -4,6 +4,7 @@ import { ChevronDownIcon, ChevronRightIcon, ExclamationTriangleIcon, XMarkIcon }
 import BrokerSplitEditor from '../BrokerSplitEditor';
 import PaymentDetails from './PaymentDetails';
 import PaymentCheckProcessing from './PaymentCheckProcessing';
+import DatePickerInput from './DatePickerInput';
 import { usePaymentSplitValidation } from '../../hooks/usePaymentSplitValidation';
 import { usePaymentSplitCalculations } from '../../hooks/usePaymentSplitCalculations';
 import { usePaymentDisbursement } from '../../hooks/usePaymentDisbursement';
@@ -531,10 +532,9 @@ const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
                 {payment.referral_fee_paid && (
                   <div className="flex items-center gap-2 justify-end">
                     <span className="text-xs text-gray-600">Paid on:</span>
-                    <input
-                      type="date"
-                      value={payment.referral_fee_paid_date ? new Date(payment.referral_fee_paid_date).toISOString().split('T')[0] : ''}
-                      onChange={(e) => handleUpdateReferralPaidDate(e.target.value)}
+                    <DatePickerInput
+                      value={payment.referral_fee_paid_date ? new Date(payment.referral_fee_paid_date).toISOString().split('T')[0] : null}
+                      onChange={(value) => handleUpdateReferralPaidDate(value || '')}
                       className="text-xs border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                     />
                   </div>

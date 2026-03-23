@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Payment, Deal, Client, Broker, PaymentSplit, CommissionSplit } from '../../lib/types';
 import { formatDateForInput, formatDateStringWithFallback } from '../../utils/dateUtils';
 import PaymentDisbursementModal from './PaymentDisbursementModal';
+import DatePickerInput from './DatePickerInput';
 
 interface PaymentDetailsProps {
   payment: Payment;
@@ -67,10 +68,9 @@ const PaymentDetails: React.FC<PaymentDetailsProps> = ({
             {formatDateStringWithFallback(currentValue)}
           </div>
         )}
-        <input
-          type="date"
+        <DatePickerInput
           value={formatDateForInput(currentValue)}
-          onChange={(e) => onUpdatePayment({ [fieldName]: e.target.value || null })}
+          onChange={(value) => onUpdatePayment({ [fieldName]: value || null })}
           className="w-full border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
       </div>

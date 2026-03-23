@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import DatePickerInput from './DatePickerInput';
 
 interface ReferralFeeRowProps {
   paymentId: string;
@@ -201,12 +202,10 @@ const ReferralFeeRow: React.FC<ReferralFeeRowProps> = ({
             <span className="text-xs text-blue-600 animate-pulse">Syncing to QBO...</span>
           )}
           {localPaid && localPaidDate && !isCreatingQBEntry ? (
-            <input
-              type="date"
+            <DatePickerInput
               value={localPaidDate}
-              onChange={(e) => handleUpdatePaidDate(e.target.value)}
-              className="text-gray-500 text-xs border-0 p-0 focus:ring-0 cursor-pointer hover:text-gray-700"
-              style={{ width: '90px' }}
+              onChange={(value) => handleUpdatePaidDate(value || '')}
+              className="text-gray-500 text-xs border-0 p-0 focus:ring-0 cursor-pointer hover:text-gray-700 w-[90px]"
             />
           ) : !isCreatingQBEntry ? (
             <span className="text-sm text-gray-500">

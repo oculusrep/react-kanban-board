@@ -3,6 +3,7 @@
 // src/components/payments/PaymentCheckProcessing.tsx
 
 import React from 'react';
+import DatePickerInput from './DatePickerInput';
 
 interface PaymentCheckProcessingProps {
   paymentReceived: boolean;
@@ -62,14 +63,12 @@ const PaymentCheckProcessing: React.FC<PaymentCheckProcessingProps> = ({
             />
             <span className="text-gray-700 font-medium">Payment Received</span>
             {paymentReceived && paymentReceivedDate && (
-              <input
-                type="date"
+              <DatePickerInput
                 value={paymentReceivedDate}
-                onChange={(e) => {
-                  onUpdateField('payment_received_date', e.target.value);
+                onChange={(value) => {
+                  onUpdateField('payment_received_date', value);
                 }}
-                className="text-gray-500 text-xs border-0 p-0 focus:ring-0 cursor-pointer hover:text-gray-700"
-                style={{ width: '90px' }}
+                className="text-gray-500 text-xs border-0 p-0 focus:ring-0 cursor-pointer hover:text-gray-700 w-[90px]"
               />
             )}
           </div>
@@ -93,14 +92,12 @@ const PaymentCheckProcessing: React.FC<PaymentCheckProcessingProps> = ({
             />
             <span className="text-gray-700 font-medium">Invoice Sent</span>
             {invoiceSent && invoiceDate && (
-              <input
-                type="date"
+              <DatePickerInput
                 value={invoiceDate}
-                onChange={(e) => {
-                  onUpdateField('payment_invoice_date', e.target.value);
+                onChange={(value) => {
+                  onUpdateField('payment_invoice_date', value);
                 }}
-                className="text-gray-500 text-xs border-0 p-0 focus:ring-0 cursor-pointer hover:text-gray-700"
-                style={{ width: '90px' }}
+                className="text-gray-500 text-xs border-0 p-0 focus:ring-0 cursor-pointer hover:text-gray-700 w-[90px]"
               />
             )}
           </div>

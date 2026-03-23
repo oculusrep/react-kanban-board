@@ -4,6 +4,7 @@ import { Payment, Deal } from '../../lib/types';
 import { formatDateString } from '../../utils/dateUtils';
 import { supabase } from '../../lib/supabaseClient';
 import PaymentAmountOverrideModal from './PaymentAmountOverrideModal';
+import DatePickerInput from './DatePickerInput';
 
 interface PaymentSummaryRowProps {
   payment: Payment;
@@ -275,16 +276,14 @@ const PaymentSummaryRow: React.FC<PaymentSummaryRowProps> = ({
               )}
             </div>
             <div className="flex items-center gap-1">
-              <input
-                type="date"
-                value={payment.payment_date_estimated || ''}
-                onChange={(e) => handleDateChange(e.target.value)}
+              <DatePickerInput
+                value={payment.payment_date_estimated}
+                onChange={(value) => handleDateChange(value || '')}
                 className={`flex-1 border rounded-md px-2 py-1 text-sm ${
                   (payment as any).payment_date_source === 'broker_override'
                     ? 'border-amber-400 bg-amber-50'
                     : 'border-gray-300'
                 }`}
-                placeholder="Estimated payment date"
               />
               {(payment as any).payment_date_source === 'broker_override' && (payment as any).payment_date_auto_calculated && (
                 <button
