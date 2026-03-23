@@ -422,3 +422,46 @@ When marking a payment as received, it now stays "pinned" in the view so you can
 #### Files Modified
 - `src/pages/PaymentDashboardPage.tsx` - Added `pinnedPaymentIds` state and handlers
 - `src/components/payments/PaymentDashboardTable.tsx` - Added pin styling and auto-expand
+
+### Aged & Upcoming Report Fix
+**Date:** March 23, 2026
+
+Fixed the Aged & Upcoming report which was not displaying any records.
+
+#### Problem
+The `AgedUpcomingPaymentsTab` component was querying from a database view called `v_payment_dashboard` that never existed. The query was failing silently.
+
+#### Solution
+Updated the component to query directly from the `payment` table with a join to the `deal` table, similar to how `PaymentDashboardPage` fetches data.
+
+#### Query Changes
+- Fetches from `payment` table with `deal!inner` join
+- Filters: `is_active = true`, `payment_received = false`, `payment_date_estimated IS NOT NULL`
+- Fetches deal stages separately to map stage IDs to labels
+- Filters out "Lost" stage deals
+- Orders by estimated date ascending
+
+#### Files Modified
+- `src/components/payments/AgedUpcomingPaymentsTab.tsx` - Replaced view query with direct table query
+
+### Date Picker Auto-Pin Feature
+**Date:** March 23, 2026
+
+Fixed an issue where clicking the down arrow on the date picker would immediately change the month and cause the record to disappear due to filtering.
+
+#### Problem
+The native HTML date input triggers `onChange` immediately when navigating months with arrows, which updates the estimated date and causes the record to filter out of view.
+
+#### Solution
+When the date picker is focused (opened), the payment is automatically pinned so it stays visible regardless of filter changes.
+
+#### How It Works
+1. Click on the Est. Date field to open the date picker
+2. Payment is automatically pinned (highlighted with blue border)
+3. Navigate months freely - the record stays visible
+4. Select your date
+5. Click the X button next to the row to unpin when done
+
+#### Files Modified
+- `src/components/payments/PaymentDashboardTable.tsx` - Added `onPinPayment` prop and `onFocus` handler
+- `src/pages/PaymentDashboardPage.tsx` - Added `onPinPayment` callback to table component

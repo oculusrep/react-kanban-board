@@ -878,6 +878,7 @@ const PaymentDashboardPage: React.FC = () => {
                     onSelectAll={handleSelectAll}
                     pinnedIds={pinnedPaymentIds}
                     onUnpin={handleUnpinPayment}
+                    onPinPayment={(paymentId) => setPinnedPaymentIds(prev => new Set(prev).add(paymentId))}
                   />
                 </>
               )}

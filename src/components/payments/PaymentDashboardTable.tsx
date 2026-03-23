@@ -21,6 +21,7 @@ interface PaymentDashboardTableProps {
   // Pinned payments - stay visible regardless of filters
   pinnedIds?: Set<string>;
   onUnpin?: (paymentId: string) => void;
+  onPinPayment?: (paymentId: string) => void;
 }
 
 type SortField = 'deal_name' | 'payment_date_estimated' | 'payment_received' | 'disbursement' | 'orep_invoice';
@@ -36,6 +37,7 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
   onSelectAll,
   pinnedIds = new Set(),
   onUnpin,
+  onPinPayment,
 }) => {
   const navigate = useNavigate();
   const [localPayments, setLocalPayments] = useState<PaymentDashboardRow[]>(payments);
@@ -721,6 +723,12 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                       <input
                         type="date"
                         value={payment.payment_date_estimated || ''}
+                        onFocus={() => {
+                          // Pin the payment when date picker is opened so it stays visible during editing
+                          if (onPinPayment && !pinnedIds.has(payment.payment_id)) {
+                            onPinPayment(payment.payment_id);
+                          }
+                        }}
                         onChange={(e) => handleUpdatePaymentField(payment.payment_id, 'payment_date_estimated', e.target.value || null)}
                         className="border-0 bg-transparent px-0 py-0 text-sm text-gray-900 focus:outline-none focus:ring-0 cursor-text"
                       />

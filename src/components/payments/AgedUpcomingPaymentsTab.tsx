@@ -17,70 +17,89 @@ const AgedUpcomingPaymentsTab: React.FC<AgedUpcomingPaymentsTabProps> = ({ onPay
   const fetchPayments = async () => {
     setLoading(true);
     try {
-      // Get pending payments with estimated dates
-      const { data, error } = await supabase
-        .from('v_payment_dashboard')
-        .select('*')
+      // Fetch pending payments with estimated dates directly from payment table
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from('payment')
+        .select(`
+          id,
+          deal_id,
+          payment_sequence,
+          payment_amount,
+          payment_date_estimated,
+          payment_received_date,
+          payment_received,
+          invoice_sent,
+          payment_invoice_date,
+          orep_invoice,
+          qb_invoice_id,
+          qb_invoice_number,
+          locked,
+          deal!inner (
+            deal_name,
+            stage_id,
+            number_of_payments
+          )
+        `)
+        .eq('is_active', true)
         .eq('payment_received', false)
         .not('payment_date_estimated', 'is', null)
         .order('payment_date_estimated', { ascending: true });
 
-      if (error) throw error;
+      if (paymentsError) throw paymentsError;
 
-      // Transform the view data into PaymentDashboardRow format
-      const transformed: PaymentDashboardRow[] = [];
-      const paymentMap = new Map<string, PaymentDashboardRow>();
+      // Fetch deal stages for labeling
+      const { data: stagesData, error: stagesError } = await supabase
+        .from('deal_stage')
+        .select('id, label');
 
-      for (const row of data || []) {
-        const existing = paymentMap.get(row.payment_id);
+      if (stagesError) throw stagesError;
 
-        const brokerSplit = row.broker_id ? {
-          payment_split_id: row.payment_split_id,
-          broker_id: row.broker_id,
-          broker_name: row.broker_name || 'Unknown',
-          origination_pct: row.split_origination_pct || 0,
-          site_pct: row.split_site_pct || 0,
-          deal_pct: row.split_deal_pct || 0,
-          split_broker_total: row.split_broker_total || 0,
-          paid: row.split_paid || false,
-          paid_date: row.split_paid_date,
-        } : null;
+      const stageMap = new Map<string, string>();
+      stagesData?.forEach(stage => {
+        stageMap.set(stage.id, stage.label);
+      });
 
-        if (existing) {
-          if (brokerSplit && !existing.broker_splits.find(b => b.payment_split_id === brokerSplit.payment_split_id)) {
-            existing.broker_splits.push(brokerSplit);
-          }
-        } else {
-          paymentMap.set(row.payment_id, {
-            payment_id: row.payment_id,
-            deal_id: row.deal_id,
-            deal_name: row.deal_name || 'Unknown Deal',
-            deal_stage: row.deal_stage,
-            payment_sequence: row.payment_sequence || 1,
-            total_payments: row.total_payments || 1,
-            payment_amount: row.payment_amount || 0,
-            payment_date_estimated: row.payment_date_estimated,
-            payment_received: row.payment_received || false,
-            payment_received_date: row.payment_received_date,
-            orep_invoice: row.orep_invoice,
-            invoice_sent: row.invoice_sent || false,
-            payment_invoice_date: row.payment_invoice_date,
-            locked: row.locked || false,
-            broker_splits: brokerSplit ? [brokerSplit] : [],
-            total_broker_amount: row.total_broker_amount || 0,
-            all_brokers_paid: row.all_brokers_paid || false,
-            referral_fee_usd: row.referral_fee_usd,
-            referral_fee_paid: row.referral_fee_paid || false,
-            referral_fee_paid_date: row.referral_fee_paid_date,
-            referral_payee_name: row.referral_payee_name,
-            qb_invoice_id: row.qb_invoice_id,
-            qb_invoice_number: row.qb_invoice_number,
-          });
-        }
-      }
+      // Transform data into PaymentDashboardRow format
+      const transformedPayments: PaymentDashboardRow[] = (paymentsData || [])
+        .map((payment: any): PaymentDashboardRow | null => {
+          const dealStage = payment.deal?.stage_id ? stageMap.get(payment.deal.stage_id) || null : null;
 
-      const paymentsList = Array.from(paymentMap.values());
-      setPayments(paymentsList);
+          // Filter out Lost stage deals
+          if (dealStage === 'Lost') return null;
+
+          return {
+            payment_id: payment.id,
+            payment_sf_id: null,
+            deal_id: payment.deal_id,
+            deal_name: payment.deal?.deal_name || 'Unknown Deal',
+            deal_stage: dealStage,
+            payment_sequence: payment.payment_sequence || 1,
+            total_payments: payment.deal?.number_of_payments || 1,
+            payment_amount: payment.payment_amount || 0,
+            payment_date_estimated: payment.payment_date_estimated,
+            payment_received: payment.payment_received || false,
+            payment_received_date: payment.payment_received_date,
+            orep_invoice: payment.orep_invoice,
+            invoice_sent: payment.invoice_sent || false,
+            payment_invoice_date: payment.payment_invoice_date,
+            locked: payment.locked || false,
+            broker_splits: [],
+            total_broker_amount: 0,
+            all_brokers_paid: false,
+            referral_fee_usd: null,
+            referral_fee_paid: false,
+            referral_fee_paid_date: null,
+            referral_payee_name: null,
+            referral_payee_client_id: null,
+            qb_invoice_id: payment.qb_invoice_id,
+            qb_invoice_number: payment.qb_invoice_number,
+            qb_sync_status: null,
+            qb_last_sync: null,
+          };
+        })
+        .filter((p): p is PaymentDashboardRow => p !== null);
+
+      setPayments(transformedPayments);
     } catch (error) {
       console.error('Error fetching payments:', error);
     } finally {
@@ -96,15 +115,6 @@ const AgedUpcomingPaymentsTab: React.FC<AgedUpcomingPaymentsTabProps> = ({ onPay
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);
-  };
-
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return '-';
-    return new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
   };
 
   const getLocalDateString = () => {
