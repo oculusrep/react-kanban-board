@@ -7,6 +7,7 @@ import ReferralFeeRow from './ReferralFeeRow';
 import PaymentDetailSidebar from './PaymentDetailSidebar';
 import PaymentCheckProcessing from './PaymentCheckProcessing';
 import PaymentAmountOverrideModal from './PaymentAmountOverrideModal';
+import DatePickerInput from './DatePickerInput';
 import { CheckCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface PaymentDashboardTableProps {
@@ -720,16 +721,15 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
                       {formatCurrency(payment.payment_amount)}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-sm" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="date"
-                        value={payment.payment_date_estimated || ''}
+                      <DatePickerInput
+                        value={payment.payment_date_estimated}
                         onFocus={() => {
                           // Pin the payment when date picker is opened so it stays visible during editing
                           if (onPinPayment && !pinnedIds.has(payment.payment_id)) {
                             onPinPayment(payment.payment_id);
                           }
                         }}
-                        onChange={(e) => handleUpdatePaymentField(payment.payment_id, 'payment_date_estimated', e.target.value || null)}
+                        onChange={(value) => handleUpdatePaymentField(payment.payment_id, 'payment_date_estimated', value)}
                         className="border-0 bg-transparent px-0 py-0 text-sm text-gray-900 focus:outline-none focus:ring-0 cursor-text"
                       />
                     </td>

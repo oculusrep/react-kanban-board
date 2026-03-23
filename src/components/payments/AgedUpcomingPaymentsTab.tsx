@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { PaymentDashboardRow } from '../../types/payment-dashboard';
 import { XMarkIcon } from '@heroicons/react/24/outline';
+import DatePickerInput from './DatePickerInput';
 
 interface AgedUpcomingPaymentsTabProps {
   onPaymentUpdate: () => void;
@@ -281,16 +282,15 @@ const AgedUpcomingPaymentsTab: React.FC<AgedUpcomingPaymentsTabProps> = ({ onPay
                   {formatCurrency(payment.payment_amount)}
                 </td>
                 <td className="px-4 py-3">
-                  <input
-                    type="date"
-                    value={payment.payment_date_estimated || ''}
+                  <DatePickerInput
+                    value={payment.payment_date_estimated}
                     onFocus={() => {
                       // Pin the payment when date picker is opened so it stays visible during editing
                       if (!isPinned) {
                         handlePinPayment(payment.payment_id);
                       }
                     }}
-                    onChange={(e) => handleUpdateEstimatedDate(payment.payment_id, e.target.value)}
+                    onChange={(value) => handleUpdateEstimatedDate(payment.payment_id, value || '')}
                     className="border-0 bg-transparent px-0 py-0 text-sm text-gray-900 focus:outline-none focus:ring-0 cursor-text"
                   />
                 </td>
