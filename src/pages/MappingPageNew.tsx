@@ -1238,12 +1238,58 @@ const MappingPageContent: React.FC = () => {
     if (selectedPinType === 'site_submit' || updatedData.property_id) {
       setSubmitsRefreshTrigger(prev => prev + 1);
       console.log('🔄 Triggering submits list refresh after site submit update');
+
+      // Sync property demographics to other open sidebars if showing the same property
+      if (updatedData?.property) {
+        const updatedPropertyId = updatedData.property.id;
+
+        // Update selectedPropertyData if it's the same property
+        if (selectedPropertyData?.id === updatedPropertyId) {
+          console.log('🔄 Syncing property demographics from site submit pin to property details');
+          setSelectedPropertyData((prev: any) => ({
+            ...prev,
+            ...updatedData.property,
+          }));
+        }
+
+        // Update selectedSiteSubmitData if it references the same property
+        if (selectedSiteSubmitData?.property?.id === updatedPropertyId) {
+          console.log('🔄 Syncing property demographics to site submit details');
+          setSelectedSiteSubmitData((prev: any) => ({
+            ...prev,
+            property: { ...prev?.property, ...updatedData.property },
+          }));
+        }
+      }
     }
   };
 
   const handlePropertyDataUpdate = (updatedData: any) => {
     console.log('📝 Property data updated:', updatedData);
     setSelectedPropertyData(updatedData);
+
+    // Sync property demographics to other open sidebars showing the same property
+    if (updatedData?.id) {
+      const updatedPropertyId = updatedData.id;
+
+      // Update selectedPinData if it's the same property
+      if (selectedPinData?.id === updatedPropertyId && selectedPinType === 'property') {
+        console.log('🔄 Syncing property demographics to pin details slideout');
+        setSelectedPinData((prev: any) => ({
+          ...prev,
+          ...updatedData,
+        }));
+      }
+
+      // Update selectedSiteSubmitData if it references the same property
+      if (selectedSiteSubmitData?.property?.id === updatedPropertyId) {
+        console.log('🔄 Syncing property demographics to site submit details');
+        setSelectedSiteSubmitData((prev: any) => ({
+          ...prev,
+          property: { ...prev?.property, ...updatedData },
+        }));
+      }
+    }
   };
 
   const handlePropertyDetailsClose = () => {
@@ -1296,6 +1342,29 @@ const MappingPageContent: React.FC = () => {
     // Trigger refresh of submits list in property slideout
     setSubmitsRefreshTrigger(prev => prev + 1);
     console.log('🔄 Triggering submits list refresh from parent, new trigger:', submitsRefreshTrigger + 1);
+
+    // Sync property demographics to PinDetailsSlideout if showing the same property
+    if (updatedData?.property) {
+      const updatedPropertyId = updatedData.property.id;
+
+      // Update selectedPinData if it's the same property
+      if (selectedPinData?.id === updatedPropertyId && selectedPinType === 'property') {
+        console.log('🔄 Syncing property demographics to pin details slideout');
+        setSelectedPinData((prev: any) => ({
+          ...prev,
+          ...updatedData.property,
+        }));
+      }
+
+      // Update selectedPropertyData if it's the same property
+      if (selectedPropertyData?.id === updatedPropertyId) {
+        console.log('🔄 Syncing property demographics to property details slideout');
+        setSelectedPropertyData((prev: any) => ({
+          ...prev,
+          ...updatedData.property,
+        }));
+      }
+    }
   };
 
   const handleSiteSubmitDetailsClose = () => {
