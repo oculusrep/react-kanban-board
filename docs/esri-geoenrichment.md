@@ -136,6 +136,15 @@ await saveEnrichmentToProperty(propertyId, result);
 
 ### 4. UI Components
 
+**DemographicsModal (Shared)** (`src/components/shared/DemographicsModal.tsx`)
+- Shared modal component used by all demographics views
+- Uses React Portal (`createPortal`) to render over entire viewport with z-index 100
+- Displays Tapestry Segment card with code, name, lifemode, and description
+- Full demographics table with 1-mile, 3-mile, 5-mile, and 10-min drive columns
+- Shows: Population, Households, Daytime Pop, Employees, Avg HH Income, Median HH Income, Median Age
+- "Data as of" timestamp footer
+- Used by: SiteSubmitDataTab, PropertyDetailsSlideoutContent, PinDetailsSlideout
+
 **MarketAnalysisSection** (`src/components/property/MarketAnalysisSection.tsx`)
 - Displays demographics grid with 4 summary cards
 - "View All Demographics" expandable table
@@ -147,6 +156,25 @@ await saveEnrichmentToProperty(propertyId, result);
 - Auto-enriches property when site submit is created (if no existing data)
 - Prompts user if data is stale (>1 year old)
 - Silent fail - enrichment errors don't block site submit creation
+
+**SiteSubmitDataTab** (`src/components/shared/SiteSubmitDataTab.tsx`)
+- Demographics summary in Site Submit sidebar (Property tab)
+- Shows Tapestry Segment, key metrics (Population, Households, etc.)
+- "Enrich with Demographics" button when no data exists
+- "View All" button to open DemographicsModal
+- Uses `verified_latitude ?? latitude` for coordinate priority
+
+**PropertyDetailsSlideoutContent** (`src/components/PropertyDetailsSlideoutContent.tsx`)
+- Demographics section in Property Details slideout (Property tab)
+- Same functionality as SiteSubmitDataTab
+- Uses shared DemographicsModal component
+
+**PinDetailsSlideout** (`src/components/mapping/slideouts/PinDetailsSlideout.tsx`)
+- Demographics section in Map Pin Details sidebar
+- "Enrich with Demographics" / "Re-enrich" button
+- Summary metrics: Tapestry, Population, Households, Daytime Pop, Median HH Income, Avg HH Income, Median Age
+- "View All" button opens DemographicsModal
+- Uses `verified_latitude ?? latitude` for coordinate priority
 
 ## ESRI API Details
 
@@ -318,9 +346,13 @@ Example segments:
 | `supabase/functions/esri-geoenrich/index.ts` | Main enrichment edge function |
 | `supabase/functions/esri-vintage-check/index.ts` | Annual data refresh detection |
 | `src/hooks/usePropertyGeoenrichment.ts` | React hook (includes coordinate change detection) |
+| `src/components/shared/DemographicsModal.tsx` | Shared demographics modal (Portal-based) |
 | `src/components/property/MarketAnalysisSection.tsx` | UI display |
 | `src/components/property/TapestrySegmentCard.tsx` | Tapestry card |
 | `src/components/shared/SiteSubmitCreateForm.tsx` | Auto-enrich on submit + coordinate change prompt |
+| `src/components/shared/SiteSubmitDataTab.tsx` | Site Submit sidebar demographics section |
+| `src/components/PropertyDetailsSlideoutContent.tsx` | Property slideout demographics section |
+| `src/components/mapping/slideouts/PinDetailsSlideout.tsx` | Map pin sidebar demographics section |
 
 ## Deployment
 

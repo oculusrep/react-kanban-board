@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
+import { usePropertyGeoenrichment, isEnrichmentStale, formatEnrichmentDate } from '../../../hooks/usePropertyGeoenrichment';
+import DemographicsModal from '../../shared/DemographicsModal';
 import { useLayerManager } from '../layers/LayerManager';
 import { usePropertyRecordTypes } from '../../../hooks/usePropertyRecordTypes';
 import { useProperty } from '../../../hooks/useProperty';
@@ -62,6 +64,46 @@ interface Property {
   created_by_id?: string | null;
   updated_at?: string | null;
   updated_by_id?: string | null;
+  // ESRI Demographics
+  esri_enriched_at?: string | null;
+  tapestry_segment_code?: string | null;
+  tapestry_segment_name?: string | null;
+  tapestry_segment_description?: string | null;
+  tapestry_lifemodes?: string | null;
+  // Population
+  pop_1_mile?: number | null;
+  pop_3_mile?: number | null;
+  pop_5_mile?: number | null;
+  pop_10min_drive?: number | null;
+  // Households
+  households_1_mile?: number | null;
+  households_3_mile?: number | null;
+  households_5_mile?: number | null;
+  households_10min_drive?: number | null;
+  // Income
+  hh_income_median_1_mile?: number | null;
+  hh_income_median_3_mile?: number | null;
+  hh_income_median_5_mile?: number | null;
+  hh_income_median_10min_drive?: number | null;
+  hh_income_avg_1_mile?: number | null;
+  hh_income_avg_3_mile?: number | null;
+  hh_income_avg_5_mile?: number | null;
+  hh_income_avg_10min_drive?: number | null;
+  // Daytime Population
+  daytime_pop_1_mile?: number | null;
+  daytime_pop_3_mile?: number | null;
+  daytime_pop_5_mile?: number | null;
+  daytime_pop_10min_drive?: number | null;
+  // Employees
+  employees_1_mile?: number | null;
+  employees_3_mile?: number | null;
+  employees_5_mile?: number | null;
+  employees_10min_drive?: number | null;
+  // Median Age
+  median_age_1_mile?: number | null;
+  median_age_3_mile?: number | null;
+  median_age_5_mile?: number | null;
+  median_age_10min_drive?: number | null;
 }
 
 interface SiteSubmit {
@@ -643,11 +685,17 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   const [createdByName, setCreatedByName] = useState<string>('');
   const [updatedByName, setUpdatedByName] = useState<string>('');
 
+  // Demographics modal state
+  const [showDemographicsModal, setShowDemographicsModal] = useState(false);
+
   // Use shared hooks
   const { propertyRecordTypes } = usePropertyRecordTypes();
   const { updateProperty } = useProperty(localPropertyData?.id || undefined);
   const { toast, showToast } = useToast();
   // Note: userTableId no longer needed - auth.uid() automatically sets created_by_id/updated_by_id
+
+  // Demographics enrichment hook
+  const { isEnriching, enrichError, enrichProperty, saveEnrichmentToProperty, clearError } = usePropertyGeoenrichment();
 
   // Sync activeTab with initialTab when it changes OR when slideout opens
   useEffect(() => {
@@ -1332,6 +1380,51 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
 
     // Mark that there are unsaved changes
     setHasPropertyChanges(true);
+  };
+
+  // Demographics enrichment handling
+  // Use verified coordinates if available, otherwise fall back to regular coordinates
+  const enrichmentLatitude = localPropertyData?.verified_latitude ?? localPropertyData?.latitude;
+  const enrichmentLongitude = localPropertyData?.verified_longitude ?? localPropertyData?.longitude;
+  const hasCoordinates = !!(enrichmentLatitude && enrichmentLongitude);
+  const hasEnrichmentData = !!localPropertyData?.esri_enriched_at;
+  const dataIsStale = isEnrichmentStale(localPropertyData?.esri_enriched_at ?? null);
+
+  const handleEnrichDemographics = async (forceRefresh = false) => {
+    if (!localPropertyData?.id || !hasCoordinates) return;
+
+    clearError();
+
+    const result = await enrichProperty(
+      localPropertyData.id,
+      enrichmentLatitude!,
+      enrichmentLongitude!,
+      forceRefresh
+    );
+
+    if (result) {
+      const saved = await saveEnrichmentToProperty(
+        localPropertyData.id,
+        result,
+        enrichmentLatitude!,
+        enrichmentLongitude!
+      );
+      if (saved) {
+        // Refresh the property data
+        const { data: updatedProperty } = await supabase
+          .from('property')
+          .select('*')
+          .eq('id', localPropertyData.id)
+          .single();
+
+        if (updatedProperty) {
+          setLocalPropertyData(updatedProperty as Property);
+          if (onDataUpdate) {
+            onDataUpdate(updatedProperty as Property);
+          }
+        }
+      }
+    }
   };
 
   // Retry Dropbox sync
@@ -2103,6 +2196,185 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
                   </div>
                 )}
 
+                {/* Demographics Section */}
+                <div className="mb-4">
+                  <div
+                    className="flex items-center justify-between px-4 py-2 -mx-4"
+                    style={{ backgroundColor: '#f1f5f9' }}
+                  >
+                    <h3
+                      className="text-xs font-semibold uppercase tracking-wider"
+                      style={{ color: '#475569' }}
+                    >
+                      Demographics
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      {hasEnrichmentData && (
+                        <button
+                          onClick={() => setShowDemographicsModal(true)}
+                          className="text-xs font-medium hover:underline transition-colors"
+                          style={{ color: '#4A6B94' }}
+                        >
+                          View All →
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 mt-3">
+                    {/* Tapestry Segment */}
+                    {localPropertyData?.tapestry_segment_code && (
+                      <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+                        <span className="text-gray-600">Tapestry Segment</span>
+                        <span className="text-gray-900 font-medium">
+                          {localPropertyData.tapestry_segment_code} - {localPropertyData.tapestry_segment_name}
+                          {localPropertyData.tapestry_lifemodes && (
+                            <span className="text-gray-500 text-xs ml-1">({localPropertyData.tapestry_lifemodes})</span>
+                          )}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Population */}
+                    <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+                      <span className="text-gray-600">Population (3 mi)</span>
+                      <span className="text-gray-900 font-medium">
+                        {localPropertyData?.pop_3_mile != null ? localPropertyData.pop_3_mile.toLocaleString() : '-'}
+                      </span>
+                    </div>
+
+                    {/* Population - 10 min drive */}
+                    <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+                      <span className="text-gray-600">Population (10-min drive)</span>
+                      <span className="text-gray-900 font-medium">
+                        {localPropertyData?.pop_10min_drive != null ? localPropertyData.pop_10min_drive.toLocaleString() : '-'}
+                      </span>
+                    </div>
+
+                    {/* Households */}
+                    <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+                      <span className="text-gray-600">Households (3 mi)</span>
+                      <span className="text-gray-900 font-medium">
+                        {localPropertyData?.households_3_mile != null ? localPropertyData.households_3_mile.toLocaleString() : '-'}
+                      </span>
+                    </div>
+
+                    {/* Daytime Population */}
+                    <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+                      <span className="text-gray-600">Daytime Pop (3 mi)</span>
+                      <span className="text-gray-900 font-medium">
+                        {localPropertyData?.daytime_pop_3_mile != null ? localPropertyData.daytime_pop_3_mile.toLocaleString() : '-'}
+                      </span>
+                    </div>
+
+                    {/* Median HH Income */}
+                    <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+                      <span className="text-gray-600">Median HH Income (3 mi)</span>
+                      <span className="text-gray-900 font-medium">
+                        {localPropertyData?.hh_income_median_3_mile != null
+                          ? localPropertyData.hh_income_median_3_mile.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })
+                          : '-'}
+                      </span>
+                    </div>
+
+                    {/* Avg HH Income */}
+                    <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+                      <span className="text-gray-600">Avg HH Income (3 mi)</span>
+                      <span className="text-gray-900 font-medium">
+                        {localPropertyData?.hh_income_avg_3_mile != null
+                          ? localPropertyData.hh_income_avg_3_mile.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })
+                          : '-'}
+                      </span>
+                    </div>
+
+                    {/* Median Age */}
+                    <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+                      <span className="text-gray-600">Median Age (3 mi)</span>
+                      <span className="text-gray-900 font-medium">
+                        {localPropertyData?.median_age_3_mile != null ? localPropertyData.median_age_3_mile.toFixed(1) : '-'}
+                      </span>
+                    </div>
+
+                    {/* Last Enriched and Re-enrich button */}
+                    {hasEnrichmentData && (
+                      <div className="flex justify-between items-center py-1.5 text-sm mt-2">
+                        <span className="text-gray-400 text-xs">
+                          Data as of {formatEnrichmentDate(localPropertyData?.esri_enriched_at ?? null)}
+                          {dataIsStale && <span className="text-amber-600 ml-1">(stale)</span>}
+                        </span>
+                        {hasCoordinates && (
+                          <button
+                            onClick={() => handleEnrichDemographics(true)}
+                            disabled={isEnriching}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors disabled:opacity-50"
+                            title="Re-enrich demographics data"
+                          >
+                            {isEnriching ? (
+                              <>
+                                <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                </svg>
+                                Enriching...
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                Re-enrich
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Error Message */}
+                    {enrichError && (
+                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+                        {enrichError}
+                        <button onClick={clearError} className="ml-2 underline">Dismiss</button>
+                      </div>
+                    )}
+
+                    {/* No data - show enrich button */}
+                    {!hasEnrichmentData && (
+                      <div className="py-3">
+                        {hasCoordinates ? (
+                          <button
+                            onClick={() => handleEnrichDemographics(false)}
+                            disabled={isEnriching}
+                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
+                            style={{ backgroundColor: '#002147', color: '#ffffff' }}
+                          >
+                            {isEnriching ? (
+                              <>
+                                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                </svg>
+                                Enriching Demographics...
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                </svg>
+                                Enrich with Demographics
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <div className="text-sm text-gray-400 italic text-center">
+                            No coordinates available for demographic enrichment.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {/* Metadata Section */}
                 {(property?.created_at || property?.updated_at) && (
                   <div className="pt-4 mt-4 border-t border-gray-200">
@@ -2813,6 +3085,14 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
           defaultBody={emailDefaultData.body}
           defaultRecipients={emailDefaultData.recipients}
           isSending={sendingEmail}
+        />
+      )}
+
+      {/* Demographics Modal */}
+      {showDemographicsModal && localPropertyData && (
+        <DemographicsModal
+          data={localPropertyData}
+          onClose={() => setShowDemographicsModal(false)}
         />
       )}
     </>

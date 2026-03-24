@@ -65,16 +65,42 @@ export interface SiteSubmitData {
     esri_enriched_at: string | null;
     tapestry_segment_code: string | null;
     tapestry_segment_name: string | null;
+    tapestry_segment_description: string | null;
     tapestry_lifemodes: string | null;
+    // Population
     pop_1_mile: number | null;
     pop_3_mile: number | null;
     pop_5_mile: number | null;
     pop_10min_drive: number | null;
+    // Households
+    households_1_mile: number | null;
     households_3_mile: number | null;
+    households_5_mile: number | null;
+    households_10min_drive: number | null;
+    // Income
+    hh_income_median_1_mile: number | null;
     hh_income_median_3_mile: number | null;
+    hh_income_median_5_mile: number | null;
+    hh_income_median_10min_drive: number | null;
+    hh_income_avg_1_mile: number | null;
     hh_income_avg_3_mile: number | null;
+    hh_income_avg_5_mile: number | null;
+    hh_income_avg_10min_drive: number | null;
+    // Daytime Population
+    daytime_pop_1_mile: number | null;
     daytime_pop_3_mile: number | null;
+    daytime_pop_5_mile: number | null;
+    daytime_pop_10min_drive: number | null;
+    // Employees
+    employees_1_mile: number | null;
+    employees_3_mile: number | null;
+    employees_5_mile: number | null;
+    employees_10min_drive: number | null;
+    // Median Age
+    median_age_1_mile: number | null;
     median_age_3_mile: number | null;
+    median_age_5_mile: number | null;
+    median_age_10min_drive: number | null;
     property_record_type: {
       id: string;
       label: string | null;
@@ -326,16 +352,36 @@ export default function SiteSubmitSidebar({
               esri_enriched_at,
               tapestry_segment_code,
               tapestry_segment_name,
+              tapestry_segment_description,
               tapestry_lifemodes,
               pop_1_mile,
               pop_3_mile,
               pop_5_mile,
               pop_10min_drive,
+              households_1_mile,
               households_3_mile,
+              households_5_mile,
+              households_10min_drive,
+              hh_income_median_1_mile,
               hh_income_median_3_mile,
+              hh_income_median_5_mile,
+              hh_income_median_10min_drive,
+              hh_income_avg_1_mile,
               hh_income_avg_3_mile,
+              hh_income_avg_5_mile,
+              hh_income_avg_10min_drive,
+              daytime_pop_1_mile,
               daytime_pop_3_mile,
+              daytime_pop_5_mile,
+              daytime_pop_10min_drive,
+              employees_1_mile,
+              employees_3_mile,
+              employees_5_mile,
+              employees_10min_drive,
+              median_age_1_mile,
               median_age_3_mile,
+              median_age_5_mile,
+              median_age_10min_drive,
               property_record_type:property_record_type_id (
                 id,
                 label
