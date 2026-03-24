@@ -906,6 +906,38 @@ importTrafficData('./traffic_counts.geojson', 'TX', 2023);
 
 ---
 
+## API Research Notes
+
+### SitesUSA API (api.sitesusa.com) - NOT a Traffic Data Source
+
+**Evaluated:** 2026-03-24
+
+**Finding:** The SitesUSA API does **not** provide vehicle traffic count data (AADT).
+
+**What SitesUSA Actually Offers:**
+| Category | Description |
+|----------|-------------|
+| Demographics | Population, income, household data for geographic areas |
+| Trade Areas | Radius, drive-time, zip code boundaries |
+| Store Visits | Foot traffic to retail locations (visits per month, median daily visits) |
+| Shopping Centers | Retail facility info and visitor patterns |
+| Merchants | Business counts within geographic areas |
+| Reports | Demographic analysis documents |
+| Layers | Custom geographic feature management |
+
+**Store Visits Endpoints (Closest to "Traffic"):**
+- `/api/v1/StoreVisits/{coordinate}/merchant/{id}` - Visitor patterns for specific merchants
+- `/api/v1/StoreVisits/shoppingcenters/{id}` - Shopping center visitor metrics
+- `/api/v1/StoreVisits/placekeys/{placekey}` - Foot traffic by location identifier
+
+These measure **pedestrian foot traffic to specific businesses**, not vehicular traffic counts on roadways.
+
+**Conclusion:** For actual AADT/vehicle traffic data, use the data sources listed in this document (StreetLight, State DOT open data, Urban SDK, etc.).
+
+**API Documentation:** https://api.sitesusa.com/api-documentation.json
+
+---
+
 ## Contact Information for Data Providers
 
 **StreetLight Data:**
