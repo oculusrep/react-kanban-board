@@ -13,6 +13,7 @@ import AssignmentSelector from '../mapping/AssignmentSelector';
 import PropertyUnitSelector from '../PropertyUnitSelector';
 import { AssignmentSearchResult } from '../../hooks/useAssignmentSearch';
 import { SiteSubmitData } from './SiteSubmitSidebar';
+import { usePropertyGeoenrichment, isEnrichmentStale, formatEnrichmentDate } from '../../hooks/usePropertyGeoenrichment';
 
 interface SiteSubmitDataTabProps {
   siteSubmit: SiteSubmitData;
@@ -385,6 +386,9 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
   const [editValue, setEditValue] = useState<any>(null);
   const [showDemographicsModal, setShowDemographicsModal] = useState(false);
 
+  // Demographics enrichment
+  const { isEnriching, enrichError, enrichProperty, saveEnrichmentToProperty, clearError } = usePropertyGeoenrichment();
+
   const handleStartEditing = useCallback((table: string, field: string, currentValue: any) => {
     setEditingField(`${table}.${field}`);
     setEditValue(currentValue);
@@ -486,6 +490,85 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
       console.error('Error updating property unit:', err);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Handle demographics enrichment
+  // Use verified coordinates if available, otherwise fall back to regular coordinates
+  const enrichmentLatitude = siteSubmit.property?.verified_latitude ?? siteSubmit.property?.latitude;
+  const enrichmentLongitude = siteSubmit.property?.verified_longitude ?? siteSubmit.property?.longitude;
+  const hasCoordinates = !!(enrichmentLatitude && enrichmentLongitude);
+  const hasEnrichmentData = !!siteSubmit.property?.esri_enriched_at;
+  const dataIsStale = isEnrichmentStale(siteSubmit.property?.esri_enriched_at ?? null);
+
+  const handleEnrichDemographics = async (forceRefresh = false) => {
+    if (!siteSubmit.property_id || !hasCoordinates) return;
+
+    clearError();
+
+    const result = await enrichProperty(
+      siteSubmit.property_id,
+      enrichmentLatitude!,
+      enrichmentLongitude!,
+      forceRefresh
+    );
+
+    if (result) {
+      const saved = await saveEnrichmentToProperty(
+        siteSubmit.property_id,
+        result,
+        enrichmentLatitude!,
+        enrichmentLongitude!
+      );
+      if (saved) {
+        // Refresh the property data in the sidebar
+        // Fetch updated property data
+        const { data: updatedProperty } = await supabase
+          .from('property')
+          .select(`
+            id,
+            property_name,
+            address,
+            city,
+            state,
+            zip,
+            available_sqft,
+            building_sqft,
+            acres,
+            asking_lease_price,
+            asking_purchase_price,
+            rent_psf,
+            nnn_psf,
+            all_in_rent,
+            latitude,
+            longitude,
+            verified_latitude,
+            verified_longitude,
+            esri_enriched_at,
+            tapestry_segment_code,
+            tapestry_segment_name,
+            tapestry_lifemodes,
+            pop_1_mile,
+            pop_3_mile,
+            pop_5_mile,
+            pop_10min_drive,
+            households_3_mile,
+            hh_income_median_3_mile,
+            hh_income_avg_3_mile,
+            daytime_pop_3_mile,
+            median_age_3_mile,
+            property_record_type:property_record_type_id (
+              id,
+              label
+            )
+          `)
+          .eq('id', siteSubmit.property_id)
+          .single();
+
+        if (updatedProperty) {
+          onUpdate({ property: updatedProperty as any });
+        }
+      }
     }
   };
 
@@ -801,15 +884,17 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
         <FieldGroup
           title="Demographics"
           action={
-            siteSubmit.property.esri_enriched_at ? (
-              <button
-                onClick={() => setShowDemographicsModal(true)}
-                className="text-xs font-medium hover:underline transition-colors"
-                style={{ color: '#4A6B94' }}
-              >
-                View All →
-              </button>
-            ) : null
+            <div className="flex items-center gap-2">
+              {hasEnrichmentData && (
+                <button
+                  onClick={() => setShowDemographicsModal(true)}
+                  className="text-xs font-medium hover:underline transition-colors"
+                  style={{ color: '#4A6B94' }}
+                >
+                  View All →
+                </button>
+              )}
+            </div>
           }
         >
           {/* Tapestry Segment */}
@@ -881,18 +966,85 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
             </span>
           </div>
 
-          {/* Last Enriched */}
-          {siteSubmit.property.esri_enriched_at && (
-            <div className="flex justify-between py-1.5 text-sm text-gray-400 text-xs mt-2">
-              <span>Data as of</span>
-              <span>{formatDate(siteSubmit.property.esri_enriched_at)}</span>
+          {/* Last Enriched and Re-enrich button */}
+          {hasEnrichmentData && (
+            <div className="flex justify-between items-center py-1.5 text-sm mt-2">
+              <span className="text-gray-400 text-xs">
+                Data as of {formatEnrichmentDate(siteSubmit.property.esri_enriched_at)}
+                {dataIsStale && <span className="text-amber-600 ml-1">(stale)</span>}
+              </span>
+              {isEditable && hasCoordinates && (
+                <button
+                  onClick={() => handleEnrichDemographics(true)}
+                  disabled={isEnriching}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors disabled:opacity-50"
+                  title="Re-enrich demographics data"
+                >
+                  {isEnriching ? (
+                    <>
+                      <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Enriching...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Re-enrich
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           )}
 
-          {/* No data message */}
-          {!siteSubmit.property.esri_enriched_at && (
-            <div className="py-2 text-sm text-gray-400 italic">
-              No demographic data available. Enrich property from the Property Detail page.
+          {/* Error Message */}
+          {enrichError && (
+            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+              {enrichError}
+              <button onClick={clearError} className="ml-2 underline">Dismiss</button>
+            </div>
+          )}
+
+          {/* No data - show enrich button */}
+          {!hasEnrichmentData && (
+            <div className="py-3">
+              {hasCoordinates && isEditable ? (
+                <button
+                  onClick={() => handleEnrichDemographics(false)}
+                  disabled={isEnriching}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
+                  style={{ backgroundColor: '#002147', color: '#ffffff' }}
+                >
+                  {isEnriching ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Enriching Demographics...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                      Enrich with Demographics
+                    </>
+                  )}
+                </button>
+              ) : !hasCoordinates ? (
+                <div className="text-sm text-gray-400 italic text-center">
+                  No coordinates available for demographic enrichment.
+                </div>
+              ) : (
+                <div className="text-sm text-gray-400 italic text-center">
+                  No demographic data available.
+                </div>
+              )}
             </div>
           )}
         </FieldGroup>

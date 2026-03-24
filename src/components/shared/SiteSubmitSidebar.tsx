@@ -59,6 +59,8 @@ export interface SiteSubmitData {
     all_in_rent: number | null;
     latitude: number | null;
     longitude: number | null;
+    verified_latitude: number | null;
+    verified_longitude: number | null;
     // ESRI Demographics
     esri_enriched_at: string | null;
     tapestry_segment_code: string | null;
@@ -319,6 +321,8 @@ export default function SiteSubmitSidebar({
               all_in_rent,
               latitude,
               longitude,
+              verified_latitude,
+              verified_longitude,
               esri_enriched_at,
               tapestry_segment_code,
               tapestry_segment_name,

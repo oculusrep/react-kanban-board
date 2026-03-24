@@ -20,8 +20,12 @@ const MarketAnalysisSection: React.FC<MarketAnalysisSectionProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const { isEnriching, enrichError, enrichProperty, saveEnrichmentToProperty, clearError } = usePropertyGeoenrichment();
 
+  // Get coordinates for enrichment - prefer verified coordinates over regular coordinates
+  const enrichmentLatitude = property.verified_latitude ?? property.latitude;
+  const enrichmentLongitude = property.verified_longitude ?? property.longitude;
+
   // Check if property has coordinates for enrichment
-  const hasCoordinates = !!(property.latitude && property.longitude);
+  const hasCoordinates = !!(enrichmentLatitude && enrichmentLongitude);
 
   // Check if property has existing enrichment data
   const hasEnrichmentData = !!property.esri_enriched_at;
@@ -37,13 +41,13 @@ const MarketAnalysisSection: React.FC<MarketAnalysisSectionProps> = ({
 
     const result = await enrichProperty(
       property.id,
-      property.latitude!,
-      property.longitude!,
+      enrichmentLatitude!,
+      enrichmentLongitude!,
       forceRefresh
     );
 
     if (result) {
-      const saved = await saveEnrichmentToProperty(property.id, result);
+      const saved = await saveEnrichmentToProperty(property.id, result, enrichmentLatitude!, enrichmentLongitude!);
       if (saved && onPropertyRefresh) {
         onPropertyRefresh();
       }
