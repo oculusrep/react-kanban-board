@@ -476,7 +476,10 @@ export default function SiteSubmitCallList({
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-600">
                               {submit.date_submitted
-                                ? new Date(submit.date_submitted).toLocaleDateString()
+                                ? (() => {
+                                const [y, m, d] = submit.date_submitted.split('-').map(Number);
+                                return new Date(y, m - 1, d).toLocaleDateString();
+                              })()
                                 : '-'}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate">
@@ -543,7 +546,10 @@ export default function SiteSubmitCallList({
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {submit.date_submitted
-                          ? new Date(submit.date_submitted).toLocaleDateString()
+                          ? (() => {
+                                const [y, m, d] = submit.date_submitted.split('-').map(Number);
+                                return new Date(y, m - 1, d).toLocaleDateString();
+                              })()
                           : '-'}
                       </td>
                     </tr>

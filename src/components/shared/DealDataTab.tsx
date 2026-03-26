@@ -50,7 +50,12 @@ const formatNumber = (value: number | null | undefined) => {
 
 const formatDate = (value: string | null | undefined) => {
   if (!value) return '-';
-  return new Date(value).toLocaleDateString();
+  // Parse the date string as local time to avoid timezone offset issues
+  // Input format is YYYY-MM-DD from database DATE columns
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return '-';
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString();
 };
 
 // FieldGroup component

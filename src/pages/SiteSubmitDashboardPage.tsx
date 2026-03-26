@@ -2157,12 +2157,18 @@ export default function SiteSubmitDashboardPage() {
                               className="text-gray-500 hover:text-blue-600 hover:underline cursor-pointer"
                               title="Click to edit"
                             >
-                              {row.date_submitted ? new Date(row.date_submitted).toLocaleDateString() : <span className="text-gray-400">—</span>}
+                              {row.date_submitted ? (() => {
+                                const [y, m, d] = row.date_submitted.split('-').map(Number);
+                                return new Date(y, m - 1, d).toLocaleDateString();
+                              })() : <span className="text-gray-400">—</span>}
                             </button>
                           )}
                         </td>
                         <td className="px-3 py-3 text-sm text-gray-500">
-                          {row.loi_date ? new Date(row.loi_date).toLocaleDateString() : "—"}
+                          {row.loi_date ? (() => {
+                            const [y, m, d] = row.loi_date.split('-').map(Number);
+                            return new Date(y, m - 1, d).toLocaleDateString();
+                          })() : "—"}
                         </td>
                         {/* Notes - inline editable */}
                         <td className="px-4 py-3 text-sm">
