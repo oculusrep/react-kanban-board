@@ -139,76 +139,138 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
     </tr>`
   ).join('');
 
-  // Build demographics rows with zebra striping
-  // Dynamically include all non-null demographic fields
-  const demoRowsData: { label: string; value: string }[] = [];
+  // Build demographics table in grid format (like the View All modal)
+  // Helper to format cell value or show dash
+  const cell = (value: number | null | undefined, formatter: (v: number) => string = (v) => formatNumber(v) || '-') => {
+    if (value == null) return '-';
+    return formatter(value);
+  };
 
-  // Tapestry Segment (if available)
+  // Build Tapestry segment card if available
+  let tapestryHtml = '';
   if (property?.tapestry_segment_code && property?.tapestry_segment_name) {
-    let tapestryValue = `${property.tapestry_segment_code} - ${property.tapestry_segment_name}`;
-    if (property.tapestry_lifemodes) {
-      tapestryValue += ` (${property.tapestry_lifemodes})`;
-    }
-    demoRowsData.push({ label: 'Tapestry Segment', value: tapestryValue });
+    tapestryHtml = `
+      <tr>
+        <td colspan="5" style="padding: 8px 10px; background-color: #f8fafc; border: 1px solid ${COLORS.border};">
+          <table cellpadding="0" cellspacing="0" style="width: 100%;">
+            <tr>
+              <td style="width: 40px; vertical-align: top;">
+                <div style="width: 36px; height: 36px; background-color: ${COLORS.primaryDark}; color: #ffffff; font-weight: bold; font-size: 12px; text-align: center; line-height: 36px; border-radius: 4px;">
+                  ${property.tapestry_segment_code}
+                </div>
+              </td>
+              <td style="padding-left: 10px; vertical-align: top;">
+                <div style="font-weight: 600; font-size: 12px; color: ${COLORS.text};">${property.tapestry_segment_name}</div>
+                ${property.tapestry_lifemodes ? `<div style="font-size: 11px; color: ${COLORS.textMuted};">${property.tapestry_lifemodes}</div>` : ''}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    `;
   }
 
-  // Population
-  if (property?.pop_1_mile != null) demoRowsData.push({ label: 'Population (1 mi)', value: formatNumber(property.pop_1_mile) || '' });
-  if (property?.pop_3_mile != null) demoRowsData.push({ label: 'Population (3 mi)', value: formatNumber(property.pop_3_mile) || '' });
-  if (property?.pop_5_mile != null) demoRowsData.push({ label: 'Population (5 mi)', value: formatNumber(property.pop_5_mile) || '' });
-  if (property?.pop_10min_drive != null) demoRowsData.push({ label: 'Population (10-min drive)', value: formatNumber(property.pop_10min_drive) || '' });
+  // Build demographics grid rows - only include rows that have at least one non-null value
+  const demoGridRows: string[] = [];
 
-  // Households
-  if (property?.households_1_mile != null) demoRowsData.push({ label: 'Households (1 mi)', value: formatNumber(property.households_1_mile) || '' });
-  if (property?.households_3_mile != null) demoRowsData.push({ label: 'Households (3 mi)', value: formatNumber(property.households_3_mile) || '' });
-  if (property?.households_5_mile != null) demoRowsData.push({ label: 'Households (5 mi)', value: formatNumber(property.households_5_mile) || '' });
-  if (property?.households_10min_drive != null) demoRowsData.push({ label: 'Households (10-min drive)', value: formatNumber(property.households_10min_drive) || '' });
+  // Cell style for compact display
+  const cellStyle = `padding: 6px 8px; font-size: 11px; text-align: right; border-bottom: 1px solid #e5e7eb;`;
+  const labelCellStyle = `padding: 6px 8px; font-size: 11px; color: ${COLORS.textMuted}; border-bottom: 1px solid #e5e7eb;`;
 
-  // Daytime Population
-  if (property?.daytime_pop_1_mile != null) demoRowsData.push({ label: 'Daytime Pop (1 mi)', value: formatNumber(property.daytime_pop_1_mile) || '' });
-  if (property?.daytime_pop_3_mile != null) demoRowsData.push({ label: 'Daytime Pop (3 mi)', value: formatNumber(property.daytime_pop_3_mile) || '' });
-  if (property?.daytime_pop_5_mile != null) demoRowsData.push({ label: 'Daytime Pop (5 mi)', value: formatNumber(property.daytime_pop_5_mile) || '' });
-  if (property?.daytime_pop_10min_drive != null) demoRowsData.push({ label: 'Daytime Pop (10-min drive)', value: formatNumber(property.daytime_pop_10min_drive) || '' });
+  // Population row
+  if (property?.pop_1_mile != null || property?.pop_3_mile != null || property?.pop_5_mile != null || property?.pop_10min_drive != null ||
+      property?.['1_mile_pop'] != null || property?.['3_mile_pop'] != null) {
+    const pop1 = property?.pop_1_mile ?? property?.['1_mile_pop'];
+    const pop3 = property?.pop_3_mile ?? property?.['3_mile_pop'];
+    demoGridRows.push(`<tr style="background-color: #ffffff;">
+      <td style="${labelCellStyle}">Population</td>
+      <td style="${cellStyle}">${cell(pop1)}</td>
+      <td style="${cellStyle}">${cell(pop3)}</td>
+      <td style="${cellStyle}">${cell(property?.pop_5_mile)}</td>
+      <td style="${cellStyle}">${cell(property?.pop_10min_drive)}</td>
+    </tr>`);
+  }
 
-  // Median Household Income
-  if (property?.hh_income_median_1_mile != null) demoRowsData.push({ label: 'Median HH Income (1 mi)', value: formatCurrency(property.hh_income_median_1_mile) || '' });
-  if (property?.hh_income_median_3_mile != null) demoRowsData.push({ label: 'Median HH Income (3 mi)', value: formatCurrency(property.hh_income_median_3_mile) || '' });
-  if (property?.hh_income_median_5_mile != null) demoRowsData.push({ label: 'Median HH Income (5 mi)', value: formatCurrency(property.hh_income_median_5_mile) || '' });
-  if (property?.hh_income_median_10min_drive != null) demoRowsData.push({ label: 'Median HH Income (10-min drive)', value: formatCurrency(property.hh_income_median_10min_drive) || '' });
+  // Households row
+  if (property?.households_1_mile != null || property?.households_3_mile != null || property?.households_5_mile != null || property?.households_10min_drive != null) {
+    demoGridRows.push(`<tr style="background-color: #f9fafb;">
+      <td style="${labelCellStyle}">Households</td>
+      <td style="${cellStyle}">${cell(property?.households_1_mile)}</td>
+      <td style="${cellStyle}">${cell(property?.households_3_mile)}</td>
+      <td style="${cellStyle}">${cell(property?.households_5_mile)}</td>
+      <td style="${cellStyle}">${cell(property?.households_10min_drive)}</td>
+    </tr>`);
+  }
 
-  // Average Household Income
-  if (property?.hh_income_avg_1_mile != null) demoRowsData.push({ label: 'Avg HH Income (1 mi)', value: formatCurrency(property.hh_income_avg_1_mile) || '' });
-  if (property?.hh_income_avg_3_mile != null) demoRowsData.push({ label: 'Avg HH Income (3 mi)', value: formatCurrency(property.hh_income_avg_3_mile) || '' });
-  if (property?.hh_income_avg_5_mile != null) demoRowsData.push({ label: 'Avg HH Income (5 mi)', value: formatCurrency(property.hh_income_avg_5_mile) || '' });
-  if (property?.hh_income_avg_10min_drive != null) demoRowsData.push({ label: 'Avg HH Income (10-min drive)', value: formatCurrency(property.hh_income_avg_10min_drive) || '' });
+  // Daytime Pop row
+  if (property?.daytime_pop_1_mile != null || property?.daytime_pop_3_mile != null || property?.daytime_pop_5_mile != null || property?.daytime_pop_10min_drive != null) {
+    demoGridRows.push(`<tr style="background-color: #ffffff;">
+      <td style="${labelCellStyle}">Daytime Pop</td>
+      <td style="${cellStyle}">${cell(property?.daytime_pop_1_mile)}</td>
+      <td style="${cellStyle}">${cell(property?.daytime_pop_3_mile)}</td>
+      <td style="${cellStyle}">${cell(property?.daytime_pop_5_mile)}</td>
+      <td style="${cellStyle}">${cell(property?.daytime_pop_10min_drive)}</td>
+    </tr>`);
+  }
 
-  // Median Age
-  if (property?.median_age_1_mile != null) demoRowsData.push({ label: 'Median Age (1 mi)', value: property.median_age_1_mile.toFixed(1) });
-  if (property?.median_age_3_mile != null) demoRowsData.push({ label: 'Median Age (3 mi)', value: property.median_age_3_mile.toFixed(1) });
-  if (property?.median_age_5_mile != null) demoRowsData.push({ label: 'Median Age (5 mi)', value: property.median_age_5_mile.toFixed(1) });
-  if (property?.median_age_10min_drive != null) demoRowsData.push({ label: 'Median Age (10-min drive)', value: property.median_age_10min_drive.toFixed(1) });
+  // Employees row
+  if (property?.employees_1_mile != null || property?.employees_3_mile != null || property?.employees_5_mile != null || property?.employees_10min_drive != null) {
+    demoGridRows.push(`<tr style="background-color: #f9fafb;">
+      <td style="${labelCellStyle}">Employees</td>
+      <td style="${cellStyle}">${cell(property?.employees_1_mile)}</td>
+      <td style="${cellStyle}">${cell(property?.employees_3_mile)}</td>
+      <td style="${cellStyle}">${cell(property?.employees_5_mile)}</td>
+      <td style="${cellStyle}">${cell(property?.employees_10min_drive)}</td>
+    </tr>`);
+  }
 
-  // Employees
-  if (property?.employees_1_mile != null) demoRowsData.push({ label: 'Employees (1 mi)', value: formatNumber(property.employees_1_mile) || '' });
-  if (property?.employees_3_mile != null) demoRowsData.push({ label: 'Employees (3 mi)', value: formatNumber(property.employees_3_mile) || '' });
-  if (property?.employees_5_mile != null) demoRowsData.push({ label: 'Employees (5 mi)', value: formatNumber(property.employees_5_mile) || '' });
-  if (property?.employees_10min_drive != null) demoRowsData.push({ label: 'Employees (10-min drive)', value: formatNumber(property.employees_10min_drive) || '' });
+  // Avg HH Income row
+  if (property?.hh_income_avg_1_mile != null || property?.hh_income_avg_3_mile != null || property?.hh_income_avg_5_mile != null || property?.hh_income_avg_10min_drive != null) {
+    demoGridRows.push(`<tr style="background-color: #ffffff;">
+      <td style="${labelCellStyle}">Avg HH Income</td>
+      <td style="${cellStyle}">${cell(property?.hh_income_avg_1_mile, (v) => formatCurrency(v) || '-')}</td>
+      <td style="${cellStyle}">${cell(property?.hh_income_avg_3_mile, (v) => formatCurrency(v) || '-')}</td>
+      <td style="${cellStyle}">${cell(property?.hh_income_avg_5_mile, (v) => formatCurrency(v) || '-')}</td>
+      <td style="${cellStyle}">${cell(property?.hh_income_avg_10min_drive, (v) => formatCurrency(v) || '-')}</td>
+    </tr>`);
+  }
 
-  // Traffic Counts
-  if (property?.traffic_count != null) demoRowsData.push({ label: 'Traffic Count', value: formatNumber(property.traffic_count) || '' });
-  if (property?.traffic_count_2nd != null) demoRowsData.push({ label: 'Traffic Count (2nd)', value: formatNumber(property.traffic_count_2nd) || '' });
-  if (property?.total_traffic != null) demoRowsData.push({ label: 'Total Traffic', value: formatNumber(property.total_traffic) || '' });
+  // Median HH Income row
+  if (property?.hh_income_median_1_mile != null || property?.hh_income_median_3_mile != null || property?.hh_income_median_5_mile != null || property?.hh_income_median_10min_drive != null) {
+    demoGridRows.push(`<tr style="background-color: #f9fafb;">
+      <td style="${labelCellStyle}">Median HH Income</td>
+      <td style="${cellStyle}">${cell(property?.hh_income_median_1_mile, (v) => formatCurrency(v) || '-')}</td>
+      <td style="${cellStyle}">${cell(property?.hh_income_median_3_mile, (v) => formatCurrency(v) || '-')}</td>
+      <td style="${cellStyle}">${cell(property?.hh_income_median_5_mile, (v) => formatCurrency(v) || '-')}</td>
+      <td style="${cellStyle}">${cell(property?.hh_income_median_10min_drive, (v) => formatCurrency(v) || '-')}</td>
+    </tr>`);
+  }
 
-  // Legacy field support (for properties that haven't been re-enriched)
-  if (property?.['1_mile_pop'] != null && property?.pop_1_mile == null) demoRowsData.push({ label: 'Population (1 mi)', value: formatNumber(property['1_mile_pop']) || '' });
-  if (property?.['3_mile_pop'] != null && property?.pop_3_mile == null) demoRowsData.push({ label: 'Population (3 mi)', value: formatNumber(property['3_mile_pop']) || '' });
+  // Median Age row
+  if (property?.median_age_1_mile != null || property?.median_age_3_mile != null || property?.median_age_5_mile != null || property?.median_age_10min_drive != null) {
+    demoGridRows.push(`<tr style="background-color: #ffffff;">
+      <td style="${labelCellStyle}">Median Age</td>
+      <td style="${cellStyle}">${property?.median_age_1_mile != null ? property.median_age_1_mile.toFixed(1) : '-'}</td>
+      <td style="${cellStyle}">${property?.median_age_3_mile != null ? property.median_age_3_mile.toFixed(1) : '-'}</td>
+      <td style="${cellStyle}">${property?.median_age_5_mile != null ? property.median_age_5_mile.toFixed(1) : '-'}</td>
+      <td style="${cellStyle}">${property?.median_age_10min_drive != null ? property.median_age_10min_drive.toFixed(1) : '-'}</td>
+    </tr>`);
+  }
 
-  const demoRows = demoRowsData.map((row, idx) =>
-    `<tr style="${getRowStyle(idx)}">
-      <td style="padding: 10px 16px; font-weight: 600; color: ${COLORS.textMuted}; width: 35%; border-bottom: 1px solid ${COLORS.border};">${row.label}</td>
-      <td style="padding: 10px 16px; color: ${COLORS.text}; border-bottom: 1px solid ${COLORS.border};">${row.value}</td>
-    </tr>`
-  ).join('');
+  // Traffic counts row (separate section since not radius-based)
+  let trafficRow = '';
+  if (property?.traffic_count != null || property?.traffic_count_2nd != null || property?.total_traffic != null) {
+    const trafficParts: string[] = [];
+    if (property?.traffic_count != null) trafficParts.push(`Primary: ${formatNumber(property.traffic_count)}`);
+    if (property?.traffic_count_2nd != null) trafficParts.push(`Secondary: ${formatNumber(property.traffic_count_2nd)}`);
+    if (property?.total_traffic != null) trafficParts.push(`Total: ${formatNumber(property.total_traffic)}`);
+    trafficRow = `<tr style="background-color: #f9fafb;">
+      <td style="${labelCellStyle}">Traffic Count</td>
+      <td colspan="4" style="${cellStyle} text-align: left;">${trafficParts.join(' &nbsp;|&nbsp; ')}</td>
+    </tr>`;
+  }
+
+  const demoRows = demoGridRows.join('') + trafficRow;
 
   // Build supporting documents
   const docLinks: string[] = [];
@@ -273,10 +335,23 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
   emailHtml += propertyRows;
   emailHtml += `</table>`;
 
-  // Demographics Table (if data exists)
-  if (demoRowsData.length > 0) {
+  // Demographics Table (if data exists) - grid format with columns for each radius
+  if (demoGridRows.length > 0 || tapestryHtml || trafficRow) {
     emailHtml += `<table style="${tableWrapperStyle} width: 100%; border-collapse: collapse;" cellpadding="0" cellspacing="0">`;
-    emailHtml += `<tr><td colspan="2" style="${sectionHeaderStyle}">Location & Demographics</td></tr>`;
+    emailHtml += `<tr><td colspan="5" style="${sectionHeaderStyle}">Demographics</td></tr>`;
+    // Tapestry segment card
+    emailHtml += tapestryHtml;
+    // Column headers
+    if (demoGridRows.length > 0) {
+      const headerStyle = `padding: 6px 8px; font-size: 10px; font-weight: 600; color: ${COLORS.textMuted}; border-bottom: 2px solid #e5e7eb; text-align: right;`;
+      emailHtml += `<tr style="background-color: #f9fafb;">
+        <td style="${headerStyle} text-align: left;">Metric</td>
+        <td style="${headerStyle}">1 Mile</td>
+        <td style="${headerStyle}">3 Mile</td>
+        <td style="${headerStyle}">5 Mile</td>
+        <td style="${headerStyle}">10-Min</td>
+      </tr>`;
+    }
     emailHtml += demoRows;
     emailHtml += `</table>`;
   }
