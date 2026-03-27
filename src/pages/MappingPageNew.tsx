@@ -25,8 +25,6 @@ import SaveShapeModal from '../components/modals/SaveShapeModal';
 import ShareLayerModal from '../components/modals/ShareLayerModal';
 import BoundaryBuilderPanel from '../components/mapping/BoundaryBuilderPanel';
 import ClosedBusinessSearchPanel from '../components/mapping/ClosedBusinessSearchPanel';
-import PropertySearchBar from '../components/mapping/PropertySearchBar';
-import PropertySearchResultsTable from '../components/advanced-search/PropertySearchResultsTable';
 import ClosedPlacesLayer from '../components/mapping/layers/ClosedPlacesLayer';
 import { boundaryService, FetchedBoundary } from '../services/boundaryService';
 import { closedPlacesLayerService } from '../services/closedPlacesLayerService';
@@ -245,13 +243,6 @@ const MappingPageContent: React.FC = () => {
 
   // Boundary builder panel state
   const [showBoundaryBuilder, setShowBoundaryBuilder] = useState(false);
-
-  // Property search overlay state
-  const [showPropertySearch, setShowPropertySearch] = useState(false);
-  const [propertySearchResults, setPropertySearchResults] = useState<any[]>([]);
-  const [propertySearchViewMode, setPropertySearchViewMode] = useState<'filters' | 'map' | 'table'>('filters');
-  const [propertySearchTablePage, setPropertySearchTablePage] = useState(1);
-  const [propertySearchSortConfig, setPropertySearchSortConfig] = useState<{ field: string; direction: 'asc' | 'desc' }>({ field: 'property_name', direction: 'asc' });
 
   // Closed business search state
   const [showClosedBusinessSearch, setShowClosedBusinessSearch] = useState(false);
@@ -2191,92 +2182,15 @@ const MappingPageContent: React.FC = () => {
           </div>
 
 
-          {/* Full Screen Map or Table */}
-          <div className="flex-1 flex flex-col relative">
-            {/* Property Search Bar - Top horizontal bar */}
-            {showPropertySearch && (
-              <PropertySearchBar
-                isOpen={showPropertySearch}
-                onClose={() => {
-                  setShowPropertySearch(false);
-                  setPropertySearchResults([]);
-                  setPropertySearchViewMode('map');
-                }}
-                onPropertySelect={(propertyId: string) => {
-                  setSelectedPinData({ id: propertyId });
-                  setSelectedPinType('property');
-                  setIsPinDetailsOpen(true);
-                }}
-                onResultsChange={(results: any[]) => {
-                  setPropertySearchResults(results);
-                  if (results.length > 0 && mapInstance) {
-                    const bounds = new google.maps.LatLngBounds();
-                    results.forEach((prop: any) => {
-                      const lat = prop.verified_latitude || prop.latitude;
-                      const lng = prop.verified_longitude || prop.longitude;
-                      if (lat && lng) {
-                        bounds.extend({ lat: Number(lat), lng: Number(lng) });
-                      }
-                    });
-                    if (!bounds.isEmpty()) {
-                      mapInstance.fitBounds(bounds, { top: 100, right: 50, bottom: 50, left: 50 });
-                    }
-                  }
-                }}
-                viewMode={propertySearchViewMode === 'table' ? 'table' : 'map'}
-                onViewModeChange={(mode: 'map' | 'table') => {
-                  setPropertySearchViewMode(mode);
-                }}
-              />
-            )}
-
-            {/* Map View - hide when property search table mode is active */}
-            <div className="flex-1 relative" style={{ display: propertySearchViewMode === 'table' && showPropertySearch ? 'none' : 'block' }}>
-              <GoogleMapContainer
-                height="100%"
-                width="100%"
-                onMapLoad={handleMapLoad}
-                onCenterOnLocationReady={(fn) => setCenterOnLocation(() => fn)}
-                className={createMode ? 'cursor-crosshair' : ''}
-              />
-            </div>
-
-            {/* Property Search Table View - full screen when active */}
-            {propertySearchViewMode === 'table' && showPropertySearch && propertySearchResults.length > 0 && (
-              <div className="flex-1 bg-white">
-                <PropertySearchResultsTable
-                  results={(() => {
-                    // Sort results
-                    const sorted = [...propertySearchResults].sort((a, b) => {
-                      const aVal = a[propertySearchSortConfig.field] ?? '';
-                      const bVal = b[propertySearchSortConfig.field] ?? '';
-                      const cmp = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-                      return propertySearchSortConfig.direction === 'asc' ? cmp : -cmp;
-                    });
-                    // Paginate
-                    const start = (propertySearchTablePage - 1) * 100;
-                    return sorted.slice(start, start + 100);
-                  })()}
-                  columns={['property_name', 'address', 'city', 'state', 'property_record_type', 'building_sqft', 'available_sqft', 'rent_psf', 'asking_purchase_price']}
-                  sortConfig={propertySearchSortConfig}
-                  onSortChange={(config) => {
-                    setPropertySearchSortConfig(config);
-                    setPropertySearchTablePage(1);
-                  }}
-                  onRowClick={(propertyId) => {
-                    setSelectedPinData({ id: propertyId });
-                    setSelectedPinType('property');
-                    setIsPinDetailsOpen(true);
-                  }}
-                  selectedPropertyId={selectedPinType === 'property' && selectedPinData ? selectedPinData.id : null}
-                  currentPage={propertySearchTablePage}
-                  pageSize={100}
-                  totalCount={propertySearchResults.length}
-                  onPageChange={setPropertySearchTablePage}
-                  compact
-                />
-              </div>
-            )}
+          {/* Full Screen Map */}
+          <div className="flex-1 relative">
+            <GoogleMapContainer
+              height="100%"
+              width="100%"
+              onMapLoad={handleMapLoad}
+              onCenterOnLocationReady={(fn) => setCenterOnLocation(() => fn)}
+              className={createMode ? 'cursor-crosshair' : ''}
+            />
 
             {/* Draw and Layers Controls - positioned to the right of GPS/ruler buttons */}
             {/* Hidden when Street View is active to prevent z-index conflicts */}
@@ -2554,10 +2468,9 @@ const MappingPageContent: React.FC = () => {
             )}
 
             {/* Property Layer - Connected to Layer Manager */}
-            {/* Hide when property search results are active */}
             <PropertyLayer
               map={mapInstance}
-              isVisible={(layerState.properties?.isVisible || false) && propertySearchResults.length === 0}
+              isVisible={layerState.properties?.isVisible || false}
               loadingConfig={propertyLoadingConfig}
               recentlyCreatedIds={recentlyCreatedPropertyIds}
               verifyingPropertyId={verifyingPropertyId}
@@ -2579,26 +2492,6 @@ const MappingPageContent: React.FC = () => {
                 setShowSiteSubmitModal(true);
               }}
             />
-
-            {/* Property Search Results Layer - shows when search is active */}
-            {propertySearchResults.length > 0 && (
-              <PropertyLayer
-                map={mapInstance}
-                isVisible={true}
-                loadingConfig={{ mode: 'static-all' }}
-                customProperties={propertySearchResults}
-                selectedPropertyId={selectedPinType === 'property' && selectedPinData ? selectedPinData.id : null}
-                onPinClick={(property) => handlePinClick(property, 'property')}
-                onCreateSiteSubmit={(property) => {
-                  const coords = property.verified_latitude && property.verified_longitude
-                    ? { lat: property.verified_latitude, lng: property.verified_longitude }
-                    : { lat: property.latitude, lng: property.longitude };
-                  setPinDropCoordinates(coords);
-                  setSelectedPropertyId(property.id);
-                  setShowSiteSubmitModal(true);
-                }}
-              />
-            )}
 
             {/* Site Submit Layer - Connected to Layer Manager */}
             <SiteSubmitLayer
