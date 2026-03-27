@@ -25,6 +25,8 @@ import SaveShapeModal from '../components/modals/SaveShapeModal';
 import ShareLayerModal from '../components/modals/ShareLayerModal';
 import BoundaryBuilderPanel from '../components/mapping/BoundaryBuilderPanel';
 import ClosedBusinessSearchPanel from '../components/mapping/ClosedBusinessSearchPanel';
+import PropertySearchBar from '../components/mapping/PropertySearchBar';
+import PropertySearchResultsTable from '../components/advanced-search/PropertySearchResultsTable';
 import ClosedPlacesLayer from '../components/mapping/layers/ClosedPlacesLayer';
 import { boundaryService, FetchedBoundary } from '../services/boundaryService';
 import { closedPlacesLayerService } from '../services/closedPlacesLayerService';
@@ -243,6 +245,13 @@ const MappingPageContent: React.FC = () => {
 
   // Boundary builder panel state
   const [showBoundaryBuilder, setShowBoundaryBuilder] = useState(false);
+
+  // Property search overlay state
+  const [showPropertySearch, setShowPropertySearch] = useState(false);
+  const [propertySearchResults, setPropertySearchResults] = useState<any[]>([]);
+  const [propertySearchViewMode, setPropertySearchViewMode] = useState<'filters' | 'map' | 'table'>('filters');
+  const [propertySearchTablePage, setPropertySearchTablePage] = useState(1);
+  const [propertySearchSortConfig, setPropertySearchSortConfig] = useState<{ field: string; direction: 'asc' | 'desc' }>({ field: 'property_name', direction: 'asc' });
 
   // Closed business search state
   const [showClosedBusinessSearch, setShowClosedBusinessSearch] = useState(false);
@@ -1234,8 +1243,13 @@ const MappingPageContent: React.FC = () => {
   const handlePinDataUpdate = (updatedData: any) => {
     console.log('📝 Pin data updated:', updatedData);
     setSelectedPinData(updatedData);
+
+    // Determine if this is a property update or site submit update
+    const isPropertyUpdate = selectedPinType === 'property' && updatedData?.id && !updatedData.property_id;
+    const isSiteSubmitUpdate = selectedPinType === 'site_submit' || updatedData.property_id;
+
     // If this is a site submit update, trigger refresh of submits list
-    if (selectedPinType === 'site_submit' || updatedData.property_id) {
+    if (isSiteSubmitUpdate) {
       setSubmitsRefreshTrigger(prev => prev + 1);
       console.log('🔄 Triggering submits list refresh after site submit update');
 
@@ -1260,6 +1274,30 @@ const MappingPageContent: React.FC = () => {
             property: { ...prev?.property, ...updatedData.property },
           }));
         }
+      }
+    }
+
+    // If this is a property update (from PinDetailsSlideout showing a property),
+    // sync demographics to any open site submit sidebar showing the same property
+    if (isPropertyUpdate && updatedData?.id) {
+      const updatedPropertyId = updatedData.id;
+
+      // Update selectedSiteSubmitData if it references the same property
+      if (selectedSiteSubmitData?.property?.id === updatedPropertyId) {
+        console.log('🔄 Syncing property demographics from property pin to site submit details');
+        setSelectedSiteSubmitData((prev: any) => ({
+          ...prev,
+          property: { ...prev?.property, ...updatedData },
+        }));
+      }
+
+      // Update selectedPropertyData if it's the same property
+      if (selectedPropertyData?.id === updatedPropertyId) {
+        console.log('🔄 Syncing property demographics from property pin to property details');
+        setSelectedPropertyData((prev: any) => ({
+          ...prev,
+          ...updatedData,
+        }));
       }
     }
   };
@@ -1343,16 +1381,25 @@ const MappingPageContent: React.FC = () => {
     setSubmitsRefreshTrigger(prev => prev + 1);
     console.log('🔄 Triggering submits list refresh from parent, new trigger:', submitsRefreshTrigger + 1);
 
-    // Sync property demographics to PinDetailsSlideout if showing the same property
+    // Sync property demographics to other slideouts if showing the same property
     if (updatedData?.property) {
       const updatedPropertyId = updatedData.property.id;
 
-      // Update selectedPinData if it's the same property
+      // Update selectedPinData if it's the same property (property pin type)
       if (selectedPinData?.id === updatedPropertyId && selectedPinType === 'property') {
-        console.log('🔄 Syncing property demographics to pin details slideout');
+        console.log('🔄 Syncing property demographics to pin details slideout (property)');
         setSelectedPinData((prev: any) => ({
           ...prev,
           ...updatedData.property,
+        }));
+      }
+
+      // Update selectedPinData if it's a site_submit showing the same property
+      if (selectedPinType === 'site_submit' && selectedPinData?.property?.id === updatedPropertyId) {
+        console.log('🔄 Syncing property demographics to pin details slideout (site_submit)');
+        setSelectedPinData((prev: any) => ({
+          ...prev,
+          property: { ...prev?.property, ...updatedData.property },
         }));
       }
 
@@ -2144,15 +2191,92 @@ const MappingPageContent: React.FC = () => {
           </div>
 
 
-          {/* Full Screen Map */}
-          <div className="flex-1 relative">
-            <GoogleMapContainer
-              height="100%"
-              width="100%"
-              onMapLoad={handleMapLoad}
-              onCenterOnLocationReady={(fn) => setCenterOnLocation(() => fn)}
-              className={createMode ? 'cursor-crosshair' : ''}
-            />
+          {/* Full Screen Map or Table */}
+          <div className="flex-1 flex flex-col relative">
+            {/* Property Search Bar - Top horizontal bar */}
+            {showPropertySearch && (
+              <PropertySearchBar
+                isOpen={showPropertySearch}
+                onClose={() => {
+                  setShowPropertySearch(false);
+                  setPropertySearchResults([]);
+                  setPropertySearchViewMode('map');
+                }}
+                onPropertySelect={(propertyId: string) => {
+                  setSelectedPinData({ id: propertyId });
+                  setSelectedPinType('property');
+                  setIsPinDetailsOpen(true);
+                }}
+                onResultsChange={(results: any[]) => {
+                  setPropertySearchResults(results);
+                  if (results.length > 0 && mapInstance) {
+                    const bounds = new google.maps.LatLngBounds();
+                    results.forEach((prop: any) => {
+                      const lat = prop.verified_latitude || prop.latitude;
+                      const lng = prop.verified_longitude || prop.longitude;
+                      if (lat && lng) {
+                        bounds.extend({ lat: Number(lat), lng: Number(lng) });
+                      }
+                    });
+                    if (!bounds.isEmpty()) {
+                      mapInstance.fitBounds(bounds, { top: 100, right: 50, bottom: 50, left: 50 });
+                    }
+                  }
+                }}
+                viewMode={propertySearchViewMode === 'table' ? 'table' : 'map'}
+                onViewModeChange={(mode: 'map' | 'table') => {
+                  setPropertySearchViewMode(mode);
+                }}
+              />
+            )}
+
+            {/* Map View - hide when property search table mode is active */}
+            <div className="flex-1 relative" style={{ display: propertySearchViewMode === 'table' && showPropertySearch ? 'none' : 'block' }}>
+              <GoogleMapContainer
+                height="100%"
+                width="100%"
+                onMapLoad={handleMapLoad}
+                onCenterOnLocationReady={(fn) => setCenterOnLocation(() => fn)}
+                className={createMode ? 'cursor-crosshair' : ''}
+              />
+            </div>
+
+            {/* Property Search Table View - full screen when active */}
+            {propertySearchViewMode === 'table' && showPropertySearch && propertySearchResults.length > 0 && (
+              <div className="flex-1 bg-white">
+                <PropertySearchResultsTable
+                  results={(() => {
+                    // Sort results
+                    const sorted = [...propertySearchResults].sort((a, b) => {
+                      const aVal = a[propertySearchSortConfig.field] ?? '';
+                      const bVal = b[propertySearchSortConfig.field] ?? '';
+                      const cmp = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+                      return propertySearchSortConfig.direction === 'asc' ? cmp : -cmp;
+                    });
+                    // Paginate
+                    const start = (propertySearchTablePage - 1) * 100;
+                    return sorted.slice(start, start + 100);
+                  })()}
+                  columns={['property_name', 'address', 'city', 'state', 'property_record_type', 'building_sqft', 'available_sqft', 'rent_psf', 'asking_purchase_price']}
+                  sortConfig={propertySearchSortConfig}
+                  onSortChange={(config) => {
+                    setPropertySearchSortConfig(config);
+                    setPropertySearchTablePage(1);
+                  }}
+                  onRowClick={(propertyId) => {
+                    setSelectedPinData({ id: propertyId });
+                    setSelectedPinType('property');
+                    setIsPinDetailsOpen(true);
+                  }}
+                  selectedPropertyId={selectedPinType === 'property' && selectedPinData ? selectedPinData.id : null}
+                  currentPage={propertySearchTablePage}
+                  pageSize={100}
+                  totalCount={propertySearchResults.length}
+                  onPageChange={setPropertySearchTablePage}
+                  compact
+                />
+              </div>
+            )}
 
             {/* Draw and Layers Controls - positioned to the right of GPS/ruler buttons */}
             {/* Hidden when Street View is active to prevent z-index conflicts */}
@@ -2172,6 +2296,23 @@ const MappingPageContent: React.FC = () => {
                 style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}
               >
                 ✏️
+              </button>
+
+              {/* Search Button */}
+              <button
+                onClick={() => setShowPropertySearch(true)}
+                className={`h-10 px-3 rounded shadow flex items-center space-x-1 text-sm font-medium ${
+                  showPropertySearch
+                    ? 'bg-[#002147] text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-100'
+                }`}
+                title="Property Search"
+                style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <span>Search</span>
               </button>
 
               {/* Layers Button */}
@@ -2413,9 +2554,10 @@ const MappingPageContent: React.FC = () => {
             )}
 
             {/* Property Layer - Connected to Layer Manager */}
+            {/* Hide when property search results are active */}
             <PropertyLayer
               map={mapInstance}
-              isVisible={layerState.properties?.isVisible || false}
+              isVisible={(layerState.properties?.isVisible || false) && propertySearchResults.length === 0}
               loadingConfig={propertyLoadingConfig}
               recentlyCreatedIds={recentlyCreatedPropertyIds}
               verifyingPropertyId={verifyingPropertyId}
@@ -2437,6 +2579,26 @@ const MappingPageContent: React.FC = () => {
                 setShowSiteSubmitModal(true);
               }}
             />
+
+            {/* Property Search Results Layer - shows when search is active */}
+            {propertySearchResults.length > 0 && (
+              <PropertyLayer
+                map={mapInstance}
+                isVisible={true}
+                loadingConfig={{ mode: 'static-all' }}
+                customProperties={propertySearchResults}
+                selectedPropertyId={selectedPinType === 'property' && selectedPinData ? selectedPinData.id : null}
+                onPinClick={(property) => handlePinClick(property, 'property')}
+                onCreateSiteSubmit={(property) => {
+                  const coords = property.verified_latitude && property.verified_longitude
+                    ? { lat: property.verified_latitude, lng: property.verified_longitude }
+                    : { lat: property.latitude, lng: property.longitude };
+                  setPinDropCoordinates(coords);
+                  setSelectedPropertyId(property.id);
+                  setShowSiteSubmitModal(true);
+                }}
+              />
+            )}
 
             {/* Site Submit Layer - Connected to Layer Manager */}
             <SiteSubmitLayer
@@ -3077,6 +3239,7 @@ const MappingPageContent: React.FC = () => {
         drawnPolygon={closedSearchPolygon}
         onClearDrawnPolygon={() => setClosedSearchPolygon(null)}
       />
+
 
       {/* Share Layer Modal */}
       {layerToShare && (
