@@ -140,13 +140,68 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
   ).join('');
 
   // Build demographics rows with zebra striping
+  // Dynamically include all non-null demographic fields
   const demoRowsData: { label: string; value: string }[] = [];
-  if (property?.['1_mile_pop']) demoRowsData.push({ label: '1-Mile Population', value: formatNumber(property['1_mile_pop']) || '' });
-  if (property?.['3_mile_pop']) demoRowsData.push({ label: '3-Mile Population', value: formatNumber(property['3_mile_pop']) || '' });
-  if (property?.hh_income_median_3_mile) demoRowsData.push({ label: 'Median HH Income (3mi)', value: formatCurrency(property.hh_income_median_3_mile) || '' });
-  if (property?.traffic_count) demoRowsData.push({ label: 'Traffic Count', value: formatNumber(property.traffic_count) || '' });
-  if (property?.traffic_count_2nd) demoRowsData.push({ label: 'Traffic Count (2nd)', value: formatNumber(property.traffic_count_2nd) || '' });
-  if (property?.total_traffic) demoRowsData.push({ label: 'Total Traffic', value: formatNumber(property.total_traffic) || '' });
+
+  // Tapestry Segment (if available)
+  if (property?.tapestry_segment_code && property?.tapestry_segment_name) {
+    let tapestryValue = `${property.tapestry_segment_code} - ${property.tapestry_segment_name}`;
+    if (property.tapestry_lifemodes) {
+      tapestryValue += ` (${property.tapestry_lifemodes})`;
+    }
+    demoRowsData.push({ label: 'Tapestry Segment', value: tapestryValue });
+  }
+
+  // Population
+  if (property?.pop_1_mile != null) demoRowsData.push({ label: 'Population (1 mi)', value: formatNumber(property.pop_1_mile) || '' });
+  if (property?.pop_3_mile != null) demoRowsData.push({ label: 'Population (3 mi)', value: formatNumber(property.pop_3_mile) || '' });
+  if (property?.pop_5_mile != null) demoRowsData.push({ label: 'Population (5 mi)', value: formatNumber(property.pop_5_mile) || '' });
+  if (property?.pop_10min_drive != null) demoRowsData.push({ label: 'Population (10-min drive)', value: formatNumber(property.pop_10min_drive) || '' });
+
+  // Households
+  if (property?.households_1_mile != null) demoRowsData.push({ label: 'Households (1 mi)', value: formatNumber(property.households_1_mile) || '' });
+  if (property?.households_3_mile != null) demoRowsData.push({ label: 'Households (3 mi)', value: formatNumber(property.households_3_mile) || '' });
+  if (property?.households_5_mile != null) demoRowsData.push({ label: 'Households (5 mi)', value: formatNumber(property.households_5_mile) || '' });
+  if (property?.households_10min_drive != null) demoRowsData.push({ label: 'Households (10-min drive)', value: formatNumber(property.households_10min_drive) || '' });
+
+  // Daytime Population
+  if (property?.daytime_pop_1_mile != null) demoRowsData.push({ label: 'Daytime Pop (1 mi)', value: formatNumber(property.daytime_pop_1_mile) || '' });
+  if (property?.daytime_pop_3_mile != null) demoRowsData.push({ label: 'Daytime Pop (3 mi)', value: formatNumber(property.daytime_pop_3_mile) || '' });
+  if (property?.daytime_pop_5_mile != null) demoRowsData.push({ label: 'Daytime Pop (5 mi)', value: formatNumber(property.daytime_pop_5_mile) || '' });
+  if (property?.daytime_pop_10min_drive != null) demoRowsData.push({ label: 'Daytime Pop (10-min drive)', value: formatNumber(property.daytime_pop_10min_drive) || '' });
+
+  // Median Household Income
+  if (property?.hh_income_median_1_mile != null) demoRowsData.push({ label: 'Median HH Income (1 mi)', value: formatCurrency(property.hh_income_median_1_mile) || '' });
+  if (property?.hh_income_median_3_mile != null) demoRowsData.push({ label: 'Median HH Income (3 mi)', value: formatCurrency(property.hh_income_median_3_mile) || '' });
+  if (property?.hh_income_median_5_mile != null) demoRowsData.push({ label: 'Median HH Income (5 mi)', value: formatCurrency(property.hh_income_median_5_mile) || '' });
+  if (property?.hh_income_median_10min_drive != null) demoRowsData.push({ label: 'Median HH Income (10-min drive)', value: formatCurrency(property.hh_income_median_10min_drive) || '' });
+
+  // Average Household Income
+  if (property?.hh_income_avg_1_mile != null) demoRowsData.push({ label: 'Avg HH Income (1 mi)', value: formatCurrency(property.hh_income_avg_1_mile) || '' });
+  if (property?.hh_income_avg_3_mile != null) demoRowsData.push({ label: 'Avg HH Income (3 mi)', value: formatCurrency(property.hh_income_avg_3_mile) || '' });
+  if (property?.hh_income_avg_5_mile != null) demoRowsData.push({ label: 'Avg HH Income (5 mi)', value: formatCurrency(property.hh_income_avg_5_mile) || '' });
+  if (property?.hh_income_avg_10min_drive != null) demoRowsData.push({ label: 'Avg HH Income (10-min drive)', value: formatCurrency(property.hh_income_avg_10min_drive) || '' });
+
+  // Median Age
+  if (property?.median_age_1_mile != null) demoRowsData.push({ label: 'Median Age (1 mi)', value: property.median_age_1_mile.toFixed(1) });
+  if (property?.median_age_3_mile != null) demoRowsData.push({ label: 'Median Age (3 mi)', value: property.median_age_3_mile.toFixed(1) });
+  if (property?.median_age_5_mile != null) demoRowsData.push({ label: 'Median Age (5 mi)', value: property.median_age_5_mile.toFixed(1) });
+  if (property?.median_age_10min_drive != null) demoRowsData.push({ label: 'Median Age (10-min drive)', value: property.median_age_10min_drive.toFixed(1) });
+
+  // Employees
+  if (property?.employees_1_mile != null) demoRowsData.push({ label: 'Employees (1 mi)', value: formatNumber(property.employees_1_mile) || '' });
+  if (property?.employees_3_mile != null) demoRowsData.push({ label: 'Employees (3 mi)', value: formatNumber(property.employees_3_mile) || '' });
+  if (property?.employees_5_mile != null) demoRowsData.push({ label: 'Employees (5 mi)', value: formatNumber(property.employees_5_mile) || '' });
+  if (property?.employees_10min_drive != null) demoRowsData.push({ label: 'Employees (10-min drive)', value: formatNumber(property.employees_10min_drive) || '' });
+
+  // Traffic Counts
+  if (property?.traffic_count != null) demoRowsData.push({ label: 'Traffic Count', value: formatNumber(property.traffic_count) || '' });
+  if (property?.traffic_count_2nd != null) demoRowsData.push({ label: 'Traffic Count (2nd)', value: formatNumber(property.traffic_count_2nd) || '' });
+  if (property?.total_traffic != null) demoRowsData.push({ label: 'Total Traffic', value: formatNumber(property.total_traffic) || '' });
+
+  // Legacy field support (for properties that haven't been re-enriched)
+  if (property?.['1_mile_pop'] != null && property?.pop_1_mile == null) demoRowsData.push({ label: 'Population (1 mi)', value: formatNumber(property['1_mile_pop']) || '' });
+  if (property?.['3_mile_pop'] != null && property?.pop_3_mile == null) demoRowsData.push({ label: 'Population (3 mi)', value: formatNumber(property['3_mile_pop']) || '' });
 
   const demoRows = demoRowsData.map((row, idx) =>
     `<tr style="${getRowStyle(idx)}">
