@@ -158,6 +158,7 @@ interface SiteSubmitSidebarProps {
   onDataUpdate?: (updatedData: SiteSubmitData) => void; // Callback when data is updated
   onSiteSubmitCreated?: (newSiteSubmit: SiteSubmitData) => void; // Callback when new site submit is created
   rightOffset?: number; // Offset from right edge in pixels (for stacked sidebars)
+  topOffset?: number; // Additional offset from top (e.g., when search bar is visible)
   // Portal-specific props
   accessibleClients?: { id: string; client_name: string }[];
   siteSubmitRefreshTrigger?: number;
@@ -197,6 +198,7 @@ export default function SiteSubmitSidebar({
   onDataUpdate,
   onSiteSubmitCreated,
   rightOffset = 0,
+  topOffset = 0,
   accessibleClients = [],
   siteSubmitRefreshTrigger,
   initialData,
@@ -643,14 +645,14 @@ export default function SiteSubmitSidebar({
 
   return (
     <div
-      className={`fixed bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col ${
+      className={`fixed bg-white shadow-2xl z-[10001] transform transition-transform duration-300 ease-in-out flex flex-col ${
         isOpen ? 'translate-x-0' : 'translate-x-full'
       }`}
       style={{
         width: '500px',
         maxWidth: '90vw',
-        top: '64px',
-        height: 'calc(100vh - 64px)',
+        top: `${64 + topOffset}px`,
+        height: `calc(100vh - ${64 + topOffset}px)`,
         right: `${rightOffset}px`,
       }}
     >

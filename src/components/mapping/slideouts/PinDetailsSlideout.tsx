@@ -176,6 +176,7 @@ interface PinDetailsSlideoutProps {
   isVerifyingLocation?: boolean;
   onViewPropertyDetails?: (property: Property) => void;
   rightOffset?: number; // Offset from right edge in pixels
+  topOffset?: number; // Additional offset from top (e.g., when search bar is visible)
   onCenterOnPin?: (lat: number, lng: number) => void; // Function to center map on pin
   onDataUpdate?: (updatedData: Property | SiteSubmit) => void; // Callback when data is updated
   onEditContact?: (contactId: string | null, propertyId: string) => void; // Callback to open contact form sidebar
@@ -645,6 +646,7 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
   isVerifyingLocation = false,
   onViewPropertyDetails,
   rightOffset = 0,
+  topOffset = 0,
   onCenterOnPin,
   onDataUpdate,
   onEditContact,
@@ -2573,13 +2575,13 @@ const PinDetailsSlideout: React.FC<PinDetailsSlideoutProps> = ({
     <>
       {/* Slideout - Match PropertySidebar styling */}
       <div
-        className={`fixed top-0 h-full bg-white border-l border-gray-200 shadow-xl transition-all duration-300 z-40 flex flex-col ${
+        className={`fixed top-0 h-full bg-white border-l border-gray-200 shadow-xl transition-all duration-300 z-[10001] flex flex-col ${
           !isOpen ? 'translate-x-full' : isMinimized ? 'w-12' : 'w-[500px]'
         } ${isMinimized ? 'overflow-hidden' : ''}`}
         style={{
           right: `${rightOffset}px`,
-          top: '67px', // Match navbar height
-          height: 'calc(100vh - 67px - 20px)', // Add 20px bottom margin to prevent cutoff
+          top: `${67 + topOffset}px`, // Match navbar height + any additional offset (e.g., search bar)
+          height: `calc(100vh - ${67 + topOffset}px - 20px)`, // Add 20px bottom margin to prevent cutoff
           transform: !isOpen ? 'translateX(100%)' : 'translateX(0)',
           touchAction: 'pan-y', // Prevent map scrolling on touch devices
           WebkitOverflowScrolling: 'touch' // Smooth scrolling on iOS

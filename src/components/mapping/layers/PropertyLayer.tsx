@@ -50,6 +50,8 @@ interface PropertyLayerProps {
   onPropertyRightClick?: (property: Property, x: number, y: number) => void;
   selectedPropertyId?: string | null;
   selectedPropertyData?: Property | null;
+  /** When provided, renders these properties instead of fetching from database */
+  customProperties?: Property[];
 }
 
 // Type union to support both Marker and AdvancedMarkerElement
@@ -67,7 +69,8 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   onLocationVerified,
   onPropertyRightClick,
   selectedPropertyId = null,
-  selectedPropertyData = null
+  selectedPropertyData = null,
+  customProperties
 }) => {
   const [properties, setProperties] = useState<Property[]>([]);
   const [markers, setMarkers] = useState<MarkerType[]>([]);
@@ -759,13 +762,12 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       }
     }
 
-    // Only log if something changed
-    if (created > 0 || markersToRemove.length > 0) {
+    // Only log and update state if something changed
+    if (created > 0 || markersToRemove.length > 0 || selectionChanged) {
       console.log(`📍 Markers: +${created} created, ${reused} reused, -${markersToRemove.length} removed`);
+      setMarkers(allMarkers);
+      setSelectedMarker(newSelectedMarker);
     }
-
-    setMarkers(allMarkers);
-    setSelectedMarker(newSelectedMarker);
   };
 
   // Create session markers for recently created properties
@@ -898,8 +900,42 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   const { refreshTrigger } = useLayerManager();
   const propertyRefreshTrigger = refreshTrigger.properties || 0;
 
+  // Ref for onPropertiesLoaded callback to avoid re-triggering effects
+  const onPropertiesLoadedRef = useRef(onPropertiesLoaded);
+  onPropertiesLoadedRef.current = onPropertiesLoaded;
+
+  // Track previous customProperties to avoid unnecessary updates
+  const prevCustomPropertiesRef = useRef<Property[] | undefined>(undefined);
+
   // Load properties based on mode - also trigger when isVisible becomes true
+  // Handle customProperties - when provided, use those instead of fetching
   useEffect(() => {
+    if (customProperties !== undefined) {
+      // Only update if the array content actually changed (compare by length and first/last id)
+      const prev = prevCustomPropertiesRef.current;
+      const hasChanged = !prev ||
+        prev.length !== customProperties.length ||
+        (prev.length > 0 && customProperties.length > 0 && (
+          prev[0]?.id !== customProperties[0]?.id ||
+          prev[prev.length - 1]?.id !== customProperties[customProperties.length - 1]?.id
+        ));
+
+      if (hasChanged) {
+        prevCustomPropertiesRef.current = customProperties;
+        // Filter to only properties with valid coordinates
+        const validProperties = customProperties.filter(property =>
+          getDisplayCoordinates(property) !== null
+        );
+        setProperties(validProperties);
+        onPropertiesLoadedRef.current?.(validProperties.length);
+      }
+    }
+  }, [customProperties]);
+
+  useEffect(() => {
+    // Skip fetching if customProperties is provided
+    if (customProperties !== undefined) return;
+
     if (!map) return;
 
     // Only fetch when layer is visible (or on first mount to pre-load)
@@ -910,10 +946,12 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     } else {
       fetchAllProperties();
     }
-  }, [map, loadingConfig.mode, propertyRefreshTrigger, isVisible]);
+  }, [map, loadingConfig.mode, propertyRefreshTrigger, isVisible, customProperties]);
 
   // Set up viewport-based loading listener
   useEffect(() => {
+    // Skip viewport loading if customProperties is provided
+    if (customProperties !== undefined) return;
     if (!map || loadingConfig.mode !== 'viewport-based') return;
 
     const handleIdle = () => {
@@ -939,17 +977,38 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   // Track previous marker style to detect changes
   const prevMarkerStyleRef = useRef({ shape: markerStyle.shape, useAdvancedMarkers: markerStyle.useAdvancedMarkers });
 
+  // Track properties signature to prevent unnecessary marker recreations
+  const lastPropertiesSignatureRef = useRef<string>('');
+
+  // Track if we're currently creating markers to prevent re-entry
+  const isCreatingMarkersRef = useRef(false);
+
   // Create markers when properties or dependencies change
   useEffect(() => {
+    // Prevent re-entry during marker creation
+    if (isCreatingMarkersRef.current) return;
+
     if (properties.length > 0 || markers.length > 0) {
+      // Create a signature of current state to detect real changes
+      const propertiesSignature = `${properties.length}-${properties[0]?.id || ''}-${properties[properties.length - 1]?.id || ''}-${selectedPropertyId || ''}-${verifyingPropertyId || ''}-${markersByPropertyId.current.size}`;
+
       // Force recreate all markers if style changed
       const styleChanged =
         prevMarkerStyleRef.current.shape !== markerStyle.shape ||
         prevMarkerStyleRef.current.useAdvancedMarkers !== markerStyle.useAdvancedMarkers;
 
+      // Skip if nothing changed and we have the right number of markers
+      if (!styleChanged && propertiesSignature === lastPropertiesSignatureRef.current && markersByPropertyId.current.size > 0) {
+        return;
+      }
+
+      lastPropertiesSignatureRef.current = propertiesSignature;
       prevMarkerStyleRef.current = { shape: markerStyle.shape, useAdvancedMarkers: markerStyle.useAdvancedMarkers };
 
-      createMarkers(styleChanged);
+      isCreatingMarkersRef.current = true;
+      createMarkers(styleChanged).finally(() => {
+        isCreatingMarkersRef.current = false;
+      });
     }
   }, [properties, map, recentlyCreatedIds, verifyingPropertyId, selectedPropertyId, markerStyle.shape, markerStyle.useAdvancedMarkers, markerLibraryLoaded]);
 

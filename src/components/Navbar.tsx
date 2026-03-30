@@ -340,6 +340,10 @@ export default function Navbar() {
     {
       label: "Search Properties",
       action: () => setSearchModals(prev => ({ ...prev, properties: true }))
+    },
+    {
+      label: "Advanced Search",
+      action: () => navigate('/advanced-property-search')
     }
   ];
 

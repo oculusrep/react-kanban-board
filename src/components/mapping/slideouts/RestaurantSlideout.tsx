@@ -36,6 +36,7 @@ interface Restaurant {
 interface RestaurantSlideoutProps {
   restaurant: Restaurant;
   onClose: () => void;
+  topOffset?: number; // Additional offset from top (e.g., when search bar is visible)
 }
 
 /**
@@ -43,7 +44,7 @@ interface RestaurantSlideoutProps {
  * Separated from the main PinDetailsSlideout to avoid importing unnecessary dependencies
  * that cause bundling conflicts with Google Maps.
  */
-const RestaurantSlideout: React.FC<RestaurantSlideoutProps> = ({ restaurant, onClose }) => {
+const RestaurantSlideout: React.FC<RestaurantSlideoutProps> = ({ restaurant, onClose, topOffset = 0 }) => {
   const [fullTrends, setFullTrends] = useState<RestaurantTrend[]>([]);
   const [loadingTrends, setLoadingTrends] = useState(false);
 
@@ -125,10 +126,10 @@ const RestaurantSlideout: React.FC<RestaurantSlideoutProps> = ({ restaurant, onC
 
   return (
     <div
-      className="fixed top-0 right-0 h-full bg-white border-l border-gray-200 shadow-xl transition-all duration-300 z-40 flex flex-col w-[500px]"
+      className="fixed top-0 right-0 h-full bg-white border-l border-gray-200 shadow-xl transition-all duration-300 z-[10001] flex flex-col w-[500px]"
       style={{
-        top: '67px',
-        height: 'calc(100vh - 67px - 20px)',
+        top: `${67 + topOffset}px`,
+        height: `calc(100vh - ${67 + topOffset}px - 20px)`,
       }}
     >
       <div className="p-6 overflow-y-auto">

@@ -15,6 +15,7 @@ import PortalResetPasswordPage from "./pages/portal/PortalResetPasswordPage";
 import KanbanBoard from "./components/KanbanBoard";
 import DealDetailsPage from "./pages/DealDetailsPage";
 import PropertyDetailsPage from "./pages/PropertyDetailsPage";
+import AdvancedPropertySearchPage from "./pages/AdvancedPropertySearchPage";
 import ContactDetailsPage from "./pages/ContactDetailsPage";
 import ClientDetailsPage from "./pages/ClientDetailsPage";
 import SiteSubmitDetailsPage from "./pages/SiteSubmitDetailsPage";
@@ -143,6 +144,7 @@ function App() {
           <Route path="assignment/:assignmentId" element={<CoachRoute><AssignmentDetailsPage /></CoachRoute>} />
           <Route path="property/new" element={<CoachRoute><NewPropertyPage /></CoachRoute>} />
           <Route path="property/:propertyId" element={<CoachRoute><PropertyDetailsPage /></CoachRoute>} />
+          <Route path="advanced-property-search" element={<CoachRoute><AdvancedPropertySearchPage /></CoachRoute>} />
           <Route path="contact/:contactId" element={<CoachRoute><ContactDetailsPage /></CoachRoute>} />
           <Route path="client/:clientId" element={<CoachRoute><ClientDetailsPage /></CoachRoute>} />
           <Route path="site-submit/:siteSubmitId" element={<CoachRoute><SiteSubmitDetailsPage /></CoachRoute>} />

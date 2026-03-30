@@ -34,6 +34,8 @@ import BulkAddPropertiesModal from '../components/modals/BulkAddPropertiesModal'
 import { geocodingService } from '../services/geocodingService';
 import SiteSubmitFormModal from '../components/SiteSubmitFormModal';
 import InlinePropertyCreationModal from '../components/mapping/InlinePropertyCreationModal';
+import PropertySearchBar from '../components/mapping/PropertySearchBar';
+import PropertySearchResultsTable from '../components/advanced-search/PropertySearchResultsTable';
 import SiteSubmitLegend from '../components/mapping/SiteSubmitLegend';
 import ContactFormModal from '../components/ContactFormModal';
 import { STAGE_CATEGORIES } from '../components/mapping/SiteSubmitPin';
@@ -116,6 +118,13 @@ const MappingPageContent: React.FC = () => {
     gridSize: 60,
     maxZoom: 15
   });
+
+  // Property Search state
+  const [showPropertySearch, setShowPropertySearch] = useState(false);
+  const [propertySearchResults, setPropertySearchResults] = useState<any[]>([]);
+  const [propertySearchViewMode, setPropertySearchViewMode] = useState<'map' | 'table'>('map');
+  const [propertySearchTablePage, setPropertySearchTablePage] = useState(1);
+  const [propertySearchSortConfig, setPropertySearchSortConfig] = useState<{ field: string; direction: 'asc' | 'desc' }>({ field: 'property_name', direction: 'asc' });
 
   // Marker style configuration (for AdvancedMarkerElement)
   const [markerStyle, setMarkerStyle] = useState<{
@@ -2181,9 +2190,75 @@ const MappingPageContent: React.FC = () => {
             </div>
           </div>
 
+          {/* Property Search Bar - horizontal filter bar at top */}
+          {showPropertySearch && (
+            <PropertySearchBar
+              isOpen={showPropertySearch}
+              onClose={() => {
+                setShowPropertySearch(false);
+                setPropertySearchResults([]);
+                setPropertySearchViewMode('map');
+              }}
+              onPropertySelect={(propertyId: string) => {
+                // Find the full property data from search results
+                const property = propertySearchResults.find(p => p.id === propertyId);
+                if (property) {
+                  setSelectedPinData(property);
+                  setSelectedPinType('property');
+                  setIsPinDetailsOpen(true);
+                }
+              }}
+              onResultsChange={(results: any[]) => {
+                setPropertySearchResults(results);
+                if (results.length > 0 && mapInstance) {
+                  const bounds = new google.maps.LatLngBounds();
+                  results.forEach((prop: any) => {
+                    const lat = prop.verified_latitude || prop.latitude;
+                    const lng = prop.verified_longitude || prop.longitude;
+                    if (lat && lng) {
+                      bounds.extend({ lat: Number(lat), lng: Number(lng) });
+                    }
+                  });
+                  if (!bounds.isEmpty()) {
+                    mapInstance.fitBounds(bounds, { top: 100, right: 50, bottom: 50, left: 50 });
+                  }
+                }
+              }}
+              viewMode={propertySearchViewMode === 'table' ? 'table' : 'map'}
+              onViewModeChange={(mode: 'map' | 'table') => {
+                setPropertySearchViewMode(mode);
+              }}
+            />
+          )}
 
-          {/* Full Screen Map */}
-          <div className="flex-1 relative">
+          {/* Property Search Results Table - shown when in table view mode */}
+          {showPropertySearch && propertySearchViewMode === 'table' && propertySearchResults.length > 0 && (
+            <div className="flex-1 overflow-hidden bg-white border-b border-gray-200">
+              <PropertySearchResultsTable
+                results={propertySearchResults}
+                columns={['property_name', 'address', 'city', 'state', 'property_record_type', 'building_sqft', 'available_sqft', 'rent_psf', 'nnn_psf']}
+                sortConfig={propertySearchSortConfig}
+                onSortChange={(config) => setPropertySearchSortConfig(config)}
+                onRowClick={(propertyId) => {
+                  // Find the full property data from search results
+                  const property = propertySearchResults.find(p => p.id === propertyId);
+                  if (property) {
+                    setSelectedPinData(property);
+                    setSelectedPinType('property');
+                    setIsPinDetailsOpen(true);
+                  }
+                }}
+                selectedPropertyId={selectedPinType === 'property' && selectedPinData ? selectedPinData.id : null}
+                currentPage={propertySearchTablePage}
+                pageSize={50}
+                totalCount={propertySearchResults.length}
+                onPageChange={(page) => setPropertySearchTablePage(page)}
+              />
+            </div>
+          )}
+
+          {/* Full Screen Map - hidden when in table view */}
+          <div className={`flex-1 relative ${showPropertySearch && propertySearchViewMode === 'table' ? 'hidden' : ''}`}>
             <GoogleMapContainer
               height="100%"
               width="100%"
@@ -2210,6 +2285,23 @@ const MappingPageContent: React.FC = () => {
                 style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}
               >
                 ✏️
+              </button>
+
+              {/* Search Button */}
+              <button
+                onClick={() => setShowPropertySearch(true)}
+                className={`h-10 px-3 rounded shadow flex items-center space-x-1 text-sm font-medium ${
+                  showPropertySearch
+                    ? 'bg-[#002147] text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-100'
+                }`}
+                title="Property Search"
+                style={{ boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <span>Search</span>
               </button>
 
               {/* Layers Button */}
@@ -2451,10 +2543,12 @@ const MappingPageContent: React.FC = () => {
             )}
 
             {/* Property Layer - Connected to Layer Manager */}
+            {/* When searching, show ONLY search results; otherwise show normal layer */}
             <PropertyLayer
               map={mapInstance}
-              isVisible={layerState.properties?.isVisible || false}
+              isVisible={propertySearchResults.length > 0 ? true : (layerState.properties?.isVisible || false)}
               loadingConfig={propertyLoadingConfig}
+              customProperties={propertySearchResults.length > 0 ? propertySearchResults : undefined}
               recentlyCreatedIds={recentlyCreatedPropertyIds}
               verifyingPropertyId={verifyingPropertyId}
               selectedPropertyId={selectedPinType === 'property' && selectedPinData ? selectedPinData.id : null}
@@ -2599,143 +2693,6 @@ const MappingPageContent: React.FC = () => {
               />
             ))}
 
-            {/* Pin Details Slideout - for properties only */}
-            {selectedPinType === 'property' && (
-              <PinDetailsSlideout
-                isOpen={isPinDetailsOpen}
-                onClose={handlePinDetailsClose}
-                onOpen={() => setIsPinDetailsOpen(true)}
-                data={selectedPinData}
-                type={selectedPinType}
-                onVerifyLocation={handleVerifyLocation}
-                isVerifyingLocation={!!verifyingPropertyId}
-                onViewPropertyDetails={handleViewPropertyDetails}
-                onCenterOnPin={handleCenterOnPin}
-                onDataUpdate={handlePinDataUpdate}
-                rightOffset={isPropertyDetailsOpen ? 500 : isSiteSubmitDetailsOpen ? 500 : isContactFormOpen ? 450 : 0}
-                onEditContact={handleEditContact}
-                onDeleteProperty={handleDeleteProperty}
-                onDeleteSiteSubmit={handleDeleteSiteSubmit}
-                onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
-                onCreateSiteSubmit={handleCreateSiteSubmitForProperty}
-                submitsRefreshTrigger={submitsRefreshTrigger}
-                initialTab={pinDetailsInitialTab}
-              />
-            )}
-
-            {/* Site Submit Sidebar - for site submits */}
-            {selectedPinType === 'site_submit' && (
-              <SiteSubmitSidebar
-                siteSubmitId={selectedPinData?.id || null}
-                isOpen={isPinDetailsOpen}
-                onClose={handlePinDetailsClose}
-                context="map"
-                isEditable={true}
-                onStatusChange={(siteSubmitId, newStageId, newStageName) => {
-                  // Update selected data with new stage
-                  if (selectedPinData) {
-                    handlePinDataUpdate({
-                      ...selectedPinData,
-                      submit_stage_id: newStageId,
-                      submit_stage: { id: newStageId, name: newStageName },
-                    });
-                  }
-                  // Refresh the site submit layer to update marker icon
-                  refreshLayer('site_submits');
-                }}
-                onCenterOnPin={handleCenterOnPin}
-                onDeleteSiteSubmit={handleDeleteSiteSubmit}
-                onViewProperty={(propertyId) => handleViewPropertyDetails({ id: propertyId })}
-                onDataUpdate={handlePinDataUpdate}
-                rightOffset={isPropertyDetailsOpen ? 500 : isSiteSubmitDetailsOpen ? 500 : isContactFormOpen ? 450 : 0}
-              />
-            )}
-
-            {/* Restaurant Slideout - lightweight component for restaurant details */}
-            {selectedPinType === 'restaurant' && isPinDetailsOpen && selectedPinData && (
-              <RestaurantSlideout
-                restaurant={selectedPinData as any}
-                onClose={handlePinDetailsClose}
-              />
-            )}
-
-            {/* Property Details Slideout (for "View Full Details" from site submit) */}
-            <PinDetailsSlideout
-              isOpen={isPropertyDetailsOpen}
-              onClose={handlePropertyDetailsClose}
-              onOpen={() => setIsPropertyDetailsOpen(true)}
-              data={selectedPropertyData}
-              type="property"
-              onVerifyLocation={handleVerifyLocation}
-              isVerifyingLocation={!!verifyingPropertyId}
-              onCenterOnPin={handleCenterOnPin}
-              onDataUpdate={handlePropertyDataUpdate}
-              rightOffset={isContactFormOpen ? 450 : 0} // Shift left when contact form is open (450px = contact form width)
-              onEditContact={handleEditContact}
-              onDeleteProperty={handleDeleteProperty}
-              onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
-              onCreateSiteSubmit={handleCreateSiteSubmitForProperty}
-              submitsRefreshTrigger={submitsRefreshTrigger}
-            />
-
-            {/* Site Submit Details Sidebar (for viewing site submit from property) */}
-            <SiteSubmitSidebar
-              siteSubmitId={selectedSiteSubmitData?.id || null}
-              isOpen={isSiteSubmitDetailsOpen}
-              onClose={handleSiteSubmitDetailsClose}
-              context="map"
-              isEditable={true}
-              onStatusChange={(siteSubmitId, newStageId, newStageName) => {
-                if (selectedSiteSubmitData) {
-                  handleSiteSubmitDataUpdate({
-                    ...selectedSiteSubmitData,
-                    submit_stage_id: newStageId,
-                    submit_stage: { id: newStageId, name: newStageName },
-                  });
-                }
-                // Refresh the site submit layer to update marker icon
-                refreshLayer('site_submits');
-              }}
-              onCenterOnPin={handleCenterOnPin}
-              onDeleteSiteSubmit={handleDeleteSiteSubmit}
-              onViewProperty={(propertyId) => handleViewPropertyDetails({ id: propertyId })}
-              onDataUpdate={handleSiteSubmitDataUpdate}
-              onSiteSubmitCreated={(newSiteSubmit) => {
-                // Update the selected data with the newly created site submit
-                setSelectedSiteSubmitData(newSiteSubmit as any);
-                // Refresh the submits list
-                setSubmitsRefreshTrigger(prev => prev + 1);
-                // Refresh the site_submits layer on the map
-                refreshLayer('site_submits');
-              }}
-              initialData={selectedSiteSubmitData?._isNew ? {
-                _isNew: true,
-                property_id: selectedSiteSubmitData.property_id,
-                property: selectedSiteSubmitData.property,
-                property_unit_id: selectedSiteSubmitData.property_unit_id,
-                submit_stage_id: selectedSiteSubmitData.submit_stage_id,
-                submit_stage: selectedSiteSubmitData.submit_stage,
-                site_submit_name: selectedSiteSubmitData.site_submit_name,
-                client_id: selectedSiteSubmitData.client_id,
-              } : undefined}
-              rightOffset={0}
-            />
-
-            {/* Contact Form Slideout (for editing contacts from property slideout) */}
-            <ContactFormModal
-              isOpen={isContactFormOpen}
-              onClose={handleContactFormClose}
-              propertyId={contactPropertyId || undefined}
-              contactId={editingContactId || undefined}
-              rightOffset={0} // Always at the far right edge
-              showBackdrop={false} // No backdrop so property slideout remains visible
-              onSave={() => {
-                handleContactFormClose();
-              }}
-              onUpdate={() => {
-                handleContactFormClose();
-              }}
-            />
 
             {/* Property Creation Modal */}
             {pinDropCoordinates && (
@@ -2991,6 +2948,150 @@ const MappingPageContent: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Sidebars - Rendered outside map container so they're visible in both map and table views */}
+      {/* Pin Details Slideout - for properties only */}
+      {selectedPinType === 'property' && (
+        <PinDetailsSlideout
+          isOpen={isPinDetailsOpen}
+          onClose={handlePinDetailsClose}
+          onOpen={() => setIsPinDetailsOpen(true)}
+          data={selectedPinData}
+          type={selectedPinType}
+          onVerifyLocation={handleVerifyLocation}
+          isVerifyingLocation={!!verifyingPropertyId}
+          onViewPropertyDetails={handleViewPropertyDetails}
+          onCenterOnPin={handleCenterOnPin}
+          onDataUpdate={handlePinDataUpdate}
+          rightOffset={isPropertyDetailsOpen ? 500 : isSiteSubmitDetailsOpen ? 500 : isContactFormOpen ? 450 : 0}
+          topOffset={showPropertySearch ? 45 : 0}
+          onEditContact={handleEditContact}
+          onDeleteProperty={handleDeleteProperty}
+          onDeleteSiteSubmit={handleDeleteSiteSubmit}
+          onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
+          onCreateSiteSubmit={handleCreateSiteSubmitForProperty}
+          submitsRefreshTrigger={submitsRefreshTrigger}
+          initialTab={pinDetailsInitialTab}
+        />
+      )}
+
+      {/* Site Submit Sidebar - for site submits */}
+      {selectedPinType === 'site_submit' && (
+        <SiteSubmitSidebar
+          siteSubmitId={selectedPinData?.id || null}
+          isOpen={isPinDetailsOpen}
+          onClose={handlePinDetailsClose}
+          context="map"
+          isEditable={true}
+          onStatusChange={(siteSubmitId, newStageId, newStageName) => {
+            // Update selected data with new stage
+            if (selectedPinData) {
+              handlePinDataUpdate({
+                ...selectedPinData,
+                submit_stage_id: newStageId,
+                submit_stage: { id: newStageId, name: newStageName },
+              });
+            }
+            // Refresh the site submit layer to update marker icon
+            refreshLayer('site_submits');
+          }}
+          onCenterOnPin={handleCenterOnPin}
+          onDeleteSiteSubmit={handleDeleteSiteSubmit}
+          onViewProperty={(propertyId) => handleViewPropertyDetails({ id: propertyId })}
+          onDataUpdate={handlePinDataUpdate}
+          rightOffset={isPropertyDetailsOpen ? 500 : isSiteSubmitDetailsOpen ? 500 : isContactFormOpen ? 450 : 0}
+          topOffset={showPropertySearch ? 45 : 0}
+        />
+      )}
+
+      {/* Restaurant Slideout - lightweight component for restaurant details */}
+      {selectedPinType === 'restaurant' && isPinDetailsOpen && selectedPinData && (
+        <RestaurantSlideout
+          restaurant={selectedPinData as any}
+          onClose={handlePinDetailsClose}
+          topOffset={showPropertySearch ? 45 : 0}
+        />
+      )}
+
+      {/* Property Details Slideout (for "View Full Details" from site submit) */}
+      <PinDetailsSlideout
+        isOpen={isPropertyDetailsOpen}
+        onClose={handlePropertyDetailsClose}
+        onOpen={() => setIsPropertyDetailsOpen(true)}
+        data={selectedPropertyData}
+        type="property"
+        onVerifyLocation={handleVerifyLocation}
+        isVerifyingLocation={!!verifyingPropertyId}
+        onCenterOnPin={handleCenterOnPin}
+        onDataUpdate={handlePropertyDataUpdate}
+        rightOffset={isContactFormOpen ? 450 : 0}
+        topOffset={showPropertySearch ? 45 : 0}
+        onEditContact={handleEditContact}
+        onDeleteProperty={handleDeleteProperty}
+        onViewSiteSubmitDetails={handleViewSiteSubmitDetails}
+        onCreateSiteSubmit={handleCreateSiteSubmitForProperty}
+        submitsRefreshTrigger={submitsRefreshTrigger}
+      />
+
+      {/* Site Submit Details Sidebar (for viewing site submit from property) */}
+      <SiteSubmitSidebar
+        siteSubmitId={selectedSiteSubmitData?.id || null}
+        isOpen={isSiteSubmitDetailsOpen}
+        onClose={handleSiteSubmitDetailsClose}
+        context="map"
+        isEditable={true}
+        onStatusChange={(siteSubmitId, newStageId, newStageName) => {
+          if (selectedSiteSubmitData) {
+            handleSiteSubmitDataUpdate({
+              ...selectedSiteSubmitData,
+              submit_stage_id: newStageId,
+              submit_stage: { id: newStageId, name: newStageName },
+            });
+          }
+          // Refresh the site submit layer to update marker icon
+          refreshLayer('site_submits');
+        }}
+        onCenterOnPin={handleCenterOnPin}
+        onDeleteSiteSubmit={handleDeleteSiteSubmit}
+        onViewProperty={(propertyId) => handleViewPropertyDetails({ id: propertyId })}
+        onDataUpdate={handleSiteSubmitDataUpdate}
+        onSiteSubmitCreated={(newSiteSubmit) => {
+          // Update the selected data with the newly created site submit
+          setSelectedSiteSubmitData(newSiteSubmit as any);
+          // Refresh the submits list
+          setSubmitsRefreshTrigger(prev => prev + 1);
+          // Refresh the site_submits layer on the map
+          refreshLayer('site_submits');
+        }}
+        initialData={selectedSiteSubmitData?._isNew ? {
+          _isNew: true,
+          property_id: selectedSiteSubmitData.property_id,
+          property: selectedSiteSubmitData.property,
+          property_unit_id: selectedSiteSubmitData.property_unit_id,
+          submit_stage_id: selectedSiteSubmitData.submit_stage_id,
+          submit_stage: selectedSiteSubmitData.submit_stage,
+          site_submit_name: selectedSiteSubmitData.site_submit_name,
+          client_id: selectedSiteSubmitData.client_id,
+        } : undefined}
+        rightOffset={0}
+        topOffset={showPropertySearch ? 45 : 0}
+      />
+
+      {/* Contact Form Slideout (for editing contacts from property slideout) */}
+      <ContactFormModal
+        isOpen={isContactFormOpen}
+        onClose={handleContactFormClose}
+        propertyId={contactPropertyId || undefined}
+        contactId={editingContactId || undefined}
+        rightOffset={0}
+        showBackdrop={false}
+        onSave={() => {
+          handleContactFormClose();
+        }}
+        onUpdate={() => {
+          handleContactFormClose();
+        }}
+      />
 
       {/* Toast Notification */}
       <Toast
