@@ -82,8 +82,16 @@ const createQBReferralEntry = async (paymentId: string, paidDate: string): Promi
     });
 
     if (error) {
-      console.error('QBO referral entry error:', error);
-      return { success: false, error: error.message };
+      // FunctionsHttpError has the actual response in error.context
+      let errorMessage = error.message;
+      try {
+        const errorBody = await error.context?.json?.();
+        if (errorBody?.error) {
+          errorMessage = errorBody.error;
+        }
+      } catch { /* ignore parse errors */ }
+      console.error('QBO referral entry error:', errorMessage);
+      return { success: false, error: errorMessage };
     }
 
     return data as QBReferralResult;
@@ -170,20 +178,15 @@ export const usePaymentDisbursement = () => {
         if (result.success) {
           console.log(`✅ Created QBO Bill #${result.qbDocNumber} for referral fee to ${result.referralPayee}`);
         } else if (result.error?.includes('No referral payee')) {
-          // No referral payee set on deal - this is expected for deals without referral fees
-          console.log('ℹ️ No referral payee set on this deal - skipping QBO bill');
+          alert('QBO bill was not created: No referral payee is set on this deal. Please add a referral payee to the deal first.');
         } else if (result.error?.includes('No QuickBooks commission mapping configured')) {
-          // No mapping configured - warn but don't block
-          console.warn(`⚠️ No QBO mapping for referral partner: ${result.error}`);
+          alert(`QBO bill was not created: This referral partner needs to be set up in the QuickBooks section of OVIS Settings before a bill can be created.\n\n${result.error}`);
         } else if (result.error?.includes('QuickBooks is not connected')) {
-          // QBO not connected - silent fail
-          console.log('ℹ️ QuickBooks not connected - skipping referral fee bill');
+          alert('QBO bill was not created: QuickBooks is not connected. Please connect QuickBooks in OVIS Settings.');
         } else if (result.error?.includes('Referral fee amount is 0')) {
-          // No referral fee amount - expected for some deals
-          console.log('ℹ️ Referral fee amount is 0 - skipping QBO bill');
+          alert('QBO bill was not created: The referral fee amount is $0 for this payment.');
         } else {
-          // Other error - log but don't block the paid status update
-          console.error('⚠️ Failed to create QBO referral entry:', result.error);
+          alert(`QBO bill was not created: ${result.error}`);
         }
       }
 
