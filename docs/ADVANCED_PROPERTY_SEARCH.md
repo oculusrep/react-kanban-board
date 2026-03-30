@@ -2,14 +2,73 @@
 
 ## Overview
 
-The Advanced Property Search is a powerful search hub that allows users to perform complex, ad-hoc queries on property data with any combination of AND/OR filter conditions. Results can be viewed in a table, on a map, or in a split view combining both.
+The Advanced Property Search provides two interfaces for searching property data:
+
+1. **Property Search Bar** - A horizontal filter bar at the top of the mapping page for quick, inline searches
+2. **Advanced Search Page** - A dedicated full-page search hub with complex filter groups (AND/OR logic)
+
+Both interfaces support filtering properties by various fields, viewing results in table or map format, and saving searches for reuse.
 
 ## Access
 
+### Property Search Bar (Mapping Page)
+- **Location**: Mapping page > Click "Search" button in the top action bar
+- **Description**: Horizontal filter bar that appears at the top of the map, allowing quick property searches without leaving the map view
+
+### Advanced Search Page
 - **Location**: Properties dropdown menu > "Advanced Search"
 - **Route**: `/advanced-property-search`
+- **Description**: Full-page search interface with complex filter group logic
 
-## Features
+---
+
+## Property Search Bar (Mapping Page)
+
+The Property Search Bar is a streamlined horizontal filter interface designed for quick property searches directly on the mapping page.
+
+### Features
+
+- **Inline Filtering**: Add filters without leaving the map view
+- **Quick Filter Types**:
+  - Text fields (contains search)
+  - Number range fields (min/max values)
+  - Boolean toggles (Yes/No)
+  - Select dropdowns (e.g., Property Record Type)
+- **Active Filter Pills**: Visual display of applied filters with remove buttons
+- **View Mode Toggle**: Switch between Map, Table, or Split view
+- **Saved Searches**: Save and load search configurations
+
+### Supported Fields
+
+**Standard Fields:**
+- Property Name, Address, City, State, Property Type
+- Building Sqft, Available Sqft, Rent PSF, NNN PSF
+- End Cap, Drive-Thru, Patio, Inline, 2nd Gen Restaurant
+
+### View Modes
+
+1. **Map View**: Full map with property pins for filtered results
+2. **Table View**: Compact results table with pagination
+3. **Split View**: Side-by-side table and map
+
+### Technical Implementation
+
+- Uses React Portal (`ReactDOM.createPortal`) for filter dropdowns to escape stacking contexts
+- Dropdowns render directly to `document.body` with maximum z-index (2147483647)
+- Dynamic width for number-range inputs (20rem) vs standard inputs (16rem)
+- Sidebars receive `topOffset` prop to shift down when search bar is visible
+
+### Bidirectional Selection
+
+- Click a table row → Map pin highlights + Property sidebar opens
+- Click a map pin → Table row highlights + Property sidebar opens
+- Property sidebar appears with z-index 10001 (above search bar at z-index 10000)
+
+---
+
+## Advanced Search Page
+
+The Advanced Search Page provides a full-featured query builder for complex property searches.
 
 ### Query Builder
 
@@ -162,25 +221,34 @@ supabase/migrations/20260326_create_saved_search_table.sql
 ```
 src/
 ├── pages/
-│   └── AdvancedPropertySearchPage.tsx
+│   ├── AdvancedPropertySearchPage.tsx    # Standalone advanced search page
+│   └── MappingPageNew.tsx                # Main mapping page (integrates PropertySearchBar)
 ├── components/
+│   ├── mapping/
+│   │   ├── PropertySearchBar.tsx         # Horizontal search bar for mapping page
+│   │   ├── PropertySearchOverlay.tsx     # @deprecated - replaced by PropertySearchBar
+│   │   └── slideouts/
+│   │       ├── PinDetailsSlideout.tsx    # Property detail sidebar (supports topOffset)
+│   │       └── RestaurantSlideout.tsx    # Restaurant detail sidebar (supports topOffset)
+│   ├── shared/
+│   │   └── SiteSubmitSidebar.tsx         # Site submit sidebar (supports topOffset)
 │   └── advanced-search/
-│       ├── QueryBuilder.tsx
-│       ├── FilterGroup.tsx
-│       ├── FilterCondition.tsx
-│       ├── FieldSelector.tsx
-│       ├── OperatorSelector.tsx
-│       ├── ValueInput.tsx
-│       ├── PropertySearchResultsTable.tsx
-│       ├── ColumnCustomizer.tsx
-│       ├── SavedSearchSelector.tsx
-│       ├── SaveSearchModal.tsx
-│       └── SearchMapView.tsx
+│       ├── QueryBuilder.tsx              # Filter groups container
+│       ├── FilterGroup.tsx               # Single group (AND conditions)
+│       ├── FilterCondition.tsx           # Field + Operator + Value row
+│       ├── FieldSelector.tsx             # Field dropdown
+│       ├── OperatorSelector.tsx          # Operator dropdown
+│       ├── ValueInput.tsx                # Dynamic value input
+│       ├── PropertySearchResultsTable.tsx # Results table with expandable units
+│       ├── ColumnCustomizer.tsx          # Column selection popover
+│       ├── SavedSearchSelector.tsx       # Saved search dropdown
+│       ├── SaveSearchModal.tsx           # Save/edit modal
+│       └── SearchMapView.tsx             # Map integration wrapper
 ├── hooks/
-│   ├── useAdvancedPropertySearch.ts
-│   └── useSavedSearches.ts
+│   ├── useAdvancedPropertySearch.ts      # Search execution logic
+│   └── useSavedSearches.ts               # Saved search CRUD
 └── types/
-    └── advanced-search.ts
+    └── advanced-search.ts                # TypeScript types & constants
 ```
 
 ## Usage Examples
@@ -211,3 +279,36 @@ src/
 3. Enter min: "20"
 4. Enter max: "30"
 5. Click "Search"
+
+---
+
+## Z-Index and Stacking Context Reference
+
+The Property Search Bar uses specific z-index values to ensure proper layering:
+
+| Element | Z-Index | Notes |
+|---------|---------|-------|
+| Search Bar | 10000 | Fixed at top of mapping page |
+| Filter Dropdowns | 2147483647 | Maximum z-index, rendered via React Portal to document.body |
+| Property Sidebars | 10001 | Above search bar to ensure visibility |
+| Map Controls | Default | Below search bar dropdowns |
+
+### Sidebar Offset System
+
+When the Property Search Bar is visible, sidebars receive a `topOffset` prop:
+- `topOffset={45}` when search bar is visible
+- `topOffset={0}` when search bar is hidden
+
+This shifts the sidebar down to prevent overlap with the search bar.
+
+---
+
+## Changelog
+
+### 2026-03-30
+- Added horizontal Property Search Bar to mapping page
+- Implemented React Portal for filter dropdowns to escape stacking contexts
+- Added topOffset prop to PinDetailsSlideout, SiteSubmitSidebar, RestaurantSlideout
+- Fixed table row click to open property sidebar with full data
+- Fixed number-range input field overflow in filter dropdown
+- Marked PropertySearchOverlay.tsx as deprecated (replaced by PropertySearchBar.tsx)
