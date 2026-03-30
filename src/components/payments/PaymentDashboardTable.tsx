@@ -194,7 +194,7 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
       alert('Failed to update payment status');
     } else {
       // Pin the payment so it stays visible for completing broker/referral payments
-      onPaymentUpdate(received ? paymentId : undefined);
+      onPaymentUpdate(paymentId);
     }
   };
 
@@ -225,8 +225,9 @@ const PaymentDashboardTable: React.FC<PaymentDashboardTableProps> = ({
       return;
     }
 
-    // Refresh parent data to ensure consistency
-    onPaymentUpdate();
+    // Pin the payment so it stays visible after filter re-evaluation
+    // This prevents the record from disappearing when a field change moves it out of the current filter
+    onPaymentUpdate(paymentId);
 
     // If updating estimated date and payment is linked to QB, sync the due date
     if (field === 'payment_date_estimated' && payment?.qb_invoice_id && value) {
