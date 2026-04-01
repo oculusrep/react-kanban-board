@@ -5,6 +5,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { ModernMarkerStyles } from '../utils/modernMarkers';
 import RestaurantPopup from '../popups/RestaurantPopup';
 import { useLayerManager } from './LayerManager';
+import { useAuth } from '../../../contexts/AuthContext';
 
 // Restaurant location type matching database schema
 interface RestaurantLocation {
@@ -80,6 +81,7 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
   onRestaurantsLoaded,
   clusterConfig
 }) => {
+  const { user } = useAuth();
   const [restaurants, setRestaurants] = useState<RestaurantWithTrends[]>([]);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
   const [clusterer, setClusterer] = useState<MarkerClusterer | null>(null);
@@ -135,6 +137,7 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
         this.root.render(
           <RestaurantPopup
             restaurant={restaurant}
+            user={user}
             onViewDetails={() => {
               if (onPinClick) {
                 onPinClick(restaurant);

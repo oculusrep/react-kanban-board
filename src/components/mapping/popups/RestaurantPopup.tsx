@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
+import { User } from '@supabase/supabase-js';
 import { RestaurantWithTrends, PlacerRank } from '../layers/RestaurantLayer';
 import { supabase } from '../../../lib/supabaseClient';
-import { useAuth } from '../../../contexts/AuthContext';
 
 interface RestaurantPopupProps {
   restaurant: RestaurantWithTrends;
+  user: User | null;
   onViewDetails?: () => void;
   onClose: () => void;
   onPlacerRankAdded?: (rank: PlacerRank) => void;
@@ -12,11 +13,11 @@ interface RestaurantPopupProps {
 
 const RestaurantPopup: React.FC<RestaurantPopupProps> = ({
   restaurant,
+  user,
   onViewDetails,
   onClose,
   onPlacerRankAdded
 }) => {
-  const { user } = useAuth();
   const [showRankForm, setShowRankForm] = useState(false);
   const [rankPosition, setRankPosition] = useState('');
   const [rankTotal, setRankTotal] = useState('');
