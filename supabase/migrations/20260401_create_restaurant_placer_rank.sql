@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS restaurant_placer_rank (
   -- Date of ranking (date only, no time)
   rank_date DATE NOT NULL DEFAULT CURRENT_DATE,
 
+  -- Optional URL to the Placer.ai page for this restaurant
+  placer_url TEXT,
+
   -- User who entered the rank (captured automatically)
   entered_by UUID NOT NULL REFERENCES auth.users(id),
 

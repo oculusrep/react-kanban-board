@@ -43,6 +43,7 @@ interface PlacerRank {
   rank_total: number;
   rank_percentage: number;
   rank_date: string;
+  placer_url: string | null;
   entered_by: string;
   created_at: string;
 }
@@ -98,6 +99,9 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
     restaurant: RestaurantWithTrends;
     overlay: google.maps.OverlayView;
   } | null>(null);
+
+  // Flag to prevent map click from closing popup immediately after marker click
+  const justClickedMarkerRef = useRef(false);
 
   // Track if we're currently fetching to prevent duplicate requests
   const isFetchingRef = useRef(false);
@@ -188,6 +192,11 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
 
     const closePopup = (event: google.maps.MapMouseEvent) => {
       console.log('🍔 Map clicked, checking if we should close popup');
+      // Ignore map click that came from a marker click
+      if (justClickedMarkerRef.current) {
+        console.log('🍔 Ignoring map click - marker was just clicked');
+        return;
+      }
       // Don't close popup if this restaurant is currently selected in sidebar
       if (openPopup && openPopup.restaurant.store_no !== selectedStoreNo) {
         console.log('🍔 Closing popup due to map click');
@@ -502,6 +511,8 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
           }
 
           // Stop event propagation to prevent map click
+          justClickedMarkerRef.current = true;
+          setTimeout(() => { justClickedMarkerRef.current = false; }, 200);
           if (event.domEvent) {
             event.domEvent.stopPropagation();
             if (event.domEvent.preventDefault) {

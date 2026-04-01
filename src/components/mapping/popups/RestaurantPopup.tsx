@@ -26,9 +26,12 @@ const RestaurantPopup: React.FC<RestaurantPopupProps> = ({
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   });
+  const [placerUrl, setPlacerUrl] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [currentRank, setCurrentRank] = useState<PlacerRank | null | undefined>(restaurant.latest_placer_rank);
+  const [isEditingUrl, setIsEditingUrl] = useState(false);
+  const [editUrl, setEditUrl] = useState(currentRank?.placer_url || '');
 
   // Format sales for display
   const formatSales = (salesK: number | null) => {
@@ -91,6 +94,7 @@ const RestaurantPopup: React.FC<RestaurantPopupProps> = ({
           rank_total: total,
           rank_percentage: pct,
           rank_date: rankDate,
+          placer_url: placerUrl.trim() || null,
           entered_by: user.id
         })
         .select()
@@ -100,10 +104,12 @@ const RestaurantPopup: React.FC<RestaurantPopupProps> = ({
 
       // Update local state with new rank
       setCurrentRank(data);
+      setEditUrl(data.placer_url || '');
       setShowRankForm(false);
       setRankPosition('');
       setRankTotal('');
       setRankPercentage('');
+      setPlacerUrl('');
 
       if (onPlacerRankAdded) {
         onPlacerRankAdded(data);
@@ -197,6 +203,67 @@ const RestaurantPopup: React.FC<RestaurantPopupProps> = ({
               <div className="text-xs text-gray-500 mt-0.5">
                 {formatDate(currentRank.rank_date)}
               </div>
+              {/* Placer URL */}
+              <div className="mt-1">
+                {isEditingUrl ? (
+                  <div className="flex gap-1">
+                    <input
+                      type="url"
+                      value={editUrl}
+                      onChange={(e) => setEditUrl(e.target.value)}
+                      placeholder="https://placer.ai/..."
+                      className="flex-1 text-xs border border-gray-300 rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-500"
+                    />
+                    <button
+                      onClick={async () => {
+                        const { data, error } = await supabase
+                          .from('restaurant_placer_rank')
+                          .update({ placer_url: editUrl.trim() || null })
+                          .eq('id', currentRank.id)
+                          .select()
+                          .single();
+                        if (!error && data) {
+                          setCurrentRank(data);
+                          setIsEditingUrl(false);
+                        }
+                      }}
+                      className="text-xs text-green-600 hover:text-green-800 font-medium"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => { setEditUrl(currentRank.placer_url || ''); setIsEditingUrl(false); }}
+                      className="text-xs text-gray-400 hover:text-gray-600"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : currentRank.placer_url ? (
+                  <div className="flex items-center gap-1">
+                    <a
+                      href={currentRank.placer_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:text-blue-800 underline truncate"
+                    >
+                      Open in Placer
+                    </a>
+                    <button
+                      onClick={() => setIsEditingUrl(true)}
+                      className="text-xs text-gray-400 hover:text-gray-600 flex-shrink-0"
+                    >
+                      ✎
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setIsEditingUrl(true)}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    + Add Placer URL
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -259,6 +326,16 @@ const RestaurantPopup: React.FC<RestaurantPopupProps> = ({
                     className="w-full text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:border-blue-500"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block">Placer URL (optional)</label>
+                <input
+                  type="url"
+                  value={placerUrl}
+                  onChange={(e) => setPlacerUrl(e.target.value)}
+                  placeholder="https://placer.ai/..."
+                  className="w-full text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:border-blue-500"
+                />
               </div>
               {saveError && (
                 <div className="text-xs text-red-600">{saveError}</div>
