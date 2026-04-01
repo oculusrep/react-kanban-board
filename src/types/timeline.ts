@@ -98,6 +98,9 @@ export interface UnifiedTimelineItem {
   client_id?: string | null;
   property_id?: string | null;
 
+  // Edit tracking
+  is_edited?: boolean;
+
   // Migration tracking (for migrated property notes)
   is_migrated?: boolean;
   migrated_from?: string | null;        // 'property_notes' or 'description'

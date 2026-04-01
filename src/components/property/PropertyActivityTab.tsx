@@ -22,8 +22,10 @@ import {
   PaperAirplaneIcon,
   XMarkIcon,
   TrashIcon,
+  PencilIcon,
 } from '@heroicons/react/24/outline';
 import { supabase } from '../../lib/supabaseClient';
+import { useAuth } from '../../contexts/AuthContext';
 import { usePropertyTimeline, PropertyActivityType } from '../../hooks/usePropertyTimeline';
 import { UnifiedTimelineItem } from '../../types/timeline';
 
@@ -149,12 +151,36 @@ interface PropertyActivityTabProps {
   onNoteAdded?: (note: UnifiedTimelineItem) => void;
 }
 
+// Generate a consistent color for a user based on their id
+function getUserColor(identifier: string) {
+  const colors = [
+    '#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444',
+    '#06b6d4', '#ec4899', '#6366f1', '#14b8a6', '#f97316',
+  ];
+  let hash = 0;
+  for (let i = 0; i < identifier.length; i++) {
+    hash = identifier.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function getUserInitials(name: string) {
+  const parts = name.split(' ').filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return name.substring(0, 2).toUpperCase();
+}
+
 export default function PropertyActivityTab({
   propertyId,
   propertyContacts = [],
   onActivityLogged,
   onNoteAdded,
 }: PropertyActivityTabProps) {
+  const { user, userRole } = useAuth();
+  const isAdmin = userRole === 'admin';
+
   // Timeline hook
   const {
     items: timelineItems,
@@ -162,6 +188,7 @@ export default function PropertyActivityTab({
     refresh: refreshTimeline,
     addNote,
     logActivity,
+    updateNote,
     deleteItem,
   } = usePropertyTimeline({ propertyId });
 
@@ -173,10 +200,12 @@ export default function PropertyActivityTab({
   const [newNoteText, setNewNoteText] = useState('');
   const [addingNote, setAddingNote] = useState(false);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState('');
 
   // Handle deleting an activity or note
   const handleDeleteItem = async (item: UnifiedTimelineItem) => {
-    // Don't allow deleting emails (they come from Gmail)
     if (item.source === 'email') return;
 
     setDeletingItemId(item.id);
@@ -184,6 +213,17 @@ export default function PropertyActivityTab({
       await deleteItem(item);
     } finally {
       setDeletingItemId(null);
+      setConfirmDeleteId(null);
+    }
+  };
+
+  // Handle editing a note
+  const handleEditNote = async (noteId: string) => {
+    if (!editContent.trim()) return;
+    const success = await updateNote(noteId, editContent);
+    if (success) {
+      setEditingItemId(null);
+      setEditContent('');
     }
   };
 
@@ -354,88 +394,191 @@ export default function PropertyActivityTab({
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {timelineItems.map((item) => (
-              <div key={item.id} className="p-4 hover:bg-gray-50 group">
-                <div className="flex items-start gap-3">
-                  {/* Activity icon */}
-                  <div className={`p-2 rounded-full ${
-                    item.type === 'note' ? 'bg-gray-100 text-gray-600' :
-                    ['email_received'].includes(item.type) ? 'bg-green-100 text-green-600' :
-                    ['email', 'email_sent'].includes(item.type) ? 'bg-blue-100 text-blue-600' :
-                    'bg-blue-100 text-blue-600'
-                  }`}>
-                    <ActivityIcon type={item.type} className="w-4 h-4" />
-                  </div>
+            {timelineItems.map((item) => {
+              const isOwn = item.created_by === user?.id;
+              const canEdit = item.source === 'property_note' && isOwn;
+              const canDelete = item.source !== 'email' && (isOwn || isAdmin);
+              const isEditing = editingItemId === item.id;
+              const isConfirmingDelete = confirmDeleteId === item.id;
 
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-sm font-medium ${
-                          item.type === 'note' ? 'text-gray-700' :
-                          ['email_received'].includes(item.type) ? 'text-green-700' :
-                          'text-blue-700'
-                        }`}>
-                          {getActivityLabel(item)}
+              return (
+                <div key={item.id} className="p-4 hover:bg-gray-50 group relative">
+                  <div className="flex items-start gap-3">
+                    {/* Avatar for notes, icon for activities */}
+                    {item.type === 'note' && item.created_by ? (
+                      <div
+                        className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold"
+                        style={{ backgroundColor: getUserColor(item.created_by) }}
+                      >
+                        {getUserInitials(item.created_by_name || 'U')}
+                      </div>
+                    ) : (
+                      <div className={`p-2 rounded-full ${
+                        item.type === 'note' ? 'bg-gray-100 text-gray-600' :
+                        ['email_received'].includes(item.type) ? 'bg-green-100 text-green-600' :
+                        'bg-blue-100 text-blue-600'
+                      }`}>
+                        <ActivityIcon type={item.type} className="w-4 h-4" />
+                      </div>
+                    )}
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {/* Author name for notes */}
+                          {item.type === 'note' && item.created_by_name && (
+                            <span className="text-sm font-semibold text-gray-900">
+                              {item.created_by_name}
+                            </span>
+                          )}
+                          {item.type !== 'note' && (
+                            <span className={`text-sm font-medium ${
+                              ['email_received'].includes(item.type) ? 'text-green-700' :
+                              'text-blue-700'
+                            }`}>
+                              {getActivityLabel(item)}
+                            </span>
+                          )}
+                          {/* Migrated badge */}
+                          {item.is_migrated && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
+                              Migrated
+                            </span>
+                          )}
+                          {/* Edited indicator */}
+                          {item.is_edited && (
+                            <span className="text-xs text-gray-400">(edited)</span>
+                          )}
+                          {/* Contact name if linked */}
+                          {item.contact_name && (
+                            <span className="text-sm text-gray-500">
+                              with {item.contact_name}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
+
+                          {/* Action buttons - hover to show */}
+                          {(canEdit || canDelete) && !isEditing && !isConfirmingDelete && (
+                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {canEdit && (
+                                <button
+                                  onClick={() => {
+                                    setEditingItemId(item.id);
+                                    setEditContent(item.content || '');
+                                    setConfirmDeleteId(null);
+                                  }}
+                                  className="p-1 rounded text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+                                  title="Edit"
+                                >
+                                  <PencilIcon className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button
+                                  onClick={() => setConfirmDeleteId(item.id)}
+                                  className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                  title="Delete"
+                                >
+                                  <TrashIcon className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Delete confirmation */}
+                          {isConfirmingDelete && (
+                            <div className="flex items-center bg-white border border-red-200 rounded-lg shadow-sm overflow-hidden">
+                              <span className="px-2 py-1 text-xs text-red-600">Delete?</span>
+                              <button
+                                onClick={() => handleDeleteItem(item)}
+                                disabled={deletingItemId === item.id}
+                                className="px-2 py-1 text-xs text-white bg-red-500 hover:bg-red-600 disabled:opacity-50"
+                              >
+                                Yes
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteId(null)}
+                                className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
+                              >
+                                No
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Email subject */}
+                      {(item.email_subject || item.subject) && (
+                        <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject || item.subject}</p>
+                      )}
+
+                      {/* Edit mode for notes */}
+                      {isEditing ? (
+                        <div className="mt-1">
+                          <textarea
+                            value={editContent}
+                            onChange={(e) => setEditContent(e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-blue-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                            rows={2}
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleEditNote(item.id);
+                              }
+                              if (e.key === 'Escape') {
+                                setEditingItemId(null);
+                                setEditContent('');
+                              }
+                            }}
+                          />
+                          <div className="flex gap-2 mt-1">
+                            <button
+                              onClick={() => handleEditNote(item.id)}
+                              className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingItemId(null);
+                                setEditContent('');
+                              }}
+                              className="px-2 py-1 text-xs text-gray-600 hover:text-gray-800"
+                            >
+                              Cancel
+                            </button>
+                            <span className="text-[10px] text-gray-400 ml-auto self-center">
+                              Enter to save, Esc to cancel
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Note content or activity notes */
+                        item.content && (
+                          <p className="text-sm text-gray-600 whitespace-pre-wrap mt-1">{item.content}</p>
+                        )
+                      )}
+
+                      {/* Source attribution */}
+                      {item.source === 'email' && (
+                        <span className="inline-flex items-center mt-1 text-xs text-gray-400">
+                          {item.direction === 'inbound' ? 'received' : 'sent'} via Gmail
                         </span>
-                        {/* Migrated badge */}
-                        {item.is_migrated && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
-                            Migrated
-                          </span>
-                        )}
-                        {/* Contact name if linked */}
-                        {item.contact_name && (
-                          <span className="text-sm text-gray-500">
-                            with {item.contact_name}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
-                        {/* Delete button - only show for deletable items (not emails) */}
-                        {item.source !== 'email' && (
-                          <button
-                            onClick={() => handleDeleteItem(item)}
-                            disabled={deletingItemId === item.id}
-                            className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50"
-                            title="Delete"
-                          >
-                            {deletingItemId === item.id ? (
-                              <div className="w-3.5 h-3.5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <TrashIcon className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        )}
-                      </div>
+                      )}
+                      {item.is_migrated && item.migrated_from && (
+                        <span className="inline-flex items-center mt-1 text-xs text-gray-400">
+                          from {item.migrated_from === 'property_notes' ? 'Property Notes' : 'Description'} field
+                        </span>
+                      )}
                     </div>
-
-                    {/* Email subject */}
-                    {(item.email_subject || item.subject) && (
-                      <p className="text-sm text-gray-800 font-medium mt-1">{item.email_subject || item.subject}</p>
-                    )}
-
-                    {/* Note content or activity notes */}
-                    {item.content && (
-                      <p className="text-sm text-gray-600 whitespace-pre-wrap mt-1">{item.content}</p>
-                    )}
-
-                    {/* Source attribution */}
-                    {item.source === 'email' && (
-                      <span className="inline-flex items-center mt-1 text-xs text-gray-400">
-                        {item.direction === 'inbound' ? 'received' : 'sent'} via Gmail
-                      </span>
-                    )}
-                    {item.is_migrated && item.migrated_from && (
-                      <span className="inline-flex items-center mt-1 text-xs text-gray-400">
-                        from {item.migrated_from === 'property_notes' ? 'Property Notes' : 'Description'} field
-                      </span>
-                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

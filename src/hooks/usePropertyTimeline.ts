@@ -43,6 +43,7 @@ interface UsePropertyTimelineReturn {
     type: PropertyActivityType,
     options?: { notes?: string; contactId?: string; emailSubject?: string }
   ) => Promise<UnifiedTimelineItem | null>;
+  updateNote: (noteId: string, content: string) => Promise<boolean>;
   deleteItem: (item: UnifiedTimelineItem) => Promise<boolean>;
 }
 
@@ -122,7 +123,7 @@ export function usePropertyTimeline(
       if (sources.includes('property_note')) {
         const { data: notes, error: noteError } = await supabase
           .from('property_note')
-          .select('id, content, is_migrated, migrated_from, created_at, created_by')
+          .select('id, content, is_migrated, migrated_from, is_edited, created_at, created_by')
           .eq('property_id', propertyId)
           .order('created_at', { ascending: false });
 
@@ -140,6 +141,7 @@ export function usePropertyTimeline(
               property_id: propertyId,
               is_migrated: n.is_migrated || false,
               migrated_from: n.migrated_from,
+              is_edited: n.is_edited || false,
             });
           });
         }
@@ -195,6 +197,29 @@ export function usePropertyTimeline(
           });
         }
       }
+
+      // Resolve author names for all items with created_by
+      const authorIds = [...new Set(allItems.map(i => i.created_by).filter(Boolean))] as string[];
+      const authorMap: Record<string, string> = {};
+
+      if (authorIds.length > 0) {
+        const { data: userData } = await supabase
+          .from('user')
+          .select('auth_user_id, first_name, last_name')
+          .in('auth_user_id', authorIds);
+
+        (userData || []).forEach(u => {
+          const name = `${u.first_name || ''} ${u.last_name || ''}`.trim();
+          if (name) authorMap[u.auth_user_id] = name;
+        });
+      }
+
+      // Attach author names
+      allItems.forEach(item => {
+        if (item.created_by && authorMap[item.created_by]) {
+          item.created_by_name = authorMap[item.created_by];
+        }
+      });
 
       // Sort all items by created_at descending
       allItems.sort(
@@ -268,6 +293,17 @@ export function usePropertyTimeline(
 
         if (insertError) throw insertError;
 
+        // Resolve current user's name
+        const { data: userData } = await supabase
+          .from('user')
+          .select('first_name, last_name')
+          .eq('auth_user_id', user.id)
+          .single();
+
+        const authorName = userData
+          ? `${userData.first_name || ''} ${userData.last_name || ''}`.trim()
+          : undefined;
+
         const newItem: UnifiedTimelineItem = {
           id: data.id,
           source: 'property_note',
@@ -275,6 +311,7 @@ export function usePropertyTimeline(
           created_at: data.created_at,
           content: data.content,
           created_by: data.created_by,
+          created_by_name: authorName || undefined,
           property_id: propertyId,
         };
 
@@ -351,6 +388,37 @@ export function usePropertyTimeline(
     [propertyId]
   );
 
+  // Update note mutation
+  const updateNote = useCallback(
+    async (noteId: string, content: string): Promise<boolean> => {
+      try {
+        const { error: updateError } = await supabase
+          .from('property_note')
+          .update({
+            content: content.trim(),
+            is_edited: true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', noteId);
+
+        if (updateError) throw updateError;
+
+        setItems((prev) =>
+          prev.map((i) =>
+            i.id === noteId
+              ? { ...i, content: content.trim(), is_edited: true }
+              : i
+          )
+        );
+        return true;
+      } catch (err) {
+        console.error('Error updating property note:', err);
+        return false;
+      }
+    },
+    []
+  );
+
   // Delete item mutation
   const deleteItem = useCallback(
     async (item: UnifiedTimelineItem): Promise<boolean> => {
@@ -397,6 +465,7 @@ export function usePropertyTimeline(
     refresh: fetchTimeline,
     addNote,
     logActivity,
+    updateNote,
     deleteItem,
   };
 }
