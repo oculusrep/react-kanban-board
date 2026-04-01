@@ -34,10 +34,23 @@ interface RestaurantTrend {
   curr_annual_sls_k: number | null;
 }
 
+// Placer rank type matching database schema
+interface PlacerRank {
+  id: string;
+  store_no: string;
+  rank_position: number;
+  rank_total: number;
+  rank_percentage: number;
+  rank_date: string;
+  entered_by: string;
+  created_at: string;
+}
+
 // Combined type for display
 type RestaurantWithTrends = RestaurantLocation & {
   trends?: RestaurantTrend[];
   latest_trend?: RestaurantTrend | null;
+  latest_placer_rank?: PlacerRank | null;
 };
 
 interface RestaurantLayerProps {
@@ -281,6 +294,21 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
       // Full trend history will be loaded on-demand when user clicks a restaurant
       const storeNos = locations.map(loc => loc.store_no);
 
+      // Fetch latest placer ranks for these stores
+      const { data: placerRanks } = await supabase
+        .from('restaurant_placer_rank')
+        .select('*')
+        .in('store_no', storeNos)
+        .order('rank_date', { ascending: false });
+
+      // Build map of latest placer rank per store
+      const latestPlacerByStore = new Map<string, PlacerRank>();
+      placerRanks?.forEach(rank => {
+        if (!latestPlacerByStore.has(rank.store_no)) {
+          latestPlacerByStore.set(rank.store_no, rank);
+        }
+      });
+
       // Use the materialized view for latest trends (much faster)
       const { data: latestTrends, error: latestError } = await supabase
         .from('restaurant_latest_trends')
@@ -311,8 +339,9 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
           const latestTrend = latestByStore.get(loc.store_no) || null;
           return {
             ...loc,
-            trends: latestTrend ? [latestTrend] : [], // Only include latest for now
-            latest_trend: latestTrend
+            trends: latestTrend ? [latestTrend] : [],
+            latest_trend: latestTrend,
+            latest_placer_rank: latestPlacerByStore.get(loc.store_no) || null
           };
         });
 
@@ -325,8 +354,9 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
           const latestTrend = latestTrends?.find(t => t.store_no === loc.store_no) || null;
           return {
             ...loc,
-            trends: latestTrend ? [latestTrend] : [], // Only include latest for fast loading
-            latest_trend: latestTrend
+            trends: latestTrend ? [latestTrend] : [],
+            latest_trend: latestTrend,
+            latest_placer_rank: latestPlacerByStore.get(loc.store_no) || null
           };
         });
 
@@ -714,4 +744,4 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
 };
 
 export default RestaurantLayer;
-export type { RestaurantLocation, RestaurantTrend, RestaurantWithTrends };
+export type { RestaurantLocation, RestaurantTrend, RestaurantWithTrends, PlacerRank };
