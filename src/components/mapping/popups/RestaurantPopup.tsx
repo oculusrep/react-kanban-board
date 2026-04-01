@@ -1,17 +1,34 @@
-import React from 'react';
-import { RestaurantWithTrends } from '../layers/RestaurantLayer';
+import React, { useState } from 'react';
+import { RestaurantWithTrends, PlacerRank } from '../layers/RestaurantLayer';
+import { supabase } from '../../../lib/supabaseClient';
+import { useAuth } from '../../../contexts/AuthContext';
 
 interface RestaurantPopupProps {
   restaurant: RestaurantWithTrends;
   onViewDetails?: () => void;
   onClose: () => void;
+  onPlacerRankAdded?: (rank: PlacerRank) => void;
 }
 
 const RestaurantPopup: React.FC<RestaurantPopupProps> = ({
   restaurant,
   onViewDetails,
-  onClose
+  onClose,
+  onPlacerRankAdded
 }) => {
+  const { user } = useAuth();
+  const [showRankForm, setShowRankForm] = useState(false);
+  const [rankPosition, setRankPosition] = useState('');
+  const [rankTotal, setRankTotal] = useState('');
+  const [rankPercentage, setRankPercentage] = useState('');
+  const [rankDate, setRankDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [currentRank, setCurrentRank] = useState<PlacerRank | null | undefined>(restaurant.latest_placer_rank);
+
   // Format sales for display
   const formatSales = (salesK: number | null) => {
     if (salesK === null || salesK === undefined) return 'N/A';
@@ -25,19 +42,81 @@ const RestaurantPopup: React.FC<RestaurantPopupProps> = ({
   };
 
   const latestTrend = restaurant.latest_trend;
-  const coords = restaurant.verified_latitude && restaurant.verified_longitude
-    ? { verified: true }
-    : { verified: false };
 
   // Format ZIP code without decimal
   const formatZip = (zip: string | null) => {
     if (!zip) return '';
-    // Remove decimal places if present
     return zip.split('.')[0];
   };
 
+  // Format date for display (MM/DD/YYYY)
+  const formatDate = (dateStr: string) => {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      return `${parts[1]}/${parts[2]}/${parts[0]}`;
+    }
+    return dateStr;
+  };
+
+  const handleSaveRank = async () => {
+    if (!user) {
+      setSaveError('You must be logged in');
+      return;
+    }
+
+    const pos = parseInt(rankPosition);
+    const total = parseInt(rankTotal);
+    const pct = parseFloat(rankPercentage);
+
+    if (isNaN(pos) || isNaN(total) || isNaN(pct)) {
+      setSaveError('Please fill in all rank fields');
+      return;
+    }
+
+    if (pos < 0 || total <= 0) {
+      setSaveError('Invalid rank values');
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+
+    try {
+      const { data, error } = await supabase
+        .from('restaurant_placer_rank')
+        .insert({
+          store_no: restaurant.store_no,
+          rank_position: pos,
+          rank_total: total,
+          rank_percentage: pct,
+          rank_date: rankDate,
+          entered_by: user.id
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update local state with new rank
+      setCurrentRank(data);
+      setShowRankForm(false);
+      setRankPosition('');
+      setRankTotal('');
+      setRankPercentage('');
+
+      if (onPlacerRankAdded) {
+        onPlacerRankAdded(data);
+      }
+    } catch (err: any) {
+      console.error('Error saving placer rank:', err);
+      setSaveError(err.message || 'Failed to save');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
-    <div className="bg-white rounded-lg shadow-lg border border-gray-200 w-64">
+    <div className="bg-white rounded-lg shadow-lg border border-gray-200 w-72">
       {/* Header */}
       <div className="bg-red-600 text-white px-3 py-2 rounded-t-lg flex items-center justify-between">
         <h3 className="font-semibold text-sm truncate capitalize">
@@ -91,6 +170,109 @@ const RestaurantPopup: React.FC<RestaurantPopupProps> = ({
           </>
         )}
 
+        {/* Placer Rank Section */}
+        <div className="border-t border-gray-200 pt-2 mt-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-gray-700">Placer Rank</span>
+            <button
+              onClick={() => setShowRankForm(!showRankForm)}
+              className="text-xs text-blue-600 hover:text-blue-800"
+            >
+              {showRankForm ? 'Cancel' : currentRank ? 'Add New' : 'Add'}
+            </button>
+          </div>
+
+          {/* Display current rank */}
+          {currentRank && !showRankForm && (
+            <div className="bg-gray-50 rounded px-2 py-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-gray-900">
+                  {currentRank.rank_position}/{currentRank.rank_total}
+                </span>
+                <span className="text-sm font-semibold text-[#4A6B94]">
+                  {currentRank.rank_percentage}%
+                </span>
+              </div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                {formatDate(currentRank.rank_date)}
+              </div>
+            </div>
+          )}
+
+          {/* No rank yet */}
+          {!currentRank && !showRankForm && (
+            <div className="text-xs text-gray-400 italic">No rank entered</div>
+          )}
+
+          {/* Add rank form */}
+          {showRankForm && (
+            <div className="space-y-1.5 mt-1">
+              <div className="flex gap-1.5">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500 block">Rank #</label>
+                  <input
+                    type="number"
+                    value={rankPosition}
+                    onChange={(e) => setRankPosition(e.target.value)}
+                    placeholder="45"
+                    className="w-full text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:border-blue-500"
+                    min="0"
+                  />
+                </div>
+                <div className="flex items-end pb-1 text-gray-400 text-xs">/</div>
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500 block">Total</label>
+                  <input
+                    type="number"
+                    value={rankTotal}
+                    onChange={(e) => setRankTotal(e.target.value)}
+                    placeholder="300"
+                    className="w-full text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:border-blue-500"
+                    min="1"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-1.5">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500 block">Percentage</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={rankPercentage}
+                      onChange={(e) => setRankPercentage(e.target.value)}
+                      placeholder="85.5"
+                      step="0.1"
+                      className="w-full text-xs border border-gray-300 rounded px-1.5 py-1 pr-5 focus:outline-none focus:border-blue-500"
+                      min="0"
+                      max="100"
+                    />
+                    <span className="absolute right-1.5 top-1 text-xs text-gray-400">%</span>
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500 block">Date</label>
+                  <input
+                    type="date"
+                    value={rankDate}
+                    onChange={(e) => setRankDate(e.target.value)}
+                    className="w-full text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+              {saveError && (
+                <div className="text-xs text-red-600">{saveError}</div>
+              )}
+              <button
+                onClick={handleSaveRank}
+                disabled={isSaving}
+                className="w-full bg-[#002147] hover:bg-[#003366] text-white font-medium py-1 px-2 rounded text-xs transition-colors disabled:opacity-50"
+              >
+                {isSaving ? 'Saving...' : 'Save Rank'}
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Year Built - at bottom in gray */}
         {restaurant.yr_built && (
           <div className="text-xs text-gray-500 text-center mt-2">
@@ -109,7 +291,7 @@ const RestaurantPopup: React.FC<RestaurantPopupProps> = ({
             }}
             className="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-1.5 px-3 rounded text-xs transition-colors"
           >
-            📊 View Trend Details
+            View Trend Details
           </button>
         </div>
       )}
