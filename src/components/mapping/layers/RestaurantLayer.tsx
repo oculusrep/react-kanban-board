@@ -100,9 +100,6 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
     overlay: google.maps.OverlayView;
   } | null>(null);
 
-  // Timestamp to prevent map click from closing popup immediately after marker click
-  const markerClickTimeRef = useRef(0);
-
   // Track if we're currently fetching to prevent duplicate requests
   const isFetchingRef = useRef(false);
   const lastFetchBoundsRef = useRef<string | null>(null);
@@ -190,27 +187,27 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
   useEffect(() => {
     if (!map || !openPopup) return;
 
-    const closePopup = (event: google.maps.MapMouseEvent) => {
-      console.log('🍔 Map clicked, checking if we should close popup');
-      // Ignore map click that came from a marker click (within 500ms)
-      if (Date.now() - markerClickTimeRef.current < 500) {
-        console.log('🍔 Ignoring map click - marker was just clicked');
-        return;
-      }
-      // Don't close popup if this restaurant is currently selected in sidebar
-      if (openPopup && openPopup.restaurant.store_no !== selectedStoreNo) {
-        console.log('🍔 Closing popup due to map click');
-        openPopup.overlay.setMap(null);
-        setOpenPopup(null);
-      } else {
-        console.log('🍔 Keeping popup open - restaurant is selected');
-      }
-    };
-
-    const listener = map.addListener('click', closePopup);
+    // Delay registering the listener so it doesn't catch the same click that opened the popup
+    let listener: google.maps.MapsEventListener | null = null;
+    const timeoutId = setTimeout(() => {
+      listener = map.addListener('click', () => {
+        console.log('🍔 Map clicked, checking if we should close popup');
+        // Don't close popup if this restaurant is currently selected in sidebar
+        if (openPopup && openPopup.restaurant.store_no !== selectedStoreNo) {
+          console.log('🍔 Closing popup due to map click');
+          openPopup.overlay.setMap(null);
+          setOpenPopup(null);
+        } else {
+          console.log('🍔 Keeping popup open - restaurant is selected');
+        }
+      });
+    }, 500);
 
     return () => {
-      google.maps.event.removeListener(listener);
+      clearTimeout(timeoutId);
+      if (listener) {
+        google.maps.event.removeListener(listener);
+      }
     };
   }, [map, openPopup, selectedStoreNo]);
 
@@ -511,7 +508,6 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
           }
 
           // Stop event propagation to prevent map click
-          markerClickTimeRef.current = Date.now();
           if (event.domEvent) {
             event.domEvent.stopPropagation();
             if (event.domEvent.preventDefault) {
