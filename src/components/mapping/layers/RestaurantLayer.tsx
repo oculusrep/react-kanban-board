@@ -100,8 +100,8 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
     overlay: google.maps.OverlayView;
   } | null>(null);
 
-  // Flag to prevent map click from closing popup immediately after marker click
-  const justClickedMarkerRef = useRef(false);
+  // Timestamp to prevent map click from closing popup immediately after marker click
+  const markerClickTimeRef = useRef(0);
 
   // Track if we're currently fetching to prevent duplicate requests
   const isFetchingRef = useRef(false);
@@ -192,8 +192,8 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
 
     const closePopup = (event: google.maps.MapMouseEvent) => {
       console.log('🍔 Map clicked, checking if we should close popup');
-      // Ignore map click that came from a marker click
-      if (justClickedMarkerRef.current) {
+      // Ignore map click that came from a marker click (within 500ms)
+      if (Date.now() - markerClickTimeRef.current < 500) {
         console.log('🍔 Ignoring map click - marker was just clicked');
         return;
       }
@@ -511,8 +511,7 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
           }
 
           // Stop event propagation to prevent map click
-          justClickedMarkerRef.current = true;
-          setTimeout(() => { justClickedMarkerRef.current = false; }, 200);
+          markerClickTimeRef.current = Date.now();
           if (event.domEvent) {
             event.domEvent.stopPropagation();
             if (event.domEvent.preventDefault) {
