@@ -28,6 +28,7 @@ import ClosedBusinessSearchPanel from '../components/mapping/ClosedBusinessSearc
 import ClosedPlacesLayer from '../components/mapping/layers/ClosedPlacesLayer';
 import { boundaryService, FetchedBoundary } from '../services/boundaryService';
 import { closedPlacesLayerService } from '../services/closedPlacesLayerService';
+import { propertyCache } from '../utils/propertyCache';
 import type { PlacesSearchResult } from '../services/googlePlacesSearchService';
 import AddClosedPlacePropertyModal from '../components/modals/AddClosedPlacePropertyModal';
 import BulkAddPropertiesModal from '../components/modals/BulkAddPropertiesModal';
@@ -1633,6 +1634,9 @@ const MappingPageContent: React.FC = () => {
         setIsPropertyDetailsOpen(false);
         setSelectedPropertyData(null);
       }
+
+      // Remove deleted property from IndexedDB cache so it doesn't reappear
+      await propertyCache.removeCachedProperty(propertyToDelete);
 
       // Refresh the property layer to remove the deleted property from map
       refreshLayer('properties');
