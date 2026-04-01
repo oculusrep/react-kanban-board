@@ -130,6 +130,7 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
 
       onAdd() {
         this.containerDiv = document.createElement('div');
+        this.containerDiv.className = 'restaurant-popup-container';
         this.containerDiv.style.position = 'absolute';
         this.containerDiv.style.zIndex = '1000';
 
@@ -184,30 +185,33 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
   }, [onPinClick]);
 
   // Close open popup when clicking elsewhere (but not if restaurant is selected in sidebar)
+  // Close popup when clicking elsewhere on the map
+  // Uses a DOM-level listener on the map container to properly detect clicks outside the popup
   useEffect(() => {
     if (!map || !openPopup) return;
 
-    // Delay registering the listener so it doesn't catch the same click that opened the popup
-    let listener: google.maps.MapsEventListener | null = null;
+    const mapDiv = map.getDiv();
+    const handleClick = (e: MouseEvent) => {
+      // Check if click is inside the popup container - if so, ignore
+      const target = e.target as HTMLElement;
+      if (target.closest('.restaurant-popup-container')) return;
+
+      // Don't close if this restaurant is currently selected in sidebar
+      if (openPopup.restaurant.store_no === selectedStoreNo) return;
+
+      console.log('🍔 Closing popup due to click outside');
+      openPopup.overlay.setMap(null);
+      setOpenPopup(null);
+    };
+
+    // Delay attaching so we don't catch the click that opened the popup
     const timeoutId = setTimeout(() => {
-      listener = map.addListener('click', () => {
-        console.log('🍔 Map clicked, checking if we should close popup');
-        // Don't close popup if this restaurant is currently selected in sidebar
-        if (openPopup && openPopup.restaurant.store_no !== selectedStoreNo) {
-          console.log('🍔 Closing popup due to map click');
-          openPopup.overlay.setMap(null);
-          setOpenPopup(null);
-        } else {
-          console.log('🍔 Keeping popup open - restaurant is selected');
-        }
-      });
-    }, 500);
+      mapDiv.addEventListener('click', handleClick);
+    }, 300);
 
     return () => {
       clearTimeout(timeoutId);
-      if (listener) {
-        google.maps.event.removeListener(listener);
-      }
+      mapDiv.removeEventListener('click', handleClick);
     };
   }, [map, openPopup, selectedStoreNo]);
 
