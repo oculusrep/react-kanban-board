@@ -197,7 +197,7 @@ const RestaurantPopup: React.FC<RestaurantPopupProps> = ({
                   {currentRank.rank_position}/{currentRank.rank_total}
                 </span>
                 <span className="text-sm font-semibold text-[#4A6B94]">
-                  {currentRank.rank_percentage}%
+                  {Math.round(currentRank.rank_percentage)}%
                 </span>
               </div>
               <div className="text-xs text-gray-500 mt-0.5">
@@ -308,8 +308,8 @@ const RestaurantPopup: React.FC<RestaurantPopupProps> = ({
                       type="number"
                       value={rankPercentage}
                       onChange={(e) => setRankPercentage(e.target.value)}
-                      placeholder="85.5"
-                      step="0.1"
+                      placeholder="85"
+                      step="1"
                       className="w-full text-xs border border-gray-300 rounded px-1.5 py-1 pr-5 focus:outline-none focus:border-blue-500"
                       min="0"
                       max="100"

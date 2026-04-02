@@ -134,6 +134,11 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
         this.containerDiv.style.position = 'absolute';
         this.containerDiv.style.zIndex = '1000';
 
+        // Prevent Google Maps from capturing keyboard/mouse events inside the popup
+        ['mousedown', 'mouseup', 'click', 'dblclick', 'keydown', 'keyup', 'keypress', 'input', 'wheel'].forEach(evt => {
+          this.containerDiv!.addEventListener(evt, (e) => e.stopPropagation());
+        });
+
         // Create React root and render popup
         this.root = ReactDOM.createRoot(this.containerDiv);
         this.root.render(
