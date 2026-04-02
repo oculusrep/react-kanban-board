@@ -189,36 +189,7 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
     return new PopupOverlay(position);
   }, [onPinClick]);
 
-  // Close open popup when clicking elsewhere (but not if restaurant is selected in sidebar)
-  // Close popup when clicking elsewhere on the map
-  // Uses a DOM-level listener on the map container to properly detect clicks outside the popup
-  useEffect(() => {
-    if (!map || !openPopup) return;
-
-    const mapDiv = map.getDiv();
-    const handleClick = (e: MouseEvent) => {
-      // Check if click is inside the popup container - if so, ignore
-      const target = e.target as HTMLElement;
-      if (target.closest('.restaurant-popup-container')) return;
-
-      // Don't close if this restaurant is currently selected in sidebar
-      if (openPopup.restaurant.store_no === selectedStoreNo) return;
-
-      console.log('🍔 Closing popup due to click outside');
-      openPopup.overlay.setMap(null);
-      setOpenPopup(null);
-    };
-
-    // Delay attaching so we don't catch the click that opened the popup
-    const timeoutId = setTimeout(() => {
-      mapDiv.addEventListener('click', handleClick);
-    }, 300);
-
-    return () => {
-      clearTimeout(timeoutId);
-      mapDiv.removeEventListener('click', handleClick);
-    };
-  }, [map, openPopup, selectedStoreNo]);
+  // Popup stays open until user clicks X or clicks another marker — no click-outside close
 
   // Function to get display coordinates (verified takes priority over regular)
   const getDisplayCoordinates = (restaurant: RestaurantLocation) => {
@@ -538,6 +509,10 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
             overlay.setMap(map);
             setOpenPopup({ restaurant, overlay });
             console.log('🍔 Custom popup opened for:', restaurant.chain);
+
+            // Pan map so the popup is fully visible (offset upward since popup renders above marker)
+            map.panTo(position);
+            map.panBy(0, -150);
           }, 10);
         });
 
@@ -692,7 +667,10 @@ const RestaurantLayer: React.FC<RestaurantLayerProps> = ({
         clearTimeout(idleTimeoutRef.current);
       }
       idleTimeoutRef.current = setTimeout(() => {
-        fetchRestaurants();
+        // Skip refetch while popup is open to prevent markers from being recreated
+        if (!openPopupRef.current) {
+          fetchRestaurants();
+        }
       }, 300); // 300ms debounce
     });
 
