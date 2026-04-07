@@ -20,7 +20,7 @@ export interface PlacesSearchResult {
   raw_data?: google.maps.places.PlaceResult;
 }
 
-export type StatusFilter = 'permanently_closed' | 'temporarily_closed' | 'both';
+export type StatusFilter = 'permanently_closed' | 'temporarily_closed' | 'both' | 'operational' | 'all';
 export type GeographyType = 'state' | 'county' | 'city' | 'zip' | 'radius' | 'polygon';
 
 export interface GeographyData {
@@ -364,6 +364,57 @@ class GooglePlacesSearchService {
     return filtered;
   }
 
+  /**
+   * Search for open/operational businesses in a state using Text Search
+   * Simpler strategy than closed search - no "closed" keyword tricks needed
+   */
+  async searchOpenInState(
+    searchTerm: string,
+    stateAbbr: string,
+    queryId?: string
+  ): Promise<PlacesSearchResult[]> {
+    const bounds = this.getStateBounds(stateAbbr);
+    if (!bounds) {
+      throw new Error(`Unknown state: ${stateAbbr}`);
+    }
+
+    const stateName = US_STATES.find(s => s.abbr === stateAbbr)?.name || stateAbbr;
+    const allResults: PlacesSearchResult[] = [];
+
+    // Simple search: chain name + state
+    const query = `${searchTerm} ${stateName}`;
+    console.log(`🔍 Open search: "${query}"`);
+    const results = await this.textSearch(query, bounds, queryId);
+    allResults.push(...results);
+
+    const deduplicated = this.deduplicateResults(allResults);
+    return this.filterByStatus(deduplicated, 'operational');
+  }
+
+  /**
+   * Unified search dispatcher - routes to appropriate strategy based on status filter
+   */
+  async searchInState(
+    searchTerm: string,
+    stateAbbr: string,
+    statusFilter: StatusFilter,
+    queryId?: string
+  ): Promise<PlacesSearchResult[]> {
+    if (statusFilter === 'operational') {
+      return this.searchOpenInState(searchTerm, stateAbbr, queryId);
+    }
+    if (statusFilter === 'all') {
+      // Run both strategies, merge and deduplicate
+      const [openResults, closedResults] = await Promise.all([
+        this.searchOpenInState(searchTerm, stateAbbr, queryId),
+        this.searchClosedInState(searchTerm, stateAbbr, 'both', queryId),
+      ]);
+      return this.deduplicateResults([...openResults, ...closedResults]);
+    }
+    // Closed filters use existing method
+    return this.searchClosedInState(searchTerm, stateAbbr, statusFilter, queryId);
+  }
+
   // --------------------------------------------------------------------------
   // Grid-based Nearby Search (for broader categories)
   // --------------------------------------------------------------------------
@@ -545,6 +596,10 @@ class GooglePlacesSearchService {
             place.business_status === 'CLOSED_PERMANENTLY' ||
             place.business_status === 'CLOSED_TEMPORARILY'
           );
+        case 'operational':
+          return place.business_status === 'OPERATIONAL';
+        case 'all':
+          return true;
         default:
           return true;
       }
@@ -588,7 +643,10 @@ class GooglePlacesSearchService {
    */
   estimateApiCalls(config: PlacesSearchConfig): number {
     if (config.queryType === 'text') {
-      // Text search is typically 1-3 calls depending on results
+      // Operational search needs fewer calls (no "closed" keyword strategies)
+      if (config.statusFilter === 'operational') return 1;
+      if (config.statusFilter === 'all') return 4; // open + closed strategies combined
+      // Text search for closed is typically 2-3 calls depending on results
       return 2;
     }
 

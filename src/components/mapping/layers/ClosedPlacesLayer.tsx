@@ -5,6 +5,8 @@ import {
   createClosedBusinessPermanentIcon,
   createClosedBusinessTemporaryIcon,
   createClosedBusinessSelectedIcon,
+  createOpenBusinessIcon,
+  createOpenBusinessSelectedIcon,
 } from '../utils/modernMarkers';
 import ClosedPlacePopup from '../popups/ClosedPlacePopup';
 import type { PlacesSearchResult } from '../../../services/googlePlacesSearchService';
@@ -126,10 +128,14 @@ const ClosedPlacesLayer: React.FC<ClosedPlacesLayerProps> = ({
 
   // Create cluster renderer with custom styling
   const createClusterRenderer = useCallback(() => {
+    // Determine cluster color based on result mix
+    const hasOperational = results.some(r => r.business_status === 'OPERATIONAL');
+    const hasClosed = results.some(r => r.business_status !== 'OPERATIONAL');
+    const clusterColor = hasOperational && !hasClosed ? '#16A34A' : hasClosed && !hasOperational ? '#DC2626' : '#6B7280';
+
     return {
       render: ({ count, position }: { count: number; position: google.maps.LatLng }) => {
-        // Use red for clusters (most closed places are permanently closed)
-        const color = '#DC2626';
+        const color = clusterColor;
         const svg = `
           <svg fill="${color}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
             <circle cx="120" cy="120" opacity=".6" r="70" />
@@ -152,7 +158,7 @@ const ClosedPlacesLayer: React.FC<ClosedPlacesLayerProps> = ({
         });
       },
     };
-  }, []);
+  }, [results]);
 
   // Initialize clusterer
   useEffect(() => {
@@ -210,11 +216,18 @@ const ClosedPlacesLayer: React.FC<ClosedPlacesLayerProps> = ({
     results.forEach(place => {
       const isSelected = place.place_id === selectedPlaceId;
       const isPermanent = place.business_status === 'CLOSED_PERMANENTLY';
+      const isOperational = place.business_status === 'OPERATIONAL';
 
       // Choose icon based on status and selection
       let markerIcon: google.maps.Icon;
       if (isSelected) {
-        markerIcon = createClosedBusinessSelectedIcon(isPermanent ? 'permanent' : 'temporary', 40);
+        if (isOperational) {
+          markerIcon = createOpenBusinessSelectedIcon(40);
+        } else {
+          markerIcon = createClosedBusinessSelectedIcon(isPermanent ? 'permanent' : 'temporary', 40);
+        }
+      } else if (isOperational) {
+        markerIcon = createOpenBusinessIcon(28);
       } else if (isPermanent) {
         markerIcon = createClosedBusinessPermanentIcon(28);
       } else {
@@ -323,11 +336,18 @@ const ClosedPlacesLayer: React.FC<ClosedPlacesLayerProps> = ({
 
       const isSelected = place.place_id === selectedPlaceId;
       const isPermanent = place.business_status === 'CLOSED_PERMANENTLY';
+      const isOperational = place.business_status === 'OPERATIONAL';
 
       // Update icon
       let markerIcon: google.maps.Icon;
       if (isSelected) {
-        markerIcon = createClosedBusinessSelectedIcon(isPermanent ? 'permanent' : 'temporary', 40);
+        if (isOperational) {
+          markerIcon = createOpenBusinessSelectedIcon(40);
+        } else {
+          markerIcon = createClosedBusinessSelectedIcon(isPermanent ? 'permanent' : 'temporary', 40);
+        }
+      } else if (isOperational) {
+        markerIcon = createOpenBusinessIcon(28);
       } else if (isPermanent) {
         markerIcon = createClosedBusinessPermanentIcon(28);
       } else {

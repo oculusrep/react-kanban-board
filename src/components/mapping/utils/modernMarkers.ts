@@ -221,6 +221,56 @@ export const createClosedBusinessSelectedIcon = (status: 'permanent' | 'temporar
   };
 };
 
+// Open/operational business marker - green pin with checkmark
+export const createOpenBusinessIcon = (size: number = 28): google.maps.Icon => {
+  const color = '#16A34A'; // Green-600
+  const svg = `
+    <svg width="${size}" height="${Math.round(size * 1.25)}" viewBox="0 0 28 35" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Shadow -->
+      <ellipse cx="14" cy="33" rx="6" ry="2" fill="rgba(0,0,0,0.2)"/>
+      <!-- Main pin shape -->
+      <path d="M14 1C7.925 1 3 5.925 3 12C3 19.5 14 32 14 32S25 19.5 25 12C25 5.925 20.075 1 14 1Z"
+            fill="${color}" stroke="white" stroke-width="2"/>
+      <!-- White circle background -->
+      <circle cx="14" cy="12" r="7" fill="white"/>
+      <!-- Checkmark icon -->
+      <path d="M9.5 12L12.5 15L18.5 9" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
+
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(size, Math.round(size * 1.25)),
+    origin: new google.maps.Point(0, 0),
+    anchor: new google.maps.Point(size / 2, Math.round(size * 1.25))
+  };
+};
+
+// Selected open business marker (larger)
+export const createOpenBusinessSelectedIcon = (size: number = 40): google.maps.Icon => {
+  const color = '#16A34A'; // Green-600
+  const svg = `
+    <svg width="${size}" height="${Math.round(size * 1.25)}" viewBox="0 0 40 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Shadow -->
+      <ellipse cx="20" cy="47" rx="8" ry="3" fill="rgba(0,0,0,0.3)"/>
+      <!-- Main pin shape -->
+      <path d="M20 2C11.163 2 4 9.163 4 18C4 28 20 46 20 46S36 28 36 18C36 9.163 28.837 2 20 2Z"
+            fill="${color}" stroke="white" stroke-width="3"/>
+      <!-- White circle background -->
+      <circle cx="20" cy="17" r="10" fill="white"/>
+      <!-- Checkmark icon -->
+      <path d="M13 17L17.5 21.5L27 12" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
+
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(size, Math.round(size * 1.25)),
+    origin: new google.maps.Point(0, 0),
+    anchor: new google.maps.Point(size / 2, Math.round(size * 1.25))
+  };
+};
+
 // Function to create muted Google Places marker styles (subtle, not hidden)
 export const createMutedPlacesStyle = () => {
   return [
@@ -488,6 +538,12 @@ export const ModernMarkerStyles = {
     temporary: () => createClosedBusinessTemporaryIcon(28),
     permanentSelected: () => createClosedBusinessSelectedIcon('permanent', 40),
     temporarySelected: () => createClosedBusinessSelectedIcon('temporary', 40),
+  },
+
+  // For open/operational businesses - green pin markers with checkmark
+  openBusiness: {
+    operational: () => createOpenBusinessIcon(28),
+    operationalSelected: () => createOpenBusinessSelectedIcon(40),
   },
 
   // Alternative styles if you want to try different shapes

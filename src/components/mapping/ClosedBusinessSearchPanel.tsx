@@ -456,7 +456,7 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
               (current, total) => setSearchProgress({ current, total })
             );
           } else {
-            searchResults = await googlePlacesSearchService.searchClosedInState(
+            searchResults = await googlePlacesSearchService.searchInState(
               searchTerm.trim(),
               selectedState,
               statusFilter
@@ -560,8 +560,8 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200">
         <div>
-          <h3 className="font-semibold text-gray-900">Closed Business Search</h3>
-          <p className="text-xs text-gray-500">Find closed businesses via Google Places</p>
+          <h3 className="font-semibold text-gray-900">Business Search</h3>
+          <p className="text-xs text-gray-500">Find businesses by chain via Google Places</p>
         </div>
         <button
           onClick={handleCancel}
@@ -694,7 +694,9 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
-            <option value="both">Both (Permanently & Temporarily)</option>
+            <option value="operational">Open / Operational</option>
+            <option value="all">All Statuses</option>
+            <option value="both">Both Closed (Permanent & Temporary)</option>
             <option value="permanently_closed">Permanently Closed Only</option>
             <option value="temporarily_closed">Temporarily Closed Only</option>
           </select>
@@ -1117,9 +1119,11 @@ const ClosedBusinessSearchPanel: React.FC<ClosedBusinessSearchPanelProps> = ({
                     <span className={`ml-2 px-2 py-0.5 text-xs rounded-full whitespace-nowrap ${
                       place.business_status === 'CLOSED_PERMANENTLY'
                         ? 'bg-red-100 text-red-700'
+                        : place.business_status === 'OPERATIONAL'
+                        ? 'bg-green-100 text-green-700'
                         : 'bg-yellow-100 text-yellow-700'
                     }`}>
-                      {place.business_status === 'CLOSED_PERMANENTLY' ? 'Permanent' : 'Temporary'}
+                      {place.business_status === 'CLOSED_PERMANENTLY' ? 'Permanent' : place.business_status === 'OPERATIONAL' ? 'Open' : 'Temporary'}
                     </span>
                   </div>
                 </div>

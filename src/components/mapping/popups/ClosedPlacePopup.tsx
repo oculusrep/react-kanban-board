@@ -17,6 +17,7 @@ const ClosedPlacePopup: React.FC<ClosedPlacePopupProps> = ({
   showAddButton = true,
 }) => {
   const isPermanent = place.business_status === 'CLOSED_PERMANENTLY';
+  const isOperational = place.business_status === 'OPERATIONAL';
 
   // Format business type for display
   const getBusinessType = () => {
@@ -69,7 +70,7 @@ const ClosedPlacePopup: React.FC<ClosedPlacePopupProps> = ({
   return (
     <div className="bg-white rounded-lg shadow-xl border border-gray-200 w-72 overflow-hidden">
       {/* Header with status */}
-      <div className={`px-4 py-3 ${isPermanent ? 'bg-red-50' : 'bg-yellow-50'}`}>
+      <div className={`px-4 py-3 ${isOperational ? 'bg-green-50' : isPermanent ? 'bg-red-50' : 'bg-yellow-50'}`}>
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0 pr-2">
             <h3 className="font-semibold text-gray-900 truncate">{place.name}</h3>
@@ -90,14 +91,16 @@ const ClosedPlacePopup: React.FC<ClosedPlacePopupProps> = ({
         {/* Status Badge */}
         <div className="mt-2">
           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-            isPermanent
+            isOperational
+              ? 'bg-green-100 text-green-800'
+              : isPermanent
               ? 'bg-red-100 text-red-800'
               : 'bg-yellow-100 text-yellow-800'
           }`}>
             <span className={`w-2 h-2 rounded-full mr-1.5 ${
-              isPermanent ? 'bg-red-500' : 'bg-yellow-500'
+              isOperational ? 'bg-green-500' : isPermanent ? 'bg-red-500' : 'bg-yellow-500'
             }`}></span>
-            {isPermanent ? 'Permanently Closed' : 'Temporarily Closed'}
+            {isOperational ? 'Open' : isPermanent ? 'Permanently Closed' : 'Temporarily Closed'}
           </span>
         </div>
       </div>
