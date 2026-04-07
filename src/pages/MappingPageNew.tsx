@@ -2273,7 +2273,7 @@ const MappingPageContent: React.FC = () => {
 
             {/* Draw and Layers Controls - positioned to the right of GPS/ruler buttons */}
             {/* Hidden when Street View is active to prevent z-index conflicts */}
-            <div className={`absolute top-[10px] left-[240px] z-[1000] flex items-center gap-1 ${isStreetViewActive ? 'hidden' : ''}`}>
+            <div className={`absolute top-[10px] left-[250px] z-[10001] flex items-center gap-1 ${isStreetViewActive ? 'hidden' : ''}`}>
               {/* Quick Draw Button - just pencil icon */}
               <button
                 onClick={() => {
