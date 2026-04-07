@@ -81,7 +81,7 @@ const formatDate = (value: string | null | undefined) => {
 export default function DemographicsModal({ data, onClose }: DemographicsModalProps) {
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50"
+      className="fixed inset-0 z-[10002] flex items-center justify-center bg-black/50"
       onClick={onClose}
     >
       <div
