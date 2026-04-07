@@ -78,3 +78,6 @@ scripts/setUserPassword.js
 # Local Netlify folder
 .netlify
 .env*.local
+
+# Claude startup script
+start-claude.sh
