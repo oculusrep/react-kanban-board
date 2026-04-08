@@ -54,6 +54,14 @@ const ClosedPlacesLayer: React.FC<ClosedPlacesLayerProps> = ({
   const markersMapRef = useRef<Map<string, google.maps.Marker>>(new Map());
   const resultsRef = useRef<Map<string, PlacesSearchResult>>(new Map());
 
+  // Store callbacks in refs to avoid re-creating markers on every parent render
+  const onPlaceClickRef = useRef(onPlaceClick);
+  const onPlaceSelectRef = useRef(onPlaceSelect);
+  const onAddToPropertiesRef = useRef(onAddToProperties);
+  useEffect(() => { onPlaceClickRef.current = onPlaceClick; }, [onPlaceClick]);
+  useEffect(() => { onPlaceSelectRef.current = onPlaceSelect; }, [onPlaceSelect]);
+  useEffect(() => { onAddToPropertiesRef.current = onAddToProperties; }, [onAddToProperties]);
+
   // Keep ref in sync with state
   useEffect(() => {
     openPopupRef.current = openPopup;
@@ -66,7 +74,7 @@ const ClosedPlacesLayer: React.FC<ClosedPlacesLayerProps> = ({
         openPopupRef.current.overlay.setMap(null);
         setOpenPopup(null);
       }
-      onPlaceSelect?.(null);
+      onPlaceSelectRef.current?.(null);
     };
 
     class PopupOverlay extends google.maps.OverlayView {
@@ -90,7 +98,7 @@ const ClosedPlacesLayer: React.FC<ClosedPlacesLayerProps> = ({
           <ClosedPlacePopup
             place={place}
             onClose={onClosePopup}
-            onAddToProperties={onAddToProperties}
+            onAddToProperties={onAddToPropertiesRef.current}
             showAddButton={showAddToProperties}
           />
         );
@@ -124,18 +132,22 @@ const ClosedPlacesLayer: React.FC<ClosedPlacesLayerProps> = ({
     }
 
     return new PopupOverlay(position);
-  }, [onPlaceSelect, onAddToProperties, showAddToProperties]);
+  }, [showAddToProperties]);
 
-  // Create cluster renderer with custom styling
-  const createClusterRenderer = useCallback(() => {
-    // Determine cluster color based on result mix
+  // Compute cluster color from results, memoized to avoid unnecessary clusterer re-init
+  const clusterColor = React.useMemo(() => {
     const hasOperational = results.some(r => r.business_status === 'OPERATIONAL');
     const hasClosed = results.some(r => r.business_status !== 'OPERATIONAL');
-    const clusterColor = hasOperational && !hasClosed ? '#16A34A' : hasClosed && !hasOperational ? '#DC2626' : '#6B7280';
+    return hasOperational && !hasClosed ? '#16A34A' : hasClosed && !hasOperational ? '#DC2626' : '#6B7280';
+  }, [results]);
+  const clusterColorRef = useRef(clusterColor);
+  useEffect(() => { clusterColorRef.current = clusterColor; }, [clusterColor]);
 
+  // Create cluster renderer with custom styling - stable reference
+  const createClusterRenderer = useCallback(() => {
     return {
       render: ({ count, position }: { count: number; position: google.maps.LatLng }) => {
-        const color = clusterColor;
+        const color = clusterColorRef.current;
         const svg = `
           <svg fill="${color}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
             <circle cx="120" cy="120" opacity=".6" r="70" />
@@ -158,7 +170,7 @@ const ClosedPlacesLayer: React.FC<ClosedPlacesLayerProps> = ({
         });
       },
     };
-  }, [results]);
+  }, []);
 
   // Initialize clusterer
   useEffect(() => {
@@ -266,8 +278,8 @@ const ClosedPlacesLayer: React.FC<ClosedPlacesLayerProps> = ({
             setOpenPopup({ placeId: placeData.place_id, overlay });
           }, 10);
 
-          onPlaceClick?.(placeData);
-          onPlaceSelect?.(placeData);
+          onPlaceClickRef.current?.(placeData);
+          onPlaceSelectRef.current?.(placeData);
         }
       });
 
@@ -275,7 +287,7 @@ const ClosedPlacesLayer: React.FC<ClosedPlacesLayerProps> = ({
     });
 
     setMarkers(newMarkers);
-  }, [map, results, selectedPlaceId, onPlaceClick, onPlaceSelect, clusterer, createPopupOverlay]);
+  }, [map, results, clusterer, createPopupOverlay]);
 
   // Update marker visibility and clustering
   useEffect(() => {
@@ -367,14 +379,14 @@ const ClosedPlacesLayer: React.FC<ClosedPlacesLayerProps> = ({
       if (openPopupRef.current) {
         openPopupRef.current.overlay.setMap(null);
         setOpenPopup(null);
-        onPlaceSelect?.(null);
+        onPlaceSelectRef.current?.(null);
       }
     });
 
     return () => {
       google.maps.event.removeListener(clickListener);
     };
-  }, [map, onPlaceSelect]);
+  }, [map]);
 
   // Cleanup on unmount
   useEffect(() => {
