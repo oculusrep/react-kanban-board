@@ -204,19 +204,18 @@ serve(async (req) => {
         rpp: 5,
       };
 
+      // Add search criteria — name-based search, company optional
       if (searchReq.first_name) searchParams.firstName = searchReq.first_name;
       if (searchReq.last_name) searchParams.lastName = searchReq.last_name;
       if (searchReq.email) searchParams.emailAddress = searchReq.email;
+      // Note: companyName as a search param narrows results significantly
+      // Only add it if we have it, but be aware it must match ZoomInfo's records
       if (searchReq.company) searchParams.companyName = searchReq.company;
 
-      console.log(`[ZoomInfo Search] Searching for contact ${searchReq.contact_id}:`, {
-        firstName: searchReq.first_name,
-        lastName: searchReq.last_name,
-        email: searchReq.email,
-        company: searchReq.company,
-      });
+      console.log(`[ZoomInfo Search] Searching for contact ${searchReq.contact_id}:`,
+        JSON.stringify(searchParams));
 
-      const response = await fetch(ZOOMINFO_SEARCH_URL, {
+      let response = await fetch(ZOOMINFO_SEARCH_URL, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -231,8 +230,30 @@ serve(async (req) => {
         return handleApiError(response.status, errorText, { searchParams });
       }
 
-      const data = await response.json();
-      console.log(`[ZoomInfo Search] Found ${data.data?.result?.length || 0} results`);
+      let data = await response.json();
+      console.log(`[ZoomInfo Search] Found ${data.data?.result?.length || 0} results`,
+        JSON.stringify(data));
+
+      // If no results with company, retry without company filter
+      if ((!data.data?.result || data.data.result.length === 0) && searchReq.company) {
+        console.log('[ZoomInfo Search] No results with company filter, retrying without it');
+        const retryParams = { ...searchParams };
+        delete retryParams.companyName;
+
+        const retryResponse = await fetch(ZOOMINFO_SEARCH_URL, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(retryParams),
+        });
+
+        if (retryResponse.ok) {
+          data = await retryResponse.json();
+          console.log(`[ZoomInfo Search] Retry found ${data.data?.result?.length || 0} results`);
+        }
+      }
 
       const matches = (data.data?.result || []).map((person: Record<string, unknown>) => ({
         zoominfo_person_id: person.id,
