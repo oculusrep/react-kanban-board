@@ -1838,9 +1838,14 @@ export default function ProspectingWorkspace() {
 
     setApplyingZoomInfo(true);
     try {
+      // Guard against saving bad profile URLs
+      const profileUrl = selectedZoomInfoMatch.zoominfo_person_id
+        ? `https://app.zoominfo.com/#/apps/person/${selectedZoomInfoMatch.zoominfo_person_id}`
+        : null;
+
       const updateData: Record<string, unknown> = {
-        zoominfo_person_id: selectedZoomInfoMatch.zoominfo_person_id,
-        zoominfo_profile_url: selectedZoomInfoMatch.zoominfo_profile_url,
+        zoominfo_person_id: selectedZoomInfoMatch.zoominfo_person_id || null,
+        zoominfo_profile_url: profileUrl,
         zoominfo_last_enriched_at: new Date().toISOString(),
         zoominfo_data: selectedZoomInfoMatch, // Store full response
       };
