@@ -1,17 +1,23 @@
 /**
  * Hunter ZoomInfo Enrich Edge Function
  *
- * Searches ZoomInfo Person Search API to enrich contact data.
- * Returns potential matches for user review before applying changes.
+ * Two-step flow:
+ *   1. SEARCH (/search/contact) — Find matching contacts (free, no credits)
+ *      Returns basic info + availability flags (hasEmail, hasDirectPhone)
+ *   2. ENRICH (/enrich/contact) — Get full data for a selected match (costs credits)
+ *      Returns email, phone, mobilePhone, jobTitle, companyName, externalUrls
  *
  * Required Supabase Secrets:
  * - ZOOMINFO_USERNAME: Your ZoomInfo account username/email
  * - ZOOMINFO_CLIENT_ID: Your ZoomInfo client ID
  * - ZOOMINFO_PRIVATE_KEY: Your ZoomInfo private key (PEM format)
+ *
+ * API Reference:
+ * - Search output fields: https://api.zoominfo.com/lookup/outputfields/contact/search
+ * - Enrich output fields: https://api.zoominfo.com/lookup/outputfields/contact/enrich
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import * as jose from 'https://deno.land/x/jose@v5.2.0/index.ts';
 
 const corsHeaders = {
@@ -20,7 +26,8 @@ const corsHeaders = {
 };
 
 const ZOOMINFO_AUTH_URL = 'https://api.zoominfo.com/authenticate';
-const ZOOMINFO_API_URL = 'https://api.zoominfo.com/search/contact';
+const ZOOMINFO_SEARCH_URL = 'https://api.zoominfo.com/search/contact';
+const ZOOMINFO_ENRICH_URL = 'https://api.zoominfo.com/enrich/contact';
 
 // Cache for ZoomInfo access token (valid for ~60 min)
 let cachedAccessToken: string | null = null;
@@ -30,20 +37,16 @@ let tokenExpiresAt: number = 0;
  * Normalize PEM key - Supabase secrets may strip newlines
  */
 function normalizePemKey(pem: string): string {
-  // If it already has proper newlines, return as-is
   if (pem.includes('\n')) {
     return pem;
   }
 
-  // Extract the base64 content between headers
   const match = pem.match(/-----BEGIN PRIVATE KEY-----(.*?)-----END PRIVATE KEY-----/);
   if (!match) {
     throw new Error('Invalid PEM format - missing headers');
   }
 
   const base64Content = match[1].replace(/\s/g, '');
-
-  // Split into 64-character lines (PEM standard)
   const lines = base64Content.match(/.{1,64}/g) || [];
 
   return `-----BEGIN PRIVATE KEY-----\n${lines.join('\n')}\n-----END PRIVATE KEY-----`;
@@ -51,69 +54,53 @@ function normalizePemKey(pem: string): string {
 
 /**
  * Get ZoomInfo access token using PKI authentication
- * Based on ZoomInfo's official Python client implementation
  */
 async function getZoomInfoAccessToken(username: string, clientId: string, privateKeyPem: string): Promise<string> {
-  // Return cached token if still valid (with 5 min buffer)
   if (cachedAccessToken && Date.now() < tokenExpiresAt - 300000) {
     return cachedAccessToken;
   }
 
   console.log('[ZoomInfo] Generating new access token via PKI auth');
 
-  try {
-    // Normalize the PEM key (restore newlines if stripped)
-    const normalizedPem = normalizePemKey(privateKeyPem);
+  const normalizedPem = normalizePemKey(privateKeyPem);
+  const privateKey = await jose.importPKCS8(normalizedPem, 'RS256');
 
-    // Import the private key using jose
-    const privateKey = await jose.importPKCS8(normalizedPem, 'RS256');
+  const now = Math.floor(Date.now() / 1000);
+  const jwt = await new jose.SignJWT({
+    aud: 'enterprise_api',
+    client_id: clientId,
+    username: username,
+  })
+    .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+    .setIssuer('api-client@zoominfo.com')
+    .setIssuedAt(now)
+    .setExpirationTime(now + 300)
+    .sign(privateKey);
 
-    // Create JWT with ZoomInfo-specific claims
-    // Based on ZoomInfo's official Python client: https://github.com/Zoominfo/api-auth-python-client
-    const now = Math.floor(Date.now() / 1000);
-    const jwt = await new jose.SignJWT({
-      aud: 'enterprise_api',
-      client_id: clientId,
-      username: username,
-    })
-      .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
-      .setIssuer('api-client@zoominfo.com')
-      .setIssuedAt(now)
-      .setExpirationTime(now + 300)
-      .sign(privateKey);
+  const authResponse = await fetch(ZOOMINFO_AUTH_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${jwt}`,
+      'Accept': 'application/json',
+    },
+  });
 
-    console.log('[ZoomInfo] JWT created, exchanging for access token');
-
-    // Exchange JWT for access token using PKI authentication
-    // ZoomInfo expects the JWT in Authorization header as Bearer token
-    const authResponse = await fetch(ZOOMINFO_AUTH_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${jwt}`,
-        'Accept': 'application/json',
-      },
-    });
-
-    if (!authResponse.ok) {
-      const errorText = await authResponse.text();
-      console.error('[ZoomInfo] Auth failed:', authResponse.status, errorText);
-      throw new Error(`ZoomInfo authentication failed: ${authResponse.status} - ${errorText}`);
-    }
-
-    const authData = await authResponse.json();
-    cachedAccessToken = authData.jwt;
-    // Token is valid for 60 minutes, but we'll refresh at 55 min
-    tokenExpiresAt = Date.now() + 55 * 60 * 1000;
-
-    console.log('[ZoomInfo] Successfully obtained access token');
-    return cachedAccessToken!;
-  } catch (err) {
-    console.error('[ZoomInfo] PKI auth error:', err);
-    throw err;
+  if (!authResponse.ok) {
+    const errorText = await authResponse.text();
+    console.error('[ZoomInfo] Auth failed:', authResponse.status, errorText);
+    throw new Error(`ZoomInfo authentication failed: ${authResponse.status} - ${errorText}`);
   }
+
+  const authData = await authResponse.json();
+  cachedAccessToken = authData.jwt;
+  tokenExpiresAt = Date.now() + 55 * 60 * 1000;
+
+  console.log('[ZoomInfo] Successfully obtained access token');
+  return cachedAccessToken!;
 }
 
-interface EnrichRequest {
+interface SearchRequest {
+  action: 'search';
   contact_id: string;
   first_name?: string;
   last_name?: string;
@@ -121,33 +108,45 @@ interface EnrichRequest {
   company?: string;
 }
 
-interface ZoomInfoPerson {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  mobilePhone: string;
-  jobTitle: string;
-  companyName: string;
-  linkedinUrl: string;
-  zoomInfoUrl: string;
-  // Additional fields from API
-  city?: string;
-  state?: string;
-  country?: string;
+interface EnrichRequest {
+  action: 'enrich';
+  contact_id: string;
+  person_id: string;
 }
 
-interface ZoomInfoSearchResponse {
-  success: boolean;
-  data: {
-    result: ZoomInfoPerson[];
-    totalResults: number;
+type RequestBody = SearchRequest | EnrichRequest;
+
+/**
+ * Extract LinkedIn URL from ZoomInfo externalUrls array
+ */
+function extractLinkedInUrl(externalUrls?: Array<{ type: string; url: string }>): string | null {
+  if (!externalUrls || !Array.isArray(externalUrls)) return null;
+  const linkedin = externalUrls.find(
+    (u) => u.type?.toLowerCase() === 'linkedin' || u.url?.includes('linkedin.com')
+  );
+  return linkedin?.url || null;
+}
+
+/**
+ * Handle ZoomInfo API errors with specific messages
+ */
+function handleApiError(status: number, errorText: string, context: Record<string, unknown> = {}): Response {
+  const errorMap: Record<number, string> = {
+    401: 'ZoomInfo API authentication failed. Check API key.',
+    403: 'ZoomInfo API access denied. Check API permissions.',
+    429: 'ZoomInfo API rate limit exceeded. Try again later.',
   };
+
+  const message = errorMap[status] || `ZoomInfo API error: ${status}`;
+  const responseStatus = errorMap[status] ? status : 500;
+
+  return new Response(
+    JSON.stringify({ error: message, details: errorText, ...context }),
+    { status: responseStatus, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
 }
 
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -164,12 +163,9 @@ serve(async (req) => {
       );
     }
 
-    // Get access token via PKI auth
     const accessToken = await getZoomInfoAccessToken(username, clientId, privateKey);
+    const request = await req.json() as RequestBody;
 
-    const request = await req.json() as EnrichRequest;
-
-    // Validate request
     if (!request.contact_id) {
       return new Response(
         JSON.stringify({ error: 'contact_id is required' }),
@@ -177,128 +173,200 @@ serve(async (req) => {
       );
     }
 
-    // Need at least name or email to search
-    if (!request.first_name && !request.last_name && !request.email) {
-      return new Response(
-        JSON.stringify({ error: 'At least first_name, last_name, or email is required for search' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    // Default to 'search' for backwards compatibility
+    const action = request.action || 'search';
 
-    // Build ZoomInfo search query
-    // Note: Only request fields your ZoomInfo account has access to
-    // Disallowed fields will cause 400 error
-    const searchParams: Record<string, unknown> = {
-      outputFields: [
-        'id',
-        'firstName',
-        'lastName',
-        'jobTitle',
-        'companyName',
-      ],
-      rpp: 5, // Return top 5 matches
-    };
+    // ─────────────────────────────────────────────
+    // ACTION: SEARCH — find matches (free, no credits)
+    // ─────────────────────────────────────────────
+    if (action === 'search') {
+      const searchReq = request as SearchRequest;
 
-    // Add search criteria (single values, not arrays)
-    if (request.first_name) {
-      searchParams.firstName = request.first_name;
-    }
-    if (request.last_name) {
-      searchParams.lastName = request.last_name;
-    }
-    if (request.email) {
-      searchParams.emailAddress = request.email;
-    }
-    if (request.company) {
-      searchParams.companyName = request.company;
-    }
-
-    console.log(`[ZoomInfo Enrich] Searching for contact ${request.contact_id}:`, {
-      firstName: request.first_name,
-      lastName: request.last_name,
-      email: request.email,
-      company: request.company,
-    });
-
-    // Call ZoomInfo API
-    const zoomInfoResponse = await fetch(ZOOMINFO_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(searchParams),
-    });
-
-    if (!zoomInfoResponse.ok) {
-      const errorText = await zoomInfoResponse.text();
-      console.error('[ZoomInfo Enrich] API error:', zoomInfoResponse.status, errorText);
-
-      // Handle specific error cases
-      if (zoomInfoResponse.status === 401) {
+      if (!searchReq.first_name && !searchReq.last_name && !searchReq.email) {
         return new Response(
-          JSON.stringify({ error: 'ZoomInfo API authentication failed. Check API key.' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      if (zoomInfoResponse.status === 403) {
-        return new Response(
-          JSON.stringify({ error: 'ZoomInfo API access denied. Check API permissions.' }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      if (zoomInfoResponse.status === 429) {
-        return new Response(
-          JSON.stringify({ error: 'ZoomInfo API rate limit exceeded. Try again later.' }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ error: 'At least first_name, last_name, or email is required for search' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Return detailed error for debugging
+      // Search output fields — limited set + availability flags
+      const searchParams: Record<string, unknown> = {
+        outputFields: [
+          'id',
+          'firstName',
+          'lastName',
+          'jobTitle',
+          'companyName',
+          'city',
+          'state',
+          'country',
+          'hasEmail',
+          'hasDirectPhone',
+        ],
+        rpp: 5,
+      };
+
+      if (searchReq.first_name) searchParams.firstName = searchReq.first_name;
+      if (searchReq.last_name) searchParams.lastName = searchReq.last_name;
+      if (searchReq.email) searchParams.emailAddress = searchReq.email;
+      if (searchReq.company) searchParams.companyName = searchReq.company;
+
+      console.log(`[ZoomInfo Search] Searching for contact ${searchReq.contact_id}:`, {
+        firstName: searchReq.first_name,
+        lastName: searchReq.last_name,
+        email: searchReq.email,
+        company: searchReq.company,
+      });
+
+      const response = await fetch(ZOOMINFO_SEARCH_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(searchParams),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[ZoomInfo Search] API error:', response.status, errorText);
+        return handleApiError(response.status, errorText, { searchParams });
+      }
+
+      const data = await response.json();
+      console.log(`[ZoomInfo Search] Found ${data.data?.result?.length || 0} results`);
+
+      const matches = (data.data?.result || []).map((person: Record<string, unknown>) => ({
+        zoominfo_person_id: person.id,
+        first_name: person.firstName,
+        last_name: person.lastName,
+        title: person.jobTitle,
+        company: person.companyName,
+        city: person.city,
+        state: person.state,
+        country: person.country,
+        has_email: person.hasEmail ?? false,
+        has_direct_phone: person.hasDirectPhone ?? false,
+        zoominfo_profile_url: `https://app.zoominfo.com/#/apps/person/${person.id}`,
+      }));
+
       return new Response(
         JSON.stringify({
-          error: `ZoomInfo API error: ${zoomInfoResponse.status}`,
-          details: errorText,
-          searchParams: searchParams,
+          success: true,
+          contact_id: searchReq.contact_id,
+          matches,
+          total_results: data.data?.totalResults || 0,
         }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const zoomInfoData = await zoomInfoResponse.json() as ZoomInfoSearchResponse;
+    // ─────────────────────────────────────────────
+    // ACTION: ENRICH — get full data (costs credits)
+    // ─────────────────────────────────────────────
+    if (action === 'enrich') {
+      const enrichReq = request as EnrichRequest;
 
-    console.log(`[ZoomInfo Enrich] Found ${zoomInfoData.data?.result?.length || 0} results`);
+      if (!enrichReq.person_id) {
+        return new Response(
+          JSON.stringify({ error: 'person_id is required for enrichment' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
-    // Transform results for frontend
-    const matches = (zoomInfoData.data?.result || []).map((person) => ({
-      zoominfo_person_id: person.id,
-      first_name: person.firstName,
-      last_name: person.lastName,
-      email: person.email,
-      phone: person.phone,
-      mobile_phone: person.mobilePhone,
-      title: person.jobTitle,
-      company: person.companyName,
-      linkedin_url: person.linkedinUrl,
-      zoominfo_profile_url: `https://app.zoominfo.com/#/apps/person/${person.id}`,
-      city: person.city,
-      state: person.state,
-      country: person.country,
-    }));
+      // Enrich uses personId to look up the full record
+      // externalUrls replaces linkedinUrl per ZoomInfo support
+      const enrichParams = {
+        matchPersonInput: [
+          { personId: enrichReq.person_id },
+        ],
+        outputFields: [
+          'id',
+          'firstName',
+          'lastName',
+          'email',
+          'phone',
+          'mobilePhone',
+          'jobTitle',
+          'companyName',
+          'externalUrls',
+          'city',
+          'state',
+          'country',
+        ],
+      };
 
+      console.log(`[ZoomInfo Enrich] Enriching person ${enrichReq.person_id} for contact ${enrichReq.contact_id}`);
+
+      const response = await fetch(ZOOMINFO_ENRICH_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(enrichParams),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[ZoomInfo Enrich] API error:', response.status, errorText);
+        return handleApiError(response.status, errorText, { enrichParams });
+      }
+
+      const data = await response.json();
+      const results = data.data?.result || [];
+
+      console.log(`[ZoomInfo Enrich] Got ${results.length} enriched result(s)`);
+
+      if (results.length === 0) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'No enrichment data returned for this person',
+            contact_id: enrichReq.contact_id,
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const person = results[0];
+      const linkedinUrl = extractLinkedInUrl(person.externalUrls);
+
+      const enrichedData = {
+        zoominfo_person_id: person.id,
+        first_name: person.firstName,
+        last_name: person.lastName,
+        email: person.email || null,
+        phone: person.phone || null,
+        mobile_phone: person.mobilePhone || null,
+        title: person.jobTitle || null,
+        company: person.companyName || null,
+        linkedin_url: linkedinUrl,
+        external_urls: person.externalUrls || [],
+        city: person.city || null,
+        state: person.state || null,
+        country: person.country || null,
+        zoominfo_profile_url: `https://app.zoominfo.com/#/apps/person/${person.id}`,
+      };
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          contact_id: enrichReq.contact_id,
+          enriched: enrichedData,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Unknown action
     return new Response(
-      JSON.stringify({
-        success: true,
-        contact_id: request.contact_id,
-        matches,
-        total_results: zoomInfoData.data?.totalResults || 0,
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ error: `Unknown action: ${action}. Use 'search' or 'enrich'.` }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('[ZoomInfo Enrich] Error:', error);
-    // Return detailed error for debugging
+    console.error('[ZoomInfo] Error:', error);
     return new Response(
       JSON.stringify({
         success: false,

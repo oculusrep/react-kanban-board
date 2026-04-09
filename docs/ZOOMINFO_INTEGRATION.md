@@ -4,12 +4,28 @@
 
 This document tracks the implementation of ZoomInfo API integration for contact enrichment in the Hunter prospecting module.
 
-**Status**: Blocked - awaiting ZoomInfo account field access
-**Last Updated**: 2026-02-13
+**Status**: Active — two-step Search → Enrich flow implemented
+**Last Updated**: 2026-04-09
 
 ## Purpose
 
 Enable on-demand contact enrichment from ZoomInfo to fill in missing contact data (phone, email, LinkedIn, title, etc.) for contacts in the Hunter prospecting workflow.
+
+## Architecture: Two-Step Flow
+
+Per ZoomInfo support guidance, the integration uses a two-step flow:
+
+1. **Search** (`/search/contact`) — Find matching contacts. Free, no credits spent. Returns basic info plus availability flags (`hasEmail`, `hasDirectPhone`) so the user can see what data is available before choosing to enrich.
+
+2. **Enrich** (`/enrich/contact`) — Get full contact data for a selected match. Costs 1 credit per call. Returns email, phone, mobilePhone, jobTitle, companyName, externalUrls (replaces linkedinUrl), city, state, country.
+
+### Key API Details (from ZoomInfo Support)
+
+- **Search** is for locating records without spending credits — output fields are intentionally limited
+- **Enrich** is for retrieving full data — this is where email, phone, etc. come from
+- `linkedinUrl` is NOT a valid Enrich output field — use `externalUrls` instead (nested array with all social media URLs)
+- Search supports preview flags like `hasDirectPhone`, `hasEmail` to check data availability before enriching
+- Available output fields can be queried via: `https://api.zoominfo.com/lookup/outputfields/contact/search` and `https://api.zoominfo.com/lookup/outputfields/contact/enrich`
 
 ## Implementation Components
 
@@ -25,17 +41,27 @@ Added columns to the `contact` table:
 ### 2. Edge Function
 **File**: `supabase/functions/hunter-zoominfo-enrich/index.ts`
 
-Supabase Edge Function that:
-1. Authenticates with ZoomInfo using PKI (JWT-based) authentication
-2. Searches for contacts using name/email/company criteria
-3. Returns potential matches for user review before applying changes
+Supabase Edge Function that handles both actions:
+
+**`action: 'search'`** — Search for contacts
+- Input: `contact_id`, `first_name`, `last_name`, `email`, `company`
+- Output fields: `id`, `firstName`, `lastName`, `jobTitle`, `companyName`, `city`, `state`, `country`, `hasEmail`, `hasDirectPhone`
+- Returns up to 5 matches with availability indicators
+
+**`action: 'enrich'`** — Enrich a specific person
+- Input: `contact_id`, `person_id`
+- Output fields: `id`, `firstName`, `lastName`, `email`, `phone`, `mobilePhone`, `jobTitle`, `companyName`, `externalUrls`, `city`, `state`, `country`
+- Extracts LinkedIn URL from `externalUrls` array automatically
+- Returns enriched data for field-level merge
 
 ### 3. Frontend Integration
 **File**: `src/components/hunter/ProspectingWorkspace.tsx`
 
 - "Enrich with ZoomInfo" button in contact sidebar
-- Modal for selecting matches and choosing which fields to merge
-- Field-by-field comparison when values differ
+- **Step 1**: Search results modal with green/gray availability dots for email and phone
+- **Step 2**: After selecting a match, enrichment runs and field-level merge UI appears
+- User selects which fields to apply (empty fields auto-selected, conflicting fields shown for review)
+- Credit usage is communicated clearly in the UI
 
 ## Required Supabase Secrets
 
@@ -73,135 +99,76 @@ Based on official ZoomInfo Python client: https://github.com/Zoominfo/api-auth-p
 ## Troubleshooting History
 
 ### Issue 1: 401 Unauthorized from Supabase
-**Error**: Edge function call returned 401
 **Cause**: Supabase session/JWT verification issue
 **Solution**: User re-logged into the application to refresh session
 
 ### Issue 2: 500 Error - djwt library issues
-**Error**: Internal server error during JWT creation
 **Cause**: The `djwt@v3.0.1` Deno library had issues with RSA key handling
 **Solution**: Switched to `jose@v5.2.0` library which has better PKCS8 support
 
 ### Issue 3: 500 Error - PEM key newlines stripped
-**Error**: `Invalid PEM format - missing headers` or key deserialization errors
 **Cause**: Supabase secrets strip newlines from PEM keys, breaking the format
-**Solution**: Added `normalizePemKey()` function to restore proper PEM format:
-```typescript
-function normalizePemKey(pem: string): string {
-  if (pem.includes('\n')) {
-    return pem;
-  }
-  const match = pem.match(/-----BEGIN PRIVATE KEY-----(.*?)-----END PRIVATE KEY-----/);
-  if (!match) {
-    throw new Error('Invalid PEM format - missing headers');
-  }
-  const base64Content = match[1].replace(/\s/g, '');
-  const lines = base64Content.match(/.{1,64}/g) || [];
-  return `-----BEGIN PRIVATE KEY-----\n${lines.join('\n')}\n-----END PRIVATE KEY-----`;
-}
-```
+**Solution**: Added `normalizePemKey()` function to restore proper PEM format
 
 ### Issue 4: 400 Error - Missing username/password
-**Error**: `Missing required parameters: 'username' or 'email' must be entered`
 **Cause**: Initial implementation used wrong JWT claims and auth request format
-**Solution**: Updated to match official ZoomInfo Python client:
-- Set issuer to `'api-client@zoominfo.com'` (not client ID)
-- Set audience to `'enterprise_api'` (not API URL)
-- Include `username` and `client_id` in JWT payload
-- Send JWT via `Authorization: Bearer` header (not custom headers)
-- Added `ZOOMINFO_USERNAME` as required secret
+**Solution**: Updated to match official ZoomInfo Python client — set issuer to `'api-client@zoominfo.com'`, audience to `'enterprise_api'`, send JWT via `Authorization: Bearer` header
 
 ### Issue 5: 404 Error - Wrong API endpoint
-**Error**: `ZoomInfo API error: 404`
 **Cause**: Used `/search/person` endpoint which doesn't exist
 **Solution**: Changed to correct endpoint: `/search/contact`
 
 ### Issue 6: 400 Error - Array parameters
-**Error**: `ZoomInfo API error: 400`
-**Cause**: Search parameters were passed as arrays (`[value]`) instead of strings
-**Solution**: Changed to single string values:
-```typescript
-// Before (wrong)
-searchParams.firstName = [request.first_name];
+**Cause**: Search parameters were passed as arrays instead of strings
+**Solution**: Changed to single string values
 
-// After (correct)
-searchParams.firstName = request.first_name;
-```
-
-### Issue 7: 400 Error - Disallowed output fields (CURRENT BLOCKER)
-**Error**:
-```json
-{
-  "success": false,
-  "statusCode": 400,
-  "error": "OutputFields invalid or disallowed. Please contact your ZoomInfo Account Manager for purchasing options regarding any disallowed fields.",
-  "invalidOutputFields": [
-    "email",
-    "phone",
-    "mobilephone",
-    "linkedinurl",
-    "city",
-    "state",
-    "country"
-  ]
-}
-```
-**Cause**: ZoomInfo account does not have access to these fields
-**Status**: Awaiting response from ZoomInfo support/account manager
-
-**Temporary Workaround**: Limited output fields to only accessible fields:
-- `id`
-- `firstName`
-- `lastName`
-- `jobTitle`
-- `companyName`
-
-This significantly limits the usefulness of enrichment since the most valuable fields (email, phone, LinkedIn) are not accessible.
+### Issue 7: 400 Error - Disallowed output fields (RESOLVED)
+**Cause**: Was requesting email, phone, linkedinUrl etc. on the **Search** endpoint, which only supports limited output fields
+**Resolution**: ZoomInfo support confirmed Search is intentionally limited. Use the **Enrich** endpoint (`/enrich/contact`) for full data. Also, `linkedinUrl` → `externalUrls` (nested field with all social URLs).
 
 ## API Endpoints
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `https://api.zoominfo.com/authenticate` | POST | Exchange JWT for access token |
-| `https://api.zoominfo.com/search/contact` | POST | Search for contacts |
+| Endpoint | Method | Purpose | Credits |
+|----------|--------|---------|---------|
+| `https://api.zoominfo.com/authenticate` | POST | Exchange JWT for access token | Free |
+| `https://api.zoominfo.com/search/contact` | POST | Search for contacts | Free |
+| `https://api.zoominfo.com/enrich/contact` | POST | Enrich contact with full data | 1 per call |
+| `https://api.zoominfo.com/lookup/outputfields/contact/search` | GET | List available search output fields | Free |
+| `https://api.zoominfo.com/lookup/outputfields/contact/enrich` | GET | List available enrich output fields | Free |
 
-## Search Parameters
+## Enrich API Format
 
-The Contact Search API accepts these parameters (based on ZoomInfo Node SDK):
+The Enrich endpoint uses `matchPersonInput` to specify which person to enrich:
 
-**Contact Information:**
-- `personId`, `emailAddress`, `hashedEmail`, `fullName`, `firstName`, `middleInitial`, `lastName`
+```json
+{
+  "matchPersonInput": [
+    { "personId": "abc123" }
+  ],
+  "outputFields": [
+    "id", "firstName", "lastName", "email", "phone",
+    "mobilePhone", "jobTitle", "companyName", "externalUrls",
+    "city", "state", "country"
+  ]
+}
+```
 
-**Job Details:**
-- `jobTitle`, `excludeJobTitle`, `managementLevel`, `excludeManagementLevel`, `department`, `boardMember`
+### externalUrls Response Format
 
-**Company Data:**
-- `companyId`, `companyName`, `companyWebsite`, `companyTicker`, `companyDescription`, `parentId`, `ultimateParentId`, `companyType`
+`externalUrls` is an array of objects:
+```json
+{
+  "externalUrls": [
+    { "type": "linkedin", "url": "https://www.linkedin.com/in/johndoe" },
+    { "type": "twitter", "url": "https://twitter.com/johndoe" }
+  ]
+}
+```
 
-**Location:**
-- `address`, `street`, `state`, `zipCode`, `country`, `continent`, `zipCodeRadiusMiles`, `metroRegion`
-
-**Pagination:**
-- `rpp` (results per page), `page`, `sortBy`, `sortOrder`
-
-## Next Steps
-
-1. **Contact ZoomInfo** - Request access to additional output fields:
-   - `email` - Primary contact email
-   - `phone` - Direct phone number
-   - `mobilePhone` - Mobile phone number
-   - `linkedinUrl` - LinkedIn profile URL
-   - `city`, `state`, `country` - Location data
-
-2. **Update edge function** - Once field access is granted, restore full output fields list
-
-3. **Test full integration** - Verify enrichment workflow end-to-end
-
-4. **Remove debug logging** - Clean up detailed error responses after integration is stable
+The edge function automatically extracts the LinkedIn URL from this array.
 
 ## References
 
 - [ZoomInfo API Documentation](https://docs.zoominfo.com/)
 - [ZoomInfo Python Auth Client](https://github.com/Zoominfo/api-auth-python-client)
 - [ZoomInfo Node SDK](https://github.com/CS3-Marketing/zoominfo-node-sdk)
-- [ZoomInfo JS Client](https://github.com/ekohe/zoominfo-js-client)

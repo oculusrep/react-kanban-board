@@ -266,6 +266,22 @@ interface EmailAttachment {
 }
 
 // ZoomInfo enrichment match from API
+// Search results — basic info + availability flags (no credits spent)
+interface ZoomInfoSearchResult {
+  zoominfo_person_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  title: string | null;
+  company: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  has_email: boolean;
+  has_direct_phone: boolean;
+  zoominfo_profile_url: string;
+}
+
+// Enriched data — full contact details (costs credits)
 interface ZoomInfoMatch {
   zoominfo_person_id: string;
   first_name: string | null;
@@ -472,10 +488,11 @@ export default function ProspectingWorkspace() {
   const [historyContacts, setHistoryContacts] = useState<ContactDetails[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // ZoomInfo enrichment
+  // ZoomInfo enrichment — two-step flow: search (free) → enrich (credits)
   const [showZoomInfoModal, setShowZoomInfoModal] = useState(false);
   const [zoomInfoLoading, setZoomInfoLoading] = useState(false);
-  const [zoomInfoMatches, setZoomInfoMatches] = useState<ZoomInfoMatch[]>([]);
+  const [zoomInfoSearchResults, setZoomInfoSearchResults] = useState<ZoomInfoSearchResult[]>([]);
+  const [zoomInfoEnriching, setZoomInfoEnriching] = useState(false);
   const [selectedZoomInfoMatch, setSelectedZoomInfoMatch] = useState<ZoomInfoMatch | null>(null);
   const [zoomInfoError, setZoomInfoError] = useState<string | null>(null);
   const [applyingZoomInfo, setApplyingZoomInfo] = useState(false);
@@ -1705,19 +1722,20 @@ export default function ProspectingWorkspace() {
     }
   };
 
-  // ZoomInfo enrichment - search for contact matches
+  // ZoomInfo Step 1: Search for contact matches (free, no credits)
   const searchZoomInfo = async () => {
     if (!selectedContact) return;
 
     setZoomInfoLoading(true);
     setZoomInfoError(null);
-    setZoomInfoMatches([]);
+    setZoomInfoSearchResults([]);
     setSelectedZoomInfoMatch(null);
     setShowZoomInfoModal(true);
 
     try {
       const { data, error } = await supabase.functions.invoke('hunter-zoominfo-enrich', {
         body: {
+          action: 'search',
           contact_id: selectedContact.id,
           first_name: selectedContact.first_name,
           last_name: selectedContact.last_name,
@@ -1734,12 +1752,7 @@ export default function ProspectingWorkspace() {
         throw new Error(data.error || 'ZoomInfo search failed');
       }
 
-      setZoomInfoMatches(data.matches || []);
-
-      // Auto-select first match if only one
-      if (data.matches?.length === 1) {
-        selectZoomInfoMatch(data.matches[0]);
-      }
+      setZoomInfoSearchResults(data.matches || []);
     } catch (err) {
       console.error('ZoomInfo search error:', err);
       setZoomInfoError(err instanceof Error ? err.message : 'Failed to search ZoomInfo');
@@ -1748,49 +1761,74 @@ export default function ProspectingWorkspace() {
     }
   };
 
-  // Select a ZoomInfo match and calculate which fields to fill
-  const selectZoomInfoMatch = (match: ZoomInfoMatch) => {
-    setSelectedZoomInfoMatch(match);
+  // ZoomInfo Step 2: Enrich a selected match (costs credits)
+  const enrichZoomInfoMatch = async (searchResult: ZoomInfoSearchResult) => {
+    if (!selectedContact) return;
 
-    // Determine which fields should be selected by default
-    // Fill empty fields, or offer to update with different values
-    const selections: Record<string, boolean> = {};
+    setZoomInfoEnriching(true);
+    setZoomInfoError(null);
 
-    // Only select fields that are empty in current contact OR have different value
-    if (!selectedContact?.email && match.email) {
-      selections.email = true;
-    } else if (selectedContact?.email && match.email && selectedContact.email !== match.email) {
-      selections.email = false; // Different value - don't auto-select
+    try {
+      const { data, error } = await supabase.functions.invoke('hunter-zoominfo-enrich', {
+        body: {
+          action: 'enrich',
+          contact_id: selectedContact.id,
+          person_id: searchResult.zoominfo_person_id,
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to enrich contact');
+      }
+
+      if (!data.success) {
+        throw new Error(data.error || 'ZoomInfo enrichment failed');
+      }
+
+      const match = data.enriched as ZoomInfoMatch;
+      setSelectedZoomInfoMatch(match);
+
+      // Calculate default field selections
+      const selections: Record<string, boolean> = {};
+
+      if (!selectedContact?.email && match.email) {
+        selections.email = true;
+      } else if (selectedContact?.email && match.email && selectedContact.email !== match.email) {
+        selections.email = false;
+      }
+
+      if (!selectedContact?.phone && match.phone) {
+        selections.phone = true;
+      } else if (selectedContact?.phone && match.phone && selectedContact.phone !== match.phone) {
+        selections.phone = false;
+      }
+
+      if (!selectedContact?.mobile_phone && match.mobile_phone) {
+        selections.mobile_phone = true;
+      } else if (selectedContact?.mobile_phone && match.mobile_phone && selectedContact.mobile_phone !== match.mobile_phone) {
+        selections.mobile_phone = false;
+      }
+
+      if (!selectedContact?.title && match.title) {
+        selections.title = true;
+      } else if (selectedContact?.title && match.title && selectedContact.title !== match.title) {
+        selections.title = false;
+      }
+
+      if (!selectedContact?.linked_in_profile_link && match.linkedin_url) {
+        selections.linkedin_url = true;
+      } else if (selectedContact?.linked_in_profile_link && match.linkedin_url && selectedContact.linked_in_profile_link !== match.linkedin_url) {
+        selections.linkedin_url = false;
+      }
+
+      selections.zoominfo_profile_url = true;
+      setZoomInfoFieldSelections(selections);
+    } catch (err) {
+      console.error('ZoomInfo enrich error:', err);
+      setZoomInfoError(err instanceof Error ? err.message : 'Failed to enrich contact');
+    } finally {
+      setZoomInfoEnriching(false);
     }
-
-    if (!selectedContact?.phone && match.phone) {
-      selections.phone = true;
-    } else if (selectedContact?.phone && match.phone && selectedContact.phone !== match.phone) {
-      selections.phone = false;
-    }
-
-    if (!selectedContact?.mobile_phone && match.mobile_phone) {
-      selections.mobile_phone = true;
-    } else if (selectedContact?.mobile_phone && match.mobile_phone && selectedContact.mobile_phone !== match.mobile_phone) {
-      selections.mobile_phone = false;
-    }
-
-    if (!selectedContact?.title && match.title) {
-      selections.title = true;
-    } else if (selectedContact?.title && match.title && selectedContact.title !== match.title) {
-      selections.title = false;
-    }
-
-    if (!selectedContact?.linked_in_profile_link && match.linkedin_url) {
-      selections.linkedin_url = true;
-    } else if (selectedContact?.linked_in_profile_link && match.linkedin_url && selectedContact.linked_in_profile_link !== match.linkedin_url) {
-      selections.linkedin_url = false;
-    }
-
-    // Always track zoominfo profile URL
-    selections.zoominfo_profile_url = true;
-
-    setZoomInfoFieldSelections(selections);
   };
 
   // Apply selected ZoomInfo data to contact
@@ -3740,7 +3778,7 @@ export default function ProspectingWorkspace() {
             className="fixed inset-0 bg-black bg-opacity-50 z-[70]"
             onClick={() => {
               setShowZoomInfoModal(false);
-              setZoomInfoMatches([]);
+              setZoomInfoSearchResults([]);
               setSelectedZoomInfoMatch(null);
               setZoomInfoError(null);
             }}
@@ -3764,7 +3802,7 @@ export default function ProspectingWorkspace() {
                 <button
                   onClick={() => {
                     setShowZoomInfoModal(false);
-                    setZoomInfoMatches([]);
+                    setZoomInfoSearchResults([]);
                     setSelectedZoomInfoMatch(null);
                     setZoomInfoError(null);
                   }}
@@ -3780,23 +3818,34 @@ export default function ProspectingWorkspace() {
                   <div className="p-12 text-center">
                     <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600 mx-auto mb-4"></div>
                     <p className="text-gray-600">Searching ZoomInfo...</p>
-                    <p className="text-sm text-gray-400 mt-1">This may take a few seconds</p>
+                    <p className="text-sm text-gray-400 mt-1">Finding matches (no credits used)</p>
+                  </div>
+                ) : zoomInfoEnriching ? (
+                  <div className="p-12 text-center">
+                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Enriching contact data...</p>
+                    <p className="text-sm text-gray-400 mt-1">Fetching full details (uses 1 credit)</p>
                   </div>
                 ) : zoomInfoError ? (
                   <div className="p-8 text-center">
                     <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                       <XMarkIcon className="w-6 h-6 text-red-600" />
                     </div>
-                    <p className="text-gray-900 font-medium">Search Failed</p>
+                    <p className="text-gray-900 font-medium">{selectedZoomInfoMatch ? 'Enrichment Failed' : 'Search Failed'}</p>
                     <p className="text-sm text-red-600 mt-2">{zoomInfoError}</p>
                     <button
-                      onClick={searchZoomInfo}
+                      onClick={() => {
+                        setZoomInfoError(null);
+                        if (!selectedZoomInfoMatch && zoomInfoSearchResults.length === 0) {
+                          searchZoomInfo();
+                        }
+                      }}
                       className="mt-4 px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700"
                     >
                       Try Again
                     </button>
                   </div>
-                ) : zoomInfoMatches.length === 0 ? (
+                ) : zoomInfoSearchResults.length === 0 && !selectedZoomInfoMatch ? (
                   <div className="p-8 text-center">
                     <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                       <SparklesIcon className="w-6 h-6 text-gray-400" />
@@ -3807,34 +3856,45 @@ export default function ProspectingWorkspace() {
                     </p>
                   </div>
                 ) : !selectedZoomInfoMatch ? (
-                  /* Match Selection View */
+                  /* Step 1: Match Selection — search results with availability indicators */
                   <div className="p-4">
-                    <p className="text-sm text-gray-600 mb-4">
-                      Found {zoomInfoMatches.length} potential match{zoomInfoMatches.length !== 1 ? 'es' : ''}. Select the correct profile:
+                    <p className="text-sm text-gray-600 mb-1">
+                      Found {zoomInfoSearchResults.length} potential match{zoomInfoSearchResults.length !== 1 ? 'es' : ''}. Select a profile to enrich:
+                    </p>
+                    <p className="text-xs text-gray-400 mb-4">
+                      Enriching a match will use 1 ZoomInfo credit
                     </p>
                     <div className="space-y-3">
-                      {zoomInfoMatches.map((match, idx) => (
+                      {zoomInfoSearchResults.map((result, idx) => (
                         <button
-                          key={match.zoominfo_person_id}
-                          onClick={() => selectZoomInfoMatch(match)}
+                          key={result.zoominfo_person_id}
+                          onClick={() => enrichZoomInfoMatch(result)}
                           className="w-full text-left p-4 border border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 transition-colors"
                         >
                           <div className="flex items-start justify-between">
                             <div>
                               <p className="font-medium text-gray-900">
-                                {match.first_name} {match.last_name}
+                                {result.first_name} {result.last_name}
                               </p>
                               <p className="text-sm text-gray-600">
-                                {match.title}{match.title && match.company ? ' at ' : ''}{match.company}
+                                {result.title}{result.title && result.company ? ' at ' : ''}{result.company}
                               </p>
-                              {match.email && (
-                                <p className="text-sm text-gray-500 mt-1">{match.email}</p>
-                              )}
-                              {(match.city || match.state) && (
+                              {(result.city || result.state) && (
                                 <p className="text-xs text-gray-400 mt-1">
-                                  {[match.city, match.state, match.country].filter(Boolean).join(', ')}
+                                  {[result.city, result.state, result.country].filter(Boolean).join(', ')}
                                 </p>
                               )}
+                              {/* Data availability indicators */}
+                              <div className="flex gap-3 mt-2">
+                                <span className={`text-xs flex items-center gap-1 ${result.has_email ? 'text-green-600' : 'text-gray-400'}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${result.has_email ? 'bg-green-500' : 'bg-gray-300'}`} />
+                                  Email
+                                </span>
+                                <span className={`text-xs flex items-center gap-1 ${result.has_direct_phone ? 'text-green-600' : 'text-gray-400'}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${result.has_direct_phone ? 'bg-green-500' : 'bg-gray-300'}`} />
+                                  Direct Phone
+                                </span>
+                              </div>
                             </div>
                             <span className="text-xs text-gray-400">#{idx + 1}</span>
                           </div>
@@ -3843,17 +3903,20 @@ export default function ProspectingWorkspace() {
                     </div>
                   </div>
                 ) : (
-                  /* Field Selection View */
+                  /* Step 2: Field Selection — enriched data with merge controls */
                   <div className="p-4">
                     <div className="mb-4 p-3 bg-purple-50 border border-purple-100 rounded-lg">
                       <p className="text-sm font-medium text-purple-900">
-                        Selected: {selectedZoomInfoMatch.first_name} {selectedZoomInfoMatch.last_name}
+                        Enriched: {selectedZoomInfoMatch.first_name} {selectedZoomInfoMatch.last_name}
                         {selectedZoomInfoMatch.company ? ` at ${selectedZoomInfoMatch.company}` : ''}
                       </p>
                       <button
-                        onClick={() => setSelectedZoomInfoMatch(null)}
+                        onClick={() => {
+                          setSelectedZoomInfoMatch(null);
+                          setZoomInfoError(null);
+                        }}
                         className="text-sm text-purple-600 hover:text-purple-800 underline mt-1"
-                      >
+>
                         Choose different match
                       </button>
                     </div>
@@ -3993,7 +4056,7 @@ export default function ProspectingWorkspace() {
                   <button
                     onClick={() => {
                       setShowZoomInfoModal(false);
-                      setZoomInfoMatches([]);
+                      setZoomInfoSearchResults([]);
                       setSelectedZoomInfoMatch(null);
                     }}
                     className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
