@@ -1,5 +1,9 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { OfflineBanner } from "./components/OfflineBanner";
+import { PWABackButton } from "./components/PWABackButton";
+import { IOSInstallPrompt } from "./components/IOSInstallPrompt";
+import { PWAUpdatePrompt } from "./components/PWAUpdatePrompt";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminRoute from "./components/AdminRoute";
 import CoachRoute from "./components/CoachRoute";
@@ -112,6 +116,9 @@ function RoleBasedRedirect() {
 function App() {
   return (
     <AuthProvider>
+      <OfflineBanner />
+      <PWABackButton />
+      <IOSInstallPrompt />
       <Routes>
         {/* Public route for password reset */}
         <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -203,6 +210,7 @@ function App() {
           <Route path="typography-test" element={<TypographyTestPage />} />
         </Route>
       </Routes>
+      <PWAUpdatePrompt />
     </AuthProvider>
   );
 }

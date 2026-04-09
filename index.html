@@ -3,8 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#002147" />
+    <meta name="description" content="Manage commercial real estate deals, properties, and contacts with OVIS" />
+
+    <!-- iOS Specific -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="OVIS" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!-- iPad Splash Screens -->
+    <link rel="apple-touch-startup-image" href="/splash-ipad-portrait.png" media="(device-width: 768px) and (device-height: 1024px) and (orientation: portrait)">
+    <link rel="apple-touch-startup-image" href="/splash-ipad-landscape.png" media="(device-width: 768px) and (device-height: 1024px) and (orientation: landscape)">
+    <link rel="apple-touch-startup-image" href="/splash-ipad-pro-12-portrait.png" media="(device-width: 1024px) and (device-height: 1366px) and (orientation: portrait)">
+    <link rel="apple-touch-startup-image" href="/splash-ipad-pro-12-landscape.png" media="(device-width: 1024px) and (device-height: 1366px) and (orientation: landscape)">
+
+    <!-- Prevent iOS link preview -->
+    <meta name="format-detection" content="telephone=no" />
+
     <title>OVIS</title>
+
     <style>
       /* Prevent horizontal scrolling and viewport issues on mobile */
       html, body {
@@ -13,13 +34,12 @@
         position: relative;
       }
 
-      /* Ensure root container doesn't overflow */
       #root {
         overflow-x: hidden;
         width: 100%;
       }
 
-      /* Prevent iOS Safari double-tap zoom and pinch zoom on UI elements */
+      /* Prevent iOS Safari double-tap zoom on UI elements */
       * {
         touch-action: pan-x pan-y;
       }
@@ -28,6 +48,40 @@
       .gm-style,
       .gm-style div {
         touch-action: pinch-zoom pan-x pan-y !important;
+      }
+
+      /* Improve tap highlight */
+      * {
+        -webkit-tap-highlight-color: rgba(0, 33, 71, 0.1);
+      }
+
+      /* Smooth scrolling on iOS */
+      body {
+        -webkit-overflow-scrolling: touch;
+      }
+
+      /* Better focus states for keyboard navigation */
+      button:focus-visible, a:focus-visible {
+        outline: 2px solid #002147;
+        outline-offset: 2px;
+      }
+
+      /* Safe area insets for standalone mode (notch, home indicator) */
+      body {
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+      }
+
+      /* Slide up animation for install prompt */
+      @keyframes slide-up {
+        from { transform: translateY(100%); }
+        to { transform: translateY(0); }
+      }
+
+      .animate-slide-up {
+        animation: slide-up 0.3s ease-out;
       }
     </style>
   </head>
@@ -46,7 +100,7 @@
           script.src = 'https://cdn.jsdelivr.net/npm/eruda';
           script.onload = function() {
             eruda.init();
-            console.log('📱 Eruda mobile console loaded - tap the green icon in bottom-right to open');
+            console.log('Eruda mobile console loaded - tap the green icon in bottom-right to open');
           };
           document.body.appendChild(script);
         }
