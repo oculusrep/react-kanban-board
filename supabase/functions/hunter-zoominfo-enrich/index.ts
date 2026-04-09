@@ -189,7 +189,10 @@ serve(async (req) => {
         );
       }
 
-      // Search output fields — limited set + availability flags
+      // Search output fields — only fields confirmed accessible
+      // city/state/country were also blocked (Issue 7)
+      // TODO: Query https://api.zoominfo.com/lookup/outputfields/contact/search
+      //       to discover all available fields for our account
       const searchParams: Record<string, unknown> = {
         outputFields: [
           'id',
@@ -197,11 +200,6 @@ serve(async (req) => {
           'lastName',
           'jobTitle',
           'companyName',
-          'city',
-          'state',
-          'country',
-          'hasEmail',
-          'hasDirectPhone',
         ],
         rpp: 5,
       };
