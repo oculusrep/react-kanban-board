@@ -1,10 +1,86 @@
 # OVIS PWA Conversion Plan
 
-**Status:** Ready to implement
+**Status:** Phases 1-6 implemented, awaiting iPad testing on Vercel preview
 **Estimated Time:** 3-4 days (~24 hours)
 **Goal:** Convert OVIS web app into a Progressive Web App optimized for iPad — fullscreen, installable, fast, native feel
 **Last Updated:** 2026-04-09
 **Version:** 2.0
+**Branch:** `feat/pwa` (preview deployment — not yet merged to main/production)
+
+---
+
+## Implementation Progress
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 1 | Foundation + Manifest + Meta Tags | DONE |
+| Phase 2 | Icons & Assets | DONE |
+| Phase 3 | Service Worker + Update Prompt | DONE |
+| Phase 4 | Safe Area, Navigation & Keyboard Handling | DONE |
+| Phase 5 | iOS Install Prompt | DONE |
+| Phase 6 | Offline Banner | DONE |
+| Phase 7 | Testing & Validation | **NEXT — needs iPad testing** |
+| Phase 8 | Deployment (merge to main) | Pending test results |
+
+### What was done (2026-04-09)
+
+**Dependency installed:**
+- `vite-plugin-pwa` (dev dependency)
+
+**Existing files modified:**
+- `vite.config.ts` — added VitePWA plugin with manifest, Workbox caching strategies, 8MB cache size limit (main bundle is ~6MB)
+- `index.html` — added PWA meta tags, iOS standalone meta tags, safe area inset CSS, `viewport-fit=cover`, splash screen links, tap highlight, focus states, slide-up animation
+- `src/App.tsx` — added 4 PWA overlay component imports (OfflineBanner, PWABackButton, IOSInstallPrompt, PWAUpdatePrompt)
+- `vercel.json` — added Cache-Control and Service-Worker-Allowed headers for sw.js, Content-Type header for manifest.webmanifest
+
+**New files created:**
+- `src/components/PWAUpdatePrompt.tsx` — service worker update notification toast (bottom-right)
+- `src/components/PWABackButton.tsx` — floating back button for standalone mode (hidden on top-level pages: /, /master-pipeline, /mapping)
+- `src/components/IOSInstallPrompt.tsx` — "Add to Home Screen" modal for iOS/iPadOS (shows after 30s, remembers dismissal in localStorage)
+- `src/components/OfflineBanner.tsx` — terracotta banner when device goes offline
+- `src/hooks/useStandaloneMode.ts` — detects if app is running as installed PWA
+- `src/hooks/useKeyboardHeight.ts` — tracks iPad software keyboard height via visualViewport API
+- `src/hooks/useOnlineStatus.ts` — online/offline event detection
+- `src/vite-pwa.d.ts` — TypeScript declarations for virtual:pwa-register imports
+- `public/offline.html` — static fallback page for fully offline state
+
+**Icon assets generated (from Oculus emblem crop):**
+- `public/pwa-192x192.png` — emblem on white, 192x192
+- `public/pwa-512x512.png` — emblem on white, 512x512
+- `public/pwa-512x512-maskable.png` — emblem on #002147 blue, 512x512, for Android adaptive icons
+- `public/apple-touch-icon.png` — emblem on white, 180x180, for iOS home screen
+
+**Splash screens generated (white Oculus logo on #002147 background):**
+- `public/splash-ipad-portrait.png` — 1536x2048
+- `public/splash-ipad-landscape.png` — 2048x1536
+- `public/splash-ipad-pro-12-portrait.png` — 2048x2732
+- `public/splash-ipad-pro-12-landscape.png` — 2732x2048
+
+**Build verified:**
+- `npm run build` passes successfully
+- `dist/manifest.webmanifest` generated
+- `dist/sw.js` service worker generated
+- `dist/workbox-*.js` runtime generated
+- 22 entries precached (7424 KiB)
+
+### What's next
+
+1. **Find the Vercel preview URL** — Vercel Dashboard > Project > Preview Deployments > feat/pwa, or GitHub repo > feat/pwa branch > "Details" on Vercel check
+2. **Run through the testing checklist** — see `docs/PWA_TESTING_CHECKLIST.md`
+3. **Fix any issues found** on the `feat/pwa` branch
+4. **Merge to main** once all tests pass to deploy to production
+
+### Design decisions made
+
+- **No `user-scalable=no`** — removed from viewport meta to preserve accessibility zoom; touch-action CSS handles map gestures
+- **No global min-height 44px** — was breaking compact UI elements; apply selectively instead
+- **No offline data layer (IndexedDB)** — deferred; Workbox runtime caching provides basic offline reads; full offline not needed yet
+- **Single SW registration approach** — using React hook (`useRegisterSW`) only, not both hook + imperative `registerSW` (causes conflicts)
+- **Brand colors throughout** — all PWA UI uses #002147, #4A6B94, #8FA9C8, #A27B5C instead of generic Tailwind indigo
+- **iPadOS detection** — uses `navigator.maxTouchPoints > 1` in addition to user agent, since iPadOS 13+ reports as macOS
+- **Back button hidden on top-level pages** — /, /master-pipeline, /mapping excluded since they're primary navigation targets
+- **Eruda debug script kept** — only loads on localhost/codespaces via dynamic script injection, doesn't affect production
+- **8MB Workbox cache limit** — main JS bundle is ~6MB, raised from default 2MB to precache it
 
 ---
 
@@ -77,7 +153,7 @@ Before starting, ensure you have:
 - [x] Current OVIS codebase
 - [x] Access to production deployment
 - [x] HTTPS-enabled domain (required for PWA)
-- [ ] Logo/icon files in high resolution (512x512 or vector)
+- [x] Logo/icon files in high resolution (512x512 or vector) — cropped Oculus emblem from existing logo
 - [ ] iPad device for testing (or iPad simulator)
 
 ---
