@@ -202,6 +202,7 @@ interface ContactDetails {
   title: string | null;
   target_id: string | null;
   linked_in_profile_link: string | null;
+  zoominfo_profile_url: string | null;
   mailing_city: string | null;
   mailing_state: string | null;
   target?: {
@@ -1024,7 +1025,7 @@ export default function ProspectingWorkspace() {
       .from('contact')
       .select(`
         id, first_name, last_name, company, email, phone, mobile_phone, title,
-        target_id, linked_in_profile_link, mailing_city, mailing_state
+        target_id, linked_in_profile_link, zoominfo_profile_url, mailing_city, mailing_state
       `)
       .eq('id', contactId)
       .single();
@@ -1873,7 +1874,7 @@ export default function ProspectingWorkspace() {
         .from('contact')
         .select(`
           id, first_name, last_name, company, email, phone, mobile_phone, title,
-          target_id, linked_in_profile_link, mailing_city, mailing_state,
+          target_id, linked_in_profile_link, zoominfo_profile_url, mailing_city, mailing_state,
           target:target(id, concept_name, signal_strength, industry_segment, website, score_reasoning)
         `)
         .eq('id', selectedContact.id)
@@ -1907,7 +1908,7 @@ export default function ProspectingWorkspace() {
         .from('contact')
         .select(`
           id, first_name, last_name, company, email, phone, mobile_phone, title,
-          target_id, linked_in_profile_link, mailing_city, mailing_state
+          target_id, linked_in_profile_link, zoominfo_profile_url, mailing_city, mailing_state
         `)
         .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,company.ilike.%${query}%,email.ilike.%${query}%`)
         .limit(10);
@@ -1975,7 +1976,7 @@ export default function ProspectingWorkspace() {
         .from('contact')
         .select(`
           id, first_name, last_name, company, email, phone, mobile_phone, title,
-          target_id, linked_in_profile_link, mailing_city, mailing_state
+          target_id, linked_in_profile_link, zoominfo_profile_url, mailing_city, mailing_state
         `)
         .or(orFilters.join(','))
         .limit(100);
@@ -2906,6 +2907,17 @@ export default function ProspectingWorkspace() {
                           <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
                         </svg>
                         <span>LinkedIn Profile</span>
+                      </a>
+                    )}
+                    {selectedContact.zoominfo_profile_url && (
+                      <a
+                        href={selectedContact.zoominfo_profile_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-purple-600 hover:text-purple-800"
+                      >
+                        <SparklesIcon className="w-4 h-4 flex-shrink-0" />
+                        <span>ZoomInfo Profile</span>
                       </a>
                     )}
                   </div>
