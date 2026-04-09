@@ -1891,7 +1891,7 @@ export default function ProspectingWorkspace() {
 
       setShowZoomInfoModal(false);
       setSelectedZoomInfoMatch(null);
-      setZoomInfoMatches([]);
+      setZoomInfoSearchResults([]);
     } catch (err) {
       console.error('Failed to apply ZoomInfo data:', err);
       setZoomInfoError(err instanceof Error ? err.message : 'Failed to update contact');
