@@ -231,11 +231,18 @@ serve(async (req) => {
       }
 
       let data = await response.json();
-      console.log(`[ZoomInfo Search] Found ${data.data?.result?.length || 0} results`,
+      // ZoomInfo response format: { maxResults, totalResults, currentPage, data: [...] }
+      // Note: results are in `data` array directly, NOT `data.result`
+      const getResults = (d: Record<string, unknown>) => {
+        const arr = d.data;
+        return Array.isArray(arr) ? arr : [];
+      };
+
+      console.log(`[ZoomInfo Search] Found ${getResults(data).length} results (totalResults: ${data.totalResults})`,
         JSON.stringify(data));
 
       // If no results with company, retry without company filter
-      if ((!data.data?.result || data.data.result.length === 0) && searchReq.company) {
+      if (getResults(data).length === 0 && searchReq.company) {
         console.log('[ZoomInfo Search] No results with company filter, retrying without it');
         const retryParams = { ...searchParams };
         delete retryParams.companyName;
@@ -251,30 +258,34 @@ serve(async (req) => {
 
         if (retryResponse.ok) {
           data = await retryResponse.json();
-          console.log(`[ZoomInfo Search] Retry found ${data.data?.result?.length || 0} results`);
+          console.log(`[ZoomInfo Search] Retry found ${getResults(data).length} results`);
         }
       }
 
-      const matches = (data.data?.result || []).map((person: Record<string, unknown>) => ({
-        zoominfo_person_id: person.id,
-        first_name: person.firstName,
-        last_name: person.lastName,
-        title: person.jobTitle,
-        company: person.companyName,
-        city: person.city,
-        state: person.state,
-        country: person.country,
-        has_email: person.hasEmail ?? false,
-        has_direct_phone: person.hasDirectPhone ?? false,
-        zoominfo_profile_url: `https://app.zoominfo.com/#/apps/person/${person.id}`,
-      }));
+      // company is a nested object: { id, name }
+      const matches = getResults(data).map((person: Record<string, unknown>) => {
+        const company = person.company as Record<string, unknown> | undefined;
+        return {
+          zoominfo_person_id: person.id,
+          first_name: person.firstName,
+          last_name: person.lastName,
+          title: person.jobTitle,
+          company: company?.name || person.companyName || null,
+          city: person.city || null,
+          state: person.state || null,
+          country: person.country || null,
+          has_email: person.hasEmail ?? false,
+          has_direct_phone: person.hasDirectPhone ?? false,
+          zoominfo_profile_url: `https://app.zoominfo.com/#/apps/person/${person.id}`,
+        };
+      });
 
       return new Response(
         JSON.stringify({
           success: true,
           contact_id: searchReq.contact_id,
           matches,
-          total_results: data.data?.totalResults || 0,
+          total_results: data.totalResults || 0,
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -333,9 +344,10 @@ serve(async (req) => {
       }
 
       const data = await response.json();
-      const results = data.data?.result || [];
+      // ZoomInfo response: { data: [...] } — array directly, not data.result
+      const results = Array.isArray(data.data) ? data.data : (data.data?.result || []);
 
-      console.log(`[ZoomInfo Enrich] Got ${results.length} enriched result(s)`);
+      console.log(`[ZoomInfo Enrich] Got ${results.length} enriched result(s)`, JSON.stringify(data));
 
       if (results.length === 0) {
         return new Response(
