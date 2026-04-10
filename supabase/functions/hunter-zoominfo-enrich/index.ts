@@ -344,34 +344,65 @@ serve(async (req) => {
       }
 
       const data = await response.json();
-      // ZoomInfo response: { data: [...] } — array directly, not data.result
-      const results = Array.isArray(data.data) ? data.data : (data.data?.result || []);
+      console.log('[ZoomInfo Enrich] Raw response:', JSON.stringify(data));
 
-      console.log(`[ZoomInfo Enrich] Got ${results.length} enriched result(s)`, JSON.stringify(data));
+      // ZoomInfo Enrich response structure varies — try multiple shapes:
+      // Option A: { data: { result: [{ data: [{...person}], matchStatus }] } }
+      // Option B: { data: [{...person}] }
+      // Option C: { result: [{...person}] }
+      let person: Record<string, unknown> | null = null;
 
-      if (results.length === 0) {
+      const tryExtract = (obj: unknown): Record<string, unknown> | null => {
+        if (!obj || typeof obj !== 'object') return null;
+        const o = obj as Record<string, unknown>;
+        // If this object has firstName/id, it's a person
+        if (o.id || o.firstName || o.lastName) return o;
+        return null;
+      };
+
+      // Try the most common Enrich shape: data.result[0].data[0]
+      if (data?.data?.result?.[0]?.data?.[0]) {
+        person = data.data.result[0].data[0];
+      } else if (Array.isArray(data?.data?.result) && data.data.result[0]) {
+        person = tryExtract(data.data.result[0]);
+      } else if (Array.isArray(data?.data) && data.data[0]) {
+        const first = data.data[0] as Record<string, unknown>;
+        // Could be { data: [{...person}] } nested
+        if (Array.isArray(first.data) && first.data[0]) {
+          person = first.data[0] as Record<string, unknown>;
+        } else {
+          person = tryExtract(first);
+        }
+      } else if (Array.isArray(data?.result) && data.result[0]) {
+        person = tryExtract(data.result[0]);
+      }
+
+      console.log('[ZoomInfo Enrich] Extracted person:', JSON.stringify(person));
+
+      if (!person || !person.id) {
         return new Response(
           JSON.stringify({
             success: false,
             error: 'No enrichment data returned for this person',
             contact_id: enrichReq.contact_id,
+            raw_response: data,
           }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      const person = results[0];
-      const linkedinUrl = extractLinkedInUrl(person.externalUrls);
+      const linkedinUrl = extractLinkedInUrl(person.externalUrls as Array<{ type: string; url: string }> | undefined);
+      const company = person.company as Record<string, unknown> | undefined;
 
       const enrichedData = {
         zoominfo_person_id: person.id,
-        first_name: person.firstName,
-        last_name: person.lastName,
+        first_name: person.firstName || null,
+        last_name: person.lastName || null,
         email: person.email || null,
         phone: person.phone || null,
         mobile_phone: person.mobilePhone || null,
         title: person.jobTitle || null,
-        company: person.companyName || null,
+        company: company?.name || person.companyName || null,
         linkedin_url: linkedinUrl,
         external_urls: person.externalUrls || [],
         city: person.city || null,
