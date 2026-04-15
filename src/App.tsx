@@ -1,7 +1,6 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { OfflineBanner } from "./components/OfflineBanner";
-import { PWABackButton } from "./components/PWABackButton";
 import { IOSInstallPrompt } from "./components/IOSInstallPrompt";
 import { PWAUpdatePrompt } from "./components/PWAUpdatePrompt";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -117,7 +116,6 @@ function App() {
   return (
     <AuthProvider>
       <OfflineBanner />
-      <PWABackButton />
       <IOSInstallPrompt />
       <Routes>
         {/* Public route for password reset */}
