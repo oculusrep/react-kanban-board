@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { IOSInstallPrompt } from "./components/IOSInstallPrompt";
 import { PWAUpdatePrompt } from "./components/PWAUpdatePrompt";
+import { PullToRefresh } from "./components/PullToRefresh";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminRoute from "./components/AdminRoute";
 import CoachRoute from "./components/CoachRoute";
@@ -116,6 +117,7 @@ function App() {
   return (
     <AuthProvider>
       <OfflineBanner />
+      <PullToRefresh />
       <IOSInstallPrompt />
       <Routes>
         {/* Public route for password reset */}
