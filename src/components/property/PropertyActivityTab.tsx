@@ -214,6 +214,7 @@ export default function PropertyActivityTab({
   }
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmitOption[]>([]);
   const [crossPostPickerId, setCrossPostPickerId] = useState<string | null>(null);
+  const [selectedSiteSubmitIds, setSelectedSiteSubmitIds] = useState<Set<string>>(new Set());
   const [crossPostingId, setCrossPostingId] = useState<string | null>(null);
   const [crossPostSuccess, setCrossPostSuccess] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string>('You');
@@ -272,8 +273,8 @@ export default function PropertyActivityTab({
   // Preserves original attribution: author_id is set to the original author so the
   // comment appears as theirs in the destination. If the mover is not the original
   // author, a "(moved by ...)" suffix is added.
-  const handleCrossPostToSiteSubmit = async (item: UnifiedTimelineItem, siteSubmitId: string) => {
-    if (crossPostingId) return;
+  const handleCrossPostToSiteSubmit = async (item: UnifiedTimelineItem, siteSubmitIds: string[]) => {
+    if (crossPostingId || siteSubmitIds.length === 0) return;
 
     setCrossPostingId(item.id);
     try {
@@ -283,27 +284,27 @@ export default function PropertyActivityTab({
       if (!authUser) throw new Error('Not authenticated');
 
       const content = item.content || '';
-
-      // Use original author if available; otherwise fall back to the mover
-      // (site_submit_comment.author_id is NOT NULL).
       const authorId = item.created_by || authUser.id;
+
+      const rows = siteSubmitIds.map((ssId) => ({
+        site_submit_id: ssId,
+        author_id: authorId,
+        content,
+        visibility: 'internal' as const,
+        parent_comment_id: null,
+        created_at: item.created_at,
+        updated_at: item.created_at,
+      }));
 
       const { error: insertError } = await supabase
         .from('site_submit_comment')
-        .insert({
-          site_submit_id: siteSubmitId,
-          author_id: authorId,
-          content,
-          visibility: 'internal',
-          parent_comment_id: null,
-          created_at: item.created_at,
-          updated_at: item.created_at,
-        });
+        .insert(rows);
 
       if (insertError) throw insertError;
 
       setCrossPostSuccess(item.id);
       setCrossPostPickerId(null);
+      setSelectedSiteSubmitIds(new Set());
       setTimeout(() => setCrossPostSuccess(null), 2000);
     } catch (err) {
       console.error('Error cross-posting to site submit chat:', err);
@@ -586,7 +587,7 @@ export default function PropertyActivityTab({
                               </span>
                             ) : (
                               <button
-                                onClick={() => setCrossPostPickerId(crossPostPickerId === item.id ? null : item.id)}
+                                onClick={() => { setCrossPostPickerId(crossPostPickerId === item.id ? null : item.id); setSelectedSiteSubmitIds(new Set()); }}
                                 disabled={crossPostingId === item.id}
                                 className="p-1 rounded text-purple-500 hover:text-purple-700 hover:bg-purple-50 border border-purple-200 transition-colors"
                                 title="Send to Site Submit Chat"
@@ -718,24 +719,62 @@ export default function PropertyActivityTab({
                       {/* Site submit picker for cross-posting */}
                       {crossPostPickerId === item.id && siteSubmits.length > 0 && (
                         <div className="mt-2 p-2 bg-purple-50 border border-purple-200 rounded-lg">
-                          <p className="text-xs font-medium text-purple-700 mb-1.5">Send to Site Submit Chat:</p>
-                          <div className="flex flex-col gap-1">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <p className="text-xs font-medium text-purple-700">Send to Site Submit Chat:</p>
+                            <label className="flex items-center gap-1 text-[10px] text-purple-600 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={selectedSiteSubmitIds.size === siteSubmits.length}
+                                onChange={() => {
+                                  if (selectedSiteSubmitIds.size === siteSubmits.length) {
+                                    setSelectedSiteSubmitIds(new Set());
+                                  } else {
+                                    setSelectedSiteSubmitIds(new Set(siteSubmits.map(ss => ss.id)));
+                                  }
+                                }}
+                                className="rounded border-purple-300 text-purple-600 focus:ring-purple-500"
+                              />
+                              Select All
+                            </label>
+                          </div>
+                          <div className="flex flex-col gap-0.5">
                             {siteSubmits.map((ss) => (
-                              <button
+                              <label
                                 key={ss.id}
-                                onClick={() => handleCrossPostToSiteSubmit(item, ss.id)}
-                                className="text-left px-2 py-1.5 text-xs rounded hover:bg-purple-100 text-gray-700 transition-colors"
+                                className="flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-purple-100 text-gray-700 cursor-pointer transition-colors"
                               >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedSiteSubmitIds.has(ss.id)}
+                                  onChange={() => {
+                                    setSelectedSiteSubmitIds(prev => {
+                                      const next = new Set(prev);
+                                      if (next.has(ss.id)) next.delete(ss.id);
+                                      else next.add(ss.id);
+                                      return next;
+                                    });
+                                  }}
+                                  className="rounded border-purple-300 text-purple-600 focus:ring-purple-500"
+                                />
                                 {ss.site_submit_name || ss.client_name || ss.id.slice(0, 8)}
-                              </button>
+                              </label>
                             ))}
                           </div>
-                          <button
-                            onClick={() => setCrossPostPickerId(null)}
-                            className="mt-1 text-[10px] text-gray-400 hover:text-gray-600"
-                          >
-                            Cancel
-                          </button>
+                          <div className="flex items-center gap-2 mt-2">
+                            <button
+                              onClick={() => handleCrossPostToSiteSubmit(item, [...selectedSiteSubmitIds])}
+                              disabled={selectedSiteSubmitIds.size === 0 || crossPostingId === item.id}
+                              className="px-3 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 font-medium"
+                            >
+                              {crossPostingId === item.id ? 'Sending...' : `Send to ${selectedSiteSubmitIds.size || 0} submit${selectedSiteSubmitIds.size === 1 ? '' : 's'}`}
+                            </button>
+                            <button
+                              onClick={() => { setCrossPostPickerId(null); setSelectedSiteSubmitIds(new Set()); }}
+                              className="text-[10px] text-gray-400 hover:text-gray-600"
+                            >
+                              Cancel
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
