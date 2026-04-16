@@ -28,6 +28,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePropertyTimeline, PropertyActivityType } from '../../hooks/usePropertyTimeline';
 import { UnifiedTimelineItem } from '../../types/timeline';
+import { ArrowRightIcon } from '@heroicons/react/24/outline';
 
 // LinkedIn icon (custom since not in Heroicons)
 function LinkedInIcon({ className = 'w-5 h-5' }: { className?: string }) {
@@ -203,6 +204,77 @@ export default function PropertyActivityTab({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
+
+  // Cross-post to site submit state
+  interface SiteSubmitOption {
+    id: string;
+    client_name: string | null;
+    address: string | null;
+  }
+  const [siteSubmits, setSiteSubmits] = useState<SiteSubmitOption[]>([]);
+  const [crossPostPickerId, setCrossPostPickerId] = useState<string | null>(null);
+  const [crossPostingId, setCrossPostingId] = useState<string | null>(null);
+  const [crossPostSuccess, setCrossPostSuccess] = useState<string | null>(null);
+
+  // Fetch site submits linked to this property
+  useEffect(() => {
+    if (!propertyId) return;
+    (async () => {
+      const { data } = await supabase
+        .from('site_submit')
+        .select('id, client!client_id (client_name), address')
+        .eq('property_id', propertyId)
+        .order('created_at', { ascending: false });
+
+      if (data) {
+        setSiteSubmits(
+          data.map((ss: any) => ({
+            id: ss.id,
+            client_name: ss.client?.client_name || null,
+            address: ss.address || null,
+          }))
+        );
+      }
+    })();
+  }, [propertyId]);
+
+  // Cross-post a property note/activity to a site submit chat
+  const handleCrossPostToSiteSubmit = async (item: UnifiedTimelineItem, siteSubmitId: string) => {
+    if (crossPostingId) return;
+
+    setCrossPostingId(item.id);
+    try {
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+      if (!authUser) throw new Error('Not authenticated');
+
+      const label = item.type === 'note' ? 'Note' : getActivityLabel(item);
+      const authorName = item.created_by_name || 'Unknown';
+      const prefix = `[From Property Activity — ${authorName} — ${label}]`;
+      const content = item.content ? `${prefix}\n${item.content}` : prefix;
+
+      const { error: insertError } = await supabase
+        .from('site_submit_comment')
+        .insert({
+          site_submit_id: siteSubmitId,
+          author_id: authUser.id,
+          content,
+          visibility: 'internal',
+          parent_comment_id: null,
+        });
+
+      if (insertError) throw insertError;
+
+      setCrossPostSuccess(item.id);
+      setCrossPostPickerId(null);
+      setTimeout(() => setCrossPostSuccess(null), 2000);
+    } catch (err) {
+      console.error('Error cross-posting to site submit chat:', err);
+    } finally {
+      setCrossPostingId(null);
+    }
+  };
 
   // Handle deleting an activity or note
   const handleDeleteItem = async (item: UnifiedTimelineItem) => {
@@ -461,8 +533,31 @@ export default function PropertyActivityTab({
                           <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
 
                           {/* Action buttons - hover to show */}
-                          {(canEdit || canDelete) && !isEditing && !isConfirmingDelete && (
+                          {(canEdit || canDelete || siteSubmits.length > 0) && !isEditing && !isConfirmingDelete && (
                             <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {/* Cross-post to site submit */}
+                              {siteSubmits.length > 0 && item.content && (
+                                crossPostSuccess === item.id ? (
+                                  <span className="p-1 text-green-500">
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => setCrossPostPickerId(crossPostPickerId === item.id ? null : item.id)}
+                                    disabled={crossPostingId === item.id}
+                                    className="p-1 rounded text-gray-300 hover:text-purple-500 hover:bg-purple-50 transition-colors"
+                                    title="Send to Site Submit Chat"
+                                  >
+                                    {crossPostingId === item.id ? (
+                                      <div className="w-3.5 h-3.5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                      <ArrowRightIcon className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                )
+                              )}
                               {canEdit && (
                                 <button
                                   onClick={() => {
@@ -573,6 +668,30 @@ export default function PropertyActivityTab({
                         <span className="inline-flex items-center mt-1 text-xs text-gray-400">
                           from {item.migrated_from === 'property_notes' ? 'Property Notes' : 'Description'} field
                         </span>
+                      )}
+
+                      {/* Site submit picker for cross-posting */}
+                      {crossPostPickerId === item.id && siteSubmits.length > 0 && (
+                        <div className="mt-2 p-2 bg-purple-50 border border-purple-200 rounded-lg">
+                          <p className="text-xs font-medium text-purple-700 mb-1.5">Send to Site Submit Chat:</p>
+                          <div className="flex flex-col gap-1">
+                            {siteSubmits.map((ss) => (
+                              <button
+                                key={ss.id}
+                                onClick={() => handleCrossPostToSiteSubmit(item, ss.id)}
+                                className="text-left px-2 py-1.5 text-xs rounded hover:bg-purple-100 text-gray-700 transition-colors"
+                              >
+                                {ss.client_name || ss.address || ss.id.slice(0, 8)}
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() => setCrossPostPickerId(null)}
+                            className="mt-1 text-[10px] text-gray-400 hover:text-gray-600"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
