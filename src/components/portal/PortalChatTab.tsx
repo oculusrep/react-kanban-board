@@ -523,6 +523,7 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
           property_id: propertyId,
           content: noteContent,
           created_by: authUser.id,
+          created_at: comment.created_at,
         });
 
       if (insertError) throw insertError;

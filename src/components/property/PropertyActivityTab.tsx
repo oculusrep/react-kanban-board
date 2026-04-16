@@ -262,6 +262,8 @@ export default function PropertyActivityTab({
           content,
           visibility: 'internal',
           parent_comment_id: null,
+          created_at: item.created_at,
+          updated_at: item.created_at,
         });
 
       if (insertError) throw insertError;
