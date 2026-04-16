@@ -42,6 +42,8 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
   const [replyContent, setReplyContent] = useState('');
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
   const [currentUserName, setCurrentUserName] = useState<string>('You');
+  const [crossPostingId, setCrossPostingId] = useState<string | null>(null);
+  const [crossPostSuccess, setCrossPostSuccess] = useState<string | null>(null);
   const commentsEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const replyInputRef = useRef<HTMLTextAreaElement>(null);
@@ -501,6 +503,39 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
     return colors[Math.abs(hash) % colors.length];
   };
 
+  // Cross-post a site submit comment to the property activity timeline as a note
+  const handleCrossPostToProperty = async (comment: Comment) => {
+    if (!propertyId || crossPostingId) return;
+
+    setCrossPostingId(comment.id);
+    try {
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+      if (!authUser) throw new Error('Not authenticated');
+
+      const prefix = `[From Site Submit Chat — ${comment.author_name || 'Unknown'}]`;
+      const noteContent = `${prefix}\n${comment.content}`;
+
+      const { error: insertError } = await supabase
+        .from('property_note')
+        .insert({
+          property_id: propertyId,
+          content: noteContent,
+          created_by: authUser.id,
+        });
+
+      if (insertError) throw insertError;
+
+      setCrossPostSuccess(comment.id);
+      setTimeout(() => setCrossPostSuccess(null), 2000);
+    } catch (err) {
+      console.error('Error cross-posting to property activity:', err);
+    } finally {
+      setCrossPostingId(null);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>, parentId: string | null = null) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -609,6 +644,31 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
         {/* Action buttons */}
         {isHovered && !isEditing && !isDeleting && (
           <div className="absolute right-2 top-1 flex items-center bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden z-10">
+            {/* Cross-post to property activity */}
+            {propertyId && !comment.activity_type && (
+              crossPostSuccess === comment.id ? (
+                <span className="px-2 py-1 text-xs text-green-600">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </span>
+              ) : (
+                <button
+                  onClick={() => handleCrossPostToProperty(comment)}
+                  disabled={crossPostingId === comment.id}
+                  className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 hover:text-purple-600"
+                  title="Send to Property Activity"
+                >
+                  {crossPostingId === comment.id ? (
+                    <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
+                  )}
+                </button>
+              )
+            )}
             {!isReply && (
               <button
                 onClick={() => startReplying(comment.id)}
