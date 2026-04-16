@@ -1,11 +1,10 @@
 # OVIS PWA Conversion Plan
 
-**Status:** Phases 1-6 implemented, awaiting iPad testing on Vercel preview
-**Estimated Time:** 3-4 days (~24 hours)
+**Status:** Deployed to production
 **Goal:** Convert OVIS web app into a Progressive Web App optimized for iPad — fullscreen, installable, fast, native feel
-**Last Updated:** 2026-04-09
-**Version:** 2.0
-**Branch:** `feat/pwa` (preview deployment — not yet merged to main/production)
+**Last Updated:** 2026-04-16
+**Version:** 2.1
+**Branch:** `main` (merged from `feat/pwa` on 2026-04-16)
 
 ---
 
@@ -19,8 +18,36 @@
 | Phase 4 | Safe Area, Navigation & Keyboard Handling | DONE |
 | Phase 5 | iOS Install Prompt | DONE |
 | Phase 6 | Offline Banner | DONE |
-| Phase 7 | Testing & Validation | **NEXT — needs iPad testing** |
-| Phase 8 | Deployment (merge to main) | Pending test results |
+| Phase 7 | Testing & Validation | DONE — tested on iPad |
+| Phase 8 | Deployment (merge to main) | DONE — merged 2026-04-16 |
+| Phase 9 | Post-launch refinements | DONE — see below |
+
+---
+
+## Post-Launch Refinements (2026-04-16)
+
+After initial iPad testing, the following adjustments were made:
+
+### Removed: Floating PWA Back Button
+- **What:** `src/components/PWABackButton.tsx` and `src/hooks/useStandaloneMode.ts` deleted
+- **Why:** The floating back button overlapped with the navbar's hamburger menu on iPad, blocking access to CRM navigation. The navbar (with the hamburger menu) and detail-page-specific back buttons already provide all necessary navigation in standalone mode, so the floating button was redundant.
+- **Commit:** `b77bb97c` — "Remove PWA back button — navbar already handles navigation"
+
+### Added: Pull-to-Refresh Gesture
+- **What:** `src/components/PullToRefresh.tsx` — custom touch handler with visual indicator
+- **Why:** iOS standalone PWAs lose Safari's built-in pull-to-refresh gesture, leaving no obvious way for the user to manually reload the page. This restores the expected mobile pattern.
+- **How it works:**
+  - Listens to `touchstart` / `touchmove` / `touchend` on `window`
+  - Only activates when `window.scrollY === 0` (at the top of the page)
+  - Pull threshold: ~70px (with diminishing-return easing applied for a natural feel)
+  - Shows a downward chevron arrow that rotates to point up once the threshold is reached
+  - Replaces with a spinner during refresh, then calls `window.location.reload()`
+- **Disabled paths:** `/mapping`, `/mapping-old`, `/portal/map` — pull-to-refresh would conflict with Google Maps pan/zoom gestures on these pages
+- **Edge cases handled:**
+  - Skips touches that originate inside `.gm-style` elements (Google Maps containers)
+  - Resets if user scrolls during the gesture
+  - `touchmove` uses `passive: false` to allow `preventDefault()` while pulling
+- **Commit:** `38b04a83` — "Add pull-to-refresh gesture for PWA"
 
 ### What was done (2026-04-09)
 
