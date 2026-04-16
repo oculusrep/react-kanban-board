@@ -557,10 +557,7 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
       } = await supabase.auth.getUser();
       if (!authUser) throw new Error('Not authenticated');
 
-      const moverIsAuthor = comment.author_id === authUser.id;
-      const noteContent = moverIsAuthor
-        ? `[From Site Submit Chat]\n${comment.content}`
-        : `[From Site Submit Chat — moved by ${currentUserName}]\n${comment.content}`;
+      const noteContent = comment.content;
 
       const { error: insertError } = await supabase
         .from('property_note')

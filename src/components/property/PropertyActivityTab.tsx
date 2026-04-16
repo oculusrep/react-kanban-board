@@ -282,12 +282,7 @@ export default function PropertyActivityTab({
       } = await supabase.auth.getUser();
       if (!authUser) throw new Error('Not authenticated');
 
-      const label = item.type === 'note' ? 'Note' : getActivityLabel(item);
-      const moverIsAuthor = !item.created_by || item.created_by === authUser.id;
-      const prefix = moverIsAuthor
-        ? `[From Property Activity — ${label}]`
-        : `[From Property Activity — ${label} — moved by ${currentUserName}]`;
-      const content = item.content ? `${prefix}\n${item.content}` : prefix;
+      const content = item.content || '';
 
       // Use original author if available; otherwise fall back to the mover
       // (site_submit_comment.author_id is NOT NULL).
