@@ -336,6 +336,46 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
     }
   };
 
+  // Toggle a comment's visibility between 'internal' and 'client'.
+  // Admins can toggle any; authors can toggle their own.
+  const handleToggleVisibility = async (comment: Comment, isReply: boolean = false, parentId?: string) => {
+    if (!showInternalComments) return; // only meaningful for internal viewers
+    const canToggle = isAdmin || comment.author_id === user?.id;
+    if (!canToggle) return;
+
+    const newVisibility: 'internal' | 'client' = comment.visibility === 'internal' ? 'client' : 'internal';
+
+    try {
+      const { error: updateError } = await supabase
+        .from('site_submit_comment')
+        .update({ visibility: newVisibility })
+        .eq('id', comment.id);
+
+      if (updateError) throw updateError;
+
+      if (isReply && parentId) {
+        setComments(prev =>
+          prev.map(c =>
+            c.id === parentId
+              ? {
+                  ...c,
+                  replies: (c.replies || []).map(r =>
+                    r.id === comment.id ? { ...r, visibility: newVisibility } : r
+                  ),
+                }
+              : c
+          )
+        );
+      } else {
+        setComments(prev =>
+          prev.map(c => (c.id === comment.id ? { ...c, visibility: newVisibility } : c))
+        );
+      }
+    } catch (err) {
+      console.error('Error toggling comment visibility:', err);
+    }
+  };
+
   const handleDelete = async (commentId: string, isReply: boolean = false, parentId?: string) => {
     try {
       const { error: deleteError } = await supabase
@@ -748,10 +788,24 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
               <span className={`font-semibold text-gray-900 ${isReply ? 'text-[11px]' : 'text-xs'}`}>
                 {comment.author_name}
               </span>
-              {isInternal && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-200 text-amber-800 font-medium">
-                  Internal
-                </span>
+              {showInternalComments && (isAdmin || comment.author_id === user?.id) ? (
+                <button
+                  onClick={() => handleToggleVisibility(comment, isReply, parentId)}
+                  className={`text-[10px] px-1.5 py-0.5 rounded font-medium transition-colors ${
+                    isInternal
+                      ? 'bg-amber-200 text-amber-800 hover:bg-amber-300'
+                      : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                  }`}
+                  title={isInternal ? 'Currently internal — click to make client-visible' : 'Currently client-visible — click to mark internal'}
+                >
+                  {isInternal ? 'Internal' : 'Client-visible'}
+                </button>
+              ) : (
+                isInternal && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-200 text-amber-800 font-medium">
+                    Internal
+                  </span>
+                )
               )}
               <span className="text-xs text-gray-400">
                 {formatTimestamp(comment.created_at)}

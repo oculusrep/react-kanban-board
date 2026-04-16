@@ -29,6 +29,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePropertyTimeline, PropertyActivityType } from '../../hooks/usePropertyTimeline';
 import { UnifiedTimelineItem } from '../../types/timeline';
 import { ArrowRightIcon } from '@heroicons/react/24/outline';
+import EmailDetailModal from '../EmailDetailModal';
 
 // LinkedIn icon (custom since not in Heroicons)
 function LinkedInIcon({ className = 'w-5 h-5' }: { className?: string }) {
@@ -216,6 +217,14 @@ export default function PropertyActivityTab({
   const [crossPostingId, setCrossPostingId] = useState<string | null>(null);
   const [crossPostSuccess, setCrossPostSuccess] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string>('You');
+
+  // Email detail modal state — wraps UnifiedTimelineItem into the shape
+  // EmailDetailModal expects (email_id + direction + a few optional fields).
+  const [selectedEmail, setSelectedEmail] = useState<UnifiedTimelineItem | null>(null);
+  const openEmailModal = (item: UnifiedTimelineItem) => {
+    if (item.source !== 'email') return;
+    setSelectedEmail(item);
+  };
 
   // Fetch current user's display name for "moved by" attribution
   useEffect(() => {
@@ -505,8 +514,16 @@ export default function PropertyActivityTab({
               const isEditing = editingItemId === item.id;
               const isConfirmingDelete = confirmDeleteId === item.id;
 
+              const isEmail = item.source === 'email';
               return (
-                <div key={item.id} className="p-4 hover:bg-gray-50 group relative">
+                <div
+                  key={item.id}
+                  onClick={isEmail ? () => openEmailModal(item) : undefined}
+                  className={`p-4 hover:bg-gray-50 group relative ${
+                    isEmail ? 'cursor-pointer' : ''
+                  }`}
+                  title={isEmail ? 'Click to view email' : undefined}
+                >
                   <div className="flex items-start gap-3">
                     {/* Avatar for notes, icon for activities */}
                     {item.type === 'note' && item.created_by ? (
@@ -734,6 +751,23 @@ export default function PropertyActivityTab({
           </div>
         )}
       </div>
+
+      {/* Email Detail Modal */}
+      {selectedEmail && (
+        <EmailDetailModal
+          isOpen={!!selectedEmail}
+          onClose={() => setSelectedEmail(null)}
+          activity={{
+            id: selectedEmail.id,
+            email_id: selectedEmail.id,
+            direction: selectedEmail.direction === 'inbound' ? 'INBOUND' : 'OUTBOUND',
+            subject: selectedEmail.email_subject || '',
+            description: selectedEmail.email_body_preview || '',
+            activity_date: selectedEmail.created_at,
+            sf_task_subtype: 'Email',
+          } as any}
+        />
+      )}
 
       {/* Add Note Input */}
       <div className="p-4 border-t border-gray-200 bg-white flex-shrink-0">
