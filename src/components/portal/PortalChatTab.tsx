@@ -503,7 +503,10 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
     return colors[Math.abs(hash) % colors.length];
   };
 
-  // Cross-post a site submit comment to the property activity timeline as a note
+  // Cross-post a site submit comment to the property activity timeline as a note.
+  // Attribution is preserved: created_by is set to the original author so the note
+  // appears as theirs in the destination timeline. A small "(via ...)" suffix notes
+  // who performed the move.
   const handleCrossPostToProperty = async (comment: Comment) => {
     if (!propertyId || crossPostingId) return;
 
@@ -514,15 +517,17 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
       } = await supabase.auth.getUser();
       if (!authUser) throw new Error('Not authenticated');
 
-      const prefix = `[From Site Submit Chat — ${comment.author_name || 'Unknown'}]`;
-      const noteContent = `${prefix}\n${comment.content}`;
+      const moverIsAuthor = comment.author_id === authUser.id;
+      const noteContent = moverIsAuthor
+        ? `[From Site Submit Chat]\n${comment.content}`
+        : `[From Site Submit Chat — moved by ${currentUserName}]\n${comment.content}`;
 
       const { error: insertError } = await supabase
         .from('property_note')
         .insert({
           property_id: propertyId,
           content: noteContent,
-          created_by: authUser.id,
+          created_by: comment.author_id,
           created_at: comment.created_at,
         });
 
@@ -642,34 +647,37 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
           if (deletingId !== comment.id) setDeletingId(null);
         }}
       >
+        {/* Always-visible cross-post button (works on touch devices too) */}
+        {propertyId && !comment.activity_type && !isEditing && !isDeleting && (
+          <div className="absolute right-2 top-1 z-10">
+            {crossPostSuccess === comment.id ? (
+              <span className="px-1.5 py-0.5 text-green-600 bg-white border border-green-200 rounded shadow-sm inline-flex">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+            ) : (
+              <button
+                onClick={() => handleCrossPostToProperty(comment)}
+                disabled={crossPostingId === comment.id}
+                className="px-1.5 py-0.5 text-purple-400 hover:text-purple-700 hover:bg-purple-50 bg-white border border-purple-200 rounded shadow-sm"
+                title="Send to Property Activity"
+              >
+                {crossPostingId === comment.id ? (
+                  <div className="w-3.5 h-3.5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                )}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Action buttons */}
         {isHovered && !isEditing && !isDeleting && (
-          <div className="absolute right-2 top-1 flex items-center bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden z-10">
-            {/* Cross-post to property activity */}
-            {propertyId && !comment.activity_type && (
-              crossPostSuccess === comment.id ? (
-                <span className="px-2 py-1 text-xs text-green-600">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </span>
-              ) : (
-                <button
-                  onClick={() => handleCrossPostToProperty(comment)}
-                  disabled={crossPostingId === comment.id}
-                  className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 hover:text-purple-600"
-                  title="Send to Property Activity"
-                >
-                  {crossPostingId === comment.id ? (
-                    <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                    </svg>
-                  )}
-                </button>
-              )
-            )}
+          <div className="absolute right-10 top-1 flex items-center bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden z-10">
             {!isReply && (
               <button
                 onClick={() => startReplying(comment.id)}

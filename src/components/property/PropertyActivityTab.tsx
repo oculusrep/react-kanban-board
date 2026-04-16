@@ -209,36 +209,60 @@ export default function PropertyActivityTab({
   interface SiteSubmitOption {
     id: string;
     client_name: string | null;
-    address: string | null;
+    site_submit_name: string | null;
   }
   const [siteSubmits, setSiteSubmits] = useState<SiteSubmitOption[]>([]);
   const [crossPostPickerId, setCrossPostPickerId] = useState<string | null>(null);
   const [crossPostingId, setCrossPostingId] = useState<string | null>(null);
   const [crossPostSuccess, setCrossPostSuccess] = useState<string | null>(null);
+  const [currentUserName, setCurrentUserName] = useState<string>('You');
+
+  // Fetch current user's display name for "moved by" attribution
+  useEffect(() => {
+    if (!user?.id) return;
+    (async () => {
+      const { data: userData } = await supabase
+        .from('user')
+        .select('first_name, last_name, email')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      if (userData) {
+        const name = `${userData.first_name || ''} ${userData.last_name || ''}`.trim();
+        setCurrentUserName(name || userData.email || 'You');
+      }
+    })();
+  }, [user?.id]);
 
   // Fetch site submits linked to this property
   useEffect(() => {
     if (!propertyId) return;
     (async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('site_submit')
-        .select('id, client!client_id (client_name), address')
+        .select('id, site_submit_name, client!client_id (client_name)')
         .eq('property_id', propertyId)
         .order('created_at', { ascending: false });
 
-      if (data) {
-        setSiteSubmits(
-          data.map((ss: any) => ({
-            id: ss.id,
-            client_name: ss.client?.client_name || null,
-            address: ss.address || null,
-          }))
-        );
+      if (error) {
+        console.error('Failed to fetch site submits for cross-post picker:', error);
+        return;
       }
+
+      setSiteSubmits(
+        (data || []).map((ss: any) => ({
+          id: ss.id,
+          client_name: ss.client?.client_name || null,
+          site_submit_name: ss.site_submit_name || null,
+        }))
+      );
     })();
   }, [propertyId]);
 
-  // Cross-post a property note/activity to a site submit chat
+  // Cross-post a property note/activity to a site submit chat.
+  // Preserves original attribution: author_id is set to the original author so the
+  // comment appears as theirs in the destination. If the mover is not the original
+  // author, a "(moved by ...)" suffix is added.
   const handleCrossPostToSiteSubmit = async (item: UnifiedTimelineItem, siteSubmitId: string) => {
     if (crossPostingId) return;
 
@@ -250,15 +274,21 @@ export default function PropertyActivityTab({
       if (!authUser) throw new Error('Not authenticated');
 
       const label = item.type === 'note' ? 'Note' : getActivityLabel(item);
-      const authorName = item.created_by_name || 'Unknown';
-      const prefix = `[From Property Activity — ${authorName} — ${label}]`;
+      const moverIsAuthor = !item.created_by || item.created_by === authUser.id;
+      const prefix = moverIsAuthor
+        ? `[From Property Activity — ${label}]`
+        : `[From Property Activity — ${label} — moved by ${currentUserName}]`;
       const content = item.content ? `${prefix}\n${item.content}` : prefix;
+
+      // Use original author if available; otherwise fall back to the mover
+      // (site_submit_comment.author_id is NOT NULL).
+      const authorId = item.created_by || authUser.id;
 
       const { error: insertError } = await supabase
         .from('site_submit_comment')
         .insert({
           site_submit_id: siteSubmitId,
-          author_id: authUser.id,
+          author_id: authorId,
           content,
           visibility: 'internal',
           parent_comment_id: null,
@@ -534,32 +564,33 @@ export default function PropertyActivityTab({
                         <div className="flex items-center gap-1">
                           <span className="text-xs text-gray-400">{formatActivityTime(item.created_at)}</span>
 
-                          {/* Action buttons - hover to show */}
-                          {(canEdit || canDelete || siteSubmits.length > 0) && !isEditing && !isConfirmingDelete && (
-                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                              {/* Cross-post to site submit */}
-                              {siteSubmits.length > 0 && item.content && (
-                                crossPostSuccess === item.id ? (
-                                  <span className="p-1 text-green-500">
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                    </svg>
-                                  </span>
+                          {/* Always-visible cross-post button (works on touch + desktop) */}
+                          {siteSubmits.length > 0 && item.content && !isEditing && !isConfirmingDelete && (
+                            crossPostSuccess === item.id ? (
+                              <span className="p-1 text-green-600" title="Sent">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => setCrossPostPickerId(crossPostPickerId === item.id ? null : item.id)}
+                                disabled={crossPostingId === item.id}
+                                className="p-1 rounded text-purple-500 hover:text-purple-700 hover:bg-purple-50 border border-purple-200 transition-colors"
+                                title="Send to Site Submit Chat"
+                              >
+                                {crossPostingId === item.id ? (
+                                  <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
                                 ) : (
-                                  <button
-                                    onClick={() => setCrossPostPickerId(crossPostPickerId === item.id ? null : item.id)}
-                                    disabled={crossPostingId === item.id}
-                                    className="p-1 rounded text-gray-300 hover:text-purple-500 hover:bg-purple-50 transition-colors"
-                                    title="Send to Site Submit Chat"
-                                  >
-                                    {crossPostingId === item.id ? (
-                                      <div className="w-3.5 h-3.5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-                                    ) : (
-                                      <ArrowRightIcon className="w-3.5 h-3.5" />
-                                    )}
-                                  </button>
-                                )
-                              )}
+                                  <ArrowRightIcon className="w-4 h-4" />
+                                )}
+                              </button>
+                            )
+                          )}
+
+                          {/* Edit/delete buttons - hover to show */}
+                          {(canEdit || canDelete) && !isEditing && !isConfirmingDelete && (
+                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                               {canEdit && (
                                 <button
                                   onClick={() => {
@@ -683,7 +714,7 @@ export default function PropertyActivityTab({
                                 onClick={() => handleCrossPostToSiteSubmit(item, ss.id)}
                                 className="text-left px-2 py-1.5 text-xs rounded hover:bg-purple-100 text-gray-700 transition-colors"
                               >
-                                {ss.client_name || ss.address || ss.id.slice(0, 8)}
+                                {ss.site_submit_name || ss.client_name || ss.id.slice(0, 8)}
                               </button>
                             ))}
                           </div>
