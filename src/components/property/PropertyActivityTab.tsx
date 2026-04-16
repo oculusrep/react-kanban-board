@@ -504,7 +504,7 @@ export default function PropertyActivityTab({
           <div className="divide-y divide-gray-100">
             {timelineItems.map((item) => {
               const isOwn = item.created_by === user?.id;
-              const canEdit = item.source === 'property_note' && isOwn;
+              const canEdit = item.source === 'property_note' && (isOwn || isAdmin);
               const canDelete = item.source !== 'email' && (isOwn || isAdmin);
               const isEditing = editingItemId === item.id;
               const isConfirmingDelete = confirmDeleteId === item.id;

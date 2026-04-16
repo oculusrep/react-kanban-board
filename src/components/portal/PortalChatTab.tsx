@@ -666,7 +666,7 @@ export default function PortalChatTab({ siteSubmitId, showInternalComments, prop
 
     const isOwn = comment.author_id === user?.id;
     const isInternal = comment.visibility === 'internal';
-    const canEdit = isOwn;
+    const canEdit = isOwn || isAdmin;
     const canDelete = isOwn || isAdmin;
     const isHovered = hoveredId === comment.id;
     const isDeleting = deletingId === comment.id;
