@@ -101,7 +101,7 @@ export function useDropboxFiles(
         .select('dropbox_folder_path')
         .eq('entity_type', entityType)
         .eq('entity_id', entityId)
-        .single();
+        .maybeSingle();
 
       console.log('🔍 Mapping result:', { mapping, mappingError });
 
@@ -147,7 +147,6 @@ export function useDropboxFiles(
         return;
       }
 
-      setFolderPath(path);
       setFolderPath(path);
       console.log('🔍 Fetching files from path:', path);
 

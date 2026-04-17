@@ -18,6 +18,7 @@ class DropboxService {
   private refreshToken: string;
   private appKey: string;
   private appSecret: string;
+  private refreshPromise: Promise<void> | null = null;
 
   constructor(accessToken: string, refreshToken?: string, appKey?: string, appSecret?: string) {
     if (!accessToken) {
@@ -34,40 +35,51 @@ class DropboxService {
    * Refresh the access token using the refresh token
    */
   private async refreshAccessToken(): Promise<void> {
+    // Deduplicate concurrent refresh calls — if a refresh is already in progress, wait for it
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
     if (!this.refreshToken || !this.appKey || !this.appSecret) {
       console.warn('Cannot auto-refresh token: missing refresh token or app credentials');
       return;
     }
 
-    try {
-      const response = await fetch('https://api.dropboxapi.com/oauth2/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: this.refreshToken,
-          client_id: this.appKey,
-          client_secret: this.appSecret,
-        }),
-      });
+    this.refreshPromise = (async () => {
+      try {
+        const response = await fetch('https://api.dropboxapi.com/oauth2/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            grant_type: 'refresh_token',
+            refresh_token: this.refreshToken,
+            client_id: this.appKey,
+            client_secret: this.appSecret,
+          }),
+        });
 
-      if (!response.ok) {
-        throw new Error(`Token refresh failed: ${response.statusText}`);
+        if (!response.ok) {
+          throw new Error(`Token refresh failed: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        this.accessToken = data.access_token;
+
+        // Update Dropbox client with new token
+        this.dbx = new Dropbox({ accessToken: this.accessToken });
+
+        console.log('✅ Dropbox access token refreshed automatically');
+      } catch (error) {
+        console.error('Failed to refresh access token:', error);
+        throw error;
+      } finally {
+        this.refreshPromise = null;
       }
+    })();
 
-      const data = await response.json();
-      this.accessToken = data.access_token;
-
-      // Update Dropbox client with new token
-      this.dbx = new Dropbox({ accessToken: this.accessToken });
-
-      console.log('✅ Dropbox access token refreshed automatically');
-    } catch (error) {
-      console.error('Failed to refresh access token:', error);
-      throw error;
-    }
+    return this.refreshPromise;
   }
 
   /**
