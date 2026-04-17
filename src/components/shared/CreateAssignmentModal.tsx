@@ -30,7 +30,7 @@ export default function CreateAssignmentModal({
   const [assignmentName, setAssignmentName] = useState('');
   const [siteCriteria, setSiteCriteria] = useState('');
   const [priorityId, setPriorityId] = useState('');
-  const [priorityOptions, setPriorityOptions] = useState<{ id: string; label: string; is_default?: boolean | null }[]>([]);
+  const [priorityOptions, setPriorityOptions] = useState<{ id: string; label: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,15 +46,15 @@ export default function CreateAssignmentModal({
     const fetchPriorities = async () => {
       const { data } = await supabase
         .from('assignment_priority')
-        .select('id, label, is_default')
+        .select('id, label')
         .eq('active', true)
         .order('sort_order');
 
       if (data) {
         setPriorityOptions(data);
-        const defaultPriority = data.find(p => p.is_default);
-        if (defaultPriority) {
-          setPriorityId(defaultPriority.id);
+        // Auto-select the first priority as default
+        if (data.length > 0) {
+          setPriorityId(data[0].id);
         }
       }
     };
