@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import ClientSelector from '../mapping/ClientSelector';
 import AssignmentSelector from '../mapping/AssignmentSelector';
+import CreateAssignmentModal from './CreateAssignmentModal';
 import PropertyUnitSelector from '../PropertyUnitSelector';
 import { AssignmentSearchResult } from '../../hooks/useAssignmentSearch';
 import { SiteSubmitData } from './SiteSubmitSidebar';
@@ -39,6 +40,7 @@ export default function SiteSubmitCreateForm({
   const [showCoordinateChangePrompt, setShowCoordinateChangePrompt] = useState(false);
   const { enrichProperty, saveEnrichmentToProperty, enrichForClient, saveClientDemographicsToSiteSubmit, isEnriching } = usePropertyGeoenrichment();
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentSearchResult | null>(null);
+  const [showCreateAssignment, setShowCreateAssignment] = useState(false);
   const [selectedPropertyUnitId, setSelectedPropertyUnitId] = useState<string | null>(initialData.property_unit_id || null);
   const [siteSubmitName, setSiteSubmitName] = useState(initialData.site_submit_name || '');
   const [selectedStageId, setSelectedStageId] = useState(initialData.submit_stage_id || '');
@@ -383,6 +385,7 @@ export default function SiteSubmitCreateForm({
           <AssignmentSelector
             selectedAssignment={selectedAssignment}
             onAssignmentSelect={setSelectedAssignment}
+            onCreateNew={selectedClient ? () => setShowCreateAssignment(true) : undefined}
             clientId={selectedClient?.id}
             placeholder="Search for an assignment..."
           />
@@ -537,6 +540,20 @@ export default function SiteSubmitCreateForm({
           )}
         </button>
       </div>
+
+      {/* Create Assignment Modal */}
+      {selectedClient && (
+        <CreateAssignmentModal
+          isOpen={showCreateAssignment}
+          onClose={() => setShowCreateAssignment(false)}
+          onCreated={(assignment) => {
+            setSelectedAssignment(assignment);
+            setShowCreateAssignment(false);
+          }}
+          clientId={selectedClient.id}
+          clientName={selectedClient.client_name || ''}
+        />
+      )}
     </div>
   );
 }

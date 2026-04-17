@@ -10,6 +10,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import AssignmentSelector from '../mapping/AssignmentSelector';
+import CreateAssignmentModal from './CreateAssignmentModal';
 import PropertyUnitSelector from '../PropertyUnitSelector';
 import { AssignmentSearchResult } from '../../hooks/useAssignmentSearch';
 import { SiteSubmitData } from './SiteSubmitSidebar';
@@ -246,6 +247,7 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<any>(null);
   const [showDemographicsModal, setShowDemographicsModal] = useState(false);
+  const [showCreateAssignment, setShowCreateAssignment] = useState(false);
 
   // Demographics enrichment
   const { isEnriching, enrichError, enrichProperty, saveEnrichmentToProperty, enrichForClient, saveClientDemographicsToSiteSubmit, clearError } = usePropertyGeoenrichment();
@@ -559,6 +561,7 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
                 client_name: siteSubmit.client?.client_name || undefined,
               } : null}
               onAssignmentSelect={handleAssignmentChange}
+              onCreateNew={siteSubmit.client_id ? () => setShowCreateAssignment(true) : undefined}
               clientId={siteSubmit.client_id}
               placeholder="Select assignment..."
               className="text-sm"
@@ -1052,6 +1055,20 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
           data={siteSubmit.property}
           clientDemographics={siteSubmit.client_demographics as import('../../hooks/usePropertyGeoenrichment').ClientDemographicsData | undefined}
           onClose={() => setShowDemographicsModal(false)}
+        />
+      )}
+
+      {/* Create Assignment Modal */}
+      {siteSubmit.client_id && (
+        <CreateAssignmentModal
+          isOpen={showCreateAssignment}
+          onClose={() => setShowCreateAssignment(false)}
+          onCreated={(assignment) => {
+            handleAssignmentChange(assignment);
+            setShowCreateAssignment(false);
+          }}
+          clientId={siteSubmit.client_id}
+          clientName={siteSubmit.client?.client_name || ''}
         />
       )}
     </div>
