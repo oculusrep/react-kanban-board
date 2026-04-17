@@ -107,14 +107,24 @@ class DropboxService {
     this.validatePath(folderPath);
 
     return this.executeWithTokenRefresh(async () => {
-      const response = await this.dbx.filesListFolder({
+      let allEntries: any[] = [];
+      let response = await this.dbx.filesListFolder({
         path: folderPath,
         recursive: true,  // Fetch all files recursively so subfolders work
         include_deleted: false
       });
+      allEntries.push(...response.result.entries);
+
+      // Handle pagination - Dropbox returns results in pages
+      while (response.result.has_more) {
+        response = await this.dbx.filesListFolderContinue({
+          cursor: response.result.cursor
+        });
+        allEntries.push(...response.result.entries);
+      }
 
       // Filter out .sfdb files and map to DropboxFile interface
-      const files = response.result.entries
+      const files = allEntries
         .filter(entry => !entry.name.endsWith('.sfdb'))
         .map(entry => {
           const isFolder = entry['.tag'] === 'folder';
