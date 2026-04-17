@@ -11,6 +11,13 @@ export interface PropertyUnitFile {
   sharedLink: string;
 }
 
+export interface ClientDemographicsEmailData {
+  radii: number[];
+  drive_times: number[];
+  data: Record<string, number | null>;
+  tapestry?: { code: string | null; name: string | null; description?: string | null; lifemodes?: string | null };
+}
+
 export interface SiteSubmitEmailData {
   siteSubmit: any;
   siteSubmitId: string; // ID of the site submit for portal deep link
@@ -22,6 +29,7 @@ export interface SiteSubmitEmailData {
   propertyFiles?: PropertyUnitFile[]; // Array of property-level files with shared links
   portalBaseUrl?: string; // Base URL for portal links (e.g., https://app.example.com)
   userSignatureHtml?: string; // User's saved email signature HTML
+  clientDemographics?: ClientDemographicsEmailData | null; // Client-specific demographics from site_submit JSONB
 }
 
 // Oculus brand color palette
@@ -38,7 +46,7 @@ const COLORS = {
 };
 
 export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): string {
-  const { siteSubmit, siteSubmitId, property, propertyUnit, contacts, userData, propertyUnitFiles, propertyFiles, portalBaseUrl, userSignatureHtml } = data;
+  const { siteSubmit, siteSubmitId, property, propertyUnit, contacts, userData, propertyUnitFiles, propertyFiles, portalBaseUrl, userSignatureHtml, clientDemographics } = data;
 
   // Helper: Format currency
   const formatCurrency = (value: number | null | undefined) => {
@@ -146,22 +154,49 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
     return formatter(value);
   };
 
+  // Cell style for compact display
+  const cellStyle = `padding: 6px 8px; font-size: 11px; text-align: right; border-bottom: 1px solid #e5e7eb;`;
+  const labelCellStyle = `padding: 6px 8px; font-size: 11px; color: ${COLORS.textMuted}; border-bottom: 1px solid #e5e7eb;`;
+
+  // Determine tapestry source and column count
+  const tapestryCode = clientDemographics?.tapestry?.code || property?.tapestry_segment_code;
+  const tapestryName = clientDemographics?.tapestry?.name || property?.tapestry_segment_name;
+  const tapestryLifemodes = clientDemographics?.tapestry?.lifemodes || property?.tapestry_lifemodes;
+
+  // Build dynamic column definitions
+  const demoColumns: { key: string; header: string }[] = [];
+  if (clientDemographics) {
+    for (const r of clientDemographics.radii) {
+      demoColumns.push({ key: `${r}_mile`, header: `${r} Mi` });
+    }
+    for (const t of clientDemographics.drive_times) {
+      demoColumns.push({ key: `${t}min_drive`, header: `${t}-Min` });
+    }
+  } else {
+    demoColumns.push({ key: '1_mile', header: '1 Mile' });
+    demoColumns.push({ key: '3_mile', header: '3 Mile' });
+    demoColumns.push({ key: '5_mile', header: '5 Mile' });
+    demoColumns.push({ key: '10min_drive', header: '10-Min' });
+  }
+
+  const totalCols = demoColumns.length + 1; // +1 for the metric label column
+
   // Build Tapestry segment card if available
   let tapestryHtml = '';
-  if (property?.tapestry_segment_code && property?.tapestry_segment_name) {
+  if (tapestryCode && tapestryName) {
     tapestryHtml = `
       <tr>
-        <td colspan="5" style="padding: 8px 10px; background-color: #f8fafc; border: 1px solid ${COLORS.border};">
+        <td colspan="${totalCols}" style="padding: 8px 10px; background-color: #f8fafc; border: 1px solid ${COLORS.border};">
           <table cellpadding="0" cellspacing="0" style="width: 100%;">
             <tr>
               <td style="width: 40px; vertical-align: top;">
                 <div style="width: 36px; height: 36px; background-color: ${COLORS.primaryDark}; color: #ffffff; font-weight: bold; font-size: 12px; text-align: center; line-height: 36px; border-radius: 4px;">
-                  ${property.tapestry_segment_code}
+                  ${tapestryCode}
                 </div>
               </td>
               <td style="padding-left: 10px; vertical-align: top;">
-                <div style="font-weight: 600; font-size: 12px; color: ${COLORS.text};">${property.tapestry_segment_name}</div>
-                ${property.tapestry_lifemodes ? `<div style="font-size: 11px; color: ${COLORS.textMuted};">${property.tapestry_lifemodes}</div>` : ''}
+                <div style="font-weight: 600; font-size: 12px; color: ${COLORS.text};">${tapestryName}</div>
+                ${tapestryLifemodes ? `<div style="font-size: 11px; color: ${COLORS.textMuted};">${tapestryLifemodes}</div>` : ''}
               </td>
             </tr>
           </table>
@@ -170,92 +205,46 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
     `;
   }
 
-  // Build demographics grid rows - only include rows that have at least one non-null value
+  // Build demographics grid rows dynamically
   const demoGridRows: string[] = [];
 
-  // Cell style for compact display
-  const cellStyle = `padding: 6px 8px; font-size: 11px; text-align: right; border-bottom: 1px solid #e5e7eb;`;
-  const labelCellStyle = `padding: 6px 8px; font-size: 11px; color: ${COLORS.textMuted}; border-bottom: 1px solid #e5e7eb;`;
+  // Helper to get a value from either client demographics JSONB or property fields
+  const getDemoValue = (prefix: string, colKey: string): number | null | undefined => {
+    if (clientDemographics) {
+      return clientDemographics.data[`${prefix}_${colKey}`] as number | null | undefined;
+    }
+    // Fall back to property fields (handling legacy field names)
+    const propKey = `${prefix}_${colKey}`;
+    return property?.[propKey] as number | null | undefined;
+  };
 
-  // Population row
-  if (property?.pop_1_mile != null || property?.pop_3_mile != null || property?.pop_5_mile != null || property?.pop_10min_drive != null ||
-      property?.['1_mile_pop'] != null || property?.['3_mile_pop'] != null) {
-    const pop1 = property?.pop_1_mile ?? property?.['1_mile_pop'];
-    const pop3 = property?.pop_3_mile ?? property?.['3_mile_pop'];
-    demoGridRows.push(`<tr style="background-color: #ffffff;">
-      <td style="${labelCellStyle}">Population</td>
-      <td style="${cellStyle}">${cell(pop1)}</td>
-      <td style="${cellStyle}">${cell(pop3)}</td>
-      <td style="${cellStyle}">${cell(property?.pop_5_mile)}</td>
-      <td style="${cellStyle}">${cell(property?.pop_10min_drive)}</td>
-    </tr>`);
-  }
+  // Metric definitions
+  const metrics: { label: string; prefix: string; formatter: (v: number) => string }[] = [
+    { label: 'Population', prefix: 'pop', formatter: (v) => formatNumber(v) || '-' },
+    { label: 'Households', prefix: 'households', formatter: (v) => formatNumber(v) || '-' },
+    { label: 'Daytime Pop', prefix: 'daytime_pop', formatter: (v) => formatNumber(v) || '-' },
+    { label: 'Employees', prefix: 'employees', formatter: (v) => formatNumber(v) || '-' },
+    { label: 'Avg HH Income', prefix: 'hh_income_avg', formatter: (v) => formatCurrency(v) || '-' },
+    { label: 'Median HH Income', prefix: 'hh_income_median', formatter: (v) => formatCurrency(v) || '-' },
+    { label: 'Median Age', prefix: 'median_age', formatter: (v) => v != null ? v.toFixed(1) : '-' },
+  ];
 
-  // Households row
-  if (property?.households_1_mile != null || property?.households_3_mile != null || property?.households_5_mile != null || property?.households_10min_drive != null) {
-    demoGridRows.push(`<tr style="background-color: #f9fafb;">
-      <td style="${labelCellStyle}">Households</td>
-      <td style="${cellStyle}">${cell(property?.households_1_mile)}</td>
-      <td style="${cellStyle}">${cell(property?.households_3_mile)}</td>
-      <td style="${cellStyle}">${cell(property?.households_5_mile)}</td>
-      <td style="${cellStyle}">${cell(property?.households_10min_drive)}</td>
-    </tr>`);
-  }
+  metrics.forEach((metric, metricIdx) => {
+    // Check if any column has data for this metric
+    const hasData = demoColumns.some(col => getDemoValue(metric.prefix, col.key) != null);
+    if (!hasData) return;
 
-  // Daytime Pop row
-  if (property?.daytime_pop_1_mile != null || property?.daytime_pop_3_mile != null || property?.daytime_pop_5_mile != null || property?.daytime_pop_10min_drive != null) {
-    demoGridRows.push(`<tr style="background-color: #ffffff;">
-      <td style="${labelCellStyle}">Daytime Pop</td>
-      <td style="${cellStyle}">${cell(property?.daytime_pop_1_mile)}</td>
-      <td style="${cellStyle}">${cell(property?.daytime_pop_3_mile)}</td>
-      <td style="${cellStyle}">${cell(property?.daytime_pop_5_mile)}</td>
-      <td style="${cellStyle}">${cell(property?.daytime_pop_10min_drive)}</td>
-    </tr>`);
-  }
+    const bgColor = metricIdx % 2 === 0 ? '#ffffff' : '#f9fafb';
+    const cells = demoColumns.map(col => {
+      const value = getDemoValue(metric.prefix, col.key);
+      return `<td style="${cellStyle}">${cell(value as number | null, metric.formatter)}</td>`;
+    }).join('');
 
-  // Employees row
-  if (property?.employees_1_mile != null || property?.employees_3_mile != null || property?.employees_5_mile != null || property?.employees_10min_drive != null) {
-    demoGridRows.push(`<tr style="background-color: #f9fafb;">
-      <td style="${labelCellStyle}">Employees</td>
-      <td style="${cellStyle}">${cell(property?.employees_1_mile)}</td>
-      <td style="${cellStyle}">${cell(property?.employees_3_mile)}</td>
-      <td style="${cellStyle}">${cell(property?.employees_5_mile)}</td>
-      <td style="${cellStyle}">${cell(property?.employees_10min_drive)}</td>
+    demoGridRows.push(`<tr style="background-color: ${bgColor};">
+      <td style="${labelCellStyle}">${metric.label}</td>
+      ${cells}
     </tr>`);
-  }
-
-  // Avg HH Income row
-  if (property?.hh_income_avg_1_mile != null || property?.hh_income_avg_3_mile != null || property?.hh_income_avg_5_mile != null || property?.hh_income_avg_10min_drive != null) {
-    demoGridRows.push(`<tr style="background-color: #ffffff;">
-      <td style="${labelCellStyle}">Avg HH Income</td>
-      <td style="${cellStyle}">${cell(property?.hh_income_avg_1_mile, (v) => formatCurrency(v) || '-')}</td>
-      <td style="${cellStyle}">${cell(property?.hh_income_avg_3_mile, (v) => formatCurrency(v) || '-')}</td>
-      <td style="${cellStyle}">${cell(property?.hh_income_avg_5_mile, (v) => formatCurrency(v) || '-')}</td>
-      <td style="${cellStyle}">${cell(property?.hh_income_avg_10min_drive, (v) => formatCurrency(v) || '-')}</td>
-    </tr>`);
-  }
-
-  // Median HH Income row
-  if (property?.hh_income_median_1_mile != null || property?.hh_income_median_3_mile != null || property?.hh_income_median_5_mile != null || property?.hh_income_median_10min_drive != null) {
-    demoGridRows.push(`<tr style="background-color: #f9fafb;">
-      <td style="${labelCellStyle}">Median HH Income</td>
-      <td style="${cellStyle}">${cell(property?.hh_income_median_1_mile, (v) => formatCurrency(v) || '-')}</td>
-      <td style="${cellStyle}">${cell(property?.hh_income_median_3_mile, (v) => formatCurrency(v) || '-')}</td>
-      <td style="${cellStyle}">${cell(property?.hh_income_median_5_mile, (v) => formatCurrency(v) || '-')}</td>
-      <td style="${cellStyle}">${cell(property?.hh_income_median_10min_drive, (v) => formatCurrency(v) || '-')}</td>
-    </tr>`);
-  }
-
-  // Median Age row
-  if (property?.median_age_1_mile != null || property?.median_age_3_mile != null || property?.median_age_5_mile != null || property?.median_age_10min_drive != null) {
-    demoGridRows.push(`<tr style="background-color: #ffffff;">
-      <td style="${labelCellStyle}">Median Age</td>
-      <td style="${cellStyle}">${property?.median_age_1_mile != null ? property.median_age_1_mile.toFixed(1) : '-'}</td>
-      <td style="${cellStyle}">${property?.median_age_3_mile != null ? property.median_age_3_mile.toFixed(1) : '-'}</td>
-      <td style="${cellStyle}">${property?.median_age_5_mile != null ? property.median_age_5_mile.toFixed(1) : '-'}</td>
-      <td style="${cellStyle}">${property?.median_age_10min_drive != null ? property.median_age_10min_drive.toFixed(1) : '-'}</td>
-    </tr>`);
-  }
+  });
 
   // Traffic counts row (separate section since not radius-based)
   let trafficRow = '';
@@ -266,7 +255,7 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
     if (property?.total_traffic != null) trafficParts.push(`Total: ${formatNumber(property.total_traffic)}`);
     trafficRow = `<tr style="background-color: #f9fafb;">
       <td style="${labelCellStyle}">Traffic Count</td>
-      <td colspan="4" style="${cellStyle} text-align: left;">${trafficParts.join(' &nbsp;|&nbsp; ')}</td>
+      <td colspan="${demoColumns.length}" style="${cellStyle} text-align: left;">${trafficParts.join(' &nbsp;|&nbsp; ')}</td>
     </tr>`;
   }
 
@@ -338,18 +327,16 @@ export function generateSiteSubmitEmailTemplate(data: SiteSubmitEmailData): stri
   // Demographics Table (if data exists) - grid format with columns for each radius
   if (demoGridRows.length > 0 || tapestryHtml || trafficRow) {
     emailHtml += `<table style="${tableWrapperStyle} width: 100%; border-collapse: collapse;" cellpadding="0" cellspacing="0">`;
-    emailHtml += `<tr><td colspan="5" style="${sectionHeaderStyle}">Demographics</td></tr>`;
+    emailHtml += `<tr><td colspan="${totalCols}" style="${sectionHeaderStyle}">Demographics</td></tr>`;
     // Tapestry segment card
     emailHtml += tapestryHtml;
-    // Column headers
+    // Column headers (dynamic based on configured radii/drive times)
     if (demoGridRows.length > 0) {
       const headerStyle = `padding: 6px 8px; font-size: 10px; font-weight: 600; color: ${COLORS.textMuted}; border-bottom: 2px solid #e5e7eb; text-align: right;`;
+      const headerCells = demoColumns.map(col => `<td style="${headerStyle}">${col.header}</td>`).join('');
       emailHtml += `<tr style="background-color: #f9fafb;">
         <td style="${headerStyle} text-align: left;">Metric</td>
-        <td style="${headerStyle}">1 Mile</td>
-        <td style="${headerStyle}">3 Mile</td>
-        <td style="${headerStyle}">5 Mile</td>
-        <td style="${headerStyle}">10-Min</td>
+        ${headerCells}
       </tr>`;
     }
     emailHtml += demoRows;

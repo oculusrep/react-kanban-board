@@ -740,6 +740,7 @@ const SiteSubmitFormModal: React.FC<SiteSubmitFormModalProps> = ({
       propertyFiles,
       portalBaseUrl: window.location.origin,
       userSignatureHtml: signatureHtml,
+      clientDemographics: siteSubmit.client_demographics || null,
     });
   };
 

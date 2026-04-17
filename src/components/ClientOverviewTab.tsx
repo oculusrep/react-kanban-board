@@ -6,6 +6,7 @@ import ParentAccountSelector from './ParentAccountSelector';
 import RecordMetadata from './RecordMetadata';
 import ClientPortalUsersSection from './portal/ClientPortalUsersSection';
 import ClientForecastingSection from './clients/ClientForecastingSection';
+import ClientDemographicsSection from './clients/ClientDemographicsSection';
 
 type Client = Database['public']['Tables']['client']['Row'];
 type ClientInsert = Database['public']['Tables']['client']['Insert'];
@@ -772,6 +773,12 @@ const ClientOverviewTab: React.FC<ClientOverviewTabProps> = ({
 
       {/* Forecasting Section */}
       <ClientForecastingSection
+        clientId={client?.id || null}
+        isNewClient={isNewClient}
+      />
+
+      {/* Demographics Settings Section */}
+      <ClientDemographicsSection
         clientId={client?.id || null}
         isNewClient={isNewClient}
       />

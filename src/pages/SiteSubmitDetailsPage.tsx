@@ -597,6 +597,7 @@ const SiteSubmitDetailsPage: React.FC = () => {
       propertyUnitFiles,
       portalBaseUrl: window.location.origin,
       userSignatureHtml: signatureHtml,
+      clientDemographics: siteSubmit.client_demographics || null,
     });
   };
 

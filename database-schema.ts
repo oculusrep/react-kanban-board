@@ -1150,6 +1150,8 @@ export type Database = {
           client_type_id: string | null
           created_at: string | null
           created_by_id: string | null
+          demographics_drive_times: number[] | null
+          demographics_radii: number[] | null
           description: string | null
           id: string
           is_active_client: boolean | null
@@ -1187,6 +1189,8 @@ export type Database = {
           client_type_id?: string | null
           created_at?: string | null
           created_by_id?: string | null
+          demographics_drive_times?: number[] | null
+          demographics_radii?: number[] | null
           description?: string | null
           id?: string
           is_active_client?: boolean | null
@@ -1224,6 +1228,8 @@ export type Database = {
           client_type_id?: string | null
           created_at?: string | null
           created_by_id?: string | null
+          demographics_drive_times?: number[] | null
+          demographics_radii?: number[] | null
           description?: string | null
           id?: string
           is_active_client?: boolean | null
@@ -8001,6 +8007,7 @@ export type Database = {
       site_submit: {
         Row: {
           assignment_id: string | null
+          client_demographics: Record<string, unknown> | null
           client_id: string | null
           code: string | null
           competitor_data: string | null
@@ -8047,6 +8054,7 @@ export type Database = {
         }
         Insert: {
           assignment_id?: string | null
+          client_demographics?: Record<string, unknown> | null
           client_id?: string | null
           code?: string | null
           competitor_data?: string | null
@@ -8093,6 +8101,7 @@ export type Database = {
         }
         Update: {
           assignment_id?: string | null
+          client_demographics?: Record<string, unknown> | null
           client_id?: string | null
           code?: string | null
           competitor_data?: string | null

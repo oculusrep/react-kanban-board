@@ -936,6 +936,7 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
       {showDemographicsModal && siteSubmit.property && (
         <DemographicsModal
           data={siteSubmit.property}
+          clientDemographics={siteSubmit.client_demographics as import('../../hooks/usePropertyGeoenrichment').ClientDemographicsData | undefined}
           onClose={() => setShowDemographicsModal(false)}
         />
       )}

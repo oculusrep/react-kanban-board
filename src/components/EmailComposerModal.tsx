@@ -18,6 +18,7 @@ export interface EmailTemplateData {
   userData: any;
   portalBaseUrl: string;
   userSignatureHtml?: string;
+  clientDemographics?: Record<string, unknown> | null;
 }
 
 // Available files that can be selected/deselected
@@ -222,6 +223,7 @@ const EmailComposerModal: React.FC<EmailComposerModalProps> = ({
         propertyFiles: filteredPropertyFiles,
         portalBaseUrl: templateData.portalBaseUrl,
         userSignatureHtml: templateData.userSignatureHtml,
+        clientDemographics: templateData.clientDemographics as any,
       });
     }
     // Fall back to default body if no template data

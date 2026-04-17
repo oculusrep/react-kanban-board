@@ -37,7 +37,7 @@ export default function SiteSubmitCreateForm({
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [showStaleDataPrompt, setShowStaleDataPrompt] = useState(false);
   const [showCoordinateChangePrompt, setShowCoordinateChangePrompt] = useState(false);
-  const { enrichProperty, saveEnrichmentToProperty, isEnriching } = usePropertyGeoenrichment();
+  const { enrichProperty, saveEnrichmentToProperty, enrichForClient, saveClientDemographicsToSiteSubmit, isEnriching } = usePropertyGeoenrichment();
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentSearchResult | null>(null);
   const [selectedPropertyUnitId, setSelectedPropertyUnitId] = useState<string | null>(initialData.property_unit_id || null);
   const [siteSubmitName, setSiteSubmitName] = useState(initialData.site_submit_name || '');
@@ -115,6 +115,124 @@ export default function SiteSubmitCreateForm({
         await saveEnrichmentToProperty(propertyId, result, propertyData.latitude, propertyData.longitude);
         console.log('[SiteSubmit] Property enriched successfully');
       }
+    }
+  };
+
+  // Enrich site submit with client-specific demographics
+  const enrichWithClientDemographics = async (siteSubmitId: string, clientId: string, propertyId: string) => {
+    // Fetch client demographics config
+    const { data: clientConfig } = await supabase
+      .from('client')
+      .select('demographics_radii, demographics_drive_times')
+      .eq('id', clientId)
+      .single();
+
+    const radii = clientConfig?.demographics_radii || [1, 3, 5];
+    const driveTimes = clientConfig?.demographics_drive_times || [10];
+
+    // Get property coordinates
+    const { data: propertyData } = await supabase
+      .from('property')
+      .select('latitude, longitude')
+      .eq('id', propertyId)
+      .single();
+
+    if (!propertyData?.latitude || !propertyData?.longitude) {
+      console.log('[SiteSubmit] No coordinates for client demographics enrichment');
+      return;
+    }
+
+    // Check if client has custom config (different from defaults)
+    const isDefaultRadii = JSON.stringify(radii) === JSON.stringify([1, 3, 5]);
+    const isDefaultDriveTimes = JSON.stringify(driveTimes) === JSON.stringify([10]);
+
+    if (isDefaultRadii && isDefaultDriveTimes) {
+      // No custom config — copy property defaults into site_submit JSONB for consistent display
+      const { data: propDemographics } = await supabase
+        .from('property')
+        .select(`
+          pop_1_mile, pop_3_mile, pop_5_mile,
+          households_1_mile, households_3_mile, households_5_mile,
+          hh_income_median_1_mile, hh_income_median_3_mile, hh_income_median_5_mile,
+          hh_income_avg_1_mile, hh_income_avg_3_mile, hh_income_avg_5_mile,
+          employees_1_mile, employees_3_mile, employees_5_mile,
+          median_age_1_mile, median_age_3_mile, median_age_5_mile,
+          daytime_pop_1_mile, daytime_pop_3_mile, daytime_pop_5_mile,
+          pop_10min_drive, households_10min_drive, hh_income_median_10min_drive,
+          hh_income_avg_10min_drive, employees_10min_drive, median_age_10min_drive,
+          daytime_pop_10min_drive,
+          tapestry_segment_code, tapestry_segment_name, tapestry_segment_description, tapestry_lifemodes,
+          esri_enriched_at
+        `)
+        .eq('id', propertyId)
+        .single();
+
+      if (propDemographics && propDemographics.esri_enriched_at) {
+        const clientDemographics = {
+          radii,
+          drive_times: driveTimes,
+          enriched_at: propDemographics.esri_enriched_at,
+          data: {
+            pop_1_mile: propDemographics.pop_1_mile,
+            pop_3_mile: propDemographics.pop_3_mile,
+            pop_5_mile: propDemographics.pop_5_mile,
+            households_1_mile: propDemographics.households_1_mile,
+            households_3_mile: propDemographics.households_3_mile,
+            households_5_mile: propDemographics.households_5_mile,
+            hh_income_median_1_mile: propDemographics.hh_income_median_1_mile,
+            hh_income_median_3_mile: propDemographics.hh_income_median_3_mile,
+            hh_income_median_5_mile: propDemographics.hh_income_median_5_mile,
+            hh_income_avg_1_mile: propDemographics.hh_income_avg_1_mile,
+            hh_income_avg_3_mile: propDemographics.hh_income_avg_3_mile,
+            hh_income_avg_5_mile: propDemographics.hh_income_avg_5_mile,
+            employees_1_mile: propDemographics.employees_1_mile,
+            employees_3_mile: propDemographics.employees_3_mile,
+            employees_5_mile: propDemographics.employees_5_mile,
+            median_age_1_mile: propDemographics.median_age_1_mile,
+            median_age_3_mile: propDemographics.median_age_3_mile,
+            median_age_5_mile: propDemographics.median_age_5_mile,
+            daytime_pop_1_mile: propDemographics.daytime_pop_1_mile,
+            daytime_pop_3_mile: propDemographics.daytime_pop_3_mile,
+            daytime_pop_5_mile: propDemographics.daytime_pop_5_mile,
+            pop_10min_drive: propDemographics.pop_10min_drive,
+            households_10min_drive: propDemographics.households_10min_drive,
+            hh_income_median_10min_drive: propDemographics.hh_income_median_10min_drive,
+            hh_income_avg_10min_drive: propDemographics.hh_income_avg_10min_drive,
+            employees_10min_drive: propDemographics.employees_10min_drive,
+            median_age_10min_drive: propDemographics.median_age_10min_drive,
+            daytime_pop_10min_drive: propDemographics.daytime_pop_10min_drive,
+          },
+          tapestry: {
+            code: propDemographics.tapestry_segment_code,
+            name: propDemographics.tapestry_segment_name,
+            description: propDemographics.tapestry_segment_description,
+            lifemodes: propDemographics.tapestry_lifemodes,
+          },
+        };
+
+        await supabase
+          .from('site_submit')
+          .update({ client_demographics: clientDemographics })
+          .eq('id', siteSubmitId);
+
+        console.log('[SiteSubmit] Copied default demographics to site_submit JSONB');
+      }
+      return;
+    }
+
+    // Client has custom config — call ESRI with custom radii/drive times
+    console.log('[SiteSubmit] Enriching with client-specific demographics:', { radii, driveTimes });
+    const result = await enrichForClient(
+      propertyId,
+      propertyData.latitude,
+      propertyData.longitude,
+      radii,
+      driveTimes
+    );
+
+    if (result) {
+      await saveClientDemographicsToSiteSubmit(siteSubmitId, result, radii, driveTimes);
+      console.log('[SiteSubmit] Client demographics saved to site_submit');
     }
   };
 
@@ -212,6 +330,11 @@ export default function SiteSubmitCreateForm({
       // Auto-enrich property demographics (silent fail - doesn't block site submit)
       checkAndEnrichProperty(initialData.property_id, refreshStaleData).catch((err) => {
         console.error('[SiteSubmit] Enrichment failed (non-blocking):', err);
+      });
+
+      // Enrich with client-specific demographics if client has custom config (non-blocking)
+      enrichWithClientDemographics(data.id, selectedClient.id, initialData.property_id).catch((err) => {
+        console.error('[SiteSubmit] Client demographics enrichment failed (non-blocking):', err);
       });
 
       onSave(data as unknown as SiteSubmitData);

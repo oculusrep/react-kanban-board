@@ -448,15 +448,13 @@ export function useDropboxFiles(
         const targetFolderPath = baseFolderPath + subPath;
         console.log('📤 Uploading to:', targetFolderPath);
 
-        // Upload all files in parallel
-        console.log('📤 Creating upload promises for', filesArray.length, 'files...');
-        const uploadPromises = filesArray.map((file, index) => {
-          console.log(`📤 Starting upload ${index + 1}:`, file.name, file.size, 'bytes');
-          return dropboxService!.uploadFile(file, targetFolderPath);
-        });
-
-        console.log('⏳ Awaiting all uploads...');
-        await Promise.all(uploadPromises);
+        // Upload files sequentially to avoid Dropbox 429 rate limits
+        console.log('📤 Uploading', filesArray.length, 'files sequentially...');
+        for (let i = 0; i < filesArray.length; i++) {
+          const file = filesArray[i];
+          console.log(`📤 Uploading file ${i + 1}/${filesArray.length}:`, file.name, file.size, 'bytes');
+          await dropboxService!.uploadFile(file, targetFolderPath);
+        }
         console.log('✅ All uploads completed');
 
         // Refresh file list after uploads complete

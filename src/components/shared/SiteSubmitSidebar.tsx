@@ -38,6 +38,7 @@ export interface SiteSubmitData {
   client_id: string | null;
   assignment_id: string | null;
   deal_id: string | null;
+  client_demographics?: Record<string, unknown> | null;
   created_at?: string | null;
   created_by_id?: string | null;
   updated_at?: string | null;
@@ -328,6 +329,7 @@ export default function SiteSubmitSidebar({
             property_unit_id,
             client_id,
             assignment_id,
+            client_demographics,
             created_at,
             created_by_id,
             updated_at,

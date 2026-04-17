@@ -55,8 +55,21 @@ export interface GeoenrichmentResult {
   property_id: string;
   tapestry: TapestrySegment;
   demographics: DemographicData;
+  radii?: number[];
+  drive_times?: number[];
   raw_response?: unknown;
   error?: string;
+}
+
+/**
+ * Client-specific demographics stored as JSONB on site_submit
+ */
+export interface ClientDemographicsData {
+  radii: number[];
+  drive_times: number[];
+  enriched_at: string;
+  data: Record<string, number | null>;
+  tapestry: TapestrySegment;
 }
 
 interface UsePropertyGeoenrichmentReturn {
@@ -73,6 +86,19 @@ interface UsePropertyGeoenrichmentReturn {
     result: GeoenrichmentResult,
     latitude: number,
     longitude: number
+  ) => Promise<boolean>;
+  enrichForClient: (
+    propertyId: string,
+    latitude: number,
+    longitude: number,
+    radii: number[],
+    driveTimes: number[]
+  ) => Promise<GeoenrichmentResult | null>;
+  saveClientDemographicsToSiteSubmit: (
+    siteSubmitId: string,
+    result: GeoenrichmentResult,
+    radii: number[],
+    driveTimes: number[]
   ) => Promise<boolean>;
   clearError: () => void;
 }
@@ -224,11 +250,109 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
     []
   );
 
+  /**
+   * Call ESRI GeoEnrichment API with client-specific radii and drive times
+   */
+  const enrichForClient = useCallback(
+    async (
+      propertyId: string,
+      latitude: number,
+      longitude: number,
+      radii: number[],
+      driveTimes: number[]
+    ): Promise<GeoenrichmentResult | null> => {
+      setIsEnriching(true);
+      setEnrichError(null);
+
+      try {
+        console.log('[Geoenrichment] Client enrichment:', propertyId, { latitude, longitude, radii, driveTimes });
+
+        const { data, error } = await supabase.functions.invoke('esri-geoenrich', {
+          body: {
+            property_id: propertyId,
+            latitude,
+            longitude,
+            custom_radii: radii,
+            custom_drive_times: driveTimes,
+          },
+        });
+
+        if (error) {
+          console.error('[Geoenrichment] Client enrichment error:', error);
+          setEnrichError(error.message || 'Failed to enrich for client');
+          return null;
+        }
+
+        if (!data.success) {
+          console.error('[Geoenrichment] Client enrichment API error:', data.error);
+          setEnrichError(data.error || 'Client enrichment failed');
+          return null;
+        }
+
+        console.log('[Geoenrichment] Client enrichment success');
+        return data as GeoenrichmentResult;
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error during client enrichment';
+        console.error('[Geoenrichment] Client enrichment error:', err);
+        setEnrichError(errorMessage);
+        return null;
+      } finally {
+        setIsEnriching(false);
+      }
+    },
+    []
+  );
+
+  /**
+   * Save client-specific demographics to the site_submit record as JSONB
+   */
+  const saveClientDemographicsToSiteSubmit = useCallback(
+    async (
+      siteSubmitId: string,
+      result: GeoenrichmentResult,
+      radii: number[],
+      driveTimes: number[]
+    ): Promise<boolean> => {
+      try {
+        console.log('[Geoenrichment] Saving client demographics to site_submit:', siteSubmitId);
+
+        const clientDemographics: ClientDemographicsData = {
+          radii,
+          drive_times: driveTimes,
+          enriched_at: new Date().toISOString(),
+          data: result.demographics as unknown as Record<string, number | null>,
+          tapestry: result.tapestry,
+        };
+
+        const { error } = await supabase
+          .from('site_submit')
+          .update({ client_demographics: clientDemographics })
+          .eq('id', siteSubmitId);
+
+        if (error) {
+          console.error('[Geoenrichment] Save client demographics error:', error);
+          setEnrichError('Failed to save client demographics');
+          return false;
+        }
+
+        console.log('[Geoenrichment] Client demographics saved successfully');
+        return true;
+      } catch (err) {
+        console.error('[Geoenrichment] Save client demographics error:', err);
+        setEnrichError('Failed to save client demographics');
+        return false;
+      }
+    },
+    []
+  );
+
   return {
     isEnriching,
     enrichError,
     enrichProperty,
     saveEnrichmentToProperty,
+    enrichForClient,
+    saveClientDemographicsToSiteSubmit,
     clearError,
   };
 }

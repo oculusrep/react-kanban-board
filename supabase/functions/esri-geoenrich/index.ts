@@ -23,6 +23,8 @@ interface GeoenrichRequest {
   latitude: number;
   longitude: number;
   force_refresh?: boolean;
+  custom_radii?: number[];
+  custom_drive_times?: number[];
 }
 
 /**
@@ -191,9 +193,10 @@ const TAPESTRY_SEGMENTS: Record<string, { name: string; description: string; lif
 async function enrichRingBuffersDemographics(
   apiKey: string,
   latitude: number,
-  longitude: number
+  longitude: number,
+  radii: number[] = [1, 3, 5]
 ): Promise<{ results: unknown; raw: unknown }> {
-  // Study areas with ring buffers at 1, 3, 5 miles
+  // Study areas with ring buffers at specified radii
   const studyAreas = [
     {
       geometry: {
@@ -202,7 +205,7 @@ async function enrichRingBuffersDemographics(
       },
       areaType: 'RingBuffer',
       bufferUnits: 'esriMiles',
-      bufferRadii: [1, 3, 5],
+      bufferRadii: radii,
     },
   ];
 
@@ -301,7 +304,8 @@ async function enrichTapestry(
 async function enrichDriveTime(
   apiKey: string,
   latitude: number,
-  longitude: number
+  longitude: number,
+  driveTimes: number[] = [10]
 ): Promise<{ results: unknown; raw: unknown }> {
   // Study area with NetworkServiceArea for drive time
   // All drive time parameters must be inside the studyAreas object, not in studyAreasOptions
@@ -314,7 +318,7 @@ async function enrichDriveTime(
       },
       areaType: 'NetworkServiceArea',
       bufferUnits: 'Minutes',
-      bufferRadii: [10],
+      bufferRadii: driveTimes,
       travelMode: 'Driving',
     },
   ];
@@ -448,7 +452,7 @@ function parseAndStoreDemographics(
  * ESRI GeoEnrichment API returns attributes with names based on the variable requested.
  * Note: Demographics and Tapestry are now parsed separately due to multi-hierarchy restriction.
  */
-function parseRingBufferDemographicsResponse(data: unknown, result: EsriEnrichmentResult): void {
+function parseRingBufferDemographicsResponse(data: unknown, result: EsriEnrichmentResult, radii: number[] = [1, 3, 5]): void {
   try {
     const response = data as { results?: Array<{ value?: { FeatureSet?: Array<{ features?: Array<{ attributes?: Record<string, unknown> }> }> } }> };
     const results = response.results;
@@ -488,8 +492,8 @@ function parseRingBufferDemographicsResponse(data: unknown, result: EsriEnrichme
     // 2. Single FeatureSet with multiple features (one per radius)
     // We need to handle both cases
 
-    const radiusMap = ['1_mile', '3_mile', '5_mile'];
-    const radiusValues = [1, 3, 5];
+    const radiusMap = radii.map(r => `${r}_mile`);
+    const radiusValues = radii;
 
     // Check if we have multiple feature sets (one per radius) or single feature set with multiple features
     if (featureSets.length >= 3) {
@@ -620,7 +624,7 @@ function parseTapestryResponse(data: unknown, result: EsriEnrichmentResult): voi
 /**
  * Parse ESRI GeoEnrichment API response for drive time
  */
-function parseDriveTimeResponse(data: unknown, result: EsriEnrichmentResult): void {
+function parseDriveTimeResponse(data: unknown, result: EsriEnrichmentResult, driveTimes: number[] = [10]): void {
   try {
     const response = data as { results?: Array<{ value?: { FeatureSet?: Array<{ features?: Array<{ attributes?: Record<string, unknown> }> }> } }> };
     const results = response.results;
@@ -637,50 +641,48 @@ function parseDriveTimeResponse(data: unknown, result: EsriEnrichmentResult): vo
       return;
     }
 
-    const features = featureSets[0]?.features;
-    if (!features || features.length === 0) {
+    // Handle multiple drive times - each may be a separate feature or feature set
+    const allFeatures: Array<{ attributes: Record<string, unknown> }> = [];
+    for (const fs of featureSets) {
+      if (fs.features) {
+        allFeatures.push(...fs.features.map(f => ({ attributes: f.attributes || {} })));
+      }
+    }
+
+    if (allFeatures.length === 0) {
       console.log('[ESRI] No features in drive time response');
       return;
     }
 
-    const attrs = features[0].attributes || {};
-    console.log('[ESRI] Drive time available attributes:', Object.keys(attrs));
-    console.log('[ESRI] Drive time values:', {
-      TOTPOP_CY: attrs.TOTPOP_CY,
-      TOTHH_CY: attrs.TOTHH_CY,
-      MEDAGE_CY: attrs.MEDAGE_CY,
-      AVGHINC_CY: attrs.AVGHINC_CY,
-      MEDHINC_CY: attrs.MEDHINC_CY,
-      DPOPWRK_CY: attrs.DPOPWRK_CY,
-    });
+    // Parse each drive time feature
+    for (let i = 0; i < Math.min(allFeatures.length, driveTimes.length); i++) {
+      const attrs = allFeatures[i].attributes;
+      const driveTimeKey = `${driveTimes[i]}min_drive`;
 
-    // Population - Current Year
-    const pop = extractValue(attrs, 'TOTPOP_CY', 'TOTPOP');
-    if (pop !== null) result.demographics.pop_10min_drive = pop;
+      console.log(`[ESRI] Drive time ${driveTimes[i]}min available attributes:`, Object.keys(attrs));
 
-    // Households - Current Year
-    const hh = extractValue(attrs, 'TOTHH_CY', 'TOTHH');
-    if (hh !== null) result.demographics.households_10min_drive = hh;
+      const demographics = result.demographics as Record<string, number | null>;
+      const pop = extractValue(attrs, 'TOTPOP_CY', 'TOTPOP');
+      if (pop !== null) demographics[`pop_${driveTimeKey}`] = pop;
 
-    // Median Household Income - Current Year
-    const medIncome = extractValue(attrs, 'MEDHINC_CY', 'MEDHINC');
-    if (medIncome !== null) result.demographics.hh_income_median_10min_drive = medIncome;
+      const hh = extractValue(attrs, 'TOTHH_CY', 'TOTHH');
+      if (hh !== null) demographics[`households_${driveTimeKey}`] = hh;
 
-    // Average Household Income - Current Year
-    const avgIncome = extractValue(attrs, 'AVGHINC_CY', 'AVGHINC');
-    if (avgIncome !== null) result.demographics.hh_income_avg_10min_drive = avgIncome;
+      const medIncome = extractValue(attrs, 'MEDHINC_CY', 'MEDHINC');
+      if (medIncome !== null) demographics[`hh_income_median_${driveTimeKey}`] = medIncome;
 
-    // Total Employees - Daytime Workers Current Year
-    const emp = extractValue(attrs, 'DPOPWRK_CY', 'TOTALEMP', 'EMP_CY');
-    if (emp !== null) result.demographics.employees_10min_drive = emp;
+      const avgIncome = extractValue(attrs, 'AVGHINC_CY', 'AVGHINC');
+      if (avgIncome !== null) demographics[`hh_income_avg_${driveTimeKey}`] = avgIncome;
 
-    // Median Age - Current Year
-    const medAge = extractValue(attrs, 'MEDAGE_CY', 'MEDAGE');
-    if (medAge !== null) result.demographics.median_age_10min_drive = medAge;
+      const emp = extractValue(attrs, 'DPOPWRK_CY', 'TOTALEMP', 'EMP_CY');
+      if (emp !== null) demographics[`employees_${driveTimeKey}`] = emp;
 
-    // Total Daytime Population - Workers + Residents at home
-    const daytimePop = extractValue(attrs, 'DPOP_CY', 'DPOP');
-    if (daytimePop !== null) result.demographics.daytime_pop_10min_drive = daytimePop;
+      const medAge = extractValue(attrs, 'MEDAGE_CY', 'MEDAGE');
+      if (medAge !== null) demographics[`median_age_${driveTimeKey}`] = medAge;
+
+      const daytimePop = extractValue(attrs, 'DPOP_CY', 'DPOP');
+      if (daytimePop !== null) demographics[`daytime_pop_${driveTimeKey}`] = daytimePop;
+    }
 
   } catch (err) {
     console.error('[ESRI] Error parsing drive time response:', err);
@@ -696,7 +698,9 @@ function parseDriveTimeResponse(data: unknown, result: EsriEnrichmentResult): vo
 async function enrichLocation(
   apiKey: string,
   latitude: number,
-  longitude: number
+  longitude: number,
+  customRadii?: number[],
+  customDriveTimes?: number[]
 ): Promise<EsriEnrichmentResult> {
   const result: EsriEnrichmentResult = {
     tapestry: {
@@ -738,18 +742,21 @@ async function enrichLocation(
     raw_response: {},
   };
 
+  const radii = customRadii || [1, 3, 5];
+  const driveTimes = customDriveTimes || [10];
+
   // Call all three APIs in parallel for efficiency
-  // - Demographics ring buffers (1, 3, 5 mile)
+  // - Demographics ring buffers (custom or default radii)
   // - Tapestry (1 mile only, must be separate from demographics)
-  // - Drive time (10 min)
+  // - Drive time (custom or default drive times)
   const [ringBufferDemoResult, tapestryResult, driveTimeResult] = await Promise.all([
-    enrichRingBuffersDemographics(apiKey, latitude, longitude),
+    enrichRingBuffersDemographics(apiKey, latitude, longitude, radii),
     enrichTapestry(apiKey, latitude, longitude).catch(err => {
       // Tapestry may fail in some areas - don't fail the whole request
       console.warn('[ESRI] Tapestry enrichment failed (continuing without):', err.message);
       return null;
     }),
-    enrichDriveTime(apiKey, latitude, longitude).catch(err => {
+    enrichDriveTime(apiKey, latitude, longitude, driveTimes).catch(err => {
       // Drive time may fail in some areas - don't fail the whole request
       console.warn('[ESRI] Drive time enrichment failed (continuing without):', err.message);
       return null;
@@ -764,7 +771,7 @@ async function enrichLocation(
   };
 
   // Parse ring buffer demographics response
-  parseRingBufferDemographicsResponse(ringBufferDemoResult.results, result);
+  parseRingBufferDemographicsResponse(ringBufferDemoResult.results, result, radii);
 
   // Parse Tapestry response if available
   if (tapestryResult) {
@@ -773,7 +780,7 @@ async function enrichLocation(
 
   // Parse drive time response if available
   if (driveTimeResult) {
-    parseDriveTimeResponse(driveTimeResult.results, result);
+    parseDriveTimeResponse(driveTimeResult.results, result, driveTimes);
   }
 
   console.log('[ESRI] Final parsed result:', {
@@ -847,13 +854,21 @@ serve(async (req) => {
       force_refresh: request.force_refresh,
     });
 
-    // Call ESRI GeoEnrichment API
-    const enrichmentResult = await enrichLocation(apiKey, request.latitude, request.longitude);
+    // Call ESRI GeoEnrichment API (with optional custom radii/drive times)
+    const enrichmentResult = await enrichLocation(
+      apiKey,
+      request.latitude,
+      request.longitude,
+      request.custom_radii,
+      request.custom_drive_times
+    );
 
     return new Response(
       JSON.stringify({
         success: true,
         property_id: request.property_id,
+        radii: request.custom_radii || [1, 3, 5],
+        drive_times: request.custom_drive_times || [10],
         ...enrichmentResult,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

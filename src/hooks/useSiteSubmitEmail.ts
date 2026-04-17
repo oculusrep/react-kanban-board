@@ -21,6 +21,7 @@ export interface EmailTemplateData {
   userData: any;
   portalBaseUrl: string;
   userSignatureHtml?: string;
+  clientDemographics?: Record<string, unknown> | null;
 }
 
 // Available files that can be selected/deselected
@@ -302,6 +303,7 @@ export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
         propertyFiles,
         portalBaseUrl: window.location.origin,
         userSignatureHtml,
+        clientDemographics: siteSubmitData.client_demographics || null,
       });
 
       // Store template data for regeneration when files are selected/deselected
@@ -314,6 +316,7 @@ export function useSiteSubmitEmail({ showToast }: UseSiteSubmitEmailOptions) {
         userData,
         portalBaseUrl: window.location.origin,
         userSignatureHtml,
+        clientDemographics: siteSubmitData.client_demographics || null,
       };
 
       // Available files that can be selected/deselected
