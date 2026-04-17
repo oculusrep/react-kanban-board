@@ -67,6 +67,7 @@ export interface GeoenrichmentResult {
 export interface ClientDemographicsData {
   radii: number[];
   drive_times: number[];
+  sidebar_radius?: number | null;
   enriched_at: string;
   data: Record<string, number | null>;
   tapestry: TapestrySegment;
@@ -98,7 +99,8 @@ interface UsePropertyGeoenrichmentReturn {
     siteSubmitId: string,
     result: GeoenrichmentResult,
     radii: number[],
-    driveTimes: number[]
+    driveTimes: number[],
+    sidebarRadius?: number | null
   ) => Promise<boolean>;
   clearError: () => void;
 }
@@ -311,7 +313,8 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
       siteSubmitId: string,
       result: GeoenrichmentResult,
       radii: number[],
-      driveTimes: number[]
+      driveTimes: number[],
+      sidebarRadius?: number | null
     ): Promise<boolean> => {
       try {
         console.log('[Geoenrichment] Saving client demographics to site_submit:', siteSubmitId);
@@ -319,6 +322,7 @@ export function usePropertyGeoenrichment(): UsePropertyGeoenrichmentReturn {
         const clientDemographics: ClientDemographicsData = {
           radii,
           drive_times: driveTimes,
+          sidebar_radius: sidebarRadius ?? null,
           enriched_at: new Date().toISOString(),
           data: result.demographics as unknown as Record<string, number | null>,
           tapestry: result.tapestry,

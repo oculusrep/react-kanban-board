@@ -123,12 +123,13 @@ export default function SiteSubmitCreateForm({
     // Fetch client demographics config
     const { data: clientConfig } = await supabase
       .from('client')
-      .select('demographics_radii, demographics_drive_times')
+      .select('demographics_radii, demographics_drive_times, demographics_sidebar_radius')
       .eq('id', clientId)
       .single();
 
     const radii = clientConfig?.demographics_radii || [1, 3, 5];
     const driveTimes = clientConfig?.demographics_drive_times || [10];
+    const sidebarRadius = clientConfig?.demographics_sidebar_radius || null;
 
     // Get property coordinates
     const { data: propertyData } = await supabase
@@ -171,6 +172,7 @@ export default function SiteSubmitCreateForm({
         const clientDemographics = {
           radii,
           drive_times: driveTimes,
+          sidebar_radius: sidebarRadius,
           enriched_at: propDemographics.esri_enriched_at,
           data: {
             pop_1_mile: propDemographics.pop_1_mile,
@@ -231,7 +233,7 @@ export default function SiteSubmitCreateForm({
     );
 
     if (result) {
-      await saveClientDemographicsToSiteSubmit(siteSubmitId, result, radii, driveTimes);
+      await saveClientDemographicsToSiteSubmit(siteSubmitId, result, radii, driveTimes, sidebarRadius);
       console.log('[SiteSubmit] Client demographics saved to site_submit');
     }
   };

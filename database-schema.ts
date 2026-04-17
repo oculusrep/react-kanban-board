@@ -1152,6 +1152,7 @@ export type Database = {
           created_by_id: string | null
           demographics_drive_times: number[] | null
           demographics_radii: number[] | null
+          demographics_sidebar_radius: number | null
           description: string | null
           id: string
           is_active_client: boolean | null
@@ -1191,6 +1192,7 @@ export type Database = {
           created_by_id?: string | null
           demographics_drive_times?: number[] | null
           demographics_radii?: number[] | null
+          demographics_sidebar_radius?: number | null
           description?: string | null
           id?: string
           is_active_client?: boolean | null
@@ -1230,6 +1232,7 @@ export type Database = {
           created_by_id?: string | null
           demographics_drive_times?: number[] | null
           demographics_radii?: number[] | null
+          demographics_sidebar_radius?: number | null
           description?: string | null
           id?: string
           is_active_client?: boolean | null

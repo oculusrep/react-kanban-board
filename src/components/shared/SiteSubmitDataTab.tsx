@@ -248,7 +248,7 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
   const [showDemographicsModal, setShowDemographicsModal] = useState(false);
 
   // Demographics enrichment
-  const { isEnriching, enrichError, enrichProperty, saveEnrichmentToProperty, clearError } = usePropertyGeoenrichment();
+  const { isEnriching, enrichError, enrichProperty, saveEnrichmentToProperty, enrichForClient, saveClientDemographicsToSiteSubmit, clearError } = usePropertyGeoenrichment();
 
   const handleStartEditing = useCallback((table: string, field: string, currentValue: any) => {
     setEditingField(`${table}.${field}`);
@@ -452,6 +452,57 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
       }
     }
   };
+
+  // Handle client-specific demographics re-enrichment
+  const handleClientEnrichDemographics = async () => {
+    if (!siteSubmit.property_id || !siteSubmit.client_id || !hasCoordinates) return;
+
+    clearError();
+
+    // Fetch client demographics config
+    const { data: clientConfig } = await supabase
+      .from('client')
+      .select('demographics_radii, demographics_drive_times, demographics_sidebar_radius')
+      .eq('id', siteSubmit.client_id)
+      .single();
+
+    const radii = clientConfig?.demographics_radii || [1, 3, 5];
+    const driveTimes = clientConfig?.demographics_drive_times || [10];
+    const sidebarRadius = clientConfig?.demographics_sidebar_radius || null;
+
+    const result = await enrichForClient(
+      siteSubmit.property_id,
+      enrichmentLatitude!,
+      enrichmentLongitude!,
+      radii,
+      driveTimes
+    );
+
+    if (result) {
+      const saved = await saveClientDemographicsToSiteSubmit(
+        siteSubmit.id,
+        result,
+        radii,
+        driveTimes,
+        sidebarRadius
+      );
+      if (saved) {
+        // Fetch the updated site submit to get the new client_demographics
+        const { data: updatedSiteSubmit } = await supabase
+          .from('site_submit')
+          .select('client_demographics')
+          .eq('id', siteSubmit.id)
+          .single();
+
+        if (updatedSiteSubmit) {
+          onUpdate({ client_demographics: updatedSiteSubmit.client_demographics });
+        }
+      }
+    }
+  };
+
+  // Check if client has custom demographics config
+  const hasClientDemographics = !!siteSubmit.client_demographics;
 
   // Common props for Field components
   const fieldProps = {
@@ -779,74 +830,107 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
             </div>
           }
         >
-          {/* Tapestry Segment */}
-          {siteSubmit.property.tapestry_segment_code && (
-            <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
-              <span className="text-gray-600">Tapestry Segment</span>
-              <span className="text-gray-900 font-medium">
-                {siteSubmit.property.tapestry_segment_code} - {siteSubmit.property.tapestry_segment_name}
-                {siteSubmit.property.tapestry_lifemodes && (
-                  <span className="text-gray-500 text-xs ml-1">({siteSubmit.property.tapestry_lifemodes})</span>
+          {(() => {
+            // Determine data source and display radius
+            const cd = siteSubmit.client_demographics as import('../../hooks/usePropertyGeoenrichment').ClientDemographicsData | null | undefined;
+            const displayRadius = cd?.sidebar_radius ?? 3;
+            const radiusKey = `${displayRadius}_mile`;
+            const radiusLabel = `${displayRadius} mi`;
+
+            // Determine drive time to show in sidebar (first configured drive time, or 10)
+            const displayDriveTime = cd?.drive_times?.[0] ?? 10;
+            const driveTimeKey = `${displayDriveTime}min_drive`;
+            const driveTimeLabel = `${displayDriveTime}-min drive`;
+
+            // Helper to get value from client demographics JSONB or fall back to property
+            const getValue = (prefix: string, key: string): number | null => {
+              if (cd?.data) {
+                const v = cd.data[`${prefix}_${key}`];
+                return v != null ? v as number : null;
+              }
+              // Fall back to property fields
+              const propKey = `${prefix}_${key}`;
+              return (siteSubmit.property as Record<string, unknown>)?.[propKey] as number | null ?? null;
+            };
+
+            // Tapestry source
+            const tapCode = cd?.tapestry?.code || siteSubmit.property.tapestry_segment_code;
+            const tapName = cd?.tapestry?.name || siteSubmit.property.tapestry_segment_name;
+            const tapLifemodes = cd?.tapestry?.lifemodes || siteSubmit.property.tapestry_lifemodes;
+
+            return (
+              <>
+                {/* Tapestry Segment */}
+                {tapCode && (
+                  <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+                    <span className="text-gray-600">Tapestry Segment</span>
+                    <span className="text-gray-900 font-medium">
+                      {tapCode} - {tapName}
+                      {tapLifemodes && (
+                        <span className="text-gray-500 text-xs ml-1">({tapLifemodes})</span>
+                      )}
+                    </span>
+                  </div>
                 )}
-              </span>
-            </div>
-          )}
 
-          {/* Population */}
-          <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
-            <span className="text-gray-600">Population (3 mi)</span>
-            <span className="text-gray-900 font-medium">
-              {siteSubmit.property.pop_3_mile != null ? formatNumber(siteSubmit.property.pop_3_mile) : '-'}
-            </span>
-          </div>
+                {/* Population */}
+                <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+                  <span className="text-gray-600">Population ({radiusLabel})</span>
+                  <span className="text-gray-900 font-medium">
+                    {getValue('pop', radiusKey) != null ? formatNumber(getValue('pop', radiusKey)!) : '-'}
+                  </span>
+                </div>
 
-          {/* Population - 10 min drive */}
-          <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
-            <span className="text-gray-600">Population (10-min drive)</span>
-            <span className="text-gray-900 font-medium">
-              {siteSubmit.property.pop_10min_drive != null ? formatNumber(siteSubmit.property.pop_10min_drive) : '-'}
-            </span>
-          </div>
+                {/* Population - drive time */}
+                <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+                  <span className="text-gray-600">Population ({driveTimeLabel})</span>
+                  <span className="text-gray-900 font-medium">
+                    {getValue('pop', driveTimeKey) != null ? formatNumber(getValue('pop', driveTimeKey)!) : '-'}
+                  </span>
+                </div>
 
-          {/* Households */}
-          <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
-            <span className="text-gray-600">Households (3 mi)</span>
-            <span className="text-gray-900 font-medium">
-              {siteSubmit.property.households_3_mile != null ? formatNumber(siteSubmit.property.households_3_mile) : '-'}
-            </span>
-          </div>
+                {/* Households */}
+                <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+                  <span className="text-gray-600">Households ({radiusLabel})</span>
+                  <span className="text-gray-900 font-medium">
+                    {getValue('households', radiusKey) != null ? formatNumber(getValue('households', radiusKey)!) : '-'}
+                  </span>
+                </div>
 
-          {/* Daytime Population */}
-          <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
-            <span className="text-gray-600">Daytime Pop (3 mi)</span>
-            <span className="text-gray-900 font-medium">
-              {siteSubmit.property.daytime_pop_3_mile != null ? formatNumber(siteSubmit.property.daytime_pop_3_mile) : '-'}
-            </span>
-          </div>
+                {/* Daytime Population */}
+                <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+                  <span className="text-gray-600">Daytime Pop ({radiusLabel})</span>
+                  <span className="text-gray-900 font-medium">
+                    {getValue('daytime_pop', radiusKey) != null ? formatNumber(getValue('daytime_pop', radiusKey)!) : '-'}
+                  </span>
+                </div>
 
-          {/* Median HH Income */}
-          <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
-            <span className="text-gray-600">Median HH Income (3 mi)</span>
-            <span className="text-gray-900 font-medium">
-              {siteSubmit.property.hh_income_median_3_mile != null ? formatCurrency(siteSubmit.property.hh_income_median_3_mile) : '-'}
-            </span>
-          </div>
+                {/* Median HH Income */}
+                <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+                  <span className="text-gray-600">Median HH Income ({radiusLabel})</span>
+                  <span className="text-gray-900 font-medium">
+                    {getValue('hh_income_median', radiusKey) != null ? formatCurrency(getValue('hh_income_median', radiusKey)!) : '-'}
+                  </span>
+                </div>
 
-          {/* Avg HH Income */}
-          <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
-            <span className="text-gray-600">Avg HH Income (3 mi)</span>
-            <span className="text-gray-900 font-medium">
-              {siteSubmit.property.hh_income_avg_3_mile != null ? formatCurrency(siteSubmit.property.hh_income_avg_3_mile) : '-'}
-            </span>
-          </div>
+                {/* Avg HH Income */}
+                <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+                  <span className="text-gray-600">Avg HH Income ({radiusLabel})</span>
+                  <span className="text-gray-900 font-medium">
+                    {getValue('hh_income_avg', radiusKey) != null ? formatCurrency(getValue('hh_income_avg', radiusKey)!) : '-'}
+                  </span>
+                </div>
 
-          {/* Median Age */}
-          <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
-            <span className="text-gray-600">Median Age (3 mi)</span>
-            <span className="text-gray-900 font-medium">
-              {siteSubmit.property.median_age_3_mile != null ? siteSubmit.property.median_age_3_mile.toFixed(1) : '-'}
-            </span>
-          </div>
+                {/* Median Age */}
+                <div className="flex justify-between py-1.5 text-sm border-b border-gray-100">
+                  <span className="text-gray-600">Median Age ({radiusLabel})</span>
+                  <span className="text-gray-900 font-medium">
+                    {getValue('median_age', radiusKey) != null ? (getValue('median_age', radiusKey)!).toFixed(1) : '-'}
+                  </span>
+                </div>
+              </>
+            );
+          })()}
 
           {/* Last Enriched and Re-enrich button */}
           {hasEnrichmentData && (
@@ -880,6 +964,36 @@ export default function SiteSubmitDataTab({ siteSubmit, isEditable, onUpdate }: 
                   )}
                 </button>
               )}
+            </div>
+          )}
+
+          {/* Client Demographics Re-enrich button */}
+          {isEditable && hasCoordinates && siteSubmit.client_id && (
+            <div className="mt-2">
+              <button
+                onClick={handleClientEnrichDemographics}
+                disabled={isEnriching}
+                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50"
+                style={{ backgroundColor: '#002147', color: '#ffffff' }}
+                title={hasClientDemographics ? 'Re-enrich with client-specific demographics' : 'Enrich with client-specific demographics'}
+              >
+                {isEnriching ? (
+                  <>
+                    <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Enriching Client Demographics...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    {hasClientDemographics ? 'Re-enrich Client Demographics' : 'Enrich with Client Demographics'}
+                  </>
+                )}
+              </button>
             </div>
           )}
 

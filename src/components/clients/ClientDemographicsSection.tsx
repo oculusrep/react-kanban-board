@@ -9,6 +9,7 @@ interface ClientDemographicsSectionProps {
 interface DemographicsConfig {
   demographics_radii: number[] | null;
   demographics_drive_times: number[] | null;
+  demographics_sidebar_radius: number | null;
 }
 
 const DEFAULT_RADII = [1, 3, 5];
@@ -21,10 +22,12 @@ const ClientDemographicsSection: React.FC<ClientDemographicsSectionProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [config, setConfig] = useState<DemographicsConfig>({
     demographics_radii: null,
-    demographics_drive_times: null
+    demographics_drive_times: null,
+    demographics_sidebar_radius: null
   });
   const [radiiInput, setRadiiInput] = useState('');
   const [driveTimesInput, setDriveTimesInput] = useState('');
+  const [sidebarRadiusInput, setSidebarRadiusInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -38,7 +41,7 @@ const ClientDemographicsSection: React.FC<ClientDemographicsSectionProps> = ({
       try {
         const { data, error } = await supabase
           .from('client')
-          .select('demographics_radii, demographics_drive_times')
+          .select('demographics_radii, demographics_drive_times, demographics_sidebar_radius')
           .eq('id', clientId)
           .single();
 
@@ -50,12 +53,14 @@ const ClientDemographicsSection: React.FC<ClientDemographicsSectionProps> = ({
         if (data) {
           const clientConfig: DemographicsConfig = {
             demographics_radii: data.demographics_radii,
-            demographics_drive_times: data.demographics_drive_times
+            demographics_drive_times: data.demographics_drive_times,
+            demographics_sidebar_radius: data.demographics_sidebar_radius
           };
           setConfig(clientConfig);
           setOriginalConfig(clientConfig);
           setRadiiInput(data.demographics_radii ? data.demographics_radii.join(', ') : '');
           setDriveTimesInput(data.demographics_drive_times ? data.demographics_drive_times.join(', ') : '');
+          setSidebarRadiusInput(data.demographics_sidebar_radius != null ? String(data.demographics_sidebar_radius) : '');
         }
       } catch (err) {
         console.error('Error fetching demographics config:', err);
@@ -98,6 +103,19 @@ const ClientDemographicsSection: React.FC<ClientDemographicsSectionProps> = ({
     const updated: DemographicsConfig = {
       ...config,
       demographics_drive_times: parsed
+    };
+    setConfig(updated);
+    if (originalConfig) {
+      setHasChanges(JSON.stringify(updated) !== JSON.stringify(originalConfig));
+    }
+  };
+
+  const handleSidebarRadiusChange = (value: string) => {
+    setSidebarRadiusInput(value);
+    const numValue = value.trim() === '' ? null : parseFloat(value);
+    const updated: DemographicsConfig = {
+      ...config,
+      demographics_sidebar_radius: numValue && !isNaN(numValue) && numValue > 0 ? numValue : null
     };
     setConfig(updated);
     if (originalConfig) {
@@ -148,6 +166,7 @@ const ClientDemographicsSection: React.FC<ClientDemographicsSectionProps> = ({
         .update({
           demographics_radii: config.demographics_radii,
           demographics_drive_times: config.demographics_drive_times,
+          demographics_sidebar_radius: config.demographics_sidebar_radius,
           updated_at: new Date().toISOString()
         })
         .eq('id', clientId);
@@ -166,9 +185,11 @@ const ClientDemographicsSection: React.FC<ClientDemographicsSectionProps> = ({
   const handleReset = () => {
     setRadiiInput('');
     setDriveTimesInput('');
+    setSidebarRadiusInput('');
     const resetConfig: DemographicsConfig = {
       demographics_radii: null,
-      demographics_drive_times: null
+      demographics_drive_times: null,
+      demographics_sidebar_radius: null
     };
     setConfig(resetConfig);
     if (originalConfig) {
@@ -182,7 +203,8 @@ const ClientDemographicsSection: React.FC<ClientDemographicsSectionProps> = ({
 
   const activeRadii = config.demographics_radii || DEFAULT_RADII;
   const activeDriveTimes = config.demographics_drive_times || DEFAULT_DRIVE_TIMES;
-  const isCustom = config.demographics_radii !== null || config.demographics_drive_times !== null;
+  const sidebarRadius = config.demographics_sidebar_radius;
+  const isCustom = config.demographics_radii !== null || config.demographics_drive_times !== null || config.demographics_sidebar_radius !== null;
 
   return (
     <div className="bg-white shadow rounded-lg">
@@ -241,6 +263,12 @@ const ClientDemographicsSection: React.FC<ClientDemographicsSectionProps> = ({
                     {activeDriveTimes.map(t => `${t} min`).join(', ')}
                   </span>
                 </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Sidebar Display:</span>
+                  <span className="text-sm font-medium text-gray-900">
+                    {sidebarRadius != null ? `${sidebarRadius} mi` : 'Default (3 mi)'}
+                  </span>
+                </div>
                 {!isCustom && (
                   <p className="text-xs text-gray-500 mt-2 italic">
                     Using system defaults. Set custom values below to override.
@@ -255,7 +283,7 @@ const ClientDemographicsSection: React.FC<ClientDemographicsSectionProps> = ({
                   Set custom ring buffer radii and drive times for this client's site submits. Leave empty to use system defaults (1, 3, 5 miles + 10-min drive).
                 </p>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">
                       Ring Buffer Radii (miles)
@@ -282,6 +310,20 @@ const ClientDemographicsSection: React.FC<ClientDemographicsSectionProps> = ({
                       className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
                     />
                     <p className="text-xs text-gray-400 mt-1">Comma-separated, max 3 values, max 60 min</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">
+                      Sidebar Display Radius (miles)
+                    </label>
+                    <input
+                      type="text"
+                      value={sidebarRadiusInput}
+                      onChange={(e) => handleSidebarRadiusChange(e.target.value)}
+                      placeholder="e.g., 2"
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">Which radius to show in sidebar summary</p>
                   </div>
                 </div>
 
