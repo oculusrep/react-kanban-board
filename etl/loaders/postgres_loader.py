@@ -259,6 +259,21 @@ class PostgresLoader:
             logger.error(f"Failed to verify foreign keys: {e}")
             raise
 
+    def refresh_materialized_views(self) -> None:
+        """
+        Refreshes materialized views that depend on restaurant data.
+        Must be called after upserting trends so the latest year is reflected.
+        """
+        try:
+            logger.info("Refreshing materialized view: restaurant_latest_trends...")
+            self.cursor.execute("REFRESH MATERIALIZED VIEW restaurant_latest_trends")
+            self.conn.commit()
+            logger.info("✅ Materialized view refreshed successfully")
+        except psycopg2.Error as e:
+            self.conn.rollback()
+            logger.error(f"Failed to refresh materialized view: {e}")
+            raise
+
     def get_load_stats(self) -> Dict[str, int]:
         """
         Gets statistics about loaded data.

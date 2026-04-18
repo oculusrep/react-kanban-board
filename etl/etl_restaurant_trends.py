@@ -217,6 +217,9 @@ def load_to_database(location_df: pd.DataFrame, trend_df: pd.DataFrame,
             trend_inserted, trend_updated = loader.upsert_trends(trend_df)
             logger.info(f"Trends upserted: {trend_inserted + trend_updated} total")
 
+            # Refresh materialized views so the app shows the latest year
+            loader.refresh_materialized_views()
+
             # Get final stats
             stats = loader.get_load_stats()
             logger.info(f"Database load complete. Stats: {stats}")
