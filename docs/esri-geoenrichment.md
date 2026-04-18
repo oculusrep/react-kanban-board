@@ -87,9 +87,13 @@ The integration is complete and tested. All three API calls (ring buffers, Tapes
   "property_id": "uuid",
   "latitude": 33.9535432,
   "longitude": -84.4114461,
-  "force_refresh": false
+  "force_refresh": false,
+  "custom_radii": [1, 2, 3],
+  "custom_drive_times": [5, 7, 10]
 }
 ```
+
+*Note: `custom_radii` and `custom_drive_times` are optional. When omitted, defaults to `[1, 3, 5]` miles and `[10]` minutes.*
 
 **Response:**
 ```json
@@ -124,14 +128,18 @@ const {
   enrichError,
   enrichProperty,
   saveEnrichmentToProperty,
+  enrichForClient,
+  saveClientDemographicsToSiteSubmit,
   clearError
 } = usePropertyGeoenrichment();
 
-// Enrich a property
+// Enrich a property (default radii)
 const result = await enrichProperty(propertyId, latitude, longitude, forceRefresh);
+await saveEnrichmentToProperty(propertyId, result, latitude, longitude);
 
-// Save result to database
-await saveEnrichmentToProperty(propertyId, result);
+// Enrich with client-specific radii/drive times
+const clientResult = await enrichForClient(propertyId, latitude, longitude, [1, 2, 3], [5, 7, 10]);
+await saveClientDemographicsToSiteSubmit(siteSubmitId, clientResult, [1, 2, 3], [5, 7, 10], sidebarRadius);
 ```
 
 ### 4. UI Components
@@ -140,7 +148,9 @@ await saveEnrichmentToProperty(propertyId, result);
 - Shared modal component used by all demographics views
 - Uses React Portal (`createPortal`) to render over entire viewport with z-index 100
 - Displays Tapestry Segment card with code, name, lifemode, and description
-- Full demographics table with 1-mile, 3-mile, 5-mile, and 10-min drive columns
+- **Two display modes:**
+  - Fixed columns (property-level): 1 Mile, 3 Mile, 5 Mile, 10-Min Drive
+  - Dynamic columns (client-specific): built from `clientDemographics.radii` and `drive_times`
 - Shows: Population, Households, Daytime Pop, Employees, Avg HH Income, Median HH Income, Median Age
 - "Data as of" timestamp footer
 - Used by: SiteSubmitDataTab, PropertyDetailsSlideoutContent, PinDetailsSlideout
@@ -157,9 +167,17 @@ await saveEnrichmentToProperty(propertyId, result);
 - Prompts user if data is stale (>1 year old)
 - Silent fail - enrichment errors don't block site submit creation
 
+**ClientDemographicsSection** (`src/components/clients/ClientDemographicsSection.tsx`)
+- Collapsible section on client detail page for configuring custom demographics
+- Set custom radii (comma-separated), drive times, and sidebar display radius
+- Shows "Custom" badge when client has non-default configuration
+- "Reset to Defaults" button to clear custom config
+
 **SiteSubmitDataTab** (`src/components/shared/SiteSubmitDataTab.tsx`)
 - Demographics summary in Site Submit sidebar (Property tab)
-- Shows Tapestry Segment, key metrics (Population, Households, etc.)
+- Dynamic display: uses `client_demographics` JSONB when available, falls back to property data
+- Sidebar radius configurable per client (e.g., show 2-mile instead of 3-mile)
+- "Enrich with Client Demographics" / "Re-enrich Client Demographics" button
 - "Enrich with Demographics" button when no data exists
 - "View All" button to open DemographicsModal
 - Uses `verified_latitude ?? latitude` for coordinate priority
@@ -343,16 +361,19 @@ Example segments:
 | `supabase/migrations/20260320_esri_geoenrichment_v3.sql` | Daytime population (DPOP_CY) |
 | `supabase/migrations/20260320_esri_geoenrichment_v4.sql` | Enriched coordinates tracking |
 | `supabase/migrations/20260320_esri_data_vintage.sql` | Data vintage tracking table |
-| `supabase/functions/esri-geoenrich/index.ts` | Main enrichment edge function |
+| `supabase/migrations/20260415_client_demographics_config.sql` | Per-client demographics config + site_submit JSONB |
+| `supabase/functions/esri-geoenrich/index.ts` | Main enrichment edge function (supports custom radii/drive times) |
 | `supabase/functions/esri-vintage-check/index.ts` | Annual data refresh detection |
-| `src/hooks/usePropertyGeoenrichment.ts` | React hook (includes coordinate change detection) |
-| `src/components/shared/DemographicsModal.tsx` | Shared demographics modal (Portal-based) |
+| `src/hooks/usePropertyGeoenrichment.ts` | React hook (includes client enrichment functions) |
+| `src/components/shared/DemographicsModal.tsx` | Shared demographics modal (supports dynamic columns) |
+| `src/components/clients/ClientDemographicsSection.tsx` | Client demographics settings UI |
 | `src/components/property/MarketAnalysisSection.tsx` | UI display |
 | `src/components/property/TapestrySegmentCard.tsx` | Tapestry card |
-| `src/components/shared/SiteSubmitCreateForm.tsx` | Auto-enrich on submit + coordinate change prompt |
-| `src/components/shared/SiteSubmitDataTab.tsx` | Site Submit sidebar demographics section |
+| `src/components/shared/SiteSubmitCreateForm.tsx` | Auto-enrich on submit + client-specific enrichment |
+| `src/components/shared/SiteSubmitDataTab.tsx` | Site Submit sidebar (dynamic display + re-enrich button) |
 | `src/components/PropertyDetailsSlideoutContent.tsx` | Property slideout demographics section |
 | `src/components/mapping/slideouts/PinDetailsSlideout.tsx` | Map pin sidebar demographics section |
+| `src/utils/siteSubmitEmailTemplate.ts` | Email template (dynamic columns from client demographics) |
 
 ## Deployment
 
@@ -375,6 +396,11 @@ npx supabase secrets set ESRI_API_KEY=your_new_api_key
 3. **Test drive time** - Verify 10-min drive time demographics populate
 4. **Test auto-enrich** - Create a site submit for a property without enrichment data
 5. **Test stale data prompt** - Should appear if data is >1 year old
+6. **Test client demographics config** - Set custom radii on a client, create a site submit, verify custom columns appear
+7. **Test re-enrich button** - Click "Re-enrich Client Demographics" on existing site submit, verify JSONB populates
+8. **Test sidebar display** - Set sidebar radius on client (e.g., 2), verify sidebar shows "Population (2 mi)" etc.
+9. **Test email template** - Send site submit email, verify dynamic column headers match client config
+10. **Test default fallback** - Site submit for client with no custom config should show standard 1/3/5 + 10-min columns
 
 ## Manual Testing
 
@@ -461,6 +487,146 @@ Response:
   "message": "No data changes detected."
 }
 ```
+
+## Per-Client Demographics Configuration
+
+### Overview
+
+Different clients may require different demographic radii and drive times. For example, Starbucks might want 1, 2, 3 mile radii with 5, 7, 10-minute drive times instead of the system defaults (1, 3, 5 miles + 10-min drive). This feature allows per-client configuration of these parameters, with results stored on individual site submit records.
+
+### Database Schema
+
+**Migration:** `supabase/migrations/20260415_client_demographics_config.sql`
+
+**New columns on `client` table:**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `demographics_radii` | `numeric[]` | Custom ring buffer radii in miles (e.g., `{1, 2, 3}`). NULL = use defaults `{1, 3, 5}` |
+| `demographics_drive_times` | `numeric[]` | Custom drive times in minutes (e.g., `{5, 7, 10}`). NULL = use defaults `{10}` |
+| `demographics_sidebar_radius` | `numeric` | Which radius to display in the site submit sidebar summary (e.g., `2`). NULL = default `3` |
+
+**New column on `site_submit` table:**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `client_demographics` | `jsonb` | Client-specific enrichment results. Self-describing structure containing radii, drive times, data, and tapestry |
+
+### JSONB Structure (`site_submit.client_demographics`)
+
+```json
+{
+  "radii": [1, 2, 3],
+  "drive_times": [5, 7, 10],
+  "sidebar_radius": 2,
+  "enriched_at": "2026-04-17T14:30:00.000Z",
+  "data": {
+    "pop_1_mile": 9013,
+    "pop_2_mile": 35000,
+    "pop_3_mile": 66585,
+    "households_1_mile": 3156,
+    "households_2_mile": 14000,
+    "households_3_mile": 22578,
+    "pop_5min_drive": 25000,
+    "pop_7min_drive": 55000,
+    "pop_10min_drive": 88845,
+    ...
+  },
+  "tapestry": {
+    "code": "1D",
+    "name": "Savvy Suburbanites",
+    "description": "Well-educated, well-read couples in established suburbs.",
+    "lifemodes": "Affluent Estates"
+  }
+}
+```
+
+Key design decisions:
+- The JSONB is **self-describing** — it stores `radii` and `drive_times` so display components know which columns to render without looking up the client config
+- Dynamic keys follow the pattern `{metric}_{radius}_mile` and `{metric}_{minutes}min_drive`
+- Each site submit stores its own demographics, so the same property can have different demographics for different clients
+
+### How It Works
+
+**Configuration (Client Screen):**
+1. Open a client record → expand "Demographics Settings" section
+2. Set custom Ring Buffer Radii (comma-separated, max 5 values, max 25 miles)
+3. Set custom Drive Times (comma-separated, max 3 values, max 60 minutes)
+4. Set Sidebar Display Radius (which radius to show in the sidebar summary)
+5. Save — settings are stored on the `client` table
+6. Leave fields empty to use system defaults
+
+**Enrichment (Site Submit Creation):**
+1. User creates a site submit and selects a client
+2. After insert, the system fetches the client's demographics config
+3. If custom config exists: calls ESRI edge function with custom radii/drive times, saves results to `site_submit.client_demographics`
+4. If no custom config: copies property's default demographics into the JSONB for consistent display
+5. Property-level enrichment (default radii) continues unchanged in parallel
+
+**Re-enrichment (Existing Site Submits):**
+- The site submit sidebar shows an "Enrich with Client Demographics" button (or "Re-enrich Client Demographics" if data already exists)
+- Clicking it fetches the client's current config and re-enriches with those parameters
+
+**Display:**
+- **Sidebar summary**: Uses `sidebar_radius` to determine which radius to display (e.g., "Population (2 mi)" instead of always "Population (3 mi)")
+- **View All modal**: Renders dynamic columns based on the JSONB's `radii` and `drive_times` arrays
+- **Email template**: Builds table headers dynamically from the JSONB
+- **Fallback**: When `client_demographics` is null (no enrichment yet), all displays fall back to property-level data with default columns
+
+### Edge Function Changes
+
+The `esri-geoenrich` edge function now accepts optional `custom_radii` and `custom_drive_times` parameters:
+
+**Request body (with custom params):**
+```json
+{
+  "property_id": "uuid",
+  "latitude": 33.9535432,
+  "longitude": -84.4114461,
+  "custom_radii": [1, 2, 3],
+  "custom_drive_times": [5, 7, 10]
+}
+```
+
+**Response (includes params used):**
+```json
+{
+  "success": true,
+  "property_id": "uuid",
+  "radii": [1, 2, 3],
+  "drive_times": [5, 7, 10],
+  "tapestry": { ... },
+  "demographics": {
+    "pop_1_mile": 9013,
+    "pop_2_mile": 35000,
+    "pop_3_mile": 66585,
+    "pop_5min_drive": 25000,
+    ...
+  }
+}
+```
+
+When `custom_radii` and `custom_drive_times` are omitted, the function uses defaults `[1, 3, 5]` and `[10]` — fully backward compatible.
+
+### Files Added/Modified
+
+| File | Change |
+|------|--------|
+| `supabase/migrations/20260415_client_demographics_config.sql` | New migration for client config and site_submit JSONB columns |
+| `supabase/functions/esri-geoenrich/index.ts` | Accept custom radii/drive times, dynamic parsing |
+| `src/components/clients/ClientDemographicsSection.tsx` | **New** — Client settings UI (collapsible section) |
+| `src/components/ClientOverviewTab.tsx` | Added ClientDemographicsSection |
+| `src/hooks/usePropertyGeoenrichment.ts` | Added `enrichForClient()`, `saveClientDemographicsToSiteSubmit()`, `ClientDemographicsData` interface |
+| `src/components/shared/SiteSubmitCreateForm.tsx` | Fetch client config and trigger client-specific enrichment on create |
+| `src/components/shared/DemographicsModal.tsx` | Support dynamic columns via `clientDemographics` prop |
+| `src/components/shared/SiteSubmitDataTab.tsx` | Dynamic sidebar display, re-enrich button |
+| `src/components/shared/SiteSubmitSidebar.tsx` | Added `client_demographics` to interface and query |
+| `src/utils/siteSubmitEmailTemplate.ts` | Dynamic column headers/rows from client demographics |
+| `src/hooks/useSiteSubmitEmail.ts` | Pass `clientDemographics` to email template |
+| `src/components/EmailComposerModal.tsx` | Pass `clientDemographics` through on regeneration |
+| `src/components/SiteSubmitFormModal.tsx` | Pass `clientDemographics` to email template |
+| `src/pages/SiteSubmitDetailsPage.tsx` | Pass `clientDemographics` to email template |
+| `database-schema.ts` | Added new fields to client and site_submit types |
 
 ## Future Features
 
