@@ -93,22 +93,6 @@ You should see your new year in the list:
 
 ---
 
-## Step 6: Import Verified Coordinates (Optional but Recommended)
-
-This adds more accurate GPS coordinates from Salesforce:
-
-```bash
-PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -f supabase/migrations/20251105_import_salesforce_verified_coords.sql
-```
-
-You should see something like:
-
-```
-NOTICE:  Restaurant locations updated: 184
-```
-
----
-
 ## 🎉 You're Done!
 
 The data is now loaded and ready to use in your application.
@@ -184,11 +168,6 @@ python3 etl/etl_restaurant_trends.py --in "Screen Shots/YE25 Oculus SG.xlsx" --o
 ### Check What Years Are Loaded
 ```bash
 PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -c "SELECT year, COUNT(*) FROM restaurant_trend GROUP BY year ORDER BY year;"
-```
-
-### Import Verified Coordinates
-```bash
-PGPASSWORD="$DB_PASSWORD" psql -h aws-0-us-east-1.pooler.supabase.com -p 6543 -U postgres.rqbvcvwbziilnycqtmnc -d postgres -f supabase/migrations/20251105_import_salesforce_verified_coords.sql
 ```
 
 ---
