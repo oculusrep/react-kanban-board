@@ -89,6 +89,26 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
 
+    <!-- Fix iPad Safari zoom reset when switching back to PWA -->
+    <script>
+      (function() {
+        // iPadOS Safari can zoom in when switching between apps in PWA mode.
+        // Reset the viewport scale when the page becomes visible again.
+        document.addEventListener('visibilitychange', function() {
+          if (document.visibilityState === 'visible') {
+            var viewport = document.querySelector('meta[name="viewport"]');
+            if (viewport) {
+              var content = viewport.getAttribute('content');
+              viewport.setAttribute('content', 'width=device-width, initial-scale=0.99, maximum-scale=1.0, user-scalable=no');
+              setTimeout(function() {
+                viewport.setAttribute('content', content);
+              }, 100);
+            }
+          }
+        });
+      })();
+    </script>
+
     <!-- Eruda Mobile Console for iPad/Mobile Debugging - only load in development -->
     <script>
       (function() {

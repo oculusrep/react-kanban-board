@@ -1438,6 +1438,7 @@ const MappingPageContent: React.FC = () => {
   const handleVerifyLocation = (propertyId: string) => {
     console.log('🎯 Starting location verification for property:', propertyId);
     setVerifyingPropertyId(propertyId);
+    showToast('Drag the pin to adjust its location', { type: 'success' });
   };
 
   // Handle site submit location verification
@@ -1709,9 +1710,11 @@ const MappingPageContent: React.FC = () => {
       // Refresh property layer to show updated coordinates
       refreshLayer('properties');
 
+      showToast('Pin location verified and saved', { type: 'success' });
       console.log('✅ Location verification completed');
     } catch (error) {
       console.error('❌ Failed to save verified location:', error);
+      showToast('Failed to save pin location. Try dragging the pin again.', { type: 'error' });
       // Keep verification mode active on error so user can try again
     }
   };

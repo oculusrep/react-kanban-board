@@ -23,11 +23,16 @@ const PropertyContextMenu: React.FC<PropertyContextMenuProps> = ({
 }) => {
   if (!isVisible || !property) return null;
 
+  // On touch devices, offset the menu so it doesn't overlap the pin
+  const isTouchScreen = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  const offsetX = isTouchScreen ? 20 : 0;
+  const offsetY = isTouchScreen ? -60 : 0;
+
   // Constrain menu position to viewport to prevent horizontal scrolling
   const menuWidth = 200;
   const menuHeight = 250; // approximate
-  const constrainedX = Math.min(x, window.innerWidth - menuWidth - 10);
-  const constrainedY = Math.min(y, window.innerHeight - menuHeight - 10);
+  const constrainedX = Math.min(x + offsetX, window.innerWidth - menuWidth - 10);
+  const constrainedY = Math.max(10, Math.min(y + offsetY, window.innerHeight - menuHeight - 10));
 
   return (
     <>

@@ -86,6 +86,7 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
   const fetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const markersByPropertyId = useRef<Map<string, MarkerType>>(new Map());
   const previousSelectedId = useRef<string | null>(null);
+  const previousVerifyingId = useRef<string | null>(null);
 
   // Get marker style settings with defaults
   const markerStyle = loadingConfig.markerStyle || {
@@ -696,6 +697,11 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
     const selectionChanged = oldSelectedId !== selectedPropertyId;
     previousSelectedId.current = selectedPropertyId;
 
+    // Check if verification state changed - capture old ID before updating ref
+    const oldVerifyingId = previousVerifyingId.current;
+    const verificationChanged = oldVerifyingId !== verifyingPropertyId;
+    previousVerifyingId.current = verifyingPropertyId;
+
     // If force recreate or marker style changed, clear everything
     if (forceRecreateAll) {
       markers.forEach(marker => setMarkerMap(marker, null));
@@ -729,11 +735,14 @@ const PropertyLayer: React.FC<PropertyLayerProps> = ({
       // Reuse existing marker if:
       // 1. It exists AND
       // 2. Selection state hasn't changed for this marker AND
-      // 3. It's not being verified
+      // 3. It's not being verified AND
+      // 4. It wasn't just being verified (needs to revert to normal style)
+      const wasVerifying = verificationChanged && oldVerifyingId === property.id;
       const needsRecreate = !existingMarker ||
         (isSelected && selectionChanged) ||
         (wasSelected && selectionChanged) ||
-        verifyingPropertyId === property.id;
+        verifyingPropertyId === property.id ||
+        wasVerifying;
 
       if (existingMarker && !needsRecreate) {
         // Reuse existing marker
