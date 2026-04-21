@@ -131,22 +131,45 @@ export const useProperty = (propertyId?: string): UsePropertyResult => {
   }, [propertyId]);
 
   const createProperty = useCallback(async (propertyData: Omit<Property, 'id' | 'created_at' | 'updated_at'>): Promise<Property> => {
+    const payload = prepareInsert({
+      ...propertyData,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+
+    // Safari/iOS PWA frequently throws "TypeError: Load failed" on the first fetch
+    // after the tab wakes or when cellular signal hiccups. Retry once on network errors.
+    const isTransientNetworkError = (err: any) => {
+      const msg = (err?.message || '').toLowerCase();
+      return err instanceof TypeError
+        || msg.includes('load failed')
+        || msg.includes('failed to fetch')
+        || msg.includes('networkerror');
+    };
+
+    const attemptInsert = async () => {
+      const { data, error } = await supabase
+        .from('property')
+        .insert(payload)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    };
+
     try {
       setError(null);
 
-      const { data, error } = await supabase
-        .from('property')
-        .insert(prepareInsert({
-          ...propertyData,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }))
-        .select()
-        .single();
+      let data;
+      try {
+        data = await attemptInsert();
+      } catch (err) {
+        if (!isTransientNetworkError(err)) throw err;
+        console.warn('⚠️ Property insert hit a network error, retrying once:', err);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        data = await attemptInsert();
+      }
 
-      if (error) throw error;
-
-      // Add the new property to the cache
       if (data) {
         propertyCache.updateCachedProperty(data);
       }
