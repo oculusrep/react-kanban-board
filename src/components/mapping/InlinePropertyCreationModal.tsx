@@ -117,9 +117,17 @@ const InlinePropertyCreationModal: React.FC<InlinePropertyCreationModalProps> = 
         property_notes: '',
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating property:', error);
-      alert('Failed to create property. Please try again.');
+      const parts = [
+        error?.message && `Message: ${error.message}`,
+        error?.code && `Code: ${error.code}`,
+        error?.details && `Details: ${error.details}`,
+        error?.hint && `Hint: ${error.hint}`,
+        error?.status && `HTTP: ${error.status}`,
+      ].filter(Boolean);
+      const detail = parts.length ? parts.join('\n') : String(error);
+      alert(`Failed to create property.\n\n${detail}\n\nPlease screenshot this and share it.`);
     } finally {
       setIsSubmitting(false);
     }
