@@ -82,11 +82,10 @@ CREATE TABLE merchant_brand (
   name                TEXT NOT NULL,                 -- "Starbucks"
   normalized_name     TEXT NOT NULL UNIQUE,          -- "starbucks" (lowercased, trimmed) for dedup
   category_id         UUID NOT NULL REFERENCES merchant_category(id),
-  -- Brandfetch resolution
-  brandfetch_domain   TEXT,                          -- "starbucks.com" — overrides auto-match when set
-  logo_url            TEXT,                          -- Resolved logo URL (cached; see §5)
-  logo_variant        TEXT CHECK (logo_variant IN ('symbol','logo','icon')),
-  logo_fetched_at     TIMESTAMPTZ,
+  -- Brandfetch resolution (see §5)
+  brandfetch_domain   TEXT,                          -- "starbucks.com" — required for logo rendering; overrides auto-match
+  logo_url            TEXT,                          -- Brandfetch CDN URL (hotlinked at render time, not a local file)
+  logo_fetched_at     TIMESTAMPTZ,                   -- Last successful Brandfetch API call; refreshed monthly to maintain license
   -- Places search tuning
   places_search_query TEXT,                          -- Override for text search (default = name)
   places_type_filter  TEXT,                          -- Optional: 'cafe', 'grocery_or_supermarket', etc.
@@ -216,25 +215,37 @@ Re-run the same Text Search as §4.1. Any `place_id` not already in `merchant_lo
 
 ## 5. Logo Resolution (Brandfetch)
 
-### 5.1 Resolution flow (runs during brand creation and on manual admin refresh)
+Brandfetch's [Logo API](https://docs.brandfetch.com/logo-api/guidelines) is free for commercial use but has **two ToS constraints that shape the architecture**:
+
+1. **Hotlinking required** — "you cannot download and store logos locally." Logos must be served from Brandfetch's CDN at render time.
+2. **30-day license renewal** — a brand's license expires if no API call is made within 30 days; cached references must then be deleted. Implication: metadata refresh must run at least monthly.
+
+These constraints **replace** the local-cache approach of earlier drafts. The revised flow:
+
+### 5.1 Resolution flow (runs during brand creation and on admin manual refresh)
 
 1. Admin creates/imports brand `{name: "Starbucks", brandfetch_domain: null}`.
-2. System attempts domain resolution:
+2. System resolves a domain for the brand:
    - If `brandfetch_domain` is set, use it.
-   - Otherwise, call Brandfetch's domain search endpoint with `name`. Take the top match.
-   - If no confident match, leave `logo_url = null` — fallback pin will be used at render time.
-3. Fetch brand assets from Brandfetch. Prefer in this order:
-   - `symbol` variant (icon alone — best for tight pins like McDonald's arches)
-   - `logo` variant (full logo with text — good for word-first brands like DUNKIN')
-   - `icon` variant (favicon-style square)
-4. **Cache the logo file in Supabase Storage** at `merchant-logos/{brand.id}.{ext}` to avoid Brandfetch hot-linking concerns and guarantee availability.
-5. Persist `logo_url` (Supabase Storage public URL), `logo_variant`, `logo_fetched_at`.
+   - Otherwise, call Brandfetch's domain-search endpoint with `name`. Take the top match.
+   - No confident match → leave `brandfetch_domain = NULL`. Fallback pin (§5.3) will be used at render time.
+3. System builds the Brandfetch CDN URL from the resolved domain and stores it in `merchant_brand.logo_url`. URL pattern:
+   ```
+   https://cdn.brandfetch.io/{brandfetch_domain}/w/64/h/64?c={BRANDFETCH_CLIENT_ID}
+   ```
+   (Width/height sized generously — actual render size is controlled by CSS, §8.)
+4. Persist `logo_url`, `brandfetch_domain`, `logo_fetched_at`. We do **not** download the image; `logo_url` is a Brandfetch CDN URL that browsers fetch directly at render time.
+5. Track resolution in a dedicated audit table if useful for debugging (not v1-critical).
 
-### 5.2 Re-resolution
+**No Supabase Storage**. The `merchant-logos/` bucket from earlier drafts is removed from this spec. The `logo_variant` column from earlier drafts is also removed — the Brandfetch CDN picks the best asset per-request.
 
-- Admin can click "Refresh logo" on any brand to re-run the flow.
-- Batch "Refresh all logos" job runs quarterly (logos change rarely; no need for monthly).
-- If Brandfetch returns 404 or low-confidence on re-fetch, keep the existing logo — don't blank it out.
+### 5.2 Monthly metadata refresh (MANDATORY per Brandfetch ToS)
+
+- Background job runs monthly (see §10) and re-calls the Brandfetch API for every brand that has a `brandfetch_domain`. This renews the license without us needing to re-fetch assets.
+- If the resolved domain changes (rare — brand rebrand), `logo_url` updates automatically from the new domain.
+- `logo_fetched_at` bumped on every successful refresh.
+- Admin can also click "Refresh logo" on any brand to re-run resolution immediately.
+- If Brandfetch returns 404 or low confidence on re-fetch, keep existing `logo_url` but flag the brand in admin UI for manual domain entry.
 
 ### 5.3 Fallback pin
 
@@ -374,6 +385,23 @@ Rendered as an `AdvancedMarkerElement` with an HTML `<img>` element.
 }
 ```
 
+**`<img>` attributes** (both correctness and performance):
+- `loading="lazy"` — browser defers fetching pins outside the current viewport.
+- Explicit `width` and `height` — prevents layout shift during logo load.
+- `decoding="async"` — doesn't block the main thread during image decode.
+- `referrerpolicy="no-referrer-when-downgrade"` — default, works with Brandfetch CDN.
+- `onerror` handler swaps the `<img>` for the fallback letter pin if load fails.
+
+**Preconnect hint** (critical for first-paint performance, since Brandfetch CDN is cross-origin):
+
+Add to the mapping page's head (or wherever the map loads — likely [MappingPageNew.tsx](../src/pages/MappingPageNew.tsx) or the portal map page):
+```html
+<link rel="preconnect" href="https://cdn.brandfetch.io" crossorigin>
+<link rel="dns-prefetch" href="https://cdn.brandfetch.io">
+```
+
+This warms the DNS + TLS handshake at page load (before any pin ever renders), erasing the ~30–50ms first-paint penalty introduced by using a cross-origin CDN instead of local caching.
+
 **Height scales with zoom:**
 - zoom 13: 24px
 - zoom 15: 32px
@@ -446,7 +474,7 @@ Each scheduled job:
 
 Jobs to create:
 - `merchant-category-refresh` — nightly 07:00 UTC (~2am–3am ET). Function scans categories where `last_refreshed_at` exceeds `refresh_frequency_days`, runs ingestion + closure verification.
-- `merchant-logo-refresh` — weekly, Sunday 08:00 UTC. Function re-fetches Brandfetch for logos older than 90 days.
+- `merchant-logo-refresh` — **daily, 08:00 UTC. Scans brands where `logo_fetched_at` is older than 25 days** (5-day safety margin on Brandfetch's 30-day license expiry) and re-calls the Brandfetch API. Mandatory per Brandfetch ToS (§5). Daily scheduling + age-based selection is defensive: if one night's run fails, the next night catches up before anything expires.
 - `merchant-closure-digest` *(optional, if admin opts in)* — daily 13:00 UTC (~9am ET). Function emails unacknowledged closure alerts.
 
 ### 10.3 Timestamps (the two-timestamp rule)
@@ -513,14 +541,15 @@ All estimates assume Google Places Basic-data tier ($0.017/request).
 
 | Operation | Frequency | Requests | Cost |
 |---|---|---|---|
-| Initial ingestion, all 420 brands | One-time | ~2,100 | **~$36** |
-| Initial ingestion, one category (avg 12 brands) | One-time per category | ~60 | ~$1 |
-| Monthly refresh, all GA locations (est. 15k–25k) | Monthly | 15k–25k | **$0.25–$0.50/mo** |
-| Weekly refresh (if admin sets a category to 7 days) | Weekly | same set | ~$2/mo |
-| Brandfetch API | Free tier covers v1 | n/a | $0 |
-| Supabase Storage (logos) | ~420 × ~20KB avg | ~8MB | negligible |
+| Google Places — initial ingestion, all 420 brands | One-time | ~2,100 | **~$36** |
+| Google Places — initial ingestion, one category (avg 12 brands) | One-time per category | ~60 | ~$1 |
+| Google Places — monthly refresh, all GA locations (est. 15k–25k) | Monthly | 15k–25k | **$0.25–$0.50/mo** |
+| Google Places — weekly refresh (if admin sets a category to 7 days) | Weekly | same set | ~$2/mo |
+| Brandfetch — domain resolution + monthly license renewal | ~420/month | ~420/month | **$0** (free tier: 500K/mo cap, ~420 uses 0.08%) |
+| Brandfetch — CDN image delivery to users' browsers | Per map view | unmetered | **$0** (included in free tier) |
+| Supabase Storage (logos) | ❌ not used — hotlinked per Brandfetch ToS | — | — |
 
-**Bottom line:** well under $50/year steady-state at GA scope. Not a budget risk.
+**Bottom line:** ~$36 one-time + well under $50/year steady-state at GA scope. Not a budget risk. Brandfetch's free tier covers v1 with 3+ orders of magnitude of headroom.
 
 ---
 
@@ -561,12 +590,13 @@ All estimates assume Google Places Basic-data tier ($0.017/request).
 | 5 | Cron infrastructure | **`pg_cron` + `pg_net`** calling Edge Functions, matching the `friday-cfo-email` reference pattern (see §10.2). |
 | 6 | Share-to-non-user behavior | **Error only.** Sharing uses a dropdown of existing Oculus users; no free-text email, no invite flow. |
 | 7 | Pin collision priority | **First-rendered wins for v1.** Smarter priority is a v2 refinement. |
+| 8 | Brandfetch plan tier + logo architecture | **Free Logo API tier** (500K requests/month cap — we use <1%). **Hotlink from Brandfetch CDN at render time; do not download to Supabase Storage.** Required by their ToS (can't cache locally; 30-day license renewal). Monthly metadata refresh is mandatory, not optional. |
 
 ### Still open (non-blocking — resolve during implementation)
 
-1. **Brandfetch plan tier** — free tier's rate limits likely cover v1 (~420 brands, re-fetched quarterly = ~1,680 requests/year). Confirm when implementing. Paid tier trivially cheap if needed.
-2. **Ingestion trigger UX detail** — on the admin page's "Refresh Places" button, should ingestion run synchronously (button in loading state) or async (fire-and-forget, progress in Ingestion Activity tab)? Lean: async for anything touching > 5 brands.
-3. **Existing hamburger menu location** — confirm the correct parent component to slot the `/admin/merchants` link into. Match the pattern of existing admin links if any exist.
+1. **Ingestion trigger UX detail** — on the admin page's "Refresh Places" button, should ingestion run synchronously (button in loading state) or async (fire-and-forget, progress in Ingestion Activity tab)? Lean: async for anything touching > 5 brands.
+2. **Existing hamburger menu location** — confirm the correct parent component to slot the `/admin/merchants` link into. Match the pattern of existing admin links if any exist.
+3. **`BRANDFETCH_CLIENT_ID` provisioning** — need to register for a free Brandfetch developer account and store the `client_id` as a Supabase secret. One-time setup task at implementation.
 
 ---
 
@@ -574,7 +604,7 @@ All estimates assume Google Places Basic-data tier ($0.017/request).
 
 1. **DB migrations** (§3) — all six tables + indexes.
 2. **Seed CSV import** (§12) — cleanup + bulk load of 420 brands. Runs once.
-3. **Brandfetch integration** (§5) — logo resolution + Supabase Storage caching. Run over seed list.
+3. **Brandfetch integration** (§5) — domain resolution + CDN URL generation. No Supabase Storage. Run over seed list.
 4. **Admin page tabs 1 & 2** (Brands, Categories, §7) — CRUD UI + manual "Refresh Places" button.
 5. **Places ingestion job** (§4) — reusable module called by admin button and by cron.
 6. **Map drawer UI** (§6) — floating drawer, category tree, search, per-user selection persistence.
