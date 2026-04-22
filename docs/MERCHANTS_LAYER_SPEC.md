@@ -66,7 +66,7 @@
 - **Display scope:** Statewide with clustering (Option A); runtime API cost = $0.
 - **Pin style:** Logo-forward with CSS white halo, constrained by height for mixed aspect ratios.
 - **Click behavior:** Simple InfoWindow popup; no sidebar in v1.
-- **Admin surface:** Separate admin page in the hamburger menu, gated by `user.user_role = 'admin'`.
+- **Admin surface:** Separate admin page in the hamburger menu, gated by `user.ovis_role = 'admin'`.
 - **Ingestion:** Admin pre-seeds each category before it's exposed to users (Option C).
 
 ---
@@ -127,14 +127,13 @@ CREATE TABLE merchant_location (
 
 CREATE INDEX idx_merchant_location_brand ON merchant_location(brand_id);
 CREATE INDEX idx_merchant_location_status ON merchant_location(business_status) WHERE business_status != 'OPERATIONAL';
-CREATE INDEX idx_merchant_location_geo ON merchant_location USING GIST (
-  ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
-);
+-- Composite B-tree for viewport-bounded queries; matches repo convention (no PostGIS in this codebase).
+CREATE INDEX idx_merchant_location_geo ON merchant_location(latitude, longitude);
 
 -- User-owned Favorites (merchant sets).
 CREATE TABLE merchant_favorite (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_user_id   UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  owner_user_id   UUID NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
   name            TEXT NOT NULL,                       -- "Starbucks Competition"
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -150,7 +149,7 @@ CREATE TABLE merchant_favorite_brand (
 -- Google-Docs-style sharing. Absence of row = no access. Owner is implied.
 CREATE TABLE merchant_favorite_share (
   favorite_id  UUID NOT NULL REFERENCES merchant_favorite(id) ON DELETE CASCADE,
-  user_id      UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id      UUID NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
   permission   TEXT NOT NULL CHECK (permission IN ('view','edit')) DEFAULT 'view',
   shared_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (favorite_id, user_id)
@@ -162,14 +161,14 @@ CREATE TABLE merchant_closure_alert (
   location_id      UUID NOT NULL REFERENCES merchant_location(id) ON DELETE CASCADE,
   detected_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   new_status       TEXT NOT NULL,                      -- CLOSED_TEMPORARILY | CLOSED_PERMANENTLY
-  acknowledged_by  UUID REFERENCES auth.users(id),
+  acknowledged_by  UUID REFERENCES "user"(id),
   acknowledged_at  TIMESTAMPTZ
 );
 ```
 
 ### 3.2 Existing tables touched
 
-- **`user` table** — no schema changes needed. Admin gating uses the existing `user.user_role` enum (`'admin' | 'broker_full' | 'broker_limited' | 'assistant'`). All admin-page access checks use `user_role = 'admin'`.
+- **`user` table** — no schema changes needed. Admin gating uses the existing `"user".ovis_role` column (values `'admin' | 'broker_full' | 'broker_limited' | 'assistant'`). All admin-page access checks use `ovis_role = 'admin'`. FK references use `"user"(id)` (the custom OVIS user table, joined to `auth.uid()` via `auth_user_id`).
 
 ---
 
@@ -321,7 +320,7 @@ A new **"Merchants" button** in the map toolbar (alongside existing tool buttons
 
 ### 7.1 Location
 
-New route `/admin/merchants`, linked from the main hamburger menu. Visible only to users with `user_role = 'admin'`.
+New route `/admin/merchants`, linked from the main hamburger menu. Visible only to users with `ovis_role = 'admin'`.
 
 ### 7.2 Tabs
 
@@ -583,7 +582,7 @@ All estimates assume Google Places Basic-data tier ($0.017/request).
 
 | # | Question | Resolution |
 |---|---|---|
-| 1 | Admin gating — new `is_admin` column? | **No new column.** Use existing `user.user_role = 'admin'`. |
+| 1 | Admin gating — new `is_admin` column? | **No new column.** Use existing `user.ovis_role = 'admin'`. |
 | 2 | `Wal-Mart` vs `Wal-Mart Supercenter` | **Merge** into a single `Wal-Mart` brand. |
 | 3 | `Family Dollar` vs `Dollar Tree` vs `Family Dollar \| Dollar Tree` | **Keep FD and DT separate; drop the combo row from import.** Combo-store support is Phase 2 (see §14). |
 | 4 | `Pizza` singleton category | **Merge into `Restaurant Pizza`**; drop the `Pizza` category. |
